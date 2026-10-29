@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { openSessionGraph } from "@titan-design/session-graph";
 import { activeWorkClient } from "./active-work.js";
+import type { BranchInput, BranchStates } from "./branch-prs.js";
 import type { RepoEvidence } from "./repo-evidence.js";
-import { tasksCommands, type TaskDetail, type TasksResult, type TasksSource } from "./tasks.js";
+import { tasksCommands, type TaskArtifacts, type TaskDetail, type TaskMentions, type TasksResult, type TasksSource } from "./tasks.js";
 import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 
 // Synthetic records in active-work's wire shapes; nothing here comes from a real workspace.
@@ -16,12 +17,12 @@ const task = (slug: string, id: string, fields: Record<string, unknown> = {}) =>
 });
 
 const TASKS = [
-  task("orbit-relay", "OR-1", { notes: "Handshake retry.", done_when: "A dropped handshake retries with backoff." }),
+  task("orbit-relay", "OR-1", { severity: "high", notes: "Handshake retry.", done_when: "A dropped handshake retries with backoff." }),
   task("orbit-relay", "OR-2", { tags: ["dep:OR-5"] }),
   task("orbit-relay", "OR-3"),
   task("orbit-relay", "OR-4", { notes: "Depends on OR-9 (done)." }),
   task("orbit-relay", "OR-5", { tags: ["parent:OR-6"] }),
-  task("orbit-relay", "OR-6", { notes: "Epic for the relay." }),
+  task("orbit-relay", "OR-6", { severity: "high", notes: "Epic for the relay." }),
   task("orbit-relay", "OR-7"),
   // A migrated task: edges and deliverables are fields, and its tags are for retrieval only.
   task("orbit-relay", "OR-8", { parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"], tags: ["origin:relay"] }),
@@ -33,14 +34,7 @@ const ARTIFACTS = {
   items: [{ slug: "orbit-relay", artifacts: { branches: [{ repo: "/synthetic/orbit", name: "pc-or-1-retry" }, { repo: "/synthetic/orbit", name: "pc-or-3-old" }], stashes: [], worktrees: [] } }],
 };
 
-const STATUS = {
-  slug: "orbit-relay",
-  branches: [
-    { repo: "/synthetic/orbit", name: "pc-or-1-retry", present: true, last_commit_iso: null, ahead: 2, behind: 0, pr: { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" } },
-    { repo: "/synthetic/orbit", name: "pc-or-3-old", present: false, last_commit_iso: null, ahead: null, behind: null, pr: null },
-  ],
-  worktrees: [{ path: "/synthetic/orbit/.worktrees/or-1", repo: "/synthetic/orbit", branch: "pc-or-1-retry", present: true, dirty: false, files_changed: 0, ahead: 0, behind: 0, has_upstream: true }],
-};
+const PR_41 = { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" };
 
 const REFERENCES = [
   { slug: "orbit-relay", source: "task", file: "tasks/OR-7.yml", field: "notes", text: "Follows OR-1" },
@@ -73,6 +67,13 @@ let taskLists: Record<string, unknown>[];
 let registryServed: boolean;
 let taskShowServed: boolean;
 let failing: Set<string>;
+let branchLookups: BranchInput[][];
+
+/** What the cached `gh pr list` reader answers, without spawning anything. */
+async function fakeBranches(branches: readonly BranchInput[]): Promise<BranchStates> {
+  branchLookups.push([...branches]);
+  return { branches: branches.map(({ name }) => ({ repo: "orbit", name, present: true, pr: name === "pc-or-1-retry" ? PR_41 : null })), degraded: [] };
+}
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-tasks-"));
@@ -81,6 +82,7 @@ beforeEach(async () => {
   registryServed = true;
   taskShowServed = true;
   failing = new Set();
+  branchLookups = [];
 });
 
 afterEach(async () => {
@@ -114,9 +116,7 @@ function answer(command: string, args: Record<string, unknown>): unknown {
     case "source.read":
       return { content: `---\ntask_prefix: ${PREFIXES[String(args.slug)]}\n---\nBrief.`, truncated: false };
     case "artifact.list":
-      return ARTIFACTS;
-    case "artifact.status":
-      return STATUS;
+      return args.slug === undefined || args.slug === "orbit-relay" ? ARTIFACTS : { items: [] };
     case "context.graph":
       return { id: args.id, kind: "task", subject: null, references: REFERENCES, initiatives_scanned: [], errors: [] };
     case "deliverable.list":
@@ -149,43 +149,39 @@ async function source(fields: Partial<TasksSource> = {}): Promise<TasksSource> {
   daemon = await startFakeDaemon({ ok: true }, answer);
   const graphPath = path.join(dir, "graph.sqlite3");
   if (!existsSync(graphPath)) seedGraph(graphPath);
-  return { activeWork: activeWorkClient(daemon.port), sessions: { graphPath }, evidence: async () => EVIDENCE, ...fields };
+  return { activeWork: activeWorkClient(daemon.port), sessions: { graphPath }, evidence: async () => EVIDENCE, branches: fakeBranches, ...fields };
 }
 
-async function invoke<T>(name: "work.tasks" | "work.task", args: Record<string, unknown>, fields: Partial<TasksSource> = {}) {
+async function invoke<T>(name: "work.tasks" | "work.task" | "work.taskMentions" | "work.taskArtifacts", args: Record<string, unknown>, fields: Partial<TasksSource> = {}) {
   const { envelope, exitCode } = await invokeCommand(tasksCommands(await source(fields))[name], args, { warnings: [], format: "json" });
   return { envelope, exitCode, data: (envelope as { data?: T }).data as T };
 }
 
 describe("work.tasks", () => {
-  it("returns open tasks across initiatives, each staged by the rule that produced it", async () => {
+  it("returns open tasks across initiatives, each with its derived stage", async () => {
     const { data } = await invoke<TasksResult>("work.tasks", {});
 
-    const byId = Object.fromEntries(data.tasks.map((row) => [row.id, [row.stage, row.stageRule, row.stageGuessed]]));
+    const byId = Object.fromEntries(data.tasks.map((row) => [row.id, [row.stage, row.stageGuessed]]));
     expect(byId).toEqual({
-      "OR-1": ["review", "open-pr", false],
-      "OR-2": ["blocked", "dependency", false],
-      "OR-3": ["in-progress", "live-ref", false],
-      "OR-4": ["ready", "default", true],
-      "OR-5": ["ready", "default", true],
-      "OR-6": ["blocked", "open-slices", false],
-      "OR-7": ["ready", "merged-commit", false],
-      "OR-8": ["blocked", "dependency", false],
-      "GP-1": ["ready", "default", true],
+      "OR-1": ["review", false],
+      "OR-2": ["blocked", false],
+      "OR-3": ["in-progress", false],
+      "OR-4": ["ready", true],
+      "OR-5": ["ready", true],
+      "OR-6": ["blocked", false],
+      "OR-7": ["ready", false],
+      "OR-8": ["blocked", false],
+      "GP-1": ["ready", true],
     });
     expect(data.tasks.find((row) => row.id === "OR-2")?.stageReason).toBe("Depends on OR-5 (open)");
+    expect(data.tasks.find((row) => row.id === "OR-6")?.stageReason).toBe("2 open slices");
     expect(data.evidence).toEqual({ repos: ["example/orbit"], degraded: [] });
   });
 
-  it("reads parent and dep the same from edge tags and from fields", async () => {
+  it("sends a row only the fields the board renders", async () => {
     const { data } = await invoke<TasksResult>("work.tasks", {});
-
-    const edges = Object.fromEntries(data.tasks.map(({ id, parent, dep, deliverables }) => [id, { parent, dep, deliverables }]));
-    expect(edges["OR-2"]).toEqual({ parent: null, dep: ["OR-5"], deliverables: [] });
-    expect(edges["OR-5"]).toEqual({ parent: "OR-6", dep: [], deliverables: [] });
-    expect(edges["OR-8"]).toEqual({ parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"] });
-    expect(data.tasks.find((row) => row.id === "OR-8")?.stageReason).toBe("Depends on OR-5 (open)");
-    expect(data.tasks.find((row) => row.id === "OR-6")?.stageReason).toBe("2 open slices");
+    const keys = new Set(data.tasks.flatMap((row) => Object.keys(row)));
+    expect(keys).toEqual(new Set(["slug", "id", "title", "severity", "stage", "stageReason", "stageGuessed"]));
   });
 
   it("only ever uses the shared stage vocabulary", async () => {
@@ -218,17 +214,34 @@ describe("work.tasks", () => {
 });
 
 describe("work.task", () => {
-  it("returns the task with notes, done_when, mentions, artifacts with PR state and its sessions", async () => {
+  it("reads parent and dep the same from edge tags and from fields", async () => {
+    const edgesOf = async (id: string) => {
+      const { task } = (await invoke<TaskDetail>("work.task", { id })).data;
+      return { parent: task.parent, dep: task.dep, deliverables: task.deliverables };
+    };
+    expect(await edgesOf("OR-2")).toEqual({ parent: null, dep: ["OR-5"], deliverables: [] });
+    expect(await edgesOf("OR-5")).toEqual({ parent: "OR-6", dep: [], deliverables: [] });
+    expect(await edgesOf("OR-8")).toEqual({ parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"] });
+  });
+
+  it("returns the task with notes, done_when, open PRs and its sessions", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
 
     expect(data.task).toMatchObject({ id: "OR-1", stage: "review", notes: "Handshake retry.", doneWhen: "A dropped handshake retries with backoff." });
-    expect(data.mentions.map((mention) => mention.file)).toEqual(["tasks/OR-7.yml", "tasks/GP-1.yml"]);
-    expect(data.artifacts.branches).toEqual([{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: expect.objectContaining({ number: 41, state: "OPEN" }) }]);
-    expect(data.artifacts.worktrees).toEqual([{ repo: "orbit", branch: "pc-or-1-retry", present: true }]);
     expect(data.openPrs).toEqual([{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }]);
     expect(data.sessions.map((session) => session.sessionId)).toEqual([SESSION]);
     expect(data.sessionsDegraded).toBeNull();
-    expect(data.mentionsDegraded).toBeNull();
+  });
+
+  it("returns the shell without reading mentions or any branch's PR state", async () => {
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
+
+    expect(data.task.id).toBe("OR-1");
+    expect(calls).not.toContain("context.graph");
+    expect(calls).not.toContain("artifact.status");
+    expect(branchLookups).toEqual([]);
+    expect(data).not.toHaveProperty("mentions");
+    expect(data).not.toHaveProperty("artifacts");
   });
 
   it("lists the children a parent tag or a parent field names", async () => {
@@ -285,32 +298,68 @@ describe("work.task", () => {
     expect(calls).not.toContain("task.show");
   });
 
-  it("loads with mentions and artifact state marked unavailable when those reads time out", async () => {
-    failing = new Set(["context.graph", "artifact.status"]);
-    const { data, exitCode } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
-    expect(exitCode).toBe(EXIT.OK);
-    expect(data).toMatchObject({ mentions: [], artifacts: { branches: [], worktrees: [] } });
-    expect(data.mentionsDegraded).toContain("context.graph");
-    expect(data.evidence.degraded).toEqual([expect.stringContaining("artifact.status")]);
-  });
-
   it("is not found for an id no initiative holds", async () => {
     const { envelope, exitCode } = await invoke<TaskDetail>("work.task", { id: "OR-404" });
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.NOINPUT);
     expect(calls).toContain("task.show");
-    expect(calls).not.toContain("artifact.status");
   });
 
-  it("is not found for a personal initiative's task in an export, and drops personal mentions", async () => {
+  it("is not found for a personal initiative's task in an export", async () => {
     expect((await invoke<TaskDetail>("work.task", { id: "GP-1" }, { work: { excludePersonal: true } })).exitCode).toBe(EXIT.NOINPUT);
-    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" }, { work: { excludePersonal: true } });
-    expect(data.mentions.map((mention) => mention.slug)).toEqual(["orbit-relay"]);
   });
 
   it("returns the task with degraded sessions when the session graph is missing", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" }, { sessions: { graphPath: path.join(dir, "absent.sqlite3") } });
     expect(data.sessions).toEqual([]);
     expect(data.sessionsDegraded).toMatchObject({ reason: "graph-missing" });
+  });
+});
+
+describe("work.taskMentions", () => {
+  it("returns every record that mentions the id", async () => {
+    const { data } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" });
+    expect(data).toEqual({ mentions: REFERENCES, degraded: null });
+  });
+
+  it("answers degraded, not failing, when context.graph times out", async () => {
+    failing = new Set(["context.graph"]);
+    const { data, exitCode } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" });
+    expect(exitCode).toBe(EXIT.OK);
+    expect(data.mentions).toEqual([]);
+    expect(data.degraded).toContain("aborted due to timeout");
+  });
+
+  it("drops a personal initiative's mentions for an export", async () => {
+    const { data } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" }, { work: { excludePersonal: true } });
+    expect(data.mentions.map((mention) => mention.slug)).toEqual(["orbit-relay"]);
+  });
+});
+
+describe("work.taskArtifacts", () => {
+  it("looks up PR state for only the task's own branches, from its initiative's artifacts", async () => {
+    const { data } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" });
+    expect(branchLookups).toEqual([[{ repo: "/synthetic/orbit", name: "pc-or-1-retry" }]]);
+    expect(data).toEqual({ branches: [{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: PR_41 }], degraded: [] });
+    expect(calls).not.toContain("artifact.status");
+  });
+
+  it("asks GitHub nothing when no branch carries the id", async () => {
+    const { data } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-2", slug: "orbit-relay" });
+    expect(data).toEqual({ branches: [], degraded: [] });
+    expect(branchLookups).toEqual([]);
+  });
+
+  it("answers degraded, not failing, when the artifacts cannot be read", async () => {
+    failing = new Set(["artifact.list"]);
+    const { data, exitCode } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" });
+    expect(exitCode).toBe(EXIT.OK);
+    expect(data).toEqual({ branches: [], degraded: [expect.stringContaining("artifact.list")] });
+  });
+
+  it("is not found for a personal initiative in an export", async () => {
+    const { exitCode } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "GP-1", slug: "garden-plan" }, { work: { excludePersonal: true } });
+    expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(branchLookups).toEqual([]);
   });
 });

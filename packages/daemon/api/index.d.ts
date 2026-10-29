@@ -224,6 +224,20 @@ interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends SurfaceO
     gate?: DaemonAuth;
     /** The byte cap on a `/rpc` body, enforced before the body is buffered. */
     rpcBodyLimit?: RpcBodyLimit;
+    /**
+     * Called once per `/rpc` answer with its timing and size. A sample never carries arguments, ids
+     * or the body, and a throwing observer cannot change the answer.
+     */
+    onRpc?: (sample: RpcSample) => void;
+}
+/** What `onRpc` learns about one call. `name` is `(unknown)` for a command the registry lacks, so a caller cannot grow the key set. */
+interface RpcSample {
+    name: string;
+    ms: number;
+    /** The exact byte length of the response body sent. */
+    bytes: number;
+    status: number;
+    surface: "http";
 }
 interface RpcBodyLimit {
     /** Applies to every command not named in `perCommand`. Defaults to {@link DEFAULT_RPC_BODY_LIMIT}. */
@@ -492,6 +506,7 @@ interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends Surf
     guards?: RequestGuardOptions;
     /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
     rpcBodyLimit?: RpcBodyLimit;
+    onRpc?: (sample: RpcSample) => void;
     /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
     shutdownGraceMs?: number;
     logger?: Logger;
@@ -577,4 +592,4 @@ interface FileResponseOptions {
  */
 declare function fileResponse(request: Request, file: string, options: FileResponseOptions): Promise<Response>;
 
-export { type ContainedFile, type ContentOriginOptions, DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type SecretParser, SecretRejection, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, containedFile, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, parseBase64Secret, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, trackSecretFile, verifySession, watchTree, writePidFile };
+export { type ContainedFile, type ContentOriginOptions, DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, type RpcSample, SESSION_COOKIE, SESSION_MAX_AGE_MS, type SecretParser, SecretRejection, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, containedFile, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, parseBase64Secret, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, trackSecretFile, verifySession, watchTree, writePidFile };
