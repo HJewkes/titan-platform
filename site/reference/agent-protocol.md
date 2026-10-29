@@ -149,6 +149,9 @@ carry. The exported schemas keep unknown keys; `buildRequestSchemas("exact")` an
 `buildResultSchemas("exact")` refuse them, for drift tests. The roster row is `AgentRecord`, so it
 never clashes with the root `AgentIdentity`.
 
+The same subpath exports the agent tools' MCP argument schemas, which strip unknown keys and
+carry no help text, and synthetic fixtures under `fixtures/wire/v1/`.
+
 ## Shared pricing
 
 Import `@titan-design/agent-protocol/pricing` for the existing `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice`, `priceRequest`, `priceCodexUsage` and `validateCodexPrices` exports and their input/result types. Session-analytics and agent preserve their existing entrypoints as compatibility exports.
