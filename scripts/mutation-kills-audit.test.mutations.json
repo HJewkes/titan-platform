@@ -16,7 +16,7 @@
     {
       "name": "the audit drops fix-proof's refusal from its problems",
       "file": "scripts/mutation-kills-audit.mjs",
-      "find": "return [...(refused === null ? [] : [refused]), ...kills];",
+      "find": "return [...(refused === null ? [] : [refused]), ...finds, ...kills];",
       "replace": "return kills;",
       "kills": ["the audit command fails a sidecar fix-proof refuses and still reports its kill problems"]
     },
@@ -26,6 +26,18 @@
       "find": "const kills = sidecar === null ? [] : killProblems(path, sidecar, base);",
       "replace": "const kills = refused !== null || sidecar === null ? [] : killProblems(path, sidecar, base);",
       "kills": ["the audit command fails a sidecar fix-proof refuses and still reports its kill problems"]
+    },
+    {
+      "name": "the audit skips the find check",
+      "file": "scripts/mutation-kills-audit.mjs",
+      "find": "return checked.ok ? [] : [`${path}: ${checked.error}`];",
+      "replace": "return [];",
+      "kills": [
+        "findProblems a sidecar whose find is absent from its target fails the audit",
+        "findProblems names a target that does not exist",
+        "findProblems refuses a find that occurs more than once",
+        "the --finds run fails a tracked-style sidecar whose find is absent from its target, without running tests"
+      ]
     }
   ]
 }
