@@ -31,8 +31,8 @@
     {
       "name": "docs:build runs on every push",
       "file": "scripts/verify-changed.mjs",
-      "find": "if (docsInputsChanged(changed)) {",
-      "replace": "if (true) {",
+      "find": "if (docsInputsChanged(changed)) commands.push(",
+      "replace": "if (true) commands.push(",
       "kills": [
         "docs gate skips both checks when neither a docs nor a package input changed"
       ]
