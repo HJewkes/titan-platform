@@ -357,7 +357,8 @@ const assertOn = (options: InboxActionOptions): void => {
   if (!options.enabled) throw failure(ACTIONS_OFF, EXIT.UNAVAILABLE);
 };
 
-export function inboxActionCommands(sources: InboxSources, options: InboxActionOptions) {
+/** `afterAct` runs once an act settles, so a view caching an upstream read drops what the act may have changed. */
+export function inboxActionCommands(sources: InboxSources, options: InboxActionOptions, afterAct: () => void = () => undefined) {
   const now = options.now ?? Date.now;
   const store = preparedStore(now);
   return {
@@ -379,7 +380,7 @@ export function inboxActionCommands(sources: InboxSources, options: InboxActionO
       ownerWrite: true,
       run: (args, ctx) => {
         assertOn(options);
-        return act({ options, sources, now, issuedAt: ctx.ownerPresence.issuedAt }, store, args);
+        return act({ options, sources, now, issuedAt: ctx.ownerPresence.issuedAt }, store, args).finally(afterAct);
       },
     }),
   };

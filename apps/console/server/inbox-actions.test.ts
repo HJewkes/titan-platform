@@ -214,11 +214,12 @@ interface HarnessOptions {
   enabled?: boolean;
   decisionLog?: DecisionLog;
   answerer?: BrokerAnswerer;
+  afterAct?: () => void;
 }
 
 async function harness(client: OwnerActionClient, options: HarnessOptions = {}): Promise<Harness> {
-  const { decisionLog, answerer } = options;
-  const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) });
+  const { decisionLog, answerer, afterAct } = options;
+  const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) }, afterAct);
   return {
     prepare: async (itemId, extra = {}) => (await invokeCommand(commands["inbox.prepare"], { itemId, ...extra }, ownerContext())).envelope,
     act: (itemId, confirm, ctx = ownerContext(), text, extra = {}) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }), ...extra }, ctx),
@@ -278,6 +279,17 @@ describe("inbox.act", () => {
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.outcome.json`), "utf8"))).toMatchObject({ status: "resolved" });
     expect(calls).toHaveLength(1);
     expect(calls[0]![1]).toMatchObject({ text: "merge", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
+  });
+
+  it("tells the inbox view to drop its kept reads once a tap lands, and not before", async () => {
+    let dropped = 0;
+    const { prepare, act } = await harness(spyFactory().client, { afterAct: () => (dropped += 1) });
+    const { confirm } = ready(await prepare(PLAIN_ID));
+    const beforeAct = dropped;
+
+    await act(PLAIN_ID, confirm);
+
+    expect([beforeAct, dropped]).toEqual([0, 1]);
   });
 
   it("waits for a new head on an sh-sent-back gate: the read-back, record, message and log all say await-new-head, not merge", async () => {
