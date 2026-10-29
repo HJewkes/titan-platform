@@ -10,7 +10,8 @@ import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { HOME_PREFIXES } from "./seats.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
-import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
+import type { ReviewAsk } from "./review-queue.js";
+import { SpawnDeferred, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
@@ -207,7 +208,7 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
 
 /** A resume names only the reviewer, so its PR is known only when this process spawned it. */
 function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
-  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr }, ...(intentAt !== undefined && { intentAt }) };
+  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr, head: target.head }, ...(intentAt !== undefined && { intentAt }) };
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
