@@ -15,7 +15,7 @@ import {
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
 import { perfCommands } from "./perf/commands.js";
-import { createPerfRecorder } from "./perf/recorder.js";
+import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
@@ -54,9 +54,8 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const { upstreams } = sources;
   const build = readBuildInfo();
   const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
-  const commands = [...(options.extraCommands ?? []), ...Object.values(perfCommands(perf))];
   const handle = await startDaemon({
-    registry: createConsoleRegistry(sources, commands),
+    registry: createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf)]),
     createContext: consoleContextFor(config.ownerWrites),
     version: APP_VERSION,
     port: config.port,
@@ -73,11 +72,16 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
-  const close = async (): Promise<void> => {
-    await Promise.all([relay.close(), handle.close()]);
-    await perf.close();
-  };
-  return { ...handle, close };
+  return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
+}
+
+async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
+  await Promise.all(closing);
+  await perf.close();
+}
+
+function perfCommandList(perf: PerfRecorder): ClassedCommand[] {
+  return Object.values(perfCommands(perf));
 }
 
 /** Media routes go ahead of the static app, whose `/*` would answer them with the page. */

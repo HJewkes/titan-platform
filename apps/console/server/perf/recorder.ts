@@ -79,9 +79,33 @@ function logName(t: number): string {
 export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   const { dir, now = Date.now, ringSize = 2000, flushMs = 5000, flushRows = 200, retentionDays = 7 } = options;
   const ring: RpcRow[] = [];
+  const log = createBatchWriter(dir, flushMs, flushRows);
+  const pruned = pruneOldLogs(dir, now(), retentionDays).catch(() => {});
+
+  return {
+    record(sample) {
+      const row: RpcRow = { t: now(), kind: "rpc", name: sample.name, ms: sample.ms, bytes: sample.bytes, status: sample.status };
+      ring.push(row);
+      if (ring.length > ringSize) ring.shift();
+      log.add(row);
+    },
+    async summary(window) {
+      const since = now() - WINDOW_MS[window];
+      if (window === "15m") return statsOf(ring.filter((row) => row.t >= since));
+      await log.flush();
+      return statsOf((await readLogs(dir, since)).filter((row) => row.t >= since));
+    },
+    flush: log.flush,
+    async close() {
+      await Promise.all([pruned, log.stop()]);
+    },
+  };
+}
+
+/** Buffers rows and appends them to the day files every `flushMs` or once `flushRows` wait; a failed write drops that batch. */
+function createBatchWriter(dir: string, flushMs: number, flushRows: number) {
   let pending: RpcRow[] = [];
   let writing: Promise<void> = Promise.resolve();
-
   const flush = (): Promise<void> => {
     const batch = pending;
     pending = [];
@@ -91,26 +115,15 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   };
   const timer = setInterval(() => void flush(), flushMs);
   timer.unref();
-  const pruned = pruneOldLogs(dir, now(), retentionDays).catch(() => {});
-
   return {
-    record(sample) {
-      const row: RpcRow = { t: now(), kind: "rpc", name: sample.name, ms: sample.ms, bytes: sample.bytes, status: sample.status };
-      ring.push(row);
-      if (ring.length > ringSize) ring.shift();
+    add(row: RpcRow): void {
       pending.push(row);
       if (pending.length >= flushRows) void flush();
     },
-    async summary(window) {
-      const since = now() - WINDOW_MS[window];
-      if (window === "15m") return statsOf(ring.filter((row) => row.t >= since));
-      await flush();
-      return statsOf((await readLogs(dir, since)).filter((row) => row.t >= since));
-    },
     flush,
-    async close() {
+    async stop(): Promise<void> {
       clearInterval(timer);
-      await Promise.all([pruned, flush()]);
+      await flush();
     },
   };
 }
