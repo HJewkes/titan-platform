@@ -15,7 +15,7 @@ describe("the owner-at-head evidence card", () => {
       {
         fact: "ci-policy-weakened",
         ciPolicy: weakened("secrets"),
-        verdictText: text,
+        verdictLines: text.split("\n"),
         labelledLines: [
           { raw: "**CI policy:** weakened secrets", reading: weakened("secrets") },
           { raw: "CI-policy: unchanged", reading: { kind: "unchanged" } },
@@ -23,6 +23,15 @@ describe("the owner-at-head evidence card", () => {
         files: [],
       },
     ]);
+  });
+
+  it("shows the verdict text with a hidden character as its code point, so a bidi mark cannot reorder what the owner reads", async () => {
+    const stored = evidence(weakened("secrets"));
+    const { host, port, gate } = await gateOn(stored, [evidenceStep(BEFORE_OPEN, stored, 0)]);
+
+    const card = await ownerEvidence(gate, { host, port, readText: reads(verdictText("Synthetic rationale \u202Edesrever", "CI-policy: weakened secrets")) });
+
+    expect(card.status === "ready" && card.sections.map((section) => "verdictLines" in section && section.verdictLines[0])).toEqual(["Synthetic rationale \\u{202E}desrever"]);
   });
 
   it("reads missing when the verdict text no longer reads as the stored CI-policy reading", async () => {
