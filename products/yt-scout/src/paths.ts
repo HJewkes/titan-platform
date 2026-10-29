@@ -23,3 +23,8 @@ export function dbPath(opts: PathOptions = {}): string {
   const stateHome = env.XDG_STATE_HOME || path.join(opts.home ?? os.homedir(), ".local", "state");
   return path.join(stateHome, "titan-yt-scout", "scout.sqlite3");
 }
+
+/** Step rows (plan section 5) sit beside the scout database. */
+export function rowsDir(opts: PathOptions = {}): string {
+  return path.join(path.dirname(dbPath(opts)), "rows");
+}

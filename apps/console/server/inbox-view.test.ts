@@ -453,12 +453,29 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
   });
 
-  it("maps a gate op onto the live row's resolve, at the row's head", () => {
+  it("offers the gate's own tap, never the agent-written refusal, while the gate is open at the deposit's head", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+
+    const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
+
+    expect(listed!.action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, runId: RUN_PLAIN, stepId: "approve-merge", repo: REPO, pr: 1, headSha: HEAD, decision: "merge" });
+  });
+
+  it("offers no tap once the live row's head moved past the deposit's head, and names both heads", () => {
     const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: "f".repeat(40), decision: "merge" } as const;
 
     const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
 
-    expect(listed!.action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, pr: 1, headSha: HEAD });
+    expect(listed!.action).toEqual({ kind: "terminal", reason: `this deposit asks at ffffffff, but the gate now pins ${HEAD.slice(0, 8)}; answer the gate's own item at that head` });
+  });
+
+  it("offers no tap once the gate is answered and the row waits on another step", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+    const answered = { ...row(RUN_PLAIN, 1), pendingGate: { gateId: `${RUN_PLAIN}/sh-sent-back`, stepId: "sh-sent-back", since: "2026-10-10T00:00:00.000Z" } };
+
+    const [listed] = inboxItems([deposited(op)], [answered]);
+
+    expect(listed!.action).toEqual({ kind: "terminal", reason: `gate ${RUN_PLAIN}/approve-merge is no longer open on ${REPO}#1; withdraw this deposit` });
   });
 
   it("maps a hold op onto the live row's release only when the row is held in that class", () => {

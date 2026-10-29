@@ -100,6 +100,16 @@ await dispatchToAgentChat(
   is `agent <sub>` or the first argv word, so no peer name or briefing is ever reported.
   `outcome` is `ok`, `refused` (non-zero exit), `timeout` or `error`. An observer that
   throws is ignored, and nothing is timed while no observer is registered.
+- `bootPacket({ task, plan?, repo, touchPoints?, readers, options? })` builds an
+  implementer's first-turn packet: git state labelled with its capture time, the task card,
+  the plan slice's excerpt, ±15-line excerpts of up to 8 touch points (by default the
+  backticked paths in the slice) and readiness (install command, scripts, CAPABILITIES
+  rows). Each section has a token cap, and the packet a 6k-token budget; over budget,
+  whole sections drop from the end of `options.priority`. A source that cannot be read
+  leaves its section out and is listed in `omitted`, never thrown. Every read goes through
+  the injected `BootReaders`; `nodeBootReaders({ repoRoot, gitBin, readTask })` reads a
+  local checkout, and the caller maps its task store (for example `@titan-design/pm`) to a
+  `TaskCard`.
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.

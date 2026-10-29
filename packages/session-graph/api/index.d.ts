@@ -88,6 +88,9 @@ declare const ORIGIN_TASK_LINK_MIGRATION_NAME = "origin task link";
 declare const ORIGIN_EXPERIMENT_MIGRATION_NAME = "origin experiment arm";
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
+declare const ORIGIN_ROUTE_MIGRATION_NAME = "origin route decision";
+
+/** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
 declare const INBOUND_BROADCAST_MIGRATION_NAME = "inbound broadcast flag";
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
@@ -293,6 +296,18 @@ interface ResolvedOrigin {
     predecessor?: string | null;
     /** How many follow-ups of each kind (`fix`, `rebase`, `extension`, `review`) the session received. */
     followupKinds?: Readonly<Record<string, number>> | null;
+    /** The spawn-routing decision the launcher logged; `routeFacts` is compact JSON text. */
+    routeMode?: string | null;
+    routeSource?: string | null;
+    routePrior?: string | null;
+    routeReason?: string | null;
+    routeRequested?: string | null;
+    routeWanted?: string | null;
+    routeWorkflow?: string | null;
+    routeTable?: string | null;
+    routeFacts?: string | null;
+    routeCandidate?: string | null;
+    routeCandidateWanted?: string | null;
 }
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
 declare const NO_TASK_LINK = "none";
@@ -672,4 +687,4 @@ declare function ensureNormalizedSchema(db: Db): void;
 /** Ambiguity is explicit; workspace session bodies remain in their original namespace. */
 declare function resolveConversationAlias(db: Db, legacyRef: string): string | null;
 
-export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrEnrichment, type PrKey, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, stripInjected, syncPrices };
+export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_ROUTE_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrEnrichment, type PrKey, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, stripInjected, syncPrices };
