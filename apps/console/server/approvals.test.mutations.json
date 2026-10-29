@@ -14,7 +14,7 @@
     {
       "name": "a factory frame drops no cached read",
       "file": "apps/console/server/commands.ts",
-      "find": "  sources.invalidation?.on(\"factory\", cache.invalidate);\n",
+      "find": "  invalidation?.on(\"factory\", cache.invalidate);\n",
       "replace": "",
       "kills": [
         "approvals.flow reads the factory again after a factory relay frame, inside the fresh window"
