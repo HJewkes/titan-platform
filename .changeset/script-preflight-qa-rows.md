@@ -1,0 +1,5 @@
+---
+"@titan-design/explainer": patch
+---
+
+The script stage now checks the rows qa would later fail on content, so the script repair fixes them before a paid render. Six new L0 error rows, each with a repair hint that names the beat and the item: Q-D14, every number the assertion, a label or a chip shows is spoken in the beat (qa's narration-facts, through its own `unspokenFacts`, so a chart is held only to its largest bar); Q-D15, at most 20 words on screen a beat; Q-D16, no label or chip repeats 5 spoken words in a row (qa's G10); Q-D17, no planned stretch without a cue runs past `pacing.pictureChangeFailS`, timed on word positions at the beat type's voiced band rate; Q-D18, the held-beat count (`heldS` or the held band) sits within `pacing.held`; Q-D19, a fill floor: every body beat speaks at least 80 % of its word cap, so the runtime stays near target once truing ends a beat after its last word. The rows apply to daily-overview first; the other types are listed in `except_profiles` until the register rewrite stops moving numbers it no longer says onto labels. Stage versions: script x20, rewrite x13, eval x12.
