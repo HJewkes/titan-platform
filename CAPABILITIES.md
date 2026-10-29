@@ -165,6 +165,8 @@ HarnessPricingPort describes an event-time quote with optional readonly normaliz
 
 For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
 
+For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames and the records they carry, import `./wire`.
+
 Key exports:
 
 - `lifecycle`: `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
