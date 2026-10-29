@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { RoundSummarySchema } from "./ports.js";
 import { IdeaSchema, ideaId, OutcomeSchema, type Outcome, type Proposal } from "./schemas.js";
@@ -24,6 +24,7 @@ import {
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
+import { sharedRuns } from "./test-support/shared-runs.js";
 import { pickWinner } from "./winners.js";
 import { AUTORESEARCH_WORKFLOW, finalOutcomes } from "./workflow.js";
 
@@ -77,25 +78,7 @@ async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, co
   return { repo, ports, run, outcomes: outcomes(run) };
 }
 
-// Tests that only read a finished run share one per scenario, so its host and repo outlive afterEach.
-const sharedRuns = new Map<string, ReturnType<typeof loop>>();
-const sharedHosts: TestHost[] = [];
-const sharedRepos: FixtureRepo[] = [];
-afterAll(() => {
-  sharedHosts.splice(0).forEach((host) => host.close());
-  sharedRepos.splice(0).forEach(removeFixture);
-});
-
-async function sharedLoop(...args: Parameters<typeof loop>): ReturnType<typeof loop> {
-  const key = JSON.stringify(args, (_key, value: unknown) => (typeof value === "function" ? value.name : value));
-  if (!sharedRuns.has(key)) {
-    sharedRuns.set(key, loop(...args));
-    await sharedRuns.get(key);
-    sharedHosts.push(hosts.pop()!);
-    sharedRepos.push(repos.pop()!);
-  }
-  return sharedRuns.get(key)!;
-}
+const sharedLoop = sharedRuns(loop, { hosts, repos });
 
 const retryPlanner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
 
