@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { RenderHost } from "./render-manifest.js";
 import type { RenderDeps, RenderTimeline } from "./render-video.js";
 
+/** A stage-fit scan that finds every beat inside its stage box, for renders with no real page behind them. */
+export const fitsStage: RenderDeps["stageFit"] = async () => [];
+
 export const FAKE_HOST: RenderHost = {
   platform: "linux", arch: "x64", cpuModel: "Synthetic CPU", cpus: 4, node: "v0.0.0", ffmpeg: "ffmpeg version 0", chromium: "0.0.0.0",
 };

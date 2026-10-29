@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "render skips the stage-fit refusal",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "  if (overflows.length > 0) throw new StageOverflow(overflows);\n",
+      "replace": "",
+      "kills": [
+        "renderVideo's stage-fit scan refuses once, naming every beat past its stage box, before it mixes or captures anything"
+      ]
+    }
+  ]
+}

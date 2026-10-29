@@ -5,7 +5,8 @@ import { useStageFit } from "./stageFit.js";
 /**
  * react-ui's BeatFrame with the spike frame's behaviour inside it: the `.beat-frame` box the stage CSS sizes,
  * `data-beat` for QA, and the stage-fit check. `visibility` is always set: dropping a style key leaves `style=""`
- * behind, so the DOM would depend on seek history. Inside a stage, content that overflows the box throws.
+ * behind, so the DOM would depend on seek history. Inside a stage, content shrinks to fit the box down to the type
+ * floor, and what still overflows there throws.
  */
 export function BeatFrame({ kind, children }: { kind: string; children?: ReactNode }) {
   const { phase } = useBeatTime();
