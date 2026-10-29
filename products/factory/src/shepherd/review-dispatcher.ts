@@ -12,7 +12,7 @@ export interface ReviewStart {
 export class ReviewSuperseded extends Error {
   override readonly name = "ReviewSuperseded";
 
-  /** `movedTo` is set when the live PR read, not the cached list, found the move; the step then answers as a resync would. */
+  /** `moved` is set when the live PR read, not the cached list, found the move; the step then answers as a resync would. */
   constructor(message: string, readonly moved?: { from: string; to: string }) {
     super(message);
   }
