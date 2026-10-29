@@ -5,6 +5,7 @@
 // Usage: node scripts/verify-changed.mjs [base]   (base: VERIFY_CHANGED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
@@ -103,14 +104,16 @@ function lintTypesCommand(changed, workspace) {
   return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
 }
 
-function vitestCommand(changed, hasTimeout) {
+function vitestCommand(changed, hasTimeout, spool) {
   const related = relatedTestArgs(changed);
   if (!related) return null;
   const vitest = ["pnpm", "exec", "vitest", ...related];
   // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
   const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
   const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
-  return { label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } };
+  // Each pre-push run leaves a timing record in the spool, so the corpus sees local runs too (TP-4465).
+  const timing = { TITAN_TEST_TIMING_SPOOL: spool, TITAN_TEST_TIMING_RUNNER: "verify-changed" };
+  return { label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}`, ...timing } };
 }
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
@@ -147,7 +150,7 @@ export const CI_COVERAGE = [
  * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
  * build, which produces the code-graph dist it reads.
  */
-export function planCommands({ base, changed, workspace, hasTimeout }) {
+export function planCommands({ base, changed, workspace, hasTimeout, spool }) {
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
@@ -156,7 +159,7 @@ export function planCommands({ base, changed, workspace, hasTimeout }) {
     pnpmRun("merge:lint"),
     pnpmRun("typecheck"),
     pnpmRun("lint"),
-    vitestCommand(changed, hasTimeout),
+    vitestCommand(changed, hasTimeout, spool),
     pnpmRun("capabilities:check"),
     pnpmRun("metrics:check"),
     pnpmRun("docs:build"),
@@ -175,6 +178,11 @@ function changedFiles(base) {
     ...gitLines(["ls-files", "--other", "--modified", "--exclude-standard"]),
   ]);
   return [...files].filter((path) => existsSync(join(ROOT, path)));
+}
+
+function timingSpool() {
+  const home = process.env.TITAN_TEST_TIMING_HOME || join(homedir(), ".local/share/titan-test-timing");
+  return process.env.TITAN_TEST_TIMING_SPOOL || join(home, "spool");
 }
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
@@ -207,7 +215,7 @@ async function runStep({ cmd, args, env, inProcess }, changed) {
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout() });
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool() });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
   let failed = false;
   for (const step of plan) {
