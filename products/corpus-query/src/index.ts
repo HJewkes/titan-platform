@@ -4,6 +4,7 @@ export { SPAN_FIELD, chapterOwnerRef, indexCorpus, listChapters, migrateIndex, o
 export type { IndexStats } from "./index-corpus.js";
 export { LAYOUTS, archiveLayout, plainLayout } from "./layout.js";
 export type { CorpusLayout } from "./layout.js";
+export { youtubeLayout, paragraphAnchor } from "./youtube-layout.js";
 export { splitParagraphs } from "./paragraphs.js";
 export type { ParagraphSpan } from "./paragraphs.js";
 export { compareStoryOrder } from "./story-order.js";

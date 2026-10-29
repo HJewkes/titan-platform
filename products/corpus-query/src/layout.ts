@@ -1,5 +1,6 @@
 import { parseHeader, splitTitle } from "./header.js";
 import type { ChapterMeta } from "./types.js";
+import { youtubeLayout } from "./youtube-layout.js";
 
 /**
  * How one corpus names and orders its documents. Another corpus supplies its own;
@@ -70,4 +71,4 @@ export const plainLayout: CorpusLayout = {
   },
 };
 
-export const LAYOUTS: Readonly<Record<string, CorpusLayout>> = { archive: archiveLayout, plain: plainLayout };
+export const LAYOUTS: Readonly<Record<string, CorpusLayout>> = { archive: archiveLayout, plain: plainLayout, youtube: youtubeLayout };
