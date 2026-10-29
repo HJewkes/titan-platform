@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
-export type RowOutcome = "ok" | "skip" | "retry" | "fallback" | "fail" | "deferred";
+type RowOutcome = "ok" | "skip" | "retry" | "fallback" | "fail" | "deferred";
 
 /** One step attempt (plan section 5); friction is every row whose outcome is not `ok`. */
 export interface StepRow {

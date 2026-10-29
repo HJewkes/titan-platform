@@ -1,6 +1,6 @@
 import type { VideoKind } from "./store.js";
 
-export interface AtomEntry {
+interface AtomEntry {
   id: string;
   title: string;
   published?: string;

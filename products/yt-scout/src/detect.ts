@@ -113,7 +113,7 @@ export function createDetector(deps: DetectDeps, tabs: readonly string[]): Detec
   };
 }
 
-export interface NewVideo extends DetectedVideo {
+interface NewVideo extends DetectedVideo {
   state: string;
   next_retry_at: string | null;
 }

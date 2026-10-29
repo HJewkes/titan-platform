@@ -1,14 +1,14 @@
 import type { DetectedVideo } from "./seams.js";
 import type { VideoState } from "./store.js";
 
-export const LIVE_RECHECK_MS = 6 * 3600_000;
+const LIVE_RECHECK_MS = 6 * 3600_000;
 
-export interface FilterLimits {
+interface FilterLimits {
   min_seconds: number;
   max_seconds: number;
 }
 
-export interface Disposition {
+interface Disposition {
   state: VideoState;
   next_retry_at: string | null;
 }
