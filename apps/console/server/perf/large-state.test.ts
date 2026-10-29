@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { silentLogger } from "@titan-design/daemon";
 import { inProcessCaller } from "@titan-design/registry";
 import { createConsoleRegistry } from "../registry.js";
@@ -60,6 +61,8 @@ function countBy(rows: readonly { status: string }[]): Record<string, number> {
   return counts;
 }
 
+const listedRounds = z.object({ data: z.object({ rounds: z.array(z.object({ status: z.string() })) }) });
+
 const call = (fixture: PerfFixture) => {
   const registry = createConsoleRegistry(createSources(fixture.config, silentLogger));
   const context = (): ConsoleContext => ({ warnings: [], format: "json", surface: "in-process", auth: null, ownerWrites: false });
@@ -96,7 +99,7 @@ describe("the perf fixture", () => {
     const rounds = await rpc("rounds.list", {});
     expect(rounds).toMatchObject({ ok: true, data: { rounds: expect.any(Array) } });
     expect(JSON.stringify(rounds)).not.toContain('"valid":false');
-    expect(countBy((rounds as { data: { rounds: { status: string }[] } }).data.rounds)).toEqual(await statusesOnDisk(fixture.config.roundsDir));
+    expect(countBy(listedRounds.parse(rounds).data.rounds)).toEqual(await statusesOnDisk(fixture.config.roundsDir));
     expect(fixture.calls.total()).toBe(0);
 
     expect(await rpc("shepherd.list", { state: "finished" })).toMatchObject({ ok: true, data: expect.arrayContaining([expect.objectContaining({ runId: "run-00300" })]) });

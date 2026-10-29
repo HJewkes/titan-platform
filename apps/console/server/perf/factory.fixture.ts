@@ -119,7 +119,7 @@ export function factoryAnswer(state: FactoryState): RpcAnswer {
   const lists = { active: state.active, finished: state.finished, all: [...state.active, ...state.finished] };
   return (command, args) => {
     if (command === "needs.list") return { items: state.needs, gaps: [] };
-    if (command === "shepherd.list") return lists[(args.state as keyof typeof lists | undefined) ?? "active"] ?? [];
+    if (command === "shepherd.list") return lists[args.state === "finished" || args.state === "all" ? args.state : "active"];
     if (command === "autoresearch.runs") return state.autoresearch;
     throw new Error(`the perf fixture has no factory answer for ${command}`);
   };
