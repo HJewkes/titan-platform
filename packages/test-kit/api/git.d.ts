@@ -7,8 +7,8 @@ interface HistoryCommit {
     /** The branch the commit lands on; `main` when left out. */
     readonly branch?: string;
     /**
-     * The parent, as a branch named earlier in the same history or any revision. Left out, a commit follows its branch's
-     * last commit, or the branch's tip in the repository, or has no parent when the branch does not exist yet.
+     * The parent: a branch, `:n` for this history's nth commit (from 1), or a full sha. Left out, a commit follows its
+     * branch's last commit, or the branch's tip in the repository, or has no parent when the branch does not exist yet.
      */
     readonly from?: string;
 }

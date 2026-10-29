@@ -42,7 +42,8 @@ git("rev-parse", "HEAD"); // trimmed stdout; a non-zero exit throws
   `templateDirectory()` expose that for a test of the cleanup itself.
 - `withHistory(dir, commits)`: writes many commits with one `git fast-import`, then checks out
   the last commit's branch. Commit dates are pinned, one second apart, so the shas it returns are
-  the same on every run. A `null` file deletes the path.
+  the same on every run. A `null` file deletes the path. `from` names the parent: a branch,
+  `:n` for the history's nth commit (from 1), or a full sha.
 - `fixtureEnv()`: the environment every helper runs git with. It drops the `GIT_CONFIG_*` entries
   a session may inject (an agent session's push hook refuses scratch remotes), ignores system and
   global config, and fixes the author and committer. Pass it to the code under test when that code
