@@ -1,0 +1,66 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every row reads as the linked one",
+      "file": "apps/console/src/pages/InboxFocus.tsx",
+      "find": "useContext(InboxFocusContext) === itemId",
+      "replace": "useContext(InboxFocusContext) !== undefined",
+      "kills": [
+        "an inbox deep link focuses a gate and its Approve merge tap prepares that gate",
+        "an inbox deep link focuses a deposit and its Run on terminal tap shows the command",
+        "an inbox deep link focuses a round and its evidence link opens the round",
+        "an inbox deep link focuses an item listed under Older than 4 days",
+        "an inbox deep link opens the collapsed Planning section when the item sits there",
+        "an inbox deep link keeps Planning collapsed when the linked item is not in it",
+        "an inbox deep link says an unknown or answered id is no longer open, and marks no row"
+      ]
+    },
+    {
+      "name": "Planning stays collapsed over the linked item",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "const [isOpen, setOpen] = useState(startOpen);",
+      "replace": "const [isOpen, setOpen] = useState(false);",
+      "kills": [
+        "an inbox deep link opens the collapsed Planning section when the item sits there"
+      ]
+    },
+    {
+      "name": "the no-longer-open notice shows over an open item",
+      "file": "apps/console/src/pages/InboxFocus.tsx",
+      "find": "if (focusId === undefined || holdsFocus(items, focusId)) return null;",
+      "replace": "if (focusId === undefined) return null;",
+      "kills": [
+        "an inbox deep link focuses a gate and its Approve merge tap prepares that gate",
+        "an inbox deep link focuses a deposit and its Run on terminal tap shows the command",
+        "an inbox deep link focuses a round and its evidence link opens the round",
+        "an inbox deep link focuses an item listed under Older than 4 days",
+        "an inbox deep link opens the collapsed Planning section when the item sits there",
+        "an inbox deep link keeps Planning collapsed when the linked item is not in it"
+      ]
+    },
+    {
+      "name": "the linked row never scrolls into view",
+      "file": "apps/console/src/pages/InboxFocus.tsx",
+      "find": "ref.current.scrollIntoView({ block: \"center\" });",
+      "replace": "ref.current.focus();",
+      "kills": [
+        "an inbox deep link focuses a gate and its Approve merge tap prepares that gate",
+        "an inbox deep link focuses a deposit and its Run on terminal tap shows the command",
+        "an inbox deep link focuses a round and its evidence link opens the round",
+        "an inbox deep link focuses an item listed under Older than 4 days",
+        "an inbox deep link opens the collapsed Planning section when the item sits there",
+        "an inbox deep link keeps Planning collapsed when the linked item is not in it"
+      ]
+    },
+    {
+      "name": "the notice drops the unreadable-source reason",
+      "file": "apps/console/src/pages/InboxFocus.tsx",
+      "find": "const why = gapped ? \"it was answered or withdrawn, or its source is unreadable right now\" : \"it was answered or withdrawn\";",
+      "replace": "const why = \"it was answered or withdrawn\";",
+      "kills": [
+        "an inbox deep link allows that an unread source may hide the item"
+      ]
+    }
+  ]
+}
