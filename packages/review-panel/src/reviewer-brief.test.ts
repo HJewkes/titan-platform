@@ -31,6 +31,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   bad_head: true,
   wrong_target: true,
   ci_policy_malformed: true,
+  ci_policy_prose: true,
   probes_missing: true,
   scope_untagged: true,
   repeated_finding: true,

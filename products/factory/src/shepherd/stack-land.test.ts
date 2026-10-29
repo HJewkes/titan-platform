@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TEST_GIT_ENV } from "./git-test-env.test-helpers.js";
 import { configuredStackRestack, restackChild, stackChildren, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
 import type { Git } from "./tree-carry.js";
 
@@ -11,20 +12,6 @@ const REPO = "acme/widgets";
 const PARENT = "agent-chat/parent";
 const CHILD = "agent-chat/child";
 const GRANDCHILD = "agent-chat/grandchild";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  // Agent worktrees inject core.hooksPath through GIT_CONFIG_COUNT; the temp repos must not run those push hooks.
-  GIT_CONFIG_COUNT: "1",
-  GIT_CONFIG_KEY_0: "core.hooksPath",
-  GIT_CONFIG_VALUE_0: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
-
 const lines = (tag: string, count = 12): string => Array.from({ length: count }, (_, i) => `${tag} ${i}`).join("\n") + "\n";
 
 let root: string;

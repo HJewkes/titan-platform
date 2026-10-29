@@ -1,5 +1,6 @@
 import { parseVerdictBlock, refusedLines, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { hasProbesLine } from "./briefs/adversary.js";
+import { mergeCiPolicy } from "./ci-policy-prose.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
 import { followUpsFields, type FollowUp, type FollowUpsWarning } from "./follow-ups.js";
@@ -48,7 +49,8 @@ const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boole
 
 type MalformedNone = { kind: "none"; malformed: Malformed };
 const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = ""): MalformedNone => {
-  const quotes = refusal === "multiple_blocks" || refusal === "ci_policy_malformed" ? refusedLines(text, refusal) : [];
+  const quoted = refusal === "ci_policy_prose" ? "ci_policy_malformed" : refusal;
+  const quotes = quoted === "multiple_blocks" || quoted === "ci_policy_malformed" ? refusedLines(text, quoted) : [];
   return { kind: "none", malformed: { refusal, writtenAt, ...(quotes.length > 0 && { quotes }) } };
 };
 
@@ -59,8 +61,9 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = 
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
- * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
- * parser, so a weakening is never corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
+ * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
@@ -76,7 +79,8 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   if (input.shape === "adversary" && !hasProbesLine(final.text)) return malformedNone("probes_missing", final.writtenAt);
-  if (block.verdict === "MERGE" && block.ciPolicy?.kind === "malformed") return malformedNone("ci_policy_malformed", final.writtenAt, final.text);
+  const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
+  if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }
