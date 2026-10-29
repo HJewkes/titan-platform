@@ -36,6 +36,15 @@
       "kills": [
         "vitestArgs adds the hang reporters on CI, keeping the default output beside them"
       ]
+    },
+    {
+      "name": "the lockfile goes through the unknown-path rule",
+      "file": "scripts/test-scope.mjs",
+      "find": "path === LOCKFILE ?",
+      "replace": "path === \"\" ?",
+      "kills": [
+        "scopeForEvent reads the lockfile at the PR's base and head when the diff changes it"
+      ]
     }
   ]
 }
