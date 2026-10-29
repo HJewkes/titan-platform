@@ -74,9 +74,11 @@ describe("renderDeposit", () => {
 
 describe("parseAnswer", () => {
   it("reads one verdict per line and ignores prose", () => {
-    expect(parseAnswer("thanks!\nover abc123def45\nBad-Why   zzz987yyy65 because\nnonsense abc123def45")).toEqual([
+    expect(parseAnswer("thanks!\nover abc123def45\nBad-Why   zzz987yyy65 because\nmiss mmm987yyy65\nunder uuu987yyy65\nnonsense abc123def45")).toEqual([
       { verdict: "over", id: "abc123def45" },
       { verdict: "bad-why", id: "zzz987yyy65" },
+      { verdict: "miss", id: "mmm987yyy65" },
+      { verdict: "under", id: "uuu987yyy65" },
     ]);
   });
 });
