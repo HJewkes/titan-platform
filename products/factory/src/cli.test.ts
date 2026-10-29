@@ -72,14 +72,14 @@ function runIdIn(out: string): string {
   return /^run (\S+) land-pr/m.exec(out)?.[1] ?? "";
 }
 
-describe("titan-factory --config", () => {
+describe("titan-factory --factory-config", () => {
   it("loads the named config file even though XDG_CONFIG_HOME points elsewhere", async () => {
     const dir = mkdtempSync(join(tmpdir(), "factory-cli-config-"));
     dirs.push(dir);
     const file = join(dir, "own.json");
     writeFileSync(file, JSON.stringify({ remoteFactory: "http://127.0.0.1:7410" }));
 
-    const { code, err } = await cli(["--config", file, "resume", "--port", "1"], landDeps(), { XDG_CONFIG_HOME: join(dir, "empty") });
+    const { code, err } = await cli(["--factory-config", file, "resume", "--port", "1"], landDeps(), { XDG_CONFIG_HOME: join(dir, "empty") });
 
     expect(code).not.toBe(EXIT.OK);
     expect(err).toContain("http://127.0.0.1:7410"); // mutation: drop the preAction env assignment and the file is never read
