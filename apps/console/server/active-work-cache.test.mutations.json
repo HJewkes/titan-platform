@@ -25,7 +25,9 @@
       "find": "  invalidation?.on(\"active-work\", cache.stale);\n",
       "replace": "",
       "kills": [
-        "cachedActiveWork serves the kept answer after an active-work frame and refreshes it behind, but not after another upstream's"
+        "cachedActiveWork serves the kept answer after an active-work frame and refreshes it behind, but not after another upstream's",
+        "cachedActiveWork keeps a read that an active-work frame interrupted, so the next read does not wait upstream",
+        "cachedActiveWork announces once that it caught up after serving an answer an active-work frame made stale"
       ]
     },
     {
@@ -44,7 +46,8 @@
       "replace": "invalidation?.on(\"active-work\", cache.invalidate);",
       "kills": [
         "cachedActiveWork serves the kept answer after an active-work frame and refreshes it behind, but not after another upstream's",
-        "cachedActiveWork keeps a read that an active-work frame interrupted, so the next read does not wait upstream"
+        "cachedActiveWork keeps a read that an active-work frame interrupted, so the next read does not wait upstream",
+        "cachedActiveWork announces once that it caught up after serving an answer an active-work frame made stale"
       ]
     }
   ]
