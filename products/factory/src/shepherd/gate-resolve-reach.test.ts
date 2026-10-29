@@ -12,7 +12,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** Writes `files` into a fresh directory and returns the names `filesReaching` keeps when `sink.ts` is the only seed. */
+/**
+ * Writes `files` into a fresh directory, scans its `.ts` files outside `node_modules`, and returns the names
+ * `filesReaching` keeps when `sink.ts` is the only seed.
+ */
 function reachingNames(files: Record<string, string>): string[] {
   const root = mkdtempSync(join(tmpdir(), "gate-resolve-reach-"));
   roots.push(root);
@@ -22,11 +25,14 @@ function reachingNames(files: Record<string, string>): string[] {
     writeFileSync(path, text);
     return path;
   });
-  const program = ts.createProgram(paths, { ...COMPILER_OPTIONS, noEmit: true });
-  const scanned = paths.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
+  const scanRoots = paths.filter((path) => path.endsWith(".ts") && !path.includes("node_modules"));
+  const program = ts.createProgram(scanRoots, { ...COMPILER_OPTIONS, noEmit: true });
+  const scanned = scanRoots.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
   const kept = filesReaching(program, (file) => basename(file.fileName) === "sink.ts", scanned);
   return kept.map((file) => file.fileName.slice(root.length + 1)).sort();
 }
+
+const LIB_PACKAGE = { name: "lib", version: "1.0.0", exports: { ".": { types: "./index.d.ts" }, "./factory": { types: "./factory.d.ts" } } };
 
 const SINK = `export function resolve(gate: string, by: string): void { void gate; void by; }\n`;
 
@@ -85,7 +91,7 @@ describe("the files that reach a resolve sink", () => {
     expect(kept).toEqual(["packages/hitl/src/sink.ts", "products/p/src/user-shim.ts", "scripts/shim.ts"]);
   });
 
-  it("keeps an importer of a module whose augmentation reaches a sink", () => {
+  it("keeps every scanned file once a module augmentation reaches a sink", () => {
     const kept = reachingNames({
       "sink.ts": SINK,
       "plain.ts": `export interface Tools { name: string; }\n`,
@@ -94,6 +100,34 @@ describe("the files that reach a resolve sink", () => {
       "unrelated.ts": `export const answer = 42;\n`,
     });
 
-    expect(kept).toEqual(["aug.ts", "plain.ts", "sink.ts", "user-aug.ts"]);
+    expect(kept).toEqual(["aug.ts", "plain.ts", "sink.ts", "unrelated.ts", "user-aug.ts"]);
+  });
+
+  it("keeps an importer of another library entry point when an augmentation of a library module reaches a sink", () => {
+    const kept = reachingNames({
+      "sink.ts": SINK,
+      "node_modules/lib/package.json": JSON.stringify(LIB_PACKAGE),
+      "node_modules/lib/context.d.ts": `export interface ContextVariableMap {}\nexport declare function get<K extends keyof ContextVariableMap>(key: K): ContextVariableMap[K];\n`,
+      "node_modules/lib/index.d.ts": `export * from "./context.js";\n`,
+      "node_modules/lib/factory.d.ts": `export { get } from "./context.js";\n`,
+      "aug.ts": `import type { resolve } from "./sink.js";\ndeclare module "lib" { interface ContextVariableMap { gates: typeof resolve; } }\nexport {};\n`,
+      "user.ts": `import { get } from "lib/factory";\nexport const pass = () => get("gates")("g", "me");\n`,
+    });
+
+    expect(kept).toEqual(["aug.ts", "sink.ts", "user.ts"]);
+  });
+
+  it("follows a library declaration that imports a sink", () => {
+    const kept = reachingNames({
+      "sink.ts": SINK,
+      "node_modules/lib/package.json": JSON.stringify(LIB_PACKAGE),
+      "node_modules/lib/context.d.ts": `export { resolve as make } from "../../sink.js";\n`,
+      "node_modules/lib/index.d.ts": `export * from "./context.js";\n`,
+      "node_modules/lib/factory.d.ts": `export * from "./context.js";\n`,
+      "user.ts": `import { make } from "lib/factory";\nexport const pass = () => make("g", "me");\n`,
+      "unrelated.ts": `export const answer = 42;\n`,
+    });
+
+    expect(kept).toEqual(["sink.ts", "user.ts"]);
   });
 });
