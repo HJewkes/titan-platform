@@ -70,10 +70,10 @@ export interface VideoRow {
 }
 
 export function getVideo(db: Db, id: string): VideoRow | undefined {
-  return db.prepare("SELECT * FROM videos WHERE id = ?").get(id) as VideoRow | undefined;
+  return db.prepare<[string], VideoRow>("SELECT * FROM videos WHERE id = ?").get(id);
 }
 
 export function countByState(db: Db): Partial<Record<VideoState, number>> {
-  const rows = db.prepare("SELECT state, COUNT(*) AS n FROM videos GROUP BY state ORDER BY state").all() as { state: VideoState; n: number }[];
+  const rows = db.prepare<[], { state: VideoState; n: number }>("SELECT state, COUNT(*) AS n FROM videos GROUP BY state ORDER BY state").all();
   return Object.fromEntries(rows.map((r) => [r.state, r.n]));
 }

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { Document, isMap, LineCounter, parseDocument, type Node } from "yaml";
+import { isMap, isNode, isScalar, LineCounter, parseDocument, type Document, type Node } from "yaml";
 import type { z } from "zod";
 import { WatchlistSchema, type Watchlist } from "./config.js";
 
@@ -28,16 +28,16 @@ export function formatProblem(file: string, p: ConfigProblem): string {
 type PathKey = PropertyKey;
 
 function nodeAt(doc: Document, path: readonly PathKey[]): Node | undefined {
-  const node = doc.getIn(path as unknown[], true);
-  return node && typeof node === "object" && "range" in node ? (node as Node) : undefined;
+  const node: unknown = doc.getIn([...path], true);
+  return isNode(node) ? node : undefined;
 }
 
 // An unknown key is reported on the key's own line, not on its parent map's first line.
 function keyNodeAt(doc: Document, path: readonly PathKey[], key: string): Node | undefined {
   const parent = path.length === 0 ? doc.contents : nodeAt(doc, path);
   if (!isMap(parent)) return undefined;
-  const pair = parent.items.find((item) => (item.key as { value?: unknown } | null)?.value === key);
-  return (pair?.key as Node | undefined) ?? undefined;
+  const pair = parent.items.find((item) => isScalar(item.key) && item.key.value === key);
+  return isNode(pair?.key) ? pair.key : undefined;
 }
 
 function lineOf(lines: LineCounter, node: Node | undefined): number | undefined {

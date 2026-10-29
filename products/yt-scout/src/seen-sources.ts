@@ -37,6 +37,15 @@ type Json = Record<string, unknown>;
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+const isJson = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
 
 function readJsonl(file: string): Json[] {
   return readFileSync(file, "utf8")
@@ -44,12 +53,16 @@ function readJsonl(file: string): Json[] {
     .map((line, i) => [line.trim(), i + 1] as const)
     .filter(([line]) => line !== "")
     .map(([line, n]) => {
-      try {
-        return JSON.parse(line) as Json;
-      } catch {
-        throw new Error(`${file}:${n}: not a JSON object`);
-      }
+      const row = parseJson(line);
+      if (!isJson(row)) throw new Error(`${file}:${n}: not a JSON object`);
+      return row;
     });
+}
+
+function readJsonArray(file: string): Json[] {
+  const rows = parseJson(readFileSync(file, "utf8"));
+  if (!Array.isArray(rows)) throw new Error(`${file}: not a JSON array`);
+  return rows.filter(isJson);
 }
 
 function withId(rows: Json[]): (Json & { id: string })[] {
@@ -80,7 +93,7 @@ export function readScores(root: string): SeenSourceResult {
   const dir = path.join(root, SEEN_PATHS.scores);
   return result("scores", dir, () => {
     const allFile = path.join(dir, "all-scores.json");
-    const merged = existsSync(allFile) ? (JSON.parse(readFileSync(allFile, "utf8")) as Json[]) : [];
+    const merged = existsSync(allFile) ? readJsonArray(allFile) : [];
     const batches = readdirSync(dir)
       .filter((f) => f.endsWith(".jsonl"))
       .sort()
@@ -112,9 +125,10 @@ function frontMatter(file: string): Json | undefined {
   try {
     parsed = parseYaml(match[1]!);
   } catch (err) {
-    throw new Error(`${file}: front matter is not YAML: ${(err as Error).message.split("\n")[0]}`);
+    const reason = err instanceof Error ? err.message.split("\n")[0] : String(err);
+    throw new Error(`${file}: front matter is not YAML: ${reason}`);
   }
-  return parsed && typeof parsed === "object" ? (parsed as Json) : undefined;
+  return isJson(parsed) ? parsed : undefined;
 }
 
 function markdownFiles(dir: string): string[] {
