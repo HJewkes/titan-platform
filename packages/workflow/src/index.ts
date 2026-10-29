@@ -54,6 +54,7 @@ export {
   WorkflowStoreSchemaOutdated,
   workflowDefinitionVersionMigration,
   workflowMigration,
+  workflowNameIndexMigration,
   workflowOwnershipMigration,
   workflowRunTableDdl,
 } from "./store.js";
