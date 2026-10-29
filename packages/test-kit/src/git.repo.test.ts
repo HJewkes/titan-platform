@@ -87,6 +87,20 @@ describe("withHistory", () => {
     expect(fs.existsSync(path.join(repo, "b.txt"))).toBe(false);
   });
 
+  it("dates and authors a commit that names them, and pins the rest", () => {
+    const repo = emptyDir();
+    seedRepo(repo, {});
+
+    withHistory(repo, [
+      { files: { "a.txt": "a\n" }, author: "ann", date: "2024-01-01T12:00:00Z" },
+      { files: { "b.txt": "b\n" } },
+    ]);
+
+    expect(gitIn(repo)("log", "--reverse", "--format=%an <%ae> %at %ct", "main")).toBe(
+      "ann <ann@example.com> 1704110400 1704110400\nTest <test@example.com> 1700000002 1700000002",
+    );
+  });
+
   it("continues an existing branch from its tip", () => {
     const repo = emptyDir();
     seedRepo(repo);

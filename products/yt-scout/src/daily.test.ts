@@ -9,6 +9,7 @@ const card = (id: string, o: Partial<DailyCard> = {}): DailyCard => ({
   title: `Talk ${id}`,
   sourceName: "Conf Talks",
   durationMinutes: 19,
+  partial: false,
   actionable: 4,
   novelty: 3,
   evidence: 4,
@@ -164,7 +165,7 @@ describe("runDaily", () => {
     expect(asked).toEqual(["yt-scout-2026-10-29"]);
     expect(readdirSync(path.join(tree.root, "cases"))).toEqual(["score-abc123def45.json"]);
     const written = JSON.parse(readFileSync(path.join(tree.root, "cases", "score-abc123def45.json"), "utf8"));
-    expect(written).toMatchObject({ step: "score", video_id: "abc123def45", label: "over", inputs: { transcript_path: "/data/abc123def45.md", transcript_sha256: "i" } });
+    expect(written).toMatchObject({ step: "score", video_id: "abc123def45", label: "over", inputs: { transcript_path: "/data/abc123def45.md", transcript_sha256: "i", partial: false } });
     expect(written.output).toMatchObject({ total: 11 });
   });
 

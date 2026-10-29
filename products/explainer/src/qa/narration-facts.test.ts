@@ -14,6 +14,12 @@ describe("spoken values", () => {
     expect([...values].sort((a, b) => a - b)).toEqual([7, 40, 120, 1200]);
   });
 
+  it("hears a decision number said in pairs as the whole number", () => {
+    const values = spokenValues("Decision five thirty-one stands");
+
+    expect([...values]).toEqual(expect.arrayContaining([531]));
+  });
+
   it("reads an article as a number only before a scale word", () => {
     const values = spokenValues("a lane holds a thousand parcels");
 

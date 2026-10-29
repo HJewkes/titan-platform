@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,7 +7,7 @@ import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
 import { ALIAS_BASE_ATTR } from "./identity/lineage.js";
-import { daysAgo, isolatedGitEnv } from "./history/test-repo.js";
+import { daysAgo } from "./history/test-repo.js";
 import { openCodeGraph } from "./store.js";
 
 // Each test indexes a real git repo through ts-morph; CI run 38183124631 saw up to 7 s.
@@ -47,22 +47,15 @@ const NODE_MODULES: Record<string, string> = {
 };
 
 let dir: string;
+let git: ReturnType<typeof gitIn>;
 let firstSha: string;
 let checkoutAtFirst: { whole: Snapshot; sub: Snapshot; churnNames: Set<string> };
-
-const git = (args: readonly string[]) =>
-  execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: isolatedGitEnv(daysAgo(3)) }).trim();
 
 async function writeAll(files: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
     await fs.writeFile(path.join(dir, rel), content);
   }
-}
-
-function commit(message: string): void {
-  git(["add", "-A"]);
-  git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "commit", "-q", "-m", message]);
 }
 
 async function indexInto(options: Partial<IndexOptions>) {
@@ -97,20 +90,20 @@ async function workingTreeFiles(root = dir): Promise<Record<string, string>> {
 beforeAll(async () => {
   // Deliberately not realpath'd: on macOS os.tmpdir() sits behind the /var symlink.
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-"));
-  git(["init", "-q", "-b", "main"]);
-  git(["config", "commit.gpgsign", "false"]);
-  await writeAll({ ...FIRST, ...NODE_MODULES });
-  commit("first");
-  firstSha = git(["rev-parse", "HEAD"]);
-  await writeAll(SECOND);
-  commit("second");
+  git = gitIn(dir);
+  seedRepo(dir, {});
+  firstSha = withHistory(dir, [
+    { message: "first", author: "alice", date: daysAgo(3), files: FIRST },
+    { message: "second", author: "alice", date: daysAgo(3), files: SECOND },
+  ])[0]!;
+  await writeAll(NODE_MODULES);
 
-  git(["checkout", "-q", firstSha]);
+  git("checkout", "-q", firstSha);
   const whole = await indexInto({ computeChurn: false });
   const sub = await indexInto({ paths: [path.join(dir, "sub")], computeChurn: false });
   const churned = await indexInto({});
   checkoutAtFirst = { whole: whole.snapshot, sub: sub.snapshot, churnNames: churned.metricNames };
-  git(["checkout", "-q", "main"]);
+  git("checkout", "-q", "main");
 
   await writeAll(WORKING_EDITS);
   await fs.rm(path.join(dir, "sub"), { recursive: true });
@@ -179,12 +172,12 @@ describe("gitTreeSource", () => {
   });
 
   it("writes nothing in the repo", async () => {
-    const statusBefore = git(["status", "--porcelain"]);
+    const statusBefore = git("status", "--porcelain");
     const filesBefore = await workingTreeFiles();
 
     await indexInto({ source: gitTreeSource(dir, "HEAD~1") });
 
-    expect(git(["status", "--porcelain"])).toBe(statusBefore);
+    expect(git("status", "--porcelain")).toBe(statusBefore);
     expect(await workingTreeFiles()).toEqual(filesBefore);
   });
 
@@ -196,6 +189,6 @@ describe("gitTreeSource", () => {
     const source = gitTreeSource(dir, "HEAD~1");
 
     expect(source.revision?.commit).toBe(firstSha);
-    expect(source.revision?.commitEpoch).toBe(Number(git(["show", "-s", "--format=%ct", firstSha])));
+    expect(source.revision?.commitEpoch).toBe(Number(git("show", "-s", "--format=%ct", firstSha)));
   });
 });

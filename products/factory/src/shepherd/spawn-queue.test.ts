@@ -46,7 +46,7 @@ describe("the review queue admits from its front up to the free slots", () => {
   });
 
   it("bounds the room by what the load check allows: one review at load5 17 under buildLoad5 20", () => {
-    const { state, ask } = scene({ maxConcurrentReviews: 8 });
+    const { state, ask } = scene({ maxConcurrentReviews: 8, reviewLoad: 4 });
     state.readings = { ...idle, load5: 30 };
     ask("rv-a-1", intent(10_000));
     ask("rv-b-2", intent(20_000));

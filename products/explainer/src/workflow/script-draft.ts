@@ -37,6 +37,20 @@ export function stageUsage(usage: StepUsage | undefined): StageUsage {
   };
 }
 
+/** One script call's kind and spend: the stage notes each, since the record's usage is their sum. */
+export interface CallSpend {
+  kind: string;
+  usage: StageUsage;
+}
+
+function spendText({ kind, usage }: CallSpend): string {
+  const usd = usage.costUnknown ? "cost unknown" : `$${usage.usd.toFixed(4)}`;
+  const writes = usage.cacheWriteTokens === undefined ? "" : `, ${usage.cacheWriteTokens} cache write`;
+  return `${kind} ${usd} (${usage.inputTokens} in, ${usage.outputTokens} out, ${usage.cacheReadTokens} cache read${writes})`;
+}
+
+export const callsNote = (calls: readonly CallSpend[]): string => `calls: ${calls.map(spendText).join("; ")}`;
+
 /** The guide names the fields in prose only, so the model also gets the exact shape the reply is parsed with. */
 const scriptShape = (): string => `## The script/v1 JSON Schema\n\n\`\`\`json\n${JSON.stringify(z.toJSONSchema(DraftScriptSchema, { io: "input", unrepresentable: "any" }))}\n\`\`\``;
 
@@ -111,7 +125,7 @@ export interface Checked {
 }
 
 // Every parsed reply, draft or repair, gets the heteronym readings its context decides, so no call is spent on them.
-const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 =>
+export const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 =>
   declareScriptReadings({ ...script, structure: plan.structure, ...(plan.profile ? { profile: plan.profile } : {}) });
 
 /**
@@ -183,7 +197,8 @@ function parsedObject(raw: unknown, plan: ScriptPlan): Checked {
 
 const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outcome.code === "schema_invalid";
 
-export type Call = (prompt: string) => Promise<StepRunOutcome>;
+/** `kind` names the call in the stage's per-call spend note: draft, schema-retry, plan-retry, repair-1 and so on. */
+export type Call = (prompt: string, kind?: string) => Promise<StepRunOutcome>;
 
 /** How a draft's reply is read: checked into a script, and the plan faults its one plan retry names. */
 export interface Reader {
@@ -211,7 +226,7 @@ function retimedReply(reply: Checked, reader: Reader): Checked & { retimed: stri
 async function planRetry(call: Call, prompt: string, reader: Reader, draft: Draft & { script: ScriptV1 }): Promise<Draft> {
   const faults = reader.faults(draft.script);
   if (faults.length === 0) return draft;
-  const outcome = await call(retryPrompt(prompt, planHint(faults)));
+  const outcome = await call(retryPrompt(prompt, planHint(faults)), "plan-retry");
   const reply = retimedReply(reader.check(outcome), reader);
   const better = reply.script !== undefined && reader.faults(reply.script).length < faults.length;
   return { ...(better ? reply : draft), usage: addUsage(draft.usage, stageUsage(outcome.usage)), retried: true };
@@ -219,12 +234,12 @@ async function planRetry(call: Call, prompt: string, reader: Reader, draft: Draf
 
 /** The first call, and one retry: naming the schema issues when its reply does not parse, or its plan faults when it does. */
 export async function draftScript(call: Call, prompt: string, reader: Reader): Promise<Draft> {
-  const first = await call(prompt);
+  const first = await call(prompt, "draft");
   const result = retimedReply(reader.check(first), reader);
   const usage = stageUsage(first.usage);
   if (result.script) return planRetry(call, prompt, reader, { ...result, script: result.script, usage, retried: false });
   if (!isSchemaFailure(first)) return { ...result, usage, retried: false };
-  const second = await call(retryPrompt(prompt, result.error ?? ""));
+  const second = await call(retryPrompt(prompt, result.error ?? ""), "schema-retry");
   return { ...retimedReply(reader.check(second), reader), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
 }
 
@@ -302,13 +317,13 @@ export interface Repaired {
 }
 
 /** One round's reply, and when `loop.retry` allows it and the reply is rejected, one retry naming the rejection. */
-async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[]): Promise<{ reply: Checked; usage: StageUsage }> {
+async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[], kind: string): Promise<{ reply: Checked; usage: StageUsage }> {
   const prompt = loop.prompt(script, failing);
-  const outcome = await call(prompt);
+  const outcome = await call(prompt, kind);
   const reply = loop.read(outcome, script, failing);
   const ask = reply.script ? undefined : loop.retry?.(script, failing);
   if (ask === undefined) return { reply, usage: stageUsage(outcome.usage) };
-  const again = await call(retryPrompt(prompt, reply.error ?? "", ask));
+  const again = await call(retryPrompt(prompt, reply.error ?? "", ask), `${kind}-retry`);
   return { reply: loop.read(again, script, failing), usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)) };
 }
 
@@ -320,7 +335,7 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let usage = NO_USAGE;
   let kept: Pick<Repaired, "stripped" | "dropped"> = {};
   for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
-    const { reply, usage: spent } = await roundReply(call, loop, script, failing);
+    const { reply, usage: spent } = await roundReply(call, loop, script, failing, `repair-${round + 1}`);
     usage = addUsage(usage, spent);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;

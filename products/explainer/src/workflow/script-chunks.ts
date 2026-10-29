@@ -270,9 +270,9 @@ async function writeChapter(ctx: Chunk, joined: Joined | undefined, index: numbe
 /** Each call is counted against the run's cap before it is made: the chunked path has many, the single-call path three. */
 function metered(call: Call, capUsd: number, where: () => string): { call: Call; spent: () => StageUsage } {
   let spent = NO_USAGE;
-  const guarded: Call = async (prompt) => {
+  const guarded: Call = async (prompt, kind) => {
     if (spent.usd >= capUsd) throw new StageFailure(`script: the run's spend cap stopped the chunked draft at ${where()}`, spent);
-    const outcome = await call(prompt);
+    const outcome = await call(prompt, kind);
     spent = addUsage(spent, stageUsage(outcome.usage));
     return outcome;
   };

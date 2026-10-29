@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubWire, type PrFile } from "@titan-design/github";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
-import { afterEach, expect, vi } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 import { recordPlanApproval } from "../console-action/plan-approval.js";
 import type { PlanApprovalAction } from "../console-action/record.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -31,9 +31,6 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
   evidence: { line: { sourceId: nativeId, byteOffset: 0, byteLength: 0, contentHash: "", lineNumber: null, nativeOrdinal: null }, subrecord: { index: 0, path: [] } },
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 });
-
-const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** Every spawn lands as a reviewer that says MERGE at the head it was asked about, with `extra` lines after the head. */
 function mergingReviewers(clock: () => number, extra: string) {
@@ -82,7 +79,8 @@ export function plannedRun({ files, policy, reviewerLines, approve, wire = (each
   const routes = factoryRoutesFor({ port: githubPort(wire(fake.wire)), store, now: () => clock, sleep: tick, review });
   const workflow = shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
-  hosts.push(host);
+  // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.
+  onTestFinished(() => host.close());
   approve(store, host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: String(PR), policy: JSON.stringify(policy) });
   store.get().register({ repo: REPO, pr: PR, runId, task: TASK, implementer: "fc-synthetic", kind: "feature", policy });

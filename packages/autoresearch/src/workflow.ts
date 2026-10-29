@@ -115,7 +115,7 @@ const sum = (values: readonly number[]) => values.reduce((total, value) => total
  * Agent dollars are implementers and planners; model dollars are eval and micro runs, a re-evaluation's runs among
  * them, which no outcome carries. Superseded outcomes spent too.
  */
-function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[], reevals: readonly Reeval[]): Spend {
+export function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[], reevals: readonly Reeval[]): Spend {
   const reevalUsd = sum(reevals.flatMap((reeval) => reeval.runs.map((result) => result.usd)));
   return {
     agentUsd: spend.agentUsd + sum(outcomes.map((outcome) => outcome.usage?.implementUsd ?? 0)) + sum(planners.map((usage) => usage.usd)),

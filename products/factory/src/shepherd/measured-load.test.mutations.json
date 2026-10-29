@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a review costs the flat four cores again",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "  reviewLoad: 0.05,\n",
+      "replace": "  reviewLoad: 4,\n",
+      "kills": ["admission reads measured headroom admits a review with ten more just started when the measured cores leave room"]
+    },
+    {
+      "name": "the idle-core floor is never applied",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "  if (idle !== undefined && idle < limits.minIdleCores) return",
+      "replace": "  if (idle !== undefined && idle < -Infinity) return",
+      "kills": [
+        "admission reads measured headroom refuses when the busy cores leave fewer idle than the floor, naming the idle cores",
+        "the review queue's room comes from the measured cost, capped by the concurrent backstop admits none on a host whose measured cores are all busy"
+      ]
+    },
+    {
+      "name": "the concurrent cap no longer bounds the room",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "  if (runningReviews + admittedReviews >= cap) return",
+      "replace": "  if (runningReviews + admittedReviews >= Infinity) return",
+      "kills": ["the review queue's room comes from the measured cost, capped by the concurrent backstop admits reviews up to the configured cap on a host with idle cores"]
+    }
+  ]
+}

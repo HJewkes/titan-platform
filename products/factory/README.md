@@ -692,7 +692,8 @@ That install restarts serve.
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
-its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+its step's route has `onRestart: "park"`. An `sh-review` step whose spawn the spawn gate still
+queues is not busy: it has started no reviewer, and it asks again after the restart. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
@@ -884,7 +885,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` or `fixer` is set. Without it a red main spawns no fixer |
 | `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
-| `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
+| `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. A reviewer or fixer spawn the broker refuses with `reviewer_account_limit` is retried on each later account in turn (TP-4507). Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
 | `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |

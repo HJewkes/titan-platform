@@ -9,6 +9,24 @@
       "kills": [
         "the freeze migration creates the freeze table in a database that already has migrations 1 to 5"
       ]
+    },
+    {
+      "name": "setFixer overwrites the fixer an episode already recorded",
+      "file": "products/factory/src/shepherd/freeze.ts",
+      "find": " AND thawed_at IS NULL AND fixer IS NULL\").run(name",
+      "replace": " AND thawed_at IS NULL\").run(name",
+      "kills": [
+        "the freeze store setFixer does not overwrite an episode's fixer"
+      ]
+    },
+    {
+      "name": "the first red reads the oldest episode's opening freeze",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "ORDER BY id DESC LIMIT 1\").get(",
+      "replace": "ORDER BY id LIMIT 1\").get(",
+      "kills": [
+        "the freeze store names the sha that opened the live episode as its first red, not a later red in it"
+      ]
     }
   ]
 }

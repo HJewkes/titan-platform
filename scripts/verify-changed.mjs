@@ -124,16 +124,17 @@ const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script]
  * verify-changed-coverage.test.mjs fails on a step no row matches and on a labelled row the plan never runs.
  */
 export const CI_COVERAGE = [
-  { job: ["validate", "dag-check", "perf"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
+  { job: ["validate", "dag-check", "perf", "test-shard"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
   { job: "validate", run: "pnpm env:doctor", disposition: "local", label: "env:doctor" },
-  { job: ["validate", "dag-check", "perf"], run: "pnpm build", disposition: "local", label: "build" },
+  { job: ["validate", "dag-check", "perf", "test-shard"], run: "pnpm build", disposition: "local", label: "build" },
   { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
   { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
   { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
   { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
-  { job: "validate", run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
+  { job: ["validate", "test-shard"], run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
   { job: "validate", run: "pnpm test:scope", disposition: "local-subset", label: "vitest related", reason: "the full reverse closure can pass the 600 s cap; CI stays the authority" },
+  { job: "test-shard", run: /^pnpm exec vitest run .*--shard=/, disposition: "ci-only", reason: "main's full suite in shards; a pull request runs the scoped pnpm test:scope instead" },
   { job: "validate", run: "pnpm capabilities:check", disposition: "local", label: "capabilities:check" },
   { job: "validate", run: "pnpm metrics:check", disposition: "local", label: "metrics:check" },
   { job: "validate", run: /sunset-manifest\.mjs check/, disposition: "ci-only", reason: "clones agent-chat over the network and only warns" },

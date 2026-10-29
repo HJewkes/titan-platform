@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { FreezeGuard } from "./freeze.js";
-import { blockers, orderDriving, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWait, type OrderWaits, type RunHolds } from "./merge-order.js";
+import { blockers, orderDriving, orderWaiting, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWait, type OrderWaits, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 
@@ -57,7 +57,7 @@ interface GuardTarget {
  * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
  * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
  * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation. A
- * reservation whose run a person holds orders nothing while the hold lasts. Each new wait is logged as `order-wait`.
+ * reservation whose run a person holds, or that still waits for its own turn, orders nothing. Each new wait is logged as `order-wait`.
  */
 export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
   const now = deps.now ?? Date.now;
@@ -66,9 +66,10 @@ export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
   const blockerOf = async (port: GitHubPort, { repo, runId, pr }: GuardTarget, rule: MergeOrderRule, baseRef: string, head: string | undefined): Promise<Blocker | undefined> => {
     const order = deps.order();
     const driving = orderDriving(order, deps.registrations());
+    const waiting = orderWaiting(order);
     const reservations = order.list(repo);
-    if (blockers({ repo, runId, paths: [], unread: true }, reservations, rule, now(), driving).length === 0 || baseRef !== (await port.defaultBranch(repo))) return undefined;
-    for (const blocker of blockers({ repo, runId, ...(await pathsAt(port, repo, pr, head)) }, reservations, rule, now(), driving)) {
+    if (blockers({ repo, runId, paths: [], unread: true }, reservations, rule, now(), driving, waiting).length === 0 || baseRef !== (await port.defaultBranch(repo))) return undefined;
+    for (const blocker of blockers({ repo, runId, ...(await pathsAt(port, repo, pr, head)) }, reservations, rule, now(), driving, waiting)) {
       if (await stillOpen(port, repo, blocker.reservation.pr)) return blocker;
     }
     return undefined;
