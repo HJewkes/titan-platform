@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
@@ -270,23 +271,20 @@ describe("graph.ego without the session graph", () => {
 describe("graph.ego mentions budget", () => {
   it("a mentions read slower than its budget still answers the graph within the budget", async () => {
     seed(relay);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    daemon = await startFakeDaemon({ ok: true }, ((command: string, args: Record<string, unknown>) => gate.then(() => answer(command, args))) as never);
+    const neverAnswers = new Promise<never>(() => undefined);
     const fired: Array<{ fire: () => void; ms: number }> = [];
-    const timers = { set: (fire: () => void, ms: number) => fired.push({ fire, ms }), clear: () => undefined };
-    const source: GraphSource = { activeWork: activeWorkClient(daemon.port), sessions: { graphPath }, timers };
+    const timers = { after: (ms: number, fire: () => void) => (fired.push({ fire, ms }), () => undefined) };
+    const source: GraphSource = { activeWork: { read: () => neverAnswers }, sessions: { graphPath }, timers };
 
-    const pending = invokeCommand(graphCommands(source)["graph.ego"], { ref: "task:OR-1" }, { warnings: [], format: "json" });
+    const pending = invokeCommand(graphCommands(source)["graph.ego"], { ref: "task:OR-1" }, { warnings: [], format: "json" }).then(({ envelope }) => envelope);
     await vi.waitFor(() => expect(fired).toHaveLength(1));
     expect(fired[0]?.ms).toBe(MENTIONS_BUDGET_MS);
     expect(fired[0]?.ms).toBeLessThan(10_000);
     fired[0]?.fire();
     const outcome = await Promise.race([pending, new Promise((resolve) => setTimeout(() => resolve("held"), 500))]);
-    release();
 
     expect(outcome).not.toBe("held");
-    const data = (outcome as { envelope: { data: EgoGraph } }).envelope.data;
+    const { data } = z.object({ data: z.custom<EgoGraph>() }).parse(await pending);
     expect(data.sources).toEqual({ graph: "ok", mentions: "unavailable" });
     expect(kinds(data)).toEqual(["holds", "mentions", "ran"]);
     expect(data.edges.filter((entry) => entry.via === "context.graph")).toEqual([]);

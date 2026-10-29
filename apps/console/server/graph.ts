@@ -15,14 +15,19 @@ export interface GraphSource {
 }
 
 export interface Timers {
-  set(fire: () => void, ms: number): unknown;
-  clear(handle: unknown): void;
+  /** Returns the cancel for the timer it starts. */
+  after(ms: number, fire: () => void): () => void;
 }
 
 /** A mentions read slower than this is dropped: the graph edges are worth more than a page held for them. */
 export const MENTIONS_BUDGET_MS = 3_000;
 
-const realTimers: Timers = { set: (fire, ms) => setTimeout(fire, ms), clear: (handle) => clearTimeout(handle as NodeJS.Timeout) };
+const realTimers: Timers = {
+  after(ms, fire) {
+    const handle = setTimeout(fire, ms);
+    return () => clearTimeout(handle);
+  },
+};
 
 /** `wrap` is an active-work session record: a `session:` ref whose id is no transcript uuid, so it opens no transcript. */
 const NODE_KINDS = ["initiative", "task", "session", "wrap", "agent", "note", "source", "pr", "branch", "file"] as const;
@@ -163,11 +168,11 @@ async function readMentions(activeWork: ActiveWork, center: string, timers: Time
 }
 
 function withinBudget<T>(work: Promise<T>, timers: Timers): Promise<T> {
-  let handle: unknown;
+  let cancel = (): void => undefined;
   const expiry = new Promise<never>((_, reject) => {
-    handle = timers.set(() => reject(new Error("mentions read over budget")), MENTIONS_BUDGET_MS);
+    cancel = timers.after(MENTIONS_BUDGET_MS, () => reject(new Error("mentions read over budget")));
   });
-  return Promise.race([work, expiry]).finally(() => timers.clear(handle));
+  return Promise.race([work, expiry]).finally(cancel);
 }
 
 /** A session file's reference names its file, not its record id, so it gets a `wrap:` ref rather than a guessed `session:` one. */
