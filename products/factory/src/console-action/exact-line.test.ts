@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { exactLine, unexactLine } from "./exact-line.js";
 
 /** Characters a screen hides, reorders or breaks on, plus the escape's own syntax, so a generated string exercises every branch. */
-const POOL = ["a", "Z", " ", "é", "😀", "\\", "u", "{", "}", "1F", "\n", "\r", "\t", "\u0000", "\u001b", "\u007f", "\u0085", "\u009b", "؜", "​", "‎", "‮", "⁦", " ", " ", "﻿", "\ud800", "\udfff"];
-const HIDDEN = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{200b}-\u{200f}\u{2028}-\u{202e}\u{2060}-\u{2069}\u{feff}]|\p{Cs}/u;
+const POOL = ["a", "Z", " ", "\u00e9", "\u{1f600}", "\\", "u", "{", "}", "1F", "\n", "\r", "\t", "\u0000", "\u001b", "\u007f", "\u0085", "\u009b", "\u00ad", "\u061c", "\u200b", "\u200e", "\u202e", "\u2066", "\u2028", "\u2029", "\ufeff", "\u{e0001}", "\ud800", "\udfff"];
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\p{Cs}/u;
 
 /** A fixed-seed generator, so a failing string reproduces. */
 function generated(count: number): string[] {

@@ -21,7 +21,7 @@ export interface ExactFile {
 }
 
 /** The head blob the evidence pinned for this path: a sha, null for absent at head, undefined when the evidence pinned none. */
-export type HeadPin = string | null | undefined;
+type HeadPin = string | null | undefined;
 
 const decodesWhole = (file: RepoFile | null): boolean => file === null || gitBlobId(Buffer.from(file.content, "utf8")) === file.blobSha;
 

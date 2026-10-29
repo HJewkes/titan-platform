@@ -4,8 +4,8 @@
  * `\u{HEX}`, a backslash as `\\`, and `unexactLine` gives back the exact string.
  */
 
-/** C0 and C1 controls, DEL, bidi and zero-width marks, line and paragraph separators, the BOM, lone surrogates, and the backslash itself. */
-const HIDDEN = /[\\\u{0}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{200b}-\u{200f}\u{2028}-\u{202e}\u{2060}-\u{2069}\u{feff}]|\p{Cs}/gu;
+/** Controls (C0, DEL, C1), format characters (bidi and zero-width marks, the BOM), line and paragraph separators, lone surrogates, and the backslash itself. */
+const HIDDEN = /[\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\p{Cs}/gu;
 const ESCAPE = /\\(?:\\|u\{([0-9A-F]{1,6})\})/g;
 
 export function exactLine(raw: string): string {

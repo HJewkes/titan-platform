@@ -121,7 +121,7 @@ describe("the owner-at-head evidence card", () => {
 
     const card = await ownerEvidence(gate, { host, port, readText: reads(verdictText("CI-policy: weakened secrets")) });
 
-    expect(card.status === "ready" && card.sections.map((section) => section.ciPolicy)).toEqual([weakened("secrets")]);
+    expect(card.status === "ready" && card.sections.map((section) => "ciPolicy" in section && section.ciPolicy)).toEqual([weakened("secrets")]);
   });
 
   it("shows a renamed workflow's old path as deleted, since the evidence lists both sides of the rename", async () => {
