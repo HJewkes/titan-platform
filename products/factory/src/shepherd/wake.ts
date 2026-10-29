@@ -3,24 +3,25 @@ import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
-import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
-import { codeRoute, step } from "../workflows/land.js";
+import type { StepRoute } from "@titan-design/workflow";
+import { awaitNewHeadRoute } from "../workflows/await-head.js";
+import { codeRoute } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
-import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
+import { FIX_PROOF_WAKE_STEP } from "./fix-proof-cap.js";
 import { successorConfigDir } from "./account-hold.js";
 import { noteFixerLimit } from "./fixer-limit.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
-import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
+import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isRefName, successorBrief, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
-import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
+import { HOLDING_KINDS } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
+import { retireHung, type Hung } from "./wake-hung.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { deadlineFor, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type WaitDeadlines, type Waiting } from "./wake-wait.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
@@ -199,12 +200,6 @@ async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, ta
   deps.store.get().recordAuthor(task.input.runId, { agentId: row?.agentId ?? choice.agent, name: choice.agent, role: "successor", predecessor: choice.predecessor });
 }
 
-/** A live agent that took neither the wake nor its message fallback, retired so a successor can take the wake. */
-interface Hung {
-  kind: "hung";
-  agent: string;
-}
-
 /**
  * The woken agent must start a turn within `turnStartMs`. If it does not, one fallback ask goes out: a resume if it has
  * ended by then, else a direct message. No turn after that leaves the wake unhandled, so the run does not wait on nobody,
@@ -225,25 +220,11 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   }
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback, askedAt: at };
   const stalled = `${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`;
-  return asked.choice.mode === "live" && fallback === "message" ? retireHung(deps, wiring, agents, task, asked.choice.agent, stalled, signal) : unhandled(stalled);
+  if (asked.choice.mode !== "live" || fallback !== "message") return unhandled(stalled);
+  const replaceable = typeof successorChoice(deps, wiring, task, asked.choice.agent, await rosterWhileBrokerDown(deps, agents, signal)) !== "string";
+  return retireHung(agents, asked.choice.agent, replaceable, stalled, signal);
 }
 
-/**
- * A live headless agent can sit idle through both asks (tp#2648, tp#2663), so it is retired and a successor takes the
- * wake. The retire is never forced, so a tree with unpushed work keeps its agent; and an agent no successor could
- * replace, on an advisory repo or one with no checkout, is left running. Either way the seat is told, as before.
- */
-async function retireHung(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, agent: string, stalled: string, signal: AbortSignal): Promise<WakeStepResult | Hung> {
-  if (agents.retire === undefined) return unhandled(stalled);
-  if (typeof successorChoice(deps, wiring, task, agent, await rosterWhileBrokerDown(deps, agents, signal)) === "string") return unhandled(stalled);
-  try {
-    await agents.retire(agent);
-    return { kind: "hung", agent };
-  } catch (error) {
-    signal.throwIfAborted();
-    return unhandled(`${stalled}, and its retire failed: ${failureOf(error)}`);
-  }
-}
 
 
 function turnWatch(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, name: string, signal: AbortSignal) {
@@ -401,55 +382,3 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
   ...fixerExitRoutes(deps.port, deps.now, deps.exitNotice),
 ];
-
-const Woke = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
-  z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
-]);
-
-/** A review wake names the FIX_FIRST its round recorded, so the second is known however many heads came between. */
-function fixFirstOf(ctx: WorkflowContext, request: WakeRequest): number | undefined {
-  if (request.kind !== "review") return undefined;
-  const count = fixFirstCount(ctx);
-  return count > 0 ? count : undefined;
-}
-
-/**
- * Wakes an agent, then waits for the head to move; `woken` means a new head exists, or, after a ci-red wake, that the
- * same head turned green on a rerun, so the next round's ci-wait collects its merge facts. A second wake in one round replays at the next index.
- */
-export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
-  const capped = await fixProofBounce(ctx, request);
-  if (capped !== undefined) return capped;
-  const fixFirst = fixFirstOf(ctx, request);
-  const woke = await wakeStep(ctx, request, fixFirst);
-  return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);
-};
-
-function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): WakeOutcome | HeldWake {
-  return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : { kind: "unhandled", reason: woke.reason, held: woke.held };
-}
-
-const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) => step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
-
-/**
- * A live agent can end its turn before it reads a chat-sent wake, so the wake is asked once more after its exit: the
- * agent is resumed, or a successor started, with the wake as its prompt. Resume and successor wakes, and a live wake
- * its resume fallback delivered, were the prompt already, and a second exit takes the exit route.
- */
-async function redeliverAfterLiveExit(ctx: WorkflowContext, request: WakeRequest, outcome: WakeOutcome, woke: WakeEvidence, fixFirst: number | undefined): Promise<WakeOutcome> {
-  if (outcome.kind !== "unhandled" || outcome.exited !== true || woke.mode !== "live" || woke.fallback === "resume") return outcome;
-  const again = await wakeStep(ctx, request, fixFirst);
-  return again.kind === "woken" ? awaitFixerHead(ctx, request, again) : notWoken(again);
-}
-
-/** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
-export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence): Promise<WakeOutcome> {
-  const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
-  const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
-  const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
-  if (head.green) return { ...woken, sameHead: true };
-  if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}`, wake: woke };
-  if (head.headSha === request.headSha) return { kind: "unhandled", reason: `${request.repo}#${request.pr} closed at head ${request.headSha} before a new head` };
-  return woken;
-}
