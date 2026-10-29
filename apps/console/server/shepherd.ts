@@ -116,12 +116,37 @@ const ghAnswer = z.object({ status: z.number().int(), body: z.unknown() }).passt
 
 const CHECK_RUNS_PAGE = 100;
 
+const evidenceFile = z.object({
+  path: z.string(),
+  lines: z.array(z.object({ side: z.enum(["-", "+"]), n: z.number().int(), text: z.string() })),
+  omitted: z.number().int(),
+});
+
+/**
+ * The factory's `gate.ownerEvidence` (TP-4404): for an owner-at-head merge gate, each fact's changed files against the merge
+ * base and, for a CI-policy fact, the reviewer's verdict text, with the digest a tap posts back; or why the card cannot show it.
+ */
+const ownerEvidence = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("none"), gateId: z.string() }),
+  z.object({
+    status: z.literal("ready"),
+    gateId: z.string(),
+    head: z.string(),
+    mergeBase: z.string(),
+    facts: z.array(z.string()),
+    sections: z.array(z.object({ fact: z.string(), files: z.array(evidenceFile), reviewer: z.object({ line: z.string(), text: z.string() }).optional() })),
+    digest: z.string().regex(/^[0-9a-f]{64}$/),
+  }),
+  z.object({ status: z.literal("missing"), gateId: z.string(), facts: z.array(z.string()), reason: z.string(), command: z.string() }),
+]);
+
 type WatchRow = z.infer<typeof watchRow>;
 type PrTimeline = z.infer<typeof prTimeline>;
 type Waiting = z.infer<typeof waiting>;
 type Released = z.infer<typeof released>;
 export type CheckRunsPage = z.infer<typeof checkRunsPage>;
 export type OpPreview = z.infer<typeof opPreview>;
+export type OwnerEvidence = z.infer<typeof ownerEvidence>;
 type ListState = (typeof LIST_STATES)[number];
 
 /** Each call rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
@@ -135,6 +160,8 @@ export interface ShepherdSource {
   release(at: ReleaseAt): Promise<Released>;
   /** The factory's live read-back for a typed owner op: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
   previewOp(op: OwnerOp): Promise<OpPreview>;
+  /** An approve-merge gate's owner-at-head evidence: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
+  ownerEvidence(gateId: string): Promise<OwnerEvidence>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -170,6 +197,7 @@ export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS
     checkRuns,
     release: ({ repo, pr, head, holdClass, actor }) => read("shepherd.release", { repo, pr, head, holdClass, actor }, released),
     previewOp: (op) => read("owner-op.preview", { op }, opPreview),
+    ownerEvidence: (gateId) => read("gate.ownerEvidence", { gateId }, ownerEvidence),
   };
 }
 

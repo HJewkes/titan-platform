@@ -7,6 +7,8 @@ export type InboxReady = Extract<Prepared, { status: "ready" }>;
 /** A gate, hold or op read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's `confirmLabel`, only an op's `proposal`. */
 type RepoReadBack = Extract<InboxReady["readBack"], { repo: string }>;
 type OpReadBack = Extract<RepoReadBack, { proposal: string }>;
+type GateEvidence = NonNullable<Extract<RepoReadBack, { gateId?: string }>["evidence"]>;
+type EvidenceSection = GateEvidence["sections"][number];
 type AgentReadBack = Extract<InboxReady["readBack"], { agent: string }>;
 /** A deploy-pause-clear's read-back: the failure pause it clears, and no PR. */
 type PauseReadBack = Extract<InboxReady["readBack"], { pausedAt: string }>;
@@ -63,8 +65,56 @@ function PrFacts({ readBack, readAt }: { readBack: RepoReadBack; readAt: string 
       <Typography variant="mono">{`head ${readBack.headSha.slice(0, 7)}, matches the live head, read ${secondsSince(readAt)} s ago`}</Typography>
       {"gateId" in readBack && readBack.gateId !== undefined ? <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography> : null}
       {readBack.hold === undefined ? null : <Typography variant="caption" color="secondary">{`Hold: ${readBack.hold.reason}`}</Typography>}
+      {"evidence" in readBack && readBack.evidence !== undefined ? <EvidenceFacts evidence={readBack.evidence} /> : null}
       {"proposal" in readBack ? <OpFacts readBack={readBack} /> : null}
     </>
+  );
+}
+
+const FACT_TITLE: Readonly<Record<string, string>> = {
+  "ci-policy-weakened": "CI policy weakened",
+  "ci-policy-malformed": "CI-policy line malformed",
+  "skill-path": "Repo skill changed",
+  "files-unread": "Changed files nobody read",
+};
+
+const PRE = "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-surface-raised p-2 font-mono text-sm";
+
+/**
+ * TP-4404: what an owner-at-head gate asks the owner to read, as the factory read it at the gate's head; this tap is the
+ * owner's answer to exactly these sections. Diffs and the reviewer's text start collapsed so the sheet fits a phone.
+ */
+function EvidenceFacts({ evidence }: { evidence: GateEvidence }): ReactNode {
+  return (
+    <VStack gap={2} testID="inbox-readback-evidence">
+      <Typography variant="subtitle2">{`You read this at the head: ${evidence.facts.join(", ")}. Diffs are against merge base ${evidence.mergeBase.slice(0, 7)}.`}</Typography>
+      {evidence.sections.map((section) => (
+        <EvidenceSectionFacts key={section.fact} section={section} />
+      ))}
+    </VStack>
+  );
+}
+
+function EvidenceSectionFacts({ section }: { section: EvidenceSection }): ReactNode {
+  return (
+    <VStack gap={1} testID={`inbox-evidence-${section.fact}`}>
+      <Typography variant="body2">{FACT_TITLE[section.fact] ?? section.fact}</Typography>
+      {section.reviewer === undefined ? null : (
+        <>
+          <Typography variant="mono" testID="inbox-evidence-ci-line">{`Reviewer: ${section.reviewer.line}`}</Typography>
+          <details>
+            <summary>The reviewer's verdict, with its rationale</summary>
+            <pre className={PRE}>{section.reviewer.text}</pre>
+          </details>
+        </>
+      )}
+      {section.files.map((file) => (
+        <details key={file.path}>
+          <summary>{`${file.path} (${file.lines.length} changed lines)`}</summary>
+          <pre className={PRE}>{file.lines.map(({ side, n, text }) => `${side} L${n}: ${text}`).join("\n")}</pre>
+        </details>
+      ))}
+    </VStack>
   );
 }
 
