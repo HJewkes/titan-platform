@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { captureStderr, withStderr } from './child-startup.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
@@ -45,9 +46,10 @@ describe('integration: stdio MCP server', () => {
         { name: 'integration-test', version: '0.0.0' },
         { capabilities: {} },
       );
-      await client.connect(transport);
+      const stderr = captureStderr(transport.stderr);
+      await withStderr(client.connect(transport), stderr);
 
-      const listed = await client.listTools();
+      const listed = await withStderr(client.listTools(), stderr);
       expect(listed.tools.length).toBeGreaterThanOrEqual(34);
 
       const names = listed.tools.map((t) => t.name);

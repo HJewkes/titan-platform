@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
 import { BuildFooter } from "./BuildFooter.js";
 import { useRelayInvalidation, useReturnInvalidation } from "./data/live.js";
+import { useRoutePerf } from "./data/perf.js";
 import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
 import { Page } from "./pages/PageShell.js";
@@ -14,6 +15,7 @@ const BRAND = "agents";
 
 export function App(): ReactNode {
   const route = useRoute();
+  useRoutePerf(route);
   useRelayInvalidation();
   useReturnInvalidation();
   return (

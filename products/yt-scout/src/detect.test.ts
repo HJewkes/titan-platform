@@ -175,7 +175,7 @@ describe("titan-yt-scout detect --dry-run", () => {
     const rowsDirPath = path.join(tree.root, "rows");
     const mk = (onRow: DetectDeps["onRow"], _bin?: string) => fakeDeps({ onRow, fetchText: async () => ({ status: 404, text: "" }) });
 
-    const code = await runCli(["detect", "--dry-run", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], (l) => out.push(l), () => {}, mk);
+    const code = await runCli(["detect", "--dry-run", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], (l) => out.push(l), () => {}, undefined, mk);
 
     expect(code).toBe(0);
     expect(out).toContain("confTalks: 4 new");
@@ -195,7 +195,7 @@ describe("titan-yt-scout detect --dry-run", () => {
     scout.exec("CREATE TRIGGER no_insert BEFORE INSERT ON videos BEGIN SELECT RAISE(ABORT, 'read only'); END");
     scout.close();
 
-    await expect(runCli(["detect", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], () => {}, () => {}, mk)).rejects.toThrow("read only");
+    await expect(runCli(["detect", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], () => {}, () => {}, undefined, mk)).rejects.toThrow("read only");
 
     const file = readdirSync(rowsDirPath)[0]!;
     expect(readFileSync(path.join(rowsDirPath, file), "utf8").trim().split("\n")).toHaveLength(2);

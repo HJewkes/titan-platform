@@ -11,6 +11,14 @@ const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
 const git = (args: readonly string[], cwd: string): string => execFileSync(realGit, [...args], { cwd, encoding: "utf8", env: fixtureEnv() }).trim();
 const quote = (value: string): string => "'" + value.replaceAll("'", "'\\''") + "'";
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
+// A sibling thread's fork can inherit our write fd and make the shim's exec fail ETXTBSY; release reads a gh that
+// cannot run as no proof and skips its post-proof status (TP-4478). cp writes in a process that has exited before the first exec.
+function installShim(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  fs.writeFileSync(staging, contents, { mode: 0o755 });
+  execFileSync("cp", ["-p", staging, file]);
+  fs.rmSync(staging);
+}
 
 async function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "typed-refusal-"))); roots.push(root);
@@ -20,13 +28,13 @@ async function fixture() {
   const allocation = await allocator.allocate({ baseCwd: repo, agentName: "alice" });
   const bin = path.join(root, "bin"); fs.mkdirSync(bin);
   const calls = path.join(root, "git-calls");
-  fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(calls)}\nexec ${quote(realGit)} "$@"\n`, { mode: 0o755 });
-  fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 127\n", { mode: 0o755 });
+  installShim(path.join(bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(calls)}\nexec ${quote(realGit)} "$@"\n`);
+  installShim(path.join(bin, "gh"), "#!/bin/sh\nexit 127\n");
   vi.stubEnv("PATH", bin + path.delimiter + (process.env.PATH ?? ""));
   return { root, repo, allocator, allocation, bin, calls };
 }
 function shim(f: Awaited<ReturnType<typeof fixture>>, condition: string): void {
-  fs.writeFileSync(path.join(f.bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(f.calls)}\nif ${condition}; then exit 1; fi\nexec ${quote(realGit)} "$@"\n`, { mode: 0o755 });
+  installShim(path.join(f.bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(f.calls)}\nif ${condition}; then exit 1; fi\nexec ${quote(realGit)} "$@"\n`);
 }
 function retained(f: Awaited<ReturnType<typeof fixture>>): void {
   expect(fs.existsSync(f.allocation.cwd)).toBe(true);
@@ -81,12 +89,12 @@ describe("typed presentation preserves release authority", () => {
       fs.writeFileSync(response, JSON.stringify({ state: "MERGED", headRefOid: proof === "head" ? tip : "f".repeat(40), commits: [{ oid: tip }] }));
       const action = mode === "ordinary-ignored" ? `rm ${quote(notes)}\nprintf 'private notes\\n' > ${quote(path.join(f.allocation.cwd, "private.txt"))}` : mode === "ordinary-removed" || mode === "ordinary-ignored-error" ? `rm ${quote(notes)}` :
         mode === "ignored-ordinary" ? `rm ${quote(notes)}\nprintf 'new notes\\n' > ${quote(path.join(f.allocation.cwd, "new.txt"))}` : `printf 'new notes\\n' > ${quote(notes)}`;
-      fs.writeFileSync(path.join(f.bin, "gh"), `#!/bin/sh\n${action}\nprintf done > ${quote(marker)}\ncat ${quote(response)}\n`, { mode: 0o755 });
-      const result = await f.allocator.release({}, f.allocation);
+      installShim(path.join(f.bin, "gh"), `#!/bin/sh\n${action}\nprintf done > ${quote(marker)}\ncat ${quote(response)}\n`);      const result = await f.allocator.release({}, f.allocation);
+      expect(fs.existsSync(marker), "the gh proof never ran, so release had no proof to re-observe after").toBe(true);
       expect(result.released).toBe(false); retained(f);
       if (mode === "clean-ordinary" || mode === "ordinary-ordinary" || mode === "ordinary-removed") expect(result).toHaveProperty("refusalCode", "unsaved-changes");
       else expect(result).not.toHaveProperty("refusalCode");
-      expect(fs.readFileSync(f.calls, "utf8").split("\n").filter(line => line.startsWith("status "))).toHaveLength(2);
+      expect(fs.readFileSync(f.calls, "utf8").split("\n").filter(line => line.startsWith("status ")), "release ran the pre-proof status but skipped the post-proof one").toHaveLength(2);
     });
   }
   it.each(["absent", "mismatched"])("exposes the typed missing-assigned-record error for %s record with unchanged message", async kind => {
