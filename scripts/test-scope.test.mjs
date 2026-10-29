@@ -128,6 +128,7 @@ describe("vitestArgs", () => {
       "--reporter=default",
       "--reporter=hanging-process",
       "--reporter=./scripts/vitest-file-watchdog.mjs",
+      "--reporter=./scripts/vitest-file-timing.mjs",
     ]);
   });
 });

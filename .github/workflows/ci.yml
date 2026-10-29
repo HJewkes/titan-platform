@@ -123,6 +123,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm test:scope --run
+      # Per-file collect, setup and test time from scripts/vitest-file-timing.mjs; a none scope writes no file.
+      - name: Upload the vitest file timing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-file-timing-${{ github.run_attempt }}
+          path: vitest-file-timing.json
+          if-no-files-found: ignore
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4

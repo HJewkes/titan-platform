@@ -27,6 +27,7 @@ const FULL_PATHS = new Set([
   "scripts/vitest-tmpdir.mjs",
   "scripts/vitest-wait-budget.mjs",
   "scripts/vitest-file-watchdog.mjs",
+  "scripts/vitest-file-timing.mjs",
   "scripts/wait-budget.mjs",
   "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
@@ -157,8 +158,9 @@ export function scopeForEvent(env, readChanged, loadWorkspace) {
 }
 
 // On CI a hang must fail and name its file (TP-4287). hanging-process lists the handles that keep vitest from exiting
-// after its last file; the watchdog names a file whose worker never yields. Locally they are noise.
-export const CI_REPORTERS = ["default", "hanging-process", "./scripts/vitest-file-watchdog.mjs"];
+// after its last file; the watchdog names a file whose worker never yields. Locally they are noise, as is the per-file
+// timing artifact (TP-4436).
+export const CI_REPORTERS = ["default", "hanging-process", "./scripts/vitest-file-watchdog.mjs", "./scripts/vitest-file-timing.mjs"];
 
 export function vitestArgs(scope, env = {}) {
   const reporters = env.CI ? CI_REPORTERS.map((reporter) => `--reporter=${reporter}`) : [];
