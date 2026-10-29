@@ -1,6 +1,7 @@
 import type { GitBehindProbe } from "./deploy-behind.js";
 import type { Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
+import { registerBuildSurface } from "./build-surface/command.js";
 import { Command, CommanderError } from "commander";
 import { configDeprecations, resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
@@ -142,7 +143,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

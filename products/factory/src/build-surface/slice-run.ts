@@ -1,0 +1,51 @@
+import { StepFailedError, type StepResult, type WorkflowContext } from "@titan-design/workflow";
+import { z } from "zod";
+import { agentNameOf, branchOf, type BuildSpec, type Slice } from "./spec.js";
+
+const INPUT_VAR = "BS_STEP_INPUT";
+
+/** One slice's view of the run: its steps carry `<step>:<slice>[:<suffix>]` ids, and its spend is counted against its cap. */
+export interface SliceRun {
+  ctx: WorkflowContext;
+  spec: BuildSpec;
+  slice: Slice;
+  agent: string;
+  branch: string;
+  spentUsd: number;
+  brokenGateRuns: number;
+  last?: StepResult;
+}
+
+export function sliceRun(ctx: WorkflowContext, spec: BuildSpec, slice: Slice): SliceRun {
+  return { ctx, spec, slice, agent: agentNameOf(spec, slice), branch: branchOf(slice), spentUsd: 0, brokenGateRuns: 0 };
+}
+
+/** Stops this slice only: retryable, so `mapItems` counts it against `maxFailures` and the other slices go on. */
+export function stopSlice(run: SliceRun, reason: string): never {
+  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `slice ${run.slice.id} stopped: ${reason}`, { retryable: true, usage: { costUsd: run.spentUsd } });
+}
+
+/** Every dispatch carries its input as JSON; the route answers under `result`, checked by `schema`. */
+export async function sliceStep<R>(run: SliceRun, step: string, suffix: string | number | undefined, input: object, schema: z.ZodType<R>): Promise<R> {
+  const stepId = `${step}:${run.slice.id}${suffix === undefined ? "" : `:${suffix}`}`;
+  const result = await run.ctx.dispatch(stepId, `{{${INPUT_VAR}}}`, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result: schema }) });
+  run.last = result;
+  run.spentUsd += result.usage?.costUsd ?? 0;
+  if (run.spentUsd > run.spec.sliceBudgetUsd) stopSlice(run, `spend $${run.spentUsd.toFixed(2)} is over the slice cap of $${run.spec.sliceBudgetUsd}`);
+  return result.data!.result;
+}
+
+/** The env every repo command gets, so a gate or deploy script knows which slice and head it runs for. */
+function sliceEnv(run: SliceRun, extra: Record<string, string> = {}): Record<string, string> {
+  return { BS_REPO: run.spec.repo, BS_SLICE: run.slice.id, BS_BRANCH: run.branch, BS_BASE: run.spec.base, ...extra };
+}
+
+/** A repo command's step input: its argv, run in the clone with the slice's env. */
+export function commandIn(run: SliceRun, argv: string[] | undefined, extra: Record<string, string> = {}) {
+  return { ...(argv && { argv }), cwd: run.spec.clone, env: sliceEnv(run, extra) };
+}
+
+/** An owner gate's brief: one question with the given options, its evidence the commit it is asked about. */
+export function oneQuestionBrief(run: SliceRun, summary: string, sha: string, question: string, options: { id: string; label: string }[]) {
+  return { summary: summary.slice(0, 280), evidenceRef: `https://github.com/${run.spec.repo}/commit/${sha}`, questions: [{ id: "decision", question, options }] };
+}
