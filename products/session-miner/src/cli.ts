@@ -21,6 +21,7 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
+import { defaultProfilesRoot } from "./friction-transcripts.js";
 import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
 import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
@@ -175,15 +176,17 @@ interface FrictionDailyFlags {
   since: string;
   dryRun?: boolean;
   archiveDir?: string;
+  profiles?: string;
 }
 
 function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number) => void): void {
   program
     .command("friction-daily")
-    .description("Daily pass: cluster the window's worker-report friction lines, archive the rows, file one owner inbox item")
+    .description("Daily pass: rank the window's friction from worker transcripts, then from worker reports, archive the rows, file one owner inbox item")
     .option("--since <window>", "how far back to read, as <n>h or <n>d", "24h")
     .option("--dry-run", "print the top clusters; write and file nothing")
     .option("--archive-dir <dir>", "where <date>.jsonl and <date>.md go (default <active-work>/titan-platform/artifacts/friction-daily)")
+    .option("--profiles <dir>", "root of the Claude profiles whose <profile>/projects transcripts are read (default ~/.claude-profiles)")
     .action(async (opts: FrictionDailyFlags) => {
       const windowMs = parseWindowMs(opts.since);
       if (windowMs === null) {
@@ -193,6 +196,7 @@ function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number)
       const config = resolveConfig(configOverrides(program.opts()), io.env);
       const result = await runFrictionDaily({
         eventsDb: config.eventsDb,
+        profilesRoot: opts.profiles ?? defaultProfilesRoot(),
         archiveDir: opts.archiveDir ?? defaultFrictionArchive(config.initiativesRoot),
         now: new Date(),
         windowMs,

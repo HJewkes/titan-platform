@@ -321,7 +321,7 @@ playbook is exercised.
   (`ops/systemd/session-miner-refresh.timer`; install steps in the product README). A
   weekly timer drives `tool-gap-weekly`, which files or notes one active-work task per
   tool-gap pattern and sends the owner one digest (`ops/systemd/session-miner-tool-gaps.timer`).
-  A daily timer drives `friction-daily`, which clusters the day's worker-report friction lines
+  A daily timer drives `friction-daily`, which ranks the day's friction from worker transcripts and reports
   and files one owner inbox item (`ops/systemd/session-miner-friction-daily.timer`).
 - **Per-tool Drain partitions** wait on the fact table carrying tool names for results.
 

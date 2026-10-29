@@ -8,12 +8,14 @@ import {
   frictionDailyReport,
   frictionDeposit,
   frictionDepositId,
+  readSpawnerMessages,
   readWorkerReports,
+  readWorkerSessions,
   renderFrictionMarkdown,
-  renderFrictionTop,
   type FrictionDailyReport,
 } from "@titan-design/session-analytics";
 import { z } from "zod";
+import { readAgentLogs, recentTranscripts } from "./friction-transcripts.js";
 import { withEventsDb } from "./insights/blocked-flow-sources.js";
 
 /** The owner inbox, through titan-console's own CLI; tests inject a fake. */
@@ -25,6 +27,8 @@ export interface ConsoleInboxPort {
 
 interface FrictionDailyOptions {
   eventsDb: string;
+  /** Holds `<profile>/projects/<project>/<session id>.jsonl` for every Claude profile. */
+  profilesRoot: string;
   /** Holds `<date>.jsonl` and `<date>.md`. */
   archiveDir: string;
   now: Date;
@@ -35,8 +39,11 @@ interface FrictionDailyOptions {
 
 interface FrictionDailyResult {
   date: string;
-  report: Omit<FrictionDailyReport, "rows">;
-  top: string[];
+  logs: FrictionDailyReport["logs"];
+  reports: FrictionDailyReport["reports"];
+  agreement: FrictionDailyReport["agreement"];
+  /** The markdown summary the archive and the inbox item carry. */
+  summary: string;
   archived: string[];
   withdrawn: string[];
   filed: string | null;
@@ -47,12 +54,24 @@ const LOOKBACK_DAYS = 7;
 const DAY_MS = 86_400_000;
 const utcDate = (at: Date) => at.toISOString().slice(0, 10);
 
+async function readDay(options: FrictionDailyOptions, window: { since: string; until: string }): Promise<FrictionDailyReport> {
+  const events = withEventsDb(options.eventsDb, (db) => ({
+    reports: readWorkerReports(db, window),
+    sessions: readWorkerSessions(db, window.until),
+    followUps: readSpawnerMessages(db, window),
+  }));
+  const transcripts = recentTranscripts(options.profilesRoot, Date.parse(window.since));
+  const logs = await readAgentLogs({ sessions: events.sessions, transcripts, followUps: events.followUps, window });
+  return frictionDailyReport({ reports: events.reports, logs, window });
+}
+
 /** One daily pass: read the window, archive the raw rows, retire earlier items, then file today's. A dry run reads only. */
 export async function runFrictionDaily(options: FrictionDailyOptions): Promise<FrictionDailyResult> {
   const window = { since: new Date(options.now.getTime() - options.windowMs).toISOString(), until: options.now.toISOString() };
-  const daily = withEventsDb(options.eventsDb, (db) => frictionDailyReport(readWorkerReports(db, window), window));
+  const daily = await readDay(options, window);
   const date = utcDate(options.now);
-  const result = { date, report: summaryOf(daily), top: renderFrictionTop(daily), archived: [], withdrawn: [], filed: null };
+  const { logs, reports, agreement } = daily;
+  const result = { date, logs, reports, agreement, summary: renderFrictionMarkdown(daily, date), archived: [], withdrawn: [], filed: null };
   if (options.dryRun) return result;
   const archived = archive(options.archiveDir, date, daily);
   const deposit = frictionDeposit(daily, date, archived[0]!);
@@ -60,16 +79,20 @@ export async function runFrictionDaily(options: FrictionDailyOptions): Promise<F
   return { ...result, archived, withdrawn, filed: await options.inbox.file(deposit) };
 }
 
-/** The rows go to the archive, not to stdout. */
-function summaryOf({ window, reports, withFrictionField, withFallback, clusters }: FrictionDailyReport): FrictionDailyResult["report"] {
-  return { window, reports, withFrictionField, withFallback, clusters };
+/** Report rows, then one row per agent log with its signals and its agreement, if it reported. */
+function archiveRows(daily: FrictionDailyReport): string[] {
+  const agreement = new Map(daily.agreementRows.map((row) => [row.agent, row]));
+  return [
+    ...daily.rows.map((row) => ({ type: "report", ...row })),
+    ...daily.agentLogs.map((log) => ({ type: "log", ...log, agreement: agreement.get(log.agent) ?? null })),
+  ].map((row) => `${JSON.stringify(row)}\n`);
 }
 
 function archive(dir: string, date: string, daily: FrictionDailyReport): string[] {
   mkdirSync(dir, { recursive: true });
   const jsonl = path.join(dir, `${date}.jsonl`);
   const md = path.join(dir, `${date}.md`);
-  writeFileSync(jsonl, daily.rows.map((row) => `${JSON.stringify(row)}\n`).join(""));
+  writeFileSync(jsonl, archiveRows(daily).join(""));
   writeFileSync(md, renderFrictionMarkdown(daily, date));
   return [jsonl, md];
 }
@@ -84,10 +107,9 @@ async function withdrawEarlier(inbox: ConsoleInboxPort, now: Date, newId: string
 }
 
 export function renderFrictionResult(result: FrictionDailyResult): string {
-  const { report } = result;
   const lines = [
-    `friction-daily ${result.date}: ${report.reports} reports, ${report.withFrictionField} with Friction:, ${report.withFallback} fallback only`,
-    ...(result.top.length > 0 ? result.top : ["no friction reported"]),
+    result.summary.trimEnd(),
+    "",
     ...result.archived.map((file) => `archived ${file}`),
     ...result.withdrawn.map((id) => `withdrew ${id}`),
     result.filed === null ? "dry run: nothing written or filed" : `filed ${result.filed}`,

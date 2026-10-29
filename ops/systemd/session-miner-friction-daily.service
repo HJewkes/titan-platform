@@ -1,5 +1,5 @@
-# Daily friction audit: cluster the last 24 h of worker-report Friction: lines, archive the rows,
-# file one owner inbox item. Install steps: products/session-miner/README.md, "Daily friction audit".
+# Daily friction audit: rank the last 24 h of friction from worker transcripts (~/.claude-profiles),
+# then from worker reports, archive the rows, file one owner inbox item. Install steps: products/session-miner/README.md, "Daily friction audit".
 [Unit]
 Description=Session miner: daily friction audit and owner inbox item
 After=network-online.target

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LIST_PRICE_CAVEAT } from "@titan-design/session-analytics";
+import { LIST_PRICE_CAVEAT, type ErrorClass } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runCli } from "../cli.js";
@@ -9,7 +9,7 @@ import { createMinerContext } from "../context.js";
 import { resolveConfig } from "../config.js";
 import { insightResultSchema } from "./define.js";
 import { seedInsightGraph, seedToolResults, type FixtureToolResult } from "./fixture.js";
-import { toolErrorsSchema, type ErrorClass, type ToolErrorsReport } from "./tool-errors.js";
+import { toolErrorsSchema, type ToolErrorsReport } from "./tool-errors.js";
 
 const DENIAL = "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Merge Without Review]. Continue.";
 

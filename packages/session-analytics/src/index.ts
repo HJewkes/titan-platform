@@ -99,11 +99,33 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
-export type { HandoffRecord, WorkerReportRecord } from "./events-db.js";
-export { EVENTS_TABLE_DDL, HANDOFFS_SQL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readHandoffs, readLastPrompts, readSpawns, readVerdicts, readWorkerReports } from "./events-db.js";
+export type { HandoffRecord, WorkerReportRecord, WorkerSessionRecord } from "./events-db.js";
+export {
+  EVENTS_TABLE_DDL,
+  HANDOFFS_SQL,
+  LAST_PROMPTS_SQL,
+  SPAWNS_SQL,
+  VERDICTS_SQL,
+  eventsDbCommand,
+  readHandoffs,
+  readLastPrompts,
+  readSpawnerMessages,
+  readSpawns,
+  readVerdicts,
+  readWorkerReports,
+  readWorkerSessions,
+} from "./events-db.js";
+export type { ErrorClass } from "./tool-error-class.js";
+export { ERROR_CLASSES, classifyError } from "./tool-error-class.js";
+export type { FollowUpClass } from "./follow-up-class.js";
+export { FOLLOW_UP_CLASSES, classifyFollowUp } from "./follow-up-class.js";
 export type { FrictionCluster, FrictionSource } from "./friction-lines.js";
-export type { FrictionClusterRow, FrictionDailyReport, FrictionRow } from "./friction-daily.js";
-export { FRICTION_ASKER, frictionDailyReport, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderFrictionTop } from "./friction-daily.js";
+export type { LogSignal, LogSignalKind } from "./transcript-friction.js";
+export { followUpSignals, transcriptSignals } from "./transcript-friction.js";
+export type { AgentLog, Agreement, AgreementRow, AgreementSummary, LogClusterRow } from "./friction-agreement.js";
+export type { FrictionClusterRow, FrictionDailyReport, FrictionRow, LogSide, ReportSide } from "./friction-daily.js";
+export { frictionDailyReport } from "./friction-daily.js";
+export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
 export { readAgentSessions } from "./cost-report-queries.js";
