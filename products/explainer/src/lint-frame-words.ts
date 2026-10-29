@@ -1,5 +1,6 @@
 import type { L0Check } from "./eval-l0.js";
-import { drawnBeats, isSlots, PAGE_KINDS, screenTokens, slotEach as each, slotList as list, slotText as text, type DrawnBeat, type Slots } from "./drawn-beats.js";
+import { drawnBeats, screenTokens, slotList as list, type DrawnBeat } from "./drawn-beats.js";
+import { drawnTexts, type DrawnText } from "./drawn-texts.js";
 import { countRow } from "./lint-text.js";
 import type { ScriptV1 } from "./script-schema.js";
 import type { FilledBeat } from "./template-fill/fill.js";
@@ -16,41 +17,27 @@ export const FRAME_MAX_WORDS = 20;
 /** ListFrame's heading yields past this many rows (list-kinds.tsx HEADED_ROWS_MAX), so it never shares a frame with all of them. */
 const HEADED_ROWS_MAX = 3;
 
-/** A heading over rows, as ListFrame draws it: with them all, or yielding to them once they outnumber its room. */
-function headed(heading: string[], rows: string[], yields: boolean): string[][] {
-  return yields ? [[...heading, ...rows.slice(0, HEADED_ROWS_MAX)], rows] : [[...heading, ...rows]];
+/** Series chrome qa's words-per-frame skips (timing-gates.ts FRAME_CHROME): a listener reads it once, not per beat. */
+const FRAME_CHROME: ReadonlySet<string> = new Set(["xp-chapter", "xp-chapter-count", "xp-chip-kind", "ex-list-tick", "ex-list-ref", "ex-map-step"]);
+
+const LIST_ROWS: Readonly<Record<string, string>> = { list: "rows", "fact-flash": "facts" };
+
+/** A list's heading yields to its rows when the fill says so, or once they outnumber its room. */
+function headingYields({ ref, slots, hints }: FilledBeat): boolean {
+  const rows = LIST_ROWS[ref];
+  return rows !== undefined && ((ref === "list" && hints.headingYields === true) || list(slots, rows).length > HEADED_ROWS_MAX);
 }
 
-const crowds = (slots: Slots, key: string): boolean => list(slots, key).length > HEADED_ROWS_MAX;
+const isRow = (shown: DrawnText): boolean => shown.cls === "ex-list-text";
+const isListHeading = (shown: DrawnText): boolean => shown.cls === "ex-headline";
 
-const figureText = (figure: Slots): string[] => [...text(figure["label"]), String(figure["value"]), ...text(figure["unit"])];
-const barValue = (point: Slots, cap: unknown): string => (cap === undefined ? Number(point["value"]).toLocaleString("en-US") : `${String(point["value"])} / ${String(cap)}`);
-const pointText = (point: Slots, cap: unknown): string[] => [...text(point["label"]), barValue(point, cap)];
-
-/** Each frame the stage can show at once, as text; undefined for a slot ref the page draws no view for. */
-function stageFrames(beat: FilledBeat): string[][] | undefined {
-  const s = beat.slots;
-  switch (beat.ref) {
-    case "list": return headed(text(s["title"]), each(s, "rows", "text"), beat.hints.headingYields === true || crowds(s, "rows"));
-    case "verdict-card": return [[...text(s["verdict"]), ...each(s, "reasons", "text")]];
-    case "fact-flash": return headed([], each(s, "facts", "text"), crowds(s, "facts"));
-    case "claim-card": return [[...text(s["claim"]), ...(isSlots(s["quote"]) ? text(s["quote"]["text"]) : [])]];
-    case "stat": return [list(s, "figures").flatMap(figureText)];
-    case "chart": return [[...(s["kind"] === "line" ? [...text(s["title"]), ...text(s["unit"])] : []), ...list(s, "series").flatMap((point) => pointText(point, s["cap"]))]];
-    case "map": return [[...text(s["title"]), ...each(s, "nodes", "label")]];
-    case "compare": return [[...text(s["leftTitle"]), ...text(s["rightTitle"]), ...each(s, "rows", "left", "right")]];
-    case "button": return [[...text(s["line"]), ...text(s["action"])]];
-    case "outro":
-    case "held": return [text(s["line"])];
-    case "hook": return [[...text(s["line"]), ...each(s, "cards", "text")]];
-    default: return undefined;
-  }
-}
-
-/** The chrome's one source line: the first chip's first ref, its path cut as the chrome cuts it. */
-function sourceLine(beat: FilledBeat): string[] {
-  const first = beat.chips[0]?.text.split("; ")[0];
-  return first === undefined || PAGE_KINDS.has(beat.spec) ? [] : [first.replace(/^[\w-]+@[0-9a-f]+:/, "").replace(/(?:[\w.~-]+\/)+/g, "")];
+/** Each frame the beat can show at once: with a yielding heading, the heading over its first rows, then all rows alone. */
+function frames(beat: DrawnBeat): DrawnText[][] | undefined {
+  const texts = drawnTexts(beat)?.filter((shown) => !FRAME_CHROME.has(shown.cls));
+  if (!texts || !headingYields(beat.filled)) return texts && [texts];
+  let rows = 0;
+  const headed = texts.filter((shown) => !isRow(shown) || ++rows <= HEADED_ROWS_MAX);
+  return [headed, texts.filter((shown) => !isListHeading(shown))];
 }
 
 /** One beat's fullest predicted frame: the kind it is drawn as and the words on screen together. */
@@ -60,12 +47,11 @@ interface FrameCount {
   words: number;
 }
 
-function frameCount({ filled, headline }: DrawnBeat): FrameCount | undefined {
-  const frames = stageFrames(filled);
-  if (!frames) return undefined;
-  const band = [...(headline === undefined ? [] : [headline]), ...sourceLine(filled)];
-  const words = Math.max(...frames.map((frame) => [...band, ...frame].reduce((sum, shown) => sum + screenTokens(shown).length, 0)));
-  return { beat: filled.id, kind: filled.spec, words };
+function frameCount(beat: DrawnBeat): FrameCount | undefined {
+  const found = frames(beat);
+  if (!found) return undefined;
+  const words = Math.max(...found.map((frame) => frame.reduce((sum, shown) => sum + screenTokens(shown.text).length, 0)));
+  return { beat: beat.filled.id, kind: beat.filled.spec, words };
 }
 
 /** Every template beat's predicted fullest frame. */

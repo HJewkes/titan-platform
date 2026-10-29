@@ -10,7 +10,7 @@ const seconds = (s: number): string => `${Math.round(s * 10) / 10} s`;
 
 const numbersHint: Hint = (script, row) => {
   const named = namedBeats(script, row).map((beat) => `${beat.id} shows ${unspokenNumbers(script, beat).map(({ fact, shown }) => `"${fact}" (in "${clipped(shown)}")`).join(", ")}`);
-  return `on-screen numbers the beat never says: ${named.join("; ")}. Say each number in that beat's spoken text, or drop it from the assertion, labels and chips: say it or drop it`;
+  return `on-screen numbers the beat never says: ${named.join("; ")}. Say each number in that beat's spoken text, or drop it from the assertion, labels, chips or chapter label: say it or drop it`;
 };
 
 const frameHint: Hint = (script, row) => {
@@ -20,8 +20,8 @@ const frameHint: Hint = (script, row) => {
 };
 
 const echoHint: Hint = (script, row) => {
-  const named = namedBeats(script, row).map((beat) => `${beat.id} ${quoted(echoedLabels(beat).map(clipped))}`);
-  return `labels repeating ${ECHO_RUN_WORDS} or more spoken words in a row: ${named.join("; ")}. Keep the key words, not the sentence: the screen names it, the voice says it`;
+  const named = namedBeats(script, row).map((beat) => `${beat.id} ${quoted(echoedLabels(script, beat).map(clipped))}`);
+  return `on-screen texts repeating ${ECHO_RUN_WORDS} or more spoken words in a row: ${named.join("; ")}. Keep the key words, not the sentence: the screen names it, the voice says it`;
 };
 
 function cueGapHint(script: ScriptV1, row: Parameters<Hint>[1]): string {

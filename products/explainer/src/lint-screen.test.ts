@@ -12,7 +12,7 @@ describe("Q-D14 on-screen numbers are spoken", () => {
     const hint = repairHint(row, script);
 
     expect(row).toMatchObject({ severity: "error", pass: false, detail_beats: ["stats-1"] });
-    expect(hint).toContain('stats-1 shows "47" (in "47 in review")');
+    expect(hint).toContain('stats-1 shows "47" (in "47")');
     expect(hint).toContain("say it or drop it");
   });
 
@@ -54,6 +54,17 @@ describe("Q-D14 on-screen numbers are spoken", () => {
     expect(hint).toContain('"9" (in "south: 9")');
   });
 
+  it("counts every point of a line chart, which the page draws as plain values, not bars", () => {
+    const script = dailyWith("ships-2", { visual: { labels: ["2026-10-01: 4", "2026-10-02: 7", "2026-10-03: 12"] }, spoken: "Deploys climbed to twelve a day." });
+
+    const row = l0Row(script, "Q-D14");
+    const hint = repairHint(row, script);
+
+    expect(row.detail_beats).toEqual(["ships-2"]);
+    expect(hint).toContain('"4" (in "4")');
+    expect(hint).toContain('"7" (in "7")');
+  });
+
   it("reads the chapter label a fact-flash beat draws as its heading", () => {
     const base = dailyWith("reflection-2", { visual: { beat: "fact-flash", labels: ["Small lanes ship faster"] } });
     const script = { ...base, chapters: base.chapters.map((chapter) => (chapter.id === "reflection" ? { ...chapter, label: "3 lanes stalled" } : chapter)) };
@@ -74,7 +85,7 @@ describe("Q-D16 labels that echo the narration", () => {
     const hint = repairHint(row, script);
 
     expect(row.detail_beats).toContain("lanes-1");
-    expect(hint).toContain('lanes-1 "router · rewrote its matcher and merged it"');
+    expect(hint).toContain('lanes-1 "rewrote its matcher and merged it"');
     expect(hint).toContain("key words, not the sentence");
   });
 
