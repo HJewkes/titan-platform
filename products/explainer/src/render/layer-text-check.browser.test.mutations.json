@@ -18,6 +18,15 @@
       "kills": [
         "the rendered text check on one custom layer flags text past the stage box with qa's under-chrome rule"
       ]
+    },
+    {
+      "name": "the check page's fonts are never watched for failure",
+      "file": "packages/frame-capture/src/capture.ts",
+      "find": "if (options.preloadFonts !== false) assertFontsLoaded(fonts, failedFonts)",
+      "replace": "",
+      "kills": [
+        "the rendered text check on one custom layer fails as an infra error naming the face and the URL when a font file is missing from the page"
+      ]
     }
   ]
 }

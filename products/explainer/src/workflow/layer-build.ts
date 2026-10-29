@@ -23,6 +23,8 @@ const BUILD_STEP = "build";
 const TREE_STEP = "layer-tree";
 const STAGE = "resolve";
 export const CUSTOM_LAYERS = "custom-layers";
+/** A failed resolve's record points here at the sources of every layer that was built, so a failure can be inspected. */
+export const UNBUILT_LAYERS = "custom-layers-unbuilt";
 /** Under the data dir: the cross-run build cache's pointers, by packet key. */
 export const LAYER_BUILDS_DIR = "layer-builds";
 /** Under a run's dir: one scratch dir per repaired build, by packet key, that the repair agent writes into. */
@@ -30,6 +32,14 @@ const LAYER_REPAIRS_DIR = "layer-repairs";
 const BUILD_CONCURRENCY = 4;
 // The same input variable `codeStep` uses: an item step needs the whole StepResult, usage included, for the budget.
 const INPUT_VAR = "CODE_STEP_INPUT";
+const CHECK_UNAVAILABLE = "layer check could not run, not a layer defect";
+
+/** The $0 check threw instead of answering: an infrastructure fault, carrying the build it was checking so nothing built is lost. */
+class CheckUnavailable extends Error {
+  constructor(error: unknown, readonly build: LayerBuild) {
+    super(error instanceof Error ? error.message : String(error));
+  }
+}
 
 /** The step ids `explainer.resolve` dispatches besides its body and checks; the host asserts each has a route. */
 export const LAYER_STEP_IDS = [`${PACKETS_STEP}:${STAGE}`, `${BUILD_STEP}:${STAGE}`, `${TREE_STEP}:${STAGE}`] as const;
@@ -39,9 +49,13 @@ type BuildItem = z.infer<typeof BuildItemSchema>;
 const PacketsSchema = z.object({ items: z.array(BuildItemSchema), notes: z.array(z.string()) });
 type Packets = z.infer<typeof PacketsSchema>;
 const BuildInputSchema = BuildItemSchema.extend({ builder: BuilderRefSchema });
-/** `needsRepair`: the build failed the compile gate, with the error a repair round starts from. `cached`: no worker ran. */
+/**
+ * `needsRepair`: the build failed a gate, with the error a repair round starts from. `unchecked`: the $0 check could not
+ * run, which says nothing about the layer. `cached`: no worker ran.
+ */
 const BuildResultSchema = z.looseObject({
-  result: LayerBuildSchema, needsRepair: z.object({ error: z.string() }).optional(), cached: z.literal(true).optional(),
+  result: LayerBuildSchema, needsRepair: z.object({ error: z.string() }).optional(), unchecked: z.object({ error: z.string() }).optional(),
+  cached: z.literal(true).optional(),
 });
 const BuiltLayerSchema = z.object({ beatId: z.string(), key: z.string(), build: LayerBuildSchema, cached: z.literal(true).optional() });
 const TreeInputSchema = z.object({
@@ -49,7 +63,7 @@ const TreeInputSchema = z.object({
   body: StageRecordSchema,
   notes: z.array(z.string()),
   built: z.array(BuiltLayerSchema),
-  unbuilt: z.array(z.object({ beatId: z.string(), reason: z.string(), build: LayerBuildSchema.optional() })),
+  unbuilt: z.array(z.object({ beatId: z.string(), reason: z.string(), key: z.string().optional(), build: LayerBuildSchema.optional() })),
 });
 const PacketsInputSchema = z.object({ spec: StageSpecSchema, body: StageRecordSchema });
 // The packet step built this JSON from typed values; the check only refuses a payload that is not a packet at all.
@@ -68,9 +82,10 @@ export async function buildCustomLayers(ctx: WorkflowContext, spec: StageSpec, b
     key: (item) => item.key, concurrency: BUILD_CONCURRENCY, budgetUsd: spec.remainingUsd,
   });
   const outcomes = mapped.results.map(({ item, result }) => ({ item, ...BuildResultSchema.parse(result.data) }));
-  const built = outcomes.filter((o) => !o.needsRepair).map(({ item, result, cached }) => ({ beatId: item.beatId, key: item.key, build: result, ...(cached ? { cached } : {}) }));
+  const built = outcomes.filter((o) => !o.needsRepair && !o.unchecked).map(({ item, result, cached }) => ({ beatId: item.beatId, key: item.key, build: result, ...(cached ? { cached } : {}) }));
   const unbuilt = [
-    ...outcomes.flatMap(({ item, result, needsRepair }) => (needsRepair ? [{ beatId: item.beatId, reason: `needs repair: ${needsRepair.error}`, build: result }] : [])),
+    ...outcomes.flatMap(({ item, result, needsRepair }) => (needsRepair ? [{ beatId: item.beatId, reason: `needs repair: ${needsRepair.error}`, key: item.key, build: result }] : [])),
+    ...outcomes.flatMap(({ item, result, unchecked }) => (unchecked ? [{ beatId: item.beatId, reason: `${CHECK_UNAVAILABLE}: ${unchecked.error}`, key: item.key, build: result }] : [])),
     ...mapped.failed.map(({ item, error }) => ({ beatId: item.beatId, reason: error })),
     ...mapped.skipped.map(({ item }) => ({ beatId: item.beatId, reason: `not launched (${mapped.stoppedBy ?? "stopped"})` })),
   ];
@@ -139,12 +154,18 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     const scratchDir = path.join(runPaths(deps.dataDir, step.runId).runDir, LAYER_REPAIRS_DIR, key);
     const compiled = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
     const exposed = compiled.error === undefined ? await exposingCueTargets(deps, worker, packet, compiled.build) : compiled;
-    const gated = exposed.error === undefined ? await passingTextRules(deps, worker, packet, { beatId, key, build: exposed.build }) : exposed;
+    const gated = exposed.error === undefined ? await passingTextRules(deps, worker, packet, { beatId, key, build: exposed.build }).catch(uncheckedBuild) : exposed;
+    if ("unchecked" in gated) return { result: gated.build, unchecked: { error: gated.unchecked }, usage: stepUsage(gated.build.usage) };
     if (gated.error !== undefined) return { result: gated.build, needsRepair: { error: gated.error }, usage: stepUsage(gated.build.usage) };
     cache.put(key, gated.build, { runId: step.runId, stage: STAGE });
     return { result: gated.build, usage: stepUsage(gated.build.usage) };
   });
 }
+
+const uncheckedBuild = (error: unknown): { build: LayerBuild; unchecked: string } => {
+  if (error instanceof CheckUnavailable) return { build: error.build, unchecked: error.message };
+  throw error;
+};
 
 const workerBuild = async (deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket): Promise<LayerBuild> =>
   LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
@@ -179,7 +200,10 @@ async function exposingCueTargets(deps: LayerRouteDeps, worker: BeatWorker, pack
 async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, layer: BuiltLayer): Promise<{ build: LayerBuild; error?: string }> {
   const { textCheck } = deps;
   if (!textCheck) return { build: layer.build };
-  const check = (build: LayerBuild) => textCheck({ builder: worker.builder, layer: { ...layer, build }, packet: packet.packet });
+  const check = (build: LayerBuild) =>
+    textCheck({ builder: worker.builder, layer: { ...layer, build }, packet: packet.packet }).catch((error: unknown) => {
+      throw new CheckUnavailable(error, build);
+    });
   const rows = await check(layer.build);
   if (rows.length === 0) return { build: layer.build };
   const again = await workerBuild(deps, worker, hintedPacket(packet, layerTextHint(rows)));
@@ -221,6 +245,14 @@ function builtNote(built: readonly (BuiltLayer & { cached?: true })[]): string {
   return `${built.length} custom layers built${cached > 0 ? ` (${cached} from the build cache)` : ""}`;
 }
 
+/** The sources of every layer that was built, stored as a tree; none when nothing was built. */
+function storeSources(deps: LayerRouteDeps, runId: string, builder: BuilderRef, layers: readonly BuiltLayer[]): Record<string, string> {
+  if (layers.length === 0) return {};
+  const dir = path.join(runPaths(deps.dataDir, runId).runDir, UNBUILT_LAYERS);
+  writeLayerTree(dir, layerTreeFiles(builder, layers));
+  return { [UNBUILT_LAYERS]: deps.store.putTree(dir, UNBUILT_LAYERS, { runId, stage: STAGE }) };
+}
+
 /** Stores the `custom-layers` tree; any beat left unbuilt fails the stage, with what every build spent in its record. */
 function treeRoute(deps: LayerRouteDeps): StepRoute {
   return codeRecordRoute(TREE_STEP, async (raw: z.input<typeof TreeInputSchema>, step) => {
@@ -229,7 +261,8 @@ function treeRoute(deps: LayerRouteDeps): StepRoute {
     const record: StageRecord = { ...body, usage: addUsage(body.usage, spent), notes: [...body.notes, ...notes] };
     if (unbuilt.length > 0) {
       const message = `resolve: custom layers not built: ${unbuilt.map(({ beatId, reason }) => `${beatId} (${reason})`).join("; ")}`;
-      writeJson(runPaths(deps.dataDir, step.runId).failed(STAGE), { ...record, notes: [...record.notes, message] });
+      const sources = storeSources(deps, step.runId, spec.config.builder!, [...built, ...unbuilt.flatMap(({ beatId, key, build }) => (build && key ? [{ beatId, key, build }] : []))]);
+      writeJson(runPaths(deps.dataDir, step.runId).failed(STAGE), { ...record, outputs: { ...record.outputs, ...sources }, notes: [...record.notes, message] });
       throw new Error(message);
     }
     const dir = path.join(runPaths(deps.dataDir, step.runId).runDir, CUSTOM_LAYERS);

@@ -1,4 +1,6 @@
-import { rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
+import path from "node:path";
+import { FontLoadError } from "@titan-design/frame-capture";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BuilderRef } from "../build/beat-worker.js";
 import type { LayerTextCheck } from "../build/layer-text.js";
@@ -61,5 +63,30 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const rows = await checkLayer(PAST_THE_BOX);
 
     expect(rows.map((row) => [row.rule, row.text])).toEqual([["under-chrome", "last scan at the desk"]]);
+  });
+
+  // Mutation: the page's CSS names a font by a network or absolute URL.
+  it("names every font face by a file in the built page or inline data, never a network or cwd path", () => {
+    const assets = path.join(pageDir, "assets");
+    const urls = readdirSync(assets).filter((f) => f.endsWith(".css")).flatMap((f) => [...readFileSync(path.join(assets, f), "utf8").matchAll(/@font-face\{[^}]*?url\(([^)]+)\)/g)].map((m) => m[1]!));
+
+    expect(urls.length).toBeGreaterThan(0);
+    const files = urls.filter((url) => !url.startsWith("data:font/"));
+    expect(files.filter((url) => !/^\.\/[\w.-]+\.woff2$/.test(url))).toEqual([]);
+    expect(files.filter((url) => !readdirSync(assets).includes(url.slice(2)))).toEqual([]);
+  });
+
+  // Mutation: the check swallows the font error, or drops the URL from it.
+  it("fails as an infra error naming the face and the URL when a font file is missing from the page", async () => {
+    const broken = await buildPage();
+    const [woff2] = readdirSync(path.join(broken, "assets")).filter((f) => f.endsWith(".woff2"));
+    rmSync(path.join(broken, "assets", woff2!));
+    const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }) });
+
+    const failure = await brokenCheck({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module: SMALL_CAPTION, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET }).then(() => undefined, (e: unknown) => e);
+
+    rmSync(broken, { recursive: true, force: true });
+    expect(failure).toBeInstanceOf(FontLoadError);
+    expect((failure as FontLoadError).urls).toEqual([expect.stringContaining(`/page/assets/${woff2}`)]);
   });
 });
