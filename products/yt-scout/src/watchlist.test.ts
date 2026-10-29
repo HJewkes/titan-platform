@@ -19,7 +19,7 @@ describe("watch list", () => {
 
     expect(w.sources.map((s) => s.key)).toEqual(["confTalks", "vendor", "speaker"]);
     expect(w.sources.filter((s) => isOnTrial(s, "2026-10-28")).map((s) => s.key)).toEqual(["vendor"]);
-    expect(isOnTrial(w.sources[1]!, "2026-11-28")).toBe(false);
+    expect(isOnTrial(w.sources[1], "2026-11-28")).toBe(false);
   });
 
   it("reports the line of a YAML syntax error", () => {
