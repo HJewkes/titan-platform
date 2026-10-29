@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256 } from "../workflow/artifacts.js";
-import { FAKE_HOST, framesOf, pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
+import { FAKE_HOST, fitsStage, framesOf, pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render-manifest.js";
 import { defaultRenderDeps, renderVideo, type RenderDeps, type RenderInput, type RenderWords } from "./render-video.js";
 
@@ -19,7 +19,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const fakeCapture = (pageDurationS?: (frames: number, fps: number) => number) => framesOf(png, pageDurationS);
 
 function deps(overrides: Partial<RenderDeps> = {}): RenderDeps {
-  return { ...defaultRenderDeps, captureFrames: fakeCapture(), host: async () => FAKE_HOST, now: () => 0, ...overrides };
+  return { ...defaultRenderDeps, captureFrames: fakeCapture(), host: async () => FAKE_HOST, now: () => 0, stageFit: fitsStage, ...overrides };
 }
 
 function input(overrides: Partial<RenderInput> = {}): RenderInput {
@@ -47,6 +47,21 @@ describe("renderVideo", { timeout: 60_000 }, () => {
     await expect(render).rejects.toThrow("page lasts 2.5 s but the audio mix 2 s");
     expect(existsSync(outFile("sample.mp4"))).toBe(false);
     expect(existsSync(outFile("render-manifest.json"))).toBe(false);
+  });
+
+  it("refuses once, naming every beat past its stage box, before it captures a frame", async () => {
+    const sides = (right: number) => ({ top: 0, right, bottom: 0, left: 0 });
+    const rows = [
+      { beat: "beat-01", element: "figures-2 beat-stat-label", px: 30, sides: sides(30), hint: 'shorten figures-2 beat-stat-label "synthetic" to <= 6 chars' },
+      { beat: "beat-02", element: "beat-heading", px: 80, sides: sides(80), hint: 'shorten beat-heading "line" to <= 2 chars' },
+    ];
+    let captures = 0;
+    const overflowing = deps({ stageFit: async () => rows, captureFrames: async () => Promise.reject(new Error(`captured ${++captures}`)) });
+
+    const render = renderVideo(input(), overflowing);
+
+    await expect(render).rejects.toThrow(/^render: 2 beats overflow the stage box at the 40 px type floor:\n {2}beat-01 overflows its stage box by 30 px \(right 30\): figures-2 beat-stat-label; shorten .*\n {2}beat-02 overflows .*beat-heading/);
+    expect(captures).toBe(0);
   });
 
   it("removes a manifest left by an earlier render when this one fails", async () => {
