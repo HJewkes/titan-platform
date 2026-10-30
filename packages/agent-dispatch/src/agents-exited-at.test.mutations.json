@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the roster read drops the exit time, so no forced retire can ever check its grace",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "    ...optionalField(value, \"exitedAt\", isStringOrNull),\n",
+      "replace": "",
+      "kills": [
+        "a roster row's exit time passes through an exited agent's ISO time"
+      ]
+    },
+    {
+      "name": "the roster read keeps an exit time of any type",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "optionalField(value, \"exitedAt\", isStringOrNull)",
+      "replace": "optionalField(value, \"exitedAt\", (v): v is string => true)",
+      "kills": [
+        "a roster row's exit time drops an exitedAt of the wrong type and keeps the row"
+      ]
+    }
+  ]
+}

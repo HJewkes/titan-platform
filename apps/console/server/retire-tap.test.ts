@@ -127,7 +127,7 @@ describe("taps.prepare on an agent page", () => {
     const forced = await prepare({ ...TARGET, force: true });
 
     expect(live).toMatchObject({ ok: true, data: { status: "no-action" } });
-    expect(forced.ok).toBe(false);
+    expect(forced).toMatchObject({ ok: true, data: { status: "no-action" } });
     expect(previews).toEqual([]);
   });
 

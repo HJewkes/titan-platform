@@ -2,12 +2,14 @@
  * `taps.prepare` and `taps.act`: the owner's Retire tap on an agent page (TP-3620 R2). A retire is no inbox item, so the pair is
  * keyed by a typed target instead of an item id, over the same kernel (`owner-tap.ts`), actions directory and factory route as
  * the inbox's retire-agent op. `prepare` (read) finds the agent holding the name on the console's roster, offers nothing for a
- * seat, an adopted session or a live one, and reads the rest back from the factory's `owner-op.preview` (`retireReadBackOf`).
+ * seat, an adopted session or a live one, and reads the rest back from the factory's `owner-op.preview` (`retireReadOf`).
  * `act` (owner-write) reads both again, refuses a confirm whose read-back changed, writes the op record once and posts its id.
  * The factory re-checks everything and answers `retired`, `already`, `moved {currentAgentId}`, `gone` or `refused`.
  *
- * Never `--force`: agent-chat's roster carries no exit time, so the grace a forced retire must wait out cannot be checked, and the
- * factory refuses one too. The record and outcome files are the audit; a retire is an operation, so the decision log gets nothing.
+ * A plain prepare also answers `forceStop`, outside the digest since it turns null as the grace runs out: null offers the forced
+ * retire (`force: true`), whose read-back carries the exit time and exists only while the factory's grace check passes, so an
+ * act whose read-back changed refuses CHANGED. The factory re-checks the grace before it sends `--force`. The record and outcome
+ * files are the audit; a retire is an operation, so the decision log gets nothing.
  */
 import { z } from "zod";
 import { ownerOpSchema } from "@titan-design/owner-queue";
@@ -16,7 +18,7 @@ import type { AgentRosterEntry } from "@titan-design/chat-protocol/agents";
 import { failure } from "./active-work.js";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { ACTIONS_OFF, type InboxActionOptions } from "./inbox-actions.js";
-import { movedMessage, opMessageOf, retireReadBackOf, type AgentOpReadBack, type RetireOp } from "./inbox-op.js";
+import { movedMessage, opMessageOf, retireReadOf, type AgentOpReadBack, type RetireOp } from "./inbox-op.js";
 import type { ActionOutcome, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -27,7 +29,7 @@ const STALE = "the confirmation is unknown or over five minutes old; read the ag
 const PROPOSAL = { proposedBy: "you", proposal: "Retire from the agent page" } as const;
 
 /** agent-chat's `PEER_NAME_PATTERN`, so no name read here can be taken for a flag. */
-const target = z.strictObject({ kind: z.literal("retire-agent"), name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/) });
+const target = z.strictObject({ kind: z.literal("retire-agent"), name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/), force: z.boolean().optional() });
 type Target = z.infer<typeof target>;
 
 interface RetireTapSources {
@@ -38,39 +40,40 @@ interface RetireTapSources {
 type Outcome = ActionOutcome | Unreachable;
 
 export type TapPrepareResult =
-  | { status: "ready"; target: Target; readBack: AgentOpReadBack; readAt: string; confirm: string; expiresAt: string }
+  | { status: "ready"; target: Target; readBack: AgentOpReadBack; forceStop: string | null; readAt: string; confirm: string; expiresAt: string }
   | { status: "no-action"; target: Target; reason: string };
 
 type TapActResult = { actionId: string; outcome: Outcome; message: string };
 
-/** The plain retire the console may ask the factory to preview for this roster row, or why it offers no Retire. */
-function retireOpOf(entry: AgentRosterEntry | undefined, name: string): RetireOp | string {
+/** The retire the console may ask the factory to preview for this roster row, or why it offers no Retire. */
+function retireOpOf(entry: AgentRosterEntry | undefined, { name, force }: Target): RetireOp | string {
   if (entry === undefined) return `no unretired agent holds the name ${name}, so there is nothing to retire`;
   if (entry.seat !== null && entry.seat === entry.name) return "a seat is retired by its owner session";
   if (entry.origin !== "spawned" || entry.agentId === null) return `${name} was not spawned by agent-chat, so the console does not retire it`;
   if (entry.state !== "exited") return `${name} is ${entry.state}; retire a working agent at the terminal`;
-  return { kind: "retire-agent", name, agentId: entry.agentId, force: false };
+  return { kind: "retire-agent", name, agentId: entry.agentId, force: force === true };
 }
 
 interface Read {
   readAt: string;
   readBack: AgentOpReadBack | string;
+  forceStop: string | null;
   op?: RetireOp;
 }
 
-async function readTarget({ agents, shepherd }: RetireTapSources, { name }: Target, now: () => number): Promise<Read> {
+async function readTarget({ agents, shepherd }: RetireTapSources, tapTarget: Target, now: () => number): Promise<Read> {
   const readAt = new Date(now()).toISOString();
-  if (agents === undefined) return { readAt, readBack: "the console reads no agent-chat roster" };
-  const entry = (await readRoster(agents)).agents.find((agent) => agent.name === name && agent.state !== "retired");
-  const op = retireOpOf(entry, name);
-  if (typeof op === "string") return { readAt, readBack: op };
-  return { readAt, op, readBack: await retireReadBackOf(shepherd, op, PROPOSAL) };
+  if (agents === undefined) return { readAt, readBack: "the console reads no agent-chat roster", forceStop: "the console reads no agent-chat roster" };
+  const entry = (await readRoster(agents)).agents.find((agent) => agent.name === tapTarget.name && agent.state !== "retired");
+  const op = retireOpOf(entry, tapTarget);
+  if (typeof op === "string") return { readAt, readBack: op, forceStop: op };
+  return { readAt, op, ...(await retireReadOf(shepherd, op, PROPOSAL)) };
 }
 
 /** The read-back holds the agent id and state, so a name taken by a new agent between the two taps refuses the confirm. */
 const tapDigest = (key: string, readBack: AgentOpReadBack, readAt: string): string => digestOf([key, readBack, readAt]);
 
-const keyOf = ({ kind, name }: Target): string => `${kind}:${name}`;
+const keyOf = ({ kind, name, force }: Target): string => `${kind}:${name}${force === true ? ":force" : ""}`;
 
 interface TapContext {
   sources: RetireTapSources;
@@ -79,12 +82,12 @@ interface TapContext {
 }
 
 async function prepare(ctx: TapContext, store: PreparedStore, tapTarget: Target): Promise<TapPrepareResult> {
-  const { readAt, readBack } = await readTarget(ctx.sources, tapTarget, ctx.now);
+  const { readAt, readBack, forceStop } = await readTarget(ctx.sources, tapTarget, ctx.now);
   if (typeof readBack === "string") return { status: "no-action", target: tapTarget, reason: readBack };
   const confirm = tapDigest(keyOf(tapTarget), readBack, readAt);
   const expiresAt = ctx.now() + CONFIRM_TTL_MS;
   store.remember(confirm, { key: keyOf(tapTarget), readAt, expiresAt });
-  return { status: "ready", target: tapTarget, readBack, readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
+  return { status: "ready", target: tapTarget, readBack, forceStop, readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
 }
 
 /** A fresh tap reads the agent again at the prepare's `readAt`; only the read-back the owner was shown is written. */

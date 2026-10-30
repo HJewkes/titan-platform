@@ -50,6 +50,8 @@ export interface AgentOpReadBack extends Proposed {
   profile: string;
   cwd: string;
   spawnedBy: string | null;
+  /** When its session exited, as agent-chat's roster reads it; null when the roster carries no exit time. */
+  exitedAt: string | null;
 }
 
 /** The failure pause the factory reads now, which matches the deposit's, and the manual hold the clear leaves standing. */
@@ -71,6 +73,13 @@ const EFFECT: Partial<Record<OwnerOpKind, (at: string) => string>> = {
   "close-pr": (at) => `Close ${at} on GitHub; the branch is kept and reopen is one click`,
   "deploy-pause-clear": (at) => `Clear the deploy pause from ${at}; the deploy pacer resumes and may deploy within about a minute`,
 };
+
+const forceEffect = (at: string, cwd: string): string =>
+  `Retire ${at} with --force: discard what its worktree holds, remove the worktree at ${cwd}, and delete its branch locally. Pushed commits on origin are kept. This cannot be undone from the console`;
+
+const FORCE_AT_TERMINAL = "a forced retire discards work, so it stays at the terminal";
+/** What an older factory, whose preview reports no grace, means for a forced retire. */
+const NO_FORCE_STOP = "the factory does not report agent-chat's grace, so a forced retire stays at the terminal";
 
 const short = (sha: string): string => sha.slice(0, 7);
 
@@ -99,7 +108,7 @@ export async function opReadBackOf(shepherd: ShepherdSource, item: OwnerItem, { 
   const effect = EFFECT[op.kind];
   if (effect === undefined) return `a ${op.kind} op has no console tap yet`;
   if (waitFor !== undefined && op.kind !== "merge-at-head") return `only a merge-at-head waits for the adversary loop, not a ${op.kind} op`;
-  if (op.kind === "retire-agent") return retireReadBackOf(shepherd, op, proposalOf(item));
+  if (op.kind === "retire-agent") return op.force ? FORCE_AT_TERMINAL : (await retireReadOf(shepherd, op, proposalOf(item))).readBack;
   const preview = await shepherd.previewOp(op);
   const denied = deniedBy(op, preview);
   if (denied !== undefined) return denied;
@@ -127,14 +136,22 @@ function deniedBy(op: OwnerOp, { authority: { verdict, ruleId, reason } }: OpPre
 
 const authorityOf = ({ authority: { verdict, ruleId } }: OpPreview): string => `${ruleId ?? "no rule"}: ${verdict}`;
 
+/** A retire's read-back, and why a forced retire is refused now: null only once the agent's exit is past agent-chat's grace. */
+export interface RetireRead {
+  readBack: AgentOpReadBack | string;
+  forceStop: string | null;
+}
+
 /**
- * A retire's read-back from the factory's preview, for a deposit's op or the agent page's own (`retire-tap.ts`). A forced
- * retire never reaches the factory: agent-chat's roster carries no exit time to check the grace against.
+ * A retire's read-back from the factory's preview, for a deposit's op or the agent page's own (`retire-tap.ts`). Only the page
+ * forces: a forced op reads back only while the factory's `forceStop` is null, so its read-back changes once that no longer holds.
  */
-export async function retireReadBackOf(shepherd: ShepherdSource, op: RetireOp, proposed: Pick<Proposed, "proposedBy" | "proposal">): Promise<AgentOpReadBack | string> {
-  if (op.force) return "a forced retire discards work, so it stays at the terminal";
+export async function retireReadOf(shepherd: ShepherdSource, op: RetireOp, proposed: Pick<Proposed, "proposedBy" | "proposal">): Promise<RetireRead> {
   const preview = await shepherd.previewOp(op);
-  return deniedBy(op, preview) ?? agentReadBackOf(op, preview.agent, { authority: authorityOf(preview), ...proposed });
+  const reported = preview.agent?.forceStop;
+  const forceStop = reported === undefined ? NO_FORCE_STOP : reported;
+  const readBack = deniedBy(op, preview) ?? agentReadBackOf(op, preview.agent, { authority: authorityOf(preview), ...proposed });
+  return { readBack: op.force && typeof readBack !== "string" && forceStop !== null ? forceStop : readBack, forceStop };
 }
 
 /** Offered only for the very agent the op names, once its session has exited and no live Shepherd run needs it. */
@@ -145,7 +162,9 @@ function agentReadBackOf(op: RetireOp, agent: AgentFacts | undefined, proposed: 
   if (!agent.exited) return `${op.name} is ${holder.state} (${holder.status}); retire a working agent at the terminal`;
   if (agent.liveRun !== null) return `${op.name} works on Shepherd run ${agent.liveRun}, which is still live`;
   const { agentId, state, profile, cwd, spawnedBy } = holder;
-  return { agent: op.name, agentId, state, profile, cwd, spawnedBy, ...proposed, effect: EFFECT["retire-agent"]!(`${op.name} (${short(agentId)})`) };
+  const at = `${op.name} (${short(agentId)})`;
+  const effect = op.force ? forceEffect(at, cwd) : EFFECT["retire-agent"]!(at);
+  return { agent: op.name, agentId, state, profile, cwd, spawnedBy, exitedAt: holder.exitedAt ?? null, ...proposed, effect };
 }
 
 /** A tap is offered only for the very pause the deposit names, with no deployer running, as the factory's clear requires. */

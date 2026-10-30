@@ -32,7 +32,7 @@
     {
       "name": "the page's op asks for --force",
       "file": "apps/console/server/retire-tap.ts",
-      "find": "agentId: entry.agentId, force: false }",
+      "find": "agentId: entry.agentId, force: force === true }",
       "replace": "agentId: entry.agentId, force: true }",
       "kills": [
         "taps.prepare on an agent page reads an exited agent back from the factory's preview with a confirm, previewing a plain retire"

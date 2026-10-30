@@ -14,7 +14,7 @@ import type { ShepherdServices } from "../shepherd/services.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";
 import { manualHoldReason, type PauseClearPorts } from "./pause-clear.js";
-import { hasExited, liveRunOf, nameHolder } from "./retire-agent.js";
+import { forceStop, hasExited, liveRunOf, nameHolder } from "./retire-agent.js";
 
 interface PrPreview {
   repo: string;
@@ -40,9 +40,11 @@ interface GatePreview {
 interface AgentPreview {
   name: string;
   /** The agent that holds the name now, as agent-chat's roster reads; absent when no unretired agent does. */
-  holder?: { agentId: string; state: string; presence: string; status: string; profile: string; cwd: string; spawnedBy: string | null };
+  holder?: { agentId: string; state: string; presence: string; status: string; profile: string; cwd: string; spawnedBy: string | null; exitedAt: string | null };
   /** True only for an agent whose session has exited; anything else the console leaves to the terminal. */
   exited: boolean;
+  /** Why a forced retire is refused now (`forceStop`), or null once the holder's exit is past agent-chat's grace. */
+  forceStop: string | null;
   /** The live Shepherd run the agent works on, which stops a console retire. */
   liveRun: string | null;
 }
@@ -81,10 +83,10 @@ const unavailable = (message: string): Error => Object.assign(new Error(message)
 async function agentPreview({ roster, store }: ShepherdServices, host: FactoryHost, name: string): Promise<AgentPreview> {
   if (roster === undefined) throw unavailable("previewing a retire-agent op needs agent-chat's roster");
   const row = nameHolder(await roster.rows(), name);
-  if (row === undefined) return { name, exited: false, liveRun: null };
+  if (row === undefined) return { name, exited: false, forceStop: `no unretired agent holds the name ${name}`, liveRun: null };
   const { agentId, state, presence, status, profile, cwd, spawnedBy } = row;
-  const holder = { agentId, state, presence, status, profile, cwd, spawnedBy: spawnedBy ?? null };
-  return { name, holder, exited: hasExited(row), liveRun: liveRunOf(name, store.get(), host) ?? null };
+  const holder = { agentId, state, presence, status, profile, cwd, spawnedBy: spawnedBy ?? null, exitedAt: row.exitedAt ?? null };
+  return { name, holder, exited: hasExited(row), forceStop: forceStop(row, Date.now()) ?? null, liveRun: liveRunOf(name, store.get(), host) ?? null };
 }
 
 async function prPreview(port: GitHubPort, store: ShepherdStore, { repo, pr }: PrOp): Promise<PrPreview> {
