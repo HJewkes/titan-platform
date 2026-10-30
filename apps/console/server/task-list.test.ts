@@ -30,16 +30,36 @@ describe("a task list page", () => {
     expect(listPage(ROWS, { stage: "blocked" }).counts).toEqual({ blocked: 2, ready: 0, "in-progress": 0, review: 0, done: 0 });
   });
 
-  it("caps each stage at perStage rows in the given order, and still counts every match", () => {
-    const page = listPage(ROWS, { perStage: 1 });
-    expect(page.tasks.map((entry) => entry.id)).toEqual(["OR-1", "OR-2", "OR-3"]);
+  it("sends limit rows in the given order with a cursor to the rest, and still counts every match", () => {
+    const page = listPage(ROWS, { limit: 2 });
+    expect(page.tasks.map((entry) => entry.id)).toEqual(["OR-1", "OR-2"]);
+    expect(page.nextCursor).not.toBeNull();
     expect(page.counts).toEqual({ blocked: 2, ready: 3, "in-progress": 0, review: 1, done: 0 });
   });
 
-  it("caps at 200 rows a stage by default", () => {
+  it("walks every matching row once by following the cursor, ending on a null cursor", () => {
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let pages = 0; pages < ROWS.length; pages++) {
+      const page = listPage(ROWS, { limit: 4, ...(cursor ? { cursor } : {}) });
+      seen.push(...page.tasks.map((entry) => entry.id));
+      cursor = page.nextCursor ?? undefined;
+      if (!cursor) break;
+    }
+    expect(seen).toEqual(ROWS.map((entry) => entry.id));
+  });
+
+  it("pages the filtered rows, not every row", () => {
+    const first = listPage(ROWS, { stage: "ready", limit: 2 });
+    const second = listPage(ROWS, { stage: "ready", limit: 2, cursor: first.nextCursor! });
+    expect([...first.tasks, ...second.tasks].map((entry) => entry.id)).toEqual(["OR-3", "OR-4", "GP-1"]);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it("sends 50 rows by default", () => {
     const many = Array.from({ length: 250 }, (_, n) => row("orbit-relay", `OR-${n + 10}`, "ready"));
     const page = listPage(many, {});
-    expect(page.tasks).toHaveLength(200);
+    expect(page.tasks).toHaveLength(50);
     expect(page.counts.ready).toBe(250);
   });
 

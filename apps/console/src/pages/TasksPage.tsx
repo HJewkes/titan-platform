@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   Button,
@@ -11,7 +11,7 @@ import {
   SectionContent,
   SectionHeader,
   Select,
-  Spinner,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -63,7 +63,7 @@ function argsOf({ stage, initiative, severity, q }: Filters): TasksArgs {
   return { ...(isStage(stage) ? { stage } : {}), ...(initiative ? { initiative } : {}), ...(severity ? { severity } : {}), ...(q ? { q } : {}) };
 }
 
-/** Open tasks across initiatives, grouped by derived stage; the filters live in the query string so a view is a link. */
+/** Open tasks of the selected initiative, or every one, grouped by derived stage a page at a time; the filters live in the query string so a view is a link. */
 export function TasksPage({ query }: { query?: string }): ReactNode {
   const filters = filtersOf(query);
   const tasks = useQuery("work.tasks", argsOf(filters));
@@ -75,15 +75,59 @@ export function TasksPage({ query }: { query?: string }): ReactNode {
     <VStack gap={4}>
       {tasks.data && tasks.data.evidence.degraded.length > 0 ? <Alert status="warning" message={`Some stages lack evidence: ${tasks.data.evidence.degraded.join("; ")}`} /> : null}
       <FilterBar filters={filters} initiatives={initiatives.current} />
-      <TasksBody tasks={tasks} />
+      <TasksBody key={queryOf(filters)} args={argsOf(filters)} tasks={tasks} />
     </VStack>
   );
 }
 
-function TasksBody({ tasks }: { tasks: QueryResult<TasksResult> }): ReactNode {
-  if (tasks.status === "loading") return <Spinner size="sm" label="Loading tasks" />;
+function TasksBody({ args, tasks }: { args: TasksArgs; tasks: QueryResult<TasksResult> }): ReactNode {
+  if (tasks.status === "loading") return <TasksSkeleton />;
   if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
-  return tasks.data.tasks.length === 0 ? <NoMatches /> : <StageGroups rows={tasks.data.tasks} counts={tasks.data.counts} />;
+  return tasks.data.tasks.length === 0 ? <NoMatches /> : <TaskPages args={args} shown={[]} page={tasks.data} />;
+}
+
+/** Rows stand in for the board while the first page loads, so a slow phone shows the page's shape at once. */
+function TasksSkeleton(): ReactNode {
+  return (
+    <VStack gap={2}>
+      <Skeleton variant="text" width="40%" height={24} accessibilityLabel="Loading tasks" />
+      {Array.from({ length: 8 }, (_, index) => (
+        <Skeleton key={index} variant="rounded" width="100%" height={44} />
+      ))}
+    </VStack>
+  );
+}
+
+/** The rows shown so far plus one more page; "Load more" hands them all to the reader of the page after it. */
+function TaskPages({ args, shown, page }: { args: TasksArgs; shown: readonly Row[]; page: TasksResult }): ReactNode {
+  const [more, setMore] = useState(false);
+  const rows = [...shown, ...page.tasks];
+  const next = page.nextCursor;
+  if (more && next !== null) return <NextPage args={args} cursor={next} shown={rows} counts={page.counts} />;
+  const total = Object.values(page.counts).reduce((sum, count) => sum + count, 0);
+  return (
+    <VStack gap={4}>
+      <StageGroups rows={rows} counts={page.counts} />
+      {next === null ? null : (
+        <HStack>
+          <Button variant="outline" size="sm" onPress={() => setMore(true)}>
+            <ButtonText>{`Load more (${rows.length} of ${total} shown)`}</ButtonText>
+          </Button>
+        </HStack>
+      )}
+    </VStack>
+  );
+}
+
+function NextPage({ args, cursor, shown, counts }: { args: TasksArgs; cursor: string; shown: readonly Row[]; counts: TasksResult["counts"] }): ReactNode {
+  const page = useQuery("work.tasks", { ...args, cursor });
+  if (page.data !== undefined) return <TaskPages args={args} shown={shown} page={page.data} />;
+  return (
+    <VStack gap={4}>
+      <StageGroups rows={shown} counts={counts} />
+      {page.status === "loading" ? <Skeleton variant="rounded" width="100%" height={44} accessibilityLabel="Loading more tasks" /> : <Alert status="error" message={`Could not load more tasks: ${page.error?.message ?? "no answer"}`} />}
+    </VStack>
+  );
 }
 
 function NoMatches(): ReactNode {
@@ -124,7 +168,7 @@ function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResu
           <SectionHeader title={`${stageLabel(group.stage)} (${counts[group.stage]})`} />
           <SectionContent>
             {group.rows.length < counts[group.stage] ? (
-              <Typography variant="caption" color="secondary">{`Showing the first ${group.rows.length} by priority; filter to see the rest.`}</Typography>
+              <Typography variant="caption" color="secondary">{`Showing ${group.rows.length} of ${counts[group.stage]} by priority; load more or filter to see the rest.`}</Typography>
             ) : null}
             <StageTable rows={group.rows} />
           </SectionContent>
