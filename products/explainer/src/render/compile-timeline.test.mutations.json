@@ -41,18 +41,11 @@
     {
       "name": "page extras keep only the reveals",
       "file": "products/explainer/src/render/compile-timeline.ts",
-      "find": "return { reveals, ...(emphases.length > 0 ? { emphases } : {}), chips, hints, headline, chapter };",
-      "replace": "return { reveals };",
+      "find": "  const { chips, hints, headline, chapter } = extras;",
+      "replace": "  const { chips, hints, headline, chapter } = {} as PageExtras;",
       "kills": [
         "compileTimeline page extras lands each reveal on its cue word's spoken start and carries the chrome inputs"
       ]
-    },
-    {
-      "name": "emphases land at zero instead of their cue word",
-      "file": "products/explainer/src/render/compile-timeline.ts",
-      "find": "({ target, atS: resolve(beatId, atCue) })",
-      "replace": "({ target, atS: 0 })",
-      "kills": ["compileTimeline page extras lands each emphasis on its cue word's spoken start, and a beat with none carries no emphases"]
     }
   ]
 }
