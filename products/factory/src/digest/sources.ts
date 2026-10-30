@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import type { FactoryConfig } from "../config.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import type { DigestSources } from "./collect.js";
-import { AgentChatDigestSchema, type AgentChatDigest } from "./model.js";
 import { readQueueAsks } from "./queues.js";
 
 export const AGENT_CHAT_TIMEOUT_MS = 20_000;
@@ -24,15 +23,6 @@ export const execProcess: Exec = (file, args, timeoutMs) =>
       resolve({ code, stdout, stderr: stderr || error?.message || "" });
     });
   });
-
-/** An agent-chat with no `--json` exits non-zero, which the collector turns into a gap line. */
-export async function readAgentChat(exec: Exec, bin: string, windowMinutes: number): Promise<AgentChatDigest> {
-  const result = await exec(bin, ["digest", "--json", "--prs", "--since", `${windowMinutes}m`], AGENT_CHAT_TIMEOUT_MS);
-  if (result.code !== 0) throw new Error(`exit ${result.code}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
-  const parsed = AgentChatDigestSchema.safeParse(JSON.parse(result.stdout));
-  if (!parsed.success) throw new Error(`unexpected JSON: ${parsed.error.issues[0]?.message ?? "invalid"}`);
-  return parsed.data;
-}
 
 export interface Directories {
   outDir: string;

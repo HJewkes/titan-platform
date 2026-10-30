@@ -18,6 +18,24 @@
       "kills": [
         "runDigestVerb lists coordinators from the broker roster and pools from pace.json (TP-4626)"
       ]
+    },
+    {
+      "name": "Seats reads only live roster rows",
+      "file": "products/factory/src/digest/flow-sources.ts",
+      "find": "[\"agent\", \"ls\", \"--json\", \"--include-retired\"]",
+      "replace": "[\"agent\", \"ls\", \"--json\"]",
+      "kills": [
+        "runDigestVerb counts spawns by a retired generation of a coordinator in Seats (TP-4628)"
+      ]
+    },
+    {
+      "name": "Merged drops Shepherd's runs",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": "merged: shepherdMerged(rows, since),",
+      "replace": "merged: [],",
+      "kills": [
+        "runDigestVerb prints Shepherd's merges and the named agent-chat follow-ups, never running agent-chat digest (TP-4628)"
+      ]
     }
   ]
 }

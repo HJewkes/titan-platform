@@ -28,9 +28,6 @@ export function fakeSources(overrides: Partial<DigestSources> = {}): DigestSourc
   return {
     rows: async () => [],
     gates: async () => [],
-    agentChat: async () => {
-      throw new Error("not stubbed");
-    },
     queueAsks: () => [],
     spend: () => [],
     ...overrides,

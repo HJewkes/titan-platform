@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 
@@ -132,36 +131,28 @@ export interface DigestModel {
   gaps: string[];
 }
 
-const NamedItem = z.object({ label: z.string(), detail: z.string().default("") });
-/** `reversible`, `confidence` and `principleIds` come from a newer agent-chat (TP-695 c) and are read when present. */
-const DecidedEntry = z.object({
-  questionId: z.string(),
-  question: z.string(),
-  answer: z.string(),
-  class: z.string(),
-  state: z.string(),
-  reversible: z.string().optional(),
-  confidence: z.number().optional(),
-  principleIds: z.array(z.string()).optional(),
-});
-const Reversal = z.object({ class: z.string(), decided: z.number(), overruled: z.number() });
+/** One stalled burndown claim, as agent-chat's own digest lists it. */
+export interface StalledClaim {
+  taskId: string;
+  agentId: string;
+  phase: string;
+  phaseAt: string;
+}
 
-/** The subset of agent-chat's `digest --json` model the owner digest reads; unknown fields are ignored. */
-export const AgentChatDigestSchema = z.object({
-  ledger: z
-    .object({
-      available: z.boolean().default(false),
-      escalations: z.array(z.object({ from: z.string(), text: z.string(), at: z.number() })).default([]),
-      reports: z.array(z.object({ from: z.string(), at: z.number(), status: z.string(), line: z.string() })).default([]),
-      decided: z.array(DecidedEntry).default([]),
-      reversals: z.array(Reversal).default([]),
-    })
-    .default({ available: false, escalations: [], reports: [], decided: [], reversals: [] }),
-  readyToMerge: z.array(NamedItem).default([]),
-  needsGrant: z.array(NamedItem).default([]),
-  mergedPrs: z.array(NamedItem).default([]),
-  stalled: z.array(z.object({ taskId: z.string(), agentId: z.string(), phase: z.string(), phaseAt: z.string() })).default([]),
-  gaps: z.array(z.string()).default([]),
-});
+/** A BLOCKED or NEEDS_CONTEXT report an agent sent; `at` is epoch ms. */
+export interface StatusReport {
+  from: string;
+  at: number;
+  line: string;
+}
 
-export type AgentChatDigest = z.infer<typeof AgentChatDigestSchema>;
+/**
+ * What the digest needs from agent-chat's ledger. The installed agent-chat prints no JSON digest and no other JSON read
+ * carries these, so the CLI wires no source until agent-chat ships one (TP-4628).
+ */
+export interface AgentChatLedger {
+  decided: Omit<DecidedLine, "overrule">[];
+  reversals: ReversalLine[];
+  stalled: StalledClaim[];
+  reports: StatusReport[];
+}

@@ -16,9 +16,3 @@ export function keysIn(text: string): string[] {
   for (const pattern of [PR_URL, PR_HASH, PR_ARGS]) keys.push(...[...text.matchAll(pattern)].map((m) => prKey(m[1]!, m[2]!)));
   return [...new Set(keys)];
 }
-
-/** `owner/name#N` for a pull URL, else the text unchanged. */
-export function refOfUrl(url: string): string {
-  const match = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/i.exec(url);
-  return match ? `${match[1]}#${match[2]}` : url;
-}
