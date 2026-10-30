@@ -18,7 +18,7 @@ export interface DigestRun {
   consoleOrigin?: string;
 }
 
-export interface BuiltDigest {
+interface BuiltDigest {
   markdown: string;
   /** The planner's copy of the gate alarm; absent when the alarm does not fire. */
   alarmNote?: string;
