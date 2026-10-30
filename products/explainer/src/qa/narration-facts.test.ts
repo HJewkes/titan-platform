@@ -166,7 +166,7 @@ describe("scaffolding and citations", () => {
 describe("narration facts report", () => {
   it("a counting figure is judged by the value it settles on", () => {
     // Arrange
-    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile" });
+    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile", lines: [{ x: 40, y: 300, width: 80, height: 40 }] });
     const moments = ["5", "19", "23", "32"].map((value) => ({ beat: "b1", texts: [tile(value)] }));
 
     // Act
@@ -174,6 +174,18 @@ describe("narration facts report", () => {
 
     // Assert
     expect(report.findings).toEqual([]);
+  });
+
+  it("a number changing in an element with no probed position is plain text, not a count", () => {
+    // Arrange
+    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile" });
+    const moments = ["5", "19", "33"].map((value) => ({ beat: "b1", texts: [tile(value)] }));
+
+    // Act
+    const report = narrationFactsReport(moments, () => "thirty-two lanes");
+
+    // Assert
+    expect(report.findings.map((finding) => finding.fact)).toEqual(["5", "19", "33"]);
   });
 
   it("sibling figures sharing an element description are each judged", () => {
@@ -216,7 +228,7 @@ describe("narration facts report", () => {
   });
 
   it("a counting figure that settles on an unspoken value is flagged once", () => {
-    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile" });
+    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile", lines: [{ x: 40, y: 300, width: 80, height: 40 }] });
     const moments = ["5", "19", "33"].map((value) => ({ beat: "b1", texts: [tile(value)] }));
 
     const report = narrationFactsReport(moments, () => "thirty-two lanes");

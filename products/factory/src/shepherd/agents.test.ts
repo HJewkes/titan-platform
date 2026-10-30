@@ -43,4 +43,10 @@ describe("the launcher Shepherd's agents are recorded under", () => {
 
     expect(recordedArgv()).toEqual(["agent", "resume", "agent-x", "--message", "wake", "--launched-by", "shepherd"]);
   });
+
+  it("labels a message to a fixer as a shepherd wake", async () => {
+    await agentChatAgents(fakeAgentChat(), { timeoutMs: 10_000, roster }).message("agent-x", "fix the review");
+
+    expect(recordedArgv()).toEqual(["debug", "send", "--source", "shepherd", "--", "agent-x", "fix the review"]);
+  });
 });
