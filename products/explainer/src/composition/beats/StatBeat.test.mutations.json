@@ -9,6 +9,24 @@
       "kills": [
         "a stat card counting up to its figure the count never shows a value past its figure"
       ]
+    },
+    {
+      "name": "a version tag counts up like a quantity",
+      "file": "products/explainer/src/composition/beats/StatBeat.tsx",
+      "find": "if (!counts(prefix)) return value.toFixed(places(value));",
+      "replace": "",
+      "kills": [
+        "a stat card whose figure is not a plain count draws a version whole from its first frame while the currency beside it counts up"
+      ]
+    },
+    {
+      "name": "the figure is rounded to one decimal",
+      "file": "products/explainer/src/composition/beats/StatBeat.tsx",
+      "find": "const places = (value: number) => (String(value).split(\".\")[1] ?? \"\").length;",
+      "replace": "const places = (value: number) => (Number.isInteger(value) ? 0 : 1);",
+      "kills": [
+        "a stat card whose figure is not a plain count settles on every decimal the figure has, so 13.41 is not rounded to 13.4"
+      ]
     }
   ]
 }

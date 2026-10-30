@@ -28,8 +28,12 @@ function chartTexts(s: Slots): DrawnText[] {
   return [...drawnAs("h2", "beat-heading")(title), ...drawnAs("span", "beat-graph-value")(values), ...drawnAs("span", "beat-graph-labels")(each(s, "series", "label")), ...legend];
 }
 
-const figureTexts = (figure: Slots): DrawnText[] =>
-  [...drawnAs("span", "beat-stat-label")(text(figure["label"])), ...drawnAs("span", "beat-stat-figure")([String(figure["value"])]), ...drawnAs("span", "beat-stat-unit")(text(figure["unit"]))];
+const figureTexts = (figure: Slots): DrawnText[] => [
+  ...drawnAs("span", "beat-stat-label")(text(figure["label"])),
+  ...drawnAs("span", "beat-stat-prefix")(text(figure["prefix"])),
+  ...drawnAs("span", "beat-stat-figure")([String(figure["value"])]),
+  ...drawnAs("span", "beat-stat-unit")(text(figure["unit"])),
+];
 
 /** ClaimCardBeat (TitleBeat.tsx): the claim a word to a span, its quote a quoted subtitle. */
 function claimTexts(s: Slots): DrawnText[] {
