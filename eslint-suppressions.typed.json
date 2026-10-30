@@ -1255,51 +1255,6 @@
       "count": 3
     }
   },
-  "packages/messaging/src/bluebubbles.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/messaging/src/interaction.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/messaging/src/liveness.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/messaging/src/telegram-api.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/messaging/src/telegram-buttons.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/messaging/src/telegram-liveness.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/messaging/src/telegram-updates.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/messaging/src/telegram-updates.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/messaging/src/telegram.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/owner-queue/src/merge.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
