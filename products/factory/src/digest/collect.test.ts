@@ -59,11 +59,10 @@ describe("collectDigest", () => {
     expect(model.stuck).toEqual([{ ref: "acme/widgets#6", reason: "stopped: closed", since: "2026-03-10T19:00:00Z" }]);
   });
 
-  it("reads asks, merged PRs and spend from agent-chat JSON", async () => {
+  it("reads asks and merged PRs from agent-chat JSON", async () => {
     const json = {
       ledger: { available: true, escalations: [{ from: "seat-a", text: "approve acme/widgets#9?", at: 0 }], reports: [] },
       mergedPrs: [{ label: "https://github.com/acme/widgets/pull/12", detail: "Add a knob" }],
-      spend: [{ account: "pool-a", now: { sevenDay: 41, fiveHour: 9, writtenAt: 0 }, stale: false }],
     };
     const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify(json), stderr: "" });
 
@@ -71,7 +70,6 @@ describe("collectDigest", () => {
 
     expect(model.needsYou).toEqual([{ text: "seat-a: approve acme/widgets#9?", source: "agent-chat", keys: ["pr:widgets#9"] }]);
     expect(model.merged).toEqual([{ ref: "acme/widgets#12", title: "Add a knob" }]);
-    expect(model.spend).toEqual([{ pool: "pool-a", sevenDay: 41, fiveHour: 9, stale: false }]);
     expect(model.gaps).toEqual([]);
   });
 

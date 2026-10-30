@@ -10,6 +10,7 @@ import { brokerAnswerer } from "./broker-answer.js";
 import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
+import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import type { UpstreamObserver } from "./perf/timed-fetch.js";
@@ -169,6 +170,10 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
+function coordinatorOf(config: ConsoleConfig, shepherd: ShepherdSource, activeWork: ActiveWork): ConsoleSources["coordinator"] {
+  return { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart), cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath } };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
   const invalidation = createInvalidation();
   const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
@@ -183,6 +188,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
+    coordinator: coordinatorOf(config, shepherd, activeWork),
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
@@ -191,7 +197,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
-    shipped: { dir: path.join(config.stateDir, "shipped") },
+    shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
   };
 }

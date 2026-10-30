@@ -31,7 +31,10 @@ const FACTORIES: [keyof KitSelection, Factory][] = [
 /** The DDL for a selection of kit tables, in dependency-safe order. Every statement is `IF NOT EXISTS`. */
 export function kitDdl(selection: KitSelection): string {
   return FACTORIES.filter(([key]) => selection[key] !== undefined)
-    .map(([key, factory]) => factory(selection[key] === true ? {} : { name: selection[key] as string }))
+    .map(([key, factory]) => {
+      const choice = selection[key];
+      return factory(typeof choice === "string" ? { name: choice } : {});
+    })
     .join("\n");
 }
 

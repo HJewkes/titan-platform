@@ -110,7 +110,7 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...decidedLines(d, decidedShown),
     ...section(`Merged (${d.totals.merged})`, d.merged.map((m) => `- ${m.ref}: ${clip(m.title, REASON_WORDS)}`), "Nothing merged."),
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
-    ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
+    ...section("Seats (merged, spawned)", d.seats.map((s) => `- ${s.seat}: ${s.merges}, ${s.spawns}`), "No coordinator merged or spawned."),
     ...section("Spend", spend, "No pool readings."),
     ...autoPassLines(d.autoPassed),
     ...proofFixtureLines(d.proofFixtures, d.generatedAt),

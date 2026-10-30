@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, it, expect, beforeAll } from "vitest"
+import { z } from "zod"
 import {
   parseFile,
   NamingExtractor,
@@ -66,6 +67,11 @@ function extractAll(
   }
   return observations
 }
+
+const ExpectedFeatureSchema = z.object({
+  convention: z.unknown(),
+  confidence: z.number(),
+})
 
 describe("Full pipeline integration", () => {
   let corpusFiles: { content: string; path: string }[]
@@ -156,7 +162,10 @@ describe("Full pipeline integration", () => {
       return
     }
 
-    const actual: Record<string, unknown> = {}
+    const actual: Record<
+      string,
+      { convention: unknown; confidence: number; severity: string }
+    > = {}
     for (const [key, feature] of result.features) {
       actual[key] = {
         convention: feature.convention,
@@ -166,14 +175,9 @@ describe("Full pipeline integration", () => {
     }
 
     for (const [key, expectedFeature] of Object.entries(expected)) {
-      const actualFeature = actual[key] as
-        | { convention: unknown; confidence: number; severity: string }
-        | undefined
+      const actualFeature = actual[key]
       if (!actualFeature) continue
-      const exp = expectedFeature as {
-        convention: unknown
-        confidence: number
-      }
+      const exp = ExpectedFeatureSchema.parse(expectedFeature)
       expect(actualFeature.convention).toBe(exp.convention)
       expect(actualFeature.confidence).toBeCloseTo(exp.confidence, 1)
     }

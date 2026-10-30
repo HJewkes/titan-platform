@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { dateArg, DEFAULT_DAY_START, dayWindow, type DayWindow } from "./coord-day.js";
 import { readCommand } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -30,41 +31,20 @@ const shippedResult = z.object({
   merged: z.array(prRef),
 });
 
-type PrRef = z.infer<typeof prRef>;
+export type PrRef = z.infer<typeof prRef>;
 export type ShippedDigest = z.infer<typeof digestSchema>;
 type ShippedResult = z.infer<typeof shippedResult>;
-interface DayWindow {
-  date: string;
-  from: number;
-  to: number;
-}
-
 /** What `coord.shipped` reads: the digest directory, and the local time a day starts at. */
 export interface ShippedOptions {
   dir: string;
   dayStart?: string;
 }
 
-type FinishedRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
+export type FinishedRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
-const DEFAULT_DAY_START = "07:00";
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DIGEST_MODE = 0o600;
 
 const outcomeOf = z.object({ outcome: z.object({ kind: z.string() }).passthrough() }).passthrough();
-
-function isoDate(day: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-}
-
-/** The local-time window of `date`, from its day start to the next one; without a date, the window that holds `now`. */
-export function dayWindow(now: number, dayStart: string = DEFAULT_DAY_START, date?: string): DayWindow {
-  const [hours = 0, minutes = 0] = dayStart.split(":").map(Number);
-  const anchor = date === undefined ? new Date(now - (hours * 60 + minutes) * 60_000) : new Date(`${date}T12:00:00`);
-  const [year, month, day] = [anchor.getFullYear(), anchor.getMonth(), anchor.getDate()];
-  return { date: isoDate(anchor), from: new Date(year, month, day, hours, minutes).getTime(), to: new Date(year, month, day + 1, hours, minutes).getTime() };
-}
 
 function prRefOf(row: FinishedRow): PrRef | null {
   if (row.pr === null) return null;
@@ -74,12 +54,20 @@ function prRefOf(row: FinishedRow): PrRef | null {
 
 /** Shepherd's finished runs whose outcome is `merged` and whose phase began inside the window; `phaseSince` is the merge time. */
 export function mergedInWindow(rows: readonly FinishedRow[], window: DayWindow): PrRef[] {
+  return mergedRunsInWindow(rows, window).map(({ ref }) => ref);
+}
+
+/** The same runs with the row each came from, for a reader that joins on its branch. */
+export function mergedRunsInWindow(rows: readonly FinishedRow[], window: DayWindow): { row: FinishedRow; ref: PrRef }[] {
   return rows
     .filter((row) => {
       const since = Date.parse(row.phaseSince);
       return outcomeOf.safeParse(row).data?.outcome.kind === "merged" && since >= window.from && since < window.to;
     })
-    .flatMap((row) => prRefOf(row) ?? []);
+    .flatMap((row) => {
+      const ref = prRefOf(row);
+      return ref === null ? [] : [{ row, ref }];
+    });
 }
 
 export function prSetHash(prs: readonly PrRef[]): string {
@@ -111,7 +99,7 @@ export async function writeDigest(dir: string, digest: ShippedDigest): Promise<v
 
 /** Reads one list from Shepherd and one file; it never calls GitHub or a model, which only `shipped build` does. */
 export async function readShipped(shepherd: Pick<ShepherdSource, "list">, options: ShippedOptions, now: number, date?: string): Promise<ShippedResult> {
-  const window = dayWindow(now, options.dayStart, date);
+  const window = dayWindow(now, options.dayStart ?? DEFAULT_DAY_START, date);
   const merged = mergedInWindow(await shepherd.list("finished"), window);
   const digest = await readDigest(options.dir, window.date);
   return { date: window.date, built: digest !== null, stale: digest !== null && digest.prSetHash !== prSetHash(merged), digest, merged };
@@ -122,7 +110,7 @@ export function shippedCommands(shepherd: ShepherdSource, options: ShippedOption
     "coord.shipped": readCommand({
       name: "coord.shipped",
       description: "The day's PRs merged through Shepherd with the cached theme digest, if one was built; stale when the merged set changed since",
-      args: z.object({ date: z.string().regex(DATE, "must be YYYY-MM-DD").optional() }),
+      args: z.object({ date: dateArg }),
       result: shippedResult,
       run: ({ date }) => readShipped(shepherd, options, clock(), date),
     }),

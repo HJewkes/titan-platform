@@ -1,5 +1,4 @@
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { probeHttp, type ProbeHttpDeps, type ProbeHttpTarget } from "./index.js";
 
@@ -9,6 +8,12 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((done) => server.close(done))));
 });
 
+function portOf(server: Server): number {
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("server is not listening on a port");
+  return address.port;
+}
+
 async function serve(status: number, body: string): Promise<string> {
   const server = createServer((_req, res) => {
     res.writeHead(status, { "content-type": "application/json" });
@@ -16,13 +21,13 @@ async function serve(status: number, body: string): Promise<string> {
   });
   servers.push(server);
   await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}/health`;
+  return `http://127.0.0.1:${portOf(server)}/health`;
 }
 
 async function closedPortUrl(): Promise<string> {
   const server = createServer();
   await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-  const { port } = server.address() as AddressInfo;
+  const port = portOf(server);
   await new Promise((done) => server.close(done));
   return `http://127.0.0.1:${port}/health`;
 }
@@ -182,7 +187,7 @@ describe("probeHttp when the target is down", () => {
     });
     servers.push(server);
     await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/health`;
+    const url = `http://127.0.0.1:${portOf(server)}/health`;
 
     const sample = await probeHttp(target(url, { timeoutMs: 100 }));
     server.closeAllConnections();
@@ -198,7 +203,7 @@ describe("probeHttp when the target is down", () => {
     });
     servers.push(server);
     await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/health`;
+    const url = `http://127.0.0.1:${portOf(server)}/health`;
 
     const sample = await probeHttp(target(url));
 

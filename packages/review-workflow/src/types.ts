@@ -2,6 +2,8 @@ import type { PanelMember, PanelVerdict, ReviewRequest, ReviewShape, ReviewTarge
 
 /** One review of one PR head; the ports carry every read and effect, so the input names only what the caller already knows. */
 export interface ReviewHeadInput {
+  /** The host run, so a parked run is found again on its fingerprint's resolve. */
+  runId: string;
   target: ReviewTarget;
   /** The registered kind; absent means unread, which takes the strict class. */
   kind?: string;
@@ -29,6 +31,7 @@ export const FAILURE_CLASSES = [
   "deterministic-repeat",
   "schema-drift",
   "proof-spec-problem",
+  "heal-ineffective",
 ] as const;
 
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
