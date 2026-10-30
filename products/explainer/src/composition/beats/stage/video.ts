@@ -1,16 +1,11 @@
 import { interpolate, MOTION, type Easing } from "@titan-design/react-ui/motion";
 import { rise } from "./entrance.js";
+import { SMALL_MOVE_S } from "./video-timing.js";
 
-/**
- * DIRECTION section 4 timing for video, which runs slower than titan-design's UI `MOTION` durations: a small move
- * takes 0.5 s and eases out, and an exit takes 0.85x its entrance. The spike's other video timings (standard and
- * camera moves, the capped stagger) arrive with the first ported beat that uses them.
- */
-export const SMALL_MOVE_S = 0.5;
+export { FLOW_DWELL_S, SMALL_MOVE_S } from "./video-timing.js";
+
 /** A small move's exit. */
 export const SMALL_EXIT_S = SMALL_MOVE_S * 0.85;
-/** How long a flow token rests in each node it walks through. */
-export const FLOW_DWELL_S = 0.8;
 
 /** 0 before `atS`, eased to 1 over `durationS`. */
 export function progress(t: number, atS: number, durationS: number = SMALL_MOVE_S, ease: Easing = MOTION.ease.out): number {

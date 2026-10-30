@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
+import { MOTION, springSettleS } from "@titan-design/react-ui/motion";
 import { describe, expect, it } from "vitest";
-import { CLAIM_WORDS_START_S, CLAIM_WORD_EACH_S, OUTRO_ACTION_S, STAT_COUNT_SPRING, STAT_COUNT_START_S, revealMotionS } from "./drawn-motion.js";
+import {
+  CLAIM_WORDS_START_S,
+  CLAIM_WORD_EACH_S,
+  OUTRO_ACTION_S,
+  STAT_COUNT_SETTLE_S,
+  STAT_COUNT_SPRING,
+  STAT_COUNT_START_S,
+  STAT_COUNT_VISIBLE,
+  revealMotionS,
+} from "./drawn-motion.js";
 
 const template = (name: string): string => readFileSync(new URL(`./composition/beats/${name}`, import.meta.url), "utf8");
 const constant = (source: string, name: string): string | undefined => new RegExp(`const ${name} = ([^;]+);`).exec(source)?.[1];
@@ -28,5 +38,15 @@ describe("the drawn kinds' motion, as the templates draw it", () => {
     const button = revealMotionS({ spec: "button", slots: { line: "Read the digest", action: "Open digest" } });
 
     expect(button - outro).toBeCloseTo(OUTRO_ACTION_S, 6);
+  });
+
+  it("times each reveal on react-ui's own MOTION durations and spring settle, unchanged by the node-safe tokens", () => {
+    const quoted = { spec: "claim-card", slots: { claim: "Small", quote: "lanes" } };
+
+    const times = [revealMotionS({ spec: "outro", slots: {} }), revealMotionS(quoted), revealMotionS({ spec: "stat", slots: {} })];
+
+    const settleS = springSettleS(STAT_COUNT_SPRING, STAT_COUNT_VISIBLE);
+    expect(STAT_COUNT_SETTLE_S).toBe(settleS);
+    expect(times).toEqual([MOTION.duration.slow, CLAIM_WORDS_START_S + MOTION.duration.slow + (CLAIM_WORD_EACH_S + MOTION.duration.normal), Math.max(MOTION.duration.slow, STAT_COUNT_START_S + settleS)]);
   });
 });

@@ -1,5 +1,7 @@
 import { interpolate, MOTION } from "@titan-design/react-ui/motion";
-import { FLOW_DWELL_S, SMALL_MOVE_S } from "./stage/video.js";
+import { FLOW_DWELL_S, LIT_RAMP_S, SMALL_MOVE_S } from "./stage/video-timing.js";
+
+export { LIT_RAMP_S } from "./stage/video-timing.js";
 
 /**
  * Port of the daily spike's examples/flow.ts (SOURCE_REV 6a09ca2) for a one-way path: the fill draws no loop-back
@@ -12,7 +14,6 @@ export const RAIL_Y = MAP.nodeTop + MAP.nodeH / 2;
 /** A one-way path draws no loop-back edge, so the box ends under the row instead of reserving the spike's loop space. */
 export const MAP_H = MAP.nodeTop * 2 + MAP.nodeH;
 const HOP_S = SMALL_MOVE_S;
-export const LIT_RAMP_S = 0.2;
 
 type Point = readonly [number, number];
 
