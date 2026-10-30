@@ -102,6 +102,8 @@ declare function captureFrame(page: Page, t: number): Promise<Buffer>;
  */
 declare function screenshotFrame(page: Page): Promise<Buffer>;
 
+type Sink = (index: number, png: Buffer) => Promise<void>;
+
 interface FramesOptions extends PageOptions {
     url: string;
     fps: number;
@@ -113,6 +115,12 @@ interface FramesOptions extends PageOptions {
      * sequential render by a few levels of anti-aliasing.
      */
     workers?: number;
+    /**
+     * Where frames that cannot reach the sink yet wait; required with `workers` above 1. It needs room for most of the
+     * video's PNGs, so it must be real disk: a tmpfs such as many a /tmp would hold them in RAM. The capture makes its
+     * own directory inside this one and removes it however the capture ends.
+     */
+    spillDir?: string;
     /**
      * Seconds at which the page lays out a fresh scene. Chunks then start only on these frames, so any
      * worker count renders the same frames as one worker; fewer chunks than `workers` run when there are
@@ -128,13 +136,13 @@ interface FramesResult {
     pageDurationS: number;
     fonts: CapturePage['fonts'];
 }
-type Sink = (index: number, png: Buffer) => Promise<void>;
 /**
  * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
  * process, so a shared browser stops scaling at about 60 fps. The probe's browser goes on to capture the
  * first chunk, which saves a launch per capture and still runs one chunk per browser: the probe's page
  * closes before that chunk opens its own. A lent browser runs every chunk, for callers such as tests that
- * trade that scaling for one launch.
+ * trade that scaling for one launch. A failure stops the other workers at their next frame, and the capture rejects
+ * only once all of them have closed their browsers and the spill is gone.
  */
 declare function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult>;
 

@@ -132,7 +132,8 @@ async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEng
   const served = await servePage(run.pageDir, writeTimeline(outDir, run.timeline));
   try {
     const qa = { mode: config.noQa ? "skip" : "gate", gate: config.gate, ...(encoded ? { encoded } : {}) } as const;
-    return await engine.render({ timeline: run.timeline, pageUrl: served.url, pageSha: run.pageSha, audio: run.audio, workers: config.workers, outDir, stem: STEM, qa, ...(config.spillDir ? { spillDir: config.spillDir } : {}) });
+    const spill = config.spillDir ? { spillDir: config.spillDir } : {};
+    return await engine.render({ timeline: run.timeline, pageUrl: served.url, pageSha: run.pageSha, audio: run.audio, workers: config.workers, outDir, stem: STEM, qa, ...spill });
   } finally {
     await served.close();
   }

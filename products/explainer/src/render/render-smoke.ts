@@ -103,7 +103,8 @@ function heldRows(keepDir: string): HeldRow[] {
 
 async function renderOnce(input: SmokeInput, inputs: Record<string, string>, engine: RenderEngine): Promise<Record<string, string>> {
   const stage = { artifacts: inputs, store: input.store, from: { runId: `smoke-${input.runId}`, stage: "render" }, remainingUsd: 0 };
-  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing, ...(input.spillDir ? { spillDir: input.spillDir } : {}) }, engine, input.qa);
+  const spill = input.spillDir ? { spillDir: input.spillDir } : {};
+  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing, ...spill }, engine, input.qa);
   return outcome.outputs;
 }
 
