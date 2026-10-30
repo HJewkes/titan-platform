@@ -9,18 +9,18 @@ import { CACHED_STAGES, type CachedStage } from "./workflow/records.js";
  * One file per change, so two pull requests that each re-key a stage add two files instead of racing for the next
  * value on one line. Its name is its id; only `stages` reaches a key, so `why` can be reworded freely.
  */
-export const StageBumpSchema = z.strictObject({
+const StageBumpSchema = z.strictObject({
   stages: z.array(z.enum(CACHED_STAGES)).min(1).refine((stages) => new Set(stages).size === stages.length, "a stage is listed twice"),
   why: z.string().min(1),
 });
 
-export interface StageBump {
+interface StageBump {
   id: string;
   stages: readonly CachedStage[];
 }
 
-export const DEFAULT_STAGE_BUMPS_DIR = fileURLToPath(new URL("../stage-bumps/", import.meta.url));
-export const STAGE_BUMP_ID = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+const DEFAULT_STAGE_BUMPS_DIR = fileURLToPath(new URL("../stage-bumps/", import.meta.url));
+const STAGE_BUMP_ID = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
 /** Every `<id>.json` in the directory; any other file (the README) is not a bump. */
 export function loadStageBumps(dir: string = DEFAULT_STAGE_BUMPS_DIR): StageBump[] {
