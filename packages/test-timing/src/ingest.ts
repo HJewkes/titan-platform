@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { parseTimingArtifact } from "./artifact.js";
 import { archiveRaw } from "./archive.js";
-import { isLegacyArtifact, upgradeLegacyArtifact, type GhRunMeta } from "./legacy.js";
+import { isLegacyArtifact, upgradeLegacyArtifact, type GhRunMeta, type LegacyUpgrade } from "./legacy.js";
 import { ingestArtifact, type IngestResult } from "./store.js";
 
 const hasRun = (db: Db, id: string) => db.prepare("SELECT 1 FROM runs WHERE id = ?").get(id) !== undefined;
@@ -36,11 +36,12 @@ export function parseArtifactName(name: string): ArtifactName | null {
  * One downloaded CI artifact. A pre-header record gets its header from the run's metadata; the attempt comes from the
  * artifact's name, because a run's artifacts include those of its earlier attempts.
  */
-export function ingestGhArtifact(db: Db, home: string, name: string, input: unknown, meta: GhRunMeta): IngestResult {
+export function ingestGhArtifact(db: Db, home: string, name: string, input: unknown, meta: GhRunMeta, legacyScope?: LegacyUpgrade["scope"]): IngestResult {
   const parsed = parseArtifactName(name);
   if (!parsed) throw new Error(`not a vitest-file-timing artifact: ${name}`);
   if (!isLegacyArtifact(input)) return ingestRecord(db, home, input);
-  const scope = meta.event === "push" ? "full" : "scoped";
+  // A backfill that knows the old run's scope says so; otherwise only a main push is known to run the full suite.
+  const scope = legacyScope ?? (meta.event === "push" ? "full" : "scoped");
   return ingestRecord(db, home, upgradeLegacyArtifact(input, { ...meta, attempt: parsed.attempt }, { shard: parsed.shard, scope }));
 }
 

@@ -69,6 +69,12 @@ describe("ingestGhArtifact", () => {
     expect(db.prepare("SELECT event, scope FROM runs").get()).toEqual({ event: "pull_request", scope: "scoped" });
   });
 
+  it("takes a backfill's word that a pre-header pull request record ran the full suite", () => {
+    ingestGhArtifact(db, home, "vitest-file-timing-1", legacy, { ...META, event: "pull_request" }, "full");
+
+    expect(db.prepare("SELECT scope FROM runs").pluck().get()).toBe("full");
+  });
+
   it("stores a v1 record under its own header and dedupes it on run id", () => {
     ingestGhArtifact(db, home, "vitest-file-timing-1", timingArtifact(), META);
     const again = ingestGhArtifact(db, home, "vitest-file-timing-1", timingArtifact(), META);

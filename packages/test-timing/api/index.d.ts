@@ -203,7 +203,7 @@ declare function parseArtifactName(name: string): ArtifactName | null;
  * One downloaded CI artifact. A pre-header record gets its header from the run's metadata; the attempt comes from the
  * artifact's name, because a run's artifacts include those of its earlier attempts.
  */
-declare function ingestGhArtifact(db: Db, home: string, name: string, input: unknown, meta: GhRunMeta): IngestResult;
+declare function ingestGhArtifact(db: Db, home: string, name: string, input: unknown, meta: GhRunMeta, legacyScope?: LegacyUpgrade["scope"]): IngestResult;
 /** True once a run attempt's artifacts were all downloaded and ingested, so a scheduled ingest skips it. */
 declare function ghRunFetched(db: Db, databaseId: number, attempt: number): boolean;
 /** Marks a run attempt done, with how many artifacts it had; zero is a real answer (a none-scope run uploads none). */

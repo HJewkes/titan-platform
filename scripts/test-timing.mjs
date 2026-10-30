@@ -29,6 +29,7 @@ export function parseArgs(argv, env = process.env) {
     workflow: flag(argv, "--workflow") ?? "ci.yml",
     limit: Number(flag(argv, "--limit") ?? 100),
     ghRun: flag(argv, "--gh-run"),
+    scope: flag(argv, "--scope"),
     dir: argv[0] === "ingest-dir" ? argv[1] : undefined,
   };
 }
@@ -50,9 +51,9 @@ export function readArtifacts(dir) {
     .map((entry) => [entry.name, JSON.parse(readFileSync(join(dir, entry.name, ARTIFACT_FILE), "utf8"))]);
 }
 
-export function ingestDir(timing, db, home, dir, meta) {
+export function ingestDir(timing, db, home, dir, meta, legacyScope) {
   const artifacts = readArtifacts(dir).filter(([name]) => timing.parseArtifactName(name));
-  const results = artifacts.map(([name, record]) => timing.ingestGhArtifact(db, home, name, record, meta));
+  const results = artifacts.map(([name, record]) => timing.ingestGhArtifact(db, home, name, record, meta, legacyScope));
   return { artifacts: artifacts.length, inserted: results.filter((result) => result.inserted).length };
 }
 
@@ -96,8 +97,9 @@ function run(timing, db, options) {
   if (options.command === "ingest-gh") return ingestGh(timing, db, { ...options, gh: liveGh, scratch: tmpdir() });
   if (options.command === "ingest-spool") return timing.ingestSpool(db, options.home);
   if (options.command === "ingest-dir") {
-    if (!options.dir || !options.ghRun) throw new Error("usage: ingest-dir <dir> --gh-run <run id>");
-    return ingestDir(timing, db, options.home, options.dir, viewRun(liveGh, options.repo, options.ghRun));
+    if (options.scope && !["full", "scoped"].includes(options.scope)) throw new Error(`--scope is full or scoped, not ${options.scope}`);
+    if (!options.dir || !options.ghRun) throw new Error("usage: ingest-dir <dir> --gh-run <run id> [--scope full|scoped]");
+    return ingestDir(timing, db, options.home, options.dir, viewRun(liveGh, options.repo, options.ghRun), options.scope);
   }
   if (options.command === "stats") return timing.storeStats(db);
   throw new Error("usage: test-timing.mjs ingest-gh|ingest-spool|ingest-dir|stats [--home dir] [--repo owner/name] [--limit n]");
