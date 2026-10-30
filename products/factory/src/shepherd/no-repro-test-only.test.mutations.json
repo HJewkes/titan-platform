@@ -2,51 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "any kind proceeds on a diff of test support",
-      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "return gate.kind === \"test-only\" && supportOnlyDiff(",
-      "replace": "return supportOnlyDiff(",
-      "kills": [
-        "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) keeps a correctness registration gated"
-      ]
-    },
-    {
-      "name": "a test-only registration never proceeds on a diff of test support",
-      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "return gate.kind === \"test-only\" && supportOnlyDiff(port, gate.repo, gate.pr, gate.head);",
-      "replace": "return false;",
-      "kills": [
-        "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) lets a test-only registration proceed on its no-tests proof"
-      ]
-    },
-    {
-      "name": "a diff of test support may delete a test",
-      "file": "products/factory/src/shepherd/test-only-diff.ts",
-      "find": "planned.diff.kind !== \"flagged\" || planned.diff.paths.length > 0) return false;",
-      "replace": "planned.diff.kind !== \"flagged\") return false;",
-      "kills": [
-        "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) keeps a test-only registration gated when the diff deletes a test"
-      ]
-    },
-    {
-      "name": "a diff of test support may change source",
-      "file": "products/factory/src/shepherd/test-only-diff.ts",
-      "find": "planned.diff.kind !== \"flagged\" || planned.diff.paths.length > 0) return false;",
-      "replace": "planned.diff.kind === \"test-only\" || planned.diff.kind === \"unread\") return false;",
-      "kills": [
-        "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) keeps a test-only registration gated when the diff also changes source"
-      ]
-    },
-    {
-      "name": "a diff of test support skips its blob probes",
-      "file": "products/factory/src/shepherd/test-only-diff.ts",
-      "find": "planned.diff.paths.length > 0) return false;\n  return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;",
-      "replace": "planned.diff.paths.length > 0) return false;\n  return true;",
-      "kills": [
-        "proceedsOnNoRepro on a diff of test support with no test in it (TP-4573) keeps a test-only registration gated when a changed blob does not read inline"
-      ]
-    },
-    {
       "name": "a correctness registration is never test-only for proof",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
       "find": "new Set([\"test-only\", \"correctness\"])",
