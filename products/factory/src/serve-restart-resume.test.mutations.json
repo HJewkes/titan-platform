@@ -9,6 +9,15 @@
       "kills": [
         "a serve stopped mid-step hands its run to the next serve a serve stopped with SIGTERM mid-step releases its lease, so the successor adopts the run and completes it"
       ]
+    },
+    {
+      "name": "the serve child does not prune its chores",
+      "file": "products/factory/src/test-support/serve-child-main.ts",
+      "find": "const routes = Object.assign(stepRoutes, chorePruning(choreProcess));",
+      "replace": "const routes = stepRoutes;",
+      "kills": [
+        "a serve stopped mid-step hands its run to the next serve a serve killed with SIGKILL mid-chore: the post-merge chore finishes in its own process and the successor records it"
+      ]
     }
   ]
 }

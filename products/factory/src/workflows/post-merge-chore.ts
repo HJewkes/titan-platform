@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { SYSTEMD_RUN } from "../shepherd/redeploy.js";
@@ -35,7 +35,7 @@ const ChoreHandle = z.union([z.object({ unit: z.string() }), z.object({ pid: z.n
 type ChoreHandle = z.infer<typeof ChoreHandle>;
 
 const StepTrace = z.object({ runId: z.string(), stepId: z.string(), iteration: z.number(), attempt: z.number() });
-type StepTrace = z.infer<typeof StepTrace>;
+export type StepTrace = z.infer<typeof StepTrace>;
 
 /** Written before the launch, then again with its handle: a marker with no handle means the launch may or may not have happened. */
 const ChoreMarker = z.object({ started: z.string(), step: StepTrace, handle: ChoreHandle.optional() });
@@ -102,7 +102,29 @@ export async function choreState(ports: ChorePorts, files: ChoreFiles): Promise<
   return { kind: "lost", why: `the chore (${handleName(handle)}) is gone and wrote no result` };
 }
 
-export const handleName = (handle: ChoreHandle): string => ("unit" in handle ? `unit ${handle.unit}` : `pid ${handle.pid}`);
+/**
+ * Removes every file of each chore whose step `settled` says has a recorded result, and returns those chores' ids. A marker
+ * that does not parse is the evidence a human reads, so it stays, as does a chore in a dir that is not there.
+ */
+export function pruneChores(dir: string, settled: (step: StepTrace) => boolean): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const pruned: string[] = [];
+  for (const name of names.filter((entry) => /^[0-9a-f]{16}\.json$/.test(entry))) {
+    const marker = ChoreMarker.safeParse(readJson(join(dir, name)));
+    if (!marker.success || !settled(marker.data.step)) continue;
+    const id = name.slice(0, -".json".length);
+    for (const entry of names.filter((candidate) => candidate.startsWith(`${id}.`))) rmSync(join(dir, entry), { force: true });
+    pruned.push(id);
+  }
+  return pruned;
+}
+
+export const handleName =(handle: ChoreHandle): string => ("unit" in handle ? `unit ${handle.unit}` : `pid ${handle.pid}`);
 
 function pause(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

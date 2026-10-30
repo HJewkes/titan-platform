@@ -40,6 +40,7 @@ const { defineWorkflow } = await import("../definition.js");
 const { startFactoryServer } = await import("../serve.js");
 const { setOwnerKeysEdge } = await import("../owner-keys.js");
 const { systemChorePorts } = await import("../workflows/post-merge-chore.js");
+const { chorePruning } = await import("../workflows/chore-prune.js");
 
 const blocking = defineWorkflow({
   name: "resume-test",
@@ -68,13 +69,15 @@ const poll = () => (fs.existsSync(release) || Date.now() > deadline ? process.ex
 poll();`;
 
 const choreWrapper: [string, ...string[]] = [process.execPath, ...process.execArgv, fileURLToPath(import.meta.url), JSON.stringify(paths), CHORE_FLAG];
-const routes: StepRoute[] = [
+const choreProcess = { ...systemChorePorts({ dir: `${paths.stateDir}/chores`, wrapper: choreWrapper, systemd: false }), pollMs: POLL_MS };
+const stepRoutes: StepRoute[] = [
   { match: "block", onRestart: "repeat", runner: { run: (input) => blockUntilReleased(input) } },
   postMergeRoute({
     postMerge: { argv: [process.execPath, "-e", CHORE_SCRIPT, paths.dispatchLog, paths.releaseFile] },
-    chores: { ...systemChorePorts({ dir: `${paths.stateDir}/chores`, wrapper: choreWrapper, systemd: false }), pollMs: POLL_MS },
+    chores: choreProcess,
   }),
 ];
+const routes = Object.assign(stepRoutes, chorePruning(choreProcess));
 
 /** `restarts` is read loosely: the field arrives with TP-2675, and the log records it once it does. */
 async function blockUntilReleased(input: Parameters<StepRoute["runner"]["run"]>[0]): Promise<StepRunOutcome> {
