@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { quoteIdent, type Db } from "../open.js";
 
 /**
@@ -111,7 +112,7 @@ export class SpanFtsTables {
   private readonly hasFtsRow;
   private readonly searchStmt;
   /** One prepared statement per scope shape, since the predicate list varies. */
-  private readonly scopedSearchStmts = new Map<string, ReturnType<Db["prepare"]>>();
+  private readonly scopedSearchStmts = new Map<string, Database.Statement<unknown[], RawSpanHit>>();
   private readonly deleteAllFts;
   private readonly deleteSpansStmt;
   private readonly countSpans;
@@ -129,24 +130,26 @@ export class SpanFtsTables {
        VALUES ((SELECT MAX(id) + 1 FROM (SELECT COALESCE(MAX(span_id), 0) AS id FROM ${span} UNION ALL SELECT COALESCE(MAX(rowid), 0) AS id FROM ${fts})), ?, ?, ?, ?, ?)
        ON CONFLICT (owner_ref, field, source_id, byte_offset) DO NOTHING`,
     );
-    this.findSpan = db.prepare(
+    this.findSpan = db.prepare<[string, string, number, number], { span_id: number }>(
       `SELECT span_id FROM ${span} WHERE owner_ref = ? AND field = ? AND source_id = ? AND byte_offset = ?`,
     );
     this.insertFts = db.prepare(`INSERT INTO ${fts} (rowid, text) VALUES (?, ?)`);
     this.hasFtsRow = db.prepare(`SELECT 1 FROM ${fts} WHERE rowid = ?`);
-    this.searchStmt = db.prepare(
+    this.searchStmt = db.prepare<[string, number], RawSpanHit>(
       `SELECT s.span_id, s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, f.rank
        FROM ${fts} f JOIN ${span} s ON s.span_id = f.rowid
        WHERE ${fts} MATCH ? ORDER BY f.rank LIMIT ?`,
     );
     this.deleteAllFts = db.prepare(`INSERT INTO ${fts}(${fts}) VALUES ('delete-all')`);
     this.deleteSpansStmt = db.prepare(`DELETE FROM ${span} WHERE owner_ref = ?`);
-    this.countSpans = db.prepare(`SELECT count(*) AS n FROM ${span}`);
-    this.countFts = db.prepare(`SELECT count(*) AS n FROM ${fts}`);
+    this.countSpans = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${span}`);
+    this.countFts = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${fts}`);
     // One transaction, so a failed FTS insert cannot strand a span row with no FTS row.
     this.indexTxn = db.transaction((span: SpanInput, text: string): number => {
       const inserted = this.insertSpan.run(span.ownerRef, span.field, span.sourceId, span.byteOffset, span.byteLength);
-      const spanId = (this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset) as { span_id: number }).span_id;
+      const found = this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset);
+      if (found === undefined) throw new Error("span row missing right after insert");
+      const spanId = found.span_id;
       if (inserted.changes === 1 || this.hasFtsRow.get(spanId) === undefined) this.insertFts.run(spanId, text);
       return spanId;
     });
@@ -171,9 +174,7 @@ export class SpanFtsTables {
    * filter out of a global top-N.
    */
   search(query: string, limit = 50, scope?: SpanScope): SpanHit[] {
-    const rows = (
-      scope ? this.scopedStatement(scope).all([query, ...scopeValues(scope), limit]) : this.searchStmt.all(query, limit)
-    ) as RawSpanHit[];
+    const rows = scope ? this.scopedStatement(scope).all([query, ...scopeValues(scope), limit]) : this.searchStmt.all(query, limit);
     return rows.map((r) => ({
       spanId: r.span_id,
       ownerRef: r.owner_ref,
@@ -193,7 +194,7 @@ export class SpanFtsTables {
    * process. Keyed on the field *count* and whether a prefix is present, which
    * is everything that changes the SQL.
    */
-  private scopedStatement(scope: SpanScope): ReturnType<Db["prepare"]> {
+  private scopedStatement(scope: SpanScope): Database.Statement<unknown[], RawSpanHit> {
     const fieldCount = scope.fields?.length ?? 0;
     const key = `${hasPrefix(scope) ? 1 : 0}:${scope.fields === undefined ? "all" : fieldCount}`;
     const cached = this.scopedSearchStmts.get(key);
@@ -206,7 +207,7 @@ export class SpanFtsTables {
     if (scope.fields !== undefined) {
       predicates.push(fieldCount === 0 ? "0" : `s.field IN (${new Array(fieldCount).fill("?").join(", ")})`);
     }
-    const statement = this.db.prepare(
+    const statement = this.db.prepare<unknown[], RawSpanHit>(
       `SELECT s.span_id, s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, f.rank
        FROM ${fts} f JOIN ${span} s ON s.span_id = f.rowid
        WHERE ${predicates.join(" AND ")} ORDER BY f.rank LIMIT ?`,
@@ -222,9 +223,9 @@ export class SpanFtsTables {
 
   /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
   orphanRatio(): number {
-    const fts = (this.countFts.get() as { n: number }).n;
+    const fts = this.countFts.get()?.n ?? 0;
     if (fts === 0) return 0;
-    const spans = (this.countSpans.get() as { n: number }).n;
+    const spans = this.countSpans.get()?.n ?? 0;
     return Math.max(0, fts - spans) / fts;
   }
 
