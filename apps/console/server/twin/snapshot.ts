@@ -12,6 +12,7 @@ import { createConsoleRegistry } from "../registry.js";
 import { FIXTURE_ROUNDS } from "../round-fixtures.js";
 import { HAND_ANSWERS, recorded, type TwinCall, type TwinCommand } from "./answers.js";
 import { TWIN_NOW } from "./clock.js";
+import { COORDINATOR_ANSWERS } from "./coordinator.js";
 
 const NOWHERE = "/nonexistent/titan-console-twin";
 
@@ -91,7 +92,7 @@ export async function twinSnapshot(): Promise<Snapshot> {
   const roundsDir = await pinnedRounds();
   const call = inProcessCaller(createConsoleRegistry(recordingSources(roundsDir)), inProcessContext);
   const fromCommands = await Promise.all(RECORDED.map(({ command, args }) => record(call, command, args))).finally(() => rm(roundsDir, { recursive: true, force: true }));
-  const hand = HAND_ANSWERS.map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)] as const);
+  const hand = [...HAND_ANSWERS, ...COORDINATOR_ANSWERS].map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)] as const);
   const calls: Snapshot["calls"] = {};
   for (const [key, envelope] of [...fromCommands, ...hand]) {
     if (key in calls) throw new Error(`twin fixture ${key} is recorded twice`);
