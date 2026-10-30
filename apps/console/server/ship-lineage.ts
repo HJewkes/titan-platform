@@ -42,6 +42,8 @@ interface LineageOptions {
   ttlMs?: number;
   now?: () => number;
   maxEntries?: number;
+  /** How long a GitHub read may take before the lineage reads as unknown. */
+  timeoutMs?: number;
 }
 
 const LINEAGE_TTL_MS = 60_000;
@@ -49,6 +51,9 @@ const LINEAGE_TTL_MS = 60_000;
 const LINEAGE_MAX_ENTRIES = 256;
 
 export const UNWIRED_LINEAGE: ShipLineage = { known: false, reason: "no GitHub reader is wired" };
+
+/** A stalled GitHub must not stall `rounds.get`, so the Ship view waits this long and then shows lineage unknown. */
+const LINEAGE_READ_TIMEOUT_MS = 5_000;
 
 const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -71,6 +76,14 @@ export async function readLineage(github: LineagePort, { repo, pr, headSha }: Me
   }
 }
 
+function readWithin(read: Promise<ShipLineage>, timeoutMs: number): Promise<ShipLineage> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<ShipLineage>((resolve) => {
+    timer = setTimeout(() => resolve({ known: false, reason: "github timed out" }), timeoutMs);
+  });
+  return Promise.race([read, timedOut]).finally(() => clearTimeout(timer));
+}
+
 type SizedLineageReader = LineageReader & { size: () => number };
 type LineageCache = Map<string, { at: number; read: Promise<ShipLineage> }>;
 
@@ -87,6 +100,7 @@ export function shipLineageReader(options: LineageOptions = {}): SizedLineageRea
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? LINEAGE_TTL_MS;
   const maxEntries = options.maxEntries ?? LINEAGE_MAX_ENTRIES;
+  const timeoutMs = options.timeoutMs ?? LINEAGE_READ_TIMEOUT_MS;
   const cache: LineageCache = new Map();
   const reader: LineageReader = (binding) => {
     const key = `${binding.repo}#${binding.pr}@${binding.headSha}`;
@@ -94,7 +108,7 @@ export function shipLineageReader(options: LineageOptions = {}): SizedLineageRea
     evict(cache, at, ttlMs, maxEntries);
     const hit = cache.get(key);
     if (hit && at - hit.at < ttlMs) return hit.read;
-    const read = readLineage(github, binding);
+    const read = readWithin(readLineage(github, binding), timeoutMs);
     cache.delete(key);
     cache.set(key, { at, read });
     evict(cache, at, ttlMs, maxEntries);
