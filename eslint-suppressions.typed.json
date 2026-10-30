@@ -1088,36 +1088,6 @@
       "count": 1
     }
   },
-  "packages/evidence/src/controls.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/evidence/src/line-source.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/evidence/src/overlap.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/evidence/src/seeded.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/evidence/src/stats/bootstrap.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/evidence/src/stats/distributions.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/fix-proof/src/classify.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
