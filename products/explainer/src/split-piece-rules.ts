@@ -30,6 +30,10 @@ export const SPLIT_PIECE_RULES: readonly SplitPieceRule[] = [
   { id: "Q-D22", clause: `a piece that is not held stands still at most ${PACING_DEFAULTS.staticMaxS} s once its claim and chip are read` },
 ];
 
+/** The named rules' clauses, each led by its id, as the caps a move that adds text must stay within. */
+export const capClauses = (ids: readonly string[]): string =>
+  SPLIT_PIECE_RULES.flatMap((rule) => (ids.includes(rule.id) && rule.clause !== null ? [`${rule.id} (${rule.clause})`] : [])).join(" and ");
+
 /** The table's clauses, joined for the split hint; the rules `splitKeeps` states are left to it. */
 export const splitPieceClauses = (): string =>
   SPLIT_PIECE_RULES.flatMap((rule) => (rule.clause === null ? [] : [rule.clause])).join("; ");

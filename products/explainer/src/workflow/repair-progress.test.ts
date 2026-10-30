@@ -78,6 +78,29 @@ describe("the repair keeps partial progress", () => {
   });
 });
 
+describe("each round asks from the best reply so far", () => {
+  it("a reply that swaps the row for one on fewer beats is the next round's draft and rows, though not kept", async () => {
+    const start = markedScript("a", "a", "a");
+    const replies = [markedScript("c"), markedScript("c", "c")];
+    const asked: { script: ScriptV1; rows: string[] }[] = [];
+    const call: Call = async () => ({ ok: true, output: "" });
+
+    const repaired = await repairRounds(call, { script: start, stamps: [] }, {
+      rounds: 2,
+      failing,
+      prompt: (script, rows) => {
+        asked.push({ script, rows: rows.flatMap((row) => row.detail_beats) });
+        return "";
+      },
+      read: () => ({ script: replies[asked.length - 1]! }),
+      settle: (script) => ({ script, stamps: [] }),
+    });
+
+    expect(asked[1]).toEqual({ script: markedScript("c"), rows: ["bad-c-0"] });
+    expect(repaired.script).toEqual(start);
+  });
+});
+
 describe("the repaired script over the seed", () => {
   const seed = { script: markedScript("a", "a", "a"), stamps: [] };
 

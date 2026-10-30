@@ -22,8 +22,8 @@
     {
       "name": "Q-D22 hint asks a claim-card to trim its words, against Q-D19",
       "file": "products/explainer/src/repair-hints-screen.ts",
-      "find": "hold it, show a claim the voice does not read word for word (its reading time is not still time), or draw",
-      "replace": "hold it, trim its words to fit, or draw",
+      "find": "caps; trimming its words would break the fill floor`",
+      "replace": "caps; or trim its words to fit`",
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
       ]
@@ -40,8 +40,8 @@
     {
       "name": "Q-D22 hint offers a cue-less claim-card no claim cue",
       "file": "products/explainer/src/repair-hints-screen.ts",
-      "find": "kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: ${CLAIM_CUE}or`",
-      "replace": "kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: or`",
+      "find": "with no cue: first, adding no words, ${CLAIM_CUE}or hold it with heldS`",
+      "replace": "with no cue: first, adding no words, or hold it with heldS`",
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
       ]
