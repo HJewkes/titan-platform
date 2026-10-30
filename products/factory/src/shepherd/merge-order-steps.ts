@@ -12,7 +12,7 @@ import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
 
-const RESERVE_STEP = "sh-order-reserve";
+export const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = ORDER_WAIT_STEP;
 const UNRESERVE_STEP = "sh-order-unreserve";
 export const EXPIRE_STEP = "sh-order-expire";

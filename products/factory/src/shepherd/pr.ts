@@ -43,10 +43,10 @@ import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed
 import { wakeRoutes } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
-import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { endOrderRound, orderedConflict, releasedUnlessWoken, releaseOrder, releaseUnlandable, resolvedConflict, retakeOrder, unreserved, type OrderRun } from "./merge-order-steps.js";
+import { conflictRound, noteRetarget, type RetargetRun } from "./retarget-conflict.js";
+import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -65,7 +65,7 @@ import { sendBack } from "./send-back.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, ConflictRun, OrderRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, RetargetRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -233,7 +233,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
   await recordHeadOrigin(run, ci.data);
-  run.lastCi = ci.data;
+  run.lastCi = noteRetarget(run, ci.data);
   expireStaleGates(run.ctx, ci.data.headSha);
   await expireOrder(run, ci.data.headSha);
   await reholdMovedHead(run, ci.data.headSha);
@@ -307,9 +307,9 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 
-/** Merge order first (TP-4098), then one fixer wake at the base the overlapping PRs leave behind. */
+/** The conflict round, its merge order and its fixer wakes (TP-4098, TP-4566). */
 const onConflict = (run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> =>
-  resolvedConflict(run, orderedConflict(run, headSha, () => fixConflict(run, headSha, (payload) => woken(run, "conflict", headSha, payload))));
+  conflictRound(run, headSha, (payload) => woken(run, "conflict", headSha, payload));
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {

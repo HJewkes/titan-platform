@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a retargeted conflict waits in the merge order",
+      "file": "products/factory/src/shepherd/retarget-conflict.ts",
+      "find": "  const ordered = run.retargetedFrom === undefined || (next !== undefined && stepIdMatches(RESERVE_STEP, next));",
+      "replace": "  const ordered = true;",
+      "kills": [
+        "a stacked child retargeted to main after its parent squash-merged (TP-4566) wakes the implementer for one conflict round at once, with no merge-order wait",
+        "a stacked child retargeted to main after its parent squash-merged (TP-4566) wakes a fresh fixer after the implementer's head still conflicts, then tells the seat and wakes no third"
+      ]
+    },
+    {
+      "name": "a base change is never read as a retarget",
+      "file": "products/factory/src/shepherd/retarget-conflict.ts",
+      "find": " && ci.verdict !== \"green\") run.retargetedFrom = before;",
+      "replace": " && false) run.retargetedFrom = before;",
+      "kills": [
+        "a stacked child retargeted to main after its parent squash-merged (TP-4566) wakes the implementer for one conflict round at once, with no merge-order wait"
+      ]
+    }
+  ]
+}
