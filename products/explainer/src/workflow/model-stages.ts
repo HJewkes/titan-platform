@@ -20,7 +20,7 @@ import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
 import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
-  callsNote, checked, draftScript, failingBeats, failingErrors, failureList, planned, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan,
+  callsNote, checked, draftScript, failingErrors, failureList, planned, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan,
   sharedSections, stageUsage, wholeScript,
   type Call, type CallSpend, type Lint, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
@@ -109,7 +109,7 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
     read: (outcome) => checked(outcome, plan),
     settle,
   });
-  const kept = keptOverSeed(repaired, draft, { rows: seedRows, beats: failingBeats(seedFailing) });
+  const kept = keptOverSeed(repaired, draft, seedFailing);
   const detail = `${kept.before} failing error checks before repair, ${kept.after} after`;
   return { ...kept, candidates: [...start.candidates, ...kept.candidates], hints, check: { name: "l0-repair", gate: false, pass: kept.after === 0, detail } };
 }

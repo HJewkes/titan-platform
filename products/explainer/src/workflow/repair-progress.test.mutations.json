@@ -18,9 +18,16 @@
     {
       "name": "the seed ignores partial progress",
       "file": "products/explainer/src/workflow/split-start.ts",
-      "find": "|| sameRowsFewerBeats;",
+      "find": "|| (repaired.stripped !== undefined && makesProgress(repaired.rows, seedFailing));",
       "replace": ";",
       "kills": ["the repaired script over the seed is kept when it answers the same row on fewer beats"]
+    },
+    {
+      "name": "the seed accepts a row it never failed",
+      "file": "products/explainer/src/workflow/split-start.ts",
+      "find": "(repaired.stripped !== undefined && makesProgress(repaired.rows, seedFailing))",
+      "replace": "(repaired.stripped !== undefined && repaired.rows.length === seedFailing.length)",
+      "kills": ["the repaired script over the seed is the seed when a split start brings in a row and the reply only trims it"]
     }
   ]
 }
