@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Alert,
   Avatar,
+  Checkbox,
   DateTime,
   HStack,
   Link,
@@ -44,11 +45,18 @@ function Roster(): ReactNode {
   const roster = useQuery("agents.roster");
   if (roster.status === "loading") return <Spinner size="sm" label="Loading agents" />;
   if (roster.data === undefined) return <BrokerFailure message={roster.error.message} />;
-  const { agents, reconnecting } = roster.data;
+  return <RosterBody roster={roster.data} />;
+}
+
+/** "Finished, not retired" keeps the exited rows, the ones an agent page offers to retire. */
+function RosterBody({ roster: { agents, reconnecting } }: { roster: { agents: readonly RosterEntry[]; reconnecting: boolean } }): ReactNode {
+  const [finished, setFinished] = useState(false);
+  const shown = finished ? agents.filter((agent) => agent.state === "exited") : agents;
   return (
     <VStack gap={3}>
       {reconnecting ? <Alert status="warning" message="The broker restarted moments ago and is still refilling presence; a missing live agent may not have exited." /> : null}
-      {agents.length === 0 ? <NoAgents /> : <RosterTable agents={agents} />}
+      {agents.length === 0 ? null : <Checkbox label="Finished, not retired" isChecked={finished} onCheckedChange={(checked: boolean) => setFinished(checked)} testID="agents-finished" />}
+      {agents.length === 0 ? <NoAgents /> : <RosterTable agents={shown} />}
     </VStack>
   );
 }
