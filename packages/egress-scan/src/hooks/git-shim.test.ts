@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { findRealGit, gitShimScript, writeGitShim } from "./git-shim.js";
-import { type GitShimFixture as Fixture, gitShimHarness, HOST_PATH, NO_VERIFY } from "./git-shim.fixture.js";
+import { gitShimScript, writeGitShim } from "./git-shim.js";
+import { type GitShimFixture as Fixture, gitShimHarness, HOST_PATH, NO_VERIFY, realGitOn } from "./git-shim.fixture.js";
 
 /**
  * TP-596, against real git, temp repos and a local bare remote. Each push test names the
@@ -129,7 +129,7 @@ describe("the agent git shim failing closed when it cannot resolve a push (fix r
     ["git -c core.hooksPath=/dev/null push net main", "hooks-path"],
   ])("refuses %s when the builtin list could not be read", (command, rule) => {
     const fx = fixture();
-    const real = findRealGit(HOST_PATH, fx.shimDir) as string;
+    const real = realGitOn(HOST_PATH, fx.shimDir);
     fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []), { mode: 0o755 });
 
     const run = runScript(fx, command);
@@ -230,7 +230,7 @@ describe("the agent git shim and help.autocorrect (fix round 2)", () => {
 
   it("runs builtins under autocorrect when the baked builtin list is empty", () => {
     const fx = fixture();
-    const real = findRealGit(HOST_PATH, fx.shimDir) as string;
+    const real = realGitOn(HOST_PATH, fx.shimDir);
     fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []), { mode: 0o755 });
 
     const run = runScript(fx, "git -c help.autocorrect=1 rev-parse --abbrev-ref HEAD");

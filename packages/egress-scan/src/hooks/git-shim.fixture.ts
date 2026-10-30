@@ -16,6 +16,13 @@ export const HOST_PATH = (process.env.PATH ?? "")
   .filter((dir) => !holdsAgentChatShim(dir))
   .join(path.delimiter);
 
+/** The real git `findRealGit` finds on `searchPath`; a host with none fails the test here, not later. */
+export function realGitOn(searchPath: string, shimDir: string): string {
+  const found = findRealGit(searchPath, shimDir);
+  if (found === undefined) throw new Error("no git on PATH but an agent-chat shim");
+  return found;
+}
+
 /**
  * Throws when spawnSync's child never ran or was killed (ETXTBSY, ENOENT, ETIMEDOUT, ENOBUFS),
  * naming the cause instead of leaving undefined output to fail a later assertion (CC-462).
@@ -76,7 +83,7 @@ function makeFixture(root: string, git: GitShimHarness["git"], shellAliases: rea
 export function gitShimHarness(): GitShimHarness {
   const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-git-shim-")));
   afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
-  const realGit = findRealGit(HOST_PATH, path.join(scratch, "none")) as string;
+  const realGit = realGitOn(HOST_PATH, path.join(scratch, "none"));
   let count = 0;
 
   const git = (cwd: string, ...args: string[]): string => execFileSync(realGit, args, { cwd, encoding: "utf8", env: fixtureEnv() });

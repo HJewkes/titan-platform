@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { findRealGit, gitShimDirFor, writeGitShim } from "./git-shim.js";
 import { gitHooksEnv, noRewriteHooksDir } from "./dir.js";
-import { HOST_PATH } from "./git-shim.fixture.js";
+import { HOST_PATH, realGitOn } from "./git-shim.fixture.js";
 
 /**
  * CC-1653: a broker restarted from an agent session had the shared shim dir first on its PATH, so
@@ -17,7 +17,7 @@ import { HOST_PATH } from "./git-shim.fixture.js";
 const SCRATCH = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-git-shim-chain-")));
 afterAll(() => fs.rmSync(SCRATCH, { recursive: true, force: true }));
 
-const REAL_GIT = findRealGit(HOST_PATH, path.join(SCRATCH, "none")) as string;
+const REAL_GIT = realGitOn(HOST_PATH, path.join(SCRATCH, "none"));
 
 function writeExecutable(file: string, body: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
