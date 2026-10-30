@@ -12,7 +12,7 @@
     },
     {
       "name": "the repair prompt drops what a failing check found",
-      "file": "products/explainer/src/workflow/script-draft.ts",
+      "file": "products/explainer/src/workflow/failure-list.ts",
       "find": "return hint ? `\\n  Found: ${hint}` : \"\";",
       "replace": "return \"\";",
       "kills": [

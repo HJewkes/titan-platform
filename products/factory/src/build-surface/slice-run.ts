@@ -1,4 +1,4 @@
-import { StepFailedError, WorkflowCancelledError, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
+import { StepFailedError, WorkflowCancelledError, type AssistedOptions, type StepResult, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { agentNameOf, branchOf, type BuildSpec, type Slice } from "./spec.js";
 
@@ -12,6 +12,8 @@ export interface SliceRun {
   agent: string;
   branch: string;
   spentUsd: number;
+  /** A step reported spend with no price, so `spentUsd` is a floor. */
+  costUnknown: boolean;
   brokenGateRuns: number;
   halt: RunHalt;
   last?: StepResult;
@@ -26,7 +28,22 @@ export interface RunHalt {
 }
 
 export function sliceRun(ctx: WorkflowContext, spec: BuildSpec, slice: Slice, halt: RunHalt): SliceRun {
-  return { ctx, spec, slice, agent: agentNameOf(spec, slice), branch: branchOf(slice), spentUsd: 0, brokenGateRuns: 0, halt };
+  return { ctx, spec, slice, agent: agentNameOf(spec, slice), branch: branchOf(slice), spentUsd: 0, costUnknown: false, brokenGateRuns: 0, halt };
+}
+
+/** The slice's spend so far: what it reports to `mapItems` however it ends, so the run's budget sees all of it. */
+export function sliceUsage(run: SliceRun): StepUsage {
+  return { costUsd: run.spentUsd, ...(run.costUnknown && { costUnknown: true as const }) };
+}
+
+/** What an agent step may still spend before the slice's cap stops it. */
+export function remainingUsd(run: SliceRun): number {
+  return Math.max(0, run.spec.sliceBudgetUsd - run.spentUsd);
+}
+
+function count(run: SliceRun, usage: StepUsage | undefined): void {
+  run.spentUsd += usage?.costUsd ?? 0;
+  if (usage?.costUnknown) run.costUnknown = true;
 }
 
 /** Cancels the whole run: this slice ends now, and every sibling still in flight ends before its next step. */
@@ -41,21 +58,33 @@ function stopIfHalted(run: SliceRun): void {
 
 /** Stops this slice only: retryable, so `mapItems` counts it against `maxFailures` and the other slices go on. */
 export function stopSlice(run: SliceRun, reason: string): never {
-  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `slice ${run.slice.id} stopped: ${reason}`, { retryable: true, usage: { costUsd: run.spentUsd } });
+  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `slice ${run.slice.id} stopped: ${reason}`, { retryable: true, usage: sliceUsage(run) });
 }
 
 /** Ends this slice for a component the design system lacks. Not retryable, and the message is the contract: the owner reads it as the ask. */
 export function needComponents(run: SliceRun, items: string[]): never {
-  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `needs component: ${items.join(", ")}`, { retryable: false, usage: { costUsd: run.spentUsd } });
+  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `needs component: ${items.join(", ")}`, { retryable: false, usage: sliceUsage(run) });
+}
+
+/** A failed step reports only its own cost; `mapItems` reads the failure, so it is re-raised carrying the whole slice's. */
+async function countingFailure<T>(run: SliceRun, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    if (!(error instanceof StepFailedError)) throw error;
+    count(run, error.usage);
+    throw new StepFailedError(error.stepId, error.iteration, error.reason, { retryable: error.retryable, usage: sliceUsage(run) });
+  }
 }
 
 /** Every dispatch carries its input as JSON; the route answers under `result`, checked by `schema`. */
 export async function sliceStep<R>(run: SliceRun, step: string, suffix: string | number | undefined, input: object, schema: z.ZodType<R>): Promise<R> {
   stopIfHalted(run);
   const stepId = `${step}:${run.slice.id}${suffix === undefined ? "" : `:${suffix}`}`;
-  const result = await run.ctx.dispatch(stepId, `{{${INPUT_VAR}}}`, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result: schema }) });
+  const result = await countingFailure(run, () => run.ctx.dispatch(stepId, `{{${INPUT_VAR}}}`, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result: schema }) }));
   run.last = result;
-  run.spentUsd += result.usage?.costUsd ?? 0;
+  count(run, result.usage);
+  if (run.costUnknown) stopSlice(run, "a step's spend has no price, so the slice cap can no longer be checked");
   if (run.spentUsd > run.spec.sliceBudgetUsd) stopSlice(run, `spend $${run.spentUsd.toFixed(2)} is over the slice cap of $${run.spec.sliceBudgetUsd}`);
   return result.data!.result;
 }

@@ -18,7 +18,7 @@ export type OpAction = Extract<InboxItem["action"], { kind: "owner-op" }>;
 export type MergeWait = (typeof MERGE_WAITS)[number];
 type PrFacts = NonNullable<OpPreview["pr"]>;
 type AgentFacts = NonNullable<OpPreview["agent"]>;
-type RetireOp = Extract<OwnerOp, { kind: "retire-agent" }>;
+export type RetireOp = Extract<OwnerOp, { kind: "retire-agent" }>;
 
 export type OpReadBack = PrOpReadBack | AgentOpReadBack | PauseReadBack;
 
@@ -43,7 +43,7 @@ interface PrOpReadBack extends Proposed {
 }
 
 /** A retire-agent op's read-back: the agent that holds the name now, as agent-chat's roster reads it. */
-interface AgentOpReadBack extends Proposed {
+export interface AgentOpReadBack extends Proposed {
   agent: string;
   agentId: string;
   state: string;
@@ -99,12 +99,11 @@ export async function opReadBackOf(shepherd: ShepherdSource, item: OwnerItem, { 
   const effect = EFFECT[op.kind];
   if (effect === undefined) return `a ${op.kind} op has no console tap yet`;
   if (waitFor !== undefined && op.kind !== "merge-at-head") return `only a merge-at-head waits for the adversary loop, not a ${op.kind} op`;
-  if (op.kind === "retire-agent" && op.force) return "a forced retire discards work, so it stays at the terminal";
+  if (op.kind === "retire-agent") return retireReadBackOf(shepherd, op, proposalOf(item));
   const preview = await shepherd.previewOp(op);
-  const { verdict, ruleId, reason } = preview.authority;
-  if (verdict === "deny") return `the authority table refuses a ${op.kind} op to the console: ${reason ?? ruleId ?? "denied"}`;
-  const authority = `${ruleId ?? "no rule"}: ${verdict}`;
-  if (op.kind === "retire-agent") return agentReadBackOf(item, op, preview.agent, authority, effect);
+  const denied = deniedBy(op, preview);
+  if (denied !== undefined) return denied;
+  const authority = authorityOf(preview);
   if (op.kind === "deploy-pause-clear") return pauseReadBackOf(item, op, preview.pause, { authority, effect });
   const { pr } = preview;
   if (pr === undefined) return `the factory read no PR back for this ${op.kind} op`;
@@ -121,15 +120,32 @@ function mergeFacts(facts: PrOpReadBack, waitFor: MergeWait | undefined): PrOpRe
   return { ...facts, effect: afterLoop(`${facts.repo}#${facts.pr} at ${short(facts.headSha)}`), waitFor };
 }
 
-/** Offered only for the very agent the deposit names, once its session has exited and no live Shepherd run needs it. */
-function agentReadBackOf(item: OwnerItem, op: RetireOp, agent: AgentFacts | undefined, authority: string, effect: (at: string) => string): AgentOpReadBack | string {
+/** Why the authority table refuses the op to the console, or undefined when it does not. */
+function deniedBy(op: OwnerOp, { authority: { verdict, ruleId, reason } }: OpPreview): string | undefined {
+  return verdict === "deny" ? `the authority table refuses a ${op.kind} op to the console: ${reason ?? ruleId ?? "denied"}` : undefined;
+}
+
+const authorityOf = ({ authority: { verdict, ruleId } }: OpPreview): string => `${ruleId ?? "no rule"}: ${verdict}`;
+
+/**
+ * A retire's read-back from the factory's preview, for a deposit's op or the agent page's own (`retire-tap.ts`). A forced
+ * retire never reaches the factory: agent-chat's roster carries no exit time to check the grace against.
+ */
+export async function retireReadBackOf(shepherd: ShepherdSource, op: RetireOp, proposed: Pick<Proposed, "proposedBy" | "proposal">): Promise<AgentOpReadBack | string> {
+  if (op.force) return "a forced retire discards work, so it stays at the terminal";
+  const preview = await shepherd.previewOp(op);
+  return deniedBy(op, preview) ?? agentReadBackOf(op, preview.agent, { authority: authorityOf(preview), ...proposed });
+}
+
+/** Offered only for the very agent the op names, once its session has exited and no live Shepherd run needs it. */
+function agentReadBackOf(op: RetireOp, agent: AgentFacts | undefined, proposed: Omit<Proposed, "effect">): AgentOpReadBack | string {
   const holder = agent?.holder;
   if (agent === undefined || holder === undefined) return `no unretired agent holds the name ${op.name}, so there is nothing to retire`;
   if (holder.agentId !== op.agentId) return `${op.name} is now a different agent (${short(holder.agentId)}) than the one proposed`;
   if (!agent.exited) return `${op.name} is ${holder.state} (${holder.status}); retire a working agent at the terminal`;
   if (agent.liveRun !== null) return `${op.name} works on Shepherd run ${agent.liveRun}, which is still live`;
   const { agentId, state, profile, cwd, spawnedBy } = holder;
-  return { agent: op.name, agentId, state, profile, cwd, spawnedBy, authority, ...proposalOf(item), effect: effect(`${op.name} (${short(agentId)})`) };
+  return { agent: op.name, agentId, state, profile, cwd, spawnedBy, ...proposed, effect: EFFECT["retire-agent"]!(`${op.name} (${short(agentId)})`) };
 }
 
 /** A tap is offered only for the very pause the deposit names, with no deployer running, as the factory's clear requires. */

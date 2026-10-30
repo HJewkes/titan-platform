@@ -72,7 +72,7 @@ export function keptOverSeed(repaired: Repaired, seed: Stamped, seedFailing: rea
   const better = repaired.after < seedFailing.length || (repaired.stripped !== undefined && makesProgress(repaired.rows, seedFailing));
   if (better) return { ...repaired, before: seedFailing.length };
   const { length: rows } = seedFailing;
-  return { script: seed.script, stamps: seed.stamps, usage: repaired.usage, before: rows, after: rows, rows: [...seedFailing], candidates: repaired.candidates };
+  return { script: seed.script, stamps: seed.stamps, usage: repaired.usage, before: rows, after: rows, rows: [...seedFailing], candidates: repaired.candidates, spliced: [] };
 }
 
 /** The failure list a round sends, with the split's line when the rounds started from one; each is kept for the stage note. */
