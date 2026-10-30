@@ -4,7 +4,7 @@ import path from "node:path";
 import { runRunCli } from "./run-cli.js";
 import { z } from "zod";
 import type { L0Check } from "../eval-l0.js";
-import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
+import { DAILY_FIXTURE, DAY, fakeCli, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { StageRecordSchema } from "./records.js";
@@ -133,7 +133,7 @@ describe("explainer run --from gather --type daily-overview", () => {
     cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
     const out: string[] = [];
     const err: string[] = [];
-    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks() };
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
 
     await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
@@ -151,7 +151,7 @@ describe("explainer run --from gather --type daily-overview", () => {
   it("hands the script the gather's coverage manifest as a prompt section", async () => {
     fx = fixture();
     cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
-    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks() };
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
     const writer = fakeScriptModel(overGoalWalk(), { followLeads: true });
 
