@@ -815,6 +815,13 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/rpc-client:
     dependencies:

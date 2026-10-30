@@ -40,5 +40,12 @@
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/review-panel": "workspace:^"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
+    "zod": "^4.4.3"
   }
 }
