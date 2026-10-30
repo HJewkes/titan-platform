@@ -30,9 +30,7 @@ describe("IdiomsExtractor", () => {
       expect(idiomObs.length).toBeGreaterThan(0);
       for (const obs of idiomObs) {
         expect(obs.value).toBeDefined();
-        expect(
-          (obs.metadata?.frequency as number),
-        ).toBeGreaterThanOrEqual(2);
+        expect(Number(obs.metadata?.frequency)).toBeGreaterThanOrEqual(2);
       }
     });
   });
