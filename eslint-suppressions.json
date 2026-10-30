@@ -433,11 +433,6 @@
       "count": 1
     }
   },
-  "packages/session-read/src/claude-source.ts": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
   "packages/session-read/src/codex-fixture.ts": {
     "titan/max-function-lines": {
       "count": 1

@@ -23,3 +23,7 @@ export function isStaleLine(error: unknown): boolean {
 function errorCode(error: unknown): unknown {
   return typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined;
 }
+
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
