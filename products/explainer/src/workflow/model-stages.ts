@@ -86,16 +86,17 @@ interface Repair extends Repaired {
   hints: string[];
 }
 
-/** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red. */
-export const MAX_REPAIR_ROUNDS = 2;
+/** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red, so four rounds halve it twice over. */
+export const MAX_REPAIR_ROUNDS = 4;
 
 /**
  * Up to `MAX_REPAIR_ROUNDS` calls, each answering the current script's failing error-severity L0 rows. A reply is
- * kept only when it parses and fails fewer rows, so a round never makes the script worse.
+ * kept only when it parses and fails fewer rows, or the same rows over fewer beats, so a round never makes the script worse.
  */
 async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
   const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];
-  const seedRows = failing(draft.script).length;
+  const seedFailing = failing(draft.script);
+  const seedRows = seedFailing.length;
   if (seedRows === 0) return undefined;
   const settle = (script: ScriptV1) => stampLedgerTerms(script, lint.spine, lint.rows);
   const start = splitStart(draft, failing, settle);
@@ -108,7 +109,7 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
     read: (outcome) => checked(outcome, plan),
     settle,
   });
-  const kept = keptOverSeed(repaired, draft, seedRows);
+  const kept = keptOverSeed(repaired, draft, seedFailing);
   const detail = `${kept.before} failing error checks before repair, ${kept.after} after`;
   return { ...kept, candidates: [...start.candidates, ...kept.candidates], hints, check: { name: "l0-repair", gate: false, pass: kept.after === 0, detail } };
 }

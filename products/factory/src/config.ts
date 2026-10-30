@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
@@ -108,7 +109,7 @@ export const DigestConfigSchema = z.strictObject({
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
-  push: DigestPushConfigSchema.optional(),
+  push: DigestPushConfigSchema.optional(), consoleOrigin: ConsoleOriginSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
