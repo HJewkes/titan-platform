@@ -4,8 +4,8 @@
     {
       "name": "sibling figures are keyed by element alone",
       "file": "products/explainer/src/qa/counting-figures.ts",
-      "find": "return `${figure.element}@${index}`;",
-      "replace": "return `${figure.element}@0`;",
+      "find": "return `${element}@${index}`;",
+      "replace": "return `${element}@0`;",
       "kills": [
         "sibling counting figures four sibling stat figures counting up are each judged on the value they settle on"
       ]
