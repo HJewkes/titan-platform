@@ -5,6 +5,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { KnowledgeGraph } from "./KnowledgeGraph.js";
+import { PHONE_TAP } from "./phone.js";
 
 type KnowledgeRecord = ConsoleCommands["work.record"]["result"];
 
@@ -18,8 +19,8 @@ export function KnowledgeRecordPage({ recordRef, graph }: { recordRef: string; g
       <Trail recordRef={recordRef} />
       <Tabs index={graph ? 1 : 0} onChange={(index) => open({ view: "knowledge", id: recordRef, ...(index === 1 ? { query: "tab=graph" } : {}) })}>
         <TabList>
-          <Tab>Record</Tab>
-          <Tab>Graph</Tab>
+          <Tab className={PHONE_TAP}>Record</Tab>
+          <Tab className={PHONE_TAP}>Graph</Tab>
         </TabList>
       </Tabs>
       {graph ? <KnowledgeGraph center={recordRef} /> : <RecordRead recordRef={recordRef} />}
@@ -71,10 +72,13 @@ function Meta({ record }: { record: KnowledgeRecord }): ReactNode {
 }
 
 function Trail({ recordRef }: { recordRef: string }): ReactNode {
+  // A ref is one long word, so only a break inside it keeps a phone from scrolling sideways, and react-native-web's rows do not shrink to let it.
   return (
-    <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
-      <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
-    </Breadcrumbs>
+    <div className="min-w-0 break-all [&_*]:min-w-0 [&_*]:shrink">
+      <Breadcrumbs>
+        <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
+        <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
+      </Breadcrumbs>
+    </div>
   );
 }
