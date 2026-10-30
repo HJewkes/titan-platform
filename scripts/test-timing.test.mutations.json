@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a fetched run attempt is not marked, so every pass downloads it again",
+      "file": "scripts/test-timing.mjs",
+      "find": "      timing.markGhRunFetched(db, run.databaseId, run.attempt, result.artifacts);\n",
+      "replace": "",
+      "kills": [
+        "test-timing ingest-gh downloads nothing again on a second pass over the same runs"
+      ]
+    },
+    {
+      "name": "a run with no artifacts fails instead of counting as empty",
+      "file": "scripts/test-timing.mjs",
+      "find": "    if (!NO_ARTIFACTS.test(String(error.stderr ?? error.message))) throw error;",
+      "replace": "    throw error;",
+      "kills": [
+        "test-timing ingest-gh stores every shard and attempt of a main run and leaves a none-scope pull request run with no rows"
+      ]
+    }
+  ]
+}

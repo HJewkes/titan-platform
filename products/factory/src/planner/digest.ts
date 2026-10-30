@@ -14,7 +14,7 @@ export interface DigestPiece {
 /** The digest inputs in config order, each cut to its tail, then the whole cut to the token budget with a marker. */
 export function buildDigest(pieces: readonly DigestPiece[], maxTokens: number): string {
   const body = pieces
-    .filter(({ input }) => input.digest)
+    .filter(({ input, text }) => input.digest && !(input.optional && text.trim() === ""))
     .map(({ input, text }) => `## ${input.name}\n\n${tailOf(text, input.tailLines)}\n`)
     .join("\n");
   const budget = maxTokens * CHARS_PER_TOKEN;
@@ -28,6 +28,7 @@ function tailOf(text: string, lines: number | undefined): string {
   return text.trimEnd().split("\n").slice(-lines).join("\n");
 }
 
-export function digestPreamble(path: string, maxTokens: number): string {
-  return `Your inputs are pre-digested (at most ${maxTokens} tokens) in ${path}. Read it first, and open a source file only for what it leaves out.\n\n`;
+export function digestPreamble(path: string, maxTokens: number, pieces: readonly DigestPiece[] = []): string {
+  const asks = pieces.filter(({ input, text }) => input.prompt !== undefined && text.trim() !== "").map(({ input }) => `${input.prompt}\n`);
+  return `Your inputs are pre-digested (at most ${maxTokens} tokens) in ${path}. Read it first, and open a source file only for what it leaves out.\n${asks.join("")}\n`;
 }
