@@ -24,7 +24,13 @@ interface Scheduler {
 }
 // react-dom's own instance: findBy* waits with act off, so a commit there queues its passive-effect flush on this
 // scheduler, which cleanup does not cancel. Left queued, it reads `window` after this file's jsdom is gone (TP-4539).
-const scheduler = createRequire(createRequire(import.meta.url).resolve("react-dom"))("scheduler") as Scheduler;
+function reactDomScheduler(): Scheduler {
+  const loaded: unknown = createRequire(createRequire(import.meta.url).resolve("react-dom"))("scheduler");
+  const isScheduler = (value: unknown): value is Scheduler => typeof value === "object" && value !== null && "unstable_scheduleCallback" in value;
+  if (!isScheduler(loaded)) throw new Error("react-dom's scheduler has no unstable_scheduleCallback");
+  return loaded;
+}
+const scheduler = reactDomScheduler();
 const drainScheduler = () => new Promise<void>((resolve) => void scheduler.unstable_scheduleCallback(scheduler.unstable_IdlePriority, resolve));
 
 afterEach(async () => {
