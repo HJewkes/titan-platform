@@ -9,6 +9,15 @@
       "kills": [
         "explainer run keys a later run's reflection to the digest day its base run gathered"
       ]
+    },
+    {
+      "name": "a later run forgets its base run's digest day",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "request.gather ?? (base ? planOf(base).gather : undefined)",
+      "replace": "request.gather",
+      "kills": [
+        "explainer run keys a later run's reflection to the digest day its base run gathered"
+      ]
     }
   ]
 }

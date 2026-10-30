@@ -9,6 +9,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useAnswerSource } from "../data/submit.js";
 import { InlineMarkdown, RoundProse, plainText } from "./RoundMarkdown.js";
 import type { QuestionAnswer } from "./RoundQuestion.js";
+import { PHONE_TAP } from "./phone.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type Recommendation = ConsoleCommands["rounds.reveal"]["result"]["recommendation"];
@@ -212,7 +213,7 @@ export function RevealControl({ question, shown }: { question: Question; shown: 
   return (
     <VStack gap={1}>
       <HStack gap={2} align="center" wrap>
-        <Button variant="outline" size="sm" accessibilityState={{ selected: shown.visible }} onPress={shown.toggle} testID={`reveal-${question.id}`}>
+        <Button variant="outline" size="sm" className={PHONE_TAP} accessibilityState={{ selected: shown.visible }} onPress={shown.toggle} testID={`reveal-${question.id}`}>
           <ButtonText>{shown.visible ? "Hide recommendation" : "Reveal recommendation (r)"}</ButtonText>
         </Button>
         <Typography variant="caption" color="secondary">{revealHelp(shown)}</Typography>

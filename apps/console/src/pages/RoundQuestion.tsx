@@ -10,6 +10,7 @@ import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
@@ -224,13 +225,13 @@ function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameO
             noting,
             choice,
             value === choice,
-            <Radio key={choice} value={choice} aria-checked={value === choice}>
+            <Radio key={choice} value={choice} aria-checked={value === choice} className={PHONE_TAP}>
               <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
             </Radio>,
           ),
         )}
         {revisable ? (
-          <Radio value={REVISION} aria-checked={value === REVISION}>
+          <Radio value={REVISION} aria-checked={value === REVISION} className={PHONE_TAP}>
             {REVISION_LABEL}
           </Radio>
         ) : null}
