@@ -30,10 +30,10 @@ const shippedResult = z.object({
   merged: z.array(prRef),
 });
 
-export type PrRef = z.infer<typeof prRef>;
+type PrRef = z.infer<typeof prRef>;
 export type ShippedDigest = z.infer<typeof digestSchema>;
-export type ShippedResult = z.infer<typeof shippedResult>;
-export interface DayWindow {
+type ShippedResult = z.infer<typeof shippedResult>;
+interface DayWindow {
   date: string;
   from: number;
   to: number;
@@ -90,7 +90,7 @@ export function prSetHash(prs: readonly PrRef[]): string {
 const digestPath = (dir: string, date: string): string => path.join(dir, `${date}.json`);
 
 /** Null when there is no digest for the date or the file is not a v1 digest: the page then shows the merged list unbuilt. */
-export async function readDigest(dir: string, date: string): Promise<ShippedDigest | null> {
+async function readDigest(dir: string, date: string): Promise<ShippedDigest | null> {
   const text = await readFile(digestPath(dir, date), "utf8").catch(() => null);
   if (text === null) return null;
   try {
