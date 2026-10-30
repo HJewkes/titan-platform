@@ -2,7 +2,7 @@ import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } fr
 import os from "node:os";
 import path from "node:path";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
-import { isMissing } from "./absent.js";
+import { isMissing, isNameTooLong } from "./absent.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
 
 export const CLAUDE_TRANSCRIPT_FORMAT = "claude-code-jsonl";
@@ -150,7 +150,8 @@ function readableFile(filePath: string): true | false | string {
   try {
     return statSync(filePath).isFile() ? true : `Claude transcript path is not a file: ${filePath}`;
   } catch (error) {
-    return isMissing(error) ? false : `could not inspect Claude transcript ${filePath}: ${messageOf(error)}`;
+    // Claude shortens a long cwd's directory name, so the exact slug can pass the name limit while the transcript is still there to scan for.
+    return isMissing(error) || isNameTooLong(error) ? false : `could not inspect Claude transcript ${filePath}: ${messageOf(error)}`;
   }
 }
 

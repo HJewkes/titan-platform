@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentChatRepairer } from "../build/agent-chat-repairer.js";
@@ -40,6 +41,27 @@ describe("the repair round on a custom layer that fails the compile gate", () =>
     expect(record.usage).toMatchObject({ calls: 2 });
     expect(record.usage.costUnknown).toBeUndefined();
     expect(JSON.parse(readFileSync(path.join(tree, "layers.json"), "utf8"))).toMatchObject({ layers: [{ beat: "b1", repairSessionId: FAKE_SESSION_ID }] });
+  });
+
+  it("stores the repaired module when TMPDIR is long enough that the whole-cwd project slug would pass 255 bytes", async () => {
+    const outer = mkdtempSync(path.join(tmpdir(), "long-tmp-"));
+    const longTmp = path.join(outer, "x".repeat(150));
+    mkdirSync(longTmp);
+    const savedTmp = process.env.TMPDIR;
+    process.env.TMPDIR = longTmp;
+    try {
+      fx = fixture();
+      const { host } = hostWith(brokenWorker().worker, REPAIRED);
+
+      const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, host);
+
+      const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+      expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(REPAIRED);
+    } finally {
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
+      rmSync(outer, { recursive: true, force: true });
+    }
   });
 
   it("keeps a repair that still fails marked for repair, with its spend and session, and never caches it", async () => {
