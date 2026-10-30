@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
@@ -14,14 +11,13 @@ import { findReadingTapSheet, findTapSheet } from "./tap-sheet.test-helpers.js";
 // A TapSheet renders its read-back only after the prepare answers, so a test that looks the sheet up itself and queries it
 // at once races that answer (TP-4634). Sheets open through tap-sheet.test-helpers, which wait the read-back out.
 
-const SRC = dirname(fileURLToPath(import.meta.url));
-
-const filesUnder = (dir: string): string[] => readdirSync(dir, { recursive: true, encoding: "utf8" }).map((path) => join(dir, path));
+// The console bundles for the browser, so it reads its own sources through Vite rather than node:fs.
+const PAGES = import.meta.glob<string>("./pages/**/*.tsx", { query: "?raw", import: "default", eager: true });
+const TESTS = import.meta.glob<string>("./**/*.test.tsx", { query: "?raw", import: "default", eager: true });
 
 function sheetTestIds(): string[] {
   const ids = new Set<string>();
-  for (const file of filesUnder(join(SRC, "pages")).filter((path) => path.endsWith(".tsx"))) {
-    const source = readFileSync(file, "utf8");
+  for (const source of Object.values(PAGES)) {
     for (const opening of source.matchAll(/<TapSheet\b/g)) {
       const testID = /testID="([^"]+)"/.exec(source.slice(opening.index))?.[1];
       if (testID !== undefined) ids.add(testID);
@@ -68,12 +64,7 @@ describe("tests that open a confirm sheet", () => {
   });
 
   it("open each sheet through findTapSheet, never by a bare lookup that races the prepare", () => {
-    const offenders = filesUnder(SRC)
-      .filter((path) => path.endsWith(".test.tsx"))
-      .flatMap((file) => {
-        const source = readFileSync(file, "utf8");
-        return ids.filter((id) => directLookup(id).test(source)).map((id) => `${relative(SRC, file)}: ${id}`);
-      });
+    const offenders = Object.entries(TESTS).flatMap(([file, source]) => ids.filter((id) => directLookup(id).test(source)).map((id) => `${file}: ${id}`));
     expect(offenders).toEqual([]);
   });
 
