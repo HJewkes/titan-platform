@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import type { BrowserContext, CDPSession, Page } from 'playwright-core'
-import { describe, test } from 'vitest'
+import { afterEach, describe, test, vi } from 'vitest'
 import { partialFake } from '@titan-design/test-kit'
 import { screenshotFrame } from './capture.js'
 
@@ -50,5 +50,27 @@ describe('screenshotFrame retry', () => {
     await assert.rejects(screenshotFrame(page), /Unable to capture screenshot/)
 
     assert.equal(calls(), 2)
+  })
+})
+
+describe('screenshotFrame retry backoff', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Mutation: the setTimeout before the second shot is removed or shortened.
+  test('the retry waits out the backoff before asking Chromium again', async () => {
+    vi.useFakeTimers()
+    const { page, calls } = fakePage([captureFailure(), 'ok'])
+
+    const pending = screenshotFrame(page)
+    await vi.advanceTimersByTimeAsync(149)
+    const callsBeforeBackoff = calls()
+    await vi.advanceTimersByTimeAsync(1)
+    const png = await pending
+
+    assert.equal(callsBeforeBackoff, 1)
+    assert.equal(calls(), 2)
+    assert.equal(png.toString(), 'synthetic-png')
   })
 })
