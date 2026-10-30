@@ -26,6 +26,7 @@ import { AutoresearchProgress } from "./AutoresearchProgress.js";
 import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
 import { AutoresearchSnapshots } from "./AutoresearchSnapshots.js";
 import { AutoresearchValidator } from "./AutoresearchValidator.js";
+import { PHONE_TAP_LINK } from "./phone-tap.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
@@ -78,7 +79,7 @@ function RunRow({ run }: { run: ArRunSummary }): ReactNode {
   return (
     <TableRow testID={`autoresearch-run-${run.runId}`}>
       <TableCell>
-        <Link color="primary" onPress={() => open({ view: "autoresearch", id: run.runId })}>
+        <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "autoresearch", id: run.runId })}>
           {run.runId}
         </Link>
       </TableCell>

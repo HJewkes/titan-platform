@@ -23,6 +23,7 @@ import { href, open } from "../router.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { ideaRoute } from "./autoresearch-lanes.js";
 import { bugRepeatRates, REGISTRY_TAIL, registryTails, type RoundRepeats } from "./autoresearch-registries.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone-tap.js";
 
 const PERCENT = 100;
 
@@ -40,9 +41,9 @@ export function AutoresearchRegistries({ run }: { run: ArRunView }): ReactNode {
         <VStack gap={2}>
           <Tabs index={tab} onChange={setTab}>
             <TabList>
-              <Tab>{`Dead ends ${tails.deadEnds.length}`}</Tab>
-              <Tab>{`Bugs ${tails.bugs.length}`}</Tab>
-              <Tab>Bug-repeat rate</Tab>
+              <Tab className={PHONE_TAP}>{`Dead ends ${tails.deadEnds.length}`}</Tab>
+              <Tab className={PHONE_TAP}>{`Bugs ${tails.bugs.length}`}</Tab>
+              <Tab className={PHONE_TAP}>Bug-repeat rate</Tab>
             </TabList>
           </Tabs>
           {tab === 0 ? <DeadEnds runId={run.runId} rows={tails.deadEnds} /> : tab === 1 ? <Bugs runId={run.runId} rows={tails.bugs} /> : <RepeatRate rounds={bugRepeatRates(run)} />}
@@ -127,7 +128,7 @@ function Bugs({ runId, rows }: { runId: string; rows: ArRegistries["bugs"] }): R
 function IdeaLink({ runId, ideaId }: { runId: string; ideaId: string }): ReactNode {
   const target = ideaRoute(runId, ideaId);
   return (
-    <Link color="primary" href={href(target)} onPress={() => open(target)} testID={`autoresearch-registry-idea-${ideaId}`}>
+    <Link color="primary" className={PHONE_TAP_LINK} href={href(target)} onPress={() => open(target)} testID={`autoresearch-registry-idea-${ideaId}`}>
       {shortId(ideaId)}
     </Link>
   );

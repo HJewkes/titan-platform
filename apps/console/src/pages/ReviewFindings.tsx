@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Card, CardContent, Chip, EmptyState, HStack, ListItem, Pill, Typography, VStack } from "@titan-design/react-ui";
 import { TOPIC_PRIORITIES, TOPIC_VERDICTS } from "@titan-design/pm";
 import type { getReview } from "../../server/reviews.js";
+import { PHONE_TAP } from "./phone-tap.js";
 
 type TopicRow = Awaited<ReturnType<typeof getReview>>["topics"][number];
 
@@ -67,7 +68,7 @@ function ChipRow<T extends string>({ label, options, value, onChange, testID }: 
     <HStack gap={2} align="center" wrap testID={testID}>
       <Typography variant="caption" color="secondary">{label}</Typography>
       {options.map((option) => (
-        <Chip key={option} size="sm" variant={option === value ? "solid" : "outline"} color={option === value ? "primary" : "default"} onPress={() => onChange(option)}>
+        <Chip key={option} size="sm" className={PHONE_TAP} variant={option === value ? "solid" : "outline"} color={option === value ? "primary" : "default"} onPress={() => onChange(option)}>
           {option}
         </Chip>
       ))}

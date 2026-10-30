@@ -3,6 +3,7 @@ import { Alert, BreadcrumbItem, Breadcrumbs, HStack, Heading, Pill, Section, Sec
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RowBadges, isRecord, stageOf, type WatchRow } from "./ShepherdPage.js";
+import { PHONE_TAP_LINK } from "./phone-tap.js";
 
 /** Splits `owner/repo#pr` at its last `#`; anything else names no PR. */
 function parsePrRef(ref: string): { repo: string; pr: number } | undefined {
@@ -52,7 +53,7 @@ function Framed({ id, children }: { id: string; children: ReactNode }): ReactNod
   return (
     <VStack gap={4}>
       <Breadcrumbs>
-        <BreadcrumbItem onPress={() => open({ view: "shepherd" })}>Shepherd</BreadcrumbItem>
+        <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "shepherd" })}>Shepherd</BreadcrumbItem>
         <BreadcrumbItem isCurrentPage>{id}</BreadcrumbItem>
       </Breadcrumbs>
       {children}

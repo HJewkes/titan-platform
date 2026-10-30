@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, Section, SectionContent, SectionHeader, Spinner, VStack } from "@titan-design/react-ui";
 import { useQuery } from "../data/rpc.js";
 import type { InboxItem } from "./InboxPage.js";
+import { PHONE_TAP } from "./phone-tap.js";
 
 /** `inbox.list` lists the planning items only when asked; the default read counts them (TP-4390). */
 export const PLANNING_READ = { planning: true };
@@ -20,7 +21,7 @@ export function PlanningSection({ count, startOpen, renderRows }: PlanningProps)
       <SectionHeader title={`Planning (${count})`} subtitle="Answered at each item's source" />
       <SectionContent>
         <VStack gap={3}>
-          <Button variant="outline" size="sm" onPress={() => setOpen(!isOpen)}>
+          <Button variant="outline" size="sm" className={PHONE_TAP} onPress={() => setOpen(!isOpen)}>
             <ButtonText>{isOpen ? "Hide planning" : `Show ${count} planning items`}</ButtonText>
           </Button>
           {isOpen ? <PlanningRows renderRows={renderRows} /> : null}

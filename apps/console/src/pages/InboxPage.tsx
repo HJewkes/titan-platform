@@ -13,6 +13,7 @@ import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone-tap.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -208,7 +209,7 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
           </HStack>
           <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
           <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
-          <Link color="primary" onPress={() => open(parseRoute(row.link))}>
+          <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open(parseRoute(row.link))}>
             {DERIVED_LINK[row.kind]}
           </Link>
         </VStack>
@@ -309,7 +310,7 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
   const suffix = choice.decision ?? choice.waitFor;
   return (
     <HStack gap={2} align="center" wrap>
-      <Button {...(choice.decision !== undefined && { variant: "outline" as const })} size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${suffix === undefined ? "" : `-${suffix}`}`}>
+      <Button {...(choice.decision !== undefined && { variant: "outline" as const })} size="sm" className={PHONE_TAP} onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${suffix === undefined ? "" : `-${suffix}`}`}>
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
@@ -340,7 +341,7 @@ function ReadBackWithLineage({ item, prepared }: { item: InboxItem; prepared: In
 function EvidenceLink({ evidence }: { evidence: string }): ReactNode {
   if (!/^(#|https?:\/\/)/.test(evidence)) return <Typography variant="mono">{evidence}</Typography>;
   return (
-    <Link color="primary" onPress={() => followEvidence(evidence)}>
+    <Link color="primary" className={PHONE_TAP_LINK} onPress={() => followEvidence(evidence)}>
       {evidence.startsWith("#") ? "Open evidence" : evidence}
     </Link>
   );
@@ -352,7 +353,7 @@ function TerminalAction({ item, reason }: { item: InboxItem; reason: string }): 
   return (
     <VStack gap={2}>
       <HStack gap={2} align="center" wrap>
-        <Button variant="outline" size="sm" onPress={() => setShown(!shown)} testID={`inbox-terminal-${item.id}`}>
+        <Button variant="outline" size="sm" className={PHONE_TAP} onPress={() => setShown(!shown)} testID={`inbox-terminal-${item.id}`}>
           <ButtonText>Run on terminal</ButtonText>
         </Button>
         {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
@@ -381,7 +382,7 @@ export function CopyButton({ command }: { command: string }): ReactNode {
     setCopied(true);
   };
   return (
-    <Button variant="ghost" size="sm" onPress={() => void copy()}>
+    <Button variant="ghost" size="sm" className={PHONE_TAP} onPress={() => void copy()}>
       <ButtonText>{copied ? "Copied" : "Copy command"}</ButtonText>
     </Button>
   );

@@ -3,6 +3,7 @@ import { Alert, Button, ButtonText, Drawer, DrawerBody, DrawerFooter, Spinner, T
 import type { JsonEnvelope } from "@titan-design/registry";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
+import { PHONE_TAP } from "./phone-tap.js";
 
 /** What every `*.prepare` answers: a read-back with a confirm digest, or the reason the console cannot take the tap. */
 interface TapReady {
@@ -111,7 +112,7 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
         </VStack>
       </DrawerBody>
       <DrawerFooter>
-        <Button variant="outline" onPress={onClose} testID={`${testID}-cancel`}>
+        <Button variant="outline" className={PHONE_TAP} onPress={onClose} testID={`${testID}-cancel`}>
           <ButtonText>{done ? "Close" : "Cancel"}</ButtonText>
         </Button>
         {done ? null : choices.length > 0 ? (
@@ -119,7 +120,7 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
         ) : (
           // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
           // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
-          <Button key={sheet.status} color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
+          <Button key={sheet.status} color="success" className={PHONE_TAP} isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
             <ButtonText>Confirm</ButtonText>
           </Button>
         )}
@@ -131,7 +132,7 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
 /** Choices mount only once the read-back is ready, so each press responder is built with the live config. */
 function ChoiceButtons({ choices, confirm, testID }: { choices: readonly TapConfirmChoice[]; confirm: (choice: Record<string, unknown>) => Promise<void>; testID: string }): ReactNode {
   return choices.map((choice) => (
-    <Button key={choice.id} color={choice.color} onPress={() => void confirm(choice.args)} testID={`${testID}-${choice.id}`}>
+    <Button key={choice.id} color={choice.color} className={PHONE_TAP} onPress={() => void confirm(choice.args)} testID={`${testID}-${choice.id}`}>
       <ButtonText>{choice.label}</ButtonText>
     </Button>
   ));

@@ -31,6 +31,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone-tap.js";
 
 type Detail = ConsoleCommands["work.initiative"]["result"];
 
@@ -51,7 +52,7 @@ export function InitiativeDetailPage({ slug }: { slug: string }): ReactNode {
         <OpenLoops loops={loops} now={now} linkers={LINKERS} emptyLabel="No open loops" />
       </Panel>
       <Panel>
-        <InitiativeBrief brief={{ ...initiative, body: brief.body }} linkers={LINKERS} />
+        <InitiativeBrief className={PHONE_TAP_BUTTONS} brief={{ ...initiative, body: brief.body }} linkers={LINKERS} />
         {brief.truncated ? <Alert status="info" size="compact" message="The brief is longer than active-work's read cap; this is its head." /> : null}
       </Panel>
       <Panel>
@@ -82,7 +83,7 @@ function Heading({ initiative }: { initiative: Detail["initiative"] }): ReactNod
 function Trail({ slug }: { slug: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "initiatives" })}>Initiatives</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "initiatives" })}>Initiatives</BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{slug}</BreadcrumbItem>
     </Breadcrumbs>
   );
@@ -102,11 +103,11 @@ function Records({ detail, now }: { detail: Detail; now: number }): ReactNode {
   const { openTasks, sessions, notes, sources } = detail;
   const labels = [`Tasks (${openTasks})`, `Sessions (${sessions.length})`, `Notes (${notes.length})`, `Sources (${sources.length})`];
   return (
-    <VStack gap={4}>
+    <VStack gap={4} className={PHONE_TAP_BUTTONS}>
       <Tabs index={tab} onChange={setTab}>
         <TabList>
           {labels.map((label) => (
-            <Tab key={label}>{label}</Tab>
+            <Tab key={label} className={PHONE_TAP}>{label}</Tab>
           ))}
         </TabList>
       </Tabs>
