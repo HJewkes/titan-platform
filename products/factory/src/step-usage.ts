@@ -1,8 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { priceRequest } from "@titan-design/session-analytics";
-import { extractTranscript } from "@titan-design/session-read";
+import { distinctRequests, extractTranscript, type TranscriptRequest } from "@titan-design/session-read";
 import type { StepUsage } from "@titan-design/workflow";
-import { distinctRequests, type TranscriptRequest } from "./autoresearch/agent-run.js";
 
 /** An agent's turn ran but its spend cannot be read: nothing is known but that a budget may not call it free. */
 export const UNMETERED: StepUsage = { costUsd: 0, costUnknown: true };

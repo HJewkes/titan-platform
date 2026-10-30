@@ -1240,7 +1240,8 @@ Key exports:
 - `line-reader`: `LineReader`
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
-- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
+- `distinct-requests`: `distinctRequests`
+- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-speech-vet"></a>
