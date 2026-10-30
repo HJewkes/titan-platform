@@ -76,7 +76,16 @@ async function greenAt(ports: BuildSurfacePorts, input: I.BranchInput, head: str
   return pass ? { head, exitCode: 0, pass, ...recorded } : undefined;
 }
 
-async function branch(ports: BuildSurfacePorts, input: I.BranchInput) {
+/** A merged PR (a squash leaves no ancestry) or a branch head in the base, with the PR that carried it; no PR means no outcome to report. */
+async function mergedEarlier(ports: BuildSurfacePorts, input: I.BranchInput, head: string, baseSha: string, signal: AbortSignal) {
+  const found = await ports.github.findPr(input.repo, input.branch);
+  if (!found) return undefined;
+  if (found.merged && found.mergeSha && found.headSha === head) return { pr: found.number, mergeSha: found.mergeSha, head };
+  const ancestry = await ports.run(["git", "merge-base", "--is-ancestor", head, baseSha], { cwd: input.cwd, env: {}, signal });
+  return ancestry.status === 0 ? { pr: found.number, mergeSha: found.mergeSha ?? head, head } : undefined;
+}
+
+async function branch(ports: BuildSurfacePorts, input: I.BranchInput, signal: AbortSignal) {
   const existing = await ports.github.getHeadSha(input.repo, input.branch);
   const baseSha = await ports.github.getHeadSha(input.repo, input.base);
   if (!baseSha) throw new Error(`base ${input.base} has no head on ${input.repo}`);
@@ -84,6 +93,8 @@ async function branch(ports: BuildSurfacePorts, input: I.BranchInput) {
     await ports.github.ensureBranch(input.repo, input.branch, baseSha);
     return { branch: input.branch, baseSha, created: true };
   }
+  const merged = existing === baseSha ? undefined : await mergedEarlier(ports, input, existing, baseSha, signal);
+  if (merged) return { branch: input.branch, baseSha, created: false, merged };
   const green = existing === baseSha ? undefined : await greenAt(ports, input, existing);
   return { branch: input.branch, baseSha, created: false, ...(green && { green }) };
 }
@@ -114,7 +125,7 @@ export function buildSurfaceCodeRoutes(ports: BuildSurfacePorts): StepRoute[] {
     bsRoute("bs-plan", ports, (input: I.PlanInput) => plan(ports, input)),
     bsRoute("bs-preflight", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
     bsRoute("bs-extract-check", ports, (input: I.ValidateInput, signal) => validate(ports, input, signal)),
-    bsRoute("bs-branch", ports, (input: I.BranchInput) => branch(ports, input)),
+    bsRoute("bs-branch", ports, (input: I.BranchInput, signal) => branch(ports, input, signal)),
     bsRoute("bs-report-check", ports, (input: I.ReportCheckInput, signal) => reportCheck(ports, input, signal)),
     bsRoute("bs-gates", ports, (input: I.GatesInput, signal) => gates(ports, input, signal)),
     bsRoute("bs-preview", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
