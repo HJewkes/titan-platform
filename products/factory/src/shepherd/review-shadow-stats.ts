@@ -3,7 +3,7 @@ import { REVIEW_SHADOW_STEP } from "./review-shadow.js";
 import { inRange, inStepOrder, isoWeek, mergedAt, payloadOf, stepName, type StatsRange } from "./stats.js";
 
 /** W1's exit check reads these: a fixer reached early on a loop, and no stop on a head that went on to merge. */
-export interface ReviewShadowRow {
+interface ReviewShadowRow {
   repo: string;
   week: string;
   shadows: number;

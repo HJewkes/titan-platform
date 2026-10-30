@@ -20,7 +20,7 @@ import { fixFirstCount } from "./wake-brief.js";
 
 type IntentRecord = Extract<z.infer<typeof Intended>, { kind: "intent" }>;
 
-export interface RoundStart {
+interface RoundStart {
   target: ReviewTarget;
   proof: Awaited<ReturnType<typeof readFixProofAt>>;
   standing: ProofStanding;

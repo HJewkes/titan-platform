@@ -15,7 +15,7 @@ import type { ReviewerRoles } from "./reviewer-roles.js";
 /** Recorded after each review round under `review.workflow: shadow`; computed from the round's records, so it dispatches nothing. */
 export const REVIEW_SHADOW_STEP = "sh-review-shadow";
 
-export type ReviewWorkflowMode = "off" | "shadow" | "on" | "on:preflight";
+type ReviewWorkflowMode = "off" | "shadow" | "on" | "on:preflight";
 
 /** Only `shadow` is built (S10); `on:preflight` and `on` run as `off`, with the reason logged, until S11 and S12 ship them. */
 export function workflowModeOf(mode: ReviewWorkflowMode | undefined, warn: (text: string) => void = console.warn): { workflow?: "shadow" } {
@@ -40,7 +40,7 @@ const ShadowInputSchema = z.object({
 });
 type ShadowInput = z.infer<typeof ShadowInputSchema>;
 
-export interface ReviewShadow {
+interface ReviewShadow {
   kind: "shadow";
   round: number;
   /** The workflow's preflight decision: `go`, `stop:<outcome>`, `fixer:<class>` or `heal:<kind>+<kind>`. */
@@ -53,7 +53,7 @@ export interface ReviewShadow {
 export const ReviewShadowRead = z.looseObject({ kind: z.literal("shadow"), round: z.number(), decision: z.string(), classes: z.array(z.string()), would: z.string() });
 
 /** The wiring the shadow plans with: the same panel table and role profiles the panel would be planned with. */
-export interface ShadowWiring {
+interface ShadowWiring {
   roles?: ReviewerRoles;
   panelPolicy?: PanelPolicy;
   profileInstalled?: (profile: string) => boolean;
@@ -146,7 +146,7 @@ export function reviewShadow(raw: unknown, wiring: ShadowWiring = {}, retry: Ret
 export const reviewShadowRoute = (now: () => number, wiring?: ShadowWiring): StepRoute => codeRoute(REVIEW_SHADOW_STEP, now, async (raw: unknown) => reviewShadow(raw, wiring));
 
 /** The round's records the shadow reads: the proof, the intent's class, the dispatch and the verdict. */
-export interface ShadowRound {
+interface ShadowRound {
   target: ReviewTarget;
   proof: z.infer<typeof FixProofReadSchema>;
   intent: Readonly<Record<string, unknown>>;
