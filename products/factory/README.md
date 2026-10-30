@@ -470,7 +470,8 @@ Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/diges
 `icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
 `shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
 unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
-absolute.
+absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
+stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.
 
 ## Owner-queue sources
 
