@@ -2,6 +2,7 @@ import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { HealthSampleInput } from "./sample.js";
 import * as store from "./store.js";
@@ -15,7 +16,7 @@ function sample(minute: number, overrides: Partial<HealthSampleInput> = {}): Hea
 }
 
 function rowCount(db: Db): number {
-  return (db.prepare("SELECT COUNT(*) AS n FROM health_sample").get() as { n: number }).n;
+  return z.object({ n: z.number() }).parse(db.prepare("SELECT COUNT(*) AS n FROM health_sample").get()).n;
 }
 
 let db: Db;
@@ -56,7 +57,9 @@ describe("appendSamples", () => {
   });
 
   it("stores nothing from a batch with one invalid row", () => {
-    const batch = [sample(0), sample(1), sample(2, { status: "up" as never }), sample(3), sample(4)];
+    // @ts-expect-error "up" is not a sample status, which is what this row proves is refused
+    const invalid = sample(2, { status: "up" });
+    const batch = [sample(0), sample(1), invalid, sample(3), sample(4)];
 
     expect(() => appendSamples(db, batch)).toThrow();
     expect(rowCount(db)).toBe(0);
@@ -66,7 +69,7 @@ describe("appendSamples", () => {
     let commits = 0;
     const counted = new Proxy(db, {
       get(target, key) {
-        if (key !== "transaction") return Reflect.get(target, key, target) as unknown;
+        if (key !== "transaction") return Reflect.get(target, key, target);
         return (fn: (...args: never[]) => unknown) => {
           const tx = target.transaction(fn);
           return (...args: never[]) => {
@@ -75,7 +78,7 @@ describe("appendSamples", () => {
           };
         };
       },
-    }) as Db;
+    });
 
     appendSamples(counted, [sample(0), sample(0, { target: "relay" }), sample(0, { target: "self", kind: "self" })]);
 
