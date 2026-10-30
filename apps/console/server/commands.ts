@@ -157,6 +157,14 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
   ];
 }
 
+/** The coordinator view's reads, each served only when its source is wired. */
+function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource) {
+  return {
+    ...(coordinator === undefined ? {} : coordinatorCommands(coordinator)),
+    ...(shipped === undefined ? {} : shippedCommands(shepherd, shipped)),
+  };
+}
+
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
 export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
@@ -184,9 +192,8 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...videoNotesCommands(videos, videoNotify),
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
-    ...(shipped === undefined ? {} : shippedCommands(shepherd, shipped)),
     ...workCommands(activeWork, work),
-    ...(coordinator === undefined ? {} : coordinatorCommands(coordinator)),
+    ...coordinatorReads(coordinator, shipped, shepherd),
   };
 }
 
