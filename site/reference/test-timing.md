@@ -22,6 +22,12 @@ stores those records in a SQLite corpus of `runs` and `files` rows that later qu
 - An ingester reads a record from disk or a CI artifact: `parseTimingArtifact` keeps keys a newer reporter added.
 - A corpus stores records: `openTimingStore`, then `ingestArtifact` once per record. A run id already in the store is
   a no-op, so a repeated or resumed ingest is safe.
+- An ingester archives as it stores: `ingestRecord` writes the record gzipped under
+  `<home>/raw/<runner>/<yyyy-mm>/` with a line in that month's `SHA256SUMS`, then stores it. `ingestGhArtifact` takes
+  one downloaded CI artifact by name (`vitest-file-timing-<attempt>` or `...-shard<i>of<n>-<attempt>`) and gives a
+  pre-header record a header from the run's `gh run view` metadata. `ingestSpool` drains a local spool directory.
+- A scheduled CI ingest skips run attempts it already fetched: `ghRunFetched` and `markGhRunFetched`, kept in the
+  store's watermark table.
 - A report compares like with like: every file row carries `runner_class` (`<runner>-<cpus>c`), indexed with file
   and project, and every run keeps its `host`.
 
@@ -43,7 +49,8 @@ console.log(storeStats(db)); // { runs, files, bytes, oldestStartedAt, newestSta
 
 ## What it deliberately does not do
 
-- It runs no reporter and downloads nothing. The reporter and the CI and spool ingesters live in the repo's scripts.
+- It runs no reporter and calls no `gh`. The reporter and the `scripts/test-timing.mjs` CLI that downloads CI
+  artifacts live in the repo's scripts.
 - It prunes nothing. File rows are compact and kept indefinitely; raw artifacts age out where they are archived,
   which is why each run row records `raw_path` and `raw_sha256`.
 
@@ -51,6 +58,11 @@ console.log(storeStats(db)); // { runs, files, bytes, oldestStartedAt, newestSta
 
 - A record whose parse fails stores nothing: the run and its files go in one transaction.
 - `ingestArtifact` keys on `run.id` alone. A changed record under an id already stored is ignored, not merged.
+- A pre-header CI record (before the run header landed) has no test counts, node version, load or wall time; it is
+  stored with `tests: 0`, `node: "unknown"` and `wallMs: 0`, on the hosted runner's 4 cores. A pull request's
+  pre-header record is stored as `scoped`, since its scope was never written down.
+- `ingestSpool` leaves a record modified in the last minute for the next pass, because the reporter may still be
+  writing it.
 - The column for the run's head commit is `commit_sha`, because `COMMIT` is an SQL keyword.
 
 ## Where it came from

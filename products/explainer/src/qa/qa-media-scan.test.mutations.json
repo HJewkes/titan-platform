@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "black-frames gates the stage",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "file": "products/explainer/src/qa/qa-gates.ts",
       "find": "{ name: \"black-frames\", gate: false,",
       "replace": "{ name: \"black-frames\", gate: true,",
       "kills": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "silence-2s gates the stage",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "file": "products/explainer/src/qa/qa-gates.ts",
       "find": "{ name: \"silence-2s\", gate: false,",
       "replace": "{ name: \"silence-2s\", gate: true,",
       "kills": [
@@ -21,7 +21,7 @@
     },
     {
       "name": "frozen-frames gates the stage",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "file": "products/explainer/src/qa/qa-gates.ts",
       "find": "{ name: \"frozen-frames\", gate: false,",
       "replace": "{ name: \"frozen-frames\", gate: true,",
       "kills": [
@@ -40,8 +40,8 @@
     },
     {
       "name": "qa records an empty scan whatever the engine found",
-      "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),",
+      "file": "products/explainer/src/qa/qa-core.ts",
+      "find": "mediaScan: mediaScanByBeat(await engine.mediaScan(sources.mp4), timeline),",
       "replace": "mediaScan: mediaScanByBeat({ black: [], silence: [], freeze: [] }, timeline),",
       "kills": [
         "qa stage media scan records each scanned stretch in qa.json with the beats it overlaps",

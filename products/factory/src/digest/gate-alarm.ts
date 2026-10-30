@@ -45,14 +45,24 @@ function gateText(g: WaitingGate, origin: string | undefined): string {
   return `${refOf(g)} ${g.ageHours}h${link}`;
 }
 
-/** The top line; `shown` cuts the list when the digest would pass its word limit. */
-export function alarmLine(alarm: GateAlarm, origin: string | undefined, shown: number = alarm.listed.length): string {
+function alarmHead(alarm: GateAlarm): string {
   const median = alarm.medianHours !== undefined && alarm.medianHours > MEDIAN_ALARM_HOURS ? [`${APPROVE_MERGE} median ${alarm.medianHours}h (>${MEDIAN_ALARM_HOURS}h)`] : [];
   const over = alarm.over72.length > 0 ? [`${alarm.over72.length} over ${GATE_ALARM_HOURS}h`] : [];
-  const head = [...median, ...over].join("; ");
+  return [...median, ...over].join("; ");
+}
+
+/** The top line; `shown` cuts the list when the digest would pass its word limit. */
+export function alarmLine(alarm: GateAlarm, origin: string | undefined, shown: number = alarm.listed.length): string {
+  const head = alarmHead(alarm);
   const gates = alarm.listed.slice(0, shown).map((g) => gateText(g, origin)).join(", ");
   const more = alarm.listed.length - shown;
   return `Owner gates stale: ${head}: ${gates}${more > 0 ? `, and ${more} more` : ""}`;
+}
+
+/** What the planner reads: the trigger, then every listed gate on its own line. The alarm is passed in, so no threshold is recomputed here. */
+export function alarmNote(alarm: GateAlarm, origin: string | undefined): string {
+  const lines = alarm.listed.map((g) => `- ${gateText(g, origin)}`);
+  return `Owner gates stale: ${alarmHead(alarm)}\n\n${lines.join("\n")}\n`;
 }
 
 /** `digest.consoleOrigin`: where the alarm links point; the owner reads the digest off the box, so a loopback origin could never open. */

@@ -34,12 +34,21 @@ export async function readInput(input: PlannerInput, run: PlannerRun): Promise<s
 }
 
 async function readRaw(input: PlannerInput, run: PlannerRun): Promise<string> {
-  if (input.file !== undefined) return readFileSync(input.file, "utf8");
+  if (input.file !== undefined) return readFile(input.file, input.optional);
   if (input.dir !== undefined) return readDir(input.dir, input.suffix);
   const [file, ...args] = input.command!;
   const result = await run(file!, args);
   if (result.code !== 0) throw new Error(`${input.name}: exit ${result.code}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
   return result.stdout;
+}
+
+function readFile(path: string, optional: boolean): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (optional && error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+    throw error;
+  }
 }
 
 function readDir(dir: string, suffix: string): string {
