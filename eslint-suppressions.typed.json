@@ -1300,56 +1300,6 @@
       "count": 5
     }
   },
-  "packages/github/src/app-token.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 27
-    }
-  },
-  "packages/github/src/fake.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/force-pushes.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/gh-cli.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/github/src/rest.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/github/src/squash-cli.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/update-branch-retry.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/validate.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/validate.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/github/src/write-read-back.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/health/src/metrics/conformance.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
