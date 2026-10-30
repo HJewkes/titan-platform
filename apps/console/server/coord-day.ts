@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 
 /** Epoch ms bounds of one coordinator day: it starts at the configured local time, not at midnight. */
 export interface DayWindow {
@@ -48,6 +49,9 @@ export const isCalendarDate = (value: string): boolean => {
   const date = new Date(year, month - 1, day);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 };
+
+/** The `date` argument every coordinator read takes: absent means the day holding now. */
+export const dateArg = z.string().refine(isCalendarDate, "a date as YYYY-MM-DD").optional();
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 const dateLabel = (at: Date): string => `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
