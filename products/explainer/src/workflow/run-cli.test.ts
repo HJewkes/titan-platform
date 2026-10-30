@@ -133,13 +133,15 @@ describe("explainer run --from gather --type daily-overview", () => {
     cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
     const out: string[] = [];
     const err: string[] = [];
-    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
+    const cli = fakeCli();
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli };
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
 
     await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
       host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk(), { followLeads: true })), fakeRender()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
     });
 
+    expect(cli.calls.map((argv) => argv.slice(0, 3).join(" "))).toContain("active-work miner cost");
     expect(err.join("")).not.toContain("--spine");
     const report = ReportRowsSchema.parse(JSON.parse(readFileSync(path.join(path.dirname(out.join("").match(/report: (\S+)/)![1]!), "run-report.json"), "utf8")));
     const row = (stage: string) => report.rows.find((r) => r.stage === stage)!;
@@ -151,7 +153,8 @@ describe("explainer run --from gather --type daily-overview", () => {
   it("hands the script the gather's coverage manifest as a prompt section", async () => {
     fx = fixture();
     cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
-    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli: fakeCli() };
+    const cli = fakeCli();
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), cli };
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
     const writer = fakeScriptModel(overGoalWalk(), { followLeads: true });
 
@@ -159,6 +162,7 @@ describe("explainer run --from gather --type daily-overview", () => {
       host: fakeHost(fx, fakeBriefModels(writer), fakeRender()), gather, out: () => undefined, err: () => undefined,
     });
 
+    expect(cli.calls.map((argv) => argv.slice(0, 3).join(" "))).toContain("active-work miner cost");
     expect(writer.prompts[0]).toContain("## Coverage (coverage.json)");
     expect(writer.prompts[0]).toMatch(/^- .+ merged, counted by lane\/[a-z-]+\/rollup; name: /m);
   });
