@@ -96,6 +96,7 @@ graph TD
     evals["evals"]
     explainer["explainer"]
     factory["factory"]
+    fleetPanel["fleet-panel"]
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
     titan["titan"]
@@ -246,6 +247,7 @@ graph TD
   factory --> appPaths
   factory --> authority
   factory --> autoresearch
+  factory --> clusterPkg
   factory --> coordinator
   factory --> daemon
   factory --> fixProof
@@ -367,7 +369,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds eleven units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
+The `product` tier holds twelve units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `fleet-panel`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

@@ -44,6 +44,8 @@ export interface FakeBuild {
   agentCalls: string[];
   /** New components every implementer report requests. */
   newPrimitives: string[];
+  /** Tasks filed through the tasks port, as `<initiative>/<id>` with the tag they were filed under. */
+  filed: { task: string; tag: string; title: string; notes: string }[];
 }
 
 interface FakeOptions {
@@ -55,6 +57,10 @@ interface FakeOptions {
   newPrimitives?: string[];
   /** Exit status of the spec's preflight command; 0 when absent. */
   preflight?: number;
+  /** Exit status of the spec's gate health probe; 0 when absent. */
+  health?: number;
+  /** What the tasks port throws instead of filing. */
+  taskError?: string;
   /** Branches already on the remote, as a stopped earlier run left them. */
   branches?: Record<string, string>;
   /** Gate records already in an evidence directory, keyed by the directory. */
@@ -83,8 +89,21 @@ function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, option
       const status = options.reportCheck?.(request.env.BS_HEAD ?? "") ?? 0;
       return { status, stdout: status === 0 ? "" : "diff leaves the partition: src/other.ts\n", stderr: "" };
     }
+    if (argv[1] === "health") return { status: options.health ?? 0, stdout: "", stderr: "disk full" };
     if (argv[1] === "preflight") return { status: options.preflight ?? 0, stdout: "", stderr: "spec lock moved" };
     return { status: 0, stdout: "ok", stderr: "" };
+  };
+}
+
+function fakeTasks(fake: FakeBuild, options: FakeOptions): BuildSurfacePorts["tasks"] {
+  return {
+    findByTag: async (_initiative, tag) => fake.filed.find((entry) => entry.tag === tag)?.task.split("/")[1],
+    add: async (initiative, fields) => {
+      if (options.taskError) throw new Error(options.taskError);
+      const id = `DM-${fake.filed.length + 100}`;
+      fake.filed.push({ task: `${initiative}/${id}`, tag: fields.tags[0]!, title: fields.title, notes: fields.notes });
+      return id;
+    },
   };
 }
 
@@ -92,7 +111,7 @@ function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, option
 export function fakeBuild(options: FakeOptions = {}): FakeBuild {
   const evidence = new Map<string, unknown[]>(Object.entries(options.evidence ?? {}));
   const prs = new Map<string, number>();
-  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA], ...Object.entries(options.branches ?? {})]), registered: [], agentCalls: [], newPrimitives: options.newPrimitives ?? [] };
+  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA], ...Object.entries(options.branches ?? {})]), registered: [], agentCalls: [], newPrimitives: options.newPrimitives ?? [], filed: [] };
   fake.ports = {
     now: () => Date.parse("2026-10-28T12:00:00Z"),
     readText: async () => options.spec ?? demoSpec(),
@@ -114,6 +133,7 @@ export function fakeBuild(options: FakeOptions = {}): FakeBuild {
       register: async (request) => (fake.registered.push(request), { runId: `sh-${request.pr}` }),
       land: async ({ pr }) => ({ state: "merged", mergeSha: shaOf(9000 + pr) }),
     },
+    tasks: fakeTasks(fake, options),
   };
   return fake;
 }

@@ -7,7 +7,7 @@ import { appendEvent } from "./events.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
 import { holdBarsMerge, type GateEvidenceSource, type HoldFacts } from "./lan-gates.js";
-import { lastCiHead, stepName } from "./stats.js";
+import { inStepOrder, lastCiHead, payloadOf, stepName } from "./stats.js";
 
 export const ORDER_WAIT_STEP = "sh-order-wait";
 
@@ -117,6 +117,25 @@ export class MergeOrder {
   isWaitingTurn(runId: string): boolean {
     const run = this.runs.get(runId);
     return run !== undefined && Object.keys(run.activeSteps).some((key) => stepName(key) === ORDER_WAIT_STEP);
+  }
+
+  /** Its last order wait ended at the merging stall limit, not at its turn (TP-4434). */
+  waitedOut(runId: string): boolean {
+    const run = this.runs.get(runId);
+    const last = run && inStepOrder(run).filter(({ key }) => stepName(key) === ORDER_WAIT_STEP).at(-1);
+    return last !== undefined && payloadOf(last.result).bounded === true;
+  }
+
+  /**
+   * TP-4497 keeps a reservation through the resolved head's land round: the holder's CI read has moved past the head it
+   * reserved at, and it is not yet in its merge step, so its review may run for as long as the review takes.
+   */
+  inResolvedReview(reservation: Reservation): boolean {
+    const run = this.runs.get(reservation.runId);
+    if (run === undefined) return false;
+    const head = lastCiHead(run);
+    const merging = Object.keys(run.activeSteps).some((key) => stepName(key) === "merge");
+    return head !== undefined && head !== reservation.headSha && !merging;
   }
 
   /** The head the run's merge step is at, which a lan-gates hold is read at. */

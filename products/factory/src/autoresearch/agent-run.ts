@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { listAgents, type AgentRow } from "@titan-design/agent-dispatch";
 import { priceRequest } from "@titan-design/session-analytics";
-import { extractTranscript } from "@titan-design/session-read";
+import { distinctRequests, extractTranscript, type TranscriptRequest } from "@titan-design/session-read";
 
 export interface AgentChat {
   bin: string;
@@ -87,13 +87,6 @@ export function finalOf(name: string, text: string | undefined): unknown {
 export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSignal, from?: { path?: string; offset: number }): Promise<AgentResult> {
   const turn = await awaitTurn(chat, name, signal, from);
   return { row: turn.row, final: finalOf(name, turn.text), usage: turn.usage };
-}
-
-export type TranscriptRequest = Awaited<ReturnType<typeof extractTranscript>>["requests"][number];
-
-/** A response split over several transcript lines repeats its usage on each, so it counts once. */
-export function distinctRequests(requests: readonly TranscriptRequest[]): TranscriptRequest[] {
-  return [...new Map(requests.map((request) => [request.requestId, request])).values()];
 }
 
 function sumUsage(requests: readonly TranscriptRequest[]): DispatchUsage {

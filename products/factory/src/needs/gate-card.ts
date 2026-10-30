@@ -85,6 +85,15 @@ const GATE_CARDS: Readonly<Record<string, GateCard>> = {
     irreversible: "Nothing: either answer only steers the slice's next round.",
     onSilence: WAIT,
   },
+  "infra-park": {
+    proceed: "retry",
+    consequence: {
+      retry: "build-surface runs this slice's gates again at the same head; no fix round is counted.",
+      stop: "This slice stops and the run goes on with the others; a second stopped slice ends the run.",
+    },
+    irreversible: "Nothing: the branch stays, and a fresh start picks the slice up.",
+    onSilence: WAIT,
+  },
   "deploy-approve": {
     proceed: "deploy",
     consequence: {

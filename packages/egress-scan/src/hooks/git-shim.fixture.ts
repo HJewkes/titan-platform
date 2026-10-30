@@ -53,20 +53,42 @@ export interface GitShimHarness {
   remoteHasMain: (fx: GitShimFixture) => boolean;
 }
 
+/** A work repo with one commit and an empty bare remote, built once per file and copied into each case. */
+interface RepoPair {
+  work: string;
+  remote: string;
+}
+
+function buildRepoPair(root: string, git: GitShimHarness["git"]): RepoPair {
+  const pair = { work: path.join(root, "work"), remote: path.join(root, "remote.git") };
+  const emptyTemplate = path.join(root, "empty-template");
+  fs.mkdirSync(emptyTemplate, { recursive: true });
+  seedRepo(pair.work);
+  git(root, "init", "-q", `--template=${emptyTemplate}`, "--bare", pair.remote);
+  git(pair.work, "remote", "add", "origin", pair.remote);
+  git(pair.work, "remote", "add", "net", "ssh://git.invalid/remote.git");
+  return pair;
+}
+
+/** Copies the pair into `root`, pointing the work repo's origin at the copied remote. */
+function copyRepoPair(pair: RepoPair, root: string): RepoPair {
+  const copy = { work: path.join(root, "work"), remote: path.join(root, "remote.git") };
+  fs.cpSync(pair.work, copy.work, { recursive: true });
+  fs.cpSync(pair.remote, copy.remote, { recursive: true });
+  const config = path.join(copy.work, ".git", "config");
+  fs.writeFileSync(config, fs.readFileSync(config, "utf8").replace(pair.remote, copy.remote));
+  return copy;
+}
+
 /** A repo with one commit, a bare remote, a guard dir whose pre-push leaves a marker, and the shim. */
-function makeFixture(root: string, git: GitShimHarness["git"], shellAliases: readonly string[]): GitShimFixture {
-  const work = path.join(root, "work");
-  const remote = path.join(root, "remote.git");
+function makeFixture(root: string, pair: RepoPair, shellAliases: readonly string[]): GitShimFixture {
+  const { work, remote } = copyRepoPair(pair, root);
   const guard = path.join(root, "git-hooks");
   const shimDir = path.join(root, "git-bin");
   const home = path.join(root, "home");
   const marker = path.join(root, "pre-push-ran");
   for (const dir of [guard, home]) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(guard, "pre-push"), `#!/bin/sh\ncat >/dev/null\ntouch '${marker}'\n`, { mode: 0o755 });
-  seedRepo(work);
-  git(root, "init", "-q", "--bare", remote);
-  git(work, "remote", "add", "origin", remote);
-  git(work, "remote", "add", "net", "ssh://git.invalid/remote.git");
+  installExecutable(path.join(guard, "pre-push"), `#!/bin/sh\ncat >/dev/null\ntouch '${marker}'\n`);
   expect(writeGitShim(shimDir, guard, HOST_PATH, shellAliases, { HOME: home })).toBe(true);
   const env = {
     PATH: `${shimDir}:/usr/bin:/bin`,
@@ -79,6 +101,20 @@ function makeFixture(root: string, git: GitShimHarness["git"], shellAliases: rea
   return { work, remote, guard, shimDir, marker, env };
 }
 
+/**
+ * Installs an executable at `file` without this process ever holding it open for writing. Tests run on
+ * worker threads of one process, and a sibling thread's fork inherits any fd open at that moment; on
+ * Linux, exec'ing a file a child still has open for write fails ETXTBSY. Letting `cp` do the write keeps
+ * the fd in a process that has exited before the first exec.
+ */
+export function installExecutable(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  fs.writeFileSync(staging, contents);
+  fs.chmodSync(staging, 0o755);
+  execFileSync("cp", ["-p", staging, file]);
+  fs.rmSync(staging);
+}
+
 /** A scratch dir removed after the file's tests, and fixtures whose only remote is a local bare repo. */
 export function gitShimHarness(): GitShimHarness {
   const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-git-shim-")));
@@ -88,12 +124,17 @@ export function gitShimHarness(): GitShimHarness {
 
   const git = (cwd: string, ...args: string[]): string => execFileSync(realGit, args, { cwd, encoding: "utf8", env: fixtureEnv() });
 
-  const fixture = (shellAliases: readonly string[] = []): GitShimFixture => makeFixture(path.join(scratch, `case-${++count}`), git, shellAliases);
+  let pair: RepoPair | undefined;
+
+  const fixture = (shellAliases: readonly string[] = []): GitShimFixture => {
+    pair ??= buildRepoPair(path.join(scratch, "template"), git);
+    return makeFixture(path.join(scratch, `case-${++count}`), pair, shellAliases);
+  };
 
   /** Runs a script file, as make or an npm script would; a recursing shim is killed by the timeout. */
   function runScript(fx: GitShimFixture, body: string): ScriptRun {
     const script = path.join(fx.work, "..", `script-${++count}.sh`);
-    fs.writeFileSync(script, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    installExecutable(script, `#!/bin/sh\n${body}\n`);
     return expectSpawned(spawnSync(script, { cwd: fx.work, env: fx.env, encoding: "utf8", timeout: 10_000 }), body);
   }
 

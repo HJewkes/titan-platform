@@ -1,0 +1,4 @@
+# Built by `pnpm build` from src/mod; Claude Code writes the rest when it loads the mod from here.
+hooks/register.js
+.claude-plugin/types/
+tsconfig.json

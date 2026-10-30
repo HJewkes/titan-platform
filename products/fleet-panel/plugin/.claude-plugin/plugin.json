@@ -1,0 +1,17 @@
+{
+  "name": "fleet-panel",
+  "version": "0.1.0",
+  "description": "A docked pane of running agent-chat agents: status, model, account, task, context fill and spend, with per-account usage",
+  "author": { "name": "Henry Jewkes" },
+  "homepage": "https://github.com/HJewkes/titan-platform/tree/main/products/fleet-panel",
+  "repository": "https://github.com/HJewkes/titan-platform",
+  "license": "MIT",
+  "userConfig": {
+    "feed": {
+      "type": "string",
+      "title": "Fleet feed command",
+      "description": "The titan-fleet-feed binary, a name on PATH or an absolute path, and its arguments (--demo draws synthetic agents)",
+      "default": "titan-fleet-feed"
+    }
+  }
+}

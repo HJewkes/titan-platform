@@ -23,6 +23,13 @@ function qaInput(stillS: number, reveals: number[], speechEndS: number): TimingI
   return { timeline, words: speechUntil(speechEndS), held: new Set(), diffs: stillFrom1(stillS), fps: FPS, probed: [], profile: timingProfile() };
 }
 
+/** A custom layer's 5 s still run from 1 s under speech to 9 s, with cue words at `cueAtS`. */
+function customInput(cueAtS: readonly number[]): TimingInput {
+  const input = qaInput(5, [], 9);
+  const cues = cueAtS.map((atS, i) => ({ name: `word${i}`, atS }));
+  return { ...input, timeline: { beats: input.timeline.beats.map((beat) => ({ ...beat, layer: "custom" as const, cues })) } };
+}
+
 describe("static-window excuses a settled frame under speech, up to 6 s", () => {
   it("passes a 5 s still run once every element is revealed and the voice speaks over it", () => {
     const gate = staticWindow(qaInput(5, [0.2, 0.6], 9));
@@ -48,13 +55,22 @@ describe("static-window excuses a settled frame under speech, up to 6 s", () => 
     expect(gate).toMatchObject({ pass: false, value: 5 });
   });
 
-  it("never settles a custom layer, whose elements qa cannot see", () => {
-    const input = qaInput(5, [], 9);
-    const custom = { beats: input.timeline.beats.map((beat) => ({ ...beat, layer: "custom" as const })) };
+  // catches: the excusal stopping at custom layers, against owner decision vc-6 (TP-4611)
+  it("passes a custom layer's 5 s still run after its last cue while the voice speaks", () => {
+    const input = customInput([0.2, 0.8]);
 
-    const gate = staticWindow({ ...input, timeline: custom });
+    const gate = staticWindow(input);
 
-    expect(gate.pass).toBe(false);
+    expect(gate.pass).toBe(true);
+  });
+
+  // catches: a custom layer settling at its cut, so a layer waiting on a cue stands still past 3 s
+  it("fails a custom layer's 5 s still run before its last cue", () => {
+    const input = customInput([0.2, 7]);
+
+    const gate = staticWindow(input);
+
+    expect(gate).toMatchObject({ pass: false, value: 5, beats: ["b1"] });
   });
 });
 
@@ -64,6 +80,8 @@ const SAID_ROWS = ["router · Matcher rewrite merged", "router · Kept the old p
 const cue = (target: string, atCue: string) => ({ action: "V6" as const, target, atCue });
 const lane = (more: string, lastCue: string) =>
   dailyWith("lanes-1", { spoken: `${SAID} ${more}`, visual: { assertion: "Router merged its matcher", labels: SAID_ROWS, cues: [cue("rows-2", "merged"), cue("rows-3", lastCue)] } });
+const customLane = (more: string, lastCue: string) =>
+  dailyWith("lanes-1", { spoken: `${SAID} ${more}`, visual: { beat: "kanban-flow", layer: "custom", assertion: "Router merged its matcher", labels: SAID_ROWS, cues: [cue("rows-2", "merged"), cue("rows-3", lastCue)] } });
 const stillOf = (script: ScriptV1, id: string, staticMaxS?: number) => {
   const pacing = scriptPacing(script)!;
   return stillBeats(script, { ...pacing, staticMaxS: staticMaxS ?? pacing.staticMaxS }).find(({ beat }) => beat.id === id)?.stretches ?? [];
@@ -95,6 +113,24 @@ describe("Q-D22 excuses a settled frame under speech, up to 6 s, as static-windo
 
     expect(found).toMatchObject([{ after: "kept" }]);
     expect(lengths(found)).toEqual([7.2]);
+  });
+
+  // catches: Q-D22 refusing at script time a custom layer qa now excuses (vc-6, TP-4611)
+  it("passes a custom layer's stretch after its last cue while the voice speaks", () => {
+    const script = customLane("The switch stays on tonight.", "kept");
+
+    const found = stillOf(script, "lanes-1");
+
+    expect(found).toEqual([]);
+  });
+
+  // catches: the excusal reaching a custom layer still waiting on a cue
+  it("fails a custom layer's stretch before its last cue", () => {
+    const script = customLane("The switch stays on through the night and the morning shift.", "through");
+
+    const found = stillOf(script, "lanes-1");
+
+    expect(found).toMatchObject([{ after: "merged" }]);
   });
 
   // The truing settle keeps a voiced beat's silence under 3 s, so a 2 s line shows the silent part held to staticMaxS.

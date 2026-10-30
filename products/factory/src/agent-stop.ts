@@ -17,6 +17,8 @@ interface AgentStopPorts {
 
 interface AgentStop {
   name: string;
+  /** Tells this stop from an earlier one of the same agent, since a deposit is write-once. */
+  stepId: string;
   /** Finishes a sentence about the agent: "spent $2.00 of its $1.00 budget". */
   why: string;
   signal: AbortSignal;
@@ -65,9 +67,10 @@ async function stoppedWithinGrace(ports: AgentStopPorts, stop: AgentStop): Promi
   return false;
 }
 
-function liveAgentDeposit(name: string, why: string, refusal: string): OwnerItemDeposit {
+function liveAgentDeposit(stop: AgentStop, refusal: string): OwnerItemDeposit {
+  const { name, why, stepId } = stop;
   return {
-    depositId: `agent-left-running-${name}`,
+    depositId: `agent-left-running-${name}-${stepId}`,
     asker: "titan-factory",
     kind: "do",
     door: "two-way",
@@ -78,17 +81,32 @@ function liveAgentDeposit(name: string, why: string, refusal: string): OwnerItem
   };
 }
 
+async function fileLeftRunning(ports: AgentStopPorts, stop: AgentStop, refusal: string): Promise<string> {
+  return ports.tellOwner(liveAgentDeposit(stop, refusal)).then(() => "the owner inbox has it", (error: unknown) => `the owner inbox item failed too: ${messageOf(error)}`);
+}
+
+/** An abort or failure inside the grace leaves the over-budget agent running, so the owner hears of it before the error goes on. */
+async function stoppedOrFiled(ports: AgentStopPorts, stop: AgentStop, refusal: string): Promise<boolean> {
+  try {
+    return await stoppedWithinGrace(ports, stop);
+  } catch (error) {
+    await fileLeftRunning(ports, stop, refusal);
+    throw error;
+  }
+}
+
 /**
  * Ends the agent, or says plainly that it could not. A retire refused for unpushed work gets a stop message and a few
  * polls to push and exit, then one more retire; an agent still live after that is the owner's, on the inbox.
  */
 export async function stopAgent(ports: AgentStopPorts, stop: AgentStop): Promise<never> {
   const { name, why } = stop;
-  if ((await refusalOfRetire(ports, name)) === undefined) throw new Error(`${name} was retired: it ${why}`);
+  const firstRefusal = await refusalOfRetire(ports, name);
+  if (firstRefusal === undefined) throw new Error(`${name} was retired: it ${why}`);
   await ports.agents.message(name, `Budget spent: ${name} ${why}. Commit, push your branch, and stop now.`).catch(() => undefined);
-  if (await stoppedWithinGrace(ports, stop)) throw new Error(`${name} stopped when told to: it ${why}`);
+  if (await stoppedOrFiled(ports, stop, firstRefusal)) throw new Error(`${name} stopped when told to: it ${why}`);
   const refusal = await refusalOfRetire(ports, name);
   if (refusal === undefined) throw new Error(`${name} was retired: it ${why}`);
-  const filed = await ports.tellOwner(liveAgentDeposit(name, why, refusal)).then(() => "the owner inbox has it", (error: unknown) => `the owner inbox item failed too: ${messageOf(error)}`);
+  const filed = await fileLeftRunning(ports, stop, refusal);
   throw new AgentLeftRunning(`${name} ${why} and is still running after a stop message; its retire was refused: ${refusal}; ${filed}`);
 }

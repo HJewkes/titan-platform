@@ -27,7 +27,7 @@ import { timelineS, type QaBeat, type QaTimeline } from "./qa-timeline.js";
 import { earlyReveal, holdThroughReference, textSpans, type TextSpan } from "./reference-timing.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
-const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
+export const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
 /** TD-856: no text on screen under 40 px. */
 export const TEXT_FLOOR_PX = 40;
 const FIRST_MOTION_S = 0.2;
@@ -166,12 +166,14 @@ function staticRuns(input: TimingInput): { from: number; frames: number }[] {
 
 /**
  * A beat's settled picture, from its last reveal (its cut, when it reveals nothing) to its end, and its speech, from its
- * first word's start to its last's. qa cannot see what a custom layer draws, so it never settles; an unvoiced beat has no speech.
+ * first word's start to its last's. qa cannot see what a custom layer draws, so its last cue stands for its last reveal
+ * (owner decision vc-6, TP-4611); an unvoiced beat has no speech.
  */
 function settledSpeech(input: TimingInput, beat: QaBeat): SettledSpeech | undefined {
   const starts = (input.words.get(beat.id)?.words ?? []).map((word) => beat.startS + word.startS);
-  if (beat.layer === "custom" || starts.length === 0) return undefined;
-  const settled = { fromS: beat.startS + Math.max(0, ...(beat.reveals ?? [])), toS: beat.startS + beat.durationS };
+  if (starts.length === 0) return undefined;
+  const reveals = beat.layer === "custom" ? beat.cues.map((cue) => cue.atS) : (beat.reveals ?? []);
+  const settled = { fromS: beat.startS + Math.max(0, ...reveals), toS: beat.startS + beat.durationS };
   return { settled, speech: { fromS: Math.min(...starts), toS: Math.max(...starts) } };
 }
 
@@ -186,6 +188,10 @@ function staticOver(input: TimingInput) {
   const runs = staticRuns(input).map((run) => ({ ...run, s: run.frames / input.fps })).filter((run) => !excused(run));
   return { runs, over: runs.filter((run) => run.s > staticMaxS) };
 }
+
+/** The still stretches static-window fails, in seconds from the video start. */
+export const staticStretches = (input: TimingInput): { fromS: number; s: number }[] =>
+  staticOver(input).over.map((run) => ({ fromS: run.from / input.fps, s: run.s }));
 
 /** The longest still picture that is not a reading hold, a declared held beat or a settled frame under speech. */
 export function staticWindow(input: TimingInput): TimingGate {
@@ -232,10 +238,14 @@ function unspokenSpans(input: TimingInput): TextSpan[] {
 
 const readingS = (input: TimingInput, text: string) => Math.max(input.profile.pacing.readingMinS, text.trim().length / input.profile.pacing.readingCps);
 
+/** The unspoken texts that leave before their reading hold is up. */
+export const shortReads = (input: TimingInput): TextSpan[] =>
+  unspokenSpans(input).filter((span) => span.untilS !== null && span.untilS - span.fromS < readingS(input, span.text) - EPS);
+
 /** An unspoken text stays at least max(readingMinS, chars / readingCps); one still shown at the last sample never left. */
 export function readingHold(input: TimingInput): TimingGate {
   const { readingMinS, readingCps } = input.profile.pacing;
-  const short = unspokenSpans(input).filter((span) => span.untilS !== null && span.untilS - span.fromS < readingS(input, span.text) - EPS);
+  const short = shortReads(input);
   return { id: "reading-hold", value: short.length, threshold: `max(${readingMinS} s, chars / ${readingCps})`, pass: short.length === 0, beats: uniq(short.map((s) => s.beat)) };
 }
 
@@ -268,12 +278,16 @@ export function g8TextSize({ probed }: Pick<TimingInput, "probed">): TimingGate 
   return { id: "G8", value, threshold: `≥ ${TEXT_FLOOR_PX} px`, pass: small.length === 0, beats: uniq(small.map((t) => t.beat)) };
 }
 
-/** G9: a headline holds at most 10 words and a label at most 3. */
-function g9Labels({ probed }: TimingInput): TimingGate {
-  const long = probedTexts(probed).filter((t) => {
+/** The probed headlines and labels past G9's word caps. */
+export const longLabels = ({ probed }: Pick<TimingInput, "probed">) =>
+  probedTexts(probed).filter((t) => {
     const n = tokens(t.text).length;
     return ((t.tag === "h1" || t.tag === "h2") && n > HEADLINE_WORDS) || (/label/.test(t.cls) && n > LABEL_WORDS);
   });
+
+/** G9: a headline holds at most 10 words and a label at most 3. */
+function g9Labels(input: TimingInput): TimingGate {
+  const long = longLabels(input);
   const threshold = `headline ≤ ${HEADLINE_WORDS} words; label ≤ ${LABEL_WORDS}`;
   return { id: "G9", value: uniq(long.map((t) => t.text)).length, threshold, pass: long.length === 0, beats: uniq(long.map((t) => t.beat)) };
 }

@@ -13,8 +13,8 @@
     {
       "name": "a left branch's gates are rerun in round 0",
       "file": "products/factory/src/build-surface/rounds.ts",
-      "find": "round === 0 && green ? green : await runGates",
-      "replace": "await runGates",
+      "find": "round === 0 && green ? green : await routedGates",
+      "replace": "await routedGates",
       "kills": [
         "a fresh build-surface start over a branch a stopped run left behind picks up a branch a stopped run left green at its head: no implement turn and no gate rerun, straight to review"
       ]

@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { FontLoadError, launch } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
@@ -12,7 +13,7 @@ import { chromiumLayerTextCheck } from "./layer-text-check.js";
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them. Each spans the frame width, so qa's content-fill gate passes.
 const BROWSER_TIMEOUT_MS = 240_000;
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
-const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk.", cues: [], planned_s: 3 };
+const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk.", cues: [], planned_s: 3, band: "story" as const };
 
 const layer = (body: string) => `import { useBeatTime } from "@titan-design/react-ui/motion";
 
@@ -40,6 +41,13 @@ const onBar = (text: string, fill: string) => layer(`useBeatTime();
     <div id="count" style={{ fontSize: 56, color: "${text}" }}>12</div>
   </div>;`);
 
+/** A fixed 140 px panel whose 48 px label, in a 360 px chip, wraps to more lines than the panel's height holds. */
+const FIXED_PANEL = layer(`useBeatTime();
+  return <div id="shelf" style={{ position: "absolute", left: 120, right: 120, top: 80, height: 140, padding: 40, boxSizing: "border-box",
+    border: "3px solid var(--color-border-prominent)", fontSize: 48 }}>
+    <div style={{ width: 360, fontWeight: 700 }}>Twelve parcels waiting</div>
+  </div>;`);
+
 /** Shows its count when the cue word "desk" is spoken, read through useCue; the page must declare the cue. */
 const cueTimed = (shown: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
 
@@ -49,7 +57,8 @@ export default function Desk() {
   return <div id="count" style={{ position: "absolute", left: 120, right: 120, top: 80, fontSize: 96, opacity: t >= at ? 1 : 0 }}>${shown}</div>;
 }
 `;
-const CUED_PACKET = { ...PACKET, cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
+/** "desk" is spoken early, so the stage is not still empty a third of the way in, which qa holds as late-fill. */
+const CUED_PACKET = { ...PACKET, spoken: "The desk holds twelve parcels.", cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
 
 let pageDir: string;
 let check: LayerTextCheck;
@@ -90,6 +99,18 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const rows = await checkLayer(PAST_THE_BOX);
 
     expect(rows.map((row) => [row.rule, row.text])).toEqual([["under-chrome", "last scan at the desk"]]);
+  });
+
+  // catches: a build check that holds a layer to only some of qa's held kinds, so qa refuses the panel after render (TP-4606)
+  it("flags a fixed-height panel its wrapped label runs past with qa's content-overflow rule", async () => {
+    // Arrange
+    const module = FIXED_PANEL;
+
+    // Act
+    const rows = await checkLayer(module);
+
+    // Assert
+    expect(rows.map((row) => [row.rule, row.text])).toEqual([["content-overflow", "Twelve parcels waiting"]]);
   });
 
   it("draws a layer timed by useCue on the custom beat's own cue words", async () => {
@@ -139,7 +160,9 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
 
   // Mutation: the check swallows the font error, or drops the URL from it.
   it("fails as an infra error naming the face and the URL when a font file is missing from the page", async () => {
-    const broken = await buildPage();
+    // A copy, not a second build: each in-process vite build spins up rolldown's CPU-wide thread pools.
+    const broken = mkdtempSync(path.join(tmpdir(), "explainer-broken-page-"));
+    cpSync(pageDir, broken, { recursive: true });
     const [woff2] = readdirSync(path.join(broken, "assets")).filter((f) => f.endsWith(".woff2"));
     rmSync(path.join(broken, "assets", woff2!));
     const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }), engine: chromiumQaEngine(undefined, browser) });

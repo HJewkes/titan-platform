@@ -11,6 +11,7 @@ import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, wit
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
+import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
 
 export const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = ORDER_WAIT_STEP;
@@ -27,7 +28,8 @@ interface OrderInput extends PrTarget {
 
 const ReserveResult = z.looseObject({ reserved: z.boolean(), ahead: z.array(z.string()) });
 type Reserved = z.infer<typeof ReserveResult>;
-const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean() });
+/** `bounded` marks a wait the merging stall limit ended, which the merge guard reads (TP-4569). */
+const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean(), bounded: z.literal(true).optional() });
 type Waited = z.infer<typeof WaitResult>;
 const ReleaseResult = z.looseObject({ released: z.boolean() });
 
@@ -122,6 +124,15 @@ async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: rea
   return prs;
 }
 
+/**
+ * TP-4434: a conflicted PR queued behind a reservation held through a long review round sat in `merging` until the TTL,
+ * so a wait past the merging stall limit gives up its turn and wakes the fixer at the base as it stands.
+ */
+function waitedOut(deps: MergeOrderStepDeps, input: OrderInput): boolean {
+  const own = deps.order().list(input.repo).find((reservation) => reservation.runId === input.runId);
+  return own !== undefined && deps.now() - Date.parse(own.since) >= MERGING_STALL_LIMIT_MS;
+}
+
 /** The open PRs the reserving run still waits on: earlier live overlapping reservations, then the runs it let merge first. */
 async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<number[]> {
   const rule = deps.rules(input.repo);
@@ -149,6 +160,7 @@ async function waitTurn(deps: MergeOrderStepDeps, input: OrderInput, signal: Abo
   for (;;) {
     signal.throwIfAborted();
     if (await headMoved(deps.port, input)) return { waitedBehind: [...waitedBehind], moved: true };
+    if (waitedOut(deps, input)) return { waitedBehind: [...waitedBehind], moved: false, bounded: true };
     const behind = await waitingOn(deps, input);
     if (behind.length === 0) return { waitedBehind: [...waitedBehind], moved: false };
     behind.forEach((pr) => waitedBehind.add(pr));

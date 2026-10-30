@@ -4,25 +4,14 @@ import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
 import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
 import { qaSampleMoments } from "../qa/qa-timeline.js";
-import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
+import { badTextRows, distinctRows, heldRows, layerTextHint, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
 const AT = { x: 0, y: 0, w: 10, h: 10 };
 
 describe("the moments the layer check reads", () => {
-  it("places each cue word at its share of the planned seconds and reads it once it settles, then at the end", () => {
-    const packet = { beat_id: "b1", spoken: "parcels wait at the desk", cues: [{ action: "V6" as const, target: "desk", atCue: "desk" }], planned_s: 10 };
-
-    const cues = plannedCues(packet);
-
-    expect(cues).toEqual({ desk: 8 });
-    expect(revealMoments(cues, 10)).toEqual([9, 9.95]);
-  });
-
-  it("drops a cue the narration never speaks rather than guess its time", () => {
-    const packet = { beat_id: "b1", spoken: "parcels wait", cues: [{ action: "V6" as const, target: "desk", atCue: "ledger" }], planned_s: 4 };
-
-    expect(plannedCues(packet)).toEqual({});
+  it("reads each cue word once it settles, then at the end", () => {
+    expect(revealMoments({ desk: 8 }, 10)).toEqual([9, 9.95]);
   });
 });
 
@@ -86,10 +75,12 @@ describe("the layer check's contrast rows", () => {
   /** qa's own samplings of the beat as planned: the cue moments, then those with the 2 Hz sweep. */
   const QA_SAMPLINGS = [qaSampleMoments(TIMELINE, false), qaSampleMoments(TIMELINE, true)];
   const shownAt = (seconds: readonly number[], finding: Finding) => (t: number) => (seconds.includes(t) ? [finding] : []);
+  /** A stage full of content, so late-fill holds nothing and only the findings given are judged. */
+  const filled = (findingsAt: (t: number) => Finding[]) => (t: number) => ({ contentRuns: 3, findings: findingsAt(t) });
 
   it("the build check and qa's low-contrast gate agree on the same element", () => {
     // Arrange
-    const held = heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]);
+    const held = heldAtSamples(TIMELINE, SAMPLINGS, filled(() => [WHITE_ON_AMBER]));
 
     // Act
     const rows = heldRows(held);
@@ -106,7 +97,7 @@ describe("the layer check's contrast rows", () => {
     const findingsAt = shownAt([2.2], SLIDING_CHIP);
 
     // Act
-    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(TIMELINE, SAMPLINGS, filled(findingsAt)));
 
     // Assert
     expect(rows.map((row) => [row.rule, row.text, row.atS])).toEqual([["low-contrast", "cleared", 2.2]]);
@@ -120,7 +111,7 @@ describe("the layer check's contrast rows", () => {
     const atPlannedPhase = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
 
     // Act
-    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(TIMELINE, SAMPLINGS, filled(findingsAt)));
 
     // Assert
     expect(atPlannedPhase).toEqual([]);
@@ -132,7 +123,7 @@ describe("the layer check's contrast rows", () => {
     const findingsAt = shownAt([1.9, 5], SLIDING_CHIP);
 
     // Act
-    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(TIMELINE, SAMPLINGS, filled(findingsAt)));
 
     // Assert
     expect(rows.map((row) => [row.text, row.atS])).toEqual([["cleared", 1.9]]);
@@ -140,7 +131,7 @@ describe("the layer check's contrast rows", () => {
 
   it("tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix", () => {
     // Arrange
-    const rows = heldRows(heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]));
+    const rows = heldRows(heldAtSamples(TIMELINE, SAMPLINGS, filled(() => [WHITE_ON_AMBER])));
 
     // Act
     const hint = layerTextHint(rows);
@@ -161,7 +152,7 @@ describe("the layer check's contrast rows", () => {
     const qaHeld = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
 
     // Act
-    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(TIMELINE, SAMPLINGS, filled(findingsAt)));
 
     // Assert
     expect(rows.map((row) => [row.rule, row.element, row.atS])).toEqual([["off-frame", "div.lane", 1.9]]);

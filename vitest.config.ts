@@ -73,6 +73,13 @@ const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, 
 // this process, which its threads share and its forks inherit.
 process.env.TZ = "UTC";
 
+// An in-process vite build runs rolldown, whose tokio and rayon pools default to one thread per core. On a busy 48-core
+// host their idle workers can spin in sched_yield: seven page-building files took 128 sys-seconds in one run against the
+// usual 4 (TP-4604). Set here for the same reason as TZ: the forks, and every vite a test spawns, inherit it before the
+// binding loads. It comes too late for this process, whose config load already ran rolldown; its sys time stayed under 1 s.
+process.env.ROLLDOWN_WORKER_THREADS ??= "4";
+process.env.RAYON_NUM_THREADS ??= "4";
+
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
 // the pool starts; forks are child processes and take execArgv.
