@@ -50,7 +50,7 @@ function ListRow({ item, t }: { item: ListItem; t: number }) {
   const tick = tickScale(t, item.atS);
   const lit = useLit()(item.id, t);
   return (
-    <li className="ex-list-row" data-reveal={item.id} data-mark={item.mark} style={{ ...fadeUp(t, item.atS, 24), ...litBox(lit, "var(--color-surface-raised)") }}>
+    <li className="ex-list-row" data-reveal={item.id} data-mark={item.mark} style={{ ...fadeUp(t, item.atS, 24), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
       <span className="ex-list-box">
         <span className="ex-list-tick" data-qa-glyph="" style={{ opacity: tick > 0 ? 1 : 0, transform: `scale(${tick})` }}>{MARK_GLYPH[item.mark]}</span>
       </span>

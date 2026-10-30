@@ -1,5 +1,5 @@
 import { interpolate } from "@titan-design/react-ui/motion";
-import { createContext, useContext } from "react";
+import { createContext, useContext, type CSSProperties } from "react";
 import type { TimelineBeat } from "../../timeline.js";
 import { LIT_RAMP_S } from "../flow.js";
 import { FLOW_DWELL_S, mix } from "./video.js";
@@ -26,16 +26,23 @@ export function litFrom(emphases: Emphases): Lit {
 const LIT_TINT = 0.25;
 const LIT_RING_PX = 4;
 
+interface LitBox {
+  /** The element's own background, which the tint mixes into. */
+  base?: string;
+  /** How far the tint and ring reach past an element with no padding of its own, so the ring clears its text. */
+  bleedPx?: number;
+}
+
 /**
- * The lit treatment on an element's own box, over its `base` background: a brand tint and an inset brand ring that
- * take no layout space. Nothing while unlit, so an element no cue names draws as it always did.
+ * The lit treatment on an element's own box: a brand tint and a brand ring with rounded corners, taking no layout
+ * space. Nothing while unlit, so an element no cue names draws as it always did.
  */
-export function litBox(lit: number, base = "transparent"): { background?: string; boxShadow?: string } {
+export function litBox(lit: number, { base = "transparent", bleedPx = 0 }: LitBox = {}): CSSProperties {
   if (lit <= 0) return {};
-  return {
-    background: mix(base, "var(--color-brand-primary)", lit * LIT_TINT),
-    boxShadow: `inset 0 0 0 ${LIT_RING_PX}px ${mix("transparent", "var(--color-brand-primary)", lit)}`,
-  };
+  const tint = mix(base, "var(--color-brand-primary)", lit * LIT_TINT);
+  const ring = mix("transparent", "var(--color-brand-primary)", lit);
+  const boxShadow = bleedPx > 0 ? `0 0 0 ${bleedPx}px ${tint}, 0 0 0 ${bleedPx + LIT_RING_PX}px ${ring}` : `inset 0 0 0 ${LIT_RING_PX}px ${ring}`;
+  return { background: tint, boxShadow, borderRadius: bleedPx > 0 ? `calc(var(--beat-radius) + ${bleedPx}px)` : "var(--beat-radius)" };
 }
 
 const unlit: Lit = () => 0;

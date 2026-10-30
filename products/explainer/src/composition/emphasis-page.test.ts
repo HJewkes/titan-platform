@@ -15,7 +15,7 @@ const STATIC_WINDOW_PX = 10;
 /** Before the lit ramp starts, and halfway through the dwell. */
 const BEFORE_S = 0.4;
 const DURING_S = FLOW_DWELL_S / 2;
-/** Room around the element's own box for its ring and an SVG edge's stroke, which its bounding box leaves out. */
+/** Room around the element's own box for its ring and an SVG edge's stroke, which its bounding box leaves out; the claim's tint bleeds further. */
 const BOX_PAD_PX = 8;
 
 /** One emphasis of fixtures/emphasis.timeline.json: its beat's start, the element it names and its beat-local time. */
@@ -25,8 +25,8 @@ const CASES = [
   { kind: "arch-map node", beat: "map-lit", startS: 12, target: "nodes-2", atS: 6, box: ".ex-map-node" },
   { kind: "arch-map edge", beat: "map-lit", startS: 12, target: "edges-2", atS: 8 },
   { kind: "stat", beat: "stat-lit", startS: 22, target: "figures-1", atS: 3.5 },
-  { kind: "claim", beat: "claim-lit", startS: 28, target: "claim", atS: 3.5 },
-] as const satisfies readonly { kind: string; beat: string; startS: number; target: string; atS: number; box?: string }[];
+  { kind: "claim", beat: "claim-lit", startS: 28, target: "claim", atS: 3.5, pad: 32 },
+] as const satisfies readonly { kind: string; beat: string; startS: number; target: string; atS: number; box?: string; pad?: number }[];
 
 let pageDir: string;
 let server: PageServer;
@@ -108,7 +108,7 @@ describe("a lit element on the rendered page", { timeout: BROWSER_TIMEOUT_MS }, 
     const { beat, startS, target, atS } = lit;
     const before = await frameAt(startS + atS - BEFORE_S, `${target}-before`);
     const during = await frameAt(startS + atS + DURING_S, `${target}-during`);
-    const box = await page.evaluate(elementBox, { beat, target, box: "box" in lit ? lit.box : undefined, pad: BOX_PAD_PX });
+    const box = await page.evaluate(elementBox, { beat, target, box: "box" in lit ? lit.box : undefined, pad: "pad" in lit ? lit.pad : BOX_PAD_PX });
 
     // Act
     const step = { before: before.full, after: during.full, target: box };

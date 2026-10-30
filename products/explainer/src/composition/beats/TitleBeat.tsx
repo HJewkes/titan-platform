@@ -12,6 +12,8 @@ import { enter } from "./stage/entrance.js";
 
 const WORDS_START_S = 0.15;
 const WORD_EACH_S = 0.08;
+/** The lit claim's tint reaches this far past its words, which the title draws with no padding. */
+const CLAIM_BLEED_PX = 24;
 
 interface TitleFrameProps {
   title: string;
@@ -27,7 +29,7 @@ function TitleFrame({ title, subtitle, atS }: TitleFrameProps) {
   const lit = useLit()("claim", t);
   return (
     <>
-      <h1 className="beat-title" data-reveal="claim" style={litBox(lit)}>
+      <h1 className="beat-title" data-reveal="claim" style={litBox(lit, { bleedPx: CLAIM_BLEED_PX })}>
         {words.map((word, i) => (
           <span key={i} className="beat-word" style={enter(t, wordStart(i))}>{word}</span>
         ))}

@@ -31,7 +31,7 @@ function statDisplay(local: number, value: number): string {
 function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }) {
   const lit = useLit()(figure.id, t);
   return (
-    <div className="beat-stat" data-reveal={figure.id} style={{ opacity: progressAt(t, atS), ...litBox(lit, "var(--color-surface-raised)") }}>
+    <div className="beat-stat" data-reveal={figure.id} style={{ opacity: progressAt(t, atS), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
       <span className="beat-stat-label">{figure.label}</span>
       <span className="beat-stat-value">
         <span className="beat-stat-figure" style={{ minWidth: `${figure.value.toFixed(places(figure.value)).length}ch` }}>{statDisplay(t - atS, figure.value)}</span>
