@@ -11,7 +11,7 @@ interface QaGateInput {
 }
 
 /** One check over `qa.json`; a `gate` fails the stage that runs it. */
-export interface QaGateRow {
+interface QaGateRow {
   name: string;
   gate: boolean;
   reads: readonly ["qa"];

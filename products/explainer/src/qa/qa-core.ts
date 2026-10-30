@@ -26,7 +26,7 @@ export interface QaConfig extends QaGate {
 }
 
 /** What qa's report reads: the served page and the MP4 it was captured to, and the run's artifacts as parsed JSON. */
-export interface QaSources {
+interface QaSources {
   /** The composition page, served and laid out on `timeline`. */
   pageUrl: string;
   /** The MP4 on disk. */
