@@ -26,7 +26,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `planForHead(facts, policy, standing, hold?)`: the class and panel for one head. A hold adds an uncapped adversary,
   and a standing that `needsTestsSeat` adds a blocking tests member.
 
-The retry policy is data. Nothing in this release reads it; the recipe that does arrives in a later release.
+- `reviewHead(host, input, policy)`: the recipe. It reviews one full head: preflight, one heal pass, the plan, every
+  member dispatched before any is awaited, each member's retry-policy row, the aggregate, and a `ReviewOutcome`. It is
+  control flow only: the host's `call(stepId, input, schema)` records each step, and `REVIEW_STEP_BODIES` holds every
+  read and effect, keyed like `ReviewStepIds`. A member with a verdict is never dispatched again, and the same refusal
+  twice goes to the fixer without spending the rest of its row.
+- `classifyFailure(dispatch, awaited)`: pure. Reads one member attempt's records and returns its `FailureClass`, or
+  nothing when it reached a verdict.
+
+The retry policy is data: the recipe reads it, and a variant replaces rows, never code.
 
 ```ts
 import { DEFAULT_RETRY_POLICY } from "@titan-design/review-workflow";

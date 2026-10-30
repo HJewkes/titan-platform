@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a member with a verdict is dispatched again",
+      "file": "packages/review-workflow/src/failure.ts",
+      "find": "if (awaited?.kind === \"verdict\") return undefined;",
+      "replace": "if (awaited?.kind === \"verdict\") return { class: \"never-started\" };",
+      "kills": ["reviewHead spends one session per member when correctness and the adversary each say MERGE once (tp#2145)"]
+    },
+    {
+      "name": "the same refusal twice spends the rest of its row",
+      "file": "packages/review-workflow/src/failure.ts",
+      "find": "last !== undefined && next.text !== undefined && last.class === next.class && last.text === next.text;",
+      "replace": "false;",
+      "kills": ["reviewHead sends a member that repeats the same refusal after its correction to the fixer, with no fresh member"]
+    },
+    {
+      "name": "a member whose session never started is not retried",
+      "file": "packages/review-workflow/src/retry-policy.ts",
+      "find": "{ class: \"never-started\", steps: [{ action: \"retry\", times: 1 }],",
+      "replace": "{ class: \"never-started\", steps: [],",
+      "kills": ["reviewHead retries a member whose session never started once, under a fresh name"]
+    },
+    {
+      "name": "a run recorded before preflight runs preflight on replay",
+      "file": "packages/review-workflow/src/recipe.ts",
+      "find": "return next !== undefined && next !== stepId;",
+      "replace": "return false;",
+      "kills": ["reviewHead skips preflight on a run recorded before it existed and dispatches the plan its intent recorded"]
+    }
+  ]
+}

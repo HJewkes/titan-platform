@@ -1172,17 +1172,17 @@ Tier 2, `@titan-design/review-workflow@0.0.0`. PR review as a resumable workflow
 
 **Use this when:**
 
-You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. The recipe, preflight and fixer arrive in later releases; to run a panel in memory today use review-panel's `reviewPullRequest`.
+You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
 
 Key exports:
 
-- `types`: `DEFAULT_REVIEW_STEP_IDS`
 - `plan-for-head`: `planForHead`
 - `preflight`: `preflight`
 - `preflight-read`: `preflightRead`
 - `heal`: `applyHeal`, `healOnce`
 - `fixer`: `fixerBrief`, `fixerFingerprint`, `fixerName`, `requestFixer`, `resolveFingerprint`
 - `fixer-report`: `readFixerReport`
+- `failure`: `classifyFailure`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
 <a id="cap-session-analytics"></a>
