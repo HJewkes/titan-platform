@@ -2,7 +2,8 @@ import { classify, DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa
 import { describe, expect, it } from "vitest";
 import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
-import { heldAtSamples, qaSamplings } from "../qa/layer-contrast.js";
+import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
+import { qaSampleMoments } from "../qa/qa-timeline.js";
 import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
@@ -78,8 +79,12 @@ describe("the layer check's contrast rows", () => {
   const WHITE_ON_AMBER: Finding = { kind: "low-contrast", el: "div#count", text: "12", px: 56, ratio: 2.04, need: 3, fg: "#ffffff", bg: "#f5a524", at: AT };
   /** A chip that slides across the stage, faint only where qa catches it mid-slide. */
   const SLIDING_CHIP: Finding = { kind: "low-contrast", el: "div.chip", text: "cleared", px: 40, ratio: 2.35, need: 3, fg: "#3a7a5a", bg: "#32302e", at: AT };
-  /** qa's samples of a 10 s beat with cues at 1 s and 6 s: start, enter, 1.9 s, the 5 s midpoint, 6.9 s and the end. */
-  const SAMPLINGS = qaSamplings({ beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 6 }] }] });
+  /** A 10 s beat with cues at 1 s and 6 s: qa's cue moments are start, enter, 1.9 s, the 5 s midpoint, 6.9 s and the end. */
+  const TIMELINE = { beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 6 }] }] };
+  /** What the build check reads: qa's samplings, then its sweep at every 2 Hz phase the voiced start may land on. */
+  const SAMPLINGS = layerSamplings(TIMELINE);
+  /** qa's own samplings of the beat as planned: the cue moments, then those with the 2 Hz sweep. */
+  const QA_SAMPLINGS = [qaSampleMoments(TIMELINE, false), qaSampleMoments(TIMELINE, true)];
   const shownAt = (seconds: readonly number[], finding: Finding) => (t: number) => (seconds.includes(t) ? [finding] : []);
 
   it("the build check and qa's low-contrast gate agree on the same element", () => {
@@ -95,15 +100,31 @@ describe("the layer check's contrast rows", () => {
     expect(below.map((run) => [run.text, run.ratio])).toEqual([["12", 2.04]]);
   });
 
-  it("a moving chip that qa does not hold is not rebuilt", () => {
+  // catches: a build check that keeps only held contrast errors, which qa's contrast report fails on one transient sample
+  it("text under contrast on one sample between qa's 2 Hz ticks gets a rebuild", () => {
     // Arrange
-    const findingsAt = shownAt([1.9, 6.9], SLIDING_CHIP);
+    const findingsAt = shownAt([2.2], SLIDING_CHIP);
 
     // Act
     const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
 
     // Assert
-    expect(rows).toEqual([]);
+    expect(rows.map((row) => [row.rule, row.text, row.atS])).toEqual([["low-contrast", "cleared", 2.2]]);
+  });
+
+  // catches: a build check that reads qa's sweep only at the planned phase, so a voiced start that moves it refuses the card
+  it("an off-frame box held at some 2 Hz phase is refused at any beat start", () => {
+    // Arrange
+    const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
+    const findingsAt = (t: number) => (t >= 2.15 && t <= 2.75 ? [card] : []);
+    const atPlannedPhase = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+
+    // Act
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(atPlannedPhase).toEqual([]);
+    expect(rows.map((row) => [row.rule, row.element, row.atS])).toEqual([["off-frame", "div.lane", 2.2]]);
   });
 
   it("holds text faint in two samples in a row, as qa does", () => {
@@ -137,7 +158,7 @@ describe("the layer check's contrast rows", () => {
     const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
     const passing: Finding = { kind: "off-frame", el: "div.chip", text: "cleared", at: AT };
     const findingsAt = (t: number) => [...shownAt([1.9, 5], card)(t), ...shownAt([6.9], passing)(t)];
-    const qaHeld = SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+    const qaHeld = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
 
     // Act
     const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));

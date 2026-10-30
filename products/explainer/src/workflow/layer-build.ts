@@ -9,6 +9,7 @@ import { missingCueElements, missingElementsHint } from "../build/layer-elements
 import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
 import { fadedTextFindings, fadeHint } from "../build/layer-fade.js";
 import { fontFindings, fontHint } from "../build/layer-fonts.js";
+import { tokenHint, undefinedTokenFindings } from "../build/layer-tokens.js";
 import { formatLayerRow, layerTextHint, type LayerTextCheck } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree, type BuiltLayer } from "../build/layer-tree.js";
 import { claimFacts } from "../claim-facts.js";
@@ -234,10 +235,24 @@ async function timedFromCues(deps: LayerRouteDeps, worker: BeatWorker, packet: B
   return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer still times cue words without useCue after one rebuild: ${formatUntimed(still)}` };
 }
 
+/** What the layer's source shows without rendering it: text faded in by opacity (TP-4527), colour tokens the theme lacks (TP-4537). */
+function sourceRules(beatId: string, module: string): { faded: ReadonlySet<string>; hints: string[]; rows: string[] } {
+  const faded = fadedTextFindings(module);
+  const tokens = undefinedTokenFindings(module);
+  return {
+    faded: new Set(faded.map(({ text }) => text)),
+    hints: [...(faded.length > 0 ? [fadeHint(beatId, faded)] : []), ...(tokens.length > 0 ? [tokenHint(tokens)] : [])],
+    rows: [
+      ...faded.map(({ element, text }) => `${beatId} ${element} fades text ${JSON.stringify(text)} by opacity`),
+      ...tokens.map(({ line, token }) => `${beatId} line ${line} paints with undefined token --${token}`),
+    ],
+  };
+}
+
 /**
  * The $0 text check after the cue-timing check (TP-4418): a layer that draws text under qa's floor, under the chrome,
- * under qa's contrast ratio (TP-4525) or as `NaN`, or that fades text in by opacity (TP-4527, read from its source), is
- * rebuilt once, told each element and rule. All findings share that one rebuild, whose spend joins the build's; a
+ * under qa's contrast ratio (TP-4525) or as `NaN`, that breaks qa's content-fill or words-per-frame gates, or whose
+ * source fades text in by opacity or paints with an undefined colour token, is rebuilt once, told each element and rule. All findings share that one rebuild, whose spend joins the build's; a
  * rebuild that does not compile, drops a cue target or still breaks a rule fails the beat with a row per element.
  */
 async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, layer: BuiltLayer): Promise<{ build: LayerBuild; error?: string }> {
@@ -248,18 +263,17 @@ async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet
           throw new CheckUnavailable(error, build);
         })
       : Promise.resolve([]);
-  const fades = (build: LayerBuild) => fadedTextFindings(build.module);
   const rows = await check(layer.build);
-  const faded = fades(layer.build);
-  if (rows.length === 0 && faded.length === 0) return { build: layer.build };
-  const told = [...(rows.length > 0 ? [layerTextHint(rows, new Set(faded.map(({ text }) => text)))] : []), ...(faded.length > 0 ? [fadeHint(layer.beatId, faded)] : [])];
+  const source = sourceRules(layer.beatId, layer.build.module);
+  if (rows.length === 0 && source.rows.length === 0) return { build: layer.build };
+  const told = [...(rows.length > 0 ? [layerTextHint(rows, source.faded)] : []), ...source.hints];
   const again = await workerBuild(deps, worker, hintedPacket(packet, told.join("; ")));
   const rebuilt: LayerBuild = { ...again, usage: addUsage(layer.build.usage, again.usage) };
   const verdict = await compileLayer(rebuilt.module);
   if (!verdict.ok) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer does not compile: ${verdict.error}` };
   const missing = missingCueElements(packet.packet.cues.map((cue) => cue.target), rebuilt);
   if (missing.length > 0) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer exposes no element for cue targets ${missing.join(", ")}` };
-  const still = [...(await check(rebuilt)).map(formatLayerRow), ...fades(rebuilt).map(({ element, text }) => `${layer.beatId} ${element} fades text ${JSON.stringify(text)} by opacity`)];
+  const still = [...(await check(rebuilt)).map(formatLayerRow), ...sourceRules(layer.beatId, rebuilt.module).rows];
   return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks qa's text rules after one rebuild: ${still.join("; ")}` };
 }
 

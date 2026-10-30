@@ -47,6 +47,15 @@ The packet describes a single beat and nothing about its neighbours:
   about 725 px tall, starting about 190 px from the top of the frame. Its `position: absolute;
   inset: 0` is that box; `anchors` still name cells of the full frame. Text or shapes past the box
   run under the chrome, which the build check refuses.
+- Never park an element outside the 1920 by 1080 frame, waiting for its cue: no `left` or
+  `translate` past an edge. Enter inside the frame by clip-path, as `clipPath: inset(0 100% 0 0)`
+  opening to `inset(0 0 0 0)`, or by a short rise from inside it. The build check samples the layer
+  ten times a second and refuses a painted part past the frame edge that two samples half a second
+  apart both catch.
+- At most 20 words are on screen at once, counted over every text the frame shows. The build check
+  counts the words at each reveal and refuses a frame with more.
+- The settled frame's content spans at least 60 % of the frame width. The build check measures the
+  union of the painted boxes on the beat's last frame.
 - No text is smaller than 40 px, the video's type floor. The page raises smaller text to 40 px, so a
   layout sized for smaller text overflows its box.
 - Never show `NaN`, `undefined`, `null` or `[object …]`. The build check refuses a layer that does.
@@ -54,7 +63,8 @@ The packet describes a single beat and nothing about its neighbours:
   `var(--color-brand-primary-solid)`, `var(--color-on-status-warning)` on
   `var(--color-status-warning-solid)`. Text on the page's ground uses `var(--color-text-primary)`.
   White on an amber or orange fill reads at about 2:1. The build check measures every text's
-  contrast against what is drawn behind it and refuses one under 4.5:1, or 3:1 at 40 px and over.
+  contrast against what is drawn behind it, ten times a second, and refuses one under 4.5:1, or 3:1
+  at 40 px and over, on any one sample.
 - Enter text at full colour: by translate, scale or clip-path, never by an opacity that ramps, is
   computed or sits below 1. Mid-fade, text reads low against its ground, and the build check measures
   contrast at qa's samples, so a fade can pass there and fail on screen. Template beats enter text the
@@ -74,6 +84,10 @@ The packet describes a single beat and nothing about its neighbours:
   check refuses a layer that does not read each cue word through `useCue`, naming the cue.
 - Style with inline styles and the theme's CSS custom properties (`var(--…)`). Do not load fonts,
   images or stylesheets.
+- Paint only with the theme's defined colour tokens, such as `var(--color-border-prominent)`,
+  `var(--color-background-subtle)` or `var(--color-brand-primary-solid)`. An undefined token computes
+  to nothing, so its fill is transparent and the shape never shows. The build check refuses a
+  `var(--color-…)` the theme does not define, naming the line.
 - Never declare a font: no `@font-face`, font import, `url(…)` to a font file or font host such as
   fonts.googleapis.com. Set `fontFamily` only to a theme token: `var(--font-family-body)`,
   `var(--font-family-heading)`, `var(--font-family-mono)` or `var(--font-family-sans)`. The build
