@@ -1031,36 +1031,6 @@
       "count": 3
     }
   },
-  "packages/owner-queue/src/merge.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/round-items.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/rounds.property.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/owner-queue/src/rounds.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "packages/owner-queue/src/spool.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/spool.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
   "packages/react-app/src/hooks/hooks.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
