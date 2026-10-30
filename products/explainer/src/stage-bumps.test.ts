@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadStageBumps, stageVersions } from "./stage-bumps.js";
-import { CACHED_STAGES, type CachedStage } from "./workflow/records.js";
+import type { CachedStage } from "./workflow/records.js";
 
-const BASE = Object.fromEntries(CACHED_STAGES.map((stage) => [stage, `${stage}-v1`])) as Record<CachedStage, string>;
+const BASE: Record<CachedStage, string> = {
+  gather: "gather-v1", audition: "audition-v1", script: "script-v1", rewrite: "rewrite-v1", eval: "eval-v1",
+  resolve: "resolve-v1", tts: "tts-v1", render: "render-v1", qa: "qa-v1", sheets: "sheets-v1",
+};
 
 describe("stageVersions", () => {
   it("keeps a stage no bump names at its base value, so a stored run's keys still match", () => {
