@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { distinctRequests, type TranscriptRequest } from "./distinct-requests.js";
+import { distinctRequests } from "./distinct-requests.js";
 
-const request = (requestId: string, outputTokens: number): TranscriptRequest => ({ requestId, outputTokens }) as TranscriptRequest;
+const request = (requestId: string, outputTokens: number) => ({ requestId, outputTokens });
 
 describe("distinctRequests", () => {
   it("keeps the last line of a response split over several lines", () => {
