@@ -22,8 +22,8 @@
     {
       "name": "the rec answer writes feedback.json itself, bypassing rounds.submit",
       "file": "apps/console/server/round-rec-answer.ts",
-      "find": "  return submit({ id, manifestSha256, answers: built.answers, general: ANSWERED_BY_REC });",
-      "replace": "  return import(\"./state-file.js\").then(({ writeJsonOnce }) => writeJsonOnce(path.join(roundDir, \"feedback.json\"), { general: ANSWERED_BY_REC, answers: built.answers })).then(() => ({ status: \"submitted\" as const, path: roundDir, sha256: manifestSha256, headSha: null }));",
+      "find": "  const result = await submit({ id, manifestSha256, answers: built.answers, general: ANSWERED_BY_REC });",
+      "replace": "  const result = await import(\"./state-file.js\").then(({ writeJsonOnce }) => writeJsonOnce(path.join(roundDir, \"feedback.json\"), { general: ANSWERED_BY_REC, answers: built.answers })).then(() => ({ status: \"submitted\" as const, path: roundDir, sha256: manifestSha256, headSha: null }));",
       "kills": [
         "rounds.answer-rec answers every question with its recommendation through rounds.submit, marked answered-by-rec"
       ]

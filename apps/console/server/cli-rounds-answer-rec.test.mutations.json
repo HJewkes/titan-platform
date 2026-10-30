@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the verb hashes the parsed manifest, not round.json's bytes",
+      "file": "apps/console/server/cli-rounds-answer-rec.ts",
+      "find": "{ id, manifestSha256: parsed.sha256 }",
+      "replace": "{ id, manifestSha256: (await import(\"node:crypto\")).createHash(\"sha256\").update(JSON.stringify(parsed.manifest)).digest(\"hex\") }",
+      "kills": [
+        "titan-console rounds answer-rec answers every question with its recommendation, bound to the round.json on disk, and says how many"
+      ]
+    },
+    {
+      "name": "a refusal exits 0",
+      "file": "apps/console/server/cli-rounds.ts",
+      "find": "    process.exitCode = exitCodeOf(error);",
+      "replace": "    process.exitCode = 0;",
+      "kills": [
+        "titan-console rounds answer-rec refuses a withdrawn round with one line and a non-zero exit",
+        "titan-console rounds answer-rec refuses an unknown round id",
+        "the titan-console bin routes rounds answer-rec and exits non-zero on a refusal"
+      ]
+    }
+  ]
+}
