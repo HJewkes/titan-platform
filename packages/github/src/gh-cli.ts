@@ -212,7 +212,7 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
 }
 
 async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
-  const body = await api.get<{ protected?: unknown }>(`repos/${repo}/branches/${branch}`);
+  const body = await api.get<{ protected?: unknown } | undefined>(`repos/${repo}/branches/${branch}`);
   if (typeof body?.protected !== "boolean") throw new Error("the branch answered no boolean protected flag, so whether it is protected is unknown");
   return body.protected;
 }
