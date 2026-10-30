@@ -169,12 +169,7 @@ export function resolveConfig(
   return config;
 }
 
-function lanOptionsFrom(
-  env: NodeJS.ProcessEnv,
-  home: string,
-  stateDir: string,
-  machine: Machine,
-): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
+function lanOptionsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string, machine: Machine): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
   return {
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
