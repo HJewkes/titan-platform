@@ -7,6 +7,7 @@ import { heldBeats, plannedCues, scriptPacing, stretches } from "./lint-cadence.
 import { countRow } from "./lint-text.js";
 import type { TimingProfile } from "./qa/timing-gates.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
+import { settledSpeechExcuses, type SettledSpeech } from "./settled-speech.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { DEFAULT_PADDING, trueDuration } from "./workflow/tts-truing.js";
 
@@ -15,7 +16,8 @@ import { DEFAULT_PADDING, trueDuration } from "./workflow/tts-truing.js";
  * picture stands still between reveals, and static-window fails any still run past `pacing.staticMaxS`. Only a cue
  * the drawn kind reveals or lights an element on moves the picture: every reveal and emphasis resolve's fill draws,
  * each on its word. As qa does, the reading hold of each drawn text the voice does not say is not still time, and neither is a kind's
- * own entrance, count-up or fade. A beat ends where truing ends it, the settle after its tail included.
+ * own entrance, count-up or fade. A beat ends where truing ends it, the settle after its tail included. As qa does,
+ * a settled frame the voice speaks over may stand still up to SETTLED_SPEECH_MAX_S (settled-speech.ts).
  */
 
 type Pacing = TimingProfile["pacing"];
@@ -113,12 +115,24 @@ const litMoves = (cue: string, s: number): Moved[] => [
   { cue, s: s + FLOW_DWELL_S, motionS: LIT_RAMP_S, lit: true },
 ];
 
-/** The beat's still runs past staticMaxS: between moves, to its trued end, outside each move, fade and reading hold. */
+/** As static-window reads it: settled from the fill's last reveal (the cut, when it reveals none) to the trued end, under the voice. */
+function settledSpeech(drawn: DrawnBeat | undefined, moved: readonly Moved[], clock: Clock, endS: number): SettledSpeech | undefined {
+  if (!drawn) return undefined;
+  const { leadS } = DEFAULT_PADDING;
+  const lastRevealS = Math.max(0, ...moved.filter(({ lit }) => !lit).map(({ s }) => s));
+  return { settled: { fromS: lastRevealS, toS: endS }, speech: { fromS: leadS, toS: leadS + clock.speechS } };
+}
+
+/**
+ * The beat's still runs past staticMaxS: between moves, to its trued end, outside each move, fade and reading hold,
+ * and not a settled frame under speech.
+ */
 function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacing): StillStretch[] {
   const clock = plannedCues(beat);
   if (!clock) return [];
   const moved = moves(drawn, clock);
   const endS = trueDuration(beat.plannedS, clock.speechS);
+  const settled = settledSpeech(drawn, moved, clock, endS);
   const at = new Map(moved.filter(({ lit }) => !lit).map(({ cue, s }) => [cue, s]));
   const closingS = drawn ? closingMotionS(drawn.filled) : 0;
   const windows = [
@@ -130,7 +144,7 @@ function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacin
   return stretches(moved.map(({ s }) => s), endS).flatMap((stretch) => {
     const after = opener.get(stretch[0]);
     return uncovered(stretch, windows)
-      .filter(([from, to]) => to - from > pacing.staticMaxS)
+      .filter(([from, to]) => to - from > pacing.staticMaxS && !settledSpeechExcuses({ fromS: from, toS: to }, settled, pacing.staticMaxS))
       .map(([fromS, toS]) => ({ fromS, toS, ...(after === undefined ? {} : { after }) }));
   });
 }

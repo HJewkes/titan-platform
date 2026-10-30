@@ -2,11 +2,12 @@ import { CLAIM_CARD, cuelessKind, FILL_FLOOR, heldBeats, longestCueGapS, scriptP
 import { REFLECTION_CHAPTER } from "./lint-coverage.js";
 import { BEAT_SECONDS } from "./lint-flow.js";
 import { PACING_DEFAULTS } from "./qa/timing-gates.js";
+import { SETTLED_SPEECH_MAX_S } from "./settled-speech.js";
 import { bodyBeats } from "./lint-text.js";
 import { FRAME_MAX_WORDS, frameCounts } from "./lint-frame-words.js";
 import { HEADING_MAX_WORDS, LABEL_MAX_WORDS, overlongTexts, stillOpenings } from "./lint-direction.js";
 import { ECHO_RUN_WORDS, echoedLabels, unspokenNumbers } from "./lint-screen.js";
-import { drawnBeats } from "./drawn-beats.js";
+import { drawnBeats, refusedBeats } from "./drawn-beats.js";
 import { drawnTexts } from "./drawn-texts.js";
 import { stillBeats, type StillStretch } from "./lint-still.js";
 import { clipped, listed, namedBeats, quoted, type Hint } from "./repair-hint.js";
@@ -21,9 +22,13 @@ const numbersHint: Hint = (script, row) => {
   return `on-screen numbers the beat never says: ${named.join("; ")}. Say each number in that beat's spoken text, or drop it from the assertion, labels, chips or chapter label: say it or drop it`;
 };
 
+/** A refused beat draws nothing for the finders below; its own template-fill row names the fault to fix. */
+const refusedNotes = (script: ScriptV1, row: Parameters<Hint>[1]): string[] =>
+  refusedBeats(script).filter((beat) => row.detail_beats.includes(beat)).map((beat) => `${beat} (the template fill refuses it: answer its template-fill row)`);
+
 const frameHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
-  const named = frameCounts(script).filter((count) => failing.has(count.beat)).map((count) => `${count.beat} (${count.words} words as ${count.kind})`);
+  const named = [...refusedNotes(script, row), ...frameCounts(script).filter((count) => failing.has(count.beat)).map((count) => `${count.beat} (${count.words} words as ${count.kind})`)];
   return `beats whose fullest frame shows more than ${FRAME_MAX_WORDS} words, headline, rows and source line together: ${named.join(", ")}. Write rows as key words, not sentences, and move the rest to the narration`;
 };
 
@@ -123,7 +128,7 @@ function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
     const kind = cuelessKind(beat);
     return kind === undefined ? [] : [cuelessStill(script, beat, kind)];
   });
-  return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text: ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
+  return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text (once every element is shown, up to ${SETTLED_SPEECH_MAX_S} s while the voice speaks): ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
 }
 
 function heldHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
@@ -154,9 +159,12 @@ function fillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
 
 const headingHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
-  const named = overlongTexts(script)
-    .filter((found) => failing.has(found.beat))
-    .map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`);
+  const named = [
+    ...refusedNotes(script, row),
+    ...overlongTexts(script)
+      .filter((found) => failing.has(found.beat))
+      .map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`),
+  ];
   const holds = namedBeats(script, row).flatMap((beat) => shortenedStill(script, beat) ?? []);
   return [`on-screen text over its cap, a heading at most ${HEADING_MAX_WORDS} words and a label at most ${LABEL_MAX_WORDS}: ${named.join("; ")}. An outro or button draws its first label (or, with none, the assertion) as its heading line; shorten each heading or label to its key words and say the rest`, ...holds].join("; ");
 };
@@ -174,7 +182,8 @@ function shortenedStill(script: ScriptV1, beat: ScriptBeat): string | undefined 
 
 const motionHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
-  const named = stillOpenings(script).filter((found) => failing.has(found.beat)).map((found) => `${found.beat} (as ${found.kind}, first moves at ${found.firstS} s)`);
+  const still = stillOpenings(script).filter((found) => failing.has(found.beat));
+  const named = [...refusedNotes(script, row), ...still.map((found) => `${found.beat} (as ${found.kind}, first moves at ${found.firstS} s)`)];
   return `beats whose picture holds still past 0.2 s after the cut: ${named.join(", ")}. Each draws no headline and opens on an element that waits for its spoken cue; cite the beat's source in a chip, whose line rises at once, or draw it as a kind with a headline`;
 };
 

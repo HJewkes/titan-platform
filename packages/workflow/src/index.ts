@@ -63,7 +63,7 @@ export { agentRunner, idempotentRunner, inlineRunner } from "./runners.js";
 export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute } from "./routed-runner.js";
 export { routedRunner } from "./routed-runner.js";
 export type { CodeRecord, CodeRouteOptions, CodeStepEnvelope } from "./code-step.js";
-export { codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
+export { CodeStepFailure, codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
 export type { MapItemFailure, MapItemFn, MapItemResult, MapOptions, MapResult } from "./fan-out.js";
 export { mapItems } from "./fan-out.js";
 export type { WorkflowAuthorityOptions, WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";

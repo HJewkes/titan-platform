@@ -1,7 +1,7 @@
 import { useBeatTime } from "@titan-design/react-ui/motion";
 import { AxisOrigin, axisShare, type AxisFrame } from "./chart-frame.js";
 import { litBox, useLit } from "./stage/emphasis.js";
-import { progressAt } from "./stage/entrance.js";
+import { progressAt, rise } from "./stage/entrance.js";
 import { fadeUp } from "./stage/video.js";
 
 /**
@@ -52,7 +52,7 @@ function Bar({ row, i, t, axis, growAtS }: { row: BarRow; i: number; t: number; 
         <span className="ex-bar-fill" style={{ width: `${barShare(t, start, row.value, axis) * 100}%`, ...(row.colour === undefined ? {} : { background: row.colour }) }} />
         {row.cap !== undefined && <span className="ex-bar-cap" data-qa-decor="" style={{ left: `${axisShare(row.cap, axis.floor, axis.max) * 100}%` }} />}
       </span>
-      <span className="ex-bar-value" style={{ opacity: shown }}>{row.cap === undefined ? row.value.toLocaleString("en-US") : `${row.value} / ${row.cap}`}</span>
+      <span className="ex-bar-value" style={rise(shown, 8)}>{row.cap === undefined ? row.value.toLocaleString("en-US") : `${row.value} / ${row.cap}`}</span>
     </li>
   );
 }

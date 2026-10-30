@@ -31,7 +31,7 @@
     {
       "name": "status never names the order wait",
       "file": "products/factory/src/shepherd/merge-order-command.ts",
-      "find": "...(wait && { nextAction: wait.reason, ...stalledBehind(row, wait.reason) }), ",
+      "find": "...(hold && { nextAction: hold.reason, ...stalledBehind(row, hold.reason), orderWait: hold }), ",
       "replace": "",
       "kills": [
         "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row",

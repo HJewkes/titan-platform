@@ -16,6 +16,8 @@ export const DISPATCH_STEPS: Readonly<Record<string, RestartRule>> = {
   "bs-implement": "park",
   "bs-report-check": "repeat",
   "bs-gates": "repeat",
+  "bs-health": "repeat",
+  "bs-file-task": "repeat",
   "bs-preview": "repeat",
   "bs-review": "repeat",
   "bs-review-check": "repeat",
@@ -26,14 +28,16 @@ export const DISPATCH_STEPS: Readonly<Record<string, RestartRule>> = {
   "bs-deploy": "park",
 };
 
-/** The gates the owner answers: a device check on the preview, a deploy approval, and the one final walk. */
+/** The gates the owner answers: a device check on the preview, an infra failure a retry did not clear, a deploy approval, and the one final walk. */
 export const DEVICE_CHECK = "device-check";
+export const INFRA_PARK = "infra-park";
 export const DEPLOY_APPROVE = "deploy-approve";
 export const FINAL_WALK = "final-walk";
 
 export const BUILD_SURFACE_STEPS: readonly StepDeclaration[] = [
   ...Object.keys(DISPATCH_STEPS).map((id) => ({ id, kind: "dispatch" as const })),
   { id: DEVICE_CHECK, kind: "assisted" },
+  { id: INFRA_PARK, kind: "assisted" },
   { id: DEPLOY_APPROVE, kind: "assisted" },
   { id: FINAL_WALK, kind: "assisted" },
 ];

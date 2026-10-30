@@ -1,6 +1,7 @@
-import { codeRecordRoute, type RoutedStepInput, type StepRoute } from "@titan-design/workflow";
+import { codeRecordRoute, type RoutedStepInput, type StepRoute, type StepUsage } from "@titan-design/workflow";
 import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
+import { stepClock } from "../workflows/deadline.js";
 import { DISPATCH_STEPS } from "./manifest.js";
 import type { BuildSurfacePorts } from "./ports.js";
 import { GateEvidenceSchema, ImplementerReportSchema, ReviewReportSchema, type GateRun, type LandState, type Validation } from "./schemas.js";
@@ -16,12 +17,15 @@ const PARKED: Readonly<Record<string, string>> = {
   "bs-deploy": "the deploy command was interrupted and may have half-run; check the live surface before resuming",
 };
 
-/** Every step's answer is `{result}` inside an evidence record; a thrown error fails the step without a retry. */
-function bsRoute<I>(match: string, ports: Pick<BuildSurfacePorts, "now">, fn: (input: I, signal: AbortSignal) => Promise<object & { costUsd?: number }>): StepRoute {
+type StepAnswer = object & { costUsd?: number; usage?: StepUsage };
+
+/** Every step's answer is `{result}` inside an evidence record; a thrown error fails the step without a retry. A `usage` answer is the step's usage. */
+function bsRoute<I>(match: string, ports: Pick<BuildSurfacePorts, "now">, fn: (input: I, signal: AbortSignal, step: RoutedStepInput) => Promise<StepAnswer>): StepRoute {
   const envelope = (record: object, step: RoutedStepInput) => evidenceRecord(`build-surface.${match}`, step, new Date(ports.now()).toISOString(), record);
   const route = codeRecordRoute(match, async (input: I, step) => {
-    const result = await fn(input, step.signal);
-    return { result, ...(result.costUsd !== undefined && { usage: { costUsd: result.costUsd } }) };
+    const { usage, ...result } = await fn(input, step.signal, step);
+    const costed = usage ?? (result.costUsd === undefined ? undefined : { costUsd: result.costUsd });
+    return { result, ...(costed && { usage: costed }) };
   }, { envelope, errorText: redactForEvidence });
   const onRestart = DISPATCH_STEPS[match]!;
   const parked = PARKED[match];
@@ -63,7 +67,8 @@ async function recordedGates(ports: BuildSurfacePorts, dir: string, head: string
     const parsed = GateEvidenceSchema.safeParse(json);
     if (!parsed.success) return (problems.push(`${path}: not a gate record`), []);
     if (parsed.data.head !== head) return (problems.push(`${path}: written for head ${parsed.data.head}`), []);
-    return [{ gate: parsed.data.gate, pass: parsed.data.pass, ...(parsed.data.score !== undefined && { score: parsed.data.score }), evidence: path }];
+    const { gate, pass, score, failure } = parsed.data;
+    return [{ gate, pass, ...(score !== undefined && { score }), ...(failure && { failure }), evidence: path }];
   });
   if (records.length === 0) problems.push(`no gate evidence in ${dir}`);
   return { gates: records, problems };
@@ -107,6 +112,16 @@ async function gates(ports: BuildSurfacePorts, input: I.GatesInput, signal: Abor
   return { head: input.head, exitCode: done.status, pass: done.status === 0 && problems.length === 0 && records.every((record) => record.pass), gates: records, problems };
 }
 
+/** Never rejects: an unfiled task must not replace the stop it belongs to, so the reason comes back for the stop to name. */
+async function fileTask(ports: BuildSurfacePorts, input: I.FileTaskInput) {
+  try {
+    const id = (await ports.tasks.findByTag(input.initiative, input.tag)) ?? (await ports.tasks.add(input.initiative, input.fields));
+    return { task: `${input.initiative}/${id}`, detail: "" };
+  } catch (error) {
+    return { task: null, detail: redactForEvidence(error instanceof Error ? error.message : String(error)) };
+  }
+}
+
 async function pr(ports: BuildSurfacePorts, input: I.PrInput) {
   const found = await ports.github.findPr(input.repo, input.branch);
   if (found) return { pr: found.number, url: `https://github.com/${input.repo}/pull/${found.number}`, created: false };
@@ -128,6 +143,8 @@ export function buildSurfaceCodeRoutes(ports: BuildSurfacePorts): StepRoute[] {
     bsRoute("bs-branch", ports, (input: I.BranchInput, signal) => branch(ports, input, signal)),
     bsRoute("bs-report-check", ports, (input: I.ReportCheckInput, signal) => reportCheck(ports, input, signal)),
     bsRoute("bs-gates", ports, (input: I.GatesInput, signal) => gates(ports, input, signal)),
+    bsRoute("bs-health", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
+    bsRoute("bs-file-task", ports, (input: I.FileTaskInput) => fileTask(ports, input)),
     bsRoute("bs-preview", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
     bsRoute("bs-review-check", ports, (input: I.ValidateInput, signal) => validate(ports, input, signal)),
     bsRoute("bs-pr", ports, (input: I.PrInput) => pr(ports, input)),
@@ -141,10 +158,16 @@ export function buildSurfaceCodeRoutes(ports: BuildSurfacePorts): StepRoute[] {
 export function buildSurfaceAgentRoutes(ports: BuildSurfacePorts): StepRoute[] {
   return [
     bsRoute("bs-extract", ports, (input: I.ExtractInput, signal) => extract(ports, input, signal)),
-    bsRoute("bs-implement", ports, (input: I.ImplementInput, signal) => ports.implementer.start({ ...input, schema: ImplementerReportSchema }, signal)),
-    bsRoute("bs-fix", ports, (input: I.FixInput, signal) => ports.implementer.resume(input.name, input.message, ImplementerReportSchema, signal)),
-    bsRoute("bs-review", ports, (input: I.ImplementInput, signal) => ports.implementer.start({ ...input, role: "reviewer", schema: ReviewReportSchema }, signal)),
+    bsRoute("bs-implement", ports, (input: I.ImplementInput, signal, step) => ports.implementer.start({ ...input, turn: turnOf(input, step), schema: ImplementerReportSchema }, signal)),
+    bsRoute("bs-fix", ports, (input: I.FixInput, signal, step) => ports.implementer.resume(input.name, input.message, ImplementerReportSchema, signal, turnOf(input, step))),
+    bsRoute("bs-review", ports, (input: I.ImplementInput, signal, step) => ports.implementer.start({ ...input, turn: turnOf(input, step), role: "reviewer", schema: ReviewReportSchema }, signal)),
   ];
+}
+
+/** The turn's limits off the step: its budget from the input, and its first start, which a restart keeps, from the runtime. */
+function turnOf(input: { budgetUsd: number }, step: RoutedStepInput) {
+  const { firstStartedAtMs } = stepClock(step);
+  return { budgetUsd: input.budgetUsd, ...(firstStartedAtMs !== undefined && { firstStartedAtMs }) };
 }
 
 export function buildSurfaceRoutes(ports: BuildSurfacePorts): StepRoute[] {
