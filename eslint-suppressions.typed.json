@@ -1454,63 +1454,6 @@
       "count": 1
     }
   },
-  "packages/style-profile/src/exporters/editorconfig.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/eslint-rules.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/style-profile/src/exporters/eslint-rules.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/eslint.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/style-profile/src/exporters/export-index.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/ruff.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/style-profile/src/exporters/skill.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/template-helpers.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "packages/style-profile/src/migrations/migrate-profile.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/throughput/src/model-hash.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
