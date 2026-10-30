@@ -6,7 +6,7 @@ import { open, type Route } from "../router.js";
 import { HostsSection } from "./ConfigHosts.js";
 import { PerfTab } from "./ConfigPerf.js";
 import { ConfigRowCard, DuplicateCard, type ConfigRow, type DuplicateRow } from "./ConfigRows.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Surfaces = ConsoleCommands["config.surfaces"]["result"];
 type ConfigFile = Surfaces["files"][number];

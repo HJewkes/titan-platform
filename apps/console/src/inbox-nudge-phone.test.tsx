@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource } from "@titan-design/rpc-client";
-import { BELOW_MD } from "./pages/TasksPage.js";
+import { BELOW_MD } from "./pages/phone.js";
 import { renderPage } from "./render-page.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
@@ -49,7 +49,7 @@ describe("the inbox's one-tap round answer on a phone", () => {
 
     fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
 
-    const step = screen.getByTestId("inbox-nudge-confirm-kiln-r1");
+    const step = within(screen.getByTestId("inbox-nudge-kiln-r1")).getByTestId("phone-confirm");
     expect(within(step).getByText("Answer all with recommendation for round 1? This submits the round.")).toBeTruthy();
     expect(writes).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe("the inbox's one-tap round answer on a phone", () => {
     const writes = renderNudge();
 
     fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
-    fireEvent.click(screen.getByTestId("inbox-nudge-confirm-go-kiln-r1"));
+    fireEvent.click(screen.getByTestId("phone-confirm-go"));
 
     expect(await screen.findByText("Answered with every recommendation.")).toBeTruthy();
     expect(writes).toEqual(["rounds.answer-rec"]);
@@ -70,9 +70,9 @@ describe("the inbox's one-tap round answer on a phone", () => {
     const writes = renderNudge();
 
     fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
-    fireEvent.click(screen.getByTestId("inbox-nudge-confirm-cancel-kiln-r1"));
+    fireEvent.click(screen.getByTestId("phone-confirm-cancel"));
 
-    expect(screen.queryByTestId("inbox-nudge-confirm-kiln-r1")).toBeNull();
+    expect(screen.queryByTestId("phone-confirm")).toBeNull();
     expect(screen.getByTestId("inbox-nudge-rec-kiln-r1").className).toContain("max-md:min-h-11");
     expect(writes).toEqual([]);
   });
@@ -86,7 +86,7 @@ describe("the inbox's one-tap round answer on a desktop", () => {
     fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
 
     expect(await screen.findByText("Answered with every recommendation.")).toBeTruthy();
-    expect(screen.queryByTestId("inbox-nudge-confirm-kiln-r1")).toBeNull();
+    expect(screen.queryByTestId("phone-confirm")).toBeNull();
     expect(writes).toEqual(["rounds.answer-rec"]);
   });
 });

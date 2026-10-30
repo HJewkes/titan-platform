@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Card, CardContent, Chip, EmptyState, HStack, ListItem, Pill, Typography, VStack } from "@titan-design/react-ui";
 import { TOPIC_PRIORITIES, TOPIC_VERDICTS } from "@titan-design/pm";
 import type { getReview } from "../../server/reviews.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 type TopicRow = Awaited<ReturnType<typeof getReview>>["topics"][number];
 

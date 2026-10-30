@@ -3,7 +3,7 @@ import { Alert, Button, ButtonText, Drawer, DrawerBody, DrawerFooter, Spinner, T
 import type { JsonEnvelope } from "@titan-design/registry";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** What every `*.prepare` answers: a read-back with a confirm digest, or the reason the console cannot take the tap. */
 interface TapReady {

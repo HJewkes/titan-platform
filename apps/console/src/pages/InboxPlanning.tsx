@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, Section, SectionContent, SectionHeader, Spinner, VStack } from "@titan-design/react-ui";
 import { useQuery } from "../data/rpc.js";
 import type { InboxItem } from "./InboxPage.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** `inbox.list` lists the planning items only when asked; the default read counts them (TP-4390). */
 export const PLANNING_READ = { planning: true };

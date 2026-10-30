@@ -20,7 +20,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArRunView, ArValidator } from "../../server/autoresearch-view.js";
 import { shortSha } from "./autoresearch-format.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Look = ArValidator["looks"][number];
 

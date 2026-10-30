@@ -21,7 +21,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArIdea, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { depthSuffix, shortId } from "./autoresearch-format.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** Below this the backlog scrolls sideways rather than squeeze its eight columns into overlap. */
 const BACKLOG_MIN_WIDTH = 880;

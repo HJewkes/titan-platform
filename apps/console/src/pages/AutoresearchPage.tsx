@@ -26,7 +26,7 @@ import { AutoresearchProgress } from "./AutoresearchProgress.js";
 import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
 import { AutoresearchSnapshots } from "./AutoresearchSnapshots.js";
 import { AutoresearchValidator } from "./AutoresearchValidator.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;

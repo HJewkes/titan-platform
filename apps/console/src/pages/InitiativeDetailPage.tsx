@@ -31,7 +31,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
-import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone.js";
 
 type Detail = ConsoleCommands["work.initiative"]["result"];
 

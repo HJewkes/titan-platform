@@ -23,7 +23,7 @@ import { href, open } from "../router.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { ideaRoute } from "./autoresearch-lanes.js";
 import { bugRepeatRates, REGISTRY_TAIL, registryTails, type RoundRepeats } from "./autoresearch-registries.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
 
 const PERCENT = 100;
 

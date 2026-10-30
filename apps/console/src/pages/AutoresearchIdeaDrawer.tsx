@@ -8,7 +8,7 @@ import { AutoresearchStageStepper } from "./AutoresearchStageStepper.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
 import { depthSuffix, keptMove, reasonLabel } from "./autoresearch-format.js";
 import { implementerRoute, stageSpans } from "./autoresearch-lanes.js";
-import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone.js";
 
 /** Design §2.2 and §2.4: the card's detail, opened by `?idea=` so a reload or a shared link reopens it. */
 export function AutoresearchIdeaDrawer({ run, ideaId, now }: { run: ArRunView; ideaId: string | undefined; now: number }): ReactNode {

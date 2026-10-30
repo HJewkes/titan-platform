@@ -13,7 +13,7 @@ import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];

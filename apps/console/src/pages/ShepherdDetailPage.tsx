@@ -3,7 +3,7 @@ import { Alert, BreadcrumbItem, Breadcrumbs, HStack, Heading, Pill, Section, Sec
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RowBadges, isRecord, stageOf, type WatchRow } from "./ShepherdPage.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 /** Splits `owner/repo#pr` at its last `#`; anything else names no PR. */
 function parsePrRef(ref: string): { repo: string; pr: number } | undefined {

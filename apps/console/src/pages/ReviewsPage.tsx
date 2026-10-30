@@ -19,7 +19,7 @@ import {
 import type { ReviewSummary } from "../../server/reviews.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 const COUNT_WIDTH = 64;
 const DATE_WIDTH = 160;

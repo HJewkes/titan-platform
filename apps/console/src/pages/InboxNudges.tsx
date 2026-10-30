@@ -4,9 +4,8 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
-import { useMediaQuery } from "./FramePins.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone-tap.js";
-import { BELOW_MD } from "./TasksPage.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { useConfirmOnPhone } from "./PhoneConfirm.js";
 
 type RoundNudge = ConsoleCommands["inbox.list"]["result"]["nudges"][number];
 
@@ -60,51 +59,32 @@ function NudgeCard({ nudge }: { nudge: RoundNudge }): ReactNode {
 const recLabel = (nudge: RoundNudge): string => (nudge.recommendationsHidden ? "Accept all recommendations (unseen)" : "Answer all with recommendation");
 
 /**
- * One tap, as the nudge promised: `rounds.answer-rec` hands the recommendations to `rounds.submit`. On a phone a thumb
- * lands on it while scrolling, so the tap only arms a confirm step there.
+ * One tap, as the nudge promised: `rounds.answer-rec` hands the recommendations to `rounds.submit`. On a phone the tap
+ * only arms a confirm step, since a thumb lands on it while scrolling.
  */
 function RecTap({ nudge }: { nudge: RoundNudge }): ReactNode {
   const source = useAnswerSource();
   const invalidate = useInvalidate();
-  const phone = useMediaQuery(BELOW_MD);
   const [state, setState] = useState<TapState>({ status: "idle" });
-  const [armed, setArmed] = useState(false);
-  if (source === null) return <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>;
   const tap = async (): Promise<void> => {
-    setArmed(false);
+    if (source === null) return;
     setState({ status: "sending" });
     const envelope = await source.call("rounds.answer-rec", { id: nudge.roundId, manifestSha256: nudge.manifestSha256 });
     if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
     setState({ status: "sent", already: alreadySubmitted(envelope.data) });
     invalidate(["inbox.list", "rounds.get", "rounds.list"]);
   };
+  const detail = `${recLabel(nudge)} for round ${nudge.round}? This submits the round.`;
+  const { press, step } = useConfirmOnPhone([{ id: "rec", confirm: "Confirm", detail, isDisabled: state.status === "sending", run: () => void tap() }]);
+  if (source === null) return <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>;
   if (state.status === "sent") return <Alert status="success" message={state.already ? "This round was already answered." : "Answered with every recommendation."} />;
   return (
     <VStack gap={2}>
-      {armed ? (
-        <RecConfirm nudge={nudge} onConfirm={() => void tap()} onCancel={() => setArmed(false)} />
-      ) : (
-        <Button size="sm" className={PHONE_TAP} isDisabled={state.status === "sending"} onPress={() => (phone ? setArmed(true) : void tap())} testID={`inbox-nudge-rec-${nudge.roundId}`}>
-          <ButtonText>{recLabel(nudge)}</ButtonText>
-        </Button>
-      )}
+      <Button size="sm" className={PHONE_TAP} isDisabled={state.status === "sending"} onPress={() => press("rec")} testID={`inbox-nudge-rec-${nudge.roundId}`}>
+        <ButtonText>{recLabel(nudge)}</ButtonText>
+      </Button>
+      {step}
       {state.status === "failed" ? <Alert status="error" message={`Not answered: ${state.error}`} /> : null}
-    </VStack>
-  );
-}
-
-function RecConfirm({ nudge, onConfirm, onCancel }: { nudge: RoundNudge; onConfirm: () => void; onCancel: () => void }): ReactNode {
-  return (
-    <VStack gap={2} testID={`inbox-nudge-confirm-${nudge.roundId}`}>
-      <Typography variant="body2" className="break-words">{`${recLabel(nudge)} for round ${nudge.round}? This submits the round.`}</Typography>
-      <HStack gap={3} wrap>
-        <Button color="primary" className={PHONE_TAP} onPress={onConfirm} testID={`inbox-nudge-confirm-go-${nudge.roundId}`}>
-          <ButtonText>Confirm</ButtonText>
-        </Button>
-        <Button variant="outline" color="secondary" className={PHONE_TAP} onPress={onCancel} testID={`inbox-nudge-confirm-cancel-${nudge.roundId}`}>
-          <ButtonText>Cancel</ButtonText>
-        </Button>
-      </HStack>
     </VStack>
   );
 }

@@ -19,7 +19,7 @@ import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { ReviewFindings } from "./ReviewFindings.js";
 import { GapBanner, ReviewState, costText, remoteSlug } from "./ReviewsPage.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 type ReviewDetail = Awaited<ReturnType<typeof getReview>>;
 type ClaimRow = ReviewDetail["claims"][number];

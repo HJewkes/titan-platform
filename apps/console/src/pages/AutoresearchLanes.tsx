@@ -8,7 +8,7 @@ import { AutoresearchStageStrip } from "./AutoresearchStageStepper.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { STAGES, boardLadders, currentStage, ideaFromQuery, ideaRoute, stageSpans } from "./autoresearch-lanes.js";
 import { useNow } from "./autoresearch-live.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 /** Design §1.3: the current round's ideas, one card each, in the column of the stage they are in. */
 export function AutoresearchLanes({ run }: { run: ArRunView }): ReactNode {

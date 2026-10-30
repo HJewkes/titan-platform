@@ -4,35 +4,35 @@
     {
       "name": "a phone sends the round answer on the first tap",
       "file": "apps/console/src/pages/InboxNudges.tsx",
-      "find": "onPress={() => (phone ? setArmed(true) : void tap())}",
-      "replace": "onPress={() => void tap()}",
+      "find": "const { press, step } = useConfirmOnPhone([{ id: \"rec\", confirm: \"Confirm\", detail, isDisabled: state.status === \"sending\", run: () => void tap() }]);",
+      "replace": "const step = null;\n  const press = (): void => void tap();",
       "kills": [
         "the inbox's one-tap round answer on a phone arms a confirm step on the first tap and sends nothing yet"
       ]
     },
     {
-      "name": "a desktop tap only arms the confirm step",
+      "name": "the armed confirm step is never shown",
       "file": "apps/console/src/pages/InboxNudges.tsx",
-      "find": "onPress={() => (phone ? setArmed(true) : void tap())}",
-      "replace": "onPress={() => setArmed(true)}",
-      "kills": [
-        "the inbox's one-tap round answer on a desktop sends on the first tap with no confirm step"
-      ]
-    },
-    {
-      "name": "Confirm sends nothing",
-      "file": "apps/console/src/pages/InboxNudges.tsx",
-      "find": "<RecConfirm nudge={nudge} onConfirm={() => void tap()}",
-      "replace": "<RecConfirm nudge={nudge} onConfirm={() => undefined}",
+      "find": "      {step}\n",
+      "replace": "",
       "kills": [
         "the inbox's one-tap round answer on a phone sends the answer once Confirm is tapped"
       ]
     },
     {
-      "name": "Cancel leaves the confirm step open",
+      "name": "the confirm step lacks the round it submits",
       "file": "apps/console/src/pages/InboxNudges.tsx",
-      "find": "onCancel={() => setArmed(false)} />",
-      "replace": "onCancel={() => undefined} />",
+      "find": "const detail = `${recLabel(nudge)} for round ${nudge.round}? This submits the round.`;",
+      "replace": "const detail = recLabel(nudge);",
+      "kills": [
+        "the inbox's one-tap round answer on a phone arms a confirm step on the first tap and sends nothing yet"
+      ]
+    },
+    {
+      "name": "the nudge tap loses its phone tap size",
+      "file": "apps/console/src/pages/InboxNudges.tsx",
+      "find": "<Button size=\"sm\" className={PHONE_TAP} isDisabled={state.status === \"sending\"} onPress={() => press(\"rec\")}",
+      "replace": "<Button size=\"sm\" isDisabled={state.status === \"sending\"} onPress={() => press(\"rec\")}",
       "kills": [
         "the inbox's one-tap round answer on a phone puts the tap back and sends nothing when Cancel is tapped"
       ]

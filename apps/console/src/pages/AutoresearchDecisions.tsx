@@ -23,7 +23,7 @@ import { AutoresearchRoundPlanner } from "./AutoresearchRoundPlanner.js";
 import { AutoresearchRoundSettle } from "./AutoresearchRoundSettle.js";
 import { keptMove, reasonText, shortId, signed } from "./autoresearch-format.js";
 import { formatCost } from "./SessionFormat.js";
-import { PHONE_TAP } from "./phone-tap.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Decided = ArLadder & { outcome: ArOutcome };
 

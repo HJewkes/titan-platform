@@ -18,7 +18,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArRunView, ArSnapshot, ArSync } from "../../server/autoresearch-view.js";
 import { ExternalLink } from "./SessionFormat.js";
-import { PHONE_TAP_ANCHORS } from "./phone-tap.js";
+import { PHONE_TAP_ANCHORS } from "./phone.js";
 import { pullUrl, shortSha } from "./autoresearch-format.js";
 
 const STATE_TONE: Record<ArSync["state"], PillTone> = { open: "neutral", merged: "success", closed: "error" };

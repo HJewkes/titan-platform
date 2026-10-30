@@ -23,7 +23,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { PHONE_TAP_LINK } from "./phone-tap.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 export type WatchRow = ConsoleCommands["shepherd.list"]["result"][number];
 type WaitingGate = ConsoleCommands["shepherd.waiting"]["result"]["owner"][number];
