@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "TapSheet drops its reading marker, so findTapSheet stops waiting for the read-back",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "<Spinner size=\"sm\" label={reading} testID={`${testID}-reading`} />",
+      "replace": "<Spinner size=\"sm\" label={reading} />",
+      "kills": [
+        "tests that open a confirm sheet see the sheet reading while its prepare is held, and its read-back once the prepare answers"
+      ]
+    },
+    {
+      "name": "the lineage test looks the inbox sheet up bare again",
+      "file": "apps/console/src/inbox-lineage.test.tsx",
+      "find": "const sheet = await findTapSheet(\"inbox-confirm\");",
+      "replace": "const sheet = await screen.findByTestId(\"inbox-confirm\");",
+      "kills": [
+        "tests that open a confirm sheet open each sheet through findTapSheet, never by a bare lookup that races the prepare"
+      ]
+    },
+    {
+      "name": "the forced retire sheet renamed out from under the guard",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "testID=\"agent-retire-force\"\n",
+      "replace": "testID=\"agent-retire-forced\"\n",
+      "kills": [
+        "tests that open a confirm sheet find every TapSheet the pages mount"
+      ]
+    }
+  ]
+}
