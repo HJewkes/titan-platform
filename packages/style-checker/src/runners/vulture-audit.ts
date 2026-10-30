@@ -27,7 +27,7 @@ export function vultureKind(text: string): string {
 }
 
 function toDiagnostic(m: RegExpExecArray): CheckDiagnostic {
-  const [, file, line, text, confidence] = m as unknown as [string, string, string, string, string];
+  const [file, line, text, confidence] = [m[1]!, m[2]!, m[3]!, m[4]!];
   return {
     file,
     line: Number(line),

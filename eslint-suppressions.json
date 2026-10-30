@@ -475,11 +475,6 @@
       "count": 2
     }
   },
-  "packages/style-checker/src/runners/vulture-audit.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/style-profile/src/exporters/editorconfig.ts": {
     "titan/max-function-lines": {
       "count": 1
