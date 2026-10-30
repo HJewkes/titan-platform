@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import type { Browser, Page } from 'playwright-core'
 import { afterAll as after, beforeAll as before, describe, test } from 'vitest'
-import { captureFrame, launch, openCapturePage, settleFonts } from './capture.js'
+import { captureFrame, launch, openCapturePage, screenshotFrame, settleFonts } from './capture.js'
 import { serveFixtures, type Served } from './fixtures/serve-fixtures.js'
 import { VIRTUAL_TIME_SCRIPT } from './virtual-time.js'
 
@@ -30,7 +30,7 @@ async function referenceFrame(text: string): Promise<Buffer> {
     const el = document.getElementById('stage')
     if (el) el.textContent = value
   }, text)
-  return reference.screenshot({ type: 'png', caret: 'hide' })
+  return screenshotFrame(reference)
 }
 
 /** Frame indices whose capture differs from the reference text `(i / 30).toFixed(3)`. */
