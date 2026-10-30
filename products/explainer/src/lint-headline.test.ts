@@ -54,6 +54,17 @@ describe("Q-D7 assertion headlines", () => {
     expect(assertionRow("Ledger lookups at the desk").row).toMatchObject({ pass: false, detail_beats: ["w2"] });
   });
 
+  it("a headline whose verb is an irregular past the tagger calls a noun asserts", () => {
+    const misread = () => ["JJ", "NN", "NNP", "JJ", "NNS"];
+
+    const asserts = hasSubjectAndVerb("Daily video drew most merges.", misread);
+
+    expect(asserts).toBe(true);
+    expect(hasSubjectAndVerb("Parcel refusal", () => ["NN", "NN"])).toBe(false);
+    expect(hasSubjectAndVerb("Labels made at the desk", () => ["NNS", "VBN", "IN", "DT", "NN"])).toBe(false);
+    expect(hasSubjectAndVerb("Drew the parcel route", () => ["NNP", "DT", "NN", "NN"])).toBe(false);
+  });
+
   it("fails a claim of eleven words and passes one of ten", () => {
     const tagger = () => ["DT", "VBZ"];
     const at = (words: number) => runL0(tour(withBeat("w2", { extra: { visual: { assertion: Array(words).fill("desk").join(" "), job: "numbers" } } })), undefined, [assertionCheckWith(tagger)])[0]!;

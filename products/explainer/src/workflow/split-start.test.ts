@@ -165,3 +165,26 @@ describe("a reply that leaves the closing button still", () => {
     expect(draft.beats.find((beat) => beat.id === "ask-1")!.heldS).toBe(3);
   });
 });
+
+describe("an orphan cue target", () => {
+  it("is dropped from a seed by code, so a seed whose only fault it was makes no model call", async () => {
+    const orphaned = dailyWith("lanes-4", { visual: { cues: [{ action: "V6", target: "series-1", atCue: "monday" }, { action: "V6", target: "series-9", atCue: "today" }] } });
+
+    const { draft, prompts, outcome } = await runSeeded(orphaned, [cueGapCheck], orphaned);
+
+    expect(prompts).toHaveLength(0);
+    expect(draft.beats.find((beat) => beat.id === "lanes-4")!.visual.cues.map((cue) => cue.target)).toEqual(["series-1"]);
+    expect(outcome.notes).toContain("orphan cue dropped: lanes-4 series-9 (names no element the fill draws)");
+  });
+
+  it("is dropped from a drafted reply before its plan check, so it costs no plan retry", async () => {
+    const orphaned = dailyWith("lanes-4", { visual: { cues: [{ action: "V6", target: "series-1", atCue: "monday" }, { action: "V6", target: "series-9", atCue: "today" }] } });
+    const { artifacts, ...rest } = stageInput(orphaned);
+    const model = fakeModel(orphaned);
+
+    const outcome = await runScriptStage({ ...rest, artifacts: { spine: artifacts.spine!, facts: artifacts.facts! } }, { model: "fake", profile: "daily-overview", runnerFor: model.runnerFor, l0Checks: [cueGapCheck], g2p: { tokens: () => [] } });
+
+    expect(model.prompts).toHaveLength(1);
+    expect(outcome.notes).toContain("orphan cue dropped: lanes-4 series-9 (names no element the fill draws)");
+  });
+});

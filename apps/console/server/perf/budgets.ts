@@ -68,6 +68,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("shepherd.list", {}, { maxBytes: 136 * KB, maxUpstreamCalls: 1 }),
   row("shepherd.timeline", RUN, { maxUpstreamCalls: 1 }, NO_FAKE_ANSWER),
   row("shepherd.waiting", {}, { maxUpstreamCalls: 1 }, NO_FAKE_ANSWER),
+  row("taps.prepare", { target: { kind: "retire-agent", name: "perf-agent" } }, { maxUpstreamCalls: 0 }, "the fixture leaves inbox actions off"),
   row("upstreams.health", {}, { maxUpstreamCalls: 1 }),
   row("videos.edit-check", { videoId: "perf-video", runId: "perf-run" }, {}, NO_VIDEO_ROOTS),
   row("videos.edits", { videoId: "perf-video" }, {}, NO_VIDEO_ROOTS),
