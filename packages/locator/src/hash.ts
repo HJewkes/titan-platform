@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { asBuffer } from "./chunk.js";
 
 /**
  * sha256 over bytes `[0, byteLength)` of `filePath`. Transcripts are append-only
@@ -10,7 +11,7 @@ export async function prefixHash(filePath: string, byteLength: number): Promise<
   const hash = createHash("sha256");
   if (byteLength > 0) {
     const stream = createReadStream(filePath, { start: 0, end: byteLength - 1 });
-    for await (const chunk of stream) hash.update(chunk as Buffer);
+    for await (const chunk of stream) hash.update(asBuffer(chunk));
   }
   return hash.digest("hex");
 }
@@ -18,6 +19,6 @@ export async function prefixHash(filePath: string, byteLength: number): Promise<
 /** sha256 of the whole file, the content address a raw mirror is stored under. */
 export async function contentHash(filePath: string): Promise<string> {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hash.update(chunk as Buffer);
+  for await (const chunk of createReadStream(filePath)) hash.update(asBuffer(chunk));
   return hash.digest("hex");
 }
