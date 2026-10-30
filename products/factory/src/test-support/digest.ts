@@ -32,7 +32,7 @@ export function fakeSources(overrides: Partial<DigestSources> = {}): DigestSourc
       throw new Error("not stubbed");
     },
     queueAsks: () => [],
-    seatCosts: () => [],
+    spend: () => [],
     ...overrides,
   };
 }

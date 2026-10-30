@@ -21,11 +21,13 @@ export async function superviseLoop(name: string, body: (reset: () => void) => P
   const reset = () => {
     delay = backoff.initialMs;
   };
-  while (!signal.aborted) {
+  // A call, not a property read: TypeScript would keep `aborted` narrowed to false across the awaited body.
+  const aborted = () => signal.aborted;
+  while (!aborted()) {
     try {
       return await body(reset);
     } catch (err) {
-      if (signal.aborted) return;
+      if (aborted()) return;
       logger.warn(`${name} failed`, { error: err instanceof Error ? err.message : String(err), retryInMs: delay });
       await sleep(delay, signal);
       delay = Math.min(delay * 2, backoff.maxMs);

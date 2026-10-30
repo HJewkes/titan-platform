@@ -49,7 +49,7 @@ describe("condense over bulk answers", () => {
   afterEach(() => db.close());
 
   function ingest(rows: readonly LedgerRow[]): LedgerEntry[] {
-    ledger.append(rows as LedgerRowWire[]);
+    ledger.append(rows);
     return ledger.entries();
   }
 

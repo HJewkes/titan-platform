@@ -239,18 +239,26 @@ const QUESTION_CHECKS: Record<QuestionConditionKind, (facts: QuestionFacts) => b
 };
 
 // Facts arrive from outside the type system, so a malformed fact fails its condition instead of throwing.
-function holds<T>(check: ((facts: T) => boolean) | undefined, facts: unknown): boolean {
+function holds<T extends object>(check: ((facts: T) => boolean) | undefined, facts: T | undefined): boolean {
   if (check === undefined || !isRecord(facts)) return false;
   try {
-    return check(facts as T);
+    return check(facts);
   } catch {
     return false;
   }
 }
 
+function isMergeCondition(condition: ConditionKind): condition is MergeConditionKind {
+  return Object.hasOwn(MERGE_CHECKS, condition);
+}
+
+function isQuestionCondition(condition: ConditionKind): condition is QuestionConditionKind {
+  return Object.hasOwn(QUESTION_CHECKS, condition);
+}
+
 function conditionHolds(condition: ConditionKind, facts: ConditionFacts): boolean {
-  if (Object.hasOwn(MERGE_CHECKS, condition)) return holds(MERGE_CHECKS[condition as MergeConditionKind], facts.merge);
-  if (Object.hasOwn(QUESTION_CHECKS, condition)) return holds(QUESTION_CHECKS[condition as QuestionConditionKind], facts.question);
+  if (isMergeCondition(condition)) return holds(MERGE_CHECKS[condition], facts.merge);
+  if (isQuestionCondition(condition)) return holds(QUESTION_CHECKS[condition], facts.question);
   return false;
 }
 
@@ -296,7 +304,7 @@ function toPlainData(value: unknown, ancestors: Set<object>): unknown {
 export function plainFacts(read: () => unknown): ConditionFacts | undefined {
   try {
     const copy = toPlainData(structuredClone(read()), new Set());
-    return isRecord(copy) ? (copy as ConditionFacts) : undefined;
+    return isRecord(copy) ? copy : undefined;
   } catch {
     return undefined;
   }

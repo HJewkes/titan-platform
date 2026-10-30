@@ -4,10 +4,11 @@ import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { waitingGates } from "../shepherd/waiting.js";
 import { lastAwaitClause } from "../shepherd/none-reason.js";
 import type { WatchRow } from "../shepherd/view.js";
-import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
+import { flowStats, implementerHours, mergedInWindow, taskToMerge, type AgentSpan, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatDigest, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
+import type { AgentChatDigest, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
+import { seatLines } from "./seats.js";
 
 export interface GateFact {
   runId: string;
@@ -30,10 +31,11 @@ export interface DigestSources {
   queueAsks(): Ask[] | Promise<Ask[]>;
   /** The merged owner list (`titan-factory needs`). When set, it is the whole of "Needs you"; gates, seat queues and the agent-chat asks are not read for it. */
   needs?(): Promise<NeedsList>;
-  seatCosts(since: Date): SeatLine[];
+  /** Pool readings from agent-chat's `pace.json`. */
+  spend(): PoolLine[] | Promise<PoolLine[]>;
   /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
   friction?(now: Date): FrictionDay | undefined;
-  /** Task dates and the broker roster for the flow numbers. Optional: without it the digest leaves the section out. */
+  /** Task dates and the broker roster for the flow numbers and the Seats section. Optional: without it the digest leaves flow out and lists no seats. */
   flow?: FlowPorts;
 }
 
@@ -82,7 +84,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const gates = allGates.filter((gate) => !proofRuns.has(gate.runId));
   const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
-  const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
+  const spend = await guarded(gaps, "pace.json", [], () => sources.spend());
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
   gaps.push(...(needs?.gaps ?? []));
   const measured = await measuredSections(sources, gaps, rows, since, now);
@@ -93,8 +95,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     needsYou: needs ? ownerAsks(needs.items.filter((item) => !proofRuns.has(runOfItem(item) ?? "")), rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
-    seats,
-    spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
+    spend,
     ...(chat && decidedSection(chat)),
     ...waitingSection(rows, now), ...autoPassSection(rows, since),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
@@ -114,16 +115,17 @@ function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel,
   return owner.length > 0 ? { waiting: owner.slice(0, WAITING_SHOWN), ownerGateAlarm: owner } : {};
 }
 
-/** Owner friction and flow, the sections that are left out when their port is missing or fails. */
-async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow">> {
+/** Owner friction, flow and seats; friction and flow are left out when their port is missing or fails, and seats come up empty. */
+async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow" | "seats">> {
   const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
-  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now, gaps)) : undefined;
-  return { ...(friction && { friction }), ...(flow && { flow }) };
+  const roster = sources.flow ? await guarded(gaps, "agent-chat roster", undefined, () => sources.flow!.roster()) : undefined;
+  const merged = mergedInWindow(rows, since);
+  const flow = roster && (await collectFlow(sources.flow!, merged, roster, since, now, gaps));
+  return { seats: roster ? seatLines(merged, roster, since) : [], ...(friction && { friction }), ...(flow && { flow }) };
 }
 
-async function collectFlow(ports: FlowPorts, rows: readonly WatchRow[], since: Date, now: Date, gaps: string[]): Promise<FlowStats> {
-  const merged = mergedInWindow(rows, since);
-  const [tasks, spans] = await Promise.all([taskToMerge(merged, ports.taskCreated), ports.roster()]);
+async function collectFlow(ports: FlowPorts, merged: readonly WatchRow[], spans: readonly AgentSpan[], since: Date, now: Date, gaps: string[]): Promise<FlowStats> {
+  const tasks = await taskToMerge(merged, ports.taskCreated);
   if (tasks.failure !== undefined) gaps.push(`flow tasks: ${tasks.failure}`);
   return flowStats(merged, tasks, implementerHours(spans, since, now));
 }
