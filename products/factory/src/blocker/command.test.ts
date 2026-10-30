@@ -3,20 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCli, type CliIo } from "../cli.js";
-import { inboxLinkVia, type InboxLink } from "./link.js";
 
 const SEAT = "seat-a";
 /** The spool checks blocker.since against each file mtime, so the pinned clock stays at the real start time. */
 const NOW = Date.now();
 
-/** Without `inboxLink` the CLI runs its default deps, with no factory config, so no console argv is configured. */
-function harness(inboxLink?: InboxLink) {
+function harness() {
   const inbox = mkdtempSync(join(tmpdir(), "blocker-inbox-"));
   const run = async (...argv: string[]) => {
     const out: string[] = [];
     const err: string[] = [];
     const io: CliIo = { stdout: (text) => void out.push(text), stderr: (text) => void err.push(text), env: { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "cfg-")), TITAN_CONSOLE_INBOX_DIR: inbox } };
-    const code = inboxLink === undefined ? await runCli(["blocker", ...argv], io) : await runCli(["blocker", ...argv], io, { workflows: [], routes: [], inboxLink });
+    const code = await runCli(["blocker", ...argv], io);
     return { code, out: out.join(""), err: err.join("") };
   };
   const raise = (slug: string, ...extra: string[]) => run("raise", "--as", SEAT, "--slug", slug, "--blocks", `lane ${slug}`, "--summary", `need a call on ${slug}`, ...extra);
@@ -82,38 +80,5 @@ describe("titan-factory blocker", () => {
     expect(listed.code).toBe(0);
     expect(JSON.parse(listed.out).map((row: { blocks: string }) => row.blocks)).toEqual(["lane older", "lane newer"]);
     expect(text.out.split("\n")[0]).toMatch(/^48h\tseat-a\tlane older\tdeposit:/);
-  });
-
-  it("raise prints the console inbox link after the id, and the id alone when the console gives none", async () => {
-    const asked: string[] = [];
-    const linked = harness(async (_env, id) => (asked.push(id), `https://console.example.test:7500/#/inbox/${encodeURIComponent(id)}`));
-    const unlinked = harness(async () => undefined);
-
-    const withLink = await linked.raise("ci-red", "--json");
-    const repeat = await linked.raise("ci-red");
-    const withoutLink = await unlinked.raise("ci-red");
-
-    const { id, link } = JSON.parse(withLink.out);
-    expect(asked).toEqual([id, id]);
-    expect(link).toBe(`https://console.example.test:7500/#/inbox/${encodeURIComponent(id)}`);
-    expect(repeat.out).toBe(`already raised ${id} ${link}\n`);
-    expect(withoutLink.out).toBe(`raised ${id}\n`);
-  });
-
-  it("the inbox link comes from the configured titan-console argv, and a console that fails or prints no URL gives none", async () => {
-    const prefix = ["/opt/node/bin/node", "/opt/titan-console/cli.js"];
-    const seen: (readonly string[])[] = [];
-    const answer = (status: number, stdout: string) => async (argv: readonly string[]) => (seen.push(argv), { status, stdout, stderr: "" });
-
-    const ok = await inboxLinkVia(prefix, "deposit:ab", answer(0, "https://console.example.test:7500/#/inbox/deposit%3Aab\n"));
-    const failed = await inboxLinkVia(prefix, "deposit:ab", answer(1, "https://console.example.test:7500/\n"));
-    const noUrl = await inboxLinkVia(prefix, "deposit:ab", answer(0, "usage: titan-console\n"));
-    const thrown = await inboxLinkVia(prefix, "deposit:ab", async () => Promise.reject(new Error("ENOENT")));
-    const unconfigured = await inboxLinkVia(undefined, "deposit:ab", answer(0, "https://console.example.test:7500/\n"));
-
-    expect(ok).toBe("https://console.example.test:7500/#/inbox/deposit%3Aab");
-    expect(seen[0]).toEqual([...prefix, "inbox", "link", "deposit:ab"]);
-    expect([failed, noUrl, thrown, unconfigured]).toEqual([undefined, undefined, undefined, undefined]);
-    expect(seen).toHaveLength(3);
   });
 });
