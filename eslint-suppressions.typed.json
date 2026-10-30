@@ -2534,52 +2534,6 @@
       "count": 1
     }
   },
-  "packages/worktree/src/allocator.repo.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 7
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/worktree/src/allocator.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/worktree/src/layout.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/worktree/src/park.repo.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/worktree/src/reattach.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/worktree/src/setup.repo.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 12
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/worktree/src/setup.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/worktree/src/sweep.repo.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/aw.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 4
