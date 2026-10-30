@@ -2,6 +2,7 @@ import type { L0Result } from "../eval-l0.js";
 import type { Stamped } from "../ledger-stamp.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { splitKeeps } from "../repair-hints-screen.js";
+import { splitPieceClauses } from "../split-piece-rules.js";
 import { splitCuelessBeats, splitHint, type Split } from "../script-split.js";
 import type { Candidate, Repaired } from "./script-draft.js";
 
@@ -18,11 +19,11 @@ const CUE_GAP_ID = "Q-D17";
 const clearsCueGap = (rows: readonly L0Result[], pieces: readonly string[]): boolean =>
   !rows.some((row) => row.check_id === CUE_GAP_ID && row.detail_beats.some((beat) => pieces.includes(beat)));
 
-// The keep clauses are cuelessMove's own, and a piece may not show a number it does not speak (Q-D14).
+// The keep clauses are cuelessMove's own, and the piece rules (split-piece-rules.ts) are the clauses a piece's claim, chip and labels must pass.
 function splitLine(split: Split, seed: ScriptV1): string {
   const beat = seed.beats.find((candidate) => candidate.id === split.id);
   const keeps = beat === undefined ? "" : splitKeeps(beat);
-  return `${splitHint(split)}; keep each piece's fact_ids${keeps}; no number on a chip or label that the piece does not speak`;
+  return `${splitHint(split)}; keep each piece's fact_ids${keeps}; ${splitPieceClauses()}`;
 }
 
 /**
