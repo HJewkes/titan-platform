@@ -67,7 +67,7 @@ function reviewedPr({ pr, head }: ShadowInput): PullRequest {
 
 /** Every profile the policy could plan; with no installed check wired, each reads as installed, as the dispatch would find it. */
 function profilesOf(policy: PanelPolicy, installed: (profile: string) => boolean): Record<string, boolean> {
-  const shapes = Object.values({ ...DEFAULT_SHAPE_ROLES, ...policy.shapeRoles }).flatMap((roles) => (roles ? [roles.g10, roles.standard] : []));
+  const shapes = Object.values({ ...DEFAULT_SHAPE_ROLES, ...policy.shapeRoles }).flatMap((roles) => [roles.g10, roles.standard]);
   const names = [policy.roles.g10, policy.roles.standard, ...shapes, ...Object.values(policy.sonnetFor ?? {})];
   return Object.fromEntries(names.map((name) => [name, installed(name)]));
 }

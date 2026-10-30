@@ -6,13 +6,13 @@ const HEAD_A = "a".repeat(40);
 const HEAD_B = "b".repeat(40);
 
 function result(stepId: string, completedAt: string, data: Record<string, unknown>): StepResult {
-  return { stepId, iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt, data: { result: data } } as StepResult;
+  return { stepId, iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt, data: { result: data } };
 }
 
 const shadow = (head: string, round: number, would: string, at: string): [string, StepResult] => [`sh-review-shadow:${head}:${round - 1}`, result(`sh-review-shadow:${head}`, at, { kind: "shadow", round, decision: "go", classes: [], would })];
 
 function runOf(id: string, steps: [string, StepResult][]): WorkflowRun {
-  return { id, workflowName: "shepherd-pr", params: { repo: "Acme/Widgets" }, status: "running", currentStep: null, stepResults: Object.fromEntries(steps), activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-26T09:00:00.000Z", completedAt: null, error: null } as WorkflowRun;
+  return { id, workflowName: "shepherd-pr", params: { repo: "Acme/Widgets" }, status: "running", currentStep: null, stepResults: Object.fromEntries(steps), activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-26T09:00:00.000Z", completedAt: null, error: null };
 }
 
 describe("reviewShadowStats", () => {

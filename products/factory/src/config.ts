@@ -77,9 +77,7 @@ export const ShepherdRepoConfigSchema = z.strictObject({
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
-export const FixerConfigSchema = z.strictObject({
-  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-});
+export const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
 
 function isTimeZone(zone: string): boolean {
   try {

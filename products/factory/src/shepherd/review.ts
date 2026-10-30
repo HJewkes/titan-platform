@@ -1,8 +1,7 @@
-import type { AgentIdentity } from "@titan-design/authority";
 import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
@@ -16,39 +15,38 @@ import { consoleTextOf, failureOf } from "./error-class.js";
 import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
 import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
-import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
+import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import type { ReviewRequest, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
-import { withReviewerProfile, type TwoMergeMode } from "./g10-release.js";
+import type { TwoMergeMode } from "./g10-release.js";
 import { chooseReviewer, lineageFor } from "./reviewer-choice.js";
 import type { Lineage } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
-import { fixFirstCount } from "./wake-brief.js";
-import { convergenceFields } from "./fix-first-trail.js";
-import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedRereviewOf, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
-import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, scopeRoundOf, type ScopeCheckWiring } from "./scope-check-round.js";
-import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
+import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
+import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, type ScopeCheckWiring } from "./scope-check-round.js";
+import { FIX_PROOF_STEPS, readFixProofAt } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualThreshold } from "./visual-delta-read.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
-import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
-import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelOn, panelReview, panelVerdictRoute, plannedPanel, proofPlanFields, type MemberBase, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
+import type { HoldMember, PanelMode } from "./review-panel-plan.js";
+import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
 import { CI_UNREAD_STEPS, ciUnreadRoute } from "./ci-unread.js";
-import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { notReviewed } from "./not-reviewed.js";
 import { ciChecksAt } from "./green-checks.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 import { REVIEW_SHADOW_STEP, recordShadow, reviewShadowRoute, shadowOn } from "./review-shadow.js";
+import { dispatchedRound } from "./review-round.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export { AWAIT_VERDICT_STEP, LATE_VERDICT_STEP, REVIEW_STEP, mergeVerdict };
@@ -361,34 +359,3 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });
   return verdict;
 };
-
-type IntentRecord = Extract<z.infer<typeof Intended>, { kind: "intent" }>;
-
-interface RoundStart {
-  target: ReviewTarget;
-  proof: Awaited<ReturnType<typeof readFixProofAt>>;
-  standing: ProofStanding;
-  intent: IntentRecord;
-}
-
-/** Starts the intent's reviewer and takes its verdict; the dispatch record goes back beside the verdict for the round's shadow. */
-async function dispatchedRound(ctx: WorkflowContext, request: ReviewRequest, { target, proof, standing, intent }: RoundStart): Promise<{ dispatched: z.infer<typeof Dispatched>; verdict: Verdict }> {
-  const fixFirsts = fixFirstCount(ctx);
-  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }), ...workflowCiFieldOf(proof) };
-  const { scopedRereview } = await scopedRereviewOf(ctx, request, intent);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...workflowCiFieldOf(proof), ...convergenceFields(request.convergence), ...(scopedRereview && { scopedRereview }) }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { dispatched, verdict: await notReviewed(ctx, target, dispatched) };
-  const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
-  const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
-    ...target,
-    reviewerAgentId: dispatched.agentId,
-    reviewerSessionId: dispatched.sessionId,
-    dispatchedAt: dispatched.at,
-    ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }),
-    ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
-  };
-  const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const scope = scopeRoundOf(intent, scopedRereview);
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing, scope) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing, scope);
-  return { dispatched, verdict: withReviewerProfile(reviewed, dispatched.profile) };
-}

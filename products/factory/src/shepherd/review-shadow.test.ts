@@ -6,7 +6,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { reviewShadow, workflowModeOf } from "./review-shadow.js";
+import { ReviewShadowRead, reviewShadow, workflowModeOf } from "./review-shadow.js";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
 
@@ -116,7 +116,7 @@ describe("review.workflow shadow in Shepherd's review round", () => {
     await vi.waitFor(() => expect([off.fake.effects.merge, shadow.fake.effects.merge]).toEqual([1, 1]), { timeout: 30_000 });
 
     expect(shadow.spawned).toEqual(off.spawned);
-    expect(shadow.shadows().map((result) => (result.data?.result as { would?: string }).would)).toEqual(["merge"]);
+    expect(shadow.shadows().map((result) => ReviewShadowRead.parse(result.data?.result).would)).toEqual(["merge"]);
   }, 40_000);
 
   it("records nothing under off", async () => {
