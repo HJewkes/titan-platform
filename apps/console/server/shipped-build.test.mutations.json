@@ -31,8 +31,8 @@
     {
       "name": "one unbounded batch per initiative",
       "file": "apps/console/server/shipped-build.ts",
-      "find": "export const BATCH_SIZE = 40;",
-      "replace": "export const BATCH_SIZE = 1000;",
+      "find": "const BATCH_SIZE = 40;",
+      "replace": "const BATCH_SIZE = 1000;",
       "kills": [
         "shipped build splits 95 PRs into 3 batches and, on a 403 at PR 50, leaves 50 to 95 unsummarized and still writes"
       ]
