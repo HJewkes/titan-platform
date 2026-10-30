@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
@@ -9,7 +10,10 @@ import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
 const HEAD = "c".repeat(40);
 const DISPATCHED_AT = 1_000_000;
 const input: AwaitVerdictInput = { repo: "octo/demo", pr: 7, head: HEAD, reviewerAgentId: "reviewer-1", reviewerSessionId: "session-1", dispatchedAt: DISPATCHED_AT };
-const locator = { source: { conversation: { nativeId: "session-1" } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>({
+  source: partialFake<SourceTextLocator["source"]>({ conversation: partialFake<SourceTextLocator["source"]["conversation"]>({ nativeId: "session-1" }) }),
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+});
 const verdictMessage = (writtenAt: number): ReviewerMessage => ({
   agentId: "reviewer-1",
   sessionId: "session-1",
@@ -109,6 +113,15 @@ describe("acceptVerdict malformed record", () => {
     const foreign = said("no verdict here", { sessionId: "session-2", agentId: "reviewer-2" });
 
     expect(acceptVerdict(input, [foreign])).toEqual({ kind: "none" });
+  });
+
+  it("records nothing for a message whose locator is missing or malformed, rather than throwing", () => {
+    const locators: unknown[] = [undefined, null, "x", {}, { source: null }, { source: { conversation: null } }];
+    for (const locator of locators) {
+      const malformed = Object.assign(said("no verdict here"), { locator });
+
+      expect(acceptVerdict(input, [malformed])).toEqual({ kind: "none" });
+    }
   });
 
   it("records nothing for a message written before dispatch", () => {

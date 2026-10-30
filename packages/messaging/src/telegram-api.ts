@@ -1,4 +1,5 @@
 import type { SendError } from "./contract.js";
+import { isRecord } from "./record.js";
 import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 
 export interface TelegramConfig {
@@ -58,8 +59,7 @@ function validRetryAfter(value: unknown): number | undefined {
 }
 
 function readParameters(raw: unknown): TelegramEnvelope["parameters"] {
-  const { retry_after: retry, migrate_to_chat_id: migrate } =
-    (raw as { retry_after?: unknown; migrate_to_chat_id?: unknown } | null) ?? {};
+  const { retry_after: retry, migrate_to_chat_id: migrate } = isRecord(raw) ? raw : {};
   const retryAfterSeconds = validRetryAfter(retry);
   const parameters = {
     ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
@@ -73,13 +73,10 @@ async function tryReadEnvelope(
   response: Response,
 ): Promise<TelegramEnvelope | undefined> {
   try {
-    const body = (await response.json()) as {
-      ok?: unknown;
-      result?: unknown;
-      description?: unknown;
-      error_code?: unknown;
-      parameters?: unknown;
-    };
+    const json: unknown = await response.json();
+    // A null body is unreadable, where any other non-object body is an envelope with no fields.
+    if (json === null) return undefined;
+    const body = isRecord(json) ? json : {};
     const parameters = readParameters(body.parameters);
     return {
       ok: body.ok === true,

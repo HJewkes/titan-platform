@@ -53,7 +53,7 @@ describe("condense", () => {
 
   /** Append rows to the ledger, as extraction would, and hand condense every entry. */
   function ingest(rows: readonly LedgerRow[]): LedgerEntry[] {
-    ledger.append(rows as LedgerRowWire[]);
+    ledger.append(rows);
     return ledger.entries();
   }
 

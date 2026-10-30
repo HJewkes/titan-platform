@@ -88,7 +88,7 @@ describe("StructureExtractor", () => {
         (o) => o.type === "structure.import-order",
       );
       expect(importOrder.length).toBe(1);
-      expect(JSON.parse(importOrder[0]!.value as string)).toEqual([
+      expect(JSON.parse(String(importOrder[0]!.value))).toEqual([
         "builtin",
         "external",
         "internal",

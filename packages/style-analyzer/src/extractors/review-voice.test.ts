@@ -43,7 +43,7 @@ describe("ReviewVoiceExtractor", () => {
           o.type === "reviewVoice.topicFrequency" && o.value === "naming",
       );
       expect(namingObs).toBeDefined();
-      expect(namingObs!.metadata?.count as number).toBeGreaterThanOrEqual(3);
+      expect(Number(namingObs!.metadata?.count)).toBeGreaterThanOrEqual(3);
 
       const errorObs = observations.find(
         (o) =>
@@ -51,7 +51,7 @@ describe("ReviewVoiceExtractor", () => {
           o.value === "error-handling",
       );
       expect(errorObs).toBeDefined();
-      expect(errorObs!.metadata?.count as number).toBeGreaterThanOrEqual(2);
+      expect(Number(errorObs!.metadata?.count)).toBeGreaterThanOrEqual(2);
     });
 
     it("includes ratio of topic to total comments", () => {
@@ -62,8 +62,8 @@ describe("ReviewVoiceExtractor", () => {
       );
 
       for (const obs of topicObs) {
-        expect(obs.metadata?.ratio as number).toBeGreaterThan(0);
-        expect(obs.metadata?.ratio as number).toBeLessThanOrEqual(1);
+        expect(Number(obs.metadata?.ratio)).toBeGreaterThan(0);
+        expect(Number(obs.metadata?.ratio)).toBeLessThanOrEqual(1);
         expect(obs.metadata?.total).toBe(sampleComments.length);
       }
     });
@@ -76,9 +76,8 @@ describe("ReviewVoiceExtractor", () => {
       );
 
       for (const obs of topicObs) {
-        const examples = obs.metadata?.examples as string[];
-        expect(examples).toBeDefined();
-        expect(Array.isArray(examples)).toBe(true);
+        const examples: unknown = obs.metadata?.examples;
+        if (!Array.isArray(examples)) throw new Error("examples is not an array");
         expect(examples.length).toBeGreaterThan(0);
         expect(examples.length).toBeLessThanOrEqual(3);
       }
@@ -95,7 +94,7 @@ describe("ReviewVoiceExtractor", () => {
 
       expect(keywordObs.length).toBeGreaterThan(0);
       for (const obs of keywordObs) {
-        expect(obs.metadata?.count as number).toBeGreaterThanOrEqual(1);
+        expect(Number(obs.metadata?.count)).toBeGreaterThanOrEqual(1);
       }
     });
 

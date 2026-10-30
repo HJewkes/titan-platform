@@ -16,8 +16,15 @@ function linked<T>(a: T, b: T, rangesOf: (item: T) => readonly LineRange[], rela
 }
 
 function find(parent: number[], i: number): number {
-  while (parent[i] !== i) i = parent[i] = parent[parent[i] as number] as number;
-  return i;
+  let node = i;
+  let up = parent[node] ?? node;
+  while (up !== node) {
+    const grand = parent[up] ?? up;
+    parent[node] = grand;
+    node = grand;
+    up = parent[node] ?? node;
+  }
+  return node;
 }
 
 /**
@@ -26,11 +33,12 @@ function find(parent: number[], i: number): number {
  */
 export function groupByOverlap<T>(items: readonly T[], rangesOf: (item: T) => readonly LineRange[], options: GroupOptions<T> = {}): T[][] {
   const parent = items.map((_, i) => i);
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
-      if (linked(items[i] as T, items[j] as T, rangesOf, options.related)) parent[find(parent, j)] = find(parent, i);
-    }
-  }
+  items.forEach((a, i) => {
+    items.slice(i + 1).forEach((b, offset) => {
+      const j = i + 1 + offset;
+      if (linked(a, b, rangesOf, options.related)) parent[find(parent, j)] = find(parent, i);
+    });
+  });
   const groups = new Map<number, T[]>();
   items.forEach((item, i) => {
     const root = find(parent, i);
