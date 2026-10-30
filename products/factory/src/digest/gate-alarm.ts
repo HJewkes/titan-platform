@@ -1,12 +1,13 @@
+import { z } from "zod";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { WaitingGate } from "../shepherd/waiting.js";
 
-export const MEDIAN_ALARM_HOURS = 24;
-export const GATE_ALARM_HOURS = 72;
+const MEDIAN_ALARM_HOURS = 24;
+const GATE_ALARM_HOURS = 72;
 const OLDEST_LISTED = 5;
 const APPROVE_MERGE = "approve-merge";
 
-export interface GateAlarm {
+interface GateAlarm {
   /** The approve-merge median wait; absent when the friction row has none. */
   medianHours?: number;
   over72: WaitingGate[];
@@ -53,3 +54,6 @@ export function alarmLine(alarm: GateAlarm, origin: string | undefined, shown: n
   const more = alarm.listed.length - shown;
   return `Owner gates stale: ${head}: ${gates}${more > 0 ? `, and ${more} more` : ""}`;
 }
+
+/** `digest.consoleOrigin`: where the alarm links point; the owner reads the digest off the box, so a loopback origin could never open. */
+export const ConsoleOriginSchema = z.string().refine((value) => safeConsoleOrigin(value) !== undefined, "must be an https origin that is not loopback");
