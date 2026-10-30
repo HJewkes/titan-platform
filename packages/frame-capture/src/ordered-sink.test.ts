@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, test } from 'vitest'
 import { OrderedSink, type Range, type Sink } from './ordered-sink.js'
 
 const FRAME_BYTES = 1024
-const RANGES: Range[] = [[0, 4], [4, 8], [8, 12]]
+const HEAD: Range = [0, 4]
+const MIDDLE: Range = [4, 8]
+const TAIL: Range = [8, 12]
+const RANGES = [HEAD, MIDDLE, TAIL]
 const ALL_FRAMES = Array.from({ length: 12 }, (_, i) => i)
 
 /** Every frame's bytes differ, so a frame read back from the wrong offset cannot pass as the right one. */
@@ -89,10 +92,10 @@ describe('OrderedSink', () => {
     const ordered = new OrderedSink(RANGES, async (i) => {
       if (i === 8) seen.push(spilledBytes())
     }, parent)
-    await sweep(ordered, RANGES[1] as Range)
-    await sweep(ordered, RANGES[2] as Range)
+    await sweep(ordered, MIDDLE)
+    await sweep(ordered, TAIL)
 
-    await sweep(ordered, RANGES[0] as Range)
+    await sweep(ordered, HEAD)
     await ordered.drained()
 
     assert.deepEqual(seen, [4 * FRAME_BYTES])
