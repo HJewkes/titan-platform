@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { gitMirrorDirFor, mirrorEntries } from "./git-mirror.js";
 import { writeGitShim } from "./git-shim.js";
 import { expectSpawned, gitShimHarness, HOST_PATH, NO_VERIFY, type GitShimFixture } from "./git-shim.fixture.js";
@@ -42,7 +42,7 @@ function addSubmodule(fx: GitShimFixture, source: string, name: string, at: stri
 }
 
 /** Three commits, p.sh in the work tree and in two submodules whose origin is the bare remote, and alias pz allowlisted. */
-function repo(): Repo {
+function buildRepo(): Repo {
   const fx = harness.fixture(["pz"]);
   git(fx.work, "config", "alias.pz", "!sh ./p.sh");
   // A submodule child denies file:// by default, which would refuse every foreach push before the shim could.
@@ -61,6 +61,44 @@ function repo(): Repo {
   };
   return { ...fx, env };
 }
+
+let template: Repo;
+let copies = 0;
+
+// Git, the shim and the mirror all record the build root as an absolute path, so a copy is rewritten, not just moved.
+function relocate(dir: string, from: string, to: string): void {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      const target = fs.readlinkSync(file);
+      if (!target.startsWith(from)) continue;
+      fs.unlinkSync(file);
+      fs.symlinkSync(to + target.slice(from.length), file);
+    } else if (entry.isDirectory()) {
+      if (entry.name !== "objects") relocate(file, from, to);
+    } else if (entry.isFile() && entry.name !== ".gitmodules" && fs.statSync(file).size < 1_000_000) {
+      const text = fs.readFileSync(file);
+      if (text.includes(from) && !text.includes(0)) fs.writeFileSync(file, text.toString("utf8").replaceAll(from, to), { mode: fs.statSync(file).mode });
+    }
+  }
+}
+
+/** A private copy of the template repo: git setup runs once per file, not once per test. */
+function repo(): Repo {
+  const from = path.dirname(template.work);
+  const to = path.join(harness.scratch, `copy-${++copies}`);
+  const move = (value: string): string => value.replaceAll(from, to);
+  fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+  relocate(to, from, to);
+  // A copy has new inodes and ctimes, which leave the index stale until refreshed; rebase refuses a tree it sees as dirty.
+  git(move(template.work), "update-index", "-q", "--refresh");
+  const env = Object.fromEntries(Object.entries(template.env).map(([key, value]) => [key, move(value)])) as Repo["env"];
+  return { work: move(template.work), remote: move(template.remote), guard: move(template.guard), shimDir: move(template.shimDir), marker: move(template.marker), env };
+}
+
+beforeAll(() => {
+  template = buildRepo();
+});
 
 /** The same repo with no shim and no mirror: what the row does when nothing intervenes. */
 function unguarded(fx: Repo): Repo {
