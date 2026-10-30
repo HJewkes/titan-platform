@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-D22 hint drops the words spoken inside each stretch",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "(${seconds(toS - fromS)}${voiced})",
+      "replace": "(${seconds(toS - fromS)})",
+      "kills": [
+        "Q-D22's hint gives the repair what to point at each stretch names the words spoken inside it and the beat's on-screen texts"
+      ]
+    }
+  ]
+}
