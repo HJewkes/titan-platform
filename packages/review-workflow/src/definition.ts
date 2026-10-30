@@ -1,4 +1,5 @@
 import { codeRoute, codeStep, routedRunner, WorkflowRuntime, type StepRoute, type WorkflowContext, type WorkflowFn, type WorkflowRun, type WorkflowRuntimeOptions } from "@titan-design/workflow";
+import { z } from "zod";
 import { REVIEW_STEP_BODIES, type ReviewBodyPorts } from "./bodies.js";
 import { resolveFingerprint, type Resumed } from "./fixer.js";
 import { reviewHead, type ReviewHeadPolicy, type ReviewHost } from "./recipe.js";
@@ -13,6 +14,10 @@ const OUTCOME_PARAM = "review-outcome";
 
 /** What a caller asks a review of; the run id is the workflow run's own. */
 export type ReviewRequestInput = Omit<ReviewHeadInput, "runId">;
+
+/** Checked on the fields the recipe reads first; the rest is the caller's own request, as a step record is. */
+const RequestSchema = z.custom<ReviewRequestInput>((value) => z.looseObject({ target: z.looseObject({ head: z.string() }), brief: z.looseObject({}) }).safeParse(value).success);
+const OutcomeSchema = z.custom<ReviewOutcome>((value) => z.looseObject({ kind: z.string(), head: z.string() }).safeParse(value).success);
 
 export interface ReviewWorkflowOptions {
   ports: ReviewBodyPorts;
@@ -50,7 +55,7 @@ export function reviewRoutes(ports: ReviewBodyPorts, ids: Partial<ReviewStepIds>
 
 function requestOf(runId: string, raw: string | undefined): ReviewRequestInput {
   if (raw === undefined) throw new Error(`review run ${runId} has no ${INPUT_PARAM} param`);
-  return JSON.parse(raw) as ReviewRequestInput;
+  return RequestSchema.parse(JSON.parse(raw));
 }
 
 function hostOf(ctx: WorkflowContext, ids: Partial<ReviewStepIds>): ReviewHost {
@@ -72,7 +77,7 @@ export function reviewWorkflow(options: ReviewWorkflowOptions): ReviewWorkflow {
 export function reviewOutcomeOf(run: WorkflowRun): ReviewOutcome {
   const raw = run.params[OUTCOME_PARAM];
   if (run.status !== "completed" || raw === undefined) throw new Error(`review run ${run.id} ended ${run.status}${run.error ? `: ${run.error}` : ""}`);
-  return JSON.parse(raw) as ReviewOutcome;
+  return OutcomeSchema.parse(JSON.parse(raw));
 }
 
 export interface ReviewRunner {

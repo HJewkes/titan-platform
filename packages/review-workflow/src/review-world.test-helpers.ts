@@ -4,13 +4,14 @@ import type { PullRequest } from "@titan-design/github";
 import { DEFAULT_PANEL_TABLE, memberName, type ReviewerAgent, type ReviewerMessage, type ReviewTarget } from "@titan-design/review-panel";
 import { partialFake } from "@titan-design/test-kit";
 import type { ReviewBodyPorts } from "./bodies.js";
+import type { ReviewRequestInput } from "./definition.js";
 import type { ParkedRun, ParkingPort } from "./fixer.js";
 import type { ReviewPlanPolicy } from "./plan-for-head.js";
 import type { ReviewHeadInput } from "./types.js";
 
 export const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
-export const target: ReviewTarget = { repo: "acme/widgets", pr: 7, head: HEAD };
+const target: ReviewTarget = { repo: "acme/widgets", pr: 7, head: HEAD };
 export const name = (shape: "correctness" | "adversary", attempt: 1 | 2 = 1): string => memberName(target, shape, attempt);
 
 export const POLICY: ReviewPlanPolicy = {
@@ -36,11 +37,12 @@ const provedByMutants = formatResultLine({
   mutants: { verdict: "killed", results: [{ spec: "src/widget.test.mutations.json", name: "drop the bound", outcome: "killed" }], uncovered: [] },
 });
 
-export const input: ReviewHeadInput = { runId: "run-1", target, kind: "feature", brief: { checkoutRoot: "/tmp/reviews", fixProof: provedByMutants } };
+export const request: ReviewRequestInput = { target, kind: "feature", brief: { checkoutRoot: "/tmp/reviews", fixProof: provedByMutants } };
+export const input: ReviewHeadInput = { runId: "run-1", ...request };
 
 type Reply = string | undefined;
 /** What the member under `agent` has written last, before or after its correction. */
-export type Script = (agent: string, resumed: boolean) => Reply;
+type Script = (agent: string, resumed: boolean) => Reply;
 
 export const MERGE = `Probes: drove the bound past its edge.\n\nVerdict: MERGE\nPR: ${target.repo}#${target.pr}\nHead: ${HEAD}\n`;
 export const merges: Script = () => MERGE;
@@ -48,7 +50,7 @@ type Locator = ReviewerMessage["locator"];
 const locatorFor = (sessionId: string): Locator =>
   partialFake<Locator>({ source: partialFake<Locator["source"]>({ conversation: partialFake<Locator["source"]["conversation"]>({ nativeId: sessionId }) }) });
 
-export function fakeParking(): ParkingPort {
+function fakeParking(): ParkingPort {
   let runs: ParkedRun[] = [];
   const rounds = new Map<string, number>();
   return {
@@ -64,19 +66,18 @@ export function fakeParking(): ParkingPort {
   };
 }
 
-/** One broker and one clock (`readsHang` stands for a process that died mid-await): a spawn adds a row, started unless named in `neverStarts`; a reply is written just after its spawn or resume. */
-export function fakeWorld(script: Script, neverStarts: readonly string[] = []) {
-  const world = { now: 1_000_000, rows: [] as ReviewerAgent[], spawns: [] as string[], resumes: [] as string[], fixers: [] as string[], snapshotReads: 0, installed: true, readsHang: false };
-  const sent = new Map<string, { at: number; resumed: boolean }>();
-  const read = async (agentId: string): Promise<ReviewerMessage[]> => {
-    const row = world.rows.find((agent) => agent.agentId === agentId);
-    const last = row && sent.get(row.name);
-    const text = row && last && script(row.name, last.resumed);
-    return row && last && text !== undefined ? [{ agentId, sessionId: row.sessionId, writtenAt: last.at, locator: locatorFor(row.sessionId), text }] : [];
+const newWorld = () => ({ now: 1_000_000, rows: [] as ReviewerAgent[], spawns: [] as string[], resumes: [] as string[], fixers: [] as string[], snapshotReads: 0, installed: true, readsHang: false });
+type World = ReturnType<typeof newWorld>;
+type HeadPorts = Pick<ReviewBodyPorts, "snapshot" | "proofReader" | "carry" | "checkout" | "headroom" | "profiles" | "source">;
+
+/** An open, green, clean PR whose fix-proof its mutants prove. */
+function headPorts(world: World): HeadPorts {
+  const pr: PullRequest = {
+    number: target.pr, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: "feat/widgets", headSha: HEAD,
+    headRepo: null, baseRef: "main", draft: false, mergeableState: "clean", behind: false, autoMerge: false,
   };
-  const pr: PullRequest = { number: target.pr, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: "feat/widgets", headSha: HEAD, headRepo: null, baseRef: "main", draft: false, mergeableState: "clean", behind: false, autoMerge: false };
   const changedFiles = [{ path: "src/widget.ts", additions: 6, deletions: 2 }, { path: "src/widget.test.ts", additions: 12, deletions: 0 }];
-  const ports: ReviewBodyPorts = {
+  return {
     snapshot: { read: async () => ((world.snapshotReads += 1), { pr, ci: "green", facts: { ...target, base: BASE, changedFiles, authorityTouch: true } }) },
     proofReader: { read: async () => ({ kind: "result", line: provedByMutants }) },
     carry: { probe: async () => ({ kind: "no-carry" }) },
@@ -84,7 +85,22 @@ export function fakeWorld(script: Script, neverStarts: readonly string[] = []) {
     headroom: { read: async () => ({ opus: true, account: "available" }) },
     profiles: { installed: () => world.installed },
     source: lineSourceFromTexts({}),
-    clock: { now: () => world.now, sleep: async (ms) => void (world.now += ms) },
+  };
+}
+
+/**
+ * One broker: a spawn adds a row, started unless named in `neverStarts`; a reply is written just after its spawn or
+ * resume. `readsHang` stands for a process that died mid-await.
+ */
+function brokerPorts(world: World, script: Script, neverStarts: readonly string[]): Pick<ReviewBodyPorts, "reader" | "dispatch"> {
+  const sent = new Map<string, { at: number; resumed: boolean }>();
+  const read = async (agentId: string): Promise<ReviewerMessage[]> => {
+    const row = world.rows.find((agent) => agent.agentId === agentId);
+    const last = row && sent.get(row.name);
+    const text = row && last && script(row.name, last.resumed);
+    return row && last && text !== undefined ? [{ agentId, sessionId: row.sessionId, writtenAt: last.at, locator: locatorFor(row.sessionId), text }] : [];
+  };
+  return {
     reader: { read: (awaiting) => (world.readsHang ? new Promise<never>(() => undefined) : read(awaiting.reviewerAgentId)) },
     dispatch: {
       roster: async () => world.rows,
@@ -99,6 +115,16 @@ export function fakeWorld(script: Script, neverStarts: readonly string[] = []) {
         sent.set(agent, { at: world.now + 1, resumed: true });
       },
     },
+  };
+}
+
+/** One broker and one clock over one head. */
+export function fakeWorld(script: Script, neverStarts: readonly string[] = []) {
+  const world = newWorld();
+  const ports: ReviewBodyPorts = {
+    ...headPorts(world),
+    ...brokerPorts(world, script, neverStarts),
+    clock: { now: () => world.now, sleep: async (ms) => void (world.now += ms) },
     fixer: { roster: async () => [], spawn: async (agent) => void world.fixers.push(agent) },
     parking: fakeParking(),
   };

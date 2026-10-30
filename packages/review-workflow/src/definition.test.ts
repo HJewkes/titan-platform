@@ -3,12 +3,9 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { describe, expect, it, vi } from "vitest";
 import type { ReviewBodyPorts } from "./bodies.js";
-import { reviewRunner, type ReviewRequestInput } from "./definition.js";
-import { fakeWorld, input, merges, name, POLICY, TIMING } from "./review-world.test-helpers.js";
+import { reviewRunner } from "./definition.js";
+import { fakeWorld, merges, name, POLICY, request, TIMING } from "./review-world.test-helpers.js";
 import { DEFAULT_REVIEW_STEP_IDS } from "./types.js";
-
-const { runId: _runId, ...request } = input;
-const reviewRequest: ReviewRequestInput = request;
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");
@@ -23,7 +20,7 @@ const runnerFor = (db: Db, ports: ReviewBodyPorts, version?: string) =>
 async function interruptedAtAwait(db: Db, world: ReturnType<typeof fakeWorld>, version?: string): Promise<string> {
   world.world.readsHang = true;
   const first = runnerFor(db, world.ports, version);
-  const runId = first.start(reviewRequest);
+  const runId = first.start(request);
   const awaiting = (): string[] => Object.keys(first.runtime.status(runId)?.activeSteps ?? {});
   await vi.waitFor(() => expect(awaiting().some((step) => step.startsWith(DEFAULT_REVIEW_STEP_IDS.await))).toBe(true));
   first.runtime.shutdown();
@@ -61,7 +58,7 @@ describe("reviewRunner", () => {
     const world = fakeWorld(merges);
     world.world.installed = false;
     const runner = runnerFor(db, world.ports);
-    const parked = await runner.outcome(runner.start(reviewRequest));
+    const parked = await runner.outcome(runner.start(request));
     if (parked.kind !== "needs-fixer") throw new Error(`expected needs-fixer, got ${parked.kind}`);
 
     world.world.installed = true;
