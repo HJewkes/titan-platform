@@ -7,7 +7,7 @@ import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 // Synthetic tasks, many and long-winded, so a page's size is what a large workspace would send; nothing here is real.
 const SLUGS = Array.from({ length: 40 }, (_, n) => `synthetic-initiative-${String(n).padStart(2, "0")}`);
 const TASK_COUNT = 2400;
-const LONG = "a deliberately long synthetic sentence that pads each record ".repeat(6);
+const LONG = "a deliberately long synthetic sentence that pads each record ".repeat(20);
 
 const TASKS = Array.from({ length: TASK_COUNT }, (_, n) => ({
   slug: SLUGS[n % SLUGS.length]!,
