@@ -3346,11 +3346,6 @@
       "count": 1
     }
   },
-  "products/factory/src/digest/seats.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/doc/draft.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

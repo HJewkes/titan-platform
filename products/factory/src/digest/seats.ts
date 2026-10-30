@@ -4,7 +4,7 @@ import type { AgentSpan } from "./flow.js";
 import type { SeatLine } from "./model.js";
 
 /** A merge whose run names no implementer, so no spawned-by chain can be walked. */
-export const UNATTRIBUTED = "unattributed";
+const UNATTRIBUTED = "unattributed";
 
 /** Each name's spawner from its latest roster row; the human and absent spawners are left out. */
 function spawnersOf(roster: readonly AgentSpan[]): Map<string, string> {
