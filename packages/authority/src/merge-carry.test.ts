@@ -3,13 +3,14 @@ import type { MergeFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
+import type { ConditionKind } from "./vocabulary.js";
 
 const FROM_HEAD = "b".repeat(40);
 const HEAD = "a".repeat(40);
 const TREE = "c".repeat(40);
 const APP = 15368;
 const REVIEWER = { agentId: "rv-1", sessionId: "session-1" };
-const CARRIED = "verdict-merge-carried-tree-equal";
+const CARRIED: ConditionKind = "verdict-merge-carried-tree-equal";
 
 /** A MERGE at FROM_HEAD carried to HEAD by a tree-equal update. */
 function carriedFacts(): MergeFacts {
@@ -68,7 +69,7 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
     expect([...(row("MRG-AU-RC")?.when ?? [])].sort()).toEqual([...expected, CARRIED, "pr-kind-not-security"].sort());
   });
 
-  const REFUSALS: [string, (facts: MergeFacts) => void, string?][] = [
+  const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind?][] = [
     ["a carry whose trees differ", (f) => { f.carry!.mergeTree = "d".repeat(40); }],
     ["a carry with an empty tree on both sides", (f) => { f.carry!.headTree = ""; f.carry!.mergeTree = ""; }],
     ["a carry for a different head", (f) => { f.carry!.head = "e".repeat(40); }],
@@ -86,7 +87,7 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
 
   it.each(REFUSALS)("falls back to the owner gate on %s", (_name, patch, condition = CARRIED) => {
     const facts = patched(patch);
-    expect(unmetConditions([condition as "pr-kind-not-security"], { merge: facts })).toEqual([condition]);
+    expect(unmetConditions([condition], { merge: facts })).toEqual([condition]);
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
   });
 
