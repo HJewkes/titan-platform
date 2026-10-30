@@ -311,6 +311,8 @@ export interface Repaired {
   usage: StageUsage;
   before: number;
   after: number;
+  /** The rows the kept script still fails. */
+  rows: L0Result[];
   /** The kept repair's dropped keys and values; absent while the start is still the script. */
   stripped?: string[];
   dropped?: string[];
@@ -341,7 +343,16 @@ async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: r
   return { reply: second, usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)), candidate: candidateOf(kind, again, second) };
 }
 
-/** Up to `rounds` rounds, each answering the current failing rows; a reply is kept only when it fails fewer. */
+const failingBeats = (rows: readonly L0Result[]): number => rows.reduce((sum, row) => sum + row.detail_beats.length, 0);
+
+/** Fewer failing rows, or the same rows (none new) naming fewer beats in total, so a round that clears some beats is not thrown away. */
+export function makesProgress(after: readonly L0Result[], before: readonly L0Result[]): boolean {
+  if (after.length < before.length) return true;
+  const known = new Set(before.map((row) => row.check_id));
+  return after.length === before.length && after.every((row) => known.has(row.check_id)) && failingBeats(after) < failingBeats(before);
+}
+
+/** Up to `rounds` rounds, each answering the current failing rows; a reply is kept when it makes progress (`makesProgress`). */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
   let { script, stamps } = start;
   let failing = loop.failing(script);
@@ -355,9 +366,9 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
     if (candidate) candidates.push(candidate);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;
-    if (next && after.length < failing.length) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
+    if (next && makesProgress(after, failing)) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
   }
-  return { script, stamps, usage, before, after: failing.length, candidates, ...kept };
+  return { script, stamps, usage, before, after: failing.length, rows: failing, candidates, ...kept };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */
