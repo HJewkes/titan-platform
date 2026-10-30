@@ -28,9 +28,10 @@ type Filter = keyof typeof REAL_FILTERS;
 function withFakeFilters(fx: GitShimFixture, checks: Partial<Record<Filter, string>> = {}): GitShimFixture {
   const dir = path.join(fx.work, "..", "fake-bin");
   fs.mkdirSync(dir, { recursive: true });
-  for (const name of Object.keys(REAL_FILTERS) as Filter[]) {
-    const check = checks[name] ?? LOCALE_CHECK;
-    fs.writeFileSync(path.join(dir, name), `#!/bin/sh\n${check}\nexec '${REAL_FILTERS[name]}' "$@"\n`, {
+  const byName: Partial<Record<string, string>> = checks;
+  for (const [name, real] of Object.entries(REAL_FILTERS)) {
+    const check = byName[name] ?? LOCALE_CHECK;
+    fs.writeFileSync(path.join(dir, name), `#!/bin/sh\n${check}\nexec '${real}' "$@"\n`, {
       mode: 0o755,
     });
   }
