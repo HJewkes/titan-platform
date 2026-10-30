@@ -32,7 +32,7 @@
     {
       "name": "CI's failed proof of a workflow-only head cannot be waived",
       "file": "packages/review-workflow/src/preflight.ts",
-      "find": "waivable: \"kind\" in proof.result && proof.result.kind === \"workflow-ci\" };",
+      "find": "waivable: workflowCi };",
       "replace": "waivable: false };",
       "kills": ["preflight stops a workflow-only head CI did not prove as a waivable NO_REPRO"]
     }

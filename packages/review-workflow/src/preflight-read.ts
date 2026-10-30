@@ -14,7 +14,7 @@ export type PreflightPorts = Pick<ReviewWorkflowPorts, "snapshot" | "proofReader
 
 /** Every profile the policy can seat, including each premium profile's sonnet fallback, so the plan's members are all among them. */
 function candidateProfiles(policy: PanelPolicy, hold: HoldMember | undefined): string[] {
-  const shapeRoles = Object.values({ ...DEFAULT_SHAPE_ROLES, ...policy.shapeRoles }).filter((roles): roles is ClassRoles => roles !== undefined);
+  const shapeRoles: ClassRoles[] = Object.values({ ...DEFAULT_SHAPE_ROLES, ...policy.shapeRoles });
   const sonnetFor = policy.sonnetFor ?? DEFAULT_SONNET_FOR;
   const named = [policy.roles, ...shapeRoles].flatMap((roles) => Object.values(roles));
   return [...new Set([...named, ...Object.keys(sonnetFor), ...Object.values(sonnetFor), ...(hold === undefined ? [] : [hold.profile])])].sort();

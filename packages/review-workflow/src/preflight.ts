@@ -41,7 +41,8 @@ function prStop({ target, head: { pr, ci } }: PreflightSnapshot): ReviewOutcome 
 /** Only CI's own failed proof of a workflow-only diff may be waived; a proceeding NO_REPRO never ends the review. */
 function proofStop({ target, proof }: PreflightSnapshot): ReviewOutcome | undefined {
   if (proof.kind !== "no-repro" || !endsReview(proof)) return undefined;
-  return { kind: "NO_REPRO", head: target.head, waivable: "kind" in proof.result && proof.result.kind === "workflow-ci" };
+  const workflowCi = "kind" in proof.result;
+  return { kind: "NO_REPRO", head: target.head, waivable: workflowCi };
 }
 
 /** A carried merge-up needs no reviewer; otherwise catching up to main is the author's lane, never the workflow's. */
