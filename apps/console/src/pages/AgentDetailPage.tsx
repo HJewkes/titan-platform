@@ -22,6 +22,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
+import { migrationHint } from "./SessionFormat.js";
 import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
 
@@ -146,13 +147,14 @@ function Runs({ name }: { name: string }): ReactNode {
   if (runs.status === "loading") return <Spinner size="sm" label="Loading sessions" />;
   if (runs.data === undefined) return <Alert status="error" message={`Could not load sessions: ${runs.error.message}`} />;
   const { sessions, degraded } = runs.data;
-  if (degraded) return <GraphDegraded reason={degraded.reason} detail={degraded.detail} />;
+  if (degraded) return <GraphDegraded degraded={degraded} />;
   if (sessions.length === 0) return <Typography variant="body2">{`No sessions recorded for ${name}.`}</Typography>;
   return <RunsTable sessions={sessions} />;
 }
 
-function GraphDegraded({ reason, detail }: { reason: GraphReason; detail: string }): ReactNode {
-  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}. A session still opens by id from a task or agent page.`;
+function GraphDegraded({ degraded }: { degraded: SessionsList["degraded"] & object }): ReactNode {
+  const { reason, detail } = degraded;
+  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}.${migrationHint(degraded)} A session still opens by id from a task or agent page.`;
   return (
     <Alert status="warning" message={message}>
       <Typography variant="caption" color="secondary">

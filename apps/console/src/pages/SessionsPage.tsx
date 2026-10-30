@@ -20,7 +20,7 @@ import {
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { SessionDetailPage } from "./SessionDetailPage.js";
-import { GRAPH_STATE, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type SessionRow } from "./SessionFormat.js";
+import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type GraphDegraded, type SessionRow } from "./SessionFormat.js";
 
 const NUMBER_WIDTH = 96;
 const PAGE_SIZE = 50;
@@ -45,7 +45,7 @@ function SessionsPage({ agent }: { agent: string | undefined }): ReactNode {
   return (
     <VStack gap={4}>
       {agent ? <AgentFilter agent={agent} /> : null}
-      {degraded ? <ListDegraded reason={degraded.reason} detail={degraded.detail} /> : <SessionsBody agent={agent} first={sessions} />}
+      {degraded ? <ListDegraded degraded={degraded} /> : <SessionsBody agent={agent} first={sessions} />}
     </VStack>
   );
 }
@@ -72,8 +72,9 @@ function AgentFilter({ agent }: { agent: string }): ReactNode {
   );
 }
 
-function ListDegraded({ reason, detail }: { reason: keyof typeof GRAPH_STATE; detail: string }): ReactNode {
-  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}. A session still opens by id from a task or agent page.`;
+function ListDegraded({ degraded }: { degraded: GraphDegraded }): ReactNode {
+  const { reason, detail } = degraded;
+  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}.${migrationHint(degraded)} A session still opens by id from a task or agent page.`;
   return (
     <Alert status="warning" message={message}>
       <Typography variant="caption" color="secondary">
