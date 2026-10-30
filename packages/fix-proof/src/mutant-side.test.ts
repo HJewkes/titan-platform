@@ -223,6 +223,8 @@ describe("execMutants", { timeout: 120_000 }, () => {
     const builds: string[][] = [];
     const exec: Exec = (file, args, options) => {
       if (file === "sh" && args[1] === 'true "$@"') builds.push([...args.slice(1)]);
+      // The empty lockfile cannot install anywhere, so only the install is stubbed.
+      if (file === "sh" && (args[1] ?? "").startsWith("pnpm ")) return Promise.resolve({ status: 0, stdout: "", stderr: "" });
       return spawnExec(file, args, options);
     };
     const script = "export const add = (a, b) => a + b;\n";
