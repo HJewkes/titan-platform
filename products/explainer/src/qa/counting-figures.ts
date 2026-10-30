@@ -39,20 +39,22 @@ function slotOf(slots: Map<string, (Anchor | undefined)[]>, element: string, fig
  * The counting figures across `moments`, as a lookup from a figure to its key: element plus place, so sibling figures
  * sharing an element (`element` is the tag and first two classes of the nearest classed ancestor) are tracked apart. A
  * figure counts up in place when it is the only number at its place at every sample; a lookup of anything else is
- * undefined.
+ * undefined. A number that never changes is plain text, not a count: its place may move as it enters (the arch-map step
+ * numbers ride a 16 px fadeUp), and keying it by place would cut its one reading span in two (TP-4563).
  */
 export function countingFigures(moments: readonly { texts: readonly Figure[] }[]): (figure: Figure) => string | undefined {
   const slots = new Map<string, (Anchor | undefined)[]>();
   const shared = new Set<string>();
-  const seen = new Set<string>();
+  const values = new Map<string, Set<string>>();
   for (const moment of moments) {
-    const keys = moment.texts.flatMap((text) => (text.element !== undefined && PLAIN_NUMBER.test(text.text.trim()) ? [slotOf(slots, text.element, text)] : []));
-    for (const key of keys) seen.add(key);
+    const placed = moment.texts.flatMap((text) => (text.element !== undefined && PLAIN_NUMBER.test(text.text.trim()) ? [{ key: slotOf(slots, text.element, text), text: text.text }] : []));
+    for (const { key, text } of placed) values.set(key, (values.get(key) ?? new Set()).add(text));
+    const keys = placed.map((p) => p.key);
     for (const key of new Set(keys)) if (keys.indexOf(key) !== keys.lastIndexOf(key)) shared.add(key);
   }
   return (figure) => {
     if (figure.element === undefined || !PLAIN_NUMBER.test(figure.text.trim())) return undefined;
     const key = slotOf(slots, figure.element, figure);
-    return seen.has(key) && !shared.has(key) ? key : undefined;
+    return (values.get(key)?.size ?? 0) > 1 && !shared.has(key) ? key : undefined;
   };
 }
