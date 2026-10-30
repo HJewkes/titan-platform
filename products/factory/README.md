@@ -555,6 +555,11 @@ same implementer (`bs-fix`) with the failing evidence as data. Then `bs-pr`, `bs
 the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
 `deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
 
+A slice may carry its own `preview` and `deploy` booleans. Absent inherits the spec. `false` skips that step (and, for
+deploy, its approval gate) for the slice only, and the slice's outcome lists it in `skipped`, so a skip reads as
+different from a step the spec never had. `true` only matters where the spec enables the step: a slice cannot turn on a
+preview or deploy the spec leaves out, so there it behaves as absent and nothing is recorded.
+
 A fresh `start` over a branch a stopped run left behind picks it up: when `bs-branch` finds the slice branch past
 its base and every gate record in the evidence directory for its head passing, the slice skips `bs-implement` and
 the gate rerun, and round 0 goes on to `bs-preview` and `bs-review` at that head. A branch with any failing or missing
