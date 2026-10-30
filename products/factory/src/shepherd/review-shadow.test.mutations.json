@@ -6,21 +6,21 @@
       "file": "products/factory/src/shepherd/review-shadow.ts",
       "find": "codeRoute(REVIEW_SHADOW_STEP, now, async (raw: unknown) => reviewShadow(raw, wiring));",
       "replace": "codeRoute(REVIEW_SHADOW_STEP, now, async (raw: unknown) => (await (wiring as { dispatch?: { spawn: (...args: unknown[]) => Promise<void> } } | undefined)?.dispatch?.spawn(\"shadow-extra\", \"\", raw, {}), reviewShadow(raw, wiring)));",
-      "kills": ["records the round's would-action and spawns no reviewer beyond the one off spawns"]
+      "kills": ["review.workflow shadow in Shepherd's review round records the round's would-action and spawns no reviewer beyond the one off spawns"]
     },
     {
       "name": "an intent recorded under off still records a shadow",
       "file": "products/factory/src/shepherd/review-shadow.ts",
       "find": "intent.workflow === \"shadow\";",
       "replace": "true;",
-      "kills": ["records nothing under off"]
+      "kills": ["review.workflow shadow in Shepherd's review round records nothing under off"]
     },
     {
       "name": "on runs as shadow instead of off",
       "file": "products/factory/src/shepherd/review-shadow.ts",
       "find": "if (mode === \"shadow\") return { workflow: \"shadow\" };",
       "replace": "if (mode === \"shadow\" || mode === \"on\") return { workflow: \"shadow\" };",
-      "kills": ["runs on and on:preflight as off with a logged reason, and turns only shadow on"]
+      "kills": ["workflowModeOf runs on and on:preflight as off with a logged reason, and turns only shadow on"]
     }
   ]
 }
