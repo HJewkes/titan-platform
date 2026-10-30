@@ -18,7 +18,11 @@ export const LIMIT_DEFAULTS = {
 
 export type LayeredField = keyof typeof LIMIT_DEFAULTS;
 
-export const LAYERED_FIELDS = Object.keys(LIMIT_DEFAULTS) as LayeredField[];
+export function isLayeredField(key: string): key is LayeredField {
+  return Object.hasOwn(LIMIT_DEFAULTS, key);
+}
+
+export const LAYERED_FIELDS: LayeredField[] = Object.keys(LIMIT_DEFAULTS).filter(isLayeredField);
 
 const PERCENT = { min: 0, max: 100 };
 const NON_NEGATIVE = { min: 0, max: Number.POSITIVE_INFINITY };
@@ -37,7 +41,11 @@ export const LIMIT_BOUNDS: Partial<Record<LayeredField | "per_run_points", { min
   present_within_minutes: NON_NEGATIVE,
 };
 
+function isBoundedField(field: string): field is keyof typeof LIMIT_BOUNDS {
+  return Object.hasOwn(LIMIT_BOUNDS, field);
+}
+
 export function clampToBounds(field: string, value: number): number {
-  const bounds = LIMIT_BOUNDS[field as keyof typeof LIMIT_BOUNDS];
+  const bounds = isBoundedField(field) ? LIMIT_BOUNDS[field] : undefined;
   return bounds ? Math.min(bounds.max, Math.max(bounds.min, value)) : value;
 }

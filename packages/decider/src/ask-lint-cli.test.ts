@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runAskLint } from "./ask-lint-cli.js";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "ask-lint");
@@ -43,7 +44,7 @@ describe("ask-lint on a Morning list", () => {
 
   it("prints one JSON object per finding with the same fields under --json", () => {
     const plain = run(BEFORE).out;
-    const json = run(BEFORE, "--json").out.map((line) => JSON.parse(line) as Record<string, string>);
+    const json = run(BEFORE, "--json").out.map((line) => z.record(z.string(), z.string()).parse(JSON.parse(line)));
 
     expect(json).toHaveLength(plain.length);
     expect(json[0] && Object.keys(json[0])).toEqual(["id", "rule", "evidence"]);

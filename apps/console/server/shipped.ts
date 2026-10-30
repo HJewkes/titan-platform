@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { DEFAULT_DAY_START, dayWindow, type DayWindow } from "./coord-day.js";
+import { dateArg, DEFAULT_DAY_START, dayWindow, type DayWindow } from "./coord-day.js";
 import { readCommand } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -31,7 +31,7 @@ const shippedResult = z.object({
   merged: z.array(prRef),
 });
 
-type PrRef = z.infer<typeof prRef>;
+export type PrRef = z.infer<typeof prRef>;
 export type ShippedDigest = z.infer<typeof digestSchema>;
 type ShippedResult = z.infer<typeof shippedResult>;
 /** What `coord.shipped` reads: the digest directory, and the local time a day starts at. */
@@ -40,9 +40,8 @@ export interface ShippedOptions {
   dayStart?: string;
 }
 
-type FinishedRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
+export type FinishedRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DIGEST_MODE = 0o600;
 
 const outcomeOf = z.object({ outcome: z.object({ kind: z.string() }).passthrough() }).passthrough();
@@ -55,12 +54,20 @@ function prRefOf(row: FinishedRow): PrRef | null {
 
 /** Shepherd's finished runs whose outcome is `merged` and whose phase began inside the window; `phaseSince` is the merge time. */
 export function mergedInWindow(rows: readonly FinishedRow[], window: DayWindow): PrRef[] {
+  return mergedRunsInWindow(rows, window).map(({ ref }) => ref);
+}
+
+/** The same runs with the row each came from, for a reader that joins on its branch. */
+export function mergedRunsInWindow(rows: readonly FinishedRow[], window: DayWindow): { row: FinishedRow; ref: PrRef }[] {
   return rows
     .filter((row) => {
       const since = Date.parse(row.phaseSince);
       return outcomeOf.safeParse(row).data?.outcome.kind === "merged" && since >= window.from && since < window.to;
     })
-    .flatMap((row) => prRefOf(row) ?? []);
+    .flatMap((row) => {
+      const ref = prRefOf(row);
+      return ref === null ? [] : [{ row, ref }];
+    });
 }
 
 export function prSetHash(prs: readonly PrRef[]): string {
@@ -103,7 +110,7 @@ export function shippedCommands(shepherd: ShepherdSource, options: ShippedOption
     "coord.shipped": readCommand({
       name: "coord.shipped",
       description: "The day's PRs merged through Shepherd with the cached theme digest, if one was built; stale when the merged set changed since",
-      args: z.object({ date: z.string().regex(DATE, "must be YYYY-MM-DD").optional() }),
+      args: z.object({ date: dateArg }),
       result: shippedResult,
       run: ({ date }) => readShipped(shepherd, options, clock(), date),
     }),

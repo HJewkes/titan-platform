@@ -6,7 +6,6 @@ import { loadSeatBook } from "../shepherd/seats.js";
 import type { DigestSources } from "./collect.js";
 import { AgentChatDigestSchema, type AgentChatDigest } from "./model.js";
 import { readQueueAsks } from "./queues.js";
-import { readSeatCosts } from "./seats.js";
 
 export const AGENT_CHAT_TIMEOUT_MS = 20_000;
 
@@ -51,16 +50,12 @@ export function queuesDirOf(config: FactoryConfig): string {
   return config.digest?.queuesDir ?? join(config.shepherd?.seatsDir ? dirname(config.shepherd.seatsDir) : "", "queues");
 }
 
-/** Queue and dispatch files for every seat in the seat book; an unset seats dir is a gap, not a guess. */
-export function fileSources(config: FactoryConfig): Pick<DigestSources, "queueAsks" | "seatCosts"> {
+/** Queue files for every seat in the seat book; an unset seats dir is a gap, not a guess. */
+export function fileSources(config: FactoryConfig): Pick<DigestSources, "queueAsks"> {
   const seatsDir = config.shepherd?.seatsDir;
   const seatNames = (): string[] => {
     if (!seatsDir) throw new Error("shepherd.seatsDir is not configured");
     return loadSeatBook({ seatsDir }).seats.map((seat) => seat.name);
   };
-  const root = seatsDir ? dirname(seatsDir) : "";
-  return {
-    queueAsks: () => readQueueAsks(queuesDirOf(config), seatNames()),
-    seatCosts: (since) => readSeatCosts(config.digest?.logsDir ?? join(root, "logs"), seatNames(), since),
-  };
+  return { queueAsks: () => readQueueAsks(queuesDirOf(config), seatNames()) };
 }

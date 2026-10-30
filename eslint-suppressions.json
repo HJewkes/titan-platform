@@ -40,31 +40,6 @@
       "count": 1
     }
   },
-  "packages/agent-lifecycle/src/sqlite-execution-ledger.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 4
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-terminal.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 5
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/agent-protocol/src/trace/schema.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -109,21 +84,6 @@
     }
   },
   "packages/agent/src/preflight.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
-  "packages/authority/src/conditions.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/authority/src/evaluate.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
-  "packages/authority/src/merge-reviewer.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 2
     }
@@ -246,16 +206,6 @@
       "count": 1
     }
   },
-  "packages/embed/src/create.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 6
-    }
-  },
-  "packages/embed/src/prefixes.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
   "packages/eslint-plugin/src/no-commented-code.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -324,16 +274,6 @@
       "count": 1
     }
   },
-  "packages/owner-queue/src/spool.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/queue-mirror/src/hitl.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/react-app/src/hooks/event-bus.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -351,11 +291,6 @@
   },
   "packages/react-app/src/hooks/query-store.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/accept-verdict.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -477,11 +412,6 @@
   },
   "packages/style-profile/src/exporters/editorconfig.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/eslint-rules.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -1338,7 +1268,7 @@
   },
   "products/factory/src/shepherd/review.ts": {
     "titan/max-line-length": {
-      "count": 15
+      "count": 12
     }
   },
   "products/factory/src/shepherd/reviewer-reader.test.ts": {

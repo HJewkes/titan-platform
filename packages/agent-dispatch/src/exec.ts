@@ -98,6 +98,32 @@ export interface SafeExecResult {
   status: number;
 }
 
+interface SyncFailure {
+  code: unknown;
+  signal: unknown;
+  status: unknown;
+  stdout: string;
+  stderr: string;
+  message: string;
+}
+
+function textOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** Reads what `execFileSync` attaches to its thrown error without assuming the throw was an Error. */
+function readFailure(err: unknown): SyncFailure {
+  if (typeof err !== "object" || err === null) return { code: undefined, signal: undefined, status: undefined, stdout: "", stderr: "", message: String(err) };
+  return {
+    code: Reflect.get(err, "code"),
+    signal: Reflect.get(err, "signal"),
+    status: Reflect.get(err, "status"),
+    stdout: textOrEmpty(Reflect.get(err, "stdout")),
+    stderr: textOrEmpty(Reflect.get(err, "stderr")),
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
 /**
  * Runs `bin` with `args` and `env`, no shell involved at any point. Does not
  * throw on a non-zero exit — that is the callee's business to interpret
@@ -141,17 +167,12 @@ export function execSafe(
     });
     return { stdout, stderr: "", status: 0 };
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & {
-      status?: number | null;
-      stdout?: string;
-      stderr?: string;
-      signal?: string | null;
-    };
+    const e = readFailure(err);
     if (e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
       throw new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`);
     }
     if (typeof e.status === "number") {
-      return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", status: e.status };
+      return { stdout: e.stdout, stderr: e.stderr, status: e.status };
     }
     throw new ExecError(`${bin} could not be started: ${e.message}`);
   }

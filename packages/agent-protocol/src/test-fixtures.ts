@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { expect } from "vitest";
 import {
   reduceExecutionTransition,
@@ -30,7 +31,7 @@ export function prepare(overrides: Partial<PrepareTransition> = {}): PrepareTran
     target: { kind: "fresh", namespace: "local" },
     owner: { ...fence, leaseUntil: LEASE },
     ...overrides,
-  } as PrepareTransition;
+  };
 }
 
 export function apply(current: ExecutionRecord<string> | undefined, transition: ExecutionTransition<string>): ExecutionRecord<string> {
@@ -50,7 +51,7 @@ export function event<K extends EventKind>(
   fields: EventFields<K>,
 ): Extract<ExecutionTransition<string>, { kind: K }> {
   const envelope = { kind, executionId: "execution-1", eventId: `execution-1:${kind}:${expectedRevision}`, expectedRevision, occurredAt };
-  return { ...envelope, ...fields } as Extract<ExecutionTransition<string>, { kind: K }>;
+  return Object.assign(partialFake<Extract<ExecutionTransition<string>, { kind: K }>>(), envelope, fields);
 }
 
 export function dispatching(): ExecutionRecord<string> {

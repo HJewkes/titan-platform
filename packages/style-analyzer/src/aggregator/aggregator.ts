@@ -1,4 +1,4 @@
-import type { Observation, ObservationCategory } from "../extractors/types.js";
+import { isObservationCategory, type Observation, type ObservationCategory } from "../extractors/types.js";
 import {
   computeConfidence,
   mapSeverity,
@@ -113,7 +113,7 @@ export class Aggregator {
 
     return {
       type,
-      category: this.extractCategory(type),
+      category: this.extractCategory(type, typeObservations),
       convention: distribution.dominant,
       distribution,
       confidence,
@@ -124,9 +124,15 @@ export class Aggregator {
     };
   }
 
-  private extractCategory(type: string): ObservationCategory {
+  private extractCategory(
+    type: string,
+    typeObservations: Observation[],
+  ): ObservationCategory {
     const dotIndex = type.indexOf(".");
-    return (dotIndex > 0 ? type.substring(0, dotIndex) : type) as ObservationCategory;
+    const prefix = dotIndex > 0 ? type.substring(0, dotIndex) : type;
+    return isObservationCategory(prefix)
+      ? prefix
+      : (typeObservations[0]?.category ?? "patterns");
   }
 }
 

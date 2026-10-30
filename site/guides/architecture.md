@@ -260,6 +260,7 @@ graph TD
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
+  factory --> reviewWorkflow
   factory --> rpcClient
   factory --> sessionAnalytics
   factory --> sessionRead

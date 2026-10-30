@@ -7,9 +7,14 @@ import {
   type Migration,
 } from "@titan-design/store-sqlite";
 import { LedgerRowSchema, type LedgerRow, type LedgerRowWire, type LedgerSourceName } from "./ledger.js";
+import { z } from "zod";
 import type { SourceWatermark, SourceWatermarks } from "./source.js";
 
 const WATERMARK_TABLE = "ledger_watermark";
+
+const RowJsonSchema = z.object({ row_json: z.string() });
+const EntryRecordSchema = z.object({ seq: z.number(), row_json: z.string() });
+const CountSchema = z.object({ n: z.number() });
 
 /** Numbered from 3000 so the ledger can share one file with other stores' migration bands. */
 export const LEDGER_MIGRATIONS: Migration[] = [
@@ -84,32 +89,30 @@ export class LedgerStore {
   }
 
   get(key: string): LedgerRow | undefined {
-    const found = this.getStmt.get(key) as { row_json: string } | undefined;
+    const found = RowJsonSchema.optional().parse(this.getStmt.get(key));
     return found === undefined ? undefined : LedgerRowSchema.parse(JSON.parse(found.row_json));
   }
 
   rows(filter: LedgerRowFilter = {}): LedgerRow[] {
-    const found = this.db
-      .prepare(
-        `SELECT row_json FROM ledger_row
+    const sql = `SELECT row_json FROM ledger_row
           WHERE (@source IS NULL OR source = @source) AND (@initiative IS NULL OR initiative = @initiative)
-          ORDER BY asked_at, key`,
-      )
-      .all({ source: filter.source ?? null, initiative: filter.initiative ?? null }) as { row_json: string }[];
+          ORDER BY asked_at, key`;
+    const found = RowJsonSchema.array().parse(
+      this.db.prepare(sql).all({ source: filter.source ?? null, initiative: filter.initiative ?? null }),
+    );
     return found.map((r) => LedgerRowSchema.parse(JSON.parse(r.row_json)));
   }
 
   /** Rows inserted after `since`, in insertion order; rowid only grows because the ledger never deletes. */
   entries(since = 0): LedgerEntry[] {
-    const found = this.db.prepare("SELECT rowid AS seq, row_json FROM ledger_row WHERE rowid > ? ORDER BY rowid").all(since) as {
-      seq: number;
-      row_json: string;
-    }[];
+    const found = EntryRecordSchema.array().parse(
+      this.db.prepare("SELECT rowid AS seq, row_json FROM ledger_row WHERE rowid > ? ORDER BY rowid").all(since),
+    );
     return found.map((r) => ({ seq: r.seq, row: LedgerRowSchema.parse(JSON.parse(r.row_json)) }));
   }
 
   count(): number {
-    return (this.db.prepare("SELECT COUNT(*) AS n FROM ledger_row").get() as { n: number }).n;
+    return CountSchema.parse(this.db.prepare("SELECT COUNT(*) AS n FROM ledger_row").get()).n;
   }
 
   /** The stored watermarks of one source, keyed by its cursor names. */

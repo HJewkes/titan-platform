@@ -166,6 +166,11 @@ describe("answeredFromFeedback", () => {
   });
 });
 
+function pickOne(question: ManifestInput["questions"][number]): { id: string; options: string[] } {
+  if (question.kind !== "pick-one") throw new Error(`expected a pick-one question, got ${question.kind}`);
+  return question;
+}
+
 describe("a round built from owner items", () => {
   const options = [
     { id: "flat", label: "Flat" },
@@ -181,7 +186,7 @@ describe("a round built from owner items", () => {
   it("maps its answers back to the items and option ids it asked", () => {
     const { rounds } = buildOwnerRounds(items, { unit: "decisions", storybookUrl: "http://127.0.0.1:6006", principles });
     const { manifest, bindings } = rounds[0]!;
-    const [layout, principle] = manifest.questions as { id: string; options: string[] }[];
+    const [layout, principle] = manifest.questions.map(pickOne);
     const answers = feedback(
       [
         { questionId: layout!.id, pick: layout!.options[1]! },

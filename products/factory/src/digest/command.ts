@@ -11,6 +11,7 @@ import type { GateReader } from "../needs/hitl-source.js";
 import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
+import { pacePath, readPacePools } from "./pace.js";
 import { buildDigest, deliverDigest, syncAlarmNote } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
 import { digestDirectories, execProcess, fileSources, queuesDirOf, readAgentChat, type Exec } from "./sources.js";
@@ -107,6 +108,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
   const sources: DigestSources = {
     ...factorySources(call, io.env, queuesDirOf(config)),
     ...fileSources(config),
+    spend: () => readPacePools(pacePath(io.env)),
     ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
     flow: { taskCreated: activeWorkTaskDates({ origin: activeWorkOrigin(io.env) }), roster: agentChatSpans(deps.exec ?? execProcess, agentChatBin) },
     agentChat: (minutes) => readAgentChat(deps.exec ?? execProcess, agentChatBin, minutes),
