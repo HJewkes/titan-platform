@@ -218,4 +218,25 @@ describe("execMutants", { timeout: 120_000 }, () => {
     const rebuild = ['pnpm --filter "$@"', "sh", "./packages/a", "run", "--if-present", "build"];
     expect(pnpm.filter((args) => args[0]?.startsWith("pnpm --filter"))).toEqual([rebuild, rebuild]);
   });
+
+  it("in a pnpm workspace a mutated file outside every package is not rebuilt, and is restored", async () => {
+    const builds: string[][] = [];
+    const exec: Exec = (file, args, options) => {
+      if (file === "sh" && args[1] === 'true "$@"') builds.push([...args.slice(1)]);
+      // The empty lockfile cannot install anywhere, so only the install is stubbed.
+      if (file === "sh" && (args[1] ?? "").startsWith("pnpm ")) return Promise.resolve({ status: 0, stdout: "", stderr: "" });
+      return spawnExec(file, args, options);
+    };
+    const script = "export const add = (a, b) => a + b;\n";
+    const base = { "pnpm-lock.yaml": "", "scripts/sum.mjs": script };
+    const mutation: Mutation = { ...ADD_SUBTRACTS, file: "scripts/sum.mjs" };
+    const test = 'import { add } from "./sum.mjs";\ntest("adds", () => expect(add(1, 2)).toBe(3));\n';
+    const head = { "scripts/sum.test.mjs": test, "scripts/sum.test.mutations.json": spec(mutation) };
+
+    const decoded = await runScenario({ build: "true", base, head, exec });
+
+    expect(statuses(runsOf(decoded).runs[0]?.report)).toEqual({ adds: "failed" });
+    // Only the merge base's own prepare build runs; neither the mutant nor its restore rebuilds.
+    expect(builds).toHaveLength(1);
+  });
 });
