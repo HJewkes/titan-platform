@@ -2,18 +2,18 @@
   "v": 1,
   "mutations": [
     {
-      "name": "reading a 64 KB script scans it to the end twenty thousand times",
+      "name": "reading a 16 KB script scans it to the end twenty thousand times",
       "file": "packages/tool-guard/src/line-writes.ts",
       "find": "  const text = ctx.readScript(path);",
-      "replace": "  const text = ctx.readScript(path);\n  for (let i = 0; text !== null && text.length > 60_000 && i < 20_000; i++) text.indexOf(\"\\u0000\");",
+      "replace": "  const text = ctx.readScript(path);\n  for (let i = 0; text !== null && text.length > 15_000 && i < 20_000; i++) text.indexOf(\"\\u0000\");",
       "kills": [
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of $${ openers, each a bare { to bash, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of nested ${ openers, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of closed ${ spans, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of backquote spans, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of nested $( openers, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of closed $( spans, within the budget",
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of closed $(( spans, within the budget"
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of $${ openers, each a bare { to bash, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of nested ${ openers, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of closed ${ spans, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of backquote spans, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of nested $( openers, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of closed $( spans, within the budget",
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of closed $(( spans, within the budget"
       ]
     },
     {
@@ -22,7 +22,7 @@
       "find": "  const end = lastClose > start ? glob.indexOf(\"]\", start + 1) : -1;",
       "replace": "  const end = glob.indexOf(\"]\", start + 1);",
       "kills": [
-        "a subscript holding many span openers the hook denies a push after a 64 KB script of $${ openers, each a bare { to bash, within the budget"
+        "a subscript holding many span openers the hook denies a push after a 16 KB script of $${ openers, each a bare { to bash, within the budget"
       ]
     }
   ]
