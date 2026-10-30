@@ -357,6 +357,62 @@ declare function formatResultLine(result: FixProofResult): string;
 /** Decodes a result line, refusing anything over 4 KB, of another version, with unknown fields or with duplicate or reordered keys. */
 declare function parseResultLine(line: string): ParsedResultLine;
 
+/** Why a read proves nothing about its head; a head can force each of these, so none may pass on its own. */
+type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
+/**
+ * A fix-proof read as its readers hold it: a judged `line` (trusted, or `untrusted`), CI's own proof of a workflow-only diff,
+ * a read that failed, or one that never ran. `nonSourceProceed` and `testOnlyProceed` mark a NO_REPRO the caller lets through.
+ */
+type ProofReadInput = ({
+    kind: "result";
+    line: string;
+    testOnlyProceed?: true;
+} | {
+    kind: "untrusted";
+    line: string;
+    reason: string;
+} | {
+    kind: "workflow-ci";
+    proved: boolean;
+    head: string;
+} | {
+    kind: "error";
+    reason: string;
+} | {
+    kind: "skipped" | "missing";
+    reason?: string;
+}) & {
+    nonSourceProceed?: true;
+};
+type WorkflowCiProofRead = Extract<ProofReadInput, {
+    kind: "workflow-ci";
+}>;
+/** The one reading of a fix-proof read at a head. `unproven` is its own standing: it neither ends the review nor proves the head. */
+type ProofStanding = {
+    kind: "proved";
+} | {
+    kind: "no-repro";
+    proceeds?: "test-only" | "non-source";
+    result: FixProofResult | WorkflowCiProofRead;
+} | {
+    kind: "unverified";
+    why: FixProofUnverified;
+    detail?: string;
+} | {
+    kind: "unproven";
+} | {
+    kind: "none";
+};
+/**
+ * Where a fix-proof read leaves `head`. Every reader derives its answer from this, so a line cannot read as proved to one gate
+ * and as NO_REPRO to another. A skipped or missing read expected no proof, so it is `none`.
+ */
+declare function proofStanding(read: ProofReadInput, head: string): ProofStanding;
+/** A NO_REPRO nothing lets through: the review ends before any reviewer starts unless the owner waived the proof. */
+declare const endsReview: (standing: ProofStanding) => boolean;
+/** Anything short of a proof at the head makes the tests seat blocking; `unproven` does, though it does not end the review. */
+declare const needsTestsSeat: (standing: ProofStanding) => boolean;
+
 interface ExecOptions {
     cwd: string;
     timeoutMs: number;
@@ -548,4 +604,4 @@ interface JudgeOptions {
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecHeadMutantsOptions, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, HEAD_OUTCOMES, type HeadFailure, type HeadMutantRun, type HeadMutantsReport, type HeadMutation, type HeadOutcome, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_HEAD_FAILURES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReducedHeadRun, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyHeadRun, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execHeadMutants, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, provedByMutants, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecHeadMutantsOptions, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type FixProofUnverified, HEAD_OUTCOMES, type HeadFailure, type HeadMutantRun, type HeadMutantsReport, type HeadMutation, type HeadOutcome, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_HEAD_FAILURES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, type ProofReadInput, type ProofStanding, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReducedHeadRun, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyHeadRun, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, endsReview, errorLine, execHeadMutants, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, needsTestsSeat, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, proofStanding, provedByMutants, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };

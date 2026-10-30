@@ -19,7 +19,7 @@ that is not installed, retries it round after round and spends a reviewer sessio
 This package is the vocabulary for running that review as a resumable workflow:
 
 - `ReviewWorkflowPorts`: every read and effect the review takes. `snapshot` reads the PR, its CI roll-up and the facts
-  classification needs; `proofReader` reads the raw `fix-proof/v1` line; `carry` probes for a clean merge-up of a
+  classification needs; `proofReader` reads the head's fix-proof as `@titan-design/fix-proof`'s `ProofReadInput`; `carry` probes for a clean merge-up of a
   signed-off head; `checkout` reports and refreshes the reviewer's read-only checkout; `dispatch` and `reader` are
   review-panel's reviewer ports; `source` reads cited files; `fixer` spawns a diagnosis agent; `clock`, `headroom` and an
   optional `namer` complete the set.
