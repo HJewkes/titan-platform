@@ -2,11 +2,11 @@ import { Clusterer } from "@titan-design/cluster";
 import type { GateRun } from "./schemas.js";
 
 /** What a gate's record says went wrong, as `failure.class`: the code under test, the machine, the gate itself, or the build spec. */
-export const GATE_FAILURE_CLASSES = ["code", "infra", "gate-broken", "spec"] as const;
-export type GateFailureClass = (typeof GATE_FAILURE_CLASSES)[number];
+const GATE_FAILURE_CLASSES = ["code", "infra", "gate-broken", "spec"] as const;
+type GateFailureClass = (typeof GATE_FAILURE_CLASSES)[number];
 
 /** `fix` resumes the implementer; `retry` probes health, reruns the gates once and then parks; `stop` ends the slice and files a task. */
-export type GateRoute = "fix" | "retry" | "stop";
+type GateRoute = "fix" | "retry" | "stop";
 
 /** The one routing table for a failing gate. */
 export const GATE_ROUTE_TABLE: Readonly<Record<GateFailureClass, GateRoute>> = { code: "fix", infra: "retry", "gate-broken": "stop", spec: "stop" };
