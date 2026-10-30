@@ -1,15 +1,17 @@
-# Fills the test-timing corpus: ci.yml's vitest-file-timing artifacts, then the local spool (TP-4465).
+# Fills the test-timing corpus from the local spool and ci.yml's vitest-file-timing artifacts, then rewrites
+# report.md and report.json beside it for seats to read (TP-4465).
 # Install steps: packages/test-timing/README.md, "Scheduled ingest".
 [Unit]
-Description=Test timing: ingest CI artifacts and the local spool into the corpus
+Description=Test timing: ingest CI artifacts and the local spool, then write the report
 After=network-online.target
 
 [Service]
 Type=oneshot
 Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 # Each pass is idempotent: a fetched run attempt is skipped, a stored run id writes nothing.
-ExecStart=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs ingest-gh
-ExecStart=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs ingest-spool
+ExecStart=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs ingest
+# Runs even when an ingest failed, so the unit still shows the failure while the report stays as fresh as the corpus.
+ExecStopPost=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs report --out %h/.local/share/titan-test-timing
 TimeoutStartSec=20min
 Nice=10
 IOSchedulingClass=idle

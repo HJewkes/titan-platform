@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as timing from "../packages/test-timing/dist/index.js";
-import { ingestGh, parseArgs } from "./test-timing.mjs";
+import { ingestGh, parseArgs, report, resolveSince, slower } from "./test-timing.mjs";
 
 // Synthetic runs only: example repo, shas and run ids.
 const RUNS = [
@@ -83,5 +83,46 @@ describe("test-timing arguments", () => {
     const options = parseArgs(["ingest-spool"], { TITAN_TEST_TIMING_HOME: "/data/timing" });
 
     expect(options).toMatchObject({ command: "ingest-spool", home: "/data/timing", db: "/data/timing/timing.db" });
+  });
+});
+
+function mainRuns(count, scaleAt) {
+  for (let index = 0; index < count; index += 1) {
+    const testMs = Math.round(1000 * scaleAt(index));
+    const files = ["a", "b"].map((name) => ({ project: "unit", file: `packages/example/src/${name}.test.ts`, state: "passed", environmentMs: 0, prepareMs: 0, collectMs: 0, setupMs: 0, testMs, totalMs: testMs, tests: 1 }));
+    const run = { id: `gha:${index}:1:1`, runner: "gha", host: "runner-a", repo: "example/repo", commit: String(index).padStart(4, "0").repeat(10), mergeSha: null, baseSha: null, branch: "main", pr: null, event: "push", scope: { mode: "full", filters: [] }, shard: null, cpus: 4, maxWorkers: 3, node: "v22.0.0", vitest: "4.0.0", startedAt: new Date(Date.parse("2026-01-01T00:00:00Z") + index * 3_600_000).toISOString(), load: null, wallMs: 1000, exit: "passed" };
+    timing.ingestArtifact(db, { schema: "titan.test-timing/v1", run, files });
+  }
+}
+
+describe("test-timing report", () => {
+  it("writes report.md and report.json for seats and flags a held 20% suite rise", () => {
+    mainRuns(8, (index) => (index >= 6 ? 1.2 : 1));
+    const out = join(root, "home");
+
+    const markdown = report(timing, db, { days: 30, json: false, out, now: Date.parse("2026-01-02T00:00:00Z") });
+
+    expect(markdown).toContain("**anomaly**");
+    expect(readFileSync(join(out, "report.md"), "utf8")).toBe(`${markdown}\n`);
+    expect(JSON.parse(readFileSync(join(out, "report.json"), "utf8")).anomalies).toHaveLength(1);
+    expect(readdirSync(out).sort()).toEqual(["report.json", "report.md"]);
+  });
+});
+
+describe("test-timing slower", () => {
+  it("cuts at the commit's first run in the corpus and lists the suite first", () => {
+    mainRuns(8, (index) => (index >= 5 ? 1.5 : 1));
+
+    const findings = slower(timing, db, { since: "000500050005", json: true, days: 30 }, () => "");
+
+    expect(findings[0]).toMatchObject({ level: "suite", shift: { beforeMs: 2000, afterMs: 3000, afterRuns: 3 } });
+  });
+
+  it("falls back to git's commit date for a sha the corpus never ran, then to a plain date", () => {
+    mainRuns(2, () => 1);
+
+    expect(resolveSince(timing, db, "abcdef1", () => "2026-01-01T05:00:00Z")).toBe(Date.parse("2026-01-01T05:00:00Z"));
+    expect(resolveSince(timing, db, "2026-01-01", () => "")).toBe(Date.parse("2026-01-01"));
+    expect(() => resolveSince(timing, db, "last tuesday", () => "")).toThrow(/commit or a date/);
   });
 });

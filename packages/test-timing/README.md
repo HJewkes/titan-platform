@@ -17,7 +17,11 @@ storeStats(db); // { runs, files, bytes, oldestStartedAt, newestStartedAt }
 `$TITAN_TEST_TIMING_HOME`). `ingest-gh` downloads the timing artifacts of the newest finished `ci.yml` runs, main and
 pull request alike, and skips run attempts it already fetched; `ingest-spool` drains the local spool that
 `verify:changed` writes; `ingest-dir <dir> --gh-run <id> [--scope full]` ingests artifacts already downloaded (`--scope` says what a pre-header record never did); `stats` prints the
-store's size. `ops/systemd/test-timing-ingest.{service,timer}` run both ingests hourly on a Linux host with the
+store's size; `ingest` runs the spool and CI passes together. `report [--days 30] [--json] [--out dir]` prints the
+anomaly, growth and project-trend report, and with `--out` also leaves `report.md` and `report.json` there.
+`slower --since <sha|date> [--json]` lists what got slower after a commit (where the corpus first ran it, else its
+commit date) or a date. `ops/systemd/test-timing-ingest.{service,timer}` run `ingest` hourly, then rewrite
+`~/.local/share/titan-test-timing/report.{md,json}` even when an ingest failed, on a Linux host with the
 checkout at `~/projects/titan-platform`, built, and `gh` signed in. To install (an owner step):
 
 ```sh

@@ -1,8 +1,10 @@
 // Fills the test-timing corpus (TP-4465). `ingest-gh` downloads the vitest-file-timing artifacts of finished ci.yml
 // runs, main and pull request alike; `ingest-spool` takes the local records verify:changed and basement-suite leave;
-// `ingest-dir` takes artifacts already downloaded, for a backfill. Every pass is idempotent, so a timer can rerun it.
+// `ingest` runs both; `ingest-dir` takes artifacts already downloaded, for a backfill. Every pass is idempotent, so a
+// timer can rerun it. `report` writes the anomaly, growth and trend report a seat reads; `slower --since <sha|date>`
+// answers what got slower.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +14,7 @@ const PACKAGE_ENTRY = join(ROOT, "packages/test-timing/dist/index.js");
 const ARTIFACT_FILE = "vitest-file-timing.json";
 const META_FIELDS = "databaseId,attempt,headSha,headBranch,event,createdAt";
 // gh words "nothing to download" differently by case: no artifacts at all, or none matching the pattern.
+const DAY_MS = 86_400_000;
 const NO_ARTIFACTS = /no valid artifacts|no artifacts? found|no artifact matches/i;
 
 const flag = (argv, name) => {
@@ -31,6 +34,10 @@ export function parseArgs(argv, env = process.env) {
     ghRun: flag(argv, "--gh-run"),
     scope: flag(argv, "--scope"),
     dir: argv[0] === "ingest-dir" ? argv[1] : undefined,
+    days: Number(flag(argv, "--days") ?? 30),
+    json: argv.includes("--json"),
+    out: flag(argv, "--out"),
+    since: flag(argv, "--since"),
   };
 }
 
@@ -91,18 +98,68 @@ export function ingestGh(timing, db, { gh, home, scratch, ...options }) {
   return summary;
 }
 
+// Written beside and renamed into place, so a seat reading the report never sees half of it.
+function writeAtomic(path, body) {
+  writeFileSync(`${path}.tmp`, body);
+  renameSync(`${path}.tmp`, path);
+}
+
+/** The report over the last `days`, as markdown or JSON; `out` also leaves both files there for seats to read. */
+export function report(timing, db, { days, json, out, now = Date.now() }) {
+  const data = timing.timingReport(db, { sinceMs: now - days * DAY_MS, now });
+  const markdown = timing.renderReportMarkdown(data);
+  if (out) {
+    mkdirSync(out, { recursive: true });
+    writeAtomic(join(out, "report.md"), `${markdown}\n`);
+    writeAtomic(join(out, "report.json"), `${JSON.stringify(data, null, 2)}\n`);
+  }
+  return json ? data : markdown;
+}
+
+const readGitDate = (sha) => execFileSync("git", ["-C", ROOT, "show", "-s", "--format=%cI", sha], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+
+/** A sha (prefix) is cut where the corpus first ran it, else at its commit date; anything else is read as a date. */
+export function resolveSince(timing, db, since, gitDate = readGitDate) {
+  if (/^[0-9a-f]{7,40}$/.test(since)) {
+    const seen = timing.commitStartedMs(db, since);
+    if (seen !== null) return seen;
+    const committed = Date.parse(gitDate(since));
+    if (!Number.isNaN(committed)) return committed;
+  }
+  const date = Date.parse(since);
+  if (Number.isNaN(date)) throw new Error(`--since is a commit or a date, not ${since}`);
+  return date;
+}
+
+export function slower(timing, db, { since, json, days }, gitDate = readGitDate) {
+  if (!since) throw new Error("usage: slower --since <sha|date> [--json]");
+  const cutMs = resolveSince(timing, db, since, gitDate);
+  const findings = timing.slowerSince(db, cutMs, { sinceMs: cutMs - days * DAY_MS });
+  return json ? findings : timing.renderSlowerMarkdown(findings, `${since} (${new Date(cutMs).toISOString()})`);
+}
+
 const liveGh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+
+/** Both passes, so a failed download never skips the spool; the exit code still reports either failing. */
+function ingestAll(timing, db, options) {
+  const spool = timing.ingestSpool(db, options.home);
+  const gh = ingestGh(timing, db, { ...options, gh: liveGh, scratch: tmpdir() });
+  return { spool, gh, failed: gh.failed, rejected: spool.rejected };
+}
 
 function run(timing, db, options) {
   if (options.command === "ingest-gh") return ingestGh(timing, db, { ...options, gh: liveGh, scratch: tmpdir() });
   if (options.command === "ingest-spool") return timing.ingestSpool(db, options.home);
+  if (options.command === "ingest") return ingestAll(timing, db, options);
   if (options.command === "ingest-dir") {
     if (options.scope && !["full", "scoped"].includes(options.scope)) throw new Error(`--scope is full or scoped, not ${options.scope}`);
     if (!options.dir || !options.ghRun) throw new Error("usage: ingest-dir <dir> --gh-run <run id> [--scope full|scoped]");
     return ingestDir(timing, db, options.home, options.dir, viewRun(liveGh, options.repo, options.ghRun), options.scope);
   }
   if (options.command === "stats") return timing.storeStats(db);
-  throw new Error("usage: test-timing.mjs ingest-gh|ingest-spool|ingest-dir|stats [--home dir] [--repo owner/name] [--limit n]");
+  if (options.command === "report") return report(timing, db, options);
+  if (options.command === "slower") return slower(timing, db, options);
+  throw new Error("usage: test-timing.mjs ingest|ingest-gh|ingest-spool|ingest-dir|stats|report|slower [--home dir] [--json]");
 }
 
 async function main(argv) {
@@ -113,6 +170,10 @@ async function main(argv) {
   const db = timing.openTimingStore(options.db);
   try {
     const result = run(timing, db, options);
+    if (typeof result === "string") {
+      console.log(result);
+      return 0;
+    }
     console.log(JSON.stringify(result, null, 2));
     return (result.failed?.length ?? 0) + (result.rejected?.length ?? 0) === 0 ? 0 : 1;
   } finally {
