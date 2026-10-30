@@ -16,7 +16,7 @@ import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
 import { defaultRenderWorkers } from "../render/render-video.js";
-import { timingProfile, TimingProfileSchema } from "../qa/timing-gates.js";
+import { timingProfile, TimingProfileSchema, type TimingProfile } from "../qa/timing-gates.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
@@ -167,17 +167,20 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
+/** The run type's timing thresholds, which qa's gate rows read in the qa stage and in render. */
+const runTiming = (settings: RunSettings): TimingProfile => timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+
 /** The gate profile and the type's pacing are read when the spec is built, so an edit to either or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
 function qaConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const { sweep = true } = z.strictObject({ sweep: z.boolean().optional() }).parse(params);
-  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  const timing = runTiming(settings);
   return { qa: { ...loadQaGate(settings.profile), sweep, timing }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
 /** Render gates on the same profile and timing qa reads, so an edit to either re-keys render too; a host's worker count is part of the key. */
 function renderConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const p = RenderParamsSchema.parse(params);
-  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  const timing = runTiming(settings);
   const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile), timing };
   return { render, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
