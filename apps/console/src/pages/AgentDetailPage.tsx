@@ -25,6 +25,8 @@ import { open, type Route } from "../router.js";
 import { migrationHint } from "./SessionFormat.js";
 import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP_LINK } from "./phone.js";
 
 type SessionsList = ConsoleCommands["sessions.list"]["result"];
 type SessionRow = SessionsList["sessions"][number];
@@ -72,7 +74,9 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
 function Trail({ name }: { name: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "agents" })}>Agents</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "agents" })}>
+        Agents
+      </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{name}</BreadcrumbItem>
     </Breadcrumbs>
   );
@@ -133,10 +137,12 @@ function AgentHeading({ agent }: { agent: RosterEntry }): ReactNode {
   );
 }
 
-/** One line that ellipsizes in a narrow card; the title carries the full text. */
+/** One line that ellipsizes in a narrow desktop card, the title carrying the full text; a phone's card is too narrow to cut, so it wraps. */
+const ONE_LINE = "block min-w-0 max-w-full truncate whitespace-nowrap max-md:whitespace-normal max-md:break-words";
+
 function Ellipsis({ text, testID }: { text: string; testID?: string }): ReactNode {
   return (
-    <span className="block min-w-0 max-w-full truncate whitespace-nowrap" title={text} data-testid={testID}>
+    <span className={ONE_LINE} title={text} data-testid={testID}>
       {text}
     </span>
   );
@@ -149,7 +155,7 @@ function Runs({ name }: { name: string }): ReactNode {
   const { sessions, degraded } = runs.data;
   if (degraded) return <GraphDegraded degraded={degraded} />;
   if (sessions.length === 0) return <Typography variant="body2">{`No sessions recorded for ${name}.`}</Typography>;
-  return <RunsTable sessions={sessions} />;
+  return <RunRows sessions={sessions} />;
 }
 
 function GraphDegraded({ degraded }: { degraded: SessionsList["degraded"] & object }): ReactNode {
@@ -161,6 +167,36 @@ function GraphDegraded({ degraded }: { degraded: SessionsList["degraded"] & obje
         {detail}
       </Typography>
     </Alert>
+  );
+}
+
+/** One tree, not a CSS swap of two, as on the Tasks list. */
+function RunRows({ sessions }: { sessions: readonly SessionRow[] }): ReactNode {
+  return useMediaQuery(BELOW_MD) ? <RunCards sessions={sessions} /> : <RunsTable sessions={sessions} />;
+}
+
+function RunCards({ sessions }: { sessions: readonly SessionRow[] }): ReactNode {
+  return (
+    <VStack>
+      {sessions.map((session) => (
+        <RunCard key={session.sessionId} session={session} />
+      ))}
+    </VStack>
+  );
+}
+
+function RunCard({ session }: { session: SessionRow }): ReactNode {
+  const tasks = session.taskIds.length > 0 ? session.taskIds.join(", ") : "no task";
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`run-card-${session.sessionId}`}>
+      <Link color="primary" className={PHONE_TAP_LINK} testID={`run-link-${session.sessionId}`} onPress={() => open({ view: "sessions", id: session.sessionId })}>
+        <DateTime value={session.startedAt} format="datetime" fallback="unknown" />
+      </Link>
+      <Typography variant="body1" className="break-words">
+        {session.title ?? "–"}
+      </Typography>
+      <Typography variant="caption" color="secondary" className="break-words">{`${tasks} · ${session.turnCount} turns · ${formatCost(session.costUsd)}`}</Typography>
+    </VStack>
   );
 }
 

@@ -20,6 +20,8 @@ import {
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { SessionDetailPage } from "./SessionDetailPage.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP_ID_LINK, PHONE_TAP_LINK } from "./phone.js";
 import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type GraphDegraded, type SessionRow } from "./SessionFormat.js";
 
 const NUMBER_WIDTH = 96;
@@ -52,10 +54,11 @@ function SessionsPage({ agent }: { agent: string | undefined }): ReactNode {
 
 function SessionsBody({ agent, first }: { agent: string | undefined; first: readonly SessionRow[] }): ReactNode {
   const [cursors, setCursors] = useState<string[]>([]);
+  const phone = useMediaQuery(BELOW_MD);
   if (first.length === 0) return <NoSessions />;
   return (
     <VStack gap={3}>
-      <SessionTable agent={agent} first={first} cursors={cursors} />
+      {phone ? <SessionCards agent={agent} first={first} cursors={cursors} /> : <SessionTable agent={agent} first={first} cursors={cursors} />}
       <LoadMore agent={agent} before={cursors.at(-1)} onMore={(next) => setCursors([...cursors, next])} />
       <IndexedCaption sessions={first} />
     </VStack>
@@ -111,7 +114,50 @@ function IndexedCaption({ sessions }: { sessions: readonly SessionRow[] }): Reac
   );
 }
 
-function SessionTable({ agent, first, cursors }: { agent: string | undefined; first: readonly SessionRow[]; cursors: readonly string[] }): ReactNode {
+interface PagedRows {
+  agent: string | undefined;
+  first: readonly SessionRow[];
+  cursors: readonly string[];
+}
+
+/** The table's rows as stacked cards on a phone, where its seven columns squeeze over each other; one tree, as on the Tasks list. */
+function SessionCards({ agent, first, cursors }: PagedRows): ReactNode {
+  return (
+    <VStack>
+      {first.map((row) => (
+        <SessionCard key={row.sessionId} row={row} />
+      ))}
+      {cursors.map((before) => (
+        <OlderCards key={before} agent={agent} before={before} />
+      ))}
+    </VStack>
+  );
+}
+
+function OlderCards({ agent, before }: { agent: string | undefined; before: string }): ReactNode {
+  const page = useQuery("sessions.list", listArgs(agent, before));
+  return page.data?.sessions.map((row) => <SessionCard key={row.sessionId} row={row} />) ?? null;
+}
+
+function SessionCard({ row }: { row: SessionRow }): ReactNode {
+  const figures = `${formatDuration(spanMs(row.startedAt, row.endedAt))} · ${formatTokens(usageTokens(row))} tokens · ${formatCost(row.costUsd)}`;
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`session-card-${row.sessionId}`}>
+      <HStack gap={2} align="center" justify="between" wrap>
+        <Link color="primary" className={PHONE_TAP_LINK} testID={`session-link-${row.sessionId}`} onPress={() => open({ view: "sessions", id: row.sessionId })}>
+          <DateTime value={row.startedAt} format="datetime" fallback="unknown" />
+        </Link>
+        {row.agentName ? <AgentFilterLink agent={row.agentName} className={PHONE_TAP_ID_LINK} /> : <NoneText />}
+      </HStack>
+      <RefLinks refs={[...row.taskIds.map((id) => `task:${id}`), ...row.prs]} />
+      <Typography variant="caption" color="secondary" className="break-words">
+        {figures}
+      </Typography>
+    </VStack>
+  );
+}
+
+function SessionTable({ agent, first, cursors }: PagedRows): ReactNode {
   return (
     <Table density="dense">
       <TableHeader>
@@ -182,9 +228,9 @@ function SessionTableRow({ row }: { row: SessionRow }): ReactNode {
   );
 }
 
-function AgentFilterLink({ agent }: { agent: string }): ReactNode {
+function AgentFilterLink({ agent, className }: { agent: string; className?: string }): ReactNode {
   return (
-    <Link color="primary" onPress={() => open({ view: "sessions", query: `agent=${encodeURIComponent(agent)}` })}>
+    <Link color="primary" className={className} onPress={() => open({ view: "sessions", query: `agent=${encodeURIComponent(agent)}` })}>
       {agent}
     </Link>
   );
