@@ -21,12 +21,13 @@ import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
 import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
+import { loadStageBumps, stageVersions } from "../stage-bumps.js";
 
 /**
- * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
- * this body's output. It is also the child workflow's registered version.
+ * Frozen: each stage's version before `stage-bumps/`, kept so a stored run's keys still match. Re-key a stage by
+ * adding a bump file, never by editing a value here; `pnpm stage-version:check` refuses an edit in CI.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = {
+const BASE_STAGE_VERSIONS: Record<CachedStage, string> = {
   gather: "g2",
   audition: "pp10",
   script: "x41",
@@ -38,6 +39,12 @@ export const STAGE_VERSIONS: Record<CachedStage, string> = {
   qa: "x11h",
   sheets: "x10",
 };
+
+/**
+ * Changes when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
+ * this body's output. It is also the child workflow's registered version.
+ */
+export const STAGE_VERSIONS: Record<CachedStage, string> = stageVersions(BASE_STAGE_VERSIONS, loadStageBumps());
 
 /** The artifacts each stage reads. */
 const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
