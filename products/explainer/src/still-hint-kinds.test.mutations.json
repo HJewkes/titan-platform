@@ -25,6 +25,15 @@
       "find": "so add the item ${WITHIN_CAPS}, or split the beat",
       "replace": "so add the item or split the beat",
       "kills": ["the Q-D22 hint for a still closing button names the caps on adding an item to a cued kind"]
+    },
+    {
+      "name": "the Q-D20 hint never names the button's hold",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": ", ...holds].join(\"; \");",
+      "replace": "].join(\"; \");",
+      "kills": [
+        "the Q-D20 hint for a closing button names the hold, so a shorter label does not leave the button still"
+      ]
     }
   ]
 }
