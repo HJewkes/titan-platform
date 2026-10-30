@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
-import type { Page } from 'playwright-core'
+import type { BrowserContext, CDPSession, Page } from 'playwright-core'
 import { describe, test } from 'vitest'
+import { partialFake } from '@titan-design/test-kit'
 import { screenshotFrame } from './capture.js'
 
 const PNG_BASE64 = Buffer.from('synthetic-png').toString('base64')
@@ -8,15 +9,17 @@ const PNG_BASE64 = Buffer.from('synthetic-png').toString('base64')
 /** A page whose CDP session answers each Page.captureScreenshot with the next scripted outcome. */
 function fakePage(outcomes: readonly (Error | 'ok')[]): { page: Page; calls: () => number } {
   let calls = 0
-  const session = {
+  const session = partialFake<CDPSession>({
+    // @ts-expect-error the real send is generic over the protocol command; the fake answers only captureScreenshot
     send: async () => {
       const outcome = outcomes[calls++]
       if (outcome instanceof Error) throw outcome
       return { data: PNG_BASE64 }
     },
-  }
-  const page = { evaluate: async () => undefined, context: () => ({ newCDPSession: async () => session }) }
-  return { page: page as unknown as Page, calls: () => calls }
+  })
+  const context = partialFake<BrowserContext>({ newCDPSession: async () => session })
+  const page = partialFake<Page>({ evaluate: async () => undefined, context: () => context })
+  return { page, calls: () => calls }
 }
 
 const captureFailure = () => new Error('cdpSession.send: Protocol error (Page.captureScreenshot): Unable to capture screenshot')

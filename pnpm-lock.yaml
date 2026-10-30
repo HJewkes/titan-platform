@@ -559,6 +559,9 @@ importers:
 
   packages/frame-capture:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
