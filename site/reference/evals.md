@@ -140,6 +140,20 @@ holds its head. It spawns real reviewers, so it costs a review per member per ca
 hand on a candidate variant and the incumbent, from a scratch directory outside every repo,
 then compare the two result lists.
 
+**Scorecard and accept rule.** `reviewScorecard(variant, cases, results)` scores one variant
+on catch rate (with a Wilson interval), false blocks, sessions per head, verdicts reached, and
+no-verdict heads by outcome kind. Only the kinds a replay produced are listed. A replay spends
+nothing and takes no wall time, so sessions stand for cost and no latency is reported.
+`compare(candidate, incumbent)` picks the track from the plan policy hash:
+
+| Track | When | Accept |
+|---|---|---|
+| reliability | only retry or timing rows changed | no new loop (a no-verdict head with more sessions than the incumbent's), no fewer verdicts reached, sessions per head not higher |
+| verdict | the plan changed | catch not lower and fewer sessions, or catch higher, with the delta reported; then 10 live heads in shadow |
+
+Seed cases are a floor on both tracks: a missed blocking seed or a falsely blocked passing seed
+rejects the candidate.
+
 ## When to reach for it
 
 You need a stable identity for "this workflow configuration on this suite", or you want to
