@@ -168,6 +168,19 @@ describe("compileTimeline page extras", () => {
     expect(timeline.beats[0]).not.toHaveProperty("reveals");
   });
 
+  it("lands each emphasis on its cue word's spoken start, and a beat with none carries no emphases", () => {
+    // Arrange
+    const extras = new Map([["beat-02", { ...listExtras([{ target: "rows-1", atCue: "first" }]).get("beat-02")!, emphases: [{ target: "rows-1", atCue: "row#2" }] }]]);
+
+    // Act
+    const timeline = compileTimeline(board(), words(), { extras });
+    const plain = compileTimeline(board(), words(), { extras: listExtras([{ target: "rows-1", atCue: "first" }]) });
+
+    // Assert
+    expect(timeline.beats[1]?.emphases).toEqual([{ target: "rows-1", atS: 2.3 }]);
+    expect(plain.beats[1]).not.toHaveProperty("emphases");
+  });
+
   it("lands reveals at planned-word times scaled to the planned seconds when there are no words", () => {
     const extras = listExtras([{ target: "rows-1", atCue: "then" }, { target: "rows-2", atCue: "row#2" }]);
 
