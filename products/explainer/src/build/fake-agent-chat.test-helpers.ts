@@ -21,12 +21,18 @@ export function syntheticTranscript(sessionId: string, tokens: { input: number; 
 
 // The fake's whole behaviour: `agent spawn` records argv and stdin, writes the canned module where the brief says and
 // a transcript where Claude Code would, and lists the agent as exited; `agent ls` prints that roster; `retire` succeeds.
+// A long TMPDIR makes the whole-cwd slug pass the 255-byte name limit; Claude shortens it too, and the reader finds a transcript by file name.
+const BOUNDED_SLUG = `function boundedSlug(cwd) {
+  const slug = cwd.replace(/[^A-Za-z0-9]/g, "-");
+  return slug.length > 100 ? slug.slice(0, 60) + "-" + require("node:crypto").createHash("sha256").update(slug).digest("hex").slice(0, 16) : slug;
+}
+`;
 const SCRIPT = (state: string, configDir: string) => `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
 const state = ${JSON.stringify(state)};
 const configDir = ${JSON.stringify(configDir)};
-const args = process.argv.slice(2);
+${BOUNDED_SLUG}const args = process.argv.slice(2);
 const at = (name) => path.join(state, name);
 if (args[0] === "agent" && args[1] === "spawn") {
   const brief = fs.readFileSync(0, "utf8");
@@ -35,7 +41,7 @@ if (args[0] === "agent" && args[1] === "spawn") {
   const target = /Write the whole repaired module to (\\S+), and/.exec(brief)[1];
   if (fs.existsSync(at("repaired.tsx"))) fs.copyFileSync(at("repaired.tsx"), target);
   const sessionId = fs.readFileSync(at("session-id"), "utf8");
-  const project = path.join(configDir, "projects", process.cwd().replace(/[^A-Za-z0-9]/g, "-"));
+  const project = path.join(configDir, "projects", boundedSlug(process.cwd()));
   fs.mkdirSync(project, { recursive: true });
   fs.copyFileSync(at("transcript.jsonl"), path.join(project, sessionId + ".jsonl"));
   const row = { name: args[2], agentId: "agent-1", state: "exited", presence: "exited", status: "finished", profile: args[3], surface: "headless", cwd: process.cwd(), sessionId, generation: 1 };
