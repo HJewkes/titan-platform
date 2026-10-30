@@ -165,7 +165,7 @@ async function stopOverBudget(options: ResolvedOptions, wait: Wait, row: AgentRo
     wait.row = seen;
     await readMeter(options, wait, seen);
   };
-  await stopAgent(options, { name, why, signal, observe });
+  await stopAgent(options, { name, stepId: String(wait.askedAt), why, signal, observe });
 }
 
 /** Polls the roster until `name` has exited with a report written since the ask; an exit with none rejects. */
