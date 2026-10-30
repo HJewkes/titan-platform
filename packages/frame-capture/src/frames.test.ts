@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import type { Browser } from 'playwright-core'
 import { afterAll as after, afterEach, beforeAll as before, describe, test } from 'vitest'
 import { launch } from './capture.js'
@@ -12,10 +15,12 @@ const BROWSER_TIMEOUT_MS = 60_000
 
 let served: Served
 let browser: Browser
+let spillDir: string
 
 before(async () => {
   served = await serveFixtures()
   browser = await launch()
+  spillDir = mkdtempSync(path.join(tmpdir(), 'frames-spill-'))
 }, BROWSER_TIMEOUT_MS)
 
 // Mutations: captureFrames closes the lent browser (every later capture fails), or leaves a page's context open.
@@ -24,11 +29,14 @@ afterEach(() => {
   assert.equal(browser.contexts().length, 0)
 })
 
+const PARALLEL = { ...OPTIONS, frames: 6, fps: 2, workers: 3 }
+
 const captureLent = (options: FramesOptions, sink: Parameters<typeof captureFrames>[1]) => captureFrames({ ...options, browser }, sink)
 
 after(async () => {
   await browser.close()
   await served.close()
+  rmSync(spillDir, { recursive: true, force: true })
 })
 
 describe('captureFrames', { timeout: BROWSER_TIMEOUT_MS }, () => {
@@ -78,8 +86,34 @@ describe('captureFrames', { timeout: BROWSER_TIMEOUT_MS }, () => {
   test('frames from parallel workers reach the sink in index order', async () => {
     const emitted: number[] = []
 
-    await captureLent({ ...OPTIONS, frames: 6, fps: 2, workers: 3, url: served.url('throws') }, async (i) => void emitted.push(i))
+    await captureLent({ ...PARALLEL, spillDir, url: served.url('throws') }, async (i) => void emitted.push(i))
 
     assert.deepEqual(emitted, [0, 1, 2, 3, 4, 5])
+    assert.deepEqual(readdirSync(spillDir), [])
+  })
+
+  // Mutation: captureFrames rejects without waiting for the other workers; their contexts are still open in afterEach.
+  test('a worker failure closes every page and removes the spill before the capture rejects', async () => {
+    const capture = captureLent({ ...PARALLEL, spillDir, url: `${served.url('throws')}&fail-at=2` }, async () => {})
+
+    await assert.rejects(capture, /^Error: page error at frame 4 \(2\.00 s\): throws fixture fails at 2\.00 s$/)
+    assert.deepEqual(readdirSync(spillDir), [])
+  })
+
+  // Mutation: a failed sink no longer aborts the capture; every chunk captures to its end first.
+  test('a sink failure rejects the capture and removes the spill', async () => {
+    const capture = captureLent({ ...PARALLEL, spillDir, url: served.url('throws') }, async () => {
+      throw new Error('encoder gone')
+    })
+
+    await assert.rejects(capture, /^Error: encoder gone$/)
+    assert.deepEqual(readdirSync(spillDir), [])
+  })
+
+  // Mutation: spillParent falls back to tmpdir() with workers above 1, which on a tmpfs /tmp spills a video into RAM.
+  test('parallel capture without a spill directory refuses before opening a page', async () => {
+    const capture = captureLent({ ...PARALLEL, url: 'http://127.0.0.1:9/unreachable' }, async () => {})
+
+    await assert.rejects(capture, /^Error: workers: 3 needs spillDir, a directory on real disk$/)
   })
 })

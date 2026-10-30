@@ -121,7 +121,7 @@ async function capture(input: RenderInput, paths: OutPaths, deps: RenderDeps): P
   const encoder = deps.startEncoder(paths.mp4, RENDER_FPS, paths.mix);
   const options: FramesOptions = {
     url: input.pageUrl, fps: RENDER_FPS, frames: Math.round(mixDurationS(input.timeline) * RENDER_FPS),
-    workers: input.workers, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
+    workers: input.workers, spillDir: input.outDir, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
   };
   try {
     const frames = await deps.captureFrames(options, (_, png) => encoder.write(png));

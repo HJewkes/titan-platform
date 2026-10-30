@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { afterAll as after, beforeAll as before, describe, test } from 'vitest'
 import { beatChunks, captureFrames, type FramesOptions } from './frames.js'
 import { serveFixtures, type Served } from './fixtures/serve-fixtures.js'
@@ -12,19 +15,22 @@ const VIEWPORT = { width: 320, height: 180 }
 const BROWSER_TIMEOUT_MS = 120_000
 
 let served: Served
+let spillDir: string
 
 before(async () => {
   served = await serveFixtures()
+  spillDir = mkdtempSync(path.join(tmpdir(), 'beat-chunks-spill-'))
 })
 
 after(async () => {
   await served.close()
+  rmSync(spillDir, { recursive: true, force: true })
 })
 
 async function render(options: Partial<FramesOptions>): Promise<Buffer[]> {
   const pngs: Buffer[] = []
   const url = `${served.url('beats')}&beat-s=${BEAT_S}`
-  await captureFrames({ ...VIEWPORT, fps: FPS, url, ...options }, async (i, png) => void (pngs[i] = png))
+  await captureFrames({ ...VIEWPORT, fps: FPS, url, spillDir, ...options }, async (i, png) => void (pngs[i] = png))
   return pngs
 }
 
