@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import { WorkflowRunStore, type StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAPABILITY, currentStep, dirtyUntilPushed, finish, hosts, loopWorld, orderEvents, REPO, results, shepherd, WAIT, X, Y, Z, type Loop } from "./merge-order-loop.test-helpers.js";
-import { MERGING_STALL_LIMIT_MS } from "./view.js";
+import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
 
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 

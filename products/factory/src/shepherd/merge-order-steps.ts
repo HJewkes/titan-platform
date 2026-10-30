@@ -11,7 +11,7 @@ import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, wit
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
-import { MERGING_STALL_LIMIT_MS } from "./view.js";
+import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
 
 export const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = ORDER_WAIT_STEP;
