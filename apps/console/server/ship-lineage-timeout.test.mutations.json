@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the timeout never fires",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "timer = setTimeout(() => resolve({ known: false, reason: \"github timed out\" }), timeoutMs);",
+      "replace": "timer = undefined;",
+      "kills": [
+        "a Ship round's lineage read bound rounds.get returns within the bound when GitHub stalls and marks lineage unknown with a reason"
+      ]
+    },
+    {
+      "name": "the timeout reads as no reason",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "reason: \"github timed out\"",
+      "replace": "reason: \"\"",
+      "kills": [
+        "a Ship round's lineage read bound rounds.get returns within the bound when GitHub stalls and marks lineage unknown with a reason"
+      ]
+    }
+  ]
+}
