@@ -482,8 +482,8 @@ describe("an assignment whose bound name the shell computes", () => {
     expect(hooked(line)).toBeNull();
   });
 
-  it("reads a long word in linear time", async () => {
-    await expectLinearWork((n) => {
+  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
+    expectLinearTime((n) => {
       const value = "]=".repeat(n);
       const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
       return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
