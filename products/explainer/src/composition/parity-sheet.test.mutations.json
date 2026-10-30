@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "an outro kind settles at its end, inside its fade",
+      "name": "a hook settles at its end, inside its exit",
       "file": "products/explainer/src/composition/parity-sheet.ts",
       "find": "const fade = Object.hasOwn(FADES_OUT_S, beat.kind) ? FADES_OUT_S[beat.kind]! : 0;",
       "replace": "const fade = 0;",
       "kills": [
-        "settle an outro kind before its 1 s fade, not in it"
+        "settle a hook before its 0.3 s exit, and an outro, which holds to its end, at its end less 0.1 s"
       ]
     },
     {
