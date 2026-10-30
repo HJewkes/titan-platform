@@ -197,8 +197,7 @@ export async function probeHealth(port: number, options: ProbeHealthOptions = {}
   try {
     const res = await fetch(`http://${options.host ?? "127.0.0.1"}:${port}${HEALTH_PATH}`, { signal: controller.signal });
     if (!res.ok) return null;
-    const body: unknown = await res.json();
-    return isRecord(body) ? body : null;
+    return await res.json();
   } catch {
     return null;
   } finally {
