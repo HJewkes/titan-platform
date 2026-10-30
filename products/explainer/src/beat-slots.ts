@@ -137,8 +137,15 @@ export type BeatSlotRef = keyof typeof BEAT_SLOTS;
 
 export const isSlotRef = (ref: string): ref is BeatSlotRef => Object.hasOwn(BEAT_SLOTS, ref);
 
-/** Whether slot `field` of schema `ref` is a list of elements with ids, so a cue may target its items. */
+/** Whether slot `field` of schema `ref` is one required display line (`Line`), a single element named by its field. */
+export const isLineField = (ref: BeatSlotRef, field: string): boolean => (BEAT_SLOTS[ref].shape as Record<string, z.ZodType>)[field] === Line;
+
+/**
+ * Whether slot `field` of schema `ref` is a list of elements with ids, so a cue may target its items, or one required
+ * line of text, which a cue targets by the field's own name.
+ */
 export function isTargetField(ref: BeatSlotRef, field: string): boolean {
+  if (isLineField(ref, field)) return true;
   const slot: z.ZodType | undefined = (BEAT_SLOTS[ref].shape as Record<string, z.ZodType>)[field];
   const list = slot instanceof z.ZodDefault ? slot.unwrap() : slot;
   if (!(list instanceof z.ZodArray)) return false;

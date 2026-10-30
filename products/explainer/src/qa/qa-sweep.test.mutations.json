@@ -12,7 +12,7 @@
     },
     {
       "name": "the qa stage sweeps even when the variant sets sweep: false",
-      "file": "products/explainer/src/qa/qa-stage.ts",
+      "file": "products/explainer/src/qa/qa-core.ts",
       "find": "sweep: config.sweep !== false, probe: true }",
       "replace": "sweep: true, probe: true }",
       "kills": [

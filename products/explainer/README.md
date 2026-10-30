@@ -386,7 +386,12 @@ predicate resolve's gate and render share): the board holds it by spec type with
 the `page` tree, with the render variant's style pack as `style-pack.css` (`:root { --pack-<slot>: var(--<token>); }`)
 linked from its head, and served beside the timeline; `renderVideo` renders it behind the run type's gate profile
 (`qa { mode: "gate", gate: loadQaGate(type) }`, or `"skip"` with `noQa`). The stage stores `mp4`, `vtt`,
-`render-manifest`, `timeline` and the `page` tree it served, which is the tree qa serves again. Render variant params:
+`render-manifest`, `timeline` and the `page` tree it served, which is the tree qa serves again. The pre-capture gate
+samples the cue moments and the 2 Hz sweep. After encode, the stage runs the qa stage's report core (`qa/qa-core.ts`)
+on the MP4, the page it captured and the qa stage's inputs, with the run type's timing, then every row of
+`QA_GATE_ROWS` (`qa/qa-gates.ts`, the same list the qa stage's checks read). The rows show on render's record as
+`qa:<row>`. A failing gate row refuses the render and keeps `qa.json` as the failed record's `qa-report`, so render
+refuses whatever the qa stage would fail (TP-4536). Render variant params:
 `workers` (capture workers, `min(16, cores)` by default, part of the key since worker count is still part of a
 render's identity), `twoRun` (render twice at the same worker count and report whether the MP4 bytes match, the
 `two-run` check, never a gate) and `noQa` (the manifest records `qaGate: "skipped"`). The page and capture sit behind

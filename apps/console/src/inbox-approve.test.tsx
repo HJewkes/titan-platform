@@ -132,7 +132,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
     const calls = renderApprove(ENDORSE, ENDORSE_READBACK, { inApp: true });
     const sheet = await openSheet("end-1");
     await act(async () => void fireEvent.click(await within(sheet).findByTestId("inbox-confirm-endorse")));
-    expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build", "inbox.prepare", "inbox.act"]));
+    expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build", "blockers.banner", "inbox.prepare", "inbox.act"]));
     expect(document.body.textContent).not.toMatch(/token/i);
   });
 });

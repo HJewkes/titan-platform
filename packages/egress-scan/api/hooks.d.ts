@@ -125,4 +125,61 @@ declare function withOwnTools(brokerPath: string, dirs: readonly string[]): stri
 /** The caller's absolute PATH plus its own scanner and node, the owner's passwd home, and the default terms policy. */
 declare const defaultScanInputs: () => ScanInputs;
 
-export { type Bake, CHAINED_HOOKS, ENVIRONMENT_SCRUB, type HookSetup, type HookShell, MISSING_TERMS_REFUSES, type PrePushPlan, type Resolve, STAMP_FILE, type ScanInputs, type ScanVerdict, type ScannerFacts, defaultScanInputs, gitHooksEnv, hardenedShebang, hookScripts, hookShell, hooksDirOf, isNoRewriteHooksDir, noRewriteHooksDir, ownToolDirs, passwdHome, posixShell, prePushScript, probeScanner, termsFileFor, withOwnTools, writeGitHooks };
+/**
+ * `<git-bin>/core`: the exec-path agents run git with (TP-4249). git puts its exec-path first on the
+ * PATH of every shell it starts, so there `git` and `git-<builtin>` are the push shim. It sits under
+ * the shim dir, so the pre-push hook drops it from its scan PATH with the shim.
+ */
+declare const gitMirrorDirFor: (shimDir: string) => string;
+/** An inherited GIT_EXEC_PATH would make a probe read the mirror back and mirror itself. */
+declare function probeGit(real: string, args: readonly string[]): string;
+/** Each mirror entry's link target: the shim for `git` and every dashed builtin, the real entry otherwise. */
+declare function mirrorEntries(listing: readonly string[], builtins: readonly string[], core: string, shim: string): Map<string, string>;
+/**
+ * Builds the mirror of the real `core` for the shim in `shimDir` and returns its stable path, or
+ * '' when git's version or core cannot be read. Then the link is removed, so the shim and the
+ * launcher both leave the exec-path alone rather than point git at a stale mirror.
+ */
+declare function writeGitMirror(shimDir: string, real: string, core: string, builtins: readonly string[]): string;
+
+/** git's rule for a config variable name, so any other word cannot be an alias. */
+declare const ALIAS_NAME: RegExp;
+/** Names the dir holding the agent's `git` shim in the launch plan; `run-agent` puts it first on PATH. */
+declare const GIT_SHIM_DIR_ENV = "AGENT_CHAT_GIT_SHIM_DIR";
+/** `<home>/git-bin`, beside the guard's `<home>/git-hooks`, so the pure plan builder needs no extra input. */
+declare const gitShimDirFor: (hooksDir: string) => string;
+/** The config-file locations the agent starts with, baked so one call cannot swap them. */
+interface SpawnConfigHome {
+    HOME?: string;
+    XDG_CONFIG_HOME?: string;
+}
+/**
+ * The agent's `git`: a push, found after global options or through `alias.<word>`, is refused when
+ * it skips verification or when the hooks path git resolves is not the guard's. A shell (`!`)
+ * alias runs only when its name is in `shellAliases` (CC-613). Everything else execs the real
+ * git, baked as an absolute path so the shim never finds itself.
+ */
+declare const gitShimScript: (real: string, guard: string, builtins: readonly string[], execPath?: string, shell?: string, shellAliases?: readonly string[], spawnHome?: SpawnConfigHome, mirror?: string) => string;
+declare const realpathOr: (file: string) => string;
+declare const isExecutableFile: (file: string) => boolean;
+/**
+ * The first `git` on PATH that is not an agent-chat shim, this one or any other (CC-1653: another
+ * shim baked as the real git runs its own guard's checks against this shim's hooks dir). Kept
+ * unresolved so a package upgrade does not strand it.
+ */
+declare function findRealGit(pathValue: string, shimDir: string): string | undefined;
+/** Rewritten through a rename, so a git call at that moment never execs a half-written file. */
+declare function writeGitShim(dir: string, guard: string, pathValue?: string, shellAliases?: readonly string[], spawnHome?: SpawnConfigHome): boolean;
+
+/** Starts the second line of every script agent-chat puts on an agent's PATH. */
+declare const SHIM_HEADER = "# Written by agent-chat";
+/**
+ * CC-1653: true when `file`, through any symlink, is a script agent-chat wrote. Keyed on content, not
+ * on where the file sits, so a shim under a relocated home, a mirror link or a test fixture counts too.
+ * sh must read a script to run it, so a file this cannot read is not a shim.
+ */
+declare function isAgentChatShim(file: string): boolean;
+/** A PATH entry holding an agent-chat `git` or `gh` shim. */
+declare const holdsAgentChatShim: (dir: string) => boolean;
+
+export { ALIAS_NAME, type Bake, CHAINED_HOOKS, ENVIRONMENT_SCRUB, GIT_SHIM_DIR_ENV, type HookSetup, type HookShell, MISSING_TERMS_REFUSES, type PrePushPlan, type Resolve, SHIM_HEADER, STAMP_FILE, type ScanInputs, type ScanVerdict, type ScannerFacts, type SpawnConfigHome, defaultScanInputs, findRealGit, gitHooksEnv, gitMirrorDirFor, gitShimDirFor, gitShimScript, hardenedShebang, holdsAgentChatShim, hookScripts, hookShell, hooksDirOf, isAgentChatShim, isExecutableFile, isNoRewriteHooksDir, mirrorEntries, noRewriteHooksDir, ownToolDirs, passwdHome, posixShell, prePushScript, probeGit, probeScanner, realpathOr, termsFileFor, withOwnTools, writeGitHooks, writeGitMirror, writeGitShim };

@@ -1,8 +1,8 @@
 import { fixPacket, implementerBrief, reviewerBrief, type FixFindings } from "./briefs.js";
 import { DEVICE_CHECK } from "./manifest.js";
 import * as S from "./schemas.js";
-import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
-import { evidenceDirOf, reviewerNameOf } from "./spec.js";
+import { cancelRun, commandIn, needComponents, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
+import { evidenceDirOf, reviewerNameOf, runsStep } from "./spec.js";
 
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
 const ReviewStep = S.AgentStepSchema(S.ReviewReportSchema);
@@ -12,6 +12,7 @@ const GATE_BROKEN = 3;
 /** A rejected report goes back to the same agent once with the rejection list; a second rejection stops the slice. */
 async function checkedReport(run: SliceRun, round: number, report: S.ImplementerReport): Promise<S.ImplementerReport> {
   for (let attempt = 0; ; attempt++) {
+    if (report.newPrimitivesRequested.length > 0) needComponents(run, report.newPrimitivesRequested);
     const payload = { report, partition: run.slice.partition };
     const input = { ...commandIn(run, run.spec.validate.report, { BS_HEAD: report.head }), payload, builtIn: [], repo: run.spec.repo, branch: run.branch, head: report.head };
     const verdict = await sliceStep(run, "bs-report-check", `${round}:${attempt}`, input, S.ValidationSchema);
@@ -48,7 +49,7 @@ function trackProgress(run: SliceRun, misses: Map<string, { score?: number; coun
 /** The preview sync, then once per slice the owner's check on a device, when the spec names a device step. */
 async function preview(run: SliceRun, round: number, head: string, asked: { device: boolean }): Promise<{ pass: boolean; detail: string } | undefined> {
   const spec = run.spec.preview;
-  if (!spec) return undefined;
+  if (!spec || !runsStep(run.spec, run.slice, "preview")) return undefined;
   const synced = await sliceStep(run, "bs-preview", round, commandIn(run, spec.command, { BS_HEAD: head }), S.PreviewSchema);
   if (!synced.pass || !spec.deviceStep || asked.device) return synced;
   asked.device = true;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadBeatSpecs } from "../beat-load.js";
+import { cuedTargets, loadBeatSpecs } from "../beat-load.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { parseCoverage, withCoverage } from "../lint-coverage.js";
 import { cueResolverFromWords } from "../cues.js";
@@ -22,11 +22,8 @@ import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { CAPTIONS_GATE, CONTRAST_GATE, FLASH_GATE, NARRATION_FACTS_GATE } from "../qa/gate-profile.js";
-import {
-  captionVerdict, chartMarkContrastVerdict, directionVerdict, flashVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict,
-  textContrastVerdict, timingVerdict, timingWarnVerdict,
-} from "../qa/qa-checks.js";
+import { CONTRAST_GATE } from "../qa/gate-profile.js";
+import { QA_GATE_ROWS } from "../qa/qa-gates.js";
 import { assertDurationAgreement } from "../render/duration-check.js";
 import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
@@ -137,10 +134,13 @@ function knownWords(input: CheckInput): Verdict {
   return { pass: unknown.length === 0, detail: unknown.length === 0 ? "every spoken word has phonemes" : `no phonemes for: ${shownList(named)}` };
 }
 
-/** Beats whose beat spec declares emphasis targets: with any, a script of no cues has nothing to resolve and fails. */
+/** Beats whose beat spec has target lists to cue: with any, a script of no cues has nothing to resolve and fails. */
 function cuedBeats(beats: ScriptV1["beats"]): number {
   const specs = loadBeatSpecs();
-  return beats.filter(({ visual }) => (specs.get(visual.beat ?? "")?.emphasis?.targets.length ?? 0) > 0).length;
+  return beats.filter(({ visual }) => {
+    const spec = specs.get(visual.beat ?? "");
+    return spec !== undefined && cuedTargets(spec).length > 0;
+  }).length;
 }
 
 /** Every cue the script names lands on a word the voice actually spoke, so no visual fires on a guess. */
@@ -216,35 +216,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   ],
   tts: [{ name: "cue-resolution", gate: true, reads: ["script", "words"], run: cueResolution }],
   render: [{ name: "duration-agreement", gate: true, reads: ["render-manifest"], run: durationAgreement }],
-  qa: [
-    { name: "held-errors", gate: true, reads: ["qa"], run: heldErrorsVerdict },
-    { name: "mp4-duration", gate: true, reads: ["qa"], run: mp4DurationVerdict },
-    { name: "motion-happened", gate: true, reads: ["qa"], run: measuredVerdict("motion-happened") },
-    { name: "clipped-text", gate: true, reads: ["qa"], run: measuredVerdict("clipped-text") },
-    { name: "content-fill", gate: true, reads: ["qa"], run: measuredVerdict("content-fill") },
-    { name: "stage-empty", gate: false, reads: ["qa"], run: measuredVerdict("stage-empty") },
-    { name: "picture-change", gate: true, reads: ["qa"], run: timingVerdict("picture-change") },
-    { name: "picture-change-warn", gate: false, reads: ["qa"], run: timingWarnVerdict("picture-change") },
-    { name: "static-window", gate: true, reads: ["qa"], run: timingVerdict("static-window") },
-    { name: "cue-onset", gate: true, reads: ["qa"], run: timingVerdict("cue-onset") },
-    { name: "reading-hold", gate: true, reads: ["qa"], run: timingVerdict("reading-hold") },
-    { name: "headline-label-words", gate: true, reads: ["qa"], run: timingVerdict("G9") },
-    { name: "narration-shared-run", gate: true, reads: ["qa"], run: timingVerdict("G10") },
-    { name: "words-per-frame", gate: true, reads: ["qa"], run: timingVerdict("words-per-frame") },
-    { name: "direction-gates", gate: false, reads: ["qa"], run: directionVerdict },
-    { name: "black-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("black", "black stretch") },
-    { name: "silence-2s", gate: false, reads: ["qa"], run: mediaScanVerdict("silence", "silence of 2 s or more") },
-    { name: "frozen-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("freeze", "frozen stretch") },
-    { name: "captions-complete", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("complete") },
-    { name: "captions-words", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("words") },
-    { name: "captions-lines", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("lines") },
-    { name: "captions-cps", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("cps") },
-    { name: "captions-onset", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("onset") },
-    { name: "narration-facts", gate: NARRATION_FACTS_GATE, reads: ["qa"], run: narrationFactsVerdict },
-    { name: "photosensitive-flash", gate: FLASH_GATE, reads: ["qa"], run: flashVerdict },
-    { name: "text-contrast", gate: CONTRAST_GATE, reads: ["qa"], run: textContrastVerdict },
-    { name: "chart-mark-contrast", gate: CONTRAST_GATE, reads: ["qa"], run: chartMarkContrastVerdict },
-  ],
+  qa: QA_GATE_ROWS,
   sheets: [],
 };
 

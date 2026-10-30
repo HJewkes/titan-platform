@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the repair starts from the split alone, with no still seed",
+      "file": "products/explainer/src/workflow/split-start.ts",
+      "find": "stillSeed(claimSplit(seed, failing, settle), failing, settle)",
+      "replace": "claimSplit(seed, failing, settle)",
+      "kills": [
+        "the split as the repair's starting script the still seed starts the repair on the split, never as its answer"
+      ]
+    },
+    {
+      "name": "a claim-card's claim needs its own cue, so a cue-less reply is refused",
+      "file": "products/explainer/src/beat-load.ts",
+      "find": "(spec.emphasis?.targets ?? []).filter((field) => !(isSlotRef(spec.slots) && isLineField(spec.slots, field)));",
+      "replace": "spec.emphasis?.targets ?? [];",
+      "kills": [
+        "the split as the repair's starting script a repaired split is kept only when it beats the seed"
+      ]
+    }
+  ]
+}
