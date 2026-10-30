@@ -59,9 +59,9 @@ export function parseBeatSlots(specs: ReadonlyMap<string, BeatSpec>, type: strin
   return result.data;
 }
 
-/** The element ids an emphasis cue may target in one beat's validated slots; a text slot (a claim) is one element, named by its field. */
+/** The element ids an emphasis cue may target in one beat's validated slots. */
 export function emphasisTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
-  return (spec.emphasis?.targets ?? []).flatMap((field) => (typeof slots[field] === "string" ? [field] : idsOf(slots[field])));
+  return (spec.emphasis?.targets ?? []).flatMap((field) => idsOf(slots[field]));
 }
 
 /**

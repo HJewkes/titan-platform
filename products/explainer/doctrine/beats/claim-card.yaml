@@ -7,5 +7,4 @@ slots: claim-card
 speech: { band: concept }
 durationS: [4, 8, 14]
 preset: false
-emphasis: { targets: [claim], treatments: [highlight] }
 recipe: "State one claim in a single line the viewer could repeat. Quote verbatim when the claim comes from a document, and keep the quote short; show the source chip. One claim per card."
