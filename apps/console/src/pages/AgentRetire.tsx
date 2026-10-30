@@ -14,7 +14,7 @@ type RetireOffer = { offer: true } | { offer: false; hint: string | null };
  * Whether the page offers Retire, and if not, what it says instead. The server's `retireOpOf` and the factory decide; this only
  * keeps a tap off the rows they always refuse. Never a forced retire: the roster carries no exit time to wait out the grace on.
  */
-export function retireOfferOf(agent: RosterEntry): RetireOffer {
+function retireOfferOf(agent: RosterEntry): RetireOffer {
   if (agent.state === "retired" || agent.origin !== "spawned" || agent.agentId === null) return { offer: false, hint: null };
   if (agent.seat !== null && agent.seat === agent.name) return { offer: false, hint: "A seat is retired by its owner session." };
   if (agent.state !== "exited") return { offer: false, hint: `${agent.name} is ${agent.state}: retire a working agent at the terminal.` };

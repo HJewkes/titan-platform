@@ -30,7 +30,7 @@ const PROPOSAL = { proposedBy: "you", proposal: "Retire from the agent page" } a
 const target = z.strictObject({ kind: z.literal("retire-agent"), name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/) });
 type Target = z.infer<typeof target>;
 
-export interface RetireTapSources {
+interface RetireTapSources {
   agents: AgentsSource | undefined;
   shepherd: ShepherdSource;
 }
@@ -44,7 +44,7 @@ export type TapPrepareResult =
 type TapActResult = { actionId: string; outcome: Outcome; message: string };
 
 /** The plain retire the console may ask the factory to preview for this roster row, or why it offers no Retire. */
-export function retireOpOf(entry: AgentRosterEntry | undefined, name: string): RetireOp | string {
+function retireOpOf(entry: AgentRosterEntry | undefined, name: string): RetireOp | string {
   if (entry === undefined) return `no unretired agent holds the name ${name}, so there is nothing to retire`;
   if (entry.seat !== null && entry.seat === entry.name) return "a seat is retired by its owner session";
   if (entry.origin !== "spawned" || entry.agentId === null) return `${name} was not spawned by agent-chat, so the console does not retire it`;
