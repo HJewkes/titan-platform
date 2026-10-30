@@ -55,8 +55,12 @@ const BRIEF: PropertyDescriptor = {
 function spawnedFrom(row: JournalRow, id: string): AgentIdentity {
   const agent = spawnedFields(row, id)
   Object.defineProperty(agent, SPAWN_ROW, { value: row })
-  return Object.defineProperty(agent, 'brief', BRIEF) as AgentIdentity
+  Object.defineProperty(agent, 'brief', BRIEF)
+  if (!hasBrief(agent)) throw new Error('the brief getter was not defined')
+  return agent
 }
+
+const hasBrief = (agent: Omit<AgentIdentity, 'brief'>): agent is AgentIdentity => 'brief' in agent
 
 const spawnedFields = (row: JournalRow, id: string): Omit<AgentIdentity, 'brief'> => ({
   agentId: id,
