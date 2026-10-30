@@ -1,6 +1,6 @@
 import { FLOW_DWELL_S, LIT_RAMP_S, SMALL_MOVE_S } from "./composition/beats/stage/video-timing.js";
 import { drawnBeats, isSlots, screenTokens, type DrawnBeat } from "./drawn-beats.js";
-import { closingMotionS, revealMotionS } from "./drawn-motion.js";
+import { revealMotionS } from "./drawn-motion.js";
 import { drawnTexts, isHeading, type DrawnText } from "./drawn-texts.js";
 import type { L0Check } from "./eval-l0.js";
 import { heldBeats, plannedCues, scriptPacing, stretches } from "./lint-cadence.js";
@@ -16,7 +16,7 @@ import { DEFAULT_PADDING, trueDuration } from "./workflow/tts-truing.js";
  * picture stands still between reveals, and static-window fails any still run past `pacing.staticMaxS`. Only a cue
  * the drawn kind reveals or lights an element on moves the picture: every reveal and emphasis resolve's fill draws,
  * each on its word. As qa does, the reading hold of each drawn text the voice does not say is not still time, and neither is a kind's
- * own entrance, count-up or fade. A beat ends where truing ends it, the settle after its tail included. As qa does,
+ * own entrance or count-up. A beat ends where truing ends it, the settle after its tail included. As qa does,
  * a settled frame the voice speaks over may stand still up to SETTLED_SPEECH_MAX_S (settled-speech.ts).
  */
 
@@ -71,7 +71,7 @@ function readingWindows(drawn: DrawnBeat, beat: ScriptBeat, cueAt: (cue: string)
   });
 }
 
-/** The parts of a stretch no window (a move, a fade, a reading hold) covers. */
+/** The parts of a stretch no window (a move, a reading hold) covers. */
 function uncovered([from, to]: [number, number], windows: readonly Window[]): [number, number][] {
   const runs: [number, number][] = [];
   let start = from;
@@ -123,7 +123,7 @@ function settledSpeech(moved: readonly Moved[], clock: Clock, endS: number): Set
 }
 
 /**
- * The beat's still runs past staticMaxS: between moves, to its trued end, outside each move, fade and reading hold,
+ * The beat's still runs past staticMaxS: between moves, to its trued end, outside each move and reading hold,
  * and not a settled frame under speech.
  */
 function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacing): StillStretch[] {
@@ -133,10 +133,8 @@ function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacin
   const endS = trueDuration(beat.plannedS, clock.speechS);
   const settled = settledSpeech(moved, clock, endS);
   const at = new Map(moved.filter(({ lit }) => !lit).map(({ cue, s }) => [cue, s]));
-  const closingS = drawn ? closingMotionS(drawn.filled) : 0;
   const windows = [
     ...moved.map(({ s, motionS }) => ({ fromS: s, toS: s + motionS })),
-    { fromS: endS - closingS, toS: endS },
     ...(drawn ? readingWindows(drawn, beat, (cue) => at.get(cue) ?? DEFAULT_PADDING.leadS, pacing) : []),
   ];
   const opener = new Map(moved.map(({ cue, s }) => [s, cue]));
