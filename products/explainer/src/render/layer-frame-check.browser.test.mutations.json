@@ -4,8 +4,8 @@
     {
       "name": "the layer check reads qa's sweep at phase 0 only",
       "file": "products/explainer/src/qa/layer-contrast.ts",
-      "find": "export const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;",
-      "replace": "export const SWEEP_PHASES_S = [0] as const;",
+      "find": "const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;",
+      "replace": "const SWEEP_PHASES_S = [0] as const;",
       "kills": [
         "the rendered frame check on one custom layer refuses a card off frame that qa holds only once the voiced start moves its 2 Hz sweep"
       ]

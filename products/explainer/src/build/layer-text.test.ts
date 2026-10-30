@@ -2,7 +2,8 @@ import { classify, DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa
 import { describe, expect, it } from "vitest";
 import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
-import { heldAtSamples, layerSamplings, qaSamplings } from "../qa/layer-contrast.js";
+import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
+import { qaSampleMoments } from "../qa/qa-timeline.js";
 import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
@@ -82,6 +83,8 @@ describe("the layer check's contrast rows", () => {
   const TIMELINE = { beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 6 }] }] };
   /** What the build check reads: qa's samplings, then its sweep at every 2 Hz phase the voiced start may land on. */
   const SAMPLINGS = layerSamplings(TIMELINE);
+  /** qa's own samplings of the beat as planned: the cue moments, then those with the 2 Hz sweep. */
+  const QA_SAMPLINGS = [qaSampleMoments(TIMELINE, false), qaSampleMoments(TIMELINE, true)];
   const shownAt = (seconds: readonly number[], finding: Finding) => (t: number) => (seconds.includes(t) ? [finding] : []);
 
   it("the build check and qa's low-contrast gate agree on the same element", () => {
@@ -114,7 +117,7 @@ describe("the layer check's contrast rows", () => {
     // Arrange
     const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
     const findingsAt = (t: number) => (t >= 2.15 && t <= 2.75 ? [card] : []);
-    const atPlannedPhase = qaSamplings(TIMELINE).flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+    const atPlannedPhase = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
 
     // Act
     const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
@@ -155,7 +158,7 @@ describe("the layer check's contrast rows", () => {
     const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
     const passing: Finding = { kind: "off-frame", el: "div.chip", text: "cleared", at: AT };
     const findingsAt = (t: number) => [...shownAt([1.9, 5], card)(t), ...shownAt([6.9], passing)(t)];
-    const qaHeld = qaSamplings(TIMELINE).flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+    const qaHeld = QA_SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
 
     // Act
     const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));

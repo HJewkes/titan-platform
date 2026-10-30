@@ -1,7 +1,5 @@
 import type { Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
-import { contentFill, MIN_CONTENT_FILL } from "../content-fill.js";
 import { cueResolverFromWords } from "../cues.js";
-import { FRAME_WORDS, frameWords } from "../qa/timing-gates.js";
 import type { BuilderRef } from "./beat-worker.js";
 import { FULL_COLOUR_RULE } from "./layer-fade.js";
 import type { LayerPacket } from "./layer-packet.js";
@@ -98,19 +96,6 @@ export const heldRows = (held: readonly HeldFinding[]): LayerTextRow[] =>
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
   probed.flatMap(({ t, texts }) => texts.filter(({ text }) => BAD_TEXT.test(text)).map(({ element, text }) => ({ beat, element, rule: "bad-text" as const, text, atS: t })));
-
-/** qa's content-fill gate on the layer's settled frame: its content spans under 60 % of the frame width. */
-export function contentFillRows(beat: string, settled: Pick<ProbedMoment, "t" | "boxes">, frame: { width: number; height: number }): LayerTextRow[] {
-  const fill = contentFill({ beat, t: settled.t, boxes: settled.boxes }, frame);
-  return fill >= MIN_CONTENT_FILL ? [] : [{ beat, element: "stage", rule: "content-fill", text: `${Math.round(fill * 100)} % of the frame width`, atS: settled.t }];
-}
-
-/** qa's words-per-frame gate on every probed frame of the layer, as one row at the frame with the most words. */
-export function frameWordRows(beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] {
-  const counts = probed.map(({ t, texts }) => ({ t, n: frameWords(texts) })).filter(({ n }) => n > FRAME_WORDS);
-  const most = counts.reduce<(typeof counts)[number] | undefined>((top, count) => (top === undefined || count.n > top.n ? count : top), undefined);
-  return most ? [{ beat, element: "frame", rule: "words-per-frame", text: `${most.n} words on screen`, atS: most.t }] : [];
-}
 
 /** One row per element, rule, text and fact, the earliest moment kept. */
 export function distinctRows(rows: readonly LayerTextRow[]): LayerTextRow[] {

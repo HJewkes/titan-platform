@@ -2,13 +2,13 @@ import { classify, type Finding, type HeldFinding, type Moment } from "@titan-de
 import { qaSampleMoments, type QaTimeline } from "./qa-timeline.js";
 
 /** Where each qa gate looks: render's pre-capture refusal reads the cue moments, the qa stage adds the 2 Hz sweep. */
-export const qaSamplings = (timeline: QaTimeline): Moment[][] => [qaSampleMoments(timeline, false), qaSampleMoments(timeline, true)];
+const qaSamplings = (timeline: QaTimeline): Moment[][] => [qaSampleMoments(timeline, false), qaSampleMoments(timeline, true)];
 
 /**
  * How far the voiced clock may move a beat's start past qa's 2 Hz grid, on a 10 Hz grid: tts sets the start only after
  * resolve, so the build check reads qa's sweep at each of these phases and holds what any one of them would.
  */
-export const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;
+const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;
 
 const round3 = (s: number): number => Math.round(s * 1000) / 1000;
 
