@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { BoundsSchema, type Bounds } from "../bounds.js";
@@ -12,11 +11,11 @@ import type { QuotaContext } from "../queue.js";
 import type { Digest } from "../digest.js";
 import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
+import { fakeEval, fakeMicro } from "./fake-eval.js";
 import { fakeMergeOnto } from "./fake-integrate.js";
 import { fakeSnapshotPorts, type SnapshotCalls, type SnapshotOptions } from "./fake-snapshot.js";
 
 const run = promisify(execFile);
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
 const IDENTITY = ["-c", "user.name=autoresearch fixture", "-c", "user.email=fixture@example.invalid"];
 
 type Named = Record<string, number>;
@@ -31,7 +30,7 @@ interface Mechanism {
   files?: Record<string, string>;
 }
 
-/** What `fake_eval.sh` reports: base metrics, which one carries ±sigma noise, and each mechanism's effect. */
+/** What `fakeEval` reports: base metrics, which one carries ±sigma noise, and each mechanism's effect. */
 export interface Policy {
   sigma: number;
   noisy: string;
@@ -219,10 +218,6 @@ const FIXTURE_LOOK = { aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: 
 
 export type FakeArPorts = ArPorts & { calls: FakeCalls };
 
-async function script(name: string, args: string[]): Promise<unknown> {
-  return JSON.parse((await run("bash", [join(FIXTURES, name), ...args])).stdout);
-}
-
 /** The idea's own edit; `applied/` is the fake evaluator's channel and stays out of the diff L0 checks. */
 function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, string> {
   const files = policy.mechanisms[idea.mechanism]?.files;
@@ -279,18 +274,18 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       return { ok: checked.code === undefined, code: checked.code, checks: checked.checks, diff: checked.size };
     },
     async micro(input: MicroRequest) {
-      const { idea, tree, rung } = input;
+      const { idea, rung } = input;
       calls.micro.push(idea.id);
       calls.microInputs.push(input);
       calls.runPins.push({ step: "l1", runPin: runPinIn(input) });
-      return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung, idea.mechanism]));
+      return ArMicroSchema.parse(fakeMicro(repo.policyPath, rung, idea.mechanism));
     },
     async evalCase({ tree, case: testCase, key, ...runPin }: RunPin & { tree: string; case: string; key: string }) {
       const ideaId = ideaOfTree.get(tree) ?? null;
       calls.evals.push({ ideaId, key });
       calls.runPins.push({ step: "eval", runPin: runPinIn(runPin) });
       await options.beforeEval?.(ideaId, key);
-      return ArResultSchema.parse(await script("fake_eval.sh", [repo.policyPath, tree, testCase, key]));
+      return ArResultSchema.parse(fakeEval(repo.policyPath, tree, testCase, key));
     },
   };
 }
