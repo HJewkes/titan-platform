@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TelegramConfig } from "./telegram.js";
+import { postedBody } from "./telegram-fakes.js";
 import type { TelegramInbound } from "./telegram-updates.js";
 import { pollUpdates, readChatIds } from "./telegram-updates.js";
 
@@ -34,7 +35,7 @@ function scriptedFetch(batches: unknown[][]): {
   const bodies: Array<Record<string, unknown>> = [];
   let call = 0;
   const doFetch: typeof fetch = async (_url, init) => {
-    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    bodies.push(postedBody(init));
     const batch = batches[call];
     call += 1;
     if (!batch) return await new Promise<Response>(() => {});
@@ -251,7 +252,7 @@ describe("readChatIds", () => {
     const bodies: Array<Record<string, unknown>> = [];
     const ids = await readChatIds(
       configWith(async (_url, init) => {
-        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        bodies.push(postedBody(init));
         return envelope([
           textUpdate(1, "a"),
           textUpdate(2, "b"),

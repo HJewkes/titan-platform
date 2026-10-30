@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Seats never reads the broker roster",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": "seats: roster ? seatLines(merged, roster, since) : []",
+      "replace": "seats: []",
+      "kills": [
+        "runDigestVerb lists coordinators from the broker roster and pools from pace.json (TP-4626)"
+      ]
+    },
+    {
+      "name": "Spend never reads pace.json",
+      "file": "products/factory/src/digest/command.ts",
+      "find": "spend: () => readPacePools(pacePath(io.env)),",
+      "replace": "spend: () => [],",
+      "kills": [
+        "runDigestVerb lists coordinators from the broker roster and pools from pace.json (TP-4626)"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES, isTerminalExecutionPhase } from "@titan-design/agent-protocol";
 import type { ExecutionRecord, ExecutionTransition } from "@titan-design/agent-protocol";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { executionLedgerMigration } from "./migration.js";
 import { SqliteExecutionLedger, recoverableSql } from "./sqlite-execution-ledger.js";
 
@@ -13,7 +14,8 @@ const until = "2026-09-11T00:00:10.000Z";
 const fence = { supervisorId: "owner-a", generation: 1 };
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function prepare(executionId = "execution", requestKey = "request"): ExecutionTransition<string> {
+type PrepareTransition = Extract<ExecutionTransition<string>, { kind: "prepare" }>;
+function prepare(executionId = "execution", requestKey = "request"): PrepareTransition {
   return { kind: "prepare", executionId, eventId: "prepare", expectedRevision: 0, occurredAt: start,
     execution: { executionId }, harness: "codex", requestKey, target: { kind: "fresh", namespace: "host" },
     agent: { agentId: "agent" }, owner: { ...fence, leaseUntil: until } };
@@ -40,7 +42,7 @@ describe("execution ledger", () => {
       expect(first.phase).toBe("prepared");
       applied(ledger, { kind: "begin_dispatch", executionId: "execution", eventId: "begin", expectedRevision: first.revision, occurredAt: start, fence });
       expect(ledger.apply(prepare())).toMatchObject({ ok: true, applied: false, record: { phase: "prepared" } });
-      expect(ledger.apply({ ...prepare(), harness: "claude-code" } as ExecutionTransition<string>)).toMatchObject({ ok: false, kind: "event_conflict" });
+      expect(ledger.apply({ ...prepare(), harness: "claude-code" })).toMatchObject({ ok: false, kind: "event_conflict" });
       expect(ledger.get("execution")?.phase).toBe("dispatching");
       expect(ledger.events("execution")).toHaveLength(2);
     } finally { db.close(); }
@@ -116,8 +118,9 @@ describe("execution ledger", () => {
     const { db, ledger } = setup();
     try {
       const record = applied(ledger, prepare());
-      expect(ledger.apply({ kind: "finish", executionId: "execution", eventId: "invalid", expectedRevision: record.revision, occurredAt: start,
-        fence, terminal: { outcome: "succeeded", result: new Error("opaque") as unknown as string } })).toMatchObject({ ok: false, kind: "invalid_transition" });
+      const opaqueLedger = new SqliteExecutionLedger<unknown>(db, { now: () => start });
+      expect(opaqueLedger.apply({ kind: "finish", executionId: "execution", eventId: "invalid", expectedRevision: record.revision, occurredAt: start,
+        fence, terminal: { outcome: "succeeded", result: new Error("opaque") } })).toMatchObject({ ok: false, kind: "invalid_transition" });
       expect(ledger.apply({ kind: "begin_dispatch", executionId: "execution", eventId: "future", expectedRevision: record.revision,
         occurredAt: "2026-09-11T00:00:01.000Z", fence })).toMatchObject({ ok: false, kind: "invalid_transition" });
       expect(ledger.events("execution")).toHaveLength(1);
@@ -144,26 +147,30 @@ it("treats reordered JSON event fields as the same idempotency receipt", () => {
   try {
     const event = prepare();
     applied(ledger, event);
-    expect(ledger.apply(Object.fromEntries(Object.entries(event).reverse()) as ExecutionTransition<string>)).toMatchObject({ ok: true, applied: false });
+    const reordered: ExecutionTransition<string> = { owner: { ...fence, leaseUntil: until }, agent: { agentId: "agent" }, target: { kind: "fresh", namespace: "host" },
+      requestKey: "request", harness: "codex", execution: { executionId: "execution" }, occurredAt: start, expectedRevision: 0, eventId: "prepare",
+      executionId: "execution", kind: "prepare" };
+    expect(Object.keys(reordered)).toEqual(Object.keys(event).reverse());
+    expect(ledger.apply(reordered)).toMatchObject({ ok: true, applied: false });
   } finally { db.close(); }
 });
 
 it("returns invalid_transition for malformed JSON payloads without partial writes", () => {
   const { db, ledger } = setup();
   try {
-    const malformedPrepare = { ...prepare(), owner: undefined } as unknown as ExecutionTransition<string>;
+    const malformedPrepare = partialFake<PrepareTransition>({ ...prepare(), owner: undefined });
     expect(ledger.apply(malformedPrepare)).toMatchObject({ ok: false, kind: "invalid_transition" });
     expect(ledger.get("execution")).toBeUndefined();
     const record = applied(ledger, prepare());
+    const base = { executionId: "execution", expectedRevision: record.revision, occurredAt: start };
     for (const event of [
-      { kind: "claim_owner", owner: undefined },
-      { kind: "renew_owner", fence, leaseUntil: undefined },
-      { kind: "finish", fence, terminal: null },
+      partialFake<ExecutionTransition<string>>({ ...base, kind: "claim_owner", eventId: "claim_owner" }),
+      partialFake<ExecutionTransition<string>>({ ...base, kind: "renew_owner", eventId: "renew_owner", fence }),
+      partialFake<ExecutionTransition<string>>({ ...base, kind: "finish", eventId: "finish", fence }),
     ]) {
-      expect(ledger.apply({ ...event, executionId: "execution", eventId: event.kind, expectedRevision: record.revision,
-        occurredAt: start } as unknown as ExecutionTransition<string>)).toMatchObject({ ok: false, kind: "invalid_transition" });
+      expect(ledger.apply(event)).toMatchObject({ ok: false, kind: "invalid_transition" });
     }
-    expect(ledger.apply(null as unknown as ExecutionTransition<string>)).toMatchObject({ ok: false, kind: "invalid_transition" });
+    expect(Reflect.apply(ledger.apply, ledger, [null])).toMatchObject({ ok: false, kind: "invalid_transition" });
     expect(ledger.get("execution")).toEqual(record);
     expect(ledger.events("execution")).toHaveLength(1);
   } finally { db.close(); }

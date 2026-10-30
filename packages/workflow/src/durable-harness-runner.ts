@@ -19,10 +19,15 @@ export interface DurableHarnessRunnerOptions<H extends Harness> {
 
 type Terminal<H extends Harness> = Extract<DurableSettlement<unknown, H>, { kind: "terminal" }>["terminal"];
 
+/** `JSON.stringify` returns undefined for a value with no JSON form, which its declared type leaves out. */
+function jsonText(value: unknown): string | undefined {
+  return JSON.stringify(value);
+}
+
 function outputText(result: DurableHarnessSuccess): string {
   if (result.output.kind === "text") return result.output.text;
   if (typeof result.output.value === "string") return result.output.value;
-  const text = JSON.stringify(result.output.value);
+  const text = jsonText(result.output.value);
   if (text === undefined) throw new Error("Durable structured output has no text representation");
   return text;
 }
