@@ -123,7 +123,7 @@ describe("owner-op.preview", () => {
 
       const answer = await preview(retireOp);
 
-      expect(answer.ok && answer.data.agent).toEqual({ name: "item-42", exited: false, liveRun: null });
+      expect(answer.ok && answer.data.agent).toEqual({ name: "item-42", exited: false, forceStop: expect.stringContaining("no unretired agent"), liveRun: null });
     });
 
     it("refuses as unavailable without agent-chat's roster", async () => {

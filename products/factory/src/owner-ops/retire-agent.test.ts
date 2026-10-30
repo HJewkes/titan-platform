@@ -132,12 +132,40 @@ describe("retire-agent", () => {
     expect(w.retireCalls()).toBeUndefined();
   });
 
-  // Kills: sending --force from the console, which skips agent-chat's grace and discards work.
-  it("refuses a forced retire before reading agent-chat", async () => {
-    const w = world();
+  describe("forced", () => {
+    const NOW = Date.parse("2031-03-05T00:10:00.000Z");
+    const exitedAgo = (ms: number) => new Date(NOW - ms).toISOString();
+    const forcedWorld = (fields: Record<string, unknown>) => {
+      const w = world();
+      w.deps.now = () => NOW;
+      w.setRoster([row(fields)]);
+      return w;
+    };
 
-    expect(await w.tap({ force: true })).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("--force") });
-    expect(w.retireCalls()).toBeUndefined();
+    it("refuses an agent exited 119 s ago, inside agent-chat's grace, and calls no retire", async () => {
+      const w = forcedWorld({ exitedAt: exitedAgo(119_000) });
+
+      expect(await w.tap({ force: true })).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringMatching(/^Wait 1 s/) });
+      expect(w.retireCalls()).toBeUndefined();
+    });
+
+    it("retires an agent exited 121 s ago with --force", async () => {
+      const w = forcedWorld({ exitedAt: exitedAgo(121_000) });
+
+      expect(await w.tap({ force: true })).toMatchObject({ outcome: "retired", name: NAME });
+      expect(w.retireCalls()).toEqual(["agent", "retire", NAME, "--force"]);
+    });
+
+    it.each([
+      ["carries no exitedAt", {}],
+      ["carries a null exitedAt", { exitedAt: null }],
+      ["is live, whatever its exitedAt", { state: "live", presence: "live", status: "running", exitedAt: exitedAgo(600_000) }],
+    ])("refuses a row that %s and calls no retire", async (_label, fields) => {
+      const w = forcedWorld(fields);
+
+      expect(await w.tap({ force: true })).toMatchObject({ outcome: "refused", reason: "class" });
+      expect(w.retireCalls()).toBeUndefined();
+    });
   });
 
   // Kills: dropping the Shepherd check, so a fix round's implementer is retired under a live run.

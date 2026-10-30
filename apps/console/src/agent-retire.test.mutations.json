@@ -31,7 +31,7 @@
     {
       "name": "the tap names the agent without its typed target",
       "file": "apps/console/src/pages/AgentRetire.tsx",
-      "find": "args: { target: { kind: \"retire-agent\", name } }",
+      "find": "args: { target: { kind: \"retire-agent\", name, ...(force && { force }) } }",
       "replace": "args: { name }",
       "kills": [
         "the agent page's Retire tap reads the agent back, then retires on the second tap and shows the broker's caveats"
