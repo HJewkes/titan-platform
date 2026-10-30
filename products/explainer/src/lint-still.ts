@@ -20,7 +20,7 @@ export interface StillStretch {
   after?: string;
 }
 
-export interface StillBeat {
+interface StillBeat {
   beat: ScriptBeat;
   stretches: StillStretch[];
 }

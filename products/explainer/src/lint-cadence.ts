@@ -60,7 +60,7 @@ export function cuelessKind(beat: ScriptBeat): string | undefined {
   return found && !found.takesCues ? found.kind : undefined;
 }
 
-export interface PlannedCue {
+interface PlannedCue {
   cue: string;
   /** Seconds into the beat's speech at the voiced band rate. */
   s: number;
