@@ -69,6 +69,20 @@ describe("busy runs on /health", () => {
     expect(busyRuns([run("a", "sh-account-wait:abc1234"), run("b", "sh-account-hold:abc1234")], parkPostMerge)).toEqual([{ runId: "b", step: "sh-account-hold:abc1234", phase: "review" }]);
   });
 
+  it("does not wait on a merging run parked in sh-order-wait, which replays that wait under the new build", async () => {
+    const runs = [run("a", "sh-order-wait:0"), run("b", "sh-order-wait:1")];
+
+    const { outcome, polls, elapsed } = await drain([busyRuns(runs, parkPostMerge)]);
+
+    expect(outcome).toMatchObject({ proceed: true });
+    expect(polls).toBe(1);
+    expect(elapsed).toBe(0);
+  });
+
+  it("still waits on a run actively merging beside an order-waiting one", () => {
+    expect(busyRuns([run("a", "sh-order-wait:0"), run("b", "merge:0")], parkPostMerge)).toEqual([{ runId: "b", step: "merge:0", phase: "merging" }]);
+  });
+
   it("marks a step whose route parks on restart as park", () => {
     expect(busyRuns([run("a", "post-merge")], parkPostMerge)).toEqual([{ runId: "a", step: "post-merge", phase: "park" }]);
   });
