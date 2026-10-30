@@ -20,7 +20,7 @@ type Pacing = NonNullable<ReturnType<typeof scriptPacing>>;
 type Cue = ScriptBeat["visual"]["cues"][number];
 
 /** One move the seed made, for the repair's hint. */
-export interface SeedMove {
+interface SeedMove {
   beat: string;
   rule: "retime" | "uncued" | "point" | "hold";
   target?: string;
