@@ -647,8 +647,7 @@ You need deterministic PNG frames, or an MP4, of a web page that animates on a t
 Key exports:
 
 - `protocol`: `TITAN_MOTION_GLOBAL`
-- `virtual-time`: `VIRTUAL_TIME_SCRIPT`
-- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`, `withBrowser`, `withCapturePage`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `screenshotFrame`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
