@@ -121,6 +121,8 @@ export interface Inspector {
   lum(c: Rgb): number
   hex(c: Rgb): string
   checkContrast(run: Run): void
+  turned(el: Element): boolean
+  insetOf(e: Element): Rect | undefined
   clipped(el: Element, r: Rect): Rect | null
   shown(el: Element): boolean
   checkDoubleChrome(): void

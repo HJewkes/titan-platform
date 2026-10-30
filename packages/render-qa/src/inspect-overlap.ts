@@ -67,9 +67,11 @@ function checkTextOverlap(h: Inspector, runs: Run[]): void {
   }
 }
 
+/** Painted boxes, each measured by its painted rect: its layout box less what its clip-paths hide. */
 function visibleBoxes(h: Inspector): Item[] {
   return [...document.querySelectorAll('body *')].filter((el) => !(el instanceof SVGElement) && h.isBox(el) && h.opacity(el) > 0.1 && !h.decor(el))
-    .map((el) => ({ el, r: h.asR(el.getBoundingClientRect()) })).filter((b) => b.r.width > 4 && b.r.height > 4 && b.r.width < h.opts.W - 10)
+    .map((el) => ({ el, layout: h.asR(el.getBoundingClientRect()) })).filter(({ layout }) => layout.width < h.opts.W - 10)
+    .map(({ el, layout }) => ({ el, r: h.clipped(el, layout) })).filter((b): b is Item => b.r !== null && b.r.width > 4 && b.r.height > 4)
 }
 
 function checkTextBox(h: Inspector, runs: Run[], boxes: Item[]): void {
@@ -86,10 +88,10 @@ function checkBoxes(h: Inspector, boxes: Item[]): void {
   for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) {
     if (h.related(a.el, b.el) || h.sitsOn(a, b)) continue
     const o = h.inter(h.shrink(a.r, 1), h.shrink(b.r, 1))
-    if (o && o.w * o.h >= 40) h.add('box-overlap', a.el, { text: h.textOf(a.el).slice(0, 40), other: h.textOf(b.el).slice(0, 40), otherEl: h.describe(b.el), area: Math.round(o.w * o.h) })
+    if (o && o.w * o.h >= 40) h.add('box-overlap', a.el, { text: h.textOf(a.el).slice(0, 40), other: h.textOf(b.el).slice(0, 40), otherEl: h.describe(b.el), area: Math.round(o.w * o.h), rect: h.r4(a.r) })
   }
   for (const b of boxes) {
-    if (!h.inFlight(b.el) && (b.r.left < -1 || b.r.top < -1 || b.r.right > W + 1 || b.r.bottom > H + 1)) h.add('off-frame', b.el, { text: h.textOf(b.el).slice(0, 40) })
+    if (!h.inFlight(b.el) && (b.r.left < -1 || b.r.top < -1 || b.r.right > W + 1 || b.r.bottom > H + 1)) h.add('off-frame', b.el, { text: h.textOf(b.el).slice(0, 40), rect: h.r4(b.r) })
   }
 }
 
