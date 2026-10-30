@@ -45,7 +45,9 @@ function makeRepo(): string {
 /** An agent that allocated a worktree and left its allocation record behind. */
 async function abandonedWorktree(repo: string, name = "scout"): Promise<string> {
   const { cwd, ref } = await worktreeStrategy.allocate({ agentName: name, baseCwd: repo });
-  held.push({ gitRoot: repo, branch: ref.branch as string, ...(ref.base ? { base: ref.base } : {}) });
+  const { branch } = ref;
+  if (branch === undefined) throw new Error("allocation has no branch");
+  held.push({ gitRoot: repo, branch, ...(ref.base ? { base: ref.base } : {}) });
   return cwd;
 }
 

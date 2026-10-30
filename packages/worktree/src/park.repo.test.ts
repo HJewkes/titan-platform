@@ -57,7 +57,9 @@ const treesUnder = (repo: string): number =>
 /** A finished agent's tree, as the caller recorded its allocation. */
 async function treeIn(repo: string, name = "worker-a", budget = 3): Promise<WorktreeRecord> {
   const { cwd, ref } = await createWorktreeAllocator({ budget }).allocate({ agentName: name, baseCwd: repo });
-  return { gitRoot: repo, worktree: cwd, branch: ref.branch as string };
+  const { branch } = ref;
+  if (branch === undefined) throw new Error("allocation has no branch");
+  return { gitRoot: repo, worktree: cwd, branch };
 }
 
 afterEach(() => {
