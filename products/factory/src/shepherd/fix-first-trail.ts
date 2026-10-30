@@ -111,3 +111,9 @@ export function convergenceFields(trail: readonly FixFirstEntry[] | undefined): 
   if (trail === undefined) return {};
   return { convergence: true, earlierFindings: trail.map(earlierFindingOf) };
 }
+
+/** How a brief counts a FIX_FIRST: 2nd, 3rd, 11th. */
+export function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
