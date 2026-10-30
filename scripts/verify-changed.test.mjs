@@ -153,6 +153,17 @@ describe("planCommands", () => {
     expect(vitest).toEqual({ label: "vitest related: full suite selected, deferred to CI", deferred: true });
   });
 
+  it.each(["pnpm-lock.yaml", "package.json", ".github/workflows/ci.yml"])(
+    "still plans a real vitest related run when %s changes beside a source file",
+    (extra) => {
+      // Mutant caught: deferring on the whole diff's scope, which skips local tests for lockfile and workflow edits.
+      const changed = ["packages/a/src/x.ts", extra];
+      const vitest = vitestOf(planCommands({ base: "origin/main", changed, workspace, hasTimeout: true }));
+      expect(vitest.deferred).toBeUndefined();
+      expect(vitest.args).toContain("packages/a/src/x.ts");
+    },
+  );
+
   it("reports a vitest cap kill as a timeout and any other nonzero exit as a failure", () => {
     // Mutant caught: reporting exit 124 with zero failed tests as "failed".
     const step = vitestOf(plan);

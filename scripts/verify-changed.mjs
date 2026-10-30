@@ -112,7 +112,8 @@ const DEFERRED_LABEL = "vitest related: full suite selected, deferred to CI";
 function vitestCommand(changed, workspace, hasTimeout, spool) {
   const related = relatedTestArgs(changed);
   if (!related) return null;
-  if (testScope(changed, workspace).mode === "full") return { label: DEFERRED_LABEL, deferred: true };
+  // Only the files handed to vitest can make it rerun everything; a lockfile or workflow change does not.
+  if (testScope(changed.filter((path) => SOURCE_EXT.test(path)), workspace).mode === "full") return { label: DEFERRED_LABEL, deferred: true };
   const vitest = ["pnpm", "exec", "vitest", ...related];
   // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
   const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
@@ -228,7 +229,7 @@ export function describeOutcome(step, status) {
 
 async function runStep(step, changed) {
   if (step.deferred) return { ok: true };
-  if (step.inProcess) return { ok: await locPasses(changed) };
+  if (step.inProcess) return { ok: await locPasses(changed), message: `${step.label} failed` };
   const { cmd, args, env } = step;
   const { status } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
   return describeOutcome(step, status);
@@ -244,7 +245,7 @@ async function main() {
     console.log(`verify:changed: ${step.label}`);
     const outcome = await runStep(step, changed);
     if (outcome.ok) continue;
-    console.error(`verify:changed: ${outcome.message ?? `${step.label} failed`}`);
+    console.error(`verify:changed: ${outcome.message}`);
     failed = true;
   }
   process.exitCode = failed ? 1 : 0;
