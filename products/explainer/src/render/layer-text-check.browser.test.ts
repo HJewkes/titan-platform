@@ -3,20 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { FontLoadError, launch } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BuilderRef } from "../build/beat-worker.js";
 import type { LayerTextCheck } from "../build/layer-text.js";
 import { buildPage } from "../composition/page.test-helpers.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
-
-// The in-process vite build runs rolldown, whose tokio and rayon pools default to one thread per core; their idle
-// workers spin in sched_yield, which on a loaded many-core host burned tens of sys-seconds for one small page build.
-// Hoisted so the caps are in the environment before vite's native binding starts either pool.
-vi.hoisted(() => {
-  process.env.ROLLDOWN_WORKER_THREADS ??= "4";
-  process.env.RAYON_NUM_THREADS ??= "4";
-});
 
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them. Each spans the frame width, so qa's content-fill gate passes.
 const BROWSER_TIMEOUT_MS = 240_000;
