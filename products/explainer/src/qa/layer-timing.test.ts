@@ -55,7 +55,7 @@ describe("qa's timing gates on a custom layer", () => {
   it("gives a finished layer under speech no settled allowance, as qa does not", () => {
     // Arrange
     const spoken = new Map([[BEAT, { durationS: 16, words: [{ word: "Parcels", startS: 0.4 }, { word: "wait", startS: 14 }] }]]);
-    const { layer: _custom, ...drawn } = layerBeat(16, [2, 6, 9, 12]);
+    const drawn: QaBeat = { id: BEAT, startS: 0, durationS: 16, cues: layerBeat(16, [2, 6, 9, 12]).cues };
     const still = input({ timeline: { beats: [layerBeat(16, [2, 6, 9, 12])] }, words: spoken, diffs: diffsWith(16, [2, 4, 6, 8, 9, 12]) });
     const template = { ...still, timeline: { beats: [drawn] } };
 

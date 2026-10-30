@@ -14,7 +14,10 @@ const seconds = (s: number): string => s.toFixed(1);
 /** Each timing gate qa's stage fails on a layer can break, as the rows a rebuild is told. */
 const LAYER_TIMING_RUNS: Record<LayerTimingRule, (beat: string, input: TimingInput) => LayerTextRow[]> = {
   "static-window": (beat, input) =>
-    staticStretches(input).map(({ fromS, s }) => ({ beat, element: "frame", rule: "static-window", text: `still for ${seconds(s)} s, from ${seconds(fromS)} s to ${seconds(fromS + s)} s of the beat`, atS: fromS })),
+    staticStretches(input).map(({ fromS, s }) => {
+      const text = `still for ${seconds(s)} s, from ${seconds(fromS)} s to ${seconds(fromS + s)} s of the beat`;
+      return { beat, element: "frame", rule: "static-window", text, atS: fromS };
+    }),
   "picture-change": (beat, input) => {
     const { pass, value, threshold } = pictureChange(input);
     return pass ? [] : [{ beat, element: "frame", rule: "picture-change", text: `${seconds(value ?? 0)} s between cue-driven changes, ${threshold}`, atS: 0 }];
@@ -34,7 +37,7 @@ export const QA_TIMING_GATE_COVER: Readonly<Record<string, "timing" | "text" | "
   "cue-onset": "voice",
 };
 
-export const LAYER_TIMING_RULES = Object.keys(LAYER_TIMING_RUNS) as LayerTimingRule[];
+export const LAYER_TIMING_RULES: readonly LayerTimingRule[] = ["static-window", "picture-change", "reading-hold", "G9"];
 
 /** Every timing row of one layer on its one-beat timeline. */
 export const layerTimingRows = (beat: string, input: TimingInput): LayerTextRow[] => LAYER_TIMING_RULES.flatMap((rule) => LAYER_TIMING_RUNS[rule](beat, input));
