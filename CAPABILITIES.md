@@ -869,12 +869,14 @@ Tier 1, `@titan-design/test-timing@0.0.0`. titan.test-timing/v1 per-file vitest 
 
 **Use this when:**
 
-You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). `openTimingStore` and `ingestArtifact` keep each record as one `runs` row and a `files` row per test file in SQLite, idempotent on the run id, with a `runner_class` per row so a CI runner is never compared with a bigger host. For service health samples use health; for the SQLite primitives use store-sqlite.
+You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). `openTimingStore` and `ingestArtifact` keep each record as one `runs` row and a `files` row per test file in SQLite, idempotent on the run id, with a `runner_class` per row so a CI runner is never compared with a bigger host. `ingestRecord`, `ingestGhArtifact` and `ingestSpool` archive each record gzipped with a checksum before storing it, from a downloaded CI artifact or a local spool. For service health samples use health; for the SQLite primitives use store-sqlite.
 
 Key exports:
 
-- `artifact`: `TimingArtifact`, `TimingFile`, `TimingRun`, `TIMING_SCHEMA_ID`, `parseTimingArtifact`, `timingArtifactReadSchema`, `timingArtifactSchema`
-- `store`: `TIMING_MIGRATIONS`, `ingestArtifact`, `openTimingStore`, `runnerClass`, `storeStats`
+- `artifact`: `parseTimingArtifact`, `timingArtifactReadSchema`, `timingArtifactSchema`
+- `store`: `ingestArtifact`, `openTimingStore`, `runnerClass`, `storeStats`
+- `archive`: `archiveRaw`, `fileSafeId`
+- `ingest`: `ghRunFetched`, `ingestGhArtifact`, `ingestRecord`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
 
 <a id="cap-worktree"></a>
