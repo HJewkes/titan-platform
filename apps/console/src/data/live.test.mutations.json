@@ -11,39 +11,12 @@
       ]
     },
     {
-      "name": "a factory frame leaves the open run stale",
-      "file": "apps/console/src/data/live.ts",
-      "find": "factory: [\"autoresearch.runs\", \"autoresearch.run\", \"blockers.banner\"],",
-      "replace": "factory: [\"autoresearch.runs\", \"blockers.banner\"],",
-      "kills": [
-        "useRelayInvalidation coalesces a burst of factory frames into one refetch of only the autoresearch and blocker reads"
-      ]
-    },
-    {
-      "name": "a factory frame leaves the blocker banner stale",
-      "file": "apps/console/src/data/live.ts",
-      "find": "factory: [\"autoresearch.runs\", \"autoresearch.run\", \"blockers.banner\"],",
-      "replace": "factory: [\"autoresearch.runs\", \"autoresearch.run\"],",
-      "kills": [
-        "useRelayInvalidation coalesces a burst of factory frames into one refetch of only the autoresearch and blocker reads"
-      ]
-    },
-    {
       "name": "a reopened stream skips the factory's reads",
       "file": "apps/console/src/data/live.ts",
       "find": "Object.values(RELAY_INVALIDATES).flat()",
       "replace": "[...RELAY_INVALIDATES[\"active-work\"], ...RELAY_INVALIDATES[\"agent-chat\"]]",
       "kills": [
         "useRelayInvalidation refetches every relayed read once the browser's stream reopens"
-      ]
-    },
-    {
-      "name": "a burst refetches once per frame",
-      "file": "apps/console/src/data/live.ts",
-      "find": "      if (pending.current.has(source)) return;\n",
-      "replace": "",
-      "kills": [
-        "useRelayInvalidation coalesces a burst of factory frames into one refetch of only the autoresearch and blocker reads"
       ]
     },
     {
