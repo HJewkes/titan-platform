@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
@@ -9,7 +10,10 @@ import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
 const HEAD = "c".repeat(40);
 const DISPATCHED_AT = 1_000_000;
 const input: AwaitVerdictInput = { repo: "octo/demo", pr: 7, head: HEAD, reviewerAgentId: "reviewer-1", reviewerSessionId: "session-1", dispatchedAt: DISPATCHED_AT };
-const locator = { source: { conversation: { nativeId: "session-1" } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>({
+  source: partialFake<SourceTextLocator["source"]>({ conversation: partialFake<SourceTextLocator["source"]["conversation"]>({ nativeId: "session-1" }) }),
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+});
 const verdictMessage = (writtenAt: number): ReviewerMessage => ({
   agentId: "reviewer-1",
   sessionId: "session-1",

@@ -69,7 +69,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   const final = messages.at(-1);
   if (!final) return { kind: "none" };
   if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
+  if (final.locator.source.conversation.nativeId !== input.reviewerSessionId) return { kind: "none" };
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   if (isUsageLimitNotice(final)) return { kind: "none", reason: USAGE_LIMIT_REASON, notice: final.text.trim(), ...(typeof final.synthetic?.resetsAt === "number" && { resetsAt: final.synthetic.resetsAt }) };

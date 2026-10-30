@@ -1531,41 +1531,6 @@
       "count": 2
     }
   },
-  "packages/review-panel/src/accept-verdict.differential.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    }
-  },
-  "packages/review-panel/src/accept-verdict.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/accept-verdict.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    }
-  },
-  "packages/review-panel/src/classify.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/depth-floor.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/review-panel/src/fix-first-findings.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/glob.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/rpc-client/src/client/canonical-key.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

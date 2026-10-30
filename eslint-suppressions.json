@@ -354,11 +354,6 @@
       "count": 1
     }
   },
-  "packages/review-panel/src/accept-verdict.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/review-panel/src/accept-verdict.ts": {
     "titan/max-line-length": {
       "count": 4
