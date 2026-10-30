@@ -2,7 +2,7 @@ import { useBeatTime } from "@titan-design/react-ui/motion";
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
-import { MAP, MAP_H, nodeLeft, nodeLit, RAIL_Y, tokenAt } from "./flow.js";
+import { MAP, MAP_H, nodeLeft, nodeLit, nodeWidth, RAIL_Y, tokenAt } from "./flow.js";
 import { fadeUp, mix, progress, SMALL_MOVE_S } from "./stage/video.js";
 
 /**
@@ -27,11 +27,11 @@ const FLOW_AFTER_S = 0.6;
 const ARROW_INSET = 14;
 
 // The step number brightens with its node: tertiary text on the lit node's brand tint reads 2.5:1, under QA's floor.
-function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit: number }) {
+function MapSlot({ node, k, count, t, lit }: { node: MapNode; k: number; count: number; t: number; lit: number }) {
   const filled = progress(t, node.atS);
   return (
     <div className="ex-map-node" style={{
-      left: nodeLeft(k), top: MAP.nodeTop, width: MAP.nodeW, height: MAP.nodeH,
+      left: nodeLeft(k, count), top: MAP.nodeTop, width: nodeWidth(count), height: MAP.nodeH,
       borderStyle: filled > 0 ? "solid" : "dashed",
       borderColor: mix(filled > 0 ? "var(--color-border-prominent)" : "var(--color-hairline-default)", "var(--color-brand-primary)", lit),
       background: mix("var(--color-surface-raised)", "var(--color-brand-primary)", lit * 0.25),
@@ -46,7 +46,7 @@ function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit
 function Edges({ nodes, t }: { nodes: readonly MapNode[]; t: number }) {
   return nodes.slice(1).map((node, i) => {
     const drawAtS = Math.max(node.atS, nodes[i]!.atS) + SMALL_MOVE_S;
-    const x0 = nodeLeft(i) + MAP.nodeW + ARROW_INSET;
+    const x0 = nodeLeft(i, nodes.length) + nodeWidth(nodes.length) + ARROW_INSET;
     const x1 = x0 + (MAP.gap - 2 * ARROW_INSET) * progress(t, drawAtS);
     return x1 > x0 ? <line key={node.id} x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" /> : null;
   });
@@ -69,7 +69,7 @@ function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly M
           <Edges nodes={nodes} t={t} />
           {token && <circle cx={token[0]} cy={token[1]} r={18} className="ex-map-token" />}
         </svg>
-        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} t={t} lit={nodeLit(t, k, flowAtS, nodes.length)} />)}
+        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} count={nodes.length} t={t} lit={nodeLit(t, k, flowAtS, nodes.length)} />)}
       </div>
     </>
   );
