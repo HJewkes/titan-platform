@@ -14,7 +14,7 @@ import {
 } from "@titan-design/registry";
 import type { DataSource } from "./client/data-source.js";
 
-export interface Task {
+interface Task {
   slug: string;
   title: string;
   status: "open" | "done";
