@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the order wait runs to the TTL",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": " || waitedOut(own, deps.now())) return [];",
+      "replace": ") return [];",
+      "kills": [
+        "TP-4434: a conflicted run's order wait ends at the merging stall limit wakes the fixer once the wait behind a long-held reservation passes the limit"
+      ]
+    }
+  ]
+}
