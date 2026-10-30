@@ -46,6 +46,19 @@ function nanCheck() {
   return { checked, check };
 }
 
+const AMBER_LAYER = "export default () => <div style={{ background: \"#f5a524\" }}><span id=\"parcels\" style={{ color: \"#ffffff\" }}>12</span></div>;\n";
+const ON_ACCENT_LAYER = "export default () => <div style={{ background: \"var(--color-brand-primary-solid)\" }}><span id=\"parcels\" style={{ color: \"var(--color-on-brand-primary)\" }}>12</span></div>;\n";
+
+/** Stands in for the rendered check: white on the amber fill measures 2.04:1, as qa's low-contrast rule reports it. */
+const amberCheck: LayerTextCheck = async ({ layer }) =>
+  layer.build.module.includes("#f5a524")
+    ? [{ beat: layer.beatId, element: "span#parcels", rule: "low-contrast", text: "12", atS: 1, contrast: { ratio: 2.04, need: 3, colour: "#ffffff", ground: "#f5a524" } }]
+    : [];
+
+const FADED_BADGE_LAYER = "export default () => <div id=\"parcels\"><span id=\"badge\" style={{ opacity: ramp(t, 1.2) }}>fixed</span></div>;\n";
+const SLID_BADGE_LAYER = "export default () => <div id=\"parcels\"><span id=\"badge\" style={{ transform: `translateY(${(1 - p) * 30}px)` }}>fixed</span></div>;\n";
+const FADED_SHAPE_LAYER = "export default () => <div id=\"parcels\"><div id=\"bar\" style={{ opacity: ramp(t, 1.2) }} /><span>12</span></div>;\n";
+
 const hostWith = (worker: BeatWorker, layerTextCheck: LayerTextCheck) =>
   fakeHost(fx, fakeScriptModel(), fakeRender(), { beatWorker: worker, layerTextCheck });
 
@@ -179,5 +192,94 @@ describe("the text check on custom-layer builds", () => {
 
     // Assert
     expect(packets).toHaveLength(1);
+  });
+
+  it("a layer drawing white text on an amber bar under 3:1 gets one rebuild naming the text and its ratio", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(AMBER_LAYER, ON_ACCENT_LAYER);
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, amberCheck));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/^the last build broke qa's text rules: low-contrast on span#parcels "12" \(#ffffff on #f5a524 is 2\.04:1, under the 3:1 .*--color-on-brand-primary/);
+    const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+    expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(ON_ACCENT_LAYER);
+  });
+
+  it("a layer whose text passes contrast is not rebuilt", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(ON_ACCENT_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, amberCheck));
+
+    // Assert
+    expect(packets).toHaveLength(1);
+  });
+
+  // Mutations: the opacity check never runs, or its hint drops the element or the text.
+  it("a layer that fades a text badge in by opacity gets one rebuild naming the badge", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(FADED_BADGE_LAYER, SLID_BADGE_LAYER);
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toContain('b1 badge "fixed": enter text at full colour, by translate, scale or clip-path, never an opacity fade');
+    const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+    expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(SLID_BADGE_LAYER);
+  });
+
+  it("a layer that fades a non-text shape is not flagged", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(FADED_SHAPE_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(1);
+  });
+
+  it("the opacity finding joins the other findings in the same single rebuild", async () => {
+    // Arrange
+    fx = fixture();
+    const both = FADED_BADGE_LAYER.replace("{ opacity", "{ background: \"#f5a524\", color: \"#ffffff\", opacity");
+    const contrastRow: LayerTextCheck = async ({ layer }) =>
+      layer.build.module.includes("#f5a524")
+        ? [{ beat: layer.beatId, element: "span#badge", rule: "low-contrast", text: "fixed", atS: 1.5, contrast: { ratio: 2.04, need: 3, colour: "#ffffff", ground: "#f5a524" } }]
+        : [];
+    const { packets, worker } = scriptedWorker(both, SLID_BADGE_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, contrastRow));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    const rebuild: string = JSON.parse(packets[1]!).rebuild;
+    expect(rebuild).toContain("low-contrast on span#badge");
+    expect(rebuild).toContain("it is mid-fade, so enter text at full colour");
+    expect(rebuild).toContain('b1 badge "fixed": enter text at full colour');
+  });
+
+  it("fails resolve when the rebuild still fades its text", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(FADED_BADGE_LAYER);
+
+    // Act
+    const run = runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    await expect(run).rejects.toThrow('after one rebuild: b1 badge fades text "fixed" by opacity');
+    expect(packets).toHaveLength(2);
   });
 });

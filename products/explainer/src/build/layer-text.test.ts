@@ -1,5 +1,9 @@
+import { classify, DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
-import { badTextRows, distinctRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
+import { contrastReport } from "../qa/contrast-check.js";
+import { CONTRAST } from "../qa/gate-profile.js";
+import { heldAtSamples, qaSamplings } from "../qa/layer-contrast.js";
+import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
 const AT = { x: 0, y: 0, w: 10, h: 10 };
@@ -66,5 +70,81 @@ describe("the rebuild hint for qa's narration rules", () => {
 
     // Assert
     expect(hint).toBe("the last build broke qa's text rules: unspoken-fact on div#more \"+ 4 late scans\" (the narration never says 4: draw no number or name the narration does not say; drop it or show only what is spoken)");
+  });
+});
+
+describe("the layer check's contrast rows", () => {
+  /** White on an amber bar as qa's in-page low-contrast rule reports it. */
+  const WHITE_ON_AMBER: Finding = { kind: "low-contrast", el: "div#count", text: "12", px: 56, ratio: 2.04, need: 3, fg: "#ffffff", bg: "#f5a524", at: AT };
+  /** A chip that slides across the stage, faint only where qa catches it mid-slide. */
+  const SLIDING_CHIP: Finding = { kind: "low-contrast", el: "div.chip", text: "cleared", px: 40, ratio: 2.35, need: 3, fg: "#3a7a5a", bg: "#32302e", at: AT };
+  /** qa's samples of a 10 s beat with cues at 1 s and 6 s: start, enter, 1.9 s, the 5 s midpoint, 6.9 s and the end. */
+  const SAMPLINGS = qaSamplings({ beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 6 }] }] });
+  const shownAt = (seconds: readonly number[], finding: Finding) => (t: number) => (seconds.includes(t) ? [finding] : []);
+
+  it("the build check and qa's low-contrast gate agree on the same element", () => {
+    // Arrange
+    const held = heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]);
+
+    // Act
+    const rows = heldRows(held);
+    const { below } = contrastReport([], held, CONTRAST, DEFAULT_OPTIONS).text;
+
+    // Assert
+    expect(rows.map((row) => [row.element, row.text, row.contrast?.ratio])).toEqual([["div#count", "12", 2.04]]);
+    expect(below.map((run) => [run.text, run.ratio])).toEqual([["12", 2.04]]);
+  });
+
+  it("a moving chip that qa does not hold is not rebuilt", () => {
+    // Arrange
+    const findingsAt = shownAt([1.9, 6.9], SLIDING_CHIP);
+
+    // Act
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows).toEqual([]);
+  });
+
+  it("holds text faint in two samples in a row, as qa does", () => {
+    // Arrange
+    const findingsAt = shownAt([1.9, 5], SLIDING_CHIP);
+
+    // Act
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows.map((row) => [row.text, row.atS])).toEqual([["cleared", 1.9]]);
+  });
+
+  it("tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix", () => {
+    // Arrange
+    const rows = heldRows(heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]));
+
+    // Act
+    const hint = layerTextHint(rows);
+
+    // Assert
+    expect(hint).toBe(
+      "the last build broke qa's text rules: low-contrast on div#count \"12\" (#ffffff on #f5a524 is 2.04:1, under the 3:1 its size needs: "
+        + "text on a filled shape uses that fill's on- text token, as var(--color-on-brand-primary) on var(--color-brand-primary-solid), or use a darker fill)",
+    );
+  });
+
+  // catches: a build check that holds only low-contrast at qa's samples, so qa refuses an off-frame card the build passed
+  it("the layer build check holds off-frame the same way qa does", () => {
+    // Arrange
+    const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
+    const passing: Finding = { kind: "off-frame", el: "div.chip", text: "cleared", at: AT };
+    const findingsAt = (t: number) => [...shownAt([1.9, 5], card)(t), ...shownAt([6.9], passing)(t)];
+    const qaHeld = SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+
+    // Act
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows.map((row) => [row.rule, row.element, row.atS])).toEqual([["off-frame", "div.lane", 1.9]]);
+    expect([...new Set(qaHeld.map((held) => held.finding.el))]).toEqual(["div.lane"]);
+    expect(layerTextHint(rows)).toContain("off-frame on div.lane \"Deploy\" (keep every painted part inside the 1920 by 1080 frame");
   });
 });

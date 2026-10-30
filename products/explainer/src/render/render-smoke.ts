@@ -6,6 +6,7 @@ import type { QaGate } from "../qa/gate-profile.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import { stageRecords } from "../workflow/report.js";
 import { planOf } from "../workflow/video-runs.js";
+import { StageFailure } from "../workflow/stage-failure.js";
 import { QaRefused } from "./qa-gate.js";
 import { RenderManifestSchema } from "./render-manifest.js";
 import { runRenderStage, type RenderEngine } from "./render-stage.js";
@@ -108,8 +109,9 @@ export async function renderSmoke(input: SmokeInput, engine: RenderEngine): Prom
   try {
     first = await renderOnce(input, inputs, gated);
   } catch (error) {
-    if (!(error instanceof QaRefused)) throw error;
-    return { ...base, qaGate: "refused", heldErrors: error.heldErrors, held: heldRows(input.keepDir), mp4s: [], pass: false };
+    const refusal = error instanceof StageFailure ? error.cause : error;
+    if (!(refusal instanceof QaRefused)) throw error;
+    return { ...base, qaGate: "refused", heldErrors: refusal.heldErrors, held: heldRows(input.keepDir), mp4s: [], pass: false };
   }
   const second = await renderOnce(input, inputs, gated);
   const { qaGate } = RenderManifestSchema.parse(JSON.parse(input.store.readText(first["render-manifest"]!)));

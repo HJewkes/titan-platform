@@ -3418,7 +3418,7 @@
   },
   "products/factory/src/presence-proof.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/factory/src/presence-proof.ts": {

@@ -108,6 +108,38 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     assert.deepEqual((await kindsAt('content-overflow-ink-clean')).kinds, [])
   })
 
+  // catches: a low-contrast finding that drops the colours or the threshold it was held to
+  test('a low-contrast finding names its text and ground colours and the ratio its size needed', async () => {
+    const [finding] = (await kindsAt('low-contrast-bad')).findings.filter((f) => f.kind === 'low-contrast')
+    assert.ok(finding)
+    assert.equal(finding.fg, '#4a5058')
+    assert.match(String(finding.bg), /^#[0-9a-f]{6}$/)
+    assert.ok(finding.ratio! < finding.need!)
+  })
+
+  // catches: off-frame measuring the layout box, which held a card waiting for its cue fully clipped 80 px right
+  test('a card fully hidden by its clip-path is not off-frame', async () => {
+    assert.deepEqual((await kindsAt('clip-hidden-clean')).kinds, [])
+  })
+
+  // catches: a percentage inset read as pixels, and a clip ignored on a partly revealed card
+  test('a partly clipped card is judged on its painted rect', async () => {
+    const inside = await kindsAt('clip-partial-clean')
+    const past = await kindsAt('clip-partial-bad')
+
+    const box = past.findings.find((f) => f.kind === 'off-frame' && f.at.h === 100)
+    assert.deepEqual(inside.kinds, [])
+    assert.deepEqual(box?.at, { x: 1700, y: 300, w: 300, h: 100 })
+  })
+
+  test('a visible card past the frame edge is still off-frame', async () => {
+    const open = await kindsAt('clip-open-bad')
+    const turned = await kindsAt('clip-turned-bad')
+
+    assert.deepEqual(open.kinds, ['off-frame'])
+    assert.deepEqual(turned.kinds, ['off-frame'])
+  })
+
   test('every finding carries the rectangle to annotate', async () => {
     const { findings } = await kindsAt('text-overlap-bad')
     assert.ok(findings.every((f) => f.at.w > 0 && f.at.h > 0))

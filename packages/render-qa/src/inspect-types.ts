@@ -39,6 +39,10 @@ export interface Finding {
   op?: number
   px?: number
   ratio?: number
+  /** low-contrast: the ratio the run's size needed, and its text and ground colours as drawn, `#rrggbb`. */
+  need?: number
+  fg?: string
+  bg?: string
   /** Which of several same-looking elements this is, in page order; absent when the element has no twin. */
   twin?: number
   /** Where to draw the annotation: the ink or box the finding is about. */
@@ -115,7 +119,10 @@ export interface Inspector {
   blend(c: Rgba, op: number, under: Rgb): Rgb
   bgBehind(el: Element): Rgb
   lum(c: Rgb): number
+  hex(c: Rgb): string
   checkContrast(run: Run): void
+  turned(el: Element): boolean
+  insetOf(e: Element): Rect | undefined
   clipped(el: Element, r: Rect): Rect | null
   shown(el: Element): boolean
   checkDoubleChrome(): void

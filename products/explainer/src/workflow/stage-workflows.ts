@@ -129,7 +129,7 @@ export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, ou
 
 /** The record of a stage that threw: its timing, and its spend when the body had spent before failing. */
 export function failedRecord(stage: StageName, startedAt: Date, endedAt: Date, error: unknown): StageRecord {
-  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks] } : {};
+  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks], outputs: error.outputs } : {};
   return stageRecord(stage, startedAt, endedAt, { outputs: {}, checks: [], ...spent, notes: [error instanceof Error ? error.message : String(error)] });
 }
 

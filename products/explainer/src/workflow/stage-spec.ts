@@ -29,13 +29,13 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
   gather: "g2",
   audition: "pp10",
-  script: "x21",
+  script: "x25",
   rewrite: "x13",
-  eval: "x12",
-  resolve: "p5c2s2f2s2d5",
+  eval: "x13",
+  resolve: "p5c2s2f2s2d8",
   tts: "p6d",
-  render: "m10c10",
-  qa: "x10x",
+  render: "m10c11",
+  qa: "x10z",
   sheets: "x10",
 };
 
@@ -47,7 +47,7 @@ const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
-  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
+  script: ["coverage", "seed-draft"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
   render: ["code", "slots", "generated-slots", "custom-layers"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 

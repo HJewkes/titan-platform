@@ -54,6 +54,11 @@
 
       // The frame rules: one pair per defect a frame review found and an earlier gate missed.
       const at = abs
+      /**
+       * A card at the right edge entering by a clip reveal: `shift` px right, its right `hide` percent clipped away, its
+       * words at its right end. `turn` adds a rotation, which leaves the clip's edges off the page axes.
+       */
+      const reveal = (hide, shift, turn = '') => div(box(1700, 300, 400, 100, { textAlign: 'right', transform: `translateX(${shift}px)${turn}`, clipPath: `inset(0px ${hide}% 0px 0px)` }), 'Deploy')
       /** Two chromes, the outgoing one hidden unless `overprint`: a chapter-line overprint at a beat boundary. */
       const chromes = (overprint) => div({ ...at(60, 900), visibility: overprint ? 'visible' : 'hidden' }, '5/9 Builder', { class: 'xp-chrome' })
         + div(at(60, 1000), '6/9 Courier', { class: 'xp-chrome' })
@@ -92,6 +97,11 @@
         { id: 'edge-through-pill-clean', kinds: [], view: strokeScene(200) },
         { id: 'off-frame-bad', kinds: ['off-frame'], view: div(box(1700, 300, 400, 100), 'Deploy') },
         { id: 'off-frame-clean', kinds: [], view: div(box(1400, 300, 400, 100), 'Deploy') },
+        { id: 'clip-hidden-clean', kinds: [], view: reveal(100, 80) },
+        { id: 'clip-partial-clean', kinds: [], view: reveal(50, 0) },
+        { id: 'clip-partial-bad', kinds: ['off-frame'], view: reveal(25, 0) },
+        { id: 'clip-open-bad', kinds: ['off-frame'], view: reveal(0, 80) },
+        { id: 'clip-turned-bad', kinds: ['off-frame'], view: reveal(100, 80, ' rotate(0.5deg)') },
         { id: 'content-overflow-bad', kinds: ['content-overflow', 'escapes-box'], view: div(box(300, 300, 240, 100), 'Software owner') },
         { id: 'content-overflow-clean', kinds: [], view: div(box(300, 300, 600, 100), 'Software owner') },
         { id: 'content-overflow-ink-clean', kinds: [], view: div(box(300, 300, 400, 52, { lineHeight: '58px', borderRadius: 26 }), 'verdict: adopt') },

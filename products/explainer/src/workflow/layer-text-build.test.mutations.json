@@ -4,7 +4,7 @@
     {
       "name": "a layer that breaks a text rule is never rebuilt",
       "file": "products/explainer/src/workflow/layer-build.ts",
-      "find": "if (rows.length === 0) return { build: layer.build };",
+      "find": "if (rows.length === 0 && faded.length === 0) return { build: layer.build };",
       "replace": "if (rows.length >= 0) return { build: layer.build };",
       "kills": [
         "the text check on custom-layer builds rebuilds once a layer that draws NaN, naming the element and rule, and stores the rebuild",

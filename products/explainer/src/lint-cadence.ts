@@ -52,7 +52,7 @@ function drawn(beat: ScriptBeat): Drawn | undefined {
   return { budget: beatBudget(spellSpokenNumbers(beat), found.band, bands), kind: found.beat, takesCues: found.layer === "custom" || targets.length > 0 };
 }
 
-const voicedBudget = (beat: ScriptBeat): BudgetRow | undefined => drawn(beat)?.budget;
+export const voicedBudget = (beat: ScriptBeat): BudgetRow | undefined => drawn(beat)?.budget;
 
 /** The kind the beat is drawn as when no script cue can move it (a claim-card, a button), else undefined. */
 export function cuelessKind(beat: ScriptBeat): string | undefined {

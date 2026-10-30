@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer check holds no low-contrast rows",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (kind !== \"low-contrast\") return [];",
+      "replace": "return [];",
+      "kills": [
+        "the layer check's contrast rows the build check and qa's low-contrast gate agree on the same element",
+        "the layer check's contrast rows holds text faint in two samples in a row, as qa does",
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    },
+    {
+      "name": "the contrast hint drops the colours and ratio",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (contrast === undefined) return RULE_FIX[row.rule];",
+      "replace": "return RULE_FIX[row.rule];",
+      "kills": [
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    }
+  ]
+}

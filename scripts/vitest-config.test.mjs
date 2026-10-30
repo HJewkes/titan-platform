@@ -48,6 +48,13 @@ it("runs every active-work __tests__ file in exactly one project", () => {
   for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
 });
 
+// A spawn forks its whole parent; in threads, the repo files' git calls forked the multi-GB vitest process (TP-4521).
+it("runs the git-spawning repo tier in forks with the worker heap cap", () => {
+  const repo = config.test.projects.find((project) => project.test.name === "repo");
+  expect(repo.test.pool).toBe("forks");
+  expect(repo.test.execArgv).toEqual(expect.arrayContaining([expect.stringMatching(/^--max-old-space-size=\d+$/)]));
+});
+
 const SHARED_GRAPH_PROJECTS = ["factory", "explainer", "console"];
 const sharedGraphFiles = () =>
   ["products/factory/src", "products/explainer/src", "apps/console/{src,scripts,server}"].flatMap((dir) => globSync(`${dir}/**/*.test.{ts,tsx}`, { cwd: ROOT }));
@@ -63,6 +70,15 @@ it("keeps every file that mocks a module or stubs HOME out of the isolate:false 
   const isolating = sharedGraphFiles().filter((file) => /vi\.(mock|doMock)\(|stubEnv\(["']HOME/.test(readFileSync(join(ROOT, file), "utf8")));
   expect(isolating.length).toBeGreaterThan(0);
   for (const file of isolating) expect(projectsRunning(file).filter((name) => SHARED_GRAPH_PROJECTS.includes(name)), file).toEqual([]);
+});
+
+// As threads these graphs held the shared vitest process at 3 GB, and Node forks all of it for every git child another
+// thread worker spawned: the spawn-heavy files ran up to 2x slower (TP-4526).
+it("runs the isolate:false projects in their own capped forks, not in the shared vitest process", () => {
+  for (const name of SHARED_GRAPH_PROJECTS) {
+    const project = config.test.projects.find((candidate) => candidate.test.name === name);
+    expect(project?.test, name).toMatchObject({ pool: "forks", isolate: false, execArgv: [expect.stringMatching(/^--max-old-space-size=/)] });
+  }
 });
 
 function projectsRunning(file) {

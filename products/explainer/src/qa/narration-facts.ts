@@ -1,7 +1,7 @@
 import type { ProbedText } from "@titan-design/render-qa";
 import { numberToWords } from "@titan-design/speech-vet";
 import { z } from "zod";
-import { numberForms } from "../spoken-numbers.js";
+import { heardForms } from "../spoken-numbers.js";
 import { countingElements, PLAIN_NUMBER, settle } from "./counting-figures.js";
 
 /**
@@ -41,8 +41,8 @@ const NUMBER_WORDS = new Set([
 ]);
 const SCALES = new Map([["hundred", 100], ["thousand", 1e3], ["million", 1e6], ["billion", 1e9]]);
 
-/** numberForms' single form as a number, the percent sign dropped: "40%" on screen and "forty" heard are one value. */
-const valuesOf = (mention: string): number[] => numberForms(mention).map((form) => Number(form.replace(/%$/, ""))).filter(Number.isFinite);
+/** heardForms as numbers, the percent sign dropped: "40%" on screen and "forty" heard are one value. */
+const valuesOf = (mention: string): number[] => heardForms(mention).map((form) => Number(form.replace(/%$/, ""))).filter(Number.isFinite);
 
 const wordsOf = (spoken: string): string[] => spoken.toLowerCase().split(/\s+/).map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, "")).filter(Boolean);
 

@@ -38,9 +38,8 @@ function checkRuns(h: Inspector, runs: Run[]): void {
   for (const run of runs) {
     if (run.px < floorPx) h.add('small-text', run.el, { text: run.text.slice(0, 40), px: run.px, rect: h.r4(run.box) })
     if (run.text.includes('…')) h.add('ellipsis', run.el, { text: run.text.slice(-40), rect: h.r4(run.box) })
-    if (!h.inFlight(run.el) && (run.box.left < -1 || run.box.top < -1 || run.box.right > W + 1 || run.box.bottom > H + 1)) {
-      h.add('off-frame', run.el, { text: run.text.slice(0, 40), rect: h.r4(run.box) })
-    }
+    const ink = h.inFlight(run.el) ? null : h.clipped(run.el, run.box)
+    if (ink && (ink.left < -1 || ink.top < -1 || ink.right > W + 1 || ink.bottom > H + 1)) h.add('off-frame', run.el, { text: run.text.slice(0, 40), rect: h.r4(ink) })
     h.checkEscape(run)
     h.checkContrast(run)
   }

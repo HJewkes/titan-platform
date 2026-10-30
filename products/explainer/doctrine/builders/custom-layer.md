@@ -50,6 +50,16 @@ The packet describes a single beat and nothing about its neighbours:
 - No text is smaller than 40 px, the video's type floor. The page raises smaller text to 40 px, so a
   layout sized for smaller text overflows its box.
 - Never show `NaN`, `undefined`, `null` or `[object …]`. The build check refuses a layer that does.
+- Text on a filled shape uses that fill's `--color-on-…` token: `var(--color-on-brand-primary)` on
+  `var(--color-brand-primary-solid)`, `var(--color-on-status-warning)` on
+  `var(--color-status-warning-solid)`. Text on the page's ground uses `var(--color-text-primary)`.
+  White on an amber or orange fill reads at about 2:1. The build check measures every text's
+  contrast against what is drawn behind it and refuses one under 4.5:1, or 3:1 at 40 px and over.
+- Enter text at full colour: by translate, scale or clip-path, never by an opacity that ramps, is
+  computed or sits below 1. Mid-fade, text reads low against its ground, and the build check measures
+  contrast at qa's samples, so a fade can pass there and fail on screen. Template beats enter text the
+  same way. Opacity on a shape that holds no text stays allowed. The build check reads the source and
+  refuses any element that renders text under an opacity other than a literal 1.
 - Never read the wall clock, start a timer, request an animation frame, fetch, or touch `window`,
   `document` or storage. A frame is a pure function of its time, so the same time always paints the
   same pixels.
