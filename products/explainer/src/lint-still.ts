@@ -115,9 +115,8 @@ const litMoves = (cue: string, s: number): Moved[] => [
   { cue, s: s + FLOW_DWELL_S, motionS: LIT_RAMP_S, lit: true },
 ];
 
-/** As static-window reads it: settled from the fill's last reveal (the cut, when it reveals none) to the trued end, under the voice. */
-function settledSpeech(drawn: DrawnBeat | undefined, moved: readonly Moved[], clock: Clock, endS: number): SettledSpeech | undefined {
-  if (!drawn) return undefined;
+/** As static-window reads it: settled from the last reveal, a custom layer's last cue (the cut, when it has none), to the trued end, under the voice. */
+function settledSpeech(moved: readonly Moved[], clock: Clock, endS: number): SettledSpeech {
   const { leadS } = DEFAULT_PADDING;
   const lastRevealS = Math.max(0, ...moved.filter(({ lit }) => !lit).map(({ s }) => s));
   return { settled: { fromS: lastRevealS, toS: endS }, speech: { fromS: leadS, toS: leadS + clock.speechS } };
@@ -132,7 +131,7 @@ function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacin
   if (!clock) return [];
   const moved = moves(drawn, clock);
   const endS = trueDuration(beat.plannedS, clock.speechS);
-  const settled = settledSpeech(drawn, moved, clock, endS);
+  const settled = settledSpeech(moved, clock, endS);
   const at = new Map(moved.filter(({ lit }) => !lit).map(({ cue, s }) => [cue, s]));
   const closingS = drawn ? closingMotionS(drawn.filled) : 0;
   const windows = [
