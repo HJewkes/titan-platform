@@ -74,6 +74,36 @@ describe("static-window gate", () => {
     expect(gate.pass).toBe(true);
   });
 
+  describe("a text revealed between two probe samples", () => {
+    // 26 characters, so a 2 s reading hold at 13 chars/s.
+    const label = "Ledger rows land each hour";
+    const probed = [moment(1, []), moment(1.8, [label]), moment(7, [label])];
+    /** Still from frame 46 to 197: 95 frames (3.17 s) past a hold that starts at 1.425 s, 84 past one at 1.8 s. */
+    const stillAfterReveal = diffs(8, (n) => n >= 46 && n <= 197);
+
+    it("starts the hold at the cue that revealed it, not at the sample that first showed it", () => {
+      const cued = { beats: [beat("b1", 0, 8, [{ name: "ledger", atS: 1.425 }])] };
+
+      const gate = staticWindow(input({ timeline: cued, diffs: stillAfterReveal, probed }));
+
+      expect(gate).toMatchObject({ value: 3.167, pass: false, beats: ["b1"] });
+    });
+
+    it("starts the hold where the picture starts to move when no cue falls between the samples", () => {
+      const settledThenEntering = diffs(8, (n) => (n > FPS && n < 43) || (n >= 46 && n <= 197));
+
+      const gate = staticWindow(input({ timeline: eight, diffs: settledThenEntering, probed }));
+
+      expect(gate).toMatchObject({ value: 3.167, pass: false });
+    });
+
+    it("keeps the first sample when nothing between the samples marks the reveal", () => {
+      const gate = staticWindow(input({ timeline: eight, diffs: stillAfterReveal, probed }));
+
+      expect(gate).toMatchObject({ value: 2.8, pass: true });
+    });
+  });
+
   it("reads its line from the profile, so a profile allowing 4 s passes the 3.1 s picture", () => {
     const base = fixedProfile();
     const lax = fixedProfile({ pacing: { ...base.pacing, staticMaxS: 4 } });
