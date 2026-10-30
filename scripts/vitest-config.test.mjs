@@ -48,6 +48,13 @@ it("runs every active-work __tests__ file in exactly one project", () => {
   for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
 });
 
+// A spawn forks its whole parent; in threads, the repo files' git calls forked the multi-GB vitest process (TP-4521).
+it("runs the git-spawning repo tier in forks with the worker heap cap", () => {
+  const repo = config.test.projects.find((project) => project.test.name === "repo");
+  expect(repo.test.pool).toBe("forks");
+  expect(repo.test.execArgv).toEqual(expect.arrayContaining([expect.stringMatching(/^--max-old-space-size=\d+$/)]));
+});
+
 const SHARED_GRAPH_PROJECTS = ["factory", "explainer", "console"];
 const sharedGraphFiles = () =>
   ["products/factory/src", "products/explainer/src", "apps/console/{src,scripts,server}"].flatMap((dir) => globSync(`${dir}/**/*.test.{ts,tsx}`, { cwd: ROOT }));
