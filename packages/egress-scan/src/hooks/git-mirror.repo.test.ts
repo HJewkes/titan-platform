@@ -92,7 +92,7 @@ function repo(): Repo {
   relocate(to, from, to);
   // A copy has new inodes and ctimes, which leave the index stale until refreshed; rebase refuses a tree it sees as dirty.
   git(move(template.work), "update-index", "-q", "--refresh");
-  const env = Object.fromEntries(Object.entries(template.env).map(([key, value]) => [key, move(value)])) as Repo["env"];
+  const env = { ...Object.fromEntries(Object.entries(template.env).map(([key, value]) => [key, move(value)])), PATH: move(template.env.PATH) };
   return { work: move(template.work), remote: move(template.remote), guard: move(template.guard), shimDir: move(template.shimDir), marker: move(template.marker), env };
 }
 
