@@ -11,8 +11,6 @@ import { parseTimeline } from "./timeline.js";
 
 const BROWSER_TIMEOUT_MS = 240_000;
 const FLOOR_PX = 40;
-/** The template keeps 10 % of the 1920 px frame clear on each side (--beat-content-width: 80 %). */
-const SIDE_MARGIN_PX = 192;
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
 let pageDir: string;
@@ -67,26 +65,6 @@ describe("the stage fit", { timeout: BROWSER_TIMEOUT_MS }, () => {
     assert.equal(render.pageDurationS, fixtureDurationS(fixture));
     assert.deepEqual(settled.errors, []);
     assert.ok(settled.value >= FLOOR_PX, `smallest text ${settled.value} px`);
-  });
-
-  // Mutation: let a tile grow past its share of the row; the four tiles then spill into the frame's margins.
-  test.each([
-    ["three", "stat-tiles-3.timeline.json", ["$1261", "$13.41", "v1"]],
-    ["four", "stat-tiles.timeline.json", ["$1261", "$13.41", "v1", "4821"]],
-  ])("%s stat tiles keep the frame's side margins and draw each prefix with its number", async (_count, fixture, shown) => {
-    const read = () => {
-      const edge = (el: Element) => el.getBoundingClientRect();
-      const tiles = [...document.querySelectorAll(".beat-stat")].map(edge);
-      const valueHeights = [...document.querySelectorAll(".beat-stat-value")].map((el) => el.getBoundingClientRect().height);
-      return { left: Math.min(...tiles.map((r) => r.left)), right: Math.max(...tiles.map((r) => r.right)), valueHeights, shown: [...document.querySelectorAll(".beat-stat-value")].map((el) => el.textContent) };
-    };
-
-    const { value } = await atMoment(fixture, 2.9, read);
-
-    assert.deepEqual(value.shown, shown);
-    assert.ok(value.valueHeights.every((h) => h === value.valueHeights[0]), `a value wrapped: heights ${value.valueHeights.join(", ")}`);
-    assert.ok(value.left >= SIDE_MARGIN_PX - 1, `left tile edge ${value.left} px`);
-    assert.ok(STAGE.width - value.right >= SIDE_MARGIN_PX - 1, `right tile edge ${STAGE.width - value.right} px from the frame edge`);
   });
 
   // Mutation: name a row's element by its own class alone; the row then loses which figure to shorten.

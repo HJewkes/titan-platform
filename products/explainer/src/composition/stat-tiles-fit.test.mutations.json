@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fit ignores how far a stat row's tiles spill",
+      "file": "products/explainer/src/composition/beats/stage/stageFit.ts",
+      "find": "return rowSpill(frame).reduce(",
+      "replace": "return [].reduce(",
+      "kills": [
+        "a stat row in the stage fit four stat tiles keep the frame's side margins and draw each prefix with its number"
+      ]
+    },
+    {
+      "name": "a stat value may wrap its prefix above its number",
+      "file": "products/explainer/src/composition/beats/stage/beats.css",
+      "find": "  white-space: nowrap;\n}\n/* Holds",
+      "replace": "}\n/* Holds",
+      "kills": [
+        "a stat row in the stage fit four stat tiles keep the frame's side margins and draw each prefix with its number"
+      ]
+    }
+  ]
+}
