@@ -125,7 +125,7 @@ function NextPage({ args, cursor, shown, counts }: { args: TasksArgs; cursor: st
   return (
     <VStack gap={4}>
       <StageGroups rows={shown} counts={counts} />
-      {page.status === "loading" ? <Skeleton variant="rounded" width="100%" height={44} accessibilityLabel="Loading more tasks" /> : <Alert status="error" message={`Could not load more tasks: ${page.error?.message ?? "no answer"}`} />}
+      {page.status === "loading" ? <Skeleton variant="rounded" width="100%" height={44} accessibilityLabel="Loading more tasks" /> : <Alert status="error" message={`Could not load more tasks: ${page.error.message}`} />}
     </VStack>
   );
 }

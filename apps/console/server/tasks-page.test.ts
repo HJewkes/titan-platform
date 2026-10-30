@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { invokeCommand } from "@titan-design/registry";
 import { activeWorkClient } from "./active-work.js";
-import { tasksCommands, type TasksResult } from "./tasks.js";
+import { tasksCommands } from "./tasks.js";
 import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 
 // Synthetic tasks, many and long-winded, so a page's size is what a large workspace would send; nothing here is real.
@@ -44,8 +44,10 @@ function answer(command: string, args: Record<string, unknown>): unknown {
 async function listTasks(args: Record<string, unknown>) {
   daemon ??= await startFakeDaemon({ ok: true }, answer);
   const source = { activeWork: activeWorkClient(daemon.port), sessions: { graphPath: "/nonexistent/graph.sqlite3" }, evidence: async () => [] };
-  const { envelope } = await invokeCommand(tasksCommands(source)["work.tasks"], args, { warnings: [], format: "json" });
-  return { bytes: JSON.stringify(envelope).length, data: (envelope as { data: TasksResult }).data };
+  const command = tasksCommands(source)["work.tasks"];
+  const { envelope } = await invokeCommand(command, args, { warnings: [], format: "json" });
+  if (!envelope.ok) throw new Error(envelope.error);
+  return { bytes: JSON.stringify(envelope).length, data: command.result.parse(envelope.data) };
 }
 
 describe("work.tasks over a workspace of thousands of open tasks", () => {
