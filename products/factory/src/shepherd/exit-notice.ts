@@ -182,6 +182,12 @@ export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: 
 export const exitNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined): StepRoute =>
   codeRoute(EXIT_NOTICE_STEP, now, async (raw: unknown) => sendExitNotice(ports, ExitNoticeInput.parse(raw)));
 
+/** Why a held wake started no fixer, and the findings it would have carried. */
+export interface HeldCause {
+  reason: string;
+  payload?: string;
+}
+
 /** Heads a seat was told about, per run; a replay of the run's notice steps rebuilds the set. */
 const noticedHeads = new WeakMap<object, Set<string>>();
 
@@ -206,10 +212,11 @@ function recordedWithoutNotice(run: NoticeRun): boolean {
  * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, no
  * record of the wake, or a run whose record took the gate without a notice.
  */
-export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: { reason: string; payload?: string }): Promise<ExitNoticeResult | undefined> {
+export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: HeldCause): Promise<ExitNoticeResult | undefined> {
   const noticed = noticedHeads.get(run.ctx) ?? noticedHeads.set(run.ctx, new Set()).get(run.ctx)!;
   if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined || recordedWithoutNotice(run)) return undefined;
-  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...(held !== undefined && { held: held.reason }), ...(held?.payload !== undefined && { heldPayload: held.payload }) }, ExitNoticeResult);
+  const heldInput = { ...(held !== undefined && { held: held.reason }), ...(held?.payload !== undefined && { heldPayload: held.payload }) };
+  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...heldInput }, ExitNoticeResult);
   if (result.sent) noticed.add(headSha);
   return result;
 }

@@ -6,7 +6,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, ciRedFailing, sentBackGate, type GateRun } from "./gates.js";
-import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts, type HeldCause } from "./exit-notice.js";
 import { seatOrGate } from "./gate-route.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
@@ -110,7 +110,7 @@ export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], hea
  * The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. After a
  * fix-proof wake that gate also offers the owner's waive-proof, as the NO_REPRO send-back does.
  */
-async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: { reason: string; payload?: string } }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
+async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: HeldCause }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
   const tell = async () => {
     const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
