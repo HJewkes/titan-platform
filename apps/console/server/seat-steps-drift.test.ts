@@ -9,7 +9,7 @@ function stringsInInitializer(file: string, declaration: RegExp): string[] {
   const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
   const initializer = declaration.exec(source)?.[1];
   if (initializer === undefined) throw new Error(`no SEAT_STEPS declaration found in ${file}`);
-  return [...initializer.matchAll(/"([^"]+)"/g)].map((match) => match[1] as string);
+  return [...initializer.matchAll(/"([^"]+)"/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
 }
 
 it("the console SEAT_STEPS mirror equals Shepherd's seat steps", () => {
