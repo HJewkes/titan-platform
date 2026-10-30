@@ -57,4 +57,22 @@ describe("titan-squash-message", () => {
     expect(result.code).toBe(2);
     expect(result.err).toContain("usage: titan-squash-message");
   });
+
+  it("defangs CI skip tokens in the title, body and commits that seat-merge sends through it", () => {
+    const input = {
+      ...INPUT,
+      title: "Add the widget [skip ci]",
+      body: "Adds the widget. [ci skip]\n\nskip-checks: true",
+      commits: [{ subject: "Add it [no ci]", body: "Detail [skip actions]" }],
+    };
+
+    const result = run(["--json"], JSON.stringify(input));
+
+    expect(result.code).toBe(0);
+    const message = JSON.parse(result.out) as { subject: string; body: string };
+    const text = `${message.subject}\n${message.body}`;
+    expect(text).not.toMatch(/\[\s*(?:skip ci|ci skip|no ci|skip actions)\s*\]/i);
+    expect(text).not.toMatch(/skip-checks:\s*true/i);
+    expect(text).toContain("(skip ci)");
+  });
 });
