@@ -50,6 +50,8 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
+  /** `shadow` records, after each round, what review-workflow would have decided, and dispatches nothing; `on:preflight` and `on` run as `off` until TP-3928 and TP-3929. Absent means `off`. */
+  workflow: z.enum(["off", "shadow", "on:preflight", "on"]).optional(),
   /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
   adversaryProfile: profileName.optional(),
   /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
@@ -75,9 +77,7 @@ export const ShepherdRepoConfigSchema = z.strictObject({
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
-export const FixerConfigSchema = z.strictObject({
-  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-});
+export const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
 
 function isTimeZone(zone: string): boolean {
   try {
