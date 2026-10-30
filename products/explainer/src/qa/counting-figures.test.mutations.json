@@ -27,6 +27,15 @@
       "kills": [
         "step numbers rising into place a number that moves more than a few pixels as it enters is held for its whole stay"
       ]
+    },
+    {
+      "name": "a figure with no probed position counts as a figure",
+      "file": "products/explainer/src/qa/counting-figures.ts",
+      "find": "element === undefined || !anchor ||",
+      "replace": "element === undefined ||",
+      "kills": [
+        "narration facts report a number changing in an element with no probed position is plain text, not a count"
+      ]
     }
   ]
 }
