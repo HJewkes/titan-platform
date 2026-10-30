@@ -48,10 +48,10 @@ const bannerBlocker = z.object({
   ageHours: z.number(),
   link: z.string(),
 });
-export type BannerBlocker = z.infer<typeof bannerBlocker>;
+type BannerBlocker = z.infer<typeof bannerBlocker>;
 
 const bannerResult = z.object({ thresholdHours: z.number(), count: z.number().int(), items: z.array(bannerBlocker), gaps: z.array(z.string()) });
-export type BannerResult = z.infer<typeof bannerResult>;
+type BannerResult = z.infer<typeof bannerResult>;
 
 export interface BannerInput {
   spoolItems: readonly SpoolBlocker[];
@@ -123,7 +123,7 @@ async function spoolBlocker(dir: string, name: string): Promise<SpoolBlocker | u
 }
 
 /** A file that will not read or parse is a gap naming the file, never its contents, and never hides the rest. */
-export async function readSpoolBlockers(dir: string): Promise<{ items: SpoolBlocker[]; gaps: string[] }> {
+async function readSpoolBlockers(dir: string): Promise<{ items: SpoolBlocker[]; gaps: string[] }> {
   const names = openDepositNames(await spoolNames(dir));
   const read = await Promise.all(names.map((name) => spoolBlocker(dir, name).catch(() => name)));
   return {
@@ -132,7 +132,7 @@ export async function readSpoolBlockers(dir: string): Promise<{ items: SpoolBloc
   };
 }
 
-export interface BlockerSources {
+interface BlockerSources {
   spoolDir: string;
   shepherd: Pick<ShepherdSource, "list">;
   thresholdHours?: number;
