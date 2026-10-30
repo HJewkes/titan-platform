@@ -226,16 +226,6 @@
       "count": 1
     }
   },
-  "packages/embed/src/create.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 6
-    }
-  },
-  "packages/embed/src/prefixes.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
   "packages/eslint-plugin/src/no-commented-code.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1

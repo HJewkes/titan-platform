@@ -1070,29 +1070,6 @@
       "count": 1
     }
   },
-  "packages/embed/src/create.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
-    }
-  },
-  "packages/embed/src/local-embedder.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/embed/src/ollama-embedder.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/embed/src/prefixes.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
   "packages/eslint-plugin/src/max-function-lines.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
