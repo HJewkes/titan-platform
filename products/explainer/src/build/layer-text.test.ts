@@ -1,4 +1,7 @@
+import { DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
+import { contrastReport } from "../qa/contrast-check.js";
+import { CONTRAST } from "../qa/gate-profile.js";
 import { badTextRows, distinctRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
@@ -25,7 +28,7 @@ describe("the layer check's rows", () => {
   it("keeps qa's small-text and under-chrome findings and no other kind", () => {
     const findings = [
       { kind: "small-text", el: "div.label", text: "held", at: AT },
-      { kind: "low-contrast", el: "div.dim", text: "faint", at: AT },
+      { kind: "wrap", el: "div.dim", text: "faint", at: AT },
       { kind: "under-chrome", el: "div.foot", text: "last scan", at: AT },
     ];
 
@@ -66,5 +69,37 @@ describe("the rebuild hint for qa's narration rules", () => {
 
     // Assert
     expect(hint).toBe("the last build broke qa's text rules: unspoken-fact on div#more \"+ 4 late scans\" (the narration never says 4: draw no number or name the narration does not say; drop it or show only what is spoken)");
+  });
+});
+
+describe("the layer check's contrast rows", () => {
+  /** White on an amber bar as qa's in-page low-contrast rule reports it. */
+  const WHITE_ON_AMBER: Finding = { kind: "low-contrast", el: "div#count", text: "12", px: 56, ratio: 2.04, need: 3, fg: "#ffffff", bg: "#f5a524", at: AT };
+
+  it("the build check and qa's low-contrast gate agree on the same element", () => {
+    // Arrange
+    const held = [{ kind: "low-contrast", beat: "b1", finding: WHITE_ON_AMBER, ts: [2], samples: 2, reason: "held" as const }];
+
+    // Act
+    const rows = qaRows("b1", 2, [WHITE_ON_AMBER]);
+    const { below } = contrastReport([], held, CONTRAST, DEFAULT_OPTIONS).text;
+
+    // Assert
+    expect(rows.map((row) => [row.element, row.text, row.contrast?.ratio])).toEqual([["div#count", "12", 2.04]]);
+    expect(below.map((run) => [run.text, run.ratio])).toEqual([["12", 2.04]]);
+  });
+
+  it("tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix", () => {
+    // Arrange
+    const rows = qaRows("b1", 2, [WHITE_ON_AMBER]);
+
+    // Act
+    const hint = layerTextHint(rows);
+
+    // Assert
+    expect(hint).toBe(
+      "the last build broke qa's text rules: low-contrast on div#count \"12\" (#ffffff on #f5a524 is 2.04:1, under the 3:1 its size needs: "
+        + "text on a filled shape uses that fill's on- text token, as var(--color-on-brand-primary) on var(--color-brand-primary-solid), or use a darker fill)",
+    );
   });
 });

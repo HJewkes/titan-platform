@@ -89,6 +89,9 @@ const { black, silence, freeze } = await mediaScan('out/video.mp4') // each a li
 `unlabelled-number`, `label-adjacent` and `misaligned`. The inspector also reports `ellipsis`, `escapes-box` and
 `crowding`, which never gate. Which of the gating kinds a product gates on is its own policy, passed to `classify`.
 
+A `low-contrast` finding carries the run's `ratio`, the `need` its size called for, and its text and ground colours
+as drawn (`fg`, `bg`, `#rrggbb`), so a caller can name the fix without measuring again.
+
 ## The data-qa-* protocol
 
 A page tells the inspector what its layout means with attributes on its own elements.

@@ -45,8 +45,8 @@ async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: 
 
 /**
  * The $0 check after a layer build: the layer alone on the composition page, seeked to each reveal point, held to qa's
- * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts and G10 rules
- * against the beat's spoken words. No model call; Chromium only.
+ * small-text, under-chrome and low-contrast rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts
+ * and G10 rules against the beat's spoken words. No model call; Chromium only.
  */
 export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerTextCheck {
   const engine = deps.engine ?? chromiumQaEngine();

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer check skips qa's low-contrast findings",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "[\"small-text\", \"under-chrome\", \"low-contrast\"]",
+      "replace": "[\"small-text\", \"under-chrome\"]",
+      "kills": [
+        "the layer check's contrast rows the build check and qa's low-contrast gate agree on the same element",
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    },
+    {
+      "name": "the contrast hint drops the colours and ratio",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (contrast === undefined) return RULE_FIX[row.rule];",
+      "replace": "return RULE_FIX[row.rule];",
+      "kills": [
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    }
+  ]
+}

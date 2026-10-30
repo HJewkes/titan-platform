@@ -31,15 +31,21 @@ function lum(_h: Inspector, c: Rgb): number {
   return 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2])
 }
 
+function hex(_h: Inspector, c: Rgb): string {
+  return `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`
+}
+
 function checkContrast(h: Inspector, run: Run): void {
   if (run.el.closest('[data-qa-context]')) return
   const s = getComputedStyle(run.el)
-  const fg = h.rgba(run.el instanceof SVGElement ? s.fill : s.color)
   const bg = h.bgBehind(run.el)
-  const [text, ground] = [h.lum(h.blend(fg, run.op, bg)), h.lum(bg)]
+  const fg = h.blend(h.rgba(run.el instanceof SVGElement ? s.fill : s.color), run.op, bg)
+  const [text, ground] = [h.lum(fg), h.lum(bg)]
   const ratio = (Math.max(text, ground) + 0.05) / (Math.min(text, ground) + 0.05)
   const need = run.px >= h.opts.largePx ? h.opts.largeContrast : h.opts.minContrast
-  if (ratio < need) h.add('low-contrast', run.el, { text: run.text.slice(0, 40), ratio: Math.round(ratio * 100) / 100, op: Math.round(run.op * 100) / 100, px: run.px, rect: h.r4(run.box) })
+  if (ratio >= need) return
+  const colours = { need, fg: h.hex(fg), bg: h.hex(bg) }
+  h.add('low-contrast', run.el, { text: run.text.slice(0, 40), ratio: Math.round(ratio * 100) / 100, ...colours, op: Math.round(run.op * 100) / 100, px: run.px, rect: h.r4(run.box) })
 }
 
 /** Two chromes at once: the outgoing beat's headline and chapter line over the incoming one's. */
@@ -126,7 +132,7 @@ function checkLevel(h: Inspector): void {
   }
 }
 
-export const FRAME_RULE_STEPS: PartialSteps<'pageBg' | 'blend' | 'bgBehind' | 'lum' | 'checkContrast' | 'checkDoubleChrome' | 'checkUnderChrome'
+export const FRAME_RULE_STEPS: PartialSteps<'pageBg' | 'blend' | 'bgBehind' | 'lum' | 'hex' | 'checkContrast' | 'checkDoubleChrome' | 'checkUnderChrome'
   | 'checkFillOrder' | 'checkTone' | 'checkCardText' | 'checkAdjacent' | 'checkLevel'> = {
-  pageBg, blend, bgBehind, lum, checkContrast, checkDoubleChrome, checkUnderChrome, checkFillOrder, checkTone, checkCardText, checkAdjacent, checkLevel,
+  pageBg, blend, bgBehind, lum, hex, checkContrast, checkDoubleChrome, checkUnderChrome, checkFillOrder, checkTone, checkCardText, checkAdjacent, checkLevel,
 }
