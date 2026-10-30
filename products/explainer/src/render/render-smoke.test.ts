@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import path from "node:path";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { loadQaGate } from "../qa/gate-profile.js";
 import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
 import { ArtifactStore } from "../workflow/artifacts.js";
@@ -17,9 +18,11 @@ afterAll(dropSeeds);
 
 const HELD = { qa: { findingsAt: () => [{ kind: "text-overlap" as const, el: "h2", text: "a", other: "b", at: { x: 0, y: 0, w: 9, h: 9 } }] } };
 
+const ResolvedSchema = z.looseObject({ beats: z.array(z.looseObject({ id: z.string() })) });
+
 /** The run's artifacts with its first beat turned custom and a custom-layers tree holding that beat's layer, as resolve and layer-build leave a run. */
 function withCustomLayer(artifacts: Record<string, string>, store: ArtifactStore, dir: string): Record<string, string> {
-  const resolved = JSON.parse(store.readText(artifacts.resolved!)) as { beats: { id: string }[] };
+  const resolved = ResolvedSchema.parse(JSON.parse(store.readText(artifacts.resolved!)));
   const first = resolved.beats[0]!;
   const from = { runId: "input", stage: "input" };
   const custom = { ...resolved, beats: [{ ...first, layer: "custom", anchors: SYNTHETIC_ANCHORS }, ...resolved.beats.slice(1)] };
