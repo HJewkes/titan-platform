@@ -10,7 +10,7 @@ import type { ConsoleConfig } from "./config.js";
 import { shepherdReader } from "./shepherd.js";
 import { buildShipped, type ShippedBuildOptions, type ShippedBuildReport } from "./shipped-build.js";
 
-export interface ShippedBuildArgs extends ShippedBuildOptions {
+interface ShippedBuildArgs extends ShippedBuildOptions {
   json: boolean;
 }
 

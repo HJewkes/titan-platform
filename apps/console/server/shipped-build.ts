@@ -18,12 +18,12 @@ const themeAnswer = z.object({ themes: z.array(z.object({ title: z.string(), sum
 export type ThemeAnswer = z.infer<typeof themeAnswer>;
 
 /** About 300 merges a day: 40 per call keeps a prompt near 40 KB, and 12 calls caps a day at $6. */
-export const BATCH_SIZE = 40;
-export const MAX_CALLS = 12;
+const BATCH_SIZE = 40;
+const MAX_CALLS = 12;
 const BODY_BYTES = 1024;
 const CALL_BUDGET_USD = 0.5;
 /** `claude-print` exits 2 the same way for a logged-out CLI; the timer reads it as "fix the login", not a bad day. */
-export const AUTH_EXIT = 2;
+const AUTH_EXIT = 2;
 
 const SYSTEM_PROMPT = "You group merged pull requests into themes for a daily engineering summary. Answer only with the requested JSON.";
 
@@ -67,7 +67,7 @@ interface Source extends PrRef {
 }
 
 /** Batches of at most 40 per initiative, initiatives in name order; `group` keeps only that initiative's batches. */
-export function batchesOf(merged: readonly PrRef[], group?: string): Batch[] {
+function batchesOf(merged: readonly PrRef[], group?: string): Batch[] {
   const names = [...new Set(merged.map((pr) => pr.initiative))].filter((name) => group === undefined || name === group).sort();
   return names.flatMap((initiative) => {
     const prs = merged.filter((pr) => pr.initiative === initiative).sort((a, b) => a.repo.localeCompare(b.repo) || a.number - b.number);
@@ -98,7 +98,7 @@ async function readSources(github: ShippedBuildDeps["github"], prs: readonly PrR
   return sources;
 }
 
-export function promptFor(initiative: string, sources: readonly Source[]): string {
+function promptFor(initiative: string, sources: readonly Source[]): string {
   const items = sources.map((pr) => `## #${pr.number} ${pr.repo} ${pr.task}: ${pr.title}\n${pr.body}`);
   return [
     `These pull requests merged today in the "${initiative}" initiative. Group them into a few themes (at most 6).`,
@@ -110,7 +110,7 @@ export function promptFor(initiative: string, sources: readonly Source[]): strin
 }
 
 /** Keeps only PR numbers the batch holds, each once; an invented number is dropped and an omitted PR is unsummarized. */
-export function themesOf(answer: ThemeAnswer, batch: readonly PrRef[]): Pick<Group, "themes" | "unsummarized"> {
+function themesOf(answer: ThemeAnswer, batch: readonly PrRef[]): Pick<Group, "themes" | "unsummarized"> {
   const unclaimed = new Map(batch.map((pr) => [pr.number, pr]));
   const themes = answer.themes.flatMap(({ title, summary, prs }) => {
     const claimed = prs.flatMap((n) => {
