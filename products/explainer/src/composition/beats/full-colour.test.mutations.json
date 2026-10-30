@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the stat card fades in by opacity again",
+      "file": "products/explainer/src/composition/beats/StatBeat.tsx",
+      "find": "...rise(progressAt(t, atS), 24)",
+      "replace": "opacity: progressAt(t, atS)",
+      "kills": ["a template's text entering or leaving StatBeat is at full colour on its sampled early and late frames"]
+    },
+    {
+      "name": "the hook fades by opacity again",
+      "file": "products/explainer/src/composition/beats/hook.tsx",
+      "find": "...rise(inP * (1 - outP), 24)",
+      "replace": "opacity: inP * (1 - outP)",
+      "kills": ["a template's text entering or leaving hook is at full colour on its sampled early and late frames"]
+    },
+    {
+      "name": "the outro fades out by opacity again",
+      "file": "products/explainer/src/composition/beats/OutroBeat.tsx",
+      "find": "style={rise(outroPresence(t, durationS), 24)}",
+      "replace": "style={{ opacity: outroPresence(t, durationS) }}",
+      "kills": ["a template's text entering or leaving OutroBeat is at full colour on its sampled early and late frames"]
+    },
+    {
+      "name": "a bar's value fades in by opacity again",
+      "file": "products/explainer/src/composition/beats/BarChartBeat.tsx",
+      "find": "style={rise(shown, 8)}",
+      "replace": "style={{ opacity: shown }}",
+      "kills": ["a template's text entering or leaving BarChartBeat is at full colour on its sampled early and late frames"]
+    },
+    {
+      "name": "a graph point's value fades in by opacity again",
+      "file": "products/explainer/src/composition/beats/GraphBeat.tsx",
+      "find": "style={rise(lit, 8)}",
+      "replace": "style={{ opacity: lit }}",
+      "kills": ["a template's text entering or leaving GraphBeat is at full colour on its sampled early and late frames"]
+    }
+  ]
+}

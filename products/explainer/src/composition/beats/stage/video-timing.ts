@@ -10,3 +10,5 @@ export const SMALL_MOVE_S = 0.5;
 export const FLOW_DWELL_S = 0.8;
 /** How long a flow node's lit state ramps in and out. */
 export const LIT_RAMP_S = 0.2;
+/** How long the hook's content takes to enter, and to leave at the end of its beat. */
+export const HOOK_ENVELOPE_S = 0.3;
