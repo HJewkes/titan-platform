@@ -85,6 +85,10 @@ const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
 
+// scripts/test-footprint.mjs opts a run in to the per-file resource rows (TP-4571). First, so its per-file TMPDIR is in
+// place for the other setup files and its afterAll, which vitest runs in reverse, sees what all of them left.
+const footprintSetup = process.env.TITAN_TEST_FOOTPRINT_DIR ? ["scripts/vitest-footprint.mjs"] : [];
+
 export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
@@ -98,7 +102,7 @@ export default defineConfig({
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
     // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
-    setupFiles: ["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
+    setupFiles: [...footprintSetup, "products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
