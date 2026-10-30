@@ -34,6 +34,16 @@
       "kills": [
         "the Q-D20 hint for a closing button names the hold, so a shorter label does not leave the button still"
       ]
+    },
+    {
+      "name": "the hint offers a hold with the held band full",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "return held.length < max ? undefined :",
+      "replace": "return true ? undefined :",
+      "kills": [
+        "the Q-D22 hint for a still closing button with the held band full leads with a line the voice does not read, not a hold",
+        "the Q-D20 hint for a closing button with the held band full, asks for words the voice does not read in place of a hold"
+      ]
     }
   ]
 }

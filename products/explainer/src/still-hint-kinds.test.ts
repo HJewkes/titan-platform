@@ -33,6 +33,17 @@ describe("the Q-D22 hint for a still closing button", () => {
   });
 });
 
+describe("the Q-D22 hint for a still closing button with the held band full", () => {
+  it("leads with a line the voice does not read, not a hold", () => {
+    const still = dailyWith("ask-1", { plannedS: 12, spoken: LONG_ASK });
+    const script = ["goals-1", "reflection-1"].reduce((held, id) => dailyWith(id, { heldS: 3 }, held), still);
+
+    const clause = askClause(repairHint(l0Row(script, "Q-D22"), script) ?? "");
+
+    expect(clause).toMatch(/^ask-1 is a button, which reveals nothing on a cue: the held band is full \(goals-1, reflection-1 of at most 2\), so it takes no hold; else show a line the voice does not read/);
+  });
+});
+
 describe("the Q-D20 hint for a closing button", () => {
   // Regression (TP-4565): a repair shortened a button's label and left it still, since only Q-D22's hint said to hold it.
   it("names the hold, so a shorter label does not leave the button still", () => {
@@ -44,6 +55,17 @@ describe("the Q-D20 hint for a closing button", () => {
     expect(row.detail_beats).toContain("ask-1");
     expect(hint).toContain("ask-1 is a button, which reveals nothing on a cue, so a shorter label leaves it standing still: hold it with heldS as well");
     expect(hint).toContain("to pass Q-D22 (a piece that is not held stands still at most");
+  });
+
+  it("with the held band full, asks for words the voice does not read in place of a hold", () => {
+    const labelled = dailyWith("ask-1", { visual: { labels: ["Answer the call today: how do we get every lane into one shared queue?"] } });
+    const script = ["goals-1", "reflection-1"].reduce((held, id) => dailyWith(id, { heldS: 3 }, held), labelled);
+
+    const hint = repairHint(l0Row(script, "Q-D20"), script) ?? "";
+
+    expect(hint).toContain("ask-1 is a button, which reveals nothing on a cue, so a shorter label leaves it standing still, and the held band is full (goals-1, reflection-1 of at most 2)");
+    expect(hint).toContain("write the short label in words the voice does not read word for word");
+    expect(hint).not.toContain("hold it with heldS");
   });
 
   it("asks no hold of a button already held", () => {

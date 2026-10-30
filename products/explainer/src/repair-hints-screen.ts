@@ -96,8 +96,17 @@ const stillBeatText = (script: ScriptV1, { beat, stretches }: { beat: ScriptBeat
 // names those caps, and a move that adds no words (a cue, a hold) comes first.
 const WITHIN_CAPS = `within ${capClauses(["Q-D20", "Q-D15"])}`;
 
-function cuelessStill(beat: ScriptBeat, kind: string): string {
-  const lead = kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: first, adding no words, ${CLAIM_CUE}or hold it with heldS` : `${beat.id} is a ${kind}, which reveals nothing on a cue: first hold it with heldS, which adds no words`;
+// A hold is offered only while the held band has room; once it is full, the next move that adds no hold leads.
+function fullBand(script: ScriptV1): string | undefined {
+  const max = (scriptPacing(script) ?? PACING_DEFAULTS).held[1];
+  const held = heldBeats(script.beats);
+  return held.length < max ? undefined : `the held band is full (${listed(held)} of at most ${max}), so it takes no hold`;
+}
+
+function cuelessStill(script: ScriptV1, beat: ScriptBeat, kind: string): string {
+  const full = fullBand(script);
+  const hold = full ?? "or hold it with heldS";
+  const lead = kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: first, adding no words, ${CLAIM_CUE}${hold}` : `${beat.id} is a ${kind}, which reveals nothing on a cue: ${full ?? "first hold it with heldS, which adds no words"}`;
   const shown = kind === CLAIM_CARD ? "a claim" : "a line";
   return `${lead}; else show ${shown} the voice does not read word for word (its reading time is not still time) ${WITHIN_CAPS}, or draw it as a list whose rows each land on a cue, under the same Q-D20 and Q-D15 caps; trimming its words would break the fill floor`;
 }
@@ -112,7 +121,7 @@ function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   const fix = `Put a cue on a spoken word inside each stretch that names an on-screen element, on an item the beat reveals there; a cue on a word no element lands on moves nothing, and a kind reveals one element per item, so add the item ${WITHIN_CAPS}, or split the beat`;
   const cueless = found.flatMap(({ beat }) => {
     const kind = cuelessKind(beat);
-    return kind === undefined ? [] : [cuelessStill(beat, kind)];
+    return kind === undefined ? [] : [cuelessStill(script, beat, kind)];
   });
   return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text: ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
 }
@@ -153,12 +162,14 @@ const headingHint: Hint = (script, row) => {
 };
 
 // The label's reading time is what keeps a cue-less kind's picture from standing still, so shortening it can swap
-// Q-D20 for Q-D22; the hold answers both and adds no words.
+// Q-D20 for Q-D22; the hold answers both and adds no words, and with the band full, unspoken words keep that time.
 function shortenedStill(script: ScriptV1, beat: ScriptBeat): string | undefined {
   const kind = cuelessKind(beat);
   if (kind === undefined || kind === CLAIM_CARD || heldBeats([beat]).length > 0) return undefined;
-  const max = (scriptPacing(script) ?? PACING_DEFAULTS).held[1];
-  return `${beat.id} is a ${kind}, which reveals nothing on a cue, so a shorter label leaves it standing still: hold it with heldS as well (at most ${max} held beats in all), to pass ${capClauses(["Q-D22"])}`;
+  const lead = `${beat.id} is a ${kind}, which reveals nothing on a cue, so a shorter label leaves it standing still`;
+  const full = fullBand(script);
+  if (full !== undefined) return `${lead}, and ${full}: write the short label in words the voice does not read word for word, so its reading time keeps the picture from standing still, to pass ${capClauses(["Q-D22"])}`;
+  return `${lead}: hold it with heldS as well (at most ${(scriptPacing(script) ?? PACING_DEFAULTS).held[1]} held beats in all), to pass ${capClauses(["Q-D22"])}`;
 }
 
 const motionHint: Hint = (script, row) => {
