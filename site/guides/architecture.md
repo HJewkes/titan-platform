@@ -246,6 +246,7 @@ graph TD
   factory --> appPaths
   factory --> authority
   factory --> autoresearch
+  factory --> clusterPkg
   factory --> coordinator
   factory --> daemon
   factory --> fixProof

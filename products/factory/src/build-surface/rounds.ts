@@ -1,13 +1,12 @@
 import { fixPacket, implementerBrief, reviewerBrief, type FixFindings } from "./briefs.js";
+import { routedGates } from "./gate-rounds.js";
 import { DEVICE_CHECK } from "./manifest.js";
 import * as S from "./schemas.js";
-import { cancelRun, commandIn, needComponents, oneQuestionBrief, remainingUsd, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
-import { evidenceDirOf, reviewerNameOf, runsStep } from "./spec.js";
+import { commandIn, needComponents, oneQuestionBrief, remainingUsd, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
+import { reviewerNameOf, runsStep } from "./spec.js";
 
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
 const ReviewStep = S.AgentStepSchema(S.ReviewReportSchema);
-/** The repo's gate command exits 3 when a gate's own sensitivity proof fails: the gate is broken, not the code. */
-const GATE_BROKEN = 3;
 
 /** A rejected report goes back to the same agent once with the rejection list; a second rejection stops the slice. */
 async function checkedReport(run: SliceRun, round: number, report: S.ImplementerReport): Promise<S.ImplementerReport> {
@@ -24,14 +23,6 @@ async function checkedReport(run: SliceRun, round: number, report: S.Implementer
 
 async function fix(run: SliceRun, suffix: string, head: string, findings: FixFindings): Promise<S.ImplementerReport> {
   return (await sliceStep(run, "bs-fix", suffix, { name: run.agent, message: fixPacket(head, findings), budgetUsd: remainingUsd(run) }, ReportStep)).report;
-}
-
-export async function runGates(run: SliceRun, suffix: string, head: string): Promise<S.GateRun> {
-  const evidenceDir = evidenceDirOf(run.spec, run.slice.id, head);
-  const input = { ...commandIn(run, run.spec.gate.command, { BS_HEAD: head, BS_EVIDENCE: evidenceDir }), head, evidenceDir };
-  const gates = await sliceStep(run, "bs-gates", suffix, input, S.GateRunSchema);
-  if (gates.exitCode === GATE_BROKEN && ++run.brokenGateRuns >= 2) cancelRun(run, `slice ${run.slice.id}: a gate's sensitivity proof failed twice`);
-  return gates;
 }
 
 /** Per failing gate, rounds in a row its score did not improve; any gate at the limit stops the slice. */
@@ -99,7 +90,7 @@ export async function buildRounds(run: SliceRun, targets: unknown, green?: S.Gat
   const misses = new Map<string, { score?: number; count: number }>();
   const asked = { device: false };
   for (let round = 0; ; round++) {
-    const gates = round === 0 && green ? green : await runGates(run, String(round), head);
+    const gates = round === 0 && green ? green : await routedGates(run, round, head);
     trackProgress(run, misses, gates);
     const previewed = gates.pass ? await preview(run, round, head, asked) : undefined;
     const reviewed = gates.pass && previewed?.pass !== false ? await review(run, round, head) : undefined;

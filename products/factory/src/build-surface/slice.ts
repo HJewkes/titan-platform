@@ -1,7 +1,8 @@
 import type { StepResult } from "@titan-design/workflow";
 import { z } from "zod";
+import { runGates } from "./gate-rounds.js";
 import { DEPLOY_APPROVE } from "./manifest.js";
-import { buildRounds, runGates } from "./rounds.js";
+import { buildRounds } from "./rounds.js";
 import { evidenceDirOf, runsStep, skippedSteps, STEPS } from "./spec.js";
 import * as S from "./schemas.js";
 import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, sliceUsage, stopSlice, type SliceRun } from "./slice-run.js";

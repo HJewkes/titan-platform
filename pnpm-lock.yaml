@@ -1408,6 +1408,9 @@ importers:
       '@titan-design/autoresearch':
         specifier: workspace:^
         version: link:../../packages/autoresearch
+      '@titan-design/cluster':
+        specifier: workspace:^
+        version: link:../../packages/cluster
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator
