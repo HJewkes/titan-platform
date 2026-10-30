@@ -8,7 +8,7 @@ export interface Measured {
   rows: L0Result[];
 }
 
-export interface Splicing {
+interface Splicing {
   failing: (script: ScriptV1) => L0Result[];
   settle: (script: ScriptV1) => Stamped;
   /** Whether `after` makes progress over `before`: the same rule that keeps a whole reply. */

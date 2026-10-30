@@ -31,10 +31,19 @@
     {
       "name": "a seed keeps its orphan cues",
       "file": "products/explainer/src/workflow/model-stages.ts",
-      "find": "dropOrphanCues(planned(seed, plan), (candidate) => failingErrors(lint.rows(candidate)))",
+      "find": "orphansDropped(planned(seed, plan), lint)",
       "replace": "({ script: planned(seed, plan), moves: [] as string[] })",
       "kills": [
-        "an orphan cue target in the seed is dropped by code, so a seed whose only fault it was makes no model call"
+        "an orphan cue target is dropped from a seed by code, so a seed whose only fault it was makes no model call"
+      ]
+    },
+    {
+      "name": "a drafted reply keeps its orphan cues",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "orphanFree(wholeScript(plan), lint)",
+      "replace": "wholeScript(plan)",
+      "kills": [
+        "an orphan cue target is dropped from a drafted reply before its plan check, so it costs no plan retry"
       ]
     }
   ]

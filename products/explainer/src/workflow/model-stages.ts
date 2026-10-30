@@ -22,7 +22,7 @@ import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
   callsNote, checked, draftScript, failingErrors, failureList, planned, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan,
   sharedSections, stageUsage, wholeScript,
-  type Call, type CallSpend, type Lint, type Repaired, type ScriptPlan, type Written,
+  type Call, type CallSpend, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { hinted, keptOverSeed, splitStart } from "./split-start.js";
 import { holdStillBeats } from "../still-seed.js";
@@ -154,9 +154,22 @@ async function repairedDraft(call: Call, prompt: string, plan: ScriptPlan, lint:
   };
 }
 
+const orphansDropped = (script: ScriptV1, lint: Lint) => dropOrphanCues(script, (candidate) => failingErrors(lint.rows(candidate)));
+
+/** A parsed reply with its orphan cues dropped (`dropOrphanCues`), noted as dropped values. */
+function withoutOrphans(reply: Checked, lint: Lint): Checked {
+  if (!reply.script) return reply;
+  const { script, moves } = orphansDropped(reply.script, lint);
+  const dropped = [...(reply.dropped ?? []), ...moves];
+  return { ...reply, script, ...(dropped.length > 0 ? { dropped } : {}) };
+}
+
+/** The reader with each parsed reply's orphan cues dropped before its plan check, so they cost no plan retry. */
+const orphanFree = (reader: Reader, lint: Lint): Reader => ({ ...reader, check: (outcome) => withoutOrphans(reader.check(outcome), lint) });
+
 /** The single-call path: one draft call and its one retry, the ledger stamp, then the L0 repair rounds. */
 async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint): Promise<Written> {
-  const draft = await draftScript(call, prompt, wholeScript(plan, (script) => failingErrors(lint.rows(script))));
+  const draft = await draftScript(call, prompt, orphanFree(wholeScript(plan), lint));
   const retries = draft.retried ? 1 : 0;
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
@@ -168,7 +181,7 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
  * rows need. Its own name, not `draft`, keeps a base whose plan holds a draft from turning a later run into a resume.
  */
 async function seededDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint, seed: ScriptV1): Promise<Written> {
-  const { script, moves } = dropOrphanCues(planned(seed, plan), (candidate) => failingErrors(lint.rows(candidate)));
+  const { script, moves } = orphansDropped(planned(seed, plan), lint);
   const stamped = stampLedgerTerms(script, lint.spine, lint.rows);
   return repairedDraft(call, prompt, plan, lint, { stamped, usage: NO_USAGE, retries: 0, stripped: [], dropped: moves, retimed: [] });
 }

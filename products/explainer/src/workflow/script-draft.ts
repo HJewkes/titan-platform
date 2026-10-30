@@ -14,7 +14,6 @@ import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import type { RuleRegistry } from "../rules.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
 import { FILL_RULE, fillHint, TEMPLATE_FILL_ID } from "../script-fill.js";
-import { dropOrphanCues } from "../orphan-cues.js";
 import { parseScript } from "../script-load.js";
 import { DraftScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
@@ -206,11 +205,9 @@ export type Call = (prompt: string, kind?: string) => Promise<StepRunOutcome>;
 export interface Reader {
   check: (outcome: StepRunOutcome) => Checked;
   faults: (script: ScriptV1) => string[];
-  /** The failing L0 rows a $0 orphan-cue drop must not add to; absent, a reply keeps its orphaned cues for the retry. */
-  failing?: (script: ScriptV1) => L0Result[];
 }
 
-export const wholeScript = (plan: ScriptPlan, failing?: Reader["failing"]): Reader => ({ check: (outcome) => checked(outcome, plan), faults: planFaults, ...(failing ? { failing } : {}) });
+export const wholeScript = (plan: ScriptPlan): Reader => ({ check: (outcome) => checked(outcome, plan), faults: planFaults });
 
 export interface Draft extends Checked {
   usage: StageUsage;
@@ -219,13 +216,11 @@ export interface Draft extends Checked {
   retimed: string[];
 }
 
-/** A parsed reply with its orphan cues dropped and re-timed against the reader's own faults, so a draft that only needs those costs no retry. */
+/** A parsed reply re-timed against the reader's own faults, so a draft that only needs seconds costs no retry. */
 function retimedReply(reply: Checked, reader: Reader): Checked & { retimed: string[] } {
   if (!reply.script) return { ...reply, retimed: [] };
-  const orphans = reader.failing ? dropOrphanCues(reply.script, reader.failing) : { script: reply.script, moves: [] };
-  const { draft, moves } = retimeOverBudget(orphans.script, reader.faults);
-  const dropped = [...(reply.dropped ?? []), ...orphans.moves];
-  return { ...reply, script: draft, retimed: moves, ...(dropped.length > 0 ? { dropped } : {}) };
+  const { draft, moves } = retimeOverBudget(reply.script, reader.faults);
+  return { ...reply, script: draft, retimed: moves };
 }
 
 /** One retry naming each beat over resolve's word cap and the runtime; kept only when it parses and fails fewer. */
