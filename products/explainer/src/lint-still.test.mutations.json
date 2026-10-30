@@ -27,6 +27,24 @@
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
       ]
+    },
+    {
+      "name": "Q-D22 counts no emphasis as motion",
+      "file": "products/explainer/src/lint-still.ts",
+      "find": "return [...reveals, ...drawn.filled.emphases.flatMap(({ atCue }) => litMoves(atCue, wordAt(atCue)))];",
+      "replace": "return reveals;",
+      "kills": [
+        "Q-D22 planned still stretches, qa's static-window at script time a cue on an already revealed target closes a still stretch"
+      ]
+    },
+    {
+      "name": "Q-D22 hint offers a cue-less claim-card no claim cue",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: ${CLAIM_CUE}or`",
+      "replace": "kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: or`",
+      "kills": [
+        "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
+      ]
     }
   ]
 }

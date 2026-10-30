@@ -15,8 +15,9 @@ const SETTLED =
 const settledList = () => dailyWith("lanes-1", { spoken: SETTLED, visual: { cues: [cue("rows-1", "matcher"), cue("rows-2", "switch")] } });
 const LONG_REFLECTION =
   "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
-const stillCard = (held: readonly string[]) =>
-  held.reduce((script, id) => dailyWith(id, { heldS: 3 }, script), dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION }));
+// The claim's words are never spoken, so no word names it and only the hold is left.
+const stillCard = (held: readonly string[], claim = "Waiting sets the pace") =>
+  held.reduce((script, id) => dailyWith(id, { heldS: 3 }, script), dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION, visual: { labels: [claim] } }));
 
 /** What each beat shows, in the forms a listener hears: the labels' words and their numbers spelled. */
 function shownWords(script: ScriptV1, id: string): Set<string> {
@@ -64,6 +65,26 @@ describe("the $0 still seed: naming-only cues before the repair", () => {
     expect(held.heldS).toBe(3);
     expect(unheld.heldS).toBeUndefined();
     expect(l0Row(seedStillCues(roomy).script, "Q-D22").detail_beats).not.toContain("reflection-2");
+  });
+
+  // Regression: the uncued-item rule once cued a claim-card's claim, which lands on the first word with no cue of its own.
+  it("a claim-card that stands still nowhere gets no cue", () => {
+    const card = { plannedS: 5, spoken: "Waiting is the real cost: drafts sit idle behind the shared review queue.", visual: { beat: "claim-card", labels: ["Waiting costs the most"], cues: [] } };
+    const script = dailyWith("reflection-1", card);
+
+    const seeded = beatOf(seedStillCues(script).script, "reflection-1");
+
+    expect(l0Row(script, "Q-D22").detail_beats).not.toContain("reflection-1");
+    expect(seeded.visual.cues).toEqual([]);
+  });
+
+  it("a claim-card whose claim the voice names is cued on that word, not held", () => {
+    const script = stillCard(["ask-1"], "Shared review queue");
+
+    const card = beatOf(seedStillCues(script).script, "reflection-2");
+
+    expect(card.visual.cues.map(({ target }) => target)).toContain("claim");
+    expect(card.heldS).toBeUndefined();
   });
 });
 

@@ -1,5 +1,5 @@
 import { BeatSpecSchema, type BeatSpec } from "./beat-schema.js";
-import { BEAT_SLOTS, isSlotRef } from "./beat-slots.js";
+import { BEAT_SLOTS, isLineField, isSlotRef } from "./beat-slots.js";
 import { DEFAULT_DOCTRINE_DIR } from "./doctrine-load.js";
 import { readYamlDir } from "./yaml-dir.js";
 
@@ -35,12 +35,15 @@ const namesOf = (element: unknown): string[] => {
   return [id, alias].filter((name): name is string => typeof name === "string");
 };
 
-/** The ids (and aliases) of a validated target list; the slot schema guarantees each element carries an id. */
-const idsOf = (list: unknown): string[] => (Array.isArray(list) ? list.flatMap(namesOf) : []);
+/**
+ * The ids (and aliases) of a validated target list; the slot schema guarantees each element carries an id. A target
+ * that is one line of text (claim-card's claim) is one element, named by its field.
+ */
+const idsOf = (list: unknown, field: string): string[] => (Array.isArray(list) ? list.flatMap(namesOf) : typeof list === "string" ? [field] : []);
 
 function duplicateTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
   return (spec.emphasis?.targets ?? []).flatMap((field) => {
-    const ids = idsOf(slots[field]);
+    const ids = idsOf(slots[field], field);
     return [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))].map((id) => `${field} repeats element id ${id}`);
   });
 }
@@ -59,9 +62,16 @@ export function parseBeatSlots(specs: ReadonlyMap<string, BeatSpec>, type: strin
   return result.data;
 }
 
+/**
+ * The spec's emphasis target lists whose items each land on their own cue. A target that is one line of text (the
+ * claim) lands on the first word, so a beat needs no cue for it; a cue past that word only lights it.
+ */
+export const cuedTargets = (spec: BeatSpec): string[] =>
+  (spec.emphasis?.targets ?? []).filter((field) => !(isSlotRef(spec.slots) && isLineField(spec.slots, field)));
+
 /** The element ids an emphasis cue may target in one beat's validated slots. */
 export function emphasisTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
-  return (spec.emphasis?.targets ?? []).flatMap((field) => idsOf(slots[field]));
+  return (spec.emphasis?.targets ?? []).flatMap((field) => idsOf(slots[field], field));
 }
 
 /**

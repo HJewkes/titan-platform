@@ -39,15 +39,24 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
     expect(row.detail_beats).not.toContain("lanes-1");
   });
 
-  it("a cue on a word no element reveals on does not close a gap", () => {
-    const echoes = ["against", "lunch", "switch", "asked"].map((word) => cue("rows-1", word));
-    const script = dailyWith("lanes-1", { spoken: LONG_LANE, visual: { cues: [cue("rows-1", "matcher"), ...echoes, cue("rows-2", "store")] } });
+  it("a cue on a word no element reveals or lights on does not close a gap", () => {
+    const early = ["against", "lunch", "switch", "asked"].map((word) => cue("rows-2", word));
+    const script = dailyWith("lanes-1", { spoken: LONG_LANE, visual: { cues: [cue("rows-1", "matcher"), cue("rows-2", "store"), ...early] } });
 
     const row = l0Row(script, "Q-D22");
     const hint = repairHint(row, script);
 
     expect(row.detail_beats).toContain("lanes-1");
     expect(hint).toMatch(/lanes-1 [\d.]+ s to [\d.]+ s after "matcher"/);
+  });
+
+  it("a cue on an already revealed target closes a still stretch", () => {
+    const echoes = ["against", "lunch", "switch", "asked"].map((word) => cue("rows-1", word));
+    const script = dailyWith("lanes-1", { spoken: LONG_LANE, visual: { cues: [cue("rows-1", "matcher"), ...echoes, cue("rows-2", "store")] } });
+
+    const found = stillBeats(script, scriptPacing(script)!).find(({ beat }) => beat.id === "lanes-1")?.stretches ?? [];
+
+    expect(found.filter(({ after }) => after === "matcher")).toEqual([]);
   });
 
   it("a cue-less claim-card still past its reading hold fails unless held", () => {
@@ -60,7 +69,8 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     expect(failing.detail_beats).toContain("reflection-2");
     expect(hint).toMatch(/reflection-2 [\d.]+ s to [\d.]+ s after "What"/);
-    expect(hint).toContain("reflection-2 is a claim-card, which reveals nothing on a cue: hold it, show a claim the voice does not read word for word");
+    expect(hint).toContain('reflection-2 is a claim-card with no cue: cue its claim (target "claim") on a spoken word inside the stretch');
+    expect(hint).toContain("or hold it, show a claim the voice does not read word for word");
     expect(hint).not.toContain("trim its words");
     expect(passing.detail_beats).not.toContain("reflection-2");
   });

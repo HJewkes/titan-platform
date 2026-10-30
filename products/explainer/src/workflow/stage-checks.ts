@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadBeatSpecs } from "../beat-load.js";
+import { cuedTargets, loadBeatSpecs } from "../beat-load.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { parseCoverage, withCoverage } from "../lint-coverage.js";
 import { cueResolverFromWords } from "../cues.js";
@@ -134,10 +134,13 @@ function knownWords(input: CheckInput): Verdict {
   return { pass: unknown.length === 0, detail: unknown.length === 0 ? "every spoken word has phonemes" : `no phonemes for: ${shownList(named)}` };
 }
 
-/** Beats whose beat spec declares emphasis targets: with any, a script of no cues has nothing to resolve and fails. */
+/** Beats whose beat spec has target lists to cue: with any, a script of no cues has nothing to resolve and fails. */
 function cuedBeats(beats: ScriptV1["beats"]): number {
   const specs = loadBeatSpecs();
-  return beats.filter(({ visual }) => (specs.get(visual.beat ?? "")?.emphasis?.targets.length ?? 0) > 0).length;
+  return beats.filter(({ visual }) => {
+    const spec = specs.get(visual.beat ?? "");
+    return spec !== undefined && cuedTargets(spec).length > 0;
+  }).length;
 }
 
 /** Every cue the script names lands on a word the voice actually spoke, so no visual fires on a guess. */

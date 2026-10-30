@@ -54,10 +54,18 @@ function drawn(beat: ScriptBeat): Drawn | undefined {
 
 export const voicedBudget = (beat: ScriptBeat): BudgetRow | undefined => drawn(beat)?.budget;
 
-/** The kind the beat is drawn as when no script cue can move it (a claim-card, a button), else undefined. */
+/** The one kind whose only cue target is its own text: a cue past its first word lights the claim. */
+export const CLAIM_CARD = "claim-card";
+
+/**
+ * The kind the beat is drawn as when none of its cues moves it: a kind that takes no cue (a button), or a claim-card
+ * with no cue on its claim yet; else undefined.
+ */
 export function cuelessKind(beat: ScriptBeat): string | undefined {
   const found = drawn(beat);
-  return found && !found.takesCues ? found.kind : undefined;
+  if (!found) return undefined;
+  const uncuedClaim = found.kind === CLAIM_CARD && beatCues(beat.visual).length === 0;
+  return !found.takesCues || uncuedClaim ? found.kind : undefined;
 }
 
 interface PlannedCue {

@@ -1,4 +1,5 @@
-import { SMALL_MOVE_S } from "./composition/beats/stage/video.js";
+import { LIT_RAMP_S } from "./composition/beats/flow.js";
+import { FLOW_DWELL_S, SMALL_MOVE_S } from "./composition/beats/stage/video.js";
 import { drawnBeats, isSlots, screenTokens, type DrawnBeat } from "./drawn-beats.js";
 import { closingMotionS, revealMotionS } from "./drawn-motion.js";
 import { drawnTexts, isHeading, type DrawnText } from "./drawn-texts.js";
@@ -13,8 +14,8 @@ import { DEFAULT_PADDING, trueDuration } from "./workflow/tts-truing.js";
 /**
  * Script-time preflight for qa's static-window (TP-4538). Q-D17 holds cue gaps to picture-change's 8 s, but the
  * picture stands still between reveals, and static-window fails any still run past `pacing.staticMaxS`. Only a cue
- * the drawn kind reveals an element on moves the picture: every reveal resolve's fill draws, each on its word.
- * As qa does, the reading hold of each drawn text the voice does not say is not still time, and neither is a kind's
+ * the drawn kind reveals or lights an element on moves the picture: every reveal and emphasis resolve's fill draws,
+ * each on its word. As qa does, the reading hold of each drawn text the voice does not say is not still time, and neither is a kind's
  * own entrance, count-up or fade. A beat ends where truing ends it, the settle after its tail included.
  */
 
@@ -87,20 +88,31 @@ interface Moved {
   s: number;
   /** Seconds the picture moves from `s`. */
   motionS: number;
+  /** An emphasis's light, which shows no new text, so it starts no reading hold. */
+  lit?: true;
 }
 
 type Clock = NonNullable<ReturnType<typeof plannedCues>>;
 
 /**
  * What moves the picture, on the voiced clock: each reveal the fill draws, on its word (a first-word reveal at the
- * voice's start), moving for its kind's entrance; a custom layer, which the fill does not draw, moves on every cue.
+ * voice's start), moving for its kind's entrance, and each emphasis lighting and then dimming its element; a custom
+ * layer, which the fill does not draw, moves on every cue.
  */
 function moves(drawn: DrawnBeat | undefined, clock: Clock): Moved[] {
   const { leadS } = DEFAULT_PADDING;
   if (!drawn) return clock.cues.map(({ cue, s }) => ({ cue, s: leadS + s, motionS: SMALL_MOVE_S }));
   const motionS = revealMotionS(drawn.filled);
-  return drawn.filled.reveals.map(({ atCue }) => ({ cue: atCue, s: leadS + Math.min(clock.endS, clock.wordS(atCue) ?? 0), motionS }));
+  const wordAt = (cue: string) => leadS + Math.min(clock.endS, clock.wordS(cue) ?? 0);
+  const reveals = drawn.filled.reveals.map(({ atCue }) => ({ cue: atCue, s: wordAt(atCue), motionS }));
+  return [...reveals, ...drawn.filled.emphases.flatMap(({ atCue }) => litMoves(atCue, wordAt(atCue)))];
 }
+
+// The lit treatment ramps up to full on its word and back down after the token's dwell (stage/emphasis.ts `litAt`).
+const litMoves = (cue: string, s: number): Moved[] => [
+  { cue, s: s - LIT_RAMP_S, motionS: LIT_RAMP_S, lit: true },
+  { cue, s: s + FLOW_DWELL_S, motionS: LIT_RAMP_S, lit: true },
+];
 
 /** The beat's still runs past staticMaxS: between moves, to its trued end, outside each move, fade and reading hold. */
 function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacing): StillStretch[] {
@@ -108,7 +120,7 @@ function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacin
   if (!clock) return [];
   const moved = moves(drawn, clock);
   const endS = trueDuration(beat.plannedS, clock.speechS);
-  const at = new Map(moved.map(({ cue, s }) => [cue, s]));
+  const at = new Map(moved.filter(({ lit }) => !lit).map(({ cue, s }) => [cue, s]));
   const closingS = drawn ? closingMotionS(drawn.filled) : 0;
   const windows = [
     ...moved.map(({ s, motionS }) => ({ fromS: s, toS: s + motionS })),
