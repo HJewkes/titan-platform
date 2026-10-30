@@ -5,6 +5,7 @@ import path from "node:path";
 import { withPinnedGitProtocols } from "@titan-design/worktree";
 import { afterAll, describe, expect, it } from "vitest";
 import { gitShimScript } from "./git-shim.js";
+import { installExecutable } from "./git-shim.fixture.js";
 
 const SCRATCH = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-git-shim-pin-")));
 afterAll(() => fs.rmSync(SCRATCH, { recursive: true, force: true }));
@@ -22,9 +23,9 @@ env | grep '^GIT_CONFIG_' | sort
 function shim(): string {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "case-"));
   const real = path.join(dir, "real-git");
-  fs.writeFileSync(real, PRINTING_GIT, { mode: 0o755 });
+  installExecutable(real, PRINTING_GIT);
   const file = path.join(dir, "git");
-  fs.writeFileSync(file, gitShimScript(real, path.join(dir, "git-hooks"), ["status"], "", "/bin/sh"), { mode: 0o755 });
+  installExecutable(file, gitShimScript(real, path.join(dir, "git-hooks"), ["status"], "", "/bin/sh"));
   return file;
 }
 
