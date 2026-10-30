@@ -55,6 +55,7 @@ Reusable machinery over the primitives.
 | [`speech-g2p`](/reference/speech-g2p) | English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger | none |
 | [`speech-stt`](/reference/speech-stt) | Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler | none |
 | [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | `app-paths` |
+| [`test-timing`](/reference/test-timing) | titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store | `store-sqlite` |
 | [`worktree`](/reference/worktree) | Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep | none |
 
 ## Tier 2 — domain
@@ -110,6 +111,6 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `hitl`, `locator`, `memory`, `owner-queue`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput`, `workflow` |
 | `titan` | The titan host CLI: health sampling of the factory and the host | `daemon`, `health` |
-| `yt-scout` | Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest | `app-paths`, `store-sqlite` |
+| `yt-scout` | Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest | `agent`, `app-paths`, `owner-queue`, `store-sqlite` |
 | `codewatch` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
 | `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `agent-dispatch`, `app-paths`, `chat-protocol`, `coordinator`, `daemon`, `decider`, `fix-proof`, `github`, `owner-queue`, `pm`, `react-app`, `react-ui`, `registry`, `review-schema`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |

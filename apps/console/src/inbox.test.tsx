@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -79,8 +78,15 @@ interface Inbox {
   nudges?: Record<string, unknown>[];
 }
 
-const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox = {}): JsonEnvelope<unknown> =>
-  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+const isPlanning = (each: Record<string, unknown>): boolean => each.section === "planning";
+
+/** As the server answers: planning rows counted, and listed only when the page asks with `planning`. */
+function inboxView({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox, planning: boolean): JsonEnvelope<unknown> {
+  const listed = planning ? items : items.filter((each) => !isPlanning(each));
+  return successEnvelope({ items: listed, planningCount: items.filter(isPlanning).length, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+}
+
+const inboxAnswer = (inbox: Inbox = {}): JsonEnvelope<unknown> => inboxView(inbox, false);
 
 const ROUND_SHA = "e".repeat(64);
 
@@ -108,8 +114,9 @@ interface Call {
 }
 
 /** Renders the inbox over a recorded snapshot; with `taps` the page is live and those commands answer as given. */
-function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>): Call[] {
-  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer } };
+function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>, { inApp = false } = {}): Call[] {
+  const planning = inboxView({}, true);
+  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer, [snapshotKey("inbox.list", { planning: true })]: planning } };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
   const calls: Call[] = [];
@@ -117,14 +124,7 @@ function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Recor
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), taps?.[name] ? taps[name](args) : inner.call(name, args, options)),
   };
-  window.location.hash = "#/inbox";
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={taps ? source : null}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, "#/inbox", { answers: taps ? source : null, inApp });
   return calls;
 }
 
@@ -221,7 +221,7 @@ describe("the inbox page", () => {
 
   it("opens a console-route evidence link inside the console and a URL in a new tab", async () => {
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
-    renderInbox();
+    renderInbox(inboxAnswer(), undefined, { inApp: true });
     fireEvent.click(within(await screen.findByTestId("inbox-row-gate-1")).getByText("https://github.com/example/repo/pull/12"));
     expect(opened).toHaveBeenCalledWith("https://github.com/example/repo/pull/12", "_blank", "noopener");
     fireEvent.click(within(screen.getByTestId("inbox-row-held-1")).getByText("Open evidence"));
@@ -264,13 +264,15 @@ describe("the inbox page", () => {
     expect(within(await screen.findByTestId("inbox-row-round-1")).queryByText("Run on terminal")).toBeNull();
   });
 
-  it("starts the planning section collapsed with its count, and opens it on request", async () => {
-    renderInbox();
+  it("starts the planning section collapsed with its count, and reads its rows only once opened", async () => {
+    const calls = renderInbox();
     await screen.findByTestId("inbox-planning");
     expect(screen.getByText("Planning (5)")).toBeTruthy();
     expect(rowIds("inbox-planning")).toEqual([]);
+    expect(calls.filter((call) => call.name === "inbox.list").map((call) => call.args)).not.toContainEqual({ planning: true });
     fireEvent.click(screen.getByText("Show 5 planning items"));
-    expect(rowIds("inbox-planning")).toHaveLength(5);
+    await waitFor(() => expect(rowIds("inbox-planning")).toHaveLength(5));
+    expect(calls.filter((call) => call.name === "inbox.list").map((call) => call.args)).toContainEqual({ planning: true });
   });
 
   it("counts FYIs as text only", async () => {
@@ -279,13 +281,13 @@ describe("the inbox page", () => {
   });
 
   it("issues only reads until a row is tapped", async () => {
-    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved }, { inApp: true });
     await screen.findByTestId("inbox-row-gate-1");
     expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build"]));
   });
 
   it("shows a derived row's evidence, threshold and age with a link to the agent and no button, even on a live page", async () => {
-    renderInbox(inboxAnswer({ derived: [BLOCKED_AGENT] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    renderInbox(inboxAnswer({ derived: [BLOCKED_AGENT] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved }, { inApp: true });
     const row = await screen.findByTestId(`inbox-derived-${BLOCKED_AGENT.id}`);
     expect(within(row).getByText("machine: blocked")).toBeTruthy();
     expect(within(row).getByText("40m")).toBeTruthy();

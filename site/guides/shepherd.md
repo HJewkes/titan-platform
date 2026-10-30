@@ -615,6 +615,15 @@ kept. A successor never holds for an account. When every account is exhausted, o
 cannot be read, it spawns under the first. A resume keeps the agent's own account. A red main's
 fixer picks its account the same way (TP-3962).
 
+The broker can refuse a spawn before it starts, with code `reviewer_account_limit`, when the
+account's five_hour usage is at its ceiling. The account-limit store has not marked that account,
+so the pick above still names it. A reviewer, a successor or a red main's fixer refused this way
+is spawned again on each later account in the rotation, once per account and in order, within
+the one spawn-gate admission (TP-4507). For a reviewer, the rotation is `review.configDir` and
+then `review.fallbackConfigDirs`. Each fallback logs the account the agent spawned on. When the
+last account refuses too, the review waits as for any busy refusal. No other refusal moves the
+spawn: not a full agent pool, not a held name, not a spawn-gate deferral, not a seat budget stop.
+
 A woken fixer or successor can exit because its account ran out of usage. When its session ends
 on Claude Code's own usage-limit notice, the same record a review reads, Shepherd marks the
 account on its roster row exhausted until the notice's reset. agent-chat's default account is

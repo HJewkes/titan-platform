@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { parseResultLine } from "../packages/fix-proof/src/result-line.ts";
 import { decodeReport, encodeReport } from "../packages/fix-proof/src/transport.ts";
+import { seedRepo, withHistory } from "../packages/test-kit/dist/git.js";
 
 const script = path.join(import.meta.dirname, "fix-proof-run.sh");
 const base = "a".repeat(40);
@@ -130,25 +131,15 @@ describe("fix-proof-run.sh", () => {
       if (result.status !== 0) throw new Error(result.stderr);
       return result.stdout.trim();
     };
-    const commit = (files, message) => {
-      for (const [file, content] of Object.entries(files)) {
-        mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
-        writeFileSync(path.join(repo, file), content);
-      }
-      git("add", "-A");
-      git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message);
-      return git("rev-parse", "HEAD");
-    };
     // main holds the real config; parent, a pushable branch the child stacks on, loosens it.
     beforeEach(() => {
       repo = path.join(tmp, "repo");
-      mkdirSync(repo);
-      git("init", "-q", "-b", "main");
-      const main = commit({ ".github/fix-proof.json": '{"tests":["**/*.test.ts"]}\n' }, "main");
-      git("checkout", "-qb", "parent");
-      const parent = commit({ ".github/fix-proof.json": '{"tests":["**/*.ts"]}\n' }, "parent");
-      git("checkout", "-qb", "child");
-      const child = commit({ "x.ts": "export const x = 1;\n", "x.test.ts": "import './x';\n" }, "child");
+      seedRepo(repo, {});
+      const [main, parent, child] = withHistory(repo, [
+        { files: { ".github/fix-proof.json": '{"tests":["**/*.test.ts"]}\n' }, message: "main" },
+        { branch: "parent", from: "main", files: { ".github/fix-proof.json": '{"tests":["**/*.ts"]}\n' }, message: "parent" },
+        { branch: "child", from: "parent", files: { "x.ts": "export const x = 1;\n", "x.test.ts": "import './x';\n" }, message: "child" },
+      ]);
       shas = { main, parent, child };
     });
     const outputFile = () => path.join(tmp, "github-output");
@@ -221,9 +212,8 @@ describe("fix-proof-run.sh", () => {
     };
     beforeEach(() => {
       repo = path.join(tmp, "repo");
-      mkdirSync(repo);
-      git("init", "-q", "-b", "main");
-      mergeBase = commit({ "pkg/src/x.ts": "export const x = 1;\n", "pkg/src/old.test.mutations.json": "[]\n" });
+      seedRepo(repo, {});
+      [mergeBase] = withHistory(repo, [{ files: { "pkg/src/x.ts": "export const x = 1;\n", "pkg/src/old.test.mutations.json": "[]\n" } }]);
     });
 
     it("reads present when the diff adds a spec in a nested directory", () => {
@@ -768,19 +758,13 @@ describe("fix-proof workflow", () => {
     describe("the merge-base step's script", () => {
       let repo;
       let shas;
-      const git = (...args) => spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" }).stdout.trim();
-      const commit = (file, message) => {
-        writeFileSync(path.join(repo, file), `${message}\n`);
-        git("add", file);
-        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message);
-        return git("rev-parse", "HEAD");
-      };
       beforeEach(() => {
         repo = mkdtempSync(path.join(tmpdir(), "fix-proof-step-"));
-        git("init", "-q", "-b", "main");
-        const main = commit("a.txt", "main");
-        git("checkout", "-qb", "feature");
-        const feature = commit("b.txt", "feature");
+        seedRepo(repo, {});
+        const [main, feature] = withHistory(repo, [
+          { files: { "a.txt": "main\n" }, message: "main" },
+          { branch: "feature", from: "main", files: { "b.txt": "feature\n" }, message: "feature" },
+        ]);
         shas = { main, feature };
         mkdirSync(path.join(repo, ".fix-proof-workflow/scripts"), { recursive: true });
         cpSync(script, path.join(repo, ".fix-proof-workflow/scripts/fix-proof-run.sh"));

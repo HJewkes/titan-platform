@@ -34,7 +34,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
   g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds.
+   * A reviewer or a fixer successor spawn the broker refuses at an account's limit is retried on each later one in turn. */
   fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -147,9 +148,10 @@ export const SpawnGateConfigSchema = z.strictObject({
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
   headroomIntervalMs: z.number().int().min(0).optional(),
-  burstMax: z.number().int().positive().optional(),
+  burstMax: z.never({ error: "burstMax is no longer read: load is the only spawn limiter, so remove the key" }).optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
+  minIdleCores: z.number().min(0).optional(),
 });
 
 /** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
@@ -335,7 +337,9 @@ export interface ConfigSources {
   dbFlag?: string;
 }
 
+/** `TITAN_FACTORY_CONFIG` exists because agent sessions cannot set `XDG_CONFIG_HOME`. */
 export function configPath(env: NodeJS.ProcessEnv): string {
+  if (env.TITAN_FACTORY_CONFIG) return env.TITAN_FACTORY_CONFIG;
   return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "titan-factory", "config.json");
 }
 

@@ -3,10 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { removeTemplates, templateDirectory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { spawnExec, type Exec } from "./exec.js";
-import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
+import { FIXED, git, makeRepo, parsed, REAL_RUNNER, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
 import { run } from "./run.js";
 import { encodeReport } from "./transport.js";
 
@@ -14,7 +15,7 @@ afterEach(removeRepos);
 
 describe("fix-proof run", { timeout: 120_000 }, () => {
   it("reproduces a real test against the base's unfixed source", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
 
     const result = parsed(await run({ repo: repo.dir, base: repo.base, head }));
@@ -24,7 +25,7 @@ describe("fix-proof run", { timeout: 120_000 }, () => {
   });
 
   it("reproduces a head commit that no ref points at", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     git(repo.dir, ["reset", "-q", "--hard", repo.base]);
 
@@ -32,7 +33,7 @@ describe("fix-proof run", { timeout: 120_000 }, () => {
   });
 
   it("runs the base twice and calls a test vacuous when both base runs pass", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": VACUOUS_TEST });
     const reports: string[] = [];
     const exec: Exec = (file, args, options) => {
@@ -48,7 +49,7 @@ describe("fix-proof run", { timeout: 120_000 }, () => {
   });
 
   it("does not carry a new src module, so a test of it is unproven on base", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({
       "src/sum.ts": 'export { add } from "./math";\n',
       "src/math.ts": FIXED,
@@ -62,7 +63,7 @@ describe("fix-proof run", { timeout: 120_000 }, () => {
   });
 
   it("carries a new test-support helper, so the base fails on the assertion", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({
       "src/math.ts": FIXED,
       "src/test-support/expected.ts": "export const three = 3;\n",
@@ -175,7 +176,7 @@ describe("fix-proof exec and judge as separate processes", { timeout: 120_000 },
     scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-forge-")));
     const tmp = path.join(scratch, "tmp");
     fs.mkdirSync(tmp);
-    const repo = makeRepo({ build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
+    const repo = makeRepo({ ...REAL_RUNNER, build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": VACUOUS_TEST, "build.sh": FORGE });
     const env = { TMPDIR: tmp };
 
@@ -259,11 +260,13 @@ describe("run() keeps the head side away from the caller's repo and the judge's 
   afterEach(() => {
     if (savedTmpdir === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = savedTmpdir;
+    // A template first seeded while TMPDIR pointed into scratch is deleted with it, so the next seed must rebuild it.
+    if (templateDirectory()?.startsWith(scratch)) removeTemplates();
     fs.rmSync(scratch, { recursive: true, force: true });
   });
 
   it("a smudge filter head test code plants never runs and the caller's repo is untouched", async () => {
-    const repo = makeRepo({}, scratch);
+    const repo = makeRepo(REAL_RUNNER, scratch);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": plantingTest(scratch) });
     const callerGit = path.join(repo.dir, ".git");
     const configBefore = fs.readFileSync(path.join(callerGit, "config"));
@@ -281,7 +284,7 @@ describe("run() keeps the head side away from the caller's repo and the judge's 
   });
 
   it("a head build that rewrites the base reports leaves the verdict unchanged", async () => {
-    const repo = makeRepo({ build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
+    const repo = makeRepo({ ...REAL_RUNNER, build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST, "build.sh": FORGE_REPORTS });
 
     const result = parsed(await run({ repo: repo.dir, base: repo.base, head }));
@@ -291,7 +294,7 @@ describe("run() keeps the head side away from the caller's repo and the judge's 
   });
 
   it("a head build that rewrites a loose object in its own repo leaves the verdict unchanged", async () => {
-    const repo = makeRepo({ build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
+    const repo = makeRepo({ ...REAL_RUNNER, build: "sh build.sh" }, scratch, { "build.sh": "true\n" });
     const head = repo.commit({
       "src/math.ts": FIXED,
       "src/math.test.ts": REAL_TEST,

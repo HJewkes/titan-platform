@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { captureFrame, launch, openCapturePage } from "@titan-design/frame-capture";
+import { captureFrame, withBrowser, withCapturePage } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { decodeArgs, spawnFfmpeg, FRAMEDIFF_HEIGHT, FRAMEDIFF_WIDTH } from "@titan-design/render-qa";
 import { DEFAULT_CELL_WIDTH, LABEL_STRIP_PX, tileArgs, type FfmpegExec } from "../contact-sheet-render.js";
 import { servePage } from "../render/composition-page.js";
@@ -102,10 +103,8 @@ interface ParitySheet {
   sheet: string;
 }
 
-async function captureCells(url: string, cells: readonly KindCell[], outDir: string): Promise<SheetFrame[]> {
-  const browser = await launch();
-  try {
-    const { page } = await openCapturePage(browser, url, STAGE);
+async function captureCells(browser: Browser, url: string, cells: readonly KindCell[], outDir: string): Promise<SheetFrame[]> {
+  return withCapturePage(browser, url, STAGE, async ({ page }) => {
     const frames: SheetFrame[] = [];
     for (const cell of cells) {
       const file = `kind-${cell.kind}-${cell.tag}.png`;
@@ -113,9 +112,7 @@ async function captureCells(url: string, cells: readonly KindCell[], outDir: str
       frames.push({ ...cell, file, inkShare: inkShare(await grayPixels(path.join(outDir, file))) });
     }
     return frames;
-  } finally {
-    await browser.close();
-  }
+  });
 }
 
 async function tile(frames: readonly SheetFrame[], outDir: string, ffmpeg: FfmpegExec): Promise<string> {
@@ -132,6 +129,11 @@ async function tile(frames: readonly SheetFrame[], outDir: string, ffmpeg: Ffmpe
   return "sheet.png";
 }
 
+interface ParitySheetDeps {
+  ffmpeg?: FfmpegExec;
+  browser?: Browser;
+}
+
 const defaultFfmpeg: FfmpegExec = async (args) => {
   await runFfmpeg(args);
 };
@@ -139,15 +141,15 @@ const defaultFfmpeg: FfmpegExec = async (args) => {
 /**
  * Renders `timeline` on the built page in `pageDir` and writes `timeline.json` (what was served),
  * `kind-<spec>-first.png`, `kind-<spec>-settled.png`, `sheet.png` (the cells tiled two across, labelled) and
- * `sheet.json` under `outDir`. A page error rejects.
+ * `sheet.json` under `outDir`. A page error rejects. The cells capture in `browser` when one is lent.
  */
-export async function writeParitySheet(pageDir: string, timeline: Timeline, outDir: string, ffmpeg: FfmpegExec = defaultFfmpeg): Promise<ParitySheet> {
+export async function writeParitySheet(pageDir: string, timeline: Timeline, outDir: string, { ffmpeg = defaultFfmpeg, browser }: ParitySheetDeps = {}): Promise<ParitySheet> {
   mkdirSync(outDir, { recursive: true });
   const timelineFile = path.join(outDir, "timeline.json");
   writeFileSync(timelineFile, `${JSON.stringify(timeline)}\n`);
   const served = await servePage(pageDir, timelineFile);
   try {
-    const frames = await captureCells(served.url, kindCells(timeline), outDir);
+    const frames = await withBrowser(browser, (captureIn) => captureCells(captureIn, served.url, kindCells(timeline), outDir));
     const sheet = await tile(frames, outDir, ffmpeg);
     writeFileSync(path.join(outDir, "sheet.json"), `${JSON.stringify({ frames, sheet }, null, 2)}\n`);
     return { frames, sheet };

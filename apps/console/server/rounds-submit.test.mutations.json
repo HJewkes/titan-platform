@@ -14,8 +14,8 @@
     {
       "name": "the submit waits on its round listener",
       "file": "apps/console/server/rounds-submit.ts",
-      "find": "  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined);",
-      "replace": "  await hooks.listeners?.afterRoundSubmit(id, result);",
+      "find": "  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined).then(onChange);",
+      "replace": "  await hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined).then(onChange);",
       "kills": [
         "a long round sends in about one human-only read (TP-4001) responds while the round listener is still running, and keeps the submit when it fails"
       ]

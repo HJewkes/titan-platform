@@ -4,10 +4,28 @@
     {
       "name": "the host never applies the registrant migration",
       "file": "products/factory/src/workflows.ts",
-      "find": "registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];",
-      "replace": "gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];",
+      "find": "registrantMigration(38), ",
+      "replace": "",
       "kills": [
         "the freeze migration creates the freeze table in a database that already has migrations 1 to 5"
+      ]
+    },
+    {
+      "name": "setFixer overwrites the fixer an episode already recorded",
+      "file": "products/factory/src/shepherd/freeze.ts",
+      "find": " AND thawed_at IS NULL AND fixer IS NULL\").run(name",
+      "replace": " AND thawed_at IS NULL\").run(name",
+      "kills": [
+        "the freeze store setFixer does not overwrite an episode's fixer"
+      ]
+    },
+    {
+      "name": "the first red reads the oldest episode's opening freeze",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "ORDER BY id DESC LIMIT 1\").get(",
+      "replace": "ORDER BY id LIMIT 1\").get(",
+      "kills": [
+        "the freeze store names the sha that opened the live episode as its first red, not a later red in it"
       ]
     }
   ]

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { hasSpokenDigits, numberForms, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
+import { hasSpokenDigits, heardForms, numberForms, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 import { deriveEvalView } from "./eval-view.js";
 
 const beatOf = (spoken: string, cues: string[] = []) => {
@@ -160,5 +160,13 @@ describe("numberForms", () => {
   it("keeps text it cannot read as written, lower-cased", () => {
     expect(numberForms("a dozen")).toEqual(["a dozen"]);
     expect(numberForms("Twelve trillion")).toEqual(["twelve trillion"]);
+  });
+});
+
+describe("heardForms", () => {
+  it("reads a number said in pairs as one value as well as its parts", () => {
+    expect(heardForms("five thirty-one")).toEqual(["5", "31", "531"]);
+    expect(heardForms("one two")).toEqual(["1", "2"]);
+    expect(heardForms("five and thirty-one")).toEqual(["5", "31"]);
   });
 });

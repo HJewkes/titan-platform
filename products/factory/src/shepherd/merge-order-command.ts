@@ -2,7 +2,7 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext } from "../registry.js";
-import { blockers, orderDriving, withinTtl, type Reservation } from "./merge-order.js";
+import { blockers, orderDriving, orderWaiting, withinTtl, type Reservation } from "./merge-order.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { MergeOrderServices } from "./services.js";
 import type { WatchRow } from "./view.js";
@@ -64,7 +64,7 @@ function orderRows(services: MergeOrderServices, reservations: readonly Reservat
     const { repo, pr, runId, headSha, since, paths } = reservation;
     const rule = services.rules(repo);
     const peers = reservations.filter((other) => other.repo === repo);
-    const behind = rule?.enabled ? blockers({ repo, runId, paths }, peers, rule, now, orderDriving(order, services.holds())).map((blocker) => blocker.reservation.pr) : [];
+    const behind = rule?.enabled ? blockers({ repo, runId, paths }, peers, rule, now, orderDriving(order, services.holds()), orderWaiting(order)).map((blocker) => blocker.reservation.pr) : [];
     const ahead = reservation.ahead.flatMap((id) => prOfRun.get(id) ?? []);
     const waiting = waits.filter((wait) => wait.repo === repo && wait.behind === pr).map((wait) => wait.pr);
     return { repo, pr, runId, headSha, since, ageMinutes: Math.floor((now - Date.parse(since)) / 60_000), state: stateOf(services, reservation), paths, ahead, behind, waiting };

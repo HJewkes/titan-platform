@@ -33,6 +33,39 @@ const activeWorkNeedsProcess = [
   "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
 ];
 
+// With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
+// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and 25-45% for console
+// (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
+// product's file imported unmocked.
+const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
+const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
+const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
+// vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
+// stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
+// file's client has already moved. They run isolated.
+const sharedGraphNeedsIsolation = [
+  "apps/console/server/config-writers.test.ts",
+  "apps/console/server/daemon.test.ts",
+  "apps/console/server/owner-guard.test.ts",
+  "apps/console/server/round-frames.test.ts",
+  "apps/console/server/rounds.test.ts",
+  "products/explainer/src/collect/history.test.ts",
+  "products/explainer/src/yaml-dir.test.ts",
+  "products/factory/src/bot-identity.test.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/shepherd/merge-facts.test.ts",
+  "products/factory/src/shepherd/policy.test.ts",
+  "products/factory/src/shepherd/reviewer-reader.test.ts",
+  "products/factory/src/shepherd/spawn-profile.test.ts",
+  "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+];
+// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
+// their medians.
+const perfTests = ["apps/*/server/**/*.perf.test.ts"];
+
+const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...sharedGraphNeedsIsolation];
+
 // Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
 // worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
 // this process, which its threads share and its forks inherit.
@@ -54,8 +87,11 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
-    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
-    env: { TITAN_SPEECH_OFFLINE: "1" },
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights. A test that
+    // spawns vitest would otherwise spool its nested run as a timing record beside the real one.
+    env: { TITAN_SPEECH_OFFLINE: "1", TITAN_TEST_TIMING_SPOOL: "" },
+    // A local runner opts in to a timing record by naming a spool (TP-4465); CI passes its reporters on the command line.
+    ...(process.env.TITAN_TEST_TIMING_SPOOL ? { reporters: ["default", "./scripts/vitest-file-timing.mjs"] } : {}),
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
@@ -91,7 +127,27 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
+        },
+      },
+      {
+        extends: true,
+        test: { name: "factory", pool: "threads", isolate: false, include: factoryTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "explainer", pool: "threads", isolate: false, include: explainerTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "console", pool: "threads", isolate: false, include: consoleTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: {
+          name: "isolated",
+          pool: "threads",
+          include: sharedGraphNeedsIsolation,
         },
       },
       {
@@ -111,6 +167,17 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "perf",
+          pool: "forks",
+          maxWorkers: 1,
+          fileParallelism: false,
+          execArgv: forksHeap,
+          include: perfTests,
         },
       },
       {

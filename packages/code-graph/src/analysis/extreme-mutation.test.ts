@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnExec, type Exec } from "@titan-design/fix-proof";
+import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GraphEdge } from "../types.js";
 import type { IstanbulCoverage } from "./coverage.js";
@@ -40,22 +40,11 @@ const EDGES: GraphEdge[] = [
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
 
-function git(dir: string, args: string[]): string {
-  const identity = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"];
-  return execFileSync("git", [...identity, ...args], { cwd: dir, encoding: "utf-8" }).trim();
-}
-
 function fixtureRepo(): { dir: string; head: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "extreme-mutation-"));
   dirs.push(dir);
-  for (const [file, text] of Object.entries(FILES)) {
-    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
-    fs.writeFileSync(path.join(dir, file), text);
-  }
-  git(dir, ["init", "-q", "-b", "main"]);
-  git(dir, ["add", "-A"]);
-  git(dir, ["commit", "-q", "-m", "fixture"]);
-  return { dir, head: git(dir, ["rev-parse", "HEAD"]) };
+  seedRepo(dir, FILES);
+  return { dir, head: gitIn(dir)("rev-parse", "HEAD") };
 }
 
 // The fixture's tests import source, not dist, so pnpm stands in as a no-op.
@@ -91,15 +80,15 @@ describe("runExtremeMutation", { timeout: 120_000 }, () => {
     ]);
     expect(summary).toMatchObject({ head, targets: 3, survived: 1, caught: 1, unverified: 1, deletionCandidates: 1 });
     expect(snapshot(dir)).toEqual(before);
-    expect(git(dir, ["status", "--porcelain"])).toBe("");
-    expect(git(dir, ["worktree", "list"]).split("\n")).toHaveLength(1);
+    expect(gitIn(dir)("status", "--porcelain")).toBe("");
+    expect(gitIn(dir)("worktree", "list").split("\n")).toHaveLength(1);
   });
 
   it("refuses coverage measured at another commit before running anything", async () => {
     const { dir, head } = fixtureRepo();
     fs.writeFileSync(path.join(dir, LOG), fn("logged") + "\n");
-    git(dir, ["commit", "-q", "-am", "next"]);
-    const next = git(dir, ["rev-parse", "HEAD"]);
+    gitIn(dir)("commit", "-q", "-am", "next");
+    const next = gitIn(dir)("rev-parse", "HEAD");
 
     await expect(runExtremeMutation({ ...options(dir, next), coverage: { head, data: coverageOf(dir) } })).rejects.toThrow(
       /coverage was measured at/,

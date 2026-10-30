@@ -1,15 +1,16 @@
 # @titan-design/yt-scout
 
 A scheduled AI-video scout: poll a watch list of YouTube sources, transcribe and score new
-videos, and file one daily owner item. This first slice holds the watch list, the `videos`
-state table and the one-off seen-set import; detect, transcribe, score and the timers come in
-later slices, against the typed seams in `src/seams.ts`.
+videos, and file one daily owner item. So far it holds the watch list, the `videos` state
+table, the one-off seen-set import and detect; transcribe, score and the timers come in later
+slices, against the typed seams in `src/seams.ts`.
 
 Tier product of the titan-platform DAG. Private; not published.
 
 ```sh
 titan-yt-scout config check [--config <file>]
 titan-yt-scout seen import [--config <file>] [--root <dir>] [--db <file>]
+titan-yt-scout detect [--dry-run] [--config <file>] [--db <file>] [--rows-dir <dir>]
 ```
 
 ## Paths
@@ -19,6 +20,8 @@ titan-yt-scout seen import [--config <file>] [--root <dir>] [--db <file>]
 | youtube sources tree | `<active-work root>/youtube/sources` | `YT_ROOT`, `--root` |
 | watch list | `<sources>/scout/watchlist.yml` | `TITAN_YT_SCOUT_CONFIG`, `--config` |
 | state database | `~/.local/state/titan-yt-scout/scout.sqlite3` | `TITAN_YT_SCOUT_DB`, `--db` |
+| step rows | `rows/` beside the state database | `--rows-dir` |
+| yt-dlp binary | `yt-dlp` on `PATH` | `yt_dlp` in the watch list, then `YT_DLP` |
 
 The watch list is owner data, so it lives in the initiative tree, not in this repo.
 
@@ -47,6 +50,14 @@ models: { score: <model id>, digest: <model id> }
 Every object is strict: an unknown key is an error. `config check` prints `ok: N sources, M on
 trial` or one `file:line: path: message` line per problem and exits 1.
 
+## Detect
+
+`detect` polls every source and lists the ids not yet in `videos`, with the state the length
+filter gives each one. A channel tries its RSS feed first and falls back to a yt-dlp flat
+listing of its tabs, writing a `fallback` row. A source whose listing fails yields nothing and
+writes a `fail` row with `listing_error`; the other sources still run, and every row collected
+reaches disk. `--dry-run` inserts nothing.
+
 ## Seen-set import
 
 `seen import` loads the history that predates the scout so the first tick does not redo it.
@@ -64,3 +75,17 @@ A missing source is reported as `missing`, not an error. Channels that match a w
 handle or name are stored as that key; others keep their own name.
 
 Tests use synthetic ids and text written to a temp directory. Do not commit real transcript text.
+
+## Eval loop
+
+Cases live under `$YT_ROOT/scout/evals/cases/score-<id>.json`, outside the repo: each holds the
+transcript's path and sha256, never its text.
+
+- `titan-yt-scout flag <id> --transcript <file> --verdict over|under|miss|wrong-ts|bad-why [--gold-total <n>] [--note ...]`
+  records the owner's verdict. `over`, `under` and `miss` need `--gold-total`, the total the card should have had.
+- `score` files automatic cases (`schema_invalid`, `refusal`, `ts_invalid`).
+- `titan-yt-scout eval audit --model <opus> --rubric <file>` re-scores 5 cards from the last week
+  and files an `audit-disagree` case on a gap of 3 or more in total, or a flip across the threshold.
+- `titan-yt-scout eval replay --model <m> --rubric <file> [--max-cases n] [--max-cost usd]` re-runs every case and prints
+  threshold-side agreement, mean absolute difference in total against gold (the recorded card when there is no gold),
+  ts validity and cost. A case whose transcript changed since it was filed is counted `stale`, not replayed.

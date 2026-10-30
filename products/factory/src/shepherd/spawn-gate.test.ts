@@ -5,14 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { agentChatAgents } from "./agents.js";
 import { fixersOver } from "./main-red.js";
-import { ReviewerBrokerBusy } from "./review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerMachineHold, ReviewerSpawnQueued, ReviewerStillBusy, whileBrokerBusy } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import type { RosterReader } from "./roster.js";
-import { admitSpawn, DEFAULT_SPAWN_LIMITS, REVIEW_STALE_MS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type ReviewAsk } from "./spawn-gate.js";
+import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
+import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
 
-const limits = DEFAULT_SPAWN_LIMITS;
+/** A configured cost of four cores per unabsorbed review, which the accounting below reads; the measured default is in measured-load.test.ts. */
+const limits: SpawnLimits = { ...DEFAULT_SPAWN_LIMITS, reviewLoad: 4 };
+/** The pace windows the gate shipped with before load became the only limiter; a config can still set them. */
+const paced: SpawnLimits = { ...limits, windowMs: 60_000, headroomIntervalMs: 15_000 };
+/** One poll round: a review admitted this long ago is in load5, so it no longer counts as unabsorbed or takes a slot. */
+const ROUND_MS = 5 * 60_000;
 const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
 const GIB = 1024 ** 3;
 
@@ -45,32 +50,31 @@ describe("admitSpawn", () => {
     expect(admitSpawn({ load5: 20, pressureLevel: 1, freeMemoryPct: 20 }, limits, [], 1_000).admit).toBe(true);
   });
 
-  it("refuses a second start inside the window and admits it after when load5 is at half of buildLoad5", () => {
+  it("admits a second start in the same millisecond with the default pace windows at 0", () => {
     const busy = { ...idle, load5: limits.buildLoad5 / 2 };
-    expect(admitSpawn(busy, limits, [10_000], 10_000 + limits.windowMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 59999 ms ago, inside the 60000 ms window" });
-    expect(admitSpawn(busy, limits, [10_000], 10_000 + limits.windowMs).admit).toBe(true);
+    expect(admitSpawn(busy, limits, [10_000], 10_000)).toEqual({ admit: true });
+    expect(admitSpawn(idle, limits, [10_000], 10_000)).toEqual({ admit: true });
   });
 
-  it("admits a second start after the shorter headroom interval on a machine with headroom", () => {
-    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.headroomIntervalMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 14999 ms ago, inside the 15000 ms headroom interval" });
-    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.headroomIntervalMs)).toEqual({ admit: true });
+  it("refuses a second start inside a configured window and admits it after when load5 is at half of buildLoad5", () => {
+    const busy = { ...idle, load5: paced.buildLoad5 / 2 };
+    expect(admitSpawn(busy, paced, [10_000], 10_000 + paced.windowMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 59999 ms ago, inside the 60000 ms window" });
+    expect(admitSpawn(busy, paced, [10_000], 10_000 + paced.windowMs).admit).toBe(true);
+  });
+
+  it("admits a second start after a configured headroom interval on a machine with headroom", () => {
+    expect(admitSpawn(idle, paced, [10_000], 10_000 + paced.headroomIntervalMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 14999 ms ago, inside the 15000 ms headroom interval" });
+    expect(admitSpawn(idle, paced, [10_000], 10_000 + paced.headroomIntervalMs)).toEqual({ admit: true });
   });
 
   it.each([
     ["load5 at half of buildLoad5", { ...idle, load5: 10 }, []],
     ["memory pressure unread", { load5: 2, freeMemoryPct: 85 }, []],
     ["unabsorbed reviews at their headroom cap", idle, [1_000, 2_000, 3_000, 4_000]],
-  ])("keeps the 60 s window with %s", (_name, readings, running) => {
+  ])("keeps a configured 60 s window with %s", (_name, readings, running) => {
     const now = 100_000;
-    expect(admitSpawn(readings, limits, [now - limits.headroomIntervalMs], now, running).admit).toBe(false);
-    expect(admitSpawn(readings, limits, [now - limits.windowMs], now, running).admit).toBe(true);
-  });
-
-  it("refuses past the burst cap of admits inside any window, even with headroom", () => {
-    const fast = { ...limits, headroomIntervalMs: 5_000 };
-    const starts = [10_000, 15_000, 20_000, 25_000];
-    expect(admitSpawn(idle, fast, starts, 10_000 + limits.windowMs - 1)).toEqual({ admit: false, reason: "4 spawns were admitted inside the last 60000 ms, the burst cap 4" });
-    expect(admitSpawn(idle, fast, starts, 10_000 + limits.windowMs)).toEqual({ admit: true });
+    expect(admitSpawn(readings, paced, [now - paced.headroomIntervalMs], now, running).admit).toBe(false);
+    expect(admitSpawn(readings, paced, [now - paced.windowMs], now, running).admit).toBe(true);
   });
 
   it("still refuses on the unabsorbed-review accounting with headroom on load5", () => {
@@ -101,48 +105,42 @@ describe("spawnGate", () => {
     expect(state.lines).toEqual(["shepherd: spawn_gate admitted rv-octo-demo-7 (load5 2, pressure 1, free 85%)"]);
   });
 
-  it("admits one of a burst of four ready reviews per window", () => {
-    const { gate, state } = scene(idle);
-    const names = ["rv-a-1", "rv-b-2", "rv-c-3", "rv-d-4"];
+  it("admits a burst of four ready spawns in one poll with the default pace windows at 0", () => {
+    const { gate } = scene(idle);
+    const names = ["fx-a-1", "fx-b-2", "fx-c-3", "fx-d-4"];
     const admitted: string[] = [];
-    const tryAll = () => names.filter((name) => !admitted.includes(name)).forEach((name) => { try { gate.admit(name); admitted.push(name); } catch { /* deferred */ } });
 
-    tryAll();
-    expect(admitted).toEqual(["rv-a-1"]);
-    state.now += limits.windowMs;
-    tryAll();
-    expect(admitted).toEqual(["rv-a-1", "rv-b-2"]);
+    names.forEach((name) => { try { gate.admit(name); admitted.push(name); } catch { /* deferred */ } });
+
+    expect(admitted).toEqual(names);
   });
 
-  it("admits a review every headroom interval on an idle machine, up to the configured burst cap per window", () => {
+  it("admits a spawn every configured headroom interval on an idle machine", () => {
     const state = { now: 1_000 };
-    const gate = spawnGate({ limits: { headroomIntervalMs: 10_000, burstMax: 3 }, read: () => idle, now: () => state.now, log: () => undefined });
+    const gate = spawnGate({ limits: { headroomIntervalMs: 10_000 }, read: () => idle, now: () => state.now, log: () => undefined });
     const admittedAt: number[] = [];
-    for (; state.now <= 61_000; state.now += 10_000) {
-      try { gate.admit(`rv-${state.now}`); admittedAt.push(state.now); } catch { /* deferred */ }
+    for (; state.now <= 31_000; state.now += 5_000) {
+      try { gate.admit(`fx-${state.now}`); admittedAt.push(state.now); } catch { /* deferred */ }
     }
 
-    expect(admittedAt).toEqual([1_000, 11_000, 21_000, 61_000]);
+    expect(admittedAt).toEqual([1_000, 11_000, 21_000, 31_000]);
   });
 
-  it("admits a burst of ordinary reviews first come per poll, as with no review facts", () => {
-    const { gate, state } = scene(idle);
-    const names = ["rv-a-1", "rv-b-2", "rv-c-3"];
+  it("admits a burst of ordinary reviews in one poll while the free slots last", () => {
+    const { gate } = scene(idle);
+    const names = ["rv-a-1", "rv-b-2", "rv-c-3", "rv-d-4"];
     const admitted: string[] = [];
-    const tryAll = () => names.filter((name) => !admitted.includes(name)).forEach((name) => { try { gate.admit(name, [], { fixer: false }); admitted.push(name); } catch { /* deferred */ } });
 
-    tryAll();
-    state.now += limits.windowMs;
-    tryAll();
+    names.forEach((name) => { try { gate.admit(name, [], { fixer: false }); admitted.push(name); } catch { /* deferred */ } });
 
-    expect(admitted).toEqual(["rv-a-1", "rv-b-2"]);
+    expect(admitted).toEqual(["rv-a-1", "rv-b-2", "rv-c-3"]);
   });
 });
 
 describe("spawnGate tells the machine-stop ledger", () => {
   const scene = (readings: MachineReadings) => {
     const state = { now: 1_000, stops: [] as [number, string][] };
-    const gate = spawnGate({ read: () => readings, now: () => state.now, log: () => undefined, onStop: (at, reason) => void state.stops.push([at, reason]) });
+    const gate = spawnGate({ limits: paced, read: () => readings, now: () => state.now, log: () => undefined, onStop: (at, reason) => void state.stops.push([at, reason]) });
     return { state, gate };
   };
 
@@ -176,34 +174,19 @@ describe("spawnGate tells the machine-stop ledger", () => {
   });
 });
 
-describe("spawnGate under reviews retrying on the busy wait", () => {
-  /** Runs one busy-wait loop per review against the gate on a virtual clock; each resolves "started" or "gave up". */
+describe("spawnGate's review queue under a burst", () => {
+  beforeEach(() => void vi.useFakeTimers({ now: 0 }));
+  afterEach(() => void vi.useRealTimers());
+
+  /** Queues one review per arrival on the faked clock; each resolves "started" or "gave up". */
   async function drain(startTimes: readonly number[], readings: MachineReadings): Promise<string[]> {
-    const clock = { now: 0, timers: [] as { at: number; wake: () => void }[] };
-    const sleep = (ms: number) => new Promise<void>((wake) => void clock.timers.push({ at: clock.now + ms, wake }));
-    const timing = { now: () => clock.now, sleep, busyWaitMs: DEFAULT_BUSY_WAIT_MS };
-    const gate = spawnGate({ read: () => readings, now: () => clock.now, log: () => undefined });
-    const ask = (name: string) => async () => {
-      try {
-        gate.admit(name, [], { fixer: false });
-      } catch (error) {
-        throw error instanceof SpawnDeferred ? new ReviewerSpawnQueued(error.message) : error;
-      }
-      return "started";
-    };
+    const gate = spawnGate({ limits: { ...paced, maxConcurrentReviews: 64, reviewLoad: 0 }, read: () => readings, log: () => undefined });
+    const start = { running: async () => [], launch: async () => undefined };
     const outcomes = startTimes.map(async (at, index) => {
-      await sleep(at);
-      return whileBrokerBusy(timing, new AbortController().signal, () => undefined, ask(`rv-${index}`)).catch((error: unknown) => {
-        if (error instanceof ReviewerStillBusy) return "gave up";
-        throw error;
-      });
+      await new Promise((arrived) => setTimeout(arrived, at));
+      return gate.queueReview(`rv-${index}`, { fixer: false }, start).then(() => "started", () => "gave up");
     });
-    for (let next = clock.timers.shift(); next; next = clock.timers.shift()) {
-      clock.now = next.at;
-      next.wake();
-      await new Promise((settled) => setImmediate(settled));
-      clock.timers.sort((a, b) => a.at - b.at);
-    }
+    await vi.advanceTimersByTimeAsync(Math.max(...startTimes) + DEFAULT_HOLD_WAIT_MS);
     return Promise.all(outcomes);
   }
 
@@ -215,9 +198,9 @@ describe("spawnGate under reviews retrying on the busy wait", () => {
 
   it.each([
     ["24 reviews inside two minutes on an idle machine", arrivals(24, 120_000), idle],
-    ["16 reviews inside two minutes at load5 12, under the one-a-minute window", arrivals(16, 120_000), { ...idle, load5: 12 }],
+    ["16 reviews inside two minutes at load5 12, under a configured one-a-minute window", arrivals(16, 120_000), { ...idle, load5: 12 }],
     ["60 reviews over an hour at load5 12", arrivals(60, 3_600_000), { ...idle, load5: 12 }],
-  ])("starts every one of %s, none running out of its busy budget", async (_name, startTimes, readings) => {
+  ])("starts every one of %s, none outwaiting the hold", async (_name, startTimes, readings) => {
     const outcomes = await drain(startTimes, readings);
 
     expect(outcomes.filter((outcome) => outcome !== "started")).toEqual([]);
@@ -229,7 +212,7 @@ describe("spawnGate review priority", () => {
   const fixer: ReviewAsk = { fixer: true };
   const scene = () => {
     const state = { readings: { ...idle, load5: 21 }, now: 1_000, lines: [] as string[] };
-    const gate = spawnGate({ read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
     const ask = (name: string, review: ReviewAsk) => { try { gate.admit(name, [], review); return true; } catch { return false; } };
     return { state, gate, ask };
   };
@@ -243,7 +226,7 @@ describe("spawnGate review priority", () => {
     poll();
     expect(admitted).toEqual([]);
     state.readings = idle;
-    for (let round = 0; round < 3; round++, state.now += limits.windowMs) poll();
+    for (let round = 0; round < 3; round++, state.now += ROUND_MS) poll();
 
     expect(admitted).toEqual(["rv-fix-3", "rv-a-1", "rv-b-2"]);
   });
@@ -254,19 +237,6 @@ describe("spawnGate review priority", () => {
     state.readings = idle;
 
     expect(() => gate.admit("rv-a-1", [], ordinary)).toThrow("the review rv-fix-3 of a red main's fix waits ahead");
-  });
-
-  it("stops holding the queue for a fix review that has not asked within the stale interval", () => {
-    const { state, ask } = scene();
-    ask("rv-fix-3", fixer);
-    state.readings = idle;
-
-    state.now += REVIEW_STALE_MS;
-    const admittedAtInterval = ask("rv-a-1", ordinary);
-    state.now += 1;
-    const admittedAfterInterval = ask("rv-a-1", ordinary);
-
-    expect({ admittedAtInterval, admittedAfterInterval }).toEqual({ admittedAtInterval: false, admittedAfterInterval: true });
   });
 
   it("never holds back a spawn that is no review", () => {
@@ -301,11 +271,13 @@ describe("every factory-started agent passes the one gate", () => {
   const roster: RosterReader = { read: async () => ({ known: true, rows: [] }) as never, rows: async () => [], invalidate: () => undefined };
   const overloaded = () => spawnGate({ read: () => ({ ...idle, load5: 40 }), log: () => undefined });
 
-  it("defers a reviewer spawn as a machine hold, spent apart from the busy budget, and starts nobody", async () => {
+  it("queues a reviewer spawn on an overloaded machine, starting nobody and showing its place", async () => {
     mkdirSync(join(dir, "co"));
     const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate: overloaded() });
 
-    await expect(dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) })).rejects.toBeInstanceOf(ReviewerMachineHold);
+    void dispatch.spawn("rv-octo-demo-17", "brief", { repo: "octo/demo", pr: 17, head: "a".repeat(40) });
+    await vi.waitFor(() => expect(spawnQueuePosition("octo/demo", 17)).toBe("position 1 of 1"));
+
     expect(ran()).toBe(false);
   });
 
@@ -323,67 +295,48 @@ describe("every factory-started agent passes the one gate", () => {
     expect(ran()).toBe(false);
   });
 
-  it("defers the resume of an exited agent, for the standing reviewer as a busy refusal, and starts nobody", async () => {
-    mkdirSync(join(dir, "co"));
-    const gate = overloaded();
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
-
-    await expect(agentChatAgents(bin(), { roster, gate }).resume("impl-a", "wake")).rejects.toBeInstanceOf(SpawnDeferred);
-    await expect(dispatch.resume("rv-standing", "brief")).rejects.toBeInstanceOf(ReviewerBrokerBusy);
+  it("defers the resume of an exited agent and starts nobody", async () => {
+    await expect(agentChatAgents(bin(), { roster, gate: overloaded() }).resume("impl-a", "wake")).rejects.toBeInstanceOf(SpawnDeferred);
     expect(ran()).toBe(false);
   });
 
-  it("spawns the reviewer of a frozen repo's fix PR before two reviewers that asked earlier", async () => {
+  it("spawns the reviewer of a frozen repo's fix PR before two reviewers queued earlier, then the others oldest first", async () => {
     mkdirSync(join(dir, "co"));
-    const state = { load5: 21, now: 0, admitted: [] as string[] };
-    const log = (line: string) => void (line.startsWith("shepherd: spawn_gate admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
-    const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
+    const state = { load5: 21, now: 0, admitted: [] as string[], lines: [] as string[] };
+    const log = (line: string) => void (state.lines.push(line), line.startsWith("shepherd: spawn_gate admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
     const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate, isFixer: ({ pr }) => pr === 9 });
-    const prs = [7, 8, 9];
-    const poll = async () => {
-      for (const pr of prs.filter((pr) => !state.admitted.includes(`rv-octo-demo-${pr}`))) await dispatch.spawn(`rv-octo-demo-${pr}`, "brief", { repo: "octo/demo", pr, head: "a".repeat(40) }).catch(() => undefined);
-    };
+    const started = [7, 8, 9].map((pr) => dispatch.spawn(`rv-octo-demo-${pr}`, "brief", { repo: "octo/demo", pr, head: "a".repeat(40) }, { intentAt: pr }));
+    await vi.waitFor(() => expect(state.lines.some((line) => line.startsWith("shepherd: spawn_gate deferred rv-octo-demo-9"))).toBe(true));
 
-    await poll();
     state.load5 = 3;
-    for (let round = 0; round < 3; round++, state.now += limits.windowMs) await poll();
+    for (let round = 1; round <= 3; round++, state.now += ROUND_MS) {
+      gate.reviewEnded();
+      await vi.waitFor(() => expect(state.admitted).toHaveLength(round));
+    }
+    await Promise.all(started);
 
     expect(state.admitted).toEqual(["rv-octo-demo-9", "rv-octo-demo-7", "rv-octo-demo-8"]);
   });
 
-  it("asks again on the step's next wait and starts the reviewer once load settles, leaving no record of the deferral", async () => {
+  it("keeps a queued resume of a reviewer first spawned at an older head when another review asks after its PR moved on", async () => {
     mkdirSync(join(dir, "co"));
-    const state = { load5: 40, now: 0 };
-    const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log: () => undefined });
+    const state = { load5: 2, now: 100_000, lines: [] as string[], list: { at: 0, prs: [{ number: 7, headSha: "a".repeat(40) }] } };
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log: (line) => void state.lines.push(line), movedPast: movedPastOnList(() => state.list) });
     const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
-    const waits: string[] = [];
-    const timing = { now: () => state.now, busyWaitMs: 30 * 60_000, sleep: async (ms: number) => { state.now += ms; state.load5 = 3; } };
+    await dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) });
+    state.load5 = 40;
+    state.now += ROUND_MS;
+    void dispatch.resume("rv-octo-demo-7", "review the fix").catch(() => undefined);
+    await vi.waitFor(() => expect(spawnQueuePosition("octo/demo", 7)).toBe("position 1 of 1"));
 
-    await whileBrokerBusy(timing, new AbortController().signal, (text) => void waits.push(text), () => dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) }));
+    state.list = { at: state.now + 1, prs: [{ number: 7, headSha: "b".repeat(40) }, { number: 8, headSha: "a".repeat(40) }] };
+    state.now += 2;
+    void dispatch.spawn("rv-octo-demo-8", "brief", { repo: "octo/demo", pr: 8, head: "a".repeat(40) }).catch(() => undefined);
+    await vi.waitFor(() => expect(spawnQueuePosition("octo/demo", 8)).toBe("position 2 of 2"));
 
-    expect(ran()).toBe(true);
-    expect(waits).toEqual(["held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"]);
-  });
-
-  it("starts the reviewer with the older recorded intent first though the newer asked first, and re-asks every minute while queued", async () => {
-    mkdirSync(join(dir, "co"));
-    const state = { load5: 40, now: 100_000, admitted: [] as string[] };
-    const log = (line: string) => void (line.startsWith("shepherd: spawn_gate admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
-    const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
-    const spawnFor = (pr: number, intentAt: number) => () => dispatch.spawn(`rv-octo-demo-${pr}`, "brief", { repo: "octo/demo", pr, head: "a".repeat(40) }, { intentAt });
-    const askOlder = spawnFor(7, 10_000);
-    const waits: string[] = [];
-    const sleep = async (ms: number) => {
-      state.now += ms;
-      state.load5 = 3;
-      if (!state.admitted.includes("rv-octo-demo-7")) await askOlder().catch(() => undefined);
-    };
-
-    await whileBrokerBusy({ now: () => state.now, busyWaitMs: 30 * 60_000, sleep }, new AbortController().signal, (text) => void waits.push(text), spawnFor(8, 50_000));
-
-    expect(state.admitted).toEqual(["rv-octo-demo-7", "rv-octo-demo-8"]);
-    expect(waits).toEqual(Array(2).fill("held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"));
+    expect(state.lines.filter((line) => line.includes("dropped"))).toEqual([]);
+    expect(spawnQueuePosition("octo/demo", 7)).toBe("position 1 of 2");
   });
 });
 
@@ -391,7 +344,7 @@ describe("spawnGate admits deferred reviews oldest intent first", () => {
   const intent = (intentAt: number): ReviewAsk => ({ fixer: false, intentAt });
   const scene = () => {
     const state = { readings: { ...idle, load5: 21 }, now: 100_000, lines: [] as string[] };
-    const gate = spawnGate({ read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
     const ask = (name: string, review: ReviewAsk) => { try { gate.admit(name, [], review); return true; } catch { return false; } };
     return { state, ask };
   };
@@ -406,7 +359,7 @@ describe("spawnGate admits deferred reviews oldest intent first", () => {
 
     poll([older, middle]);
     state.readings = idle;
-    for (let round = 0; round < 3; round++, state.now += limits.windowMs) poll([newer, middle, older]);
+    for (let round = 0; round < 3; round++, state.now += ROUND_MS) poll([newer, middle, older]);
 
     expect(admitted).toEqual(["rv-old-1", "rv-mid-2", "rv-new-3"]);
   });
@@ -429,18 +382,6 @@ describe("spawnGate admits deferred reviews oldest intent first", () => {
     expect(ask("rv-new-2", intent(50_000))).toBe(false);
   });
 
-  it("does not let an older intent that stopped asking hold the line", () => {
-    const { state, ask } = scene();
-    ask("rv-dead-1", intent(10_000));
-    state.readings = idle;
-    state.now += REVIEW_STALE_MS;
-    ask("rv-new-2", intent(50_000));
-
-    state.now += 1;
-
-    expect(ask("rv-new-2", intent(50_000))).toBe(true);
-  });
-
   it("logs the queue position and the oldest intent on each deferral", () => {
     const { state, ask } = scene();
     ask("rv-old-1", intent(10_000));
@@ -453,9 +394,9 @@ describe("spawnGate admits deferred reviews oldest intent first", () => {
 
 describe("spawnGate holds reviews to the checkout filesystem's room and the concurrent-review cap", () => {
   const roomy: CheckoutDisk = { freeBytes: 50 * GIB, freeInodes: 800_000, totalInodes: 1_000_000, lastCheckoutInodes: 3_000 };
-  const scene = (disk: CheckoutDisk, running: readonly number[] = []) => {
+  const scene = (disk: CheckoutDisk, running: readonly number[] = [], caps: Partial<SpawnLimits> = {}) => {
     const state = { disk, running, now: 100_000, lines: [] as string[] };
-    const gate = spawnGate({ read: () => idle, disk: () => state.disk, now: () => state.now, log: (line) => void state.lines.push(line) });
+    const gate = spawnGate({ limits: caps, read: () => idle, disk: () => state.disk, now: () => state.now, log: (line) => void state.lines.push(line) });
     const ask = (name: string, review: ReviewAsk = { fixer: false }) => { try { gate.admit(name, state.running, review); return true; } catch { return false; } };
     return { state, gate, ask };
   };
@@ -512,7 +453,7 @@ describe("spawnGate holds reviews to the checkout filesystem's room and the conc
   });
 
   it("keeps a review deferred for room its place ahead of a newer intent once room returns", () => {
-    const { state, ask } = scene({ ...roomy, freeBytes: 0 });
+    const { state, ask } = scene({ ...roomy, freeBytes: 0 }, [], { maxConcurrentReviews: 1 });
     expect(ask("rv-old-1", { fixer: false, intentAt: 10_000 })).toBe(false);
     expect(state.lines.at(-1)).toContain("deferred: queue position 1 of 1");
     state.disk = roomy;

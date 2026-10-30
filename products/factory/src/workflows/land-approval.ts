@@ -56,7 +56,7 @@ export interface ApproveMergeFacts {
 }
 
 /** The D21 facts at this head: the rule's own merge-guard row, a skill change and whatever the facts report, in table order. */
-function ownerAtHeadRows(rule: PolicyRule, facts: ApproveMergeFacts, headSha: string, skillPaths: readonly string[]): OwnerAtHeadRow[] {
+export function ownerAtHeadRows(rule: Pick<PolicyRule, "table" | "rowId">, facts: ApproveMergeFacts, headSha: string, skillPaths: readonly string[]): OwnerAtHeadRow[] {
   const held = new Set<string>(facts.ownerAtHeadAt?.(headSha) ?? []);
   if (rule.table === "shepherd-merge-guard" && isOwnerAtHeadRow(rule.rowId)) held.add(rule.rowId);
   if (skillPaths.length > 0) held.add("skill-path");

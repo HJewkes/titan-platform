@@ -78,6 +78,20 @@ describe("Q-E20 claims match the gathered facts", () => {
     expect(claimsRow(script, FACTS).pass).toBe(true);
   });
 
+  it("backs a pull request said in pairs by the fact that names it", () => {
+    const facts: GatheredFact[] = [{ id: "pr/acme/parcel-desk#2339/opened", kind: "pull-request", change: "opened", title: "Hold scans" }];
+    const script = scriptSaying("So pull request twenty-three thirty-nine holds scans.", facts.map((f) => f.id));
+
+    expect(claimFindings(script, facts)).toEqual([]);
+  });
+
+  it("still refuses a pair that neither reading backs", () => {
+    const facts: GatheredFact[] = [{ id: "pr/acme/parcel-desk#2340/opened", kind: "pull-request", change: "opened", title: "Hold scans" }];
+    const script = scriptSaying("So pull request twenty-three thirty-nine holds scans.", facts.map((f) => f.id));
+
+    expect(claimFindings(script, facts).map((f) => f.beat)).toEqual(["w2"]);
+  });
+
   it("reports a passing warning row, not an error, when no facts were gathered", () => {
     const script = scriptSaying("So three open PRs wait on the desk.");
 
@@ -92,5 +106,11 @@ describe("claimText", () => {
     expect(claimText("PD-four thousand one hundred three and pull request two thousand three hundred nineteen")).toBe("PD-4103 and pull request 2319");
     expect(claimText("one hundred and five, twenty four, one two")).toBe("105, 24, 1 2");
     expect(claimText("[seventy-nine](=seventy nine) merged")).toBe("79 merged");
+  });
+
+  it("reads numbers said in pairs as one value only when asked", () => {
+    expect(claimText("five thirty-one and twenty-three thirty-nine", true)).toBe("531 and 2339");
+    expect(claimText("one two, five and thirty-one", true)).toBe("1 2, 5 and 31");
+    expect(claimText("five thirty-one")).toBe("5 31");
   });
 });

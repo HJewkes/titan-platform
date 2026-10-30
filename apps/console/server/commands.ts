@@ -16,6 +16,8 @@ import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
+import type { Invalidation } from "./invalidation.js";
+import { inboxReadCache } from "./inbox-rows.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
@@ -49,6 +51,8 @@ export interface ConsoleSources {
   agents: AgentsSource;
   sessions: SessionsSource;
   activeWork: ActiveWork;
+  /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
+  invalidation?: Invalidation;
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
@@ -95,9 +99,25 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-/** The owner's merged queue, as the raw Flow, as the inbox with its actions, and the taps that take them. */
-function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions) {
-  return { ...approvalsCommands(sources), ...inboxViewCommands(sources), ...inboxActionCommands(sources, actions) };
+type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions">;
+
+/**
+ * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
+ * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps, and
+ * approvals.flow shares the kept factory read; the taps themselves read the factory fresh.
+ */
+function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
+  const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
+  const cache = inboxReadCache(sources);
+  invalidation?.on("factory", cache.invalidate);
+  const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
+  return {
+    ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),
+    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir, cache.invalidate)),
+    ...approvalsCommands({ ...sources, factory: cache.factory }),
+    ...inboxViewCommands(sources, cache),
+    ...inboxActionCommands(sources, actions, cache.invalidate),
+  };
 }
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
@@ -127,7 +147,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore, invalidation }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -142,9 +162,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
     ...roundsRevealCommands(rounds),
-    ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
-    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),

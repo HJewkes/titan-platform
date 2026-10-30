@@ -25,7 +25,17 @@ export function workflowRunTableDdl(name: string = DEFAULT_RUN_TABLE): string {
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_status`)} ON ${t}(status);
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_owner_lease`)} ON ${t}(owner_lease_until);
+    ${workflowNameIndexDdl(name)}
   `;
+}
+
+function workflowNameIndexDdl(name: string): string {
+  return `CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_workflow_status`)} ON ${quoteIdent(name)}(workflow_name, status);`;
+}
+
+/** Adds the (workflow_name, status) index when an earlier workflowMigration already created the table. */
+export function workflowNameIndexMigration(version: number, name: string = DEFAULT_RUN_TABLE): Migration {
+  return { version, name: `workflow-name-index:${name}`, up: (db) => db.exec(workflowNameIndexDdl(name)) };
 }
 
 /** Creates a fresh table. Existing deployments also add workflowOwnershipMigration once. */
@@ -123,9 +133,16 @@ export class WorkflowRunStore {
   }
 
   listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM ${this.table} WHERE status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,
-    ).all(JSON.stringify(statuses)) as RawRunRow[];
+    return this.runsWhere("status IN (SELECT value FROM json_each(?))", JSON.stringify(statuses));
+  }
+
+  /** One workflow's runs of `statuses`, so a caller that reads a single workflow never loads or parses another's step results. */
+  listByWorkflow(workflowName: string, statuses: readonly WorkflowStatus[]): WorkflowRun[] {
+    return this.runsWhere("workflow_name = ? AND status IN (SELECT value FROM json_each(?))", workflowName, JSON.stringify(statuses));
+  }
+
+  private runsWhere(condition: string, ...params: string[]): WorkflowRun[] {
+    const rows = this.db.prepare(`SELECT * FROM ${this.table} WHERE ${condition} ORDER BY started_at`).all(...params) as RawRunRow[];
     return rows.map(toRun);
   }
 

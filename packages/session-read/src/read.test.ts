@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CWD, FIXTURE_LINES, SESSION, eventsForLines, offsetAfterLine, renderTranscript } from "./fixture.js";
 import type { TranscriptDelta } from "./fold.js";
 import { TranscriptParseError, extractTranscript, lastTimestampBefore, readTranscriptEvents } from "./read.js";
+import { SPAN_TEXT_CAP } from "./text.js";
 
 let dir: string;
 let transcript: string;
@@ -42,6 +43,16 @@ describe("extractTranscript", () => {
     const result = await extractTranscript(transcript, { toolSpans: false, contextBlocks: false });
     expect(result.spans.map((s) => s.field)).not.toContain("tool_result");
     expect(result.contextBlocks).toEqual([]);
+  });
+
+  it("caps a span at SPAN_TEXT_CAP by default and reads it whole when spanTextCap is Infinity", async () => {
+    const long = "x".repeat(SPAN_TEXT_CAP + 500);
+    const line = { type: "assistant", sessionId: SESSION, timestamp: "2026-10-29T00:00:00Z", message: { role: "assistant", id: "msg-long", content: [{ type: "text", text: long }] } };
+    writeFileSync(transcript, renderTranscript([...FIXTURE_LINES, line]), "utf8");
+    const lastResponse = (delta: TranscriptDelta) => delta.spans.filter((span) => span.field === "assistant_response").at(-1)?.text;
+
+    expect(lastResponse(await extractTranscript(transcript))).toHaveLength(SPAN_TEXT_CAP);
+    expect(lastResponse(await extractTranscript(transcript, { spanTextCap: Infinity }))).toBe(long);
   });
 
   it("folds session metadata and turns", async () => {

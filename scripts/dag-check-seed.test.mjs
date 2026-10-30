@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
-import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs } from "./dag-check-seed.mjs";
+import { MACHINE_SEED, refreshSeed, runWithColdRetry, seedArgs, seedKeep } from "./dag-check-seed.mjs";
 import { seedDbPath } from "./dag-check-self.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -33,6 +33,13 @@ describe("seedArgs", () => {
   it("does not seed when DAG_CHECK_NO_SEED is set or no seed file exists yet", () => {
     expect(seedArgs(["--json"], { DAG_CHECK_NO_SEED: "1" }, always)).toEqual(["--json"]);
     expect(seedArgs(["--json"], {}, () => false)).toEqual(["--json"]);
+  });
+});
+
+describe("seedKeep", () => {
+  it("keeps several trees in the shared machine seed and one head with its baseline in any other", () => {
+    expect(seedKeep(MACHINE_SEED)).toBeGreaterThan(2);
+    expect(seedKeep(path.join(tmpdir(), "graph.db"))).toBe(2);
   });
 });
 

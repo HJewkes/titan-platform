@@ -51,5 +51,8 @@
   },
   "bin": {
     "titan-evals": "./dist/bin.js"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
   }
 }

@@ -302,8 +302,46 @@ describe("sh-spawn-fixer", () => {
 
     const result = await spawnFixer(r.deps, r.wiring, { ...fixer, episode: 2 }, signal);
 
-    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), detail: "spawned" });
+    expect(result).toMatchObject({ fixer: fixerName(REPO, fakeSha("next-red")), detail: "spawned" });
     expect(r.spawned).toHaveLength(1);
+  });
+
+  it("two concurrent spawnFixer calls with different merge shas keep one fixer", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    r.freezes.freeze(REPO, LATER);
+
+    const results = await Promise.all([spawnFixer(r.deps, r.wiring, { ...fixer, mergeSha: RED }, signal), spawnFixer(r.deps, r.wiring, { ...fixer, mergeSha: LATER }, signal)]);
+
+    expect(new Set(r.spawned.map((s) => s.name))).toEqual(new Set([fixerName(REPO, RED)]));
+    expect(results.map((result) => result.fixer)).toEqual([fixerName(REPO, RED), fixerName(REPO, RED)]);
+    expect(r.freezes.get(REPO)?.fixer).toBe(fixerName(REPO, RED));
+  });
+
+  it("spawns nothing when another run records the episode's fixer while the roster is read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    const racing: FixerAgents = { ...fixers, roster: async () => (r.freezes.setFixer(REPO, 1, "fix-widget-other"), fixers.roster()) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: racing }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: "fix-widget-other", detail: "this episode already has its fixer" });
+    expect(r.spawned).toEqual([]);
+  });
+
+  it("retires the fixer it spawned when another fixer was recorded for the episode during the spawn", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    const retired: string[] = [];
+    const slow: FixerAgents = { ...fixers, spawn: async (...args) => (r.freezes.setFixer(REPO, 1, "fix-widget-other"), fixers.spawn(...args)), retire: async (name) => void retired.push(name) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: slow }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: "fix-widget-other", thawed: false, detail: expect.stringContaining(`retired ${fixerName(REPO, RED)}`) });
+    expect(retired).toEqual([fixerName(REPO, RED)]);
+    expect(r.freezes.get(REPO)?.fixer).toBe("fix-widget-other");
   });
 
   it("spawns nothing when the policy grants no fixer", async () => {

@@ -12,7 +12,8 @@ import type { MachineStopWatch } from "./shepherd/machine-stop.js";
 import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
-import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
+import { WAKE_STEPS } from "./shepherd/wake.js";
+import { wakePhase } from "./shepherd/wake-phase.js";
 import { isolateAgentChatHome } from "./test-support/agent-chat-home.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
@@ -188,7 +189,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = 0;
-  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined, noteReviewers: () => undefined, reviewSlots: () => undefined }, machineStop: watchReading(undefined), ...overrides });
+  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined, noteReviewers: () => undefined, reviewSlots: () => undefined, queueReview: (_name, _review, start) => start.launch(), reviewEnded: () => undefined }, machineStop: watchReading(undefined), ...overrides });
   const workflow = defineWorkflow({ name: "review-wiring", steps: REVIEW_STEPS, run: async (ctx) => void (await reviewPhase(ctx, { repo, pr: 1, round: 0, headSha: H1 })) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);

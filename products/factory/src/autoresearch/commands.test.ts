@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, BoundsSchema, TargetSchema } from "@titan-design/autoresearch";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
+import { seedRepo } from "@titan-design/test-kit/git";
 import type { StepResult, WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -32,11 +33,7 @@ afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true
 async function ideaClone() {
   const clone = mkdtempSync(join(tmpdir(), "ar-diff-"));
   roots.push(clone);
-  await git(clone, "init", "--quiet", "-b", "main");
-  mkdirSync(join(clone, "src"));
-  writeFileSync(join(clone, "src/gates.py"), "def accept(task):\n    return True\n");
-  await git(clone, "add", ".");
-  await git(clone, "commit", "--quiet", "-m", "base");
+  seedRepo(clone, { "src/gates.py": "def accept(task):\n    return True\n" });
   const base = await git(clone, "rev-parse", "HEAD");
   writeFileSync(join(clone, "src/gates.py"), "def accept(task):\n    return task.ok\n");
   writeFileSync(join(clone, "src/table.py"), Array.from({ length: 20_000 }, (_, index) => `ROW_${index} = ${index}\n`).join(""));
@@ -77,7 +74,7 @@ function recordedRun(base: string, head: string, params: Record<string, string> 
 }
 
 function contextOver(runs: readonly WorkflowRun[], clones: Record<string, string> = {}) {
-  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: () => [...runs] };
+  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), listByWorkflow: (workflowName: string) => runs.filter((run) => run.workflowName === workflowName) };
   const autoresearchClone = vi.fn((target: string) => clones[target]);
   const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearchClone };
   return { ctx, autoresearchClone };
@@ -186,7 +183,7 @@ function writeContext(initial: readonly WorkflowRun[], inboxRoot = "/nonexistent
     runs.push({ ...baselinedRun(id), workflowName, params, stepResults: {} });
     return id;
   });
-  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: (statuses = UNFINISHED) => runs.filter((run) => statuses.includes(run.status)), start };
+  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: (statuses = UNFINISHED) => runs.filter((run) => statuses.includes(run.status)), listByWorkflow: (workflowName: string, statuses: readonly WorkflowStatus[]) => runs.filter((run) => run.workflowName === workflowName && statuses.includes(run.status)), start };
   const autoresearch = arConfigFixture(inboxRoot, { fixture: { clone: `${inboxRoot}/fixture` }, other: { clone: `${inboxRoot}/other` } });
   const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearch };
   return { ctx, start };

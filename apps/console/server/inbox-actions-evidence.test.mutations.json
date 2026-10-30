@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a card that cannot show its evidence reads as a gate that needs none",
+      "file": "apps/console/server/inbox-gate-evidence.ts",
+      "find": "if (evidence === undefined || evidence.status === \"none\") return undefined;",
+      "replace": "if (evidence === undefined || evidence.status !== \"ready\") return undefined;",
+      "kills": [
+        "inbox tap on an owner-at-head merge gate offers no tap, naming the facts, the reason and the terminal command, when the card cannot show all of it"
+      ]
+    },
+    {
+      "name": "evidence read at another head is offered",
+      "file": "apps/console/server/inbox-gate-evidence.ts",
+      "find": "  if (evidence.head !== headSha) return",
+      "replace": "  if (evidence.head === null) return",
+      "kills": [
+        "inbox tap on an owner-at-head merge gate offers no tap on evidence read at another head than the item's"
+      ]
+    },
+    {
+      "name": "the confirm digest leaves the evidence out",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "digestOf([item.id, action, item.hold ?? null, readBack, readAt])",
+      "replace": "digestOf([item.id, action, item.hold ?? null, { ...readBack, evidence: undefined }, readAt])",
+      "kills": [
+        "inbox tap on an owner-at-head merge gate refuses the confirm once the evidence changed after it was read, and writes no record"
+      ]
+    },
+    {
+      "name": "the record posts no evidence digest",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "decision, ...(evidence && { evidenceDigest: evidence.digest }) };",
+      "replace": "decision };",
+      "kills": [
+        "inbox tap on an owner-at-head merge gate reads back every fact's evidence and posts the record with that evidence's digest"
+      ]
+    }
+  ]
+}
