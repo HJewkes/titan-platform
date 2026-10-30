@@ -30,12 +30,12 @@
       ]
     },
     {
-      "name": "a held row in the land stage counts as holding",
+      "name": "a reviewer-held G10 hold counts on the owner banner",
       "file": "apps/console/server/blockers.ts",
-      "find": "row.stage?.name !== \"hold\"",
-      "replace": "row.stage?.name === \"ci\"",
+      "find": "row.pendingGate !== null || isReviewerHold(held.reason)",
+      "replace": "row.pendingGate !== null",
       "kills": [
-        "bannerBlockers sources a satisfied hold is not a blocker"
+        "bannerBlockers sources a g10-adversary hold is not counted on the owner banner"
       ]
     },
     {
