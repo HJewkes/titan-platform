@@ -5,7 +5,7 @@ import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
 const facts = (paths: string[], extra: Partial<PrFacts> = {}): PrFacts =>
-  ({ repo: "o/r", number: 1, head: "h", base: "b", kind: "feature", changedFiles: paths.map((p) => file(p)), ...extra }) as PrFacts;
+  ({ repo: "o/r", pr: 1, head: "h", base: "b", kind: "feature", changedFiles: paths.map((p) => file(p)), ...extra });
 
 describe("classifyPr", () => {
   it("treats CODEOWNERS and workflow edits as authority", () => {

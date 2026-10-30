@@ -140,7 +140,8 @@ function partyClause({ agent, peer }: MessageQuery): string {
   return peer === undefined ? "(actor = @agent OR target = @agent)" : "((actor = @agent AND target = @peer) OR (actor = @peer AND target = @agent))";
 }
 
-function openReadOnly(file: string): Db | null {
+/** agent-chat's events.db opened read-only, or null when it is absent or will not open. */
+export function openReadOnly(file: string): Db | null {
   try {
     // readonly never sets journal_mode, so the broker's WAL writer is left alone.
     const db = openDatabase(file, { readonly: true, foreignKeys: false });

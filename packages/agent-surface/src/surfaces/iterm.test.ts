@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const execFile = vi.hoisted(() => vi.fn())
+type ExecCallback = (err: Error | null, result?: { stdout: string; stderr: string }) => void
+const execFile = vi.hoisted(() =>
+  vi.fn<(file: string, args: string[], options: Record<string, unknown>, callback: ExecCallback) => void>(),
+)
 vi.mock('node:child_process', () => ({ execFile }))
 
 import { itermSessionPresent, OSASCRIPT_TIMEOUT_MS } from './iterm.js'
@@ -50,8 +53,7 @@ describe('the real subprocess calls', () => {
   })
 
   const succeedWith = (stdout: string): void => {
-    execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args.at(-1) as (err: Error | null, result?: { stdout: string; stderr: string }) => void
+    execFile.mockImplementation((_file, _args, _options, callback) => {
       callback(null, { stdout, stderr: '' })
     })
   }
@@ -61,7 +63,7 @@ describe('the real subprocess calls', () => {
 
     await itermSessionPresent(UUID, { platform: 'darwin' })
 
-    const [bin, , execOptions] = execFile.mock.calls[0] as [string, string[], Record<string, unknown>]
+    const [bin, , execOptions] = execFile.mock.calls[0] ?? []
     expect(bin).toBe('osascript')
     expect(execOptions).toMatchObject({ timeout: OSASCRIPT_TIMEOUT_MS, killSignal: 'SIGKILL' })
     expect(OSASCRIPT_TIMEOUT_MS).toBeGreaterThan(0)
@@ -72,15 +74,15 @@ describe('the real subprocess calls', () => {
 
     await psProbe('ttys001')
 
-    const [bin, , execOptions] = execFile.mock.calls[0] as [string, string[], Record<string, unknown>]
+    const [bin, , execOptions] = execFile.mock.calls[0] ?? []
     expect(bin).toBe('ps')
     expect(execOptions).toMatchObject({ timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' })
     expect(PS_TIMEOUT_MS).toBeGreaterThan(0)
   })
 
   it('rejects, rather than reading as an empty tty, when ps is killed on timeout', async () => {
-    execFile.mockImplementation((...args: unknown[]) => {
-      ;(args.at(-1) as (err: Error) => void)(timedOut())
+    execFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(timedOut())
     })
 
     await expect(psProbe('ttys001')).rejects.toThrow('Command failed')

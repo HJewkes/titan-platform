@@ -1,37 +1,46 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isSeat } from "../shepherd/wake-brief.js";
+import type { WatchRow } from "../shepherd/view.js";
+import type { AgentSpan } from "./flow.js";
 import type { SeatLine } from "./model.js";
 
-interface DispatchRow {
-  ts?: unknown;
-  outcome?: unknown;
-  usd_est?: unknown;
-}
+/** A merge whose run names no implementer, or one the roster has no row for, so no spawned-by chain can be walked. */
+const UNATTRIBUTED = "unattributed";
 
-function parseRow(line: string): DispatchRow | undefined {
-  try {
-    return JSON.parse(line) as DispatchRow;
-  } catch {
-    return undefined;
+/** Each name's spawner from its latest roster row; the human and absent spawners are left out. */
+function spawnersOf(roster: readonly AgentSpan[]): Map<string, string> {
+  const latest = new Map<string, AgentSpan>();
+  for (const row of roster) {
+    const seen = latest.get(row.name);
+    if (seen === undefined || Date.parse(row.startedAt) >= Date.parse(seen.startedAt)) latest.set(row.name, row);
   }
+  return new Map([...latest].flatMap(([name, row]) => (isSeat(row.spawnedBy) ? [[name, row.spawnedBy] as const] : [])));
 }
 
-/** Spawns (`dispatched` rows) and estimated dollars (priced on the retire row) in the window from one seat's `dispatch.jsonl`; a bad line is skipped, not fatal. */
-export function seatCost(seat: string, jsonl: string, since: Date): SeatLine {
-  let dispatches = 0;
-  let usd = 0;
-  for (const line of jsonl.split("\n")) {
-    const row = line.trim() === "" ? undefined : parseRow(line);
-    if (typeof row?.ts !== "string" || Date.parse(row.ts) < since.getTime()) continue;
-    if (row.outcome === "dispatched") dispatches += 1;
-    usd += typeof row.usd_est === "number" ? row.usd_est : 0;
+/** The top of `name`'s spawned-by chain: the seat the human started, which owns everything spawned beneath it. */
+function coordinatorOf(name: string, spawners: ReadonlyMap<string, string>): string {
+  const seen = new Set([name]);
+  let current = name;
+  for (let next = spawners.get(current); next !== undefined && !seen.has(next); next = spawners.get(current)) {
+    seen.add(next);
+    current = next;
   }
-  return { seat, dispatches, usd };
+  return current;
 }
 
-export function readSeatCosts(logsDir: string, seats: readonly string[], since: Date): SeatLine[] {
-  return seats.map((seat) => {
-    const file = join(logsDir, seat, "dispatch.jsonl");
-    return seatCost(seat, existsSync(file) ? readFileSync(file, "utf8") : "", since);
-  });
+/**
+ * Merges and spawns in the window per coordinator (TP-4626). A merge counts for the coordinator above its run's
+ * implementer; a spawn counts for the coordinator above the agent that spawned it. Busiest first.
+ */
+export function seatLines(merged: readonly WatchRow[], roster: readonly AgentSpan[], since: Date): SeatLine[] {
+  const spawners = spawnersOf(roster);
+  const onRoster = new Set(roster.map((row) => row.name));
+  const seatOf = (implementer: string | null | undefined): string =>
+    implementer && onRoster.has(implementer) ? coordinatorOf(implementer, spawners) : UNATTRIBUTED;
+  const lines = new Map<string, SeatLine>();
+  const line = (seat: string): SeatLine => lines.get(seat) ?? lines.set(seat, { seat, merges: 0, spawns: 0 }).get(seat)!;
+  for (const row of merged) line(seatOf(row.implementer)).merges += 1;
+  for (const row of roster) {
+    if (isSeat(row.spawnedBy) && Date.parse(row.startedAt) >= since.getTime()) line(coordinatorOf(row.spawnedBy, spawners)).spawns += 1;
+  }
+  return [...lines.values()].sort((a, b) => b.merges - a.merges || b.spawns - a.spawns || a.seat.localeCompare(b.seat));
 }

@@ -45,10 +45,11 @@ export interface AutoPassed {
   detail: string;
 }
 
+/** One coordinator's merges and spawns in the window, read from Shepherd's runs and the broker roster. */
 export interface SeatLine {
   seat: string;
-  dispatches: number;
-  usd: number;
+  merges: number;
+  spawns: number;
 }
 
 export interface PoolLine {
@@ -144,7 +145,6 @@ const DecidedEntry = z.object({
   principleIds: z.array(z.string()).optional(),
 });
 const Reversal = z.object({ class: z.string(), decided: z.number(), overruled: z.number() });
-const Reading = z.object({ sevenDay: z.number().optional(), fiveHour: z.number().optional() });
 
 /** The subset of agent-chat's `digest --json` model the owner digest reads; unknown fields are ignored. */
 export const AgentChatDigestSchema = z.object({
@@ -161,7 +161,6 @@ export const AgentChatDigestSchema = z.object({
   needsGrant: z.array(NamedItem).default([]),
   mergedPrs: z.array(NamedItem).default([]),
   stalled: z.array(z.object({ taskId: z.string(), agentId: z.string(), phase: z.string(), phaseAt: z.string() })).default([]),
-  spend: z.array(z.object({ account: z.string(), now: Reading.optional(), stale: z.boolean().default(false) })).default([]),
   gaps: z.array(z.string()).default([]),
 });
 

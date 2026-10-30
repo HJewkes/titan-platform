@@ -1,11 +1,12 @@
 import { ITEM_KEY, type MatrixEvent } from "@titan-design/matrix-bus";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stringField } from "./content-field.js";
 import { FakeHub } from "./fake-hub.js";
 import { MemoryMirrorState } from "./memory-state.js";
 import { MemoryQueueSource } from "./memory-source.js";
 import { createMirror, MAX_BACKFILL_PAGES, type Mirror, type MirrorOptions } from "./mirror.js";
 import { runMirror } from "./run.js";
-import type { MirrorState, QueueItem, SourceEvent } from "./types.js";
+import type { MirrorState, QueueItem } from "./types.js";
 
 const OWNER = "@owner:hub.test";
 const ROOM = "!queue:hub.test";
@@ -52,12 +53,12 @@ function rig(state = new MemoryMirrorState(), source = new MemoryQueueSource(), 
 }
 
 const eventIdOf = (state: MirrorState, id: string) => state.bySourceId(id)!.eventId;
-const msgIds = (hub: FakeHub) => hub.items().map((event) => (event.content[ITEM_KEY] as { msg_id: string }).msg_id);
+const msgIds = (hub: FakeHub) => hub.items().map((event) => stringField(event.content[ITEM_KEY], "msg_id"));
 
 async function drain(r: Rig, from: string | undefined, count: number, onEach?: (index: number) => void): Promise<void> {
   const controller = new AbortController();
   let index = 0;
-  for await (const event of r.source.tail(from, controller.signal) as AsyncIterable<SourceEvent>) {
+  for await (const event of r.source.tail(from, controller.signal)) {
     await r.mirror.applySourceEvent(event);
     index += 1;
     onEach?.(index);
@@ -112,7 +113,7 @@ describe("folding owner resolutions", () => {
 
     expect(r.source.resolutions.map((res) => [res.id, res.verdict])).toEqual([["a", "allow"]]);
     expect(r.state.bySourceId("a")?.status).toBe("closed");
-    expect(r.hub.edits().map((edit) => (edit.content["m.new_content"] as { body: string }).body)).toEqual([
+    expect(r.hub.edits().map((edit) => stringField(edit.content["m.new_content"], "body"))).toEqual([
       "APPR from tp316 (edge1)\nresolved: allow",
     ]);
   });
@@ -141,7 +142,7 @@ describe("folding owner resolutions", () => {
 
     await r.mirror.applySyncBatch(r.hub.deliver(reaction(eventIdOf(r.state, "a"))));
 
-    expect(r.hub.edits().map((edit) => (edit.content["m.new_content"] as { body: string }).body)).toEqual(["APPR from tp316 (edge1)\nresolved: allow"]);
+    expect(r.hub.edits().map((edit) => stringField(edit.content["m.new_content"], "body"))).toEqual(["APPR from tp316 (edge1)\nresolved: allow"]);
   });
 
     it("persists since only after the batch succeeds, and the same reaction twice resolves once", async () => {
@@ -189,7 +190,7 @@ describe("folding owner resolutions", () => {
     expect(r.state.bySourceId("a")?.status).toBe("open");
     await r.mirror.applySyncBatch(r.hub.deliver(reaction(target)));
 
-    const bodies = r.hub.edits().map((edit) => (edit.content["m.new_content"] as { body: string }).body);
+    const bodies = r.hub.edits().map((edit) => stringField(edit.content["m.new_content"], "body"));
     expect(bodies).toEqual(["APPR from tp316 (edge1)\nrefused: session no longer connected", "APPR from tp316 (edge1)\nresolved: allow"]);
     const [rejectTxn, closeTxn] = send.mock.calls.map((call) => call[3]);
     expect(rejectTxn).not.toBe(closeTxn);

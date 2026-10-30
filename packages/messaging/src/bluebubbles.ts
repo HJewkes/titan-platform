@@ -7,6 +7,7 @@ import type {
   SendResult,
 } from "./contract.js";
 import { sendFailed } from "./contract.js";
+import { isRecord } from "./record.js";
 import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 
 export interface BlueBubblesConfig {
@@ -42,15 +43,16 @@ interface Envelope {
 /** A BlueBubbles envelope: `{ status, message, data }`, or `error.message` on failure. Undefined when unreadable. */
 async function readEnvelope(response: Response): Promise<Envelope | undefined> {
   try {
-    const body = (await response.json()) as {
-      message?: unknown;
-      error?: { message?: unknown };
-      data?: { guid?: unknown };
-    };
-    const message = body.error?.message ?? body.message;
+    const body: unknown = await response.json();
+    // A null body is unreadable, where any other non-object body is an envelope with no fields.
+    if (body === null) return undefined;
+    const top = isRecord(body) ? body : {};
+    const error = isRecord(top.error) ? top.error : {};
+    const data = isRecord(top.data) ? top.data : {};
+    const message = error.message ?? top.message;
     return {
       message: typeof message === "string" ? message : undefined,
-      guid: typeof body.data?.guid === "string" ? body.data.guid : undefined,
+      guid: typeof data.guid === "string" ? data.guid : undefined,
     };
   } catch {
     return undefined;
