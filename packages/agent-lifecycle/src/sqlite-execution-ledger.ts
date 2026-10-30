@@ -6,8 +6,18 @@ import { canonicalJson } from "./canonical-json.js";
 import type { ApplyExecutionTransitionResult, ExecutionLedger, SqliteExecutionLedgerOptions } from "./execution-ledger.js";
 import { DEFAULT_EXECUTION_TABLE } from "./migration.js";
 
-interface StoredEvent { transition: string; record: string }
-interface StoredRecord { record: string }
+// The ledger wrote these documents itself, so parsing trusts their shape; it is the one place that does.
+function parseStored<T>(text: string): T { return JSON.parse(text); }
+
+function textColumn(row: unknown, key: "record" | "transition"): string {
+  const value = typeof row === "object" && row !== null ? Reflect.get(row, key) : undefined;
+  if (typeof value !== "string") throw new TypeError(`stored row has no ${key}`);
+  return value;
+}
+
+function lacksLease(owner: { leaseUntil: unknown } | undefined): boolean {
+  return !owner || typeof owner.leaseUntil !== "string";
+}
 
 const LIVE_EXECUTION_PHASES = EXECUTION_PHASES.filter(phase => !isTerminalExecutionPhase(phase));
 
@@ -41,14 +51,14 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
 
   listRecoverable(limit = 100): ExecutionRecord<TResult>[] {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError("limit must be a positive safe integer");
-    const rows = this.db.prepare(recoverableSql(this.snapshot)).all(limit) as StoredRecord[];
-    return rows.map(row => JSON.parse(row.record) as ExecutionRecord<TResult>);
+    const rows = this.db.prepare(recoverableSql(this.snapshot)).all(limit);
+    return rows.map(row => parseStored<ExecutionRecord<TResult>>(textColumn(row, "record")));
   }
 
   events(executionId: string): ExecutionTransition<TResult>[] {
     const rows = this.db.prepare(`SELECT transition FROM ${this.eventTable} WHERE execution_id = ? ORDER BY revision`)
-      .all(executionId) as { transition: string }[];
-    return rows.map(row => JSON.parse(row.transition) as ExecutionTransition<TResult>);
+      .all(executionId);
+    return rows.map(row => parseStored<ExecutionTransition<TResult>>(textColumn(row, "transition")));
   }
 
   apply(transition: ExecutionTransition<TResult>): ApplyExecutionTransitionResult<TResult> {
@@ -56,7 +66,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
     try { canonical = canonicalJson(transition); }
     catch (error) { return { ok: false, kind: "invalid_transition", reason: message(error) }; }
     // Freeze the caller's input at the transaction boundary; retain no caller-owned references.
-    const event = JSON.parse(canonical) as ExecutionTransition<TResult>;
+    const event = parseStored<ExecutionTransition<TResult>>(canonical);
     const problem = envelopeProblem(event);
     if (problem) return { ok: false, kind: "invalid_transition", reason: problem };
     return this.db.transaction(() => this.applyInside(event, canonical)).immediate();
@@ -64,9 +74,9 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
 
   private applyInside(event: ExecutionTransition<TResult>, canonical: string): ApplyExecutionTransitionResult<TResult> {
     const receipt = this.db.prepare(`SELECT transition,record FROM ${this.eventTable} WHERE execution_id = ? AND event_id = ?`)
-      .get(event.executionId, event.eventId) as StoredEvent | undefined;
-    if (receipt) return receipt.transition === canonical
-      ? { ok: true, applied: false, record: JSON.parse(receipt.record) as ExecutionRecord<TResult> }
+      .get(event.executionId, event.eventId);
+    if (receipt) return textColumn(receipt, "transition") === canonical
+      ? { ok: true, applied: false, record: parseStored<ExecutionRecord<TResult>>(textColumn(receipt, "record")) }
       : { ok: false, kind: "event_conflict", reason: "event ID already records a different transition" };
     const current = this.get(event.executionId);
     const invalid = this.validateLiveTransition(current, event);
@@ -85,7 +95,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   }
 
   private validateLiveTransition(current: ExecutionRecord<TResult> | undefined, event: ExecutionTransition<TResult>): ApplyExecutionTransitionResult<TResult> | undefined {
-    if ((event.kind === "prepare" || event.kind === "claim_owner") && (!event.owner || typeof event.owner.leaseUntil !== "string")) {
+    if ((event.kind === "prepare" || event.kind === "claim_owner") && lacksLease(event.owner)) {
       return { ok: false, kind: "invalid_transition", reason: "owner lease is required", current };
     }
     const now = Date.parse(this.now());
@@ -120,7 +130,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   }
 
   private decode(raw: unknown): ExecutionRecord<TResult> | undefined {
-    return raw === undefined ? undefined : JSON.parse((raw as StoredRecord).record) as ExecutionRecord<TResult>;
+    return raw === undefined ? undefined : parseStored<ExecutionRecord<TResult>>(textColumn(raw, "record"));
   }
 }
 
@@ -129,11 +139,14 @@ function message(error: unknown): string { return error instanceof Error ? error
 
 function envelopeProblem(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return "transition must be an object";
-  const event = value as Record<string, unknown>;
+  const field = (key: string): unknown => Reflect.get(value, key);
   for (const key of ["executionId", "eventId", "kind", "occurredAt"]) {
-    if (typeof event[key] !== "string" || !event[key].trim()) return `${key} must be a nonempty string`;
+    const item = field(key);
+    if (typeof item !== "string" || !item.trim()) return `${key} must be a nonempty string`;
   }
-  if (!Number.isSafeInteger(event.expectedRevision) || (event.expectedRevision as number) < 0) return "expectedRevision must be a nonnegative safe integer";
-  if (!Number.isFinite(Date.parse(event.occurredAt as string))) return "occurredAt must be a valid timestamp";
+  const revision = field("expectedRevision");
+  if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) return "expectedRevision must be a nonnegative safe integer";
+  const occurredAt = field("occurredAt");
+  if (typeof occurredAt !== "string" || !Number.isFinite(Date.parse(occurredAt))) return "occurredAt must be a valid timestamp";
   return undefined;
 }

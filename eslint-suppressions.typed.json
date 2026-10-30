@@ -215,24 +215,6 @@
       "count": 3
     }
   },
-  "packages/agent-lifecycle/src/canonical-json.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/agent-lifecycle/src/sqlite-execution-ledger.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
-  "packages/agent-lifecycle/src/sqlite-execution-ledger.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 12
-    }
-  },
   "packages/agent-protocol/src/lifecycle-correlations.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

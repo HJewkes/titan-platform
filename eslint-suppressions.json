@@ -40,11 +40,6 @@
       "count": 1
     }
   },
-  "packages/agent-lifecycle/src/sqlite-execution-ledger.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 4
-    }
-  },
   "packages/agent-protocol/src/lifecycle-terminal.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
