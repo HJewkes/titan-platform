@@ -4,7 +4,7 @@
     {
       "name": "static-window settles a beat at its cut, before its last reveal",
       "file": "products/explainer/src/qa/timing-gates.ts",
-      "find": "fromS: beat.startS + Math.max(0, ...(beat.reveals ?? []))",
+      "find": "fromS: beat.startS + Math.max(0, ...reveals)",
       "replace": "fromS: beat.startS",
       "kills": [
         "static-window excuses a settled frame under speech, up to 6 s fails a 5 s still run while an element is still to be revealed"
