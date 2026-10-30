@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the current level is the recent maximum, so one spike reads as growth",
+      "file": "packages/test-timing/src/trend.ts",
+      "find": "  const currentMs = minMs(recent);\n",
+      "replace": "  const currentMs = Math.max(...recent.map((point) => point.ms));\n",
+      "kills": ["growthOf ignores one slow run among the last three, because the current level is their minimum"]
+    },
+    {
+      "name": "growth ignores the absolute floor",
+      "file": "packages/test-timing/src/trend.ts",
+      "find": "trend.ratio >= rule.threshold && trend.deltaMs >= rule.floorMs",
+      "replace": "trend.ratio >= rule.threshold",
+      "kills": ["growthOf ignores a rise under the absolute floor however large its ratio"]
+    }
+  ]
+}

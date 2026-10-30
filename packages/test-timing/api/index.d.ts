@@ -229,4 +229,144 @@ interface SpoolResult {
  */
 declare function ingestSpool(db: Db, home: string, options?: SpoolOptions): SpoolResult;
 
-export { type ArtifactName, type GhRunMeta, type IngestResult, type LegacyUpgrade, type RawRef, type SpoolOptions, type SpoolResult, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingRun, type TimingStoreOptions, type TimingStoreStats, archiveRaw, fileSafeId, ghRunFetched, ingestArtifact, ingestGhArtifact, ingestRecord, ingestSpool, isLegacyArtifact, markGhRunFetched, openTimingStore, parseArtifactName, parseTimingArtifact, runnerClass, storeStats, timingArtifactReadSchema, timingArtifactSchema, upgradeLegacyArtifact };
+/** One measurement of a series: a file's or a project's or a whole run's total ms in one full-suite run. */
+interface Point {
+    runId: string;
+    commit: string | null;
+    startedMs: number;
+    ms: number;
+}
+interface GrowthRule {
+    /** The last N points; their minimum is the current level, so one slow run cannot move it. */
+    recent: number;
+    /** The points before those; their minimum is the baseline. */
+    baseline: number;
+    /** Fewest baseline points that make a baseline at all. */
+    minBaseline: number;
+    /** Fractional rise of the current level over the baseline that counts as growth. */
+    threshold: number;
+    /** Smallest absolute rise in ms that counts, so a 40 ms file going to 60 ms is not news. */
+    floorMs: number;
+}
+declare const GROWTH_RULE: GrowthRule;
+interface Growth {
+    baselineMs: number;
+    currentMs: number;
+    deltaMs: number;
+    ratio: number;
+    /** The first of the recent points: where the rise shows up. */
+    since: Point;
+}
+/** Min-of-last-N against the min of the trailing window before it, whatever the size; null when too short. */
+declare function trendOf(points: Point[], rule?: GrowthRule): Growth | null;
+/** The trend, only when it rose by at least the threshold and the floor. */
+declare function growthOf(points: Point[], rule?: GrowthRule): Growth | null;
+interface AnomalyRule {
+    /** How many earlier runs the rolling minimum spans. */
+    window: number;
+    /** Fewest earlier runs that make a rolling minimum. */
+    minWindow: number;
+    /** Fractional excess over the rolling minimum that is an anomaly. */
+    threshold: number;
+    /** Consecutive runs that must all be over, so one slow hosted runner is not an alarm. */
+    hold: number;
+}
+declare const ANOMALY_RULE: AnomalyRule;
+interface RunVerdict {
+    point: Point;
+    /** Minimum of the `window` runs before the held span; null until there are `minWindow` of them. */
+    rollingMinMs: number | null;
+    /** This run's own excess over the rolling minimum. */
+    ratio: number | null;
+    /** The held span's minimum over the rolling minimum: the number the threshold judges. */
+    heldRatio: number | null;
+    anomalous: boolean;
+}
+/** Each run's total against the minimum of the runs before it; anomalous once `hold` runs in a row are all over. */
+declare function runVerdicts(points: Point[], rule?: AnomalyRule): RunVerdict[];
+interface Shift {
+    beforeMs: number;
+    afterMs: number;
+    deltaMs: number;
+    ratio: number;
+    afterRuns: number;
+}
+/** Min after a cut against the min of the last `window` points before it; null when either side is empty. */
+declare function shiftAt(points: Point[], cutMs: number, window: number): Shift | null;
+
+type Level = "suite" | "project" | "file";
+interface SeriesFilter {
+    runnerClass?: string;
+    /** Only runs started at or after this; a report bounds its read so the corpus can grow without the read growing. */
+    sinceMs?: number;
+}
+/** One series of full-suite measurements, oldest first: the whole suite, one project or one file, on one runner class. */
+interface Series {
+    level: Level;
+    runnerClass: string;
+    project: string | null;
+    file: string | null;
+    points: Point[];
+}
+/** Every series at one level, each point one complete full-suite run, oldest first. */
+declare function readSeries(db: Db, level: Level, filter?: SeriesFilter): Series[];
+/** When the corpus first saw a commit (a full sha or a prefix of one), for "what got slower since <sha>". */
+declare function commitStartedMs(db: Db, commit: string): number | null;
+
+interface SeriesId {
+    level: Level;
+    runnerClass: string;
+    project: string | null;
+    file: string | null;
+}
+interface GrowthFinding extends SeriesId {
+    growth: Growth;
+}
+interface ProjectTrend extends SeriesId {
+    runs: number;
+    trend: Growth | null;
+}
+interface SuiteRuns {
+    runnerClass: string;
+    /** The newest runs, oldest first, each against its rolling minimum. */
+    verdicts: RunVerdict[];
+}
+interface TimingReport {
+    generatedAt: string;
+    stats: TimingStoreStats;
+    rules: {
+        growth: GrowthRule;
+        anomaly: AnomalyRule;
+    };
+    suites: SuiteRuns[];
+    anomalies: (RunVerdict & {
+        runnerClass: string;
+    })[];
+    growth: GrowthFinding[];
+    projects: ProjectTrend[];
+}
+interface ReportOptions extends SeriesFilter {
+    growth?: Partial<GrowthRule>;
+    anomaly?: Partial<AnomalyRule>;
+    /** How many of the newest suite runs the report lists per runner class. */
+    recentRuns?: number;
+    now?: number;
+}
+/**
+ * Growth (a file, project or the suite whose min-of-last-N rose over its trailing baseline), anomalies (a suite run
+ * over its rolling minimum) and every project's trend, over the full-scope runs the filter admits.
+ */
+declare function timingReport(db: Db, options?: ReportOptions): TimingReport;
+interface SlowerOptions extends SeriesFilter {
+    /** How many runs before the cut make the "before" minimum. */
+    window?: number;
+    threshold?: number;
+    floorMs?: number;
+}
+interface SlowerFinding extends SeriesId {
+    shift: Shift;
+}
+/** Every suite, project and file whose minimum after `cutMs` rose over its minimum before it, largest rise first. */
+declare function slowerSince(db: Db, cutMs: number, options?: SlowerOptions): SlowerFinding[];
+
+export { ANOMALY_RULE, type AnomalyRule, type ArtifactName, GROWTH_RULE, type GhRunMeta, type Growth, type GrowthFinding, type GrowthRule, type IngestResult, type LegacyUpgrade, type Level, type Point, type ProjectTrend, type RawRef, type ReportOptions, type RunVerdict, type Series, type SeriesFilter, type SeriesId, type Shift, type SlowerFinding, type SlowerOptions, type SpoolOptions, type SpoolResult, type SuiteRuns, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingReport, type TimingRun, type TimingStoreOptions, type TimingStoreStats, archiveRaw, commitStartedMs, fileSafeId, ghRunFetched, growthOf, ingestArtifact, ingestGhArtifact, ingestRecord, ingestSpool, isLegacyArtifact, markGhRunFetched, openTimingStore, parseArtifactName, parseTimingArtifact, readSeries, runVerdicts, runnerClass, shiftAt, slowerSince, storeStats, timingArtifactReadSchema, timingArtifactSchema, timingReport, trendOf, upgradeLegacyArtifact };

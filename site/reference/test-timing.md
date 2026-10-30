@@ -28,6 +28,12 @@ stores those records in a SQLite corpus of `runs` and `files` rows that later qu
   pre-header record a header from the run's `gh run view` metadata. `ingestSpool` drains a local spool directory.
 - A scheduled CI ingest skips run attempts it already fetched: `ghRunFetched` and `markGhRunFetched`, kept in the
   store's watermark table.
+- A guardrail reads the corpus: `timingReport` gives each suite's newest runs against their rolling minimum
+  (`anomalies` when `hold` runs in a row are all `threshold` over it), `growth` for every suite, project or file whose
+  min-of-last-N rose at least 25% and 500 ms over the minimum of the runs before, and every project's `trend`.
+  `slowerSince(db, cutMs)` answers "what got slower since this commit or date"; `commitStartedMs` turns a sha prefix
+  into the cut. All of them read full-scope runs only, one series per runner class and shard layout (`gha-4c`,
+  `gha-4c/3shards`), with a sharded run's shards summed into one point.
 - A report compares like with like: every file row carries `runner_class` (`<runner>-<cpus>c`), indexed with file
   and project, and every run keeps its `host`.
 
@@ -39,12 +45,17 @@ are [store-sqlite](./store-sqlite.md).
 Verified against 0.0.0.
 
 ```ts
-import { ingestArtifact, openTimingStore, storeStats } from "@titan-design/test-timing";
+import { commitStartedMs, ingestArtifact, openTimingStore, slowerSince, storeStats, timingReport } from "@titan-design/test-timing";
 
 const db = openTimingStore("timing.db");
 const result = ingestArtifact(db, JSON.parse(text), { path: "raw/gha/2026-01/run.json.gz", sha256 });
 // { runId: "gha:1001:1:1", inserted: true, files: 2 }; the same call again gives inserted: false
 console.log(storeStats(db)); // { runs, files, bytes, oldestStartedAt, newestStartedAt }
+
+const report = timingReport(db, { sinceMs: Date.now() - 14 * 86_400_000 });
+report.anomalies; // suite runs held over their rolling minimum
+report.growth; // [{ level: "file", project, file, growth: { baselineMs, currentMs, deltaMs, ratio, since } }]
+slowerSince(db, commitStartedMs(db, "1a2b3c4") ?? Date.parse("2026-01-01"));
 ```
 
 ## What it deliberately does not do
@@ -61,6 +72,10 @@ console.log(storeStats(db)); // { runs, files, bytes, oldestStartedAt, newestSta
 - A pre-header CI record (before the run header landed) has no test counts, node version, load or wall time; it is
   stored with `tests: 0`, `node: "unknown"` and `wallMs: 0`, on the hosted runner's 4 cores. A pull request's
   pre-header record is stored as `scoped`, since its scope was never written down.
+- A per-file 25% growth rule cannot see a cost every file pays a little of: a suite-wide 15% rise moves no file 25%.
+  The suite anomaly catches it instead. Its defaults (`ANOMALY_RULE`: 12% over the minimum of the last 10 runs, held
+  for 2 runs) sit over the roughly 6% run-to-run swing of a hosted runner's suite total.
+- A sharded run missing a shard is left out of every series, so a cancelled shard never reads as a fast suite.
 - `ingestSpool` leaves a record modified in the last minute for the next pass, because the reporter may still be
   writing it.
 - The column for the run's head commit is `commit_sha`, because `COMMIT` is an SQL keyword.

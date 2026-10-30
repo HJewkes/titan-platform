@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { dailyWith } from "../daily-script.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { cueGapCheck } from "../lint-cadence.js";
+import { stillStretchCheck } from "../lint-still.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { splitKeeps } from "../repair-hints-screen.js";
 import { splitCuelessBeats } from "../script-split.js";
@@ -123,5 +124,13 @@ describe("the split as the repair's starting script", () => {
 
     expect(prompts[0]).toContain("a claim and chip in other words than the spoken line, drawn from the piece's own facts");
     expect(prompts[0]).toContain("no claim, chip or label repeating 5 or more spoken words in a row");
+  });
+
+  it("the still seed starts the repair on the split, never as its answer", async () => {
+    const { prompts, draft } = await runSeeded(seed(), [stillStretchCheck]);
+
+    expect(prompts[0]).toContain("- still seed: code cued each element on a word that names it (");
+    expect(prompts[0]).toContain('{"action":"V6","target":"series-1","atCue":"forty"}');
+    expect(draft.beats.map((beat) => beat.visual.cues)).toEqual(seed().beats.map((beat) => beat.visual.cues));
   });
 });
