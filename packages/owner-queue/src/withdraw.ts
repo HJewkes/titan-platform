@@ -14,6 +14,7 @@ import { appendFile, lstat, readFile, unlink, writeFile } from "node:fs/promises
 import { join } from "node:path";
 import { z } from "zod";
 import { resolveDepositRef } from "./deposit-ref.js";
+import { errno } from "./errno.js";
 import type { OwnerItem } from "./schema.js";
 import { readAnswer, readSpool, withdrawnFileName } from "./spool.js";
 
@@ -68,7 +69,6 @@ export interface MatchRequest {
 export type WithdrawResult = { id: string; outcome: "withdrawn" | "already-withdrawn" };
 export type RestoreResult = { id: string; outcome: "restored" | "not-withdrawn" };
 
-const errno = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 const refused = (message: string): WithdrawRefusedError => new WithdrawRefusedError(message, "refused");
 
 /** The withdrawal of item `id`, or undefined when none is filed. Throws on a malformed marker. */
