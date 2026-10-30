@@ -59,4 +59,25 @@ describe('writeCrops', { timeout: BROWSER_TIMEOUT_MS }, () => {
     assert.equal(crops.length, report.errors.length)
     assert.ok(report.errors.every((e) => e.crop !== undefined && existsSync(`${out}/qa/${e.crop}`)))
   })
+
+  test('a held finding wholly past the right edge is reported, not crashed on', async () => {
+    const held = offFrame({ x: 2000, y: 100, w: 300, h: 200 })
+
+    await writeCrops(browser, served.url('qa-fixtures'), [held], `${out}/right`, DEFAULT_OPTIONS)
+
+    assert.ok(held.crop !== undefined && existsSync(`${out}/right/${held.crop}`))
+  })
+
+  test('held findings wholly past the top and left edges are reported, not crashed on', async () => {
+    const above = offFrame({ x: 100, y: -600, w: 300, h: 200 })
+    const left = offFrame({ x: -900, y: 100, w: 300, h: 200 })
+
+    await writeCrops(browser, served.url('qa-fixtures'), [above, left], `${out}/topleft`, DEFAULT_OPTIONS)
+
+    assert.ok([above, left].every((e) => e.crop !== undefined && existsSync(`${out}/topleft/${e.crop}`)))
+  })
 })
+
+function offFrame(at: { x: number; y: number; w: number; h: number }): CroppedFinding {
+  return { kind: 'off-frame', beat: 'fixture', finding: { kind: 'off-frame', el: 'div.card', at }, ts: [1], samples: 1, reason: 'held' }
+}
