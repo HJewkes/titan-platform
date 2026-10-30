@@ -18,6 +18,15 @@
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a failing still stretch reaches the L0 repair prompt with its hint"
       ]
+    },
+    {
+      "name": "Q-D22 hint asks a claim-card to trim its words, against Q-D19",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "hold it, show a claim the voice does not read word for word (its reading time is not still time), or draw",
+      "replace": "hold it, trim its words to fit, or draw",
+      "kills": [
+        "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
+      ]
     }
   ]
 }
