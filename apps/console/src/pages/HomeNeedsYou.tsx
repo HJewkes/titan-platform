@@ -4,6 +4,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { followRef, isWebTarget, openExternal, queueUrl } from "./homeLinks.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 import { ageOf, badgeOf, type InboxItem } from "./InboxPage.js";
 
 type QueueItem = ConsoleCommands["agents.queue"]["result"]["items"][number];
@@ -78,7 +79,7 @@ function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[];
   return (
     <Card variant="outline" testID="home-inbox">
       <CardContent>
-        <Link color="primary" onPress={openInbox}>
+        <Link color="primary" className={PHONE_TAP_LINK} onPress={openInbox}>
           {`Inbox: ${blockers.length} blocking${waiting > 0 ? `, ${waiting} ${waiting === 1 ? "round" : "rounds"} waiting over 6 h` : ""}${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
         </Link>
         {blockers.slice(0, TOP_BLOCKERS).map((item) => (

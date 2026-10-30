@@ -3,6 +3,7 @@ import { HStack, Link, Typography } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { refToRoute } from "../refs.js";
 import { open } from "../router.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 type ListResult = ConsoleCommands["sessions.list"]["result"];
 export type SessionRow = ListResult["sessions"][number];
@@ -42,19 +43,25 @@ function RefLink({ refText }: { refText: string }): ReactNode {
   if (target?.kind === "route") {
     const { route } = target;
     return (
-      <Link color="primary" onPress={() => open(route)}>
+      <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(route)}>
         {label}
       </Link>
     );
   }
-  if (target?.kind === "github") return <ExternalLink url={target.url}>{label}</ExternalLink>;
+  if (target?.kind === "github") {
+    return (
+      <ExternalLink url={target.url} className={PHONE_TAP_ID_LINK}>
+        {label}
+      </ExternalLink>
+    );
+  }
   return <Typography variant="body2">{label}</Typography>;
 }
 
 /** react-ui 0.20's `Link` renders no anchor and ignores `href` until TD-P1, so the press opens the URL itself. */
-export function ExternalLink({ url, children }: { url: string; children: string }): ReactNode {
+export function ExternalLink({ url, className, children }: { url: string; className?: string | undefined; children: string }): ReactNode {
   return (
-    <Link color="primary" href={url} isExternal onPress={() => window.open(url, "_blank", "noopener")}>
+    <Link color="primary" href={url} isExternal className={className} onPress={() => window.open(url, "_blank", "noopener")}>
       {children}
     </Link>
   );

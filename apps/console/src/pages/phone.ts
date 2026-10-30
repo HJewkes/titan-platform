@@ -11,3 +11,6 @@ export const PHONE_TAP = "max-md:min-h-11";
 
 /** The same for a link, which lays out inline and so ignores a min height until it is a flex box. */
 export const PHONE_TAP_LINK = "max-md:inline-flex max-md:min-h-11 max-md:items-center";
+
+/** A link whose text can be a few characters, a task id say, also needs 44px of width to hit. */
+export const PHONE_TAP_ID_LINK = `${PHONE_TAP_LINK} max-md:min-w-11`;

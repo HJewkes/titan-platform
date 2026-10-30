@@ -19,6 +19,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
+import { PHONE_TAP } from "./phone.js";
 
 export type RosterEntry = ConsoleCommands["agents.roster"]["result"]["agents"][number];
 type Message = ConsoleCommands["agents.messages"]["result"]["messages"][number];
@@ -41,7 +42,9 @@ export function RouteTabs<Key extends string>({ route, tabs, current }: { route:
     <Tabs index={index} onChange={select}>
       <TabList>
         {tabs.map(([key, label]) => (
-          <Tab key={key}>{label}</Tab>
+          <Tab key={key} className={PHONE_TAP}>
+            {label}
+          </Tab>
         ))}
       </TabList>
     </Tabs>
