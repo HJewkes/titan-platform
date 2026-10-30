@@ -24,6 +24,9 @@ opens read-only. The label rules are in the reference page.
 `replayCase` and `replaySuite` replay review-workflow cases through `reviewWorkflow` under
 policy variants. A FIX_FIRST counts as a hit only when a verified citation names the case's path.
 `SEED_CASES` and `FAILURE_FIXTURES` run in CI over fake ports with no model.
+`reviewScorecard` scores one variant's results on catch, false blocks, sessions per head and
+verdicts reached. `compare(candidate, incumbent)` accepts a retry or timing change on the fixtures
+alone (no new loop, no fewer verdicts, no more sessions) and a plan change on catch and cost.
 
 Full reference: `site/reference/evals.md`.
 
