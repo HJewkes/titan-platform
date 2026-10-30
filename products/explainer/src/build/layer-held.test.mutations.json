@@ -38,6 +38,15 @@
       "kills": [
         "the layer check's held rules passes an overflow seen on one sample mid-entrance, which qa does not hold either"
       ]
+    },
+    {
+      "name": "the layer check drops its 10 Hz sweep of qa's held kinds",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "return [...qaSamplings(timeline), ...phased, qaSampleMoments(timeline, true, LAYER_DENSE_SWEEP_HZ)];",
+      "replace": "return [...qaSamplings(timeline), ...phased];",
+      "kills": [
+        "the layer check's held rules refuses text a pulse covers for half a second after a cue word, which qa holds once its samples land on the pulse"
+      ]
     }
   ]
 }
