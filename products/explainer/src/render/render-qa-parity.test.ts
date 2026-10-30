@@ -25,7 +25,7 @@ beforeAll(async () => {
   voicedInputs = { script: out("rewrite").script!, resolved: out("resolve").resolved!, words: out("tts").words!, audio: out("tts").audio! };
 });
 afterAll(() => base.cleanup());
-afterEach(() => fx?.cleanup());
+afterEach(() => fx.cleanup());
 
 /** A fresh fixture holding a copy of the voiced run's data dir. */
 function seeded(): Fixture {
