@@ -92,12 +92,12 @@ function ownerGate(row: WatchRow): Unaged | undefined {
 }
 
 /**
- * A hold with a gate pending waits on the gate, which is listed on its own. `satisfiedAt` is the head a reviewer
- * approved, not a time: as Shepherd's `waitsOnHold` reads it, the hold is satisfied only at the run's own head.
+ * Whether a run waits on its hold is Shepherd's call (merge step, phase, the head a reviewer satisfied), so the banner
+ * reads its `hold` stage instead of re-deriving it. A hold with a gate pending waits on the gate, listed on its own.
  */
 function ownerHold(row: WatchRow): Unaged | undefined {
   const { held } = row;
-  if (!pinnedLive(row) || held === null || held.satisfiedAt === row.headSha || row.pendingGate !== null) return undefined;
+  if (!pinnedLive(row) || held === null || row.stage?.name !== "hold" || row.pendingGate !== null) return undefined;
   const link = `#/shepherd/${encodeURIComponent(prOf(row))}`;
   return { id: `held:${row.runId}`, source: "owner-hold", summary: clip(`${prOf(row)} is held: ${held.reason}`), blocks: prOf(row), asker: "shepherd", since: row.phaseSince, link };
 }

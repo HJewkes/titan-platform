@@ -20,21 +20,22 @@
       ]
     },
     {
-      "name": "a satisfied hold still counts as a blocker",
+      "name": "any held row counts, whatever stage Shepherd reports",
       "file": "apps/console/server/blockers.ts",
-      "find": "held === null || held.satisfiedAt === row.headSha || row.pendingGate !== null",
+      "find": "held === null || row.stage?.name !== \"hold\" || row.pendingGate !== null",
       "replace": "held === null || row.pendingGate !== null",
       "kills": [
-        "bannerBlockers sources a satisfied hold is not a blocker"
+        "bannerBlockers sources a satisfied hold is not a blocker",
+        "bannerBlockers sources a held run Shepherd does not call holding, such as one stalled in CI, is not bannered"
       ]
     },
     {
-      "name": "a hold satisfied at any head counts as satisfied",
+      "name": "a held row in the land stage counts as holding",
       "file": "apps/console/server/blockers.ts",
-      "find": "held.satisfiedAt === row.headSha",
-      "replace": "held.satisfiedAt !== undefined",
+      "find": "row.stage?.name !== \"hold\"",
+      "replace": "row.stage?.name === \"ci\"",
       "kills": [
-        "bannerBlockers sources a hold satisfied at an older head still blocks the run's current head"
+        "bannerBlockers sources a satisfied hold is not a blocker"
       ]
     },
     {
