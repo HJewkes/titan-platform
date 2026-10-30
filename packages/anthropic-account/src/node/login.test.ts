@@ -40,7 +40,7 @@ function writeCredentials(value: unknown, mode = 0o600): void {
 }
 
 function expectNoCanary(...values: unknown[]): void {
-  for (const value of values) expect(JSON.stringify(value) ?? "").not.toContain(CANARY);
+  for (const value of values) expect(`${JSON.stringify(value)}`).not.toContain(CANARY);
   expect(output.text()).not.toContain(CANARY);
 }
 
@@ -313,7 +313,7 @@ describe("readLoginState never leaks the canary", () => {
     const error = thrown(() => readLoginState(blocker, { now: NOW, uid }));
 
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).cause).toBeUndefined();
+    expect(error instanceof Error && error.cause).toBeUndefined();
     expect(errorText(error)).toContain("ENOTDIR");
     expect(errorText(error)).not.toContain(CANARY);
     expectNoCanary();
@@ -323,11 +323,12 @@ describe("readLoginState never leaks the canary", () => {
     writeCredentials(fakeCredentials());
     const realRead = fs.readSync;
     const buffers: Uint8Array[] = [];
-    vi.spyOn(fs, "readSync").mockImplementation(((fd: number, buffer: Uint8Array, ...rest: unknown[]) => {
-      buffers.push(buffer);
+    vi.spyOn(fs, "readSync").mockImplementation((...args: Parameters<typeof fs.readSync>) => {
+      const buffer = args[1];
+      if (buffer instanceof Uint8Array) buffers.push(buffer);
       if (buffers.length > 1) throw Object.assign(new Error(`EIO: i/o error, read ${FAKE_ACCESS_TOKEN}`), { code: "EIO" });
-      return (realRead as (...args: unknown[]) => number)(fd, buffer, ...rest);
-    }) as typeof fs.readSync);
+      return realRead(...args);
+    });
 
     const error = thrown(() => readLoginState(configDir, { now: NOW, uid }));
 

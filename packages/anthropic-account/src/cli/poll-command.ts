@@ -22,8 +22,10 @@ function reportRefresh(profile: AccountProfile, result: RefreshResult, context: 
 
 async function refreshAll(profiles: readonly AccountProfile[], now: number, context: CliContext): Promise<number[]> {
   const options = { fetch: fetchOf(context), marginMs: REFRESH_MARGIN_MS, now, uid: context.uid };
-  const results = await Promise.all(profiles.map((profile) => refreshIfNeeded(profile, options)));
-  return results.map((result, index) => reportRefresh(profiles[index] as AccountProfile, result, context));
+  const results = await Promise.all(
+    profiles.map(async (profile) => ({ profile, result: await refreshIfNeeded(profile, options) })),
+  );
+  return results.map(({ profile, result }) => reportRefresh(profile, result, context));
 }
 
 function failureText(failure: PollFailure): string {
@@ -61,8 +63,10 @@ function reportEntry(entry: PollAllEntry, context: CliContext): number {
 
 async function pollEntries(profiles: AccountProfile[], write: boolean, options: PollOptions): Promise<PollAllEntry[]> {
   if (write) return pollAll({ ...options, profiles });
-  const results = await Promise.all(profiles.map((profile) => pollUsage(profile, options)));
-  return results.map((result, index) => ({ label: (profiles[index] as AccountProfile).label, result }));
+  const results = await Promise.all(
+    profiles.map(async (profile) => ({ label: profile.label, result: await pollUsage(profile, options) })),
+  );
+  return results;
 }
 
 // Refreshes first, when asked, so a token renewed this run is the one polled.

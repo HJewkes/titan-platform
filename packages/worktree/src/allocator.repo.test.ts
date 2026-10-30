@@ -66,7 +66,7 @@ describe("worktree allocate", () => {
 
     expect(alloc.cwd).toBe(path.join(repo, ".worktrees", "alice"));
     expect(fs.existsSync(alloc.cwd)).toBe(true);
-    expect(alloc.ref?.branch).toBe("agent-chat/alice");
+    expect(alloc.ref.branch).toBe("agent-chat/alice");
     expect(git(["rev-parse", "--abbrev-ref", "HEAD"], alloc.cwd)).toBe("agent-chat/alice");
     expect(alloc.note).toContain("agent-chat/alice");
   });
@@ -174,7 +174,7 @@ describe("worktree re-allocation after a crash", () => {
     const second = await worktreeStrategy.allocate(ctx);
     expect(git(["rev-parse", "agent-chat/scout"], repo)).toBe(sha);
     expect(git(["rev-parse", "HEAD"], second.cwd)).toBe(sha);
-    expect(second.ref?.reused).toBe("true");
+    expect(second.ref.reused).toBe("true");
   });
 
   it("discards that branch only when the caller asks for it", async () => {
@@ -194,7 +194,7 @@ describe("worktree re-allocation after a crash", () => {
 
     const alloc = await worktreeStrategy.allocate(ctxFor(repo));
     expect(git(["rev-parse", "HEAD"], alloc.cwd)).toBe(moved);
-    expect(alloc.ref?.reused).toBeUndefined();
+    expect(alloc.ref.reused).toBeUndefined();
   });
 
   it("refuses rather than clobbering a worktree that is still on disk", async () => {
@@ -314,7 +314,7 @@ describe("worktree branch base", () => {
     const alloc = await worktreeStrategy.allocate(ctxFor(local));
 
     expect(git(["rev-parse", "HEAD"], alloc.cwd)).toBe(tip);
-    expect(alloc.ref?.base_ref).toBe("origin/master");
+    expect(alloc.ref.base_ref).toBe("origin/master");
   });
 
   it("uses the local HEAD and says so when the fetch fails", async () => {
@@ -466,7 +466,9 @@ describe("concurrent worktree adds", () => {
 
     // Either name may reach the add lock first, so only the outcome set is fixed.
     expect(settled.map((s) => s.status).sort()).toEqual(["fulfilled", "rejected"]);
-    const reason = (settled.find((s) => s.status === "rejected") as PromiseRejectedResult).reason as Error;
+    const rejected = settled.find((s) => s.status === "rejected");
+    const reason: unknown = rejected?.status === "rejected" ? rejected.reason : undefined;
+    if (!(reason instanceof Error)) throw new Error("expected a rejection carrying an Error");
     expect(reason.message).toContain(repo);
     expect(reason.message).toContain("200ms");
   });
@@ -561,7 +563,7 @@ describe("concurrent worktree adds", () => {
       leftHasStarted.then(() => strategy.allocate(ctxFor(right))),
     ]);
 
-    expect(allocs.map((a) => a.ref?.gitRoot)).toEqual([left, right]);
+    expect(allocs.map((a) => a.ref.gitRoot)).toEqual([left, right]);
   });
 });
 
@@ -816,8 +818,8 @@ describe("an assigned worktree", () => {
     const alloc = await strategy.allocate(ctxFor(repo, { assignedWorktree: at }));
 
     expect(alloc.cwd).toBe(at);
-    expect(alloc.ref?.assigned).toBe("true");
-    expect(alloc.ref?.branch).toBe("assigned-branch");
+    expect(alloc.ref.assigned).toBe("true");
+    expect(alloc.ref.branch).toBe("assigned-branch");
     expect(git(["branch", "--list"], repo)).toBe(before);
   });
 
