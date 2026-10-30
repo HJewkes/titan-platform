@@ -48,6 +48,15 @@
         "the stage fit three stat tiles keep the frame's side margins and draw each prefix with its number",
         "the stage fit four stat tiles keep the frame's side margins and draw each prefix with its number"
       ]
+    },
+    {
+      "name": "a stat value may wrap its prefix above its number",
+      "file": "products/explainer/src/composition/beats/stage/beats.css",
+      "find": "  white-space: nowrap;\n}\n/* Holds",
+      "replace": "}\n/* Holds",
+      "kills": [
+        "the stage fit four stat tiles keep the frame's side margins and draw each prefix with its number"
+      ]
     }
   ]
 }
