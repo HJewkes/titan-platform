@@ -11,7 +11,9 @@ export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
 /** qa's frame-wide gates on a layer: content-fill on its settled frame, words-per-frame on every probed frame. */
 export type LayerFrameRule = "content-fill" | "words-per-frame";
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule | LayerFrameRule;
+/** A cue word whose frames do not change the picture, which Q-D22 counted as a change (TP-4596). */
+export type LayerCueRule = "still-cue";
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule | LayerFrameRule | LayerCueRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -121,6 +123,9 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
   "content-fill": "spread the settled content across at least 60 % of the frame width, with shapes painted in defined theme tokens",
   "words-per-frame": "show at most 20 words on screen at once: keep key nouns and numbers, drop the rest",
+  "still-cue":
+    "change the picture on this cue word: an element already shown takes a highlight or pulse at full colour inside its own box, " +
+    "never an opacity fade on text and never an outline or shadow outside the element's clip-path, which the clip cuts away",
 };
 
 function ruleFix(row: LayerTextRow, fadedTexts: ReadonlySet<string>): string {
