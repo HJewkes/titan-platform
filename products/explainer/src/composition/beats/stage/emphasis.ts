@@ -10,13 +10,13 @@ type Emphases = NonNullable<TimelineBeat["emphases"]>;
  * How lit an element named on a cue at `atS` is at beat-local `t`: the flow token's dwell, so a cue lights its
  * element exactly as the token lights a node. 0 until the ramp, 1 for the dwell from `atS`, then 0 again.
  */
-export function litAt(t: number, atS: number): number {
+function litAt(t: number, atS: number): number {
   const to = atS + FLOW_DWELL_S;
   return Math.min(interpolate(t, [atS - LIT_RAMP_S, atS], [0, 1]), interpolate(t, [to, to + LIT_RAMP_S], [1, 0]));
 }
 
 /** How lit slot element `target` is at beat-local `t`; 0 for an element no cue names after its reveal. */
-export type Lit = (target: string, t: number) => number;
+type Lit = (target: string, t: number) => number;
 
 export function litFrom(emphases: Emphases): Lit {
   return (target, t) => Math.max(0, ...emphases.filter((e) => e.target === target).map((e) => litAt(t, e.atS)));
