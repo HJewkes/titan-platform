@@ -115,7 +115,7 @@ function textBlock(block: Json): string {
 function renderClaudeBlock(block: Json): string {
   if (block.type === "text") return textBlock(block);
   if (block.type === "thinking") return `[thinking, ${Array.from(text(block.thinking) ?? "").length} chars]`;
-  if (block.type === "tool_use") return `[tool ${text(block.name) ?? "?"}] ${truncate(oneLine(JSON.stringify(block.input ?? {}) ?? ""), 200)}`;
+  if (block.type === "tool_use") return `[tool ${text(block.name) ?? "?"}] ${truncate(oneLine(JSON.stringify(block.input ?? {})), 200)}`;
   if (block.type === "tool_result") {
     const marker = block.is_error === true ? ", error" : "";
     return `[tool result${marker}] ${truncate(renderedValue(block.content), 300)}`;

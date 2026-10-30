@@ -10,7 +10,7 @@ import type {
   SourceTextLocator,
 } from "./normalized.js";
 import type { ReadSessionObservationOptions, SessionObservationReadResult } from "./session-observations.js";
-import { normalizedSearchText, SPAN_TEXT_CAP, stringLeaves } from "./text.js";
+import { asObject, normalizedSearchText, SPAN_TEXT_CAP, stringLeaves } from "./text.js";
 
 /** Prefix-replay read with bounded observation buffering and rewrite detection, shared by every harness reader. */
 export async function* streamObservations(
@@ -86,7 +86,7 @@ function valueAt(value: unknown, path: readonly (string | number)[]): unknown {
   let current = value;
   for (const part of path) {
     if (typeof part === "number") current = Array.isArray(current) ? current[part] : undefined;
-    else current = typeof current === "object" && current !== null ? (current as Record<string, unknown>)[part] : undefined;
+    else current = asObject(current)?.[part];
   }
   return current;
 }
