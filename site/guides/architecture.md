@@ -296,6 +296,7 @@ graph TD
   codewatch --> reactApp
   codewatch --> rpcClient
   codewatch --> rpcProtocol
+  console --> agent
   console --> agentDispatch
   console --> appPaths
   console --> chatProtocol
