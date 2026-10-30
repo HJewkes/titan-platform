@@ -364,21 +364,6 @@
       "count": 4
     }
   },
-  "packages/rpc-client/src/client/static-source.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/live.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/static-parity.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/session-analytics/src/blocked-flow.ts": {
     "titan/max-line-length": {
       "count": 1

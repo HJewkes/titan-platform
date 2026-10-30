@@ -1,7 +1,7 @@
 import type { JsonEnvelope } from "@titan-design/rpc-protocol";
 import { snapshotKey, wireArgs } from "./canonical-key.js";
 import type { DataSource } from "./data-source.js";
-import { isEnvelope } from "./envelope-shape.js";
+import { isEnvelope, isRecord } from "./envelope-shape.js";
 
 export const SNAPSHOT_FORMAT = "titan-snapshot@1";
 
@@ -50,16 +50,24 @@ export async function buildSnapshot(source: Pick<DataSource, "call">, plan: Snap
 
 /** Checks a parsed file is a `titan-snapshot@1`; throws naming the first thing wrong. */
 export function parseSnapshot(value: unknown): Snapshot {
-  if (value === null || typeof value !== "object") throw new Error("Snapshot must be a JSON object");
-  const candidate = value as Record<string, unknown>;
-  if (candidate.format !== SNAPSHOT_FORMAT) {
-    throw new Error(`Unsupported snapshot format ${JSON.stringify(candidate.format)}; expected ${SNAPSHOT_FORMAT}`);
+  if (!isRecord(value)) throw new Error("Snapshot must be a JSON object");
+  if (value.format !== SNAPSHOT_FORMAT) {
+    throw new Error(`Unsupported snapshot format ${JSON.stringify(value.format)}; expected ${SNAPSHOT_FORMAT}`);
   }
-  if (typeof candidate.createdAt !== "string") throw new Error("Snapshot createdAt must be a string");
-  const calls = candidate.calls;
-  if (calls === null || typeof calls !== "object" || Array.isArray(calls)) throw new Error("Snapshot calls must be an object");
+  const { createdAt, calls } = value;
+  if (typeof createdAt !== "string") throw new Error("Snapshot createdAt must be a string");
+  if (!isRecord(calls) || Array.isArray(calls)) throw new Error("Snapshot calls must be an object");
+  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt, calls: parseCalls(calls) };
+  if ("dataset" in value) snapshot.dataset = value.dataset;
+  return snapshot;
+}
+
+function parseCalls(calls: Record<string, unknown>): Record<string, JsonEnvelope<unknown>> {
+  const entries: Array<[string, JsonEnvelope<unknown>]> = [];
   for (const [key, envelope] of Object.entries(calls)) {
     if (!isEnvelope(envelope)) throw new Error(`Snapshot call ${key} is not an envelope`);
+    entries.push([key, envelope]);
   }
-  return value as Snapshot;
+  // fromEntries defines own properties, so a "__proto__" key stays data instead of a prototype.
+  return Object.fromEntries(entries);
 }

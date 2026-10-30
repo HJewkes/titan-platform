@@ -27,7 +27,11 @@ export const TASKS: Task[] = [
   { slug: "c", title: "Ship the report", status: "open", tags: ["ui"] },
 ];
 
-const TaskListArgs = z.object({ status: z.enum(["open", "done"]).optional() });
+export const TasksSchema = z.array(
+  z.object({ slug: z.string(), title: z.string(), status: z.enum(["open", "done"]), tags: z.array(z.string()) }),
+);
+
+export const TaskListArgs = z.object({ status: z.enum(["open", "done"]).optional() });
 const TaskFindArgs = z.object({ filter: z.object({ tags: z.array(z.string()), status: z.enum(["open", "done"]).optional() }) });
 
 /** The query core a daemon and a static resolver would share: pure over the dataset. */
@@ -77,6 +81,9 @@ export const commands = {
 };
 
 export type Commands = CommandMapOf<typeof commands>;
+
+/** `task.get` with the slug typed loosely, so a test can send a wrong-typed arg the way a foreign caller would. */
+export type LooseSlugCommands = { "task.get": { args: { slug: unknown }; result: Commands["task.get"]["result"] } };
 
 export function createTestRegistry(): CommandRegistry {
   const registry = createRegistry();
