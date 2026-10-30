@@ -191,6 +191,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
+    shipped: { dir: path.join(config.stateDir, "shipped") },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
   };
 }

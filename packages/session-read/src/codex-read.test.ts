@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codexSourceFromPath } from "./codex-discover.js";
+import { defined, objectAt } from "./fixture.js";
 import {
   CODEX_ROOT_TURN,
   CODEX_THREAD,
@@ -128,9 +129,9 @@ describe("readCodexObservations", () => {
   });
 
   it("attributes late usage by its exact turn context after the turn closes", async () => {
-    const late = structuredClone(records[15]!) as { ordinal: number; payload: Record<string, unknown> };
+    const late = structuredClone(objectAt(records, 15));
     late.ordinal = 18;
-    late.payload.response_id = "response-late";
+    objectAt(late, "payload").response_id = "response-late";
     records.splice(18, 0, late);
     writeFileSync(filePath, renderCodexRollout(records), "utf8");
 
@@ -178,8 +179,7 @@ describe("readCodexObservations", () => {
 
   it("restarts from zero when bytes before the boundary are rewritten", async () => {
     const first = await collect(source, { untilByteOffset: codexOffsetAfter(records, 8) });
-    const metadata = records[0] as { payload: Record<string, unknown> };
-    metadata.payload.cwd = "/tmp/demo-b";
+    objectAt(records, 0, "payload").cwd = "/tmp/demo-b";
     writeFileSync(filePath, renderCodexRollout(records), "utf8");
 
     const resumed = await collect(source, { from: first.done.resumeBoundary });
@@ -221,7 +221,7 @@ describe("readCodexText", () => {
 
     expect(await readCodexText(message!.content[0]!.locator)).toBe("héllo 🌍");
     expect(await new CodexRolloutDecoder().readText(message!.content[0]!.locator)).toBe("héllo 🌍");
-    expect(await readCodexText(call!.inputLocator!)).toBe("/tmp/é.txt");
+    expect(await readCodexText(defined(call?.inputLocator))).toBe("/tmp/é.txt");
     expect(message!.evidence.line.byteLength).toBe(Buffer.byteLength(JSON.stringify(records[4]), "utf8"));
     expect(message!.evidence.line.byteLength).toBeGreaterThan(JSON.stringify(records[4]).length);
   });
@@ -246,8 +246,7 @@ describe("readCodexText", () => {
     const message = observations.find(
       (observation): observation is NormalizedMessageObservation => observation.kind === "message" && observation.role === "user",
     );
-    const response = (records[4] as { payload: { content: { text: string }[] } }).payload;
-    response.content[0]!.text = "héllo 🌎";
+    objectAt(records, 4, "payload", "content", 0).text = "héllo 🌎";
     writeFileSync(filePath, renderCodexRollout(records), "utf8");
 
     await expect(readCodexText(message!.content[0]!.locator)).resolves.toBeNull();

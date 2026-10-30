@@ -173,15 +173,15 @@ function findPrRefs(line: string): RawRef[] {
   const refs: RawRef[] = [];
   for (const m of line.matchAll(URL_RE)) refs.push(span(m, { repo: `${m[1]}/${m[2]}`, repoHint: null, number: Number(m[3]) }));
   for (const m of line.matchAll(REPO_NUM_RE)) {
-    if (overlaps(refs, m.index ?? 0, (m.index ?? 0) + m[0].length)) continue;
+    if (overlaps(refs, m.index, m.index + m[0].length)) continue;
     refs.push(span(m, { repo: `${m[1]}/${m[2]}`, repoHint: null, number: Number(m[3]) }));
   }
   for (const m of line.matchAll(HASH_RE)) {
-    if (overlaps(refs, m.index ?? 0, (m.index ?? 0) + m[0].length)) continue;
-    refs.push(span(m, { repo: null, repoHint: hintBefore(line, m.index ?? 0), number: Number(m[1]) }));
+    if (overlaps(refs, m.index, m.index + m[0].length)) continue;
+    refs.push(span(m, { repo: null, repoHint: hintBefore(line, m.index), number: Number(m[1]) }));
   }
   for (const m of line.matchAll(PR_NO_HASH_RE)) {
-    if (overlaps(refs, m.index ?? 0, (m.index ?? 0) + m[0].length)) continue;
+    if (overlaps(refs, m.index, m.index + m[0].length)) continue;
     refs.push(span(m, { repo: null, repoHint: null, number: Number(m[1]) }));
   }
   return refs.sort((a, b) => a.start - b.start);
