@@ -112,7 +112,7 @@ describe("the agent-chat implementer runner", () => {
   });
 
   it("defers an account-limit refusal until the reset time it names instead of failing the step", async () => {
-    const refusal = new DispatchError(`${LIMIT_NOTICE}; resets 15:30 UTC\ncode: reviewer_account_limit retryable: true`);
+    const refusal = new DispatchError(`${LIMIT_NOTICE}; resets Jan 1 at 3:30pm (UTC) [1970-01-01T15:30:00.000Z]\ncode: reviewer_account_limit retryable: true`);
     const broker = fakeBroker(["none", "live", "exited"], [{ text: fenced(REPORT), writtenAt: RESET_AT + 710 }], 1, refusal);
 
     const result = await broker.runner.start(spawn(broker.name), signal);

@@ -81,20 +81,8 @@ function resolveReset(match: RegExpExecArray, now: number): number | undefined {
   return candidates.reduce((best, next) => (Math.abs(next - now) < Math.abs(best - now) ? next : best));
 }
 
-/** "resets 15:30 UTC": the 24-hour form the broker's spawn refusal gives, always in UTC. */
-const RESET_24H_UTC = /\bresets?\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*UTC\b/i;
-
-function nextUtcTime(hour: number, minute: number, now: number): number | undefined {
-  if (hour > 23 || minute > 59) return undefined;
-  const day = new Date(now);
-  const today = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), hour, minute);
-  return today > now ? today : today + 24 * 60 * 60_000;
-}
-
 /** The reset a usage-limit notice names, as epoch ms; undefined when it names none this can read, so the hold stays until a release. */
 export function parseLimitReset(notice: string, now: number): number | undefined {
-  const utc = RESET_24H_UTC.exec(notice);
-  if (utc) return nextUtcTime(Number(utc[1]), Number(utc[2]), now);
   const match = RESET.exec(notice);
   if (!match) return undefined;
   try {
