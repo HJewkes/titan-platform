@@ -27,7 +27,7 @@ import { timelineS, type QaBeat, type QaTimeline } from "./qa-timeline.js";
 import { earlyReveal, holdThroughReference, textSpans, type TextSpan } from "./reference-timing.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
-const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
+export const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
 /** TD-856: no text on screen under 40 px. */
 export const TEXT_FLOOR_PX = 40;
 const FIRST_MOTION_S = 0.2;
