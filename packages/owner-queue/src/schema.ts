@@ -72,6 +72,12 @@ const answerSchema = z.object({
   covers: z.number().int().positive().optional(),
 });
 
+export const blockerSchema = z.strictObject({
+  since: timestamp,
+  /** The lane, task or PR that cannot move. */
+  blocks: oneLine,
+});
+
 export const ownerItemSchema = z.object({
   id: z.string().min(1),
   sources: z.array(sourceRefSchema).min(1),
@@ -107,6 +113,8 @@ export const ownerItemSchema = z.object({
   unblocks: z.array(z.string().min(1)),
   /** The asker's one line on what the answer unblocks right now; a deposit without it is planning, not blocking. */
   unblocksNow: z.string().trim().min(1).max(200).regex(/^[^\n]*$/, "one line").optional(),
+  /** Set when the asker is hard-blocked; `since` may predate the deposit, because a raiser often files hours in. */
+  blocker: blockerSchema.optional(),
   /** Which reader the item is for; absent means the owner. Selects a view, grants no authority. */
   audience: z.enum(AUDIENCES).optional(),
   route: z.object({ target: z.enum(ROUTE_TARGETS), reason: z.string(), shadow: z.boolean() }).optional(),
@@ -120,6 +128,7 @@ export const ownerItemSchema = z.object({
   lint: z.array(z.string()).optional(),
 });
 
+export type Blocker = z.infer<typeof blockerSchema>;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type OwnerItem = z.infer<typeof ownerItemSchema>;
 export type OwnerAnswer = z.infer<typeof answerSchema>;

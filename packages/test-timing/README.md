@@ -11,6 +11,22 @@ ingestArtifact(db, JSON.parse(raw), { path: "raw/run.json.gz", sha256 });
 storeStats(db); // { runs, files, bytes, oldestStartedAt, newestStartedAt }
 ```
 
+## Scheduled ingest
+
+`scripts/test-timing.mjs` fills the corpus at `~/.local/share/titan-test-timing/timing.db` (or
+`$TITAN_TEST_TIMING_HOME`). `ingest-gh` downloads the timing artifacts of the newest finished `ci.yml` runs, main and
+pull request alike, and skips run attempts it already fetched; `ingest-spool` drains the local spool that
+`verify:changed` writes; `ingest-dir <dir> --gh-run <id> [--scope full]` ingests artifacts already downloaded (`--scope` says what a pre-header record never did); `stats` prints the
+store's size. `ops/systemd/test-timing-ingest.{service,timer}` run both ingests hourly on a Linux host with the
+checkout at `~/projects/titan-platform`, built, and `gh` signed in. To install (an owner step):
+
+```sh
+pnpm -C ~/projects/titan-platform --filter @titan-design/test-timing... build
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/test-timing-ingest.service ~/projects/titan-platform/ops/systemd/test-timing-ingest.timer
+systemctl --user daemon-reload
+systemctl --user enable --now test-timing-ingest.timer
+```
+
 Tier 1 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 

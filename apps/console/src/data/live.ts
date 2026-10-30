@@ -9,7 +9,7 @@ const RELAY_INVALIDATES = {
   "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "work.taskMentions", "work.taskArtifacts", "graph.ego"],
   "agent-chat": ["agents.roster", "agents.graph", "agents.messages", "agents.queue"],
   // The factory names its frames `shepherd` for every workflow run, autoresearch's too, so any of them may have moved a run.
-  factory: ["autoresearch.runs", "autoresearch.run"],
+  factory: ["autoresearch.runs", "autoresearch.run", "blockers.banner"],
 } as const satisfies Record<RelaySource, readonly CommandName<ConsoleCommands>[]>;
 
 const ALL_RELAYED_READS = Object.values(RELAY_INVALIDATES).flat();
@@ -38,8 +38,11 @@ export function useRelayInvalidation(coalesceMs: number = RELAY_COALESCE_MS): vo
   }, [status, invalidate]);
 }
 
-/** The CLI withdraws rounds from another process, which no relayed stream reports, so the list refetches whenever the owner returns to the tab. */
-const RETURN_INVALIDATES = ["rounds.list"] as const satisfies readonly CommandName<ConsoleCommands>[];
+/**
+ * The CLI withdraws rounds, and seats raise and clear blockers, from other processes no relayed stream reports, so those
+ * reads refetch whenever the owner returns to the tab.
+ */
+const RETURN_INVALIDATES = ["rounds.list", "blockers.banner"] as const satisfies readonly CommandName<ConsoleCommands>[];
 
 /** Mounted once by the shell: window focus, or the tab turning visible, refetches the reads only a return can catch up. */
 export function useReturnInvalidation(): void {

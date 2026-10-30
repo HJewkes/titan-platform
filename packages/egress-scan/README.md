@@ -106,6 +106,34 @@ ignores `--text`, so for a merge read the message with `--no-patch --format=%B` 
 with `--diff-merges=separate --format=`, and pass the patch to `parseDiff`. Scan each commit, not
 only the range endpoints: a leak added and then removed is still in the pushed history.
 
+## Spawn-time hooks dir
+
+`@titan-design/egress-scan/hooks` writes a git hooks directory that a launcher points an agent's
+git at through the environment, so no repo's `.git/config` changes. Its `pre-push` runs
+`titan-egress-scan pre-push` with an environment of PATH alone, refuses the push when the private
+term list is missing (`MISSING_TERMS_REFUSES`), and then runs the repo's own `pre-push`. The other
+client hooks chain straight to the repo's own. A dir named by `noRewriteHooksDir` also refuses
+each update git hands the hook that deletes a ref, updates `main` or `master`, names a ref outside
+`refs/heads/` and `refs/tags/`, or is not a fast-forward of the remote's tip, and refuses a push to a
+remote configured as a mirror.
+
+```ts
+import { gitHooksEnv, noRewriteHooksDir, passwdHome, probeScanner, writeGitHooks } from "@titan-design/egress-scan/hooks";
+
+const dir = noRewriteHooksDir(guardDir);
+const shell = { path: "/bin/sh", shebang: "#!/bin/sh -p", scrub: "command unset SHELLOPTS 2>/dev/null\n" };
+writeGitHooks(dir, { missingTermsRefuses: true, home: passwdHome(), path: brokerPath, probe: probeScanner }, { shell, shimDirs });
+spawn(agent, { env: { ...agentEnv, ...gitHooksEnv(dir) } });
+```
+
+`shimDirs` lists the agent's own git and gh shim dirs. The hook leaves them, and every relative
+entry, off its PATH, since git runs it from the worktree being pushed.
+
+The hook sees only what git hands it. git leaves a typed `git push --mirror`'s deletions off the
+hook's stdin, so an agent that first deletes its own `refs/remotes/*` can delete remote branches,
+`main` included, past the no-rewrite policy. Refuse a typed `--mirror` before git runs, in the
+agent's git shim or tool guard.
+
 ## Rules
 
 - `home-path`: `/Users/<seg>`, `/home/<seg>` and `C:\Users\<seg>`, root in any case, also

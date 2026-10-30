@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
+import { blockersCommands } from "./blockers.js";
 import { buildInfoCommands } from "./build-info.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import { autoresearchCommands, type AutoresearchSource } from "./autoresearch.js";
@@ -83,6 +84,8 @@ export interface ConsoleSources {
   work?: WorkOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
+  /** Hours before `blockers.banner` shows an item; absent means 12. */
+  blockerHours?: number;
 }
 
 const ACTIONS_UNWIRED: InboxActionOptions = { enabled: false, actionsDir: "", client: { post: async () => ({ status: "off" }) } };
@@ -147,7 +150,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore, invalidation }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore, invalidation, blockerHours }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -164,6 +167,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsRevealCommands(rounds),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
     ...shepherdCommands(shepherd),
+    ...blockersCommands({ spoolDir: inbox.dir, shepherd, ...(blockerHours !== undefined && { thresholdHours: blockerHours }) }, invalidation),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),
     ...configDriftCommands(configReaders),

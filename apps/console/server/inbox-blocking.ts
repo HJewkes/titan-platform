@@ -44,7 +44,8 @@ export function liveAgentNames(roster: AgentRosterSnapshot): Set<string> {
   return new Set(roster.agents.filter((agent) => agent.stateSource === "presence" || live.includes(agent.state)).map((agent) => agent.name));
 }
 
-const pinnedLive = (row: WatchRow | undefined): row is WatchRow & { pr: number; headSha: string } =>
+/** A run pinned to a PR head whose replay has not diverged: the only kind a gate or hold on it can block. */
+export const pinnedLive = (row: WatchRow | undefined): row is WatchRow & { pr: number; headSha: string } =>
   row !== undefined && row.pr !== null && row.headSha !== null && !REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
 
 /** The run itself must be pending on this gate at a PR head; a rowless or diverged gate unblocks nothing. */
