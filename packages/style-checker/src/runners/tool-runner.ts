@@ -23,11 +23,15 @@ export async function runTool(
     try {
       return await runToolOnce(command, args, options);
     } catch (err) {
-      const busy = (err as { code?: string }).code === "ETXTBSY";
+      const busy = errorCode(err) === "ETXTBSY";
       if (!busy || attempt >= SPAWN_ATTEMPTS) throw err;
       await new Promise((r) => setTimeout(r, SPAWN_BACKOFF_MS * attempt));
     }
   }
+}
+
+function errorCode(err: unknown): unknown {
+  return err instanceof Error && "code" in err ? err.code : undefined;
 }
 
 function spawnFailure(command: string, err: Error): Error {
@@ -47,7 +51,7 @@ function runToolOnce(
       child = spawn(command, args, { cwd: options?.cwd, stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {
       // Node throws every spawn error except EACCES, EAGAIN, EMFILE, ENFILE and ENOENT synchronously; ETXTBSY is one.
-      reject(spawnFailure(command, err as Error));
+      reject(spawnFailure(command, err instanceof Error ? err : new Error(String(err))));
       return;
     }
 

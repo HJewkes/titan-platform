@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
 import { isMissing, isNameTooLong, messageOf } from "./absent.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
+import { asObject } from "./text.js";
 
 export const CLAUDE_TRANSCRIPT_FORMAT = "claude-code-jsonl";
 
@@ -75,9 +76,10 @@ function scanProjects(projects: string, filename: string, conversation: Conversa
     if (result.status === "error") return { status: "unavailable", reason: result.reason };
     if (result.status === "match") matches.set(result.real, candidate);
   }
-  if (matches.size === 0) return { status: "not_written", expectedPath };
+  const first = matches.values().next();
+  if (first.done) return { status: "not_written", expectedPath };
   if (matches.size > 1) return { status: "unavailable", reason: `multiple Claude transcripts match native session ${conversation.nativeId}` };
-  return { status: "found", source: descriptor(matches.values().next().value as string, conversation) };
+  return { status: "found", source: descriptor(first.value, conversation) };
 }
 
 type CandidateResult = { status: "skip" } | { status: "match"; real: string } | { status: "error"; reason: string };
@@ -222,9 +224,9 @@ function readPrefixLines(handle: number, size: number, filePath: string): Prefix
 function firstSessionId(lines: string[]): string | null {
   for (const line of lines) {
     if (!line.trim()) continue;
-    const value: unknown = JSON.parse(line);
-    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
-    const sessionId = (value as Record<string, unknown>).sessionId;
+    const value = asObject(JSON.parse(line));
+    if (!value) continue;
+    const sessionId = value.sessionId;
     if (typeof sessionId === "string" && sessionId.length > 0) return sessionId;
   }
   return null;

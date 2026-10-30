@@ -68,7 +68,7 @@ describe("force-pushes on the fake", () => {
     const error = await githubPort(fake.wire).listForcePushes(REPO, 3).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ForcePushesTruncated);
-    expect((error as Error).message).toContain(`more than ${FORCE_PUSHES_CAP} force-pushes`);
+    expect(error).toMatchObject({ message: expect.stringContaining(`more than ${FORCE_PUSHES_CAP} force-pushes`) });
   });
 
   it("answers exactly the cap as a whole list", async () => {

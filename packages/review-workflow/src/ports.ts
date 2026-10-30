@@ -10,6 +10,8 @@ export interface HeadSnapshot {
   /** The head's required checks, rolled up. */
   ci: "green" | "pending" | "failing";
   facts: PrFacts;
+  /** The file list or a line count could not be read, so the head classifies as large. */
+  sizeUnread?: boolean;
 }
 
 export interface SnapshotPort {
@@ -58,6 +60,11 @@ export interface HeadroomPort {
   read(): Promise<HeadroomRead>;
 }
 
+/** Whether an agent profile is installed, so a member whose profile is not is refused before any dispatch (tp#1986). */
+export interface ProfilesPort {
+  installed(profile: string): boolean;
+}
+
 export interface ReviewWorkflowPorts {
   snapshot: SnapshotPort;
   proofReader: ProofReaderPort;
@@ -70,6 +77,7 @@ export interface ReviewWorkflowPorts {
   fixer: FixerPort;
   clock: ReviewClock;
   headroom: HeadroomPort;
+  profiles: ProfilesPort;
   /** Absent means review-panel's `memberName`. */
   namer?: MemberNamer;
 }

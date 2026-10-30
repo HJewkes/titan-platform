@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CodexSourceCollisionError, codexHome, codexSourceId, discoverCodexSources } from "./codex-discover.js";
 import { CODEX_THREAD, CODEX_TREE, codexFixtureRecords, renderCodexRollout } from "./codex-fixture.js";
+import { objectAt } from "./fixture.js";
 
 let home: string;
 let locked: string[];
@@ -59,7 +60,7 @@ describe("discoverCodexSources", () => {
     await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).resolves.toHaveLength(1);
 
     const divergent = codexFixtureRecords();
-    (divergent[2] as { payload: Record<string, unknown> }).payload.model = "different-model";
+    objectAt(divergent, 2, "payload").model = "different-model";
     writeRollout("archived_sessions/rollout-child.jsonl", divergent);
     await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).rejects.toBeInstanceOf(CodexSourceCollisionError);
   });

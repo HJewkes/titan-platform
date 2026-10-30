@@ -57,7 +57,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
   const run = runner(exec, budget);
   const conditional = conditionalGetter(run, cacheSize);
   const retried = <A extends unknown[], R>(read: (...args: A) => Promise<R>) => (...args: A): Promise<R> => retryRead(() => read(...args), sleep);
-  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => (await conditional(getArgs(path, fields))).data as T);
+  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => shaped<T>((await conditional(getArgs(path, fields))).data));
   return {
     get,
     getOrNull: async <T>(path: string, fields?: Fields) => {
@@ -138,7 +138,7 @@ function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
 async function followPages<P, T>(get: (args: readonly string[]) => Promise<Page>, start: string[], pick: (page: P) => T[], items: T[]): Promise<T[]> {
   for (let args: string[] | null = start; args; ) {
     const page = await get(args);
-    items.push(...pick(page.data as P));
+    items.push(...pick(shaped<P>(page.data)));
     const next = nextPage(page.headers.get("link"));
     args = next ? getArgs(next, {}) : null;
   }
@@ -199,5 +199,11 @@ function fieldArgs(fields: Fields): string[] {
 }
 
 function json<T>(body: string): T {
-  return (body.trim() ? JSON.parse(body) : undefined) as T;
+  return shaped<T>(body.trim() ? JSON.parse(body) : undefined);
+}
+
+// The overload is the one unchecked step: the caller names the shape of a gh answer, which has no schema to parse against here.
+function shaped<T>(value: unknown): T;
+function shaped(value: unknown): unknown {
+  return value;
 }
