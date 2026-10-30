@@ -13,7 +13,7 @@ const AGENT_CHAT_TIMEOUT_MS = 30_000;
  * agent-chat's `RECLAIM_GRACE_MS`: a plain retire refuses inside it, but `--force` skips it, so the console waits it out itself
  * before it forces (TP-3620 2.5).
  */
-export const RECLAIM_GRACE_MS = 120_000;
+const RECLAIM_GRACE_MS = 120_000;
 
 /** The agent-chat CLI boundary a retire needs: the roster as it stands, and a retire by name. */
 export interface AgentChatRetirePort {

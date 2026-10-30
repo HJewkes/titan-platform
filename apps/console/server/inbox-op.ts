@@ -137,7 +137,7 @@ function deniedBy(op: OwnerOp, { authority: { verdict, ruleId, reason } }: OpPre
 const authorityOf = ({ authority: { verdict, ruleId } }: OpPreview): string => `${ruleId ?? "no rule"}: ${verdict}`;
 
 /** A retire's read-back, and why a forced retire is refused now: null only once the agent's exit is past agent-chat's grace. */
-export interface RetireRead {
+interface RetireRead {
   readBack: AgentOpReadBack | string;
   forceStop: string | null;
 }
