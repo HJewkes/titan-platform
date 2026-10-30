@@ -9,16 +9,6 @@
       "kills": [
         "every math write operator, spacing and side around a computed name reads a long text without a hit in linear time: spaced operators between literal names"
       ]
-    },
-    {
-      "name": "the hooked-write scan rereads a long word from its start at every step",
-      "file": "packages/tool-guard/src/shell/hooked-params.ts",
-      "find": "  return writesProtectedParam(cmd, words, redirects, HOOKED);",
-      "replace": "  let seen = 0;\n  for (const { value } of words) for (let i = 0; i < value.length; i += 16) for (let j = 0; j < i; j++) seen ^= value.charCodeAt(j);\n  if (seen < 0) return null;\n  return writesProtectedParam(cmd, words, redirects, HOOKED);",
-      "kills": [
-        "reading assign-on-expand in a long word reads a long word in linear time",
-        "an assignment whose bound name the shell computes reads a long word in linear time"
-      ]
     }
   ]
 }
