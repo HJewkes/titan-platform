@@ -24,7 +24,6 @@ Before adding code:
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. |
-| [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies), the opt-in `no-wall-clock-motion` (no wall clock or unseeded randomness in beat and motion code) and `todo-needs-issue` (every TODO names a task id). |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
@@ -42,6 +41,7 @@ Before adding code:
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
+| [`egress-scan`](#cap-egress-scan) | 1 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
 | [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. |
@@ -282,25 +282,6 @@ Key exports:
 - `types`: `Extractor`, `ParsedFile`
 - `parser`: `getSupportedLanguages`, `parseFile`
 - `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
-
-<a id="cap-egress-scan"></a>
-
-### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
-
-Tier 0, `@titan-design/egress-scan@0.6.7`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
-
-**Use this when:**
-
-Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The root export scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range; `/hooks` writes a spawn-time hooks dir whose pre-push scans with the scanner on a baked PATH and, for no-rewrite agents, refuses the deletes, main updates and non-fast-forwards git hands it. To mask secrets for display, use the redactors in queue-mirror instead.
-
-Key exports:
-
-- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
-- `diff`: `parseCommit`, `parseDiff`
-- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
-- `terms`: `parseTerms`, `TermFileError`
-- `scan`: `scan`
-- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -633,6 +614,25 @@ Key exports:
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+
+<a id="cap-egress-scan"></a>
+
+### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+
+Tier 1, `@titan-design/egress-scan@0.6.7`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+
+**Use this when:**
+
+Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The root export scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range; `/hooks` writes a spawn-time hooks dir whose pre-push scans with the scanner on a baked PATH and, for no-rewrite agents, refuses the deletes, main updates and non-fast-forwards git hands it. To mask secrets for display, use the redactors in queue-mirror instead.
+
+Key exports:
+
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
+- `diff`: `parseCommit`, `parseDiff`
+- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
+- `terms`: `parseTerms`, `TermFileError`
+- `scan`: `scan`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-frame-capture"></a>
 

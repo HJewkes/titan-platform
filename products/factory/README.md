@@ -564,6 +564,8 @@ the admit window) waits and asks again, from one minute doubling to ten, for up 
 Stops, all made by the workflow: a rejected report, review or target set goes back once, and a second rejection
 stops the slice; so does one gate failing `noImprovementRounds` rounds without its score improving, more than
 `maxFixRounds` fix rounds, spend over `sliceBudgetUsd`, Shepherd stopping the PR, or a moved head with red gates.
+A report whose `newPrimitivesRequested` is not empty ends its slice at once with the non-retryable stop
+`needs component: <item1>, <item2>` (items in the order given); an empty or absent list changes nothing.
 Two stopped slices, or the run budget, stop the loop and fail the run with what merged and why the rest did not.
 A gate command exiting 3 twice (a broken sensitivity proof) or a failed deploy cancels the run. `bs-implement`,
 `bs-fix` and `bs-deploy` park on a restart; every other step repeats.

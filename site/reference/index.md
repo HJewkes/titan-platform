@@ -18,7 +18,6 @@ Domain-free building blocks. No titan dependencies.
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
 | [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
-| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only | `fix-proof` |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`eslint-plugin`](/reference/eslint-plugin) | ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, opt-in code lines of at most 200 characters, opt-in no wall clock in beat and motion code, comments that hold code, and TODO comments without a tracking task | none |
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
@@ -43,6 +42,7 @@ Reusable machinery over the primitives.
 | [`agent-lifecycle`](/reference/agent-lifecycle) | Durable agent execution state and fenced ownership | `agent-protocol`, `store-sqlite` |
 | [`agent-surface`](/reference/agent-surface) | Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan | none |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
+| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only | `fix-proof`, `worktree` |
 | [`frame-capture`](/reference/frame-capture) | Deterministic frame capture of any page that speaks the __titanMotion protocol | none |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
 | [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |

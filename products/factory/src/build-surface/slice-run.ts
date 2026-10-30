@@ -44,6 +44,11 @@ export function stopSlice(run: SliceRun, reason: string): never {
   throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `slice ${run.slice.id} stopped: ${reason}`, { retryable: true, usage: { costUsd: run.spentUsd } });
 }
 
+/** Ends this slice for a component the design system lacks. Not retryable, and the message is the contract: the owner reads it as the ask. */
+export function needComponents(run: SliceRun, items: string[]): never {
+  throw new StepFailedError(`bs-slice:${run.slice.id}`, 0, `needs component: ${items.join(", ")}`, { retryable: false, usage: { costUsd: run.spentUsd } });
+}
+
 /** Every dispatch carries its input as JSON; the route answers under `result`, checked by `schema`. */
 export async function sliceStep<R>(run: SliceRun, step: string, suffix: string | number | undefined, input: object, schema: z.ZodType<R>): Promise<R> {
   stopIfHalted(run);

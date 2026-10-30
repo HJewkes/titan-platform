@@ -4,7 +4,7 @@
     {
       "name": "any refusal moves the spawn to the next account",
       "file": "products/factory/src/shepherd/account-fallback.ts",
-      "find": "if (index === accounts.length - 1 || !isAccountLimitRefusal(error)) throw error;",
+      "find": "if (index === accounts.length - 1 || accountLimitRefusal(error) === undefined) throw error;",
       "replace": "if (index === accounts.length - 1) throw error;",
       "kills": ["the account-limit fallback (TP-4507) a non-account refusal does not fall back"]
     },
