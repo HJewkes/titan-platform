@@ -34,6 +34,15 @@ describe("seat lines", () => {
     ]);
   });
 
+  it("credits a merge whose implementer has no roster row to unattributed, not to the implementer's own name", () => {
+    const roster = [agent("worker-1", "lead-coord", 2)];
+
+    expect(seatLines([mergedBy(1, "worker-1"), mergedBy(2, "gone-worker")], roster, SINCE)).toEqual([
+      { seat: "lead-coord", merges: 1, spawns: 1 },
+      { seat: "unattributed", merges: 1, spawns: 0 },
+    ]);
+  });
+
   it("stops at a spawned-by loop instead of walking it forever", () => {
     const roster = [agent("loop-a", "loop-b", 1), agent("loop-b", "loop-a", 1)];
 

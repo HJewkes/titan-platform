@@ -4,6 +4,40 @@ import type { Exec } from "./sources.js";
 
 const roster = (rows: object[]): Exec => async () => ({ code: 0, stdout: JSON.stringify(rows), stderr: "" });
 
+/** A row in the full shape agent-chat's `lsJsonRow` prints, nulls included. */
+const lsJsonRow = (name: string, spawnedBy: string | null, retired: boolean) => ({
+  name,
+  agentId: `id-${name}`,
+  state: retired ? "retired" : "exited",
+  presence: retired ? "detached" : "exited",
+  status: retired ? "retired" : "exited",
+  profile: "implementer",
+  surface: "headless",
+  model: null,
+  cwd: "/repo",
+  sessionId: "",
+  transcriptPath: null,
+  transcriptExists: false,
+  spawnedBy,
+  launchedBy: null,
+  account: null,
+  generation: 1,
+  teleportFrom: null,
+  ...(retired && { retired: true }),
+  inferred: false,
+  spawnedAt: "2026-03-10T10:00:00.000Z",
+  contextK: null,
+  retireK: null,
+  retireDue: null,
+});
+
+/** Answers as the broker does: retired rows only when the call asks for them. */
+const broker = (rows: ReturnType<typeof lsJsonRow>[]): Exec => async (_bin, args) => ({
+  code: 0,
+  stdout: JSON.stringify(args.includes("--include-retired") ? rows : rows.filter((row) => !row.retired)),
+  stderr: "",
+});
+
 describe("flow sources", () => {
   it("reads roster rows as spans, live where a session holds the name, keeping a spawner that is not the human", async () => {
     const rows = [
@@ -17,6 +51,18 @@ describe("flow sources", () => {
     expect(spans.map((s) => s.live)).toEqual([true, false, false]);
     expect(spans[1]?.endedAt).toBe("2026-03-10T11:00:00Z");
     expect(spans.map((s) => s.spawnedBy)).toEqual([undefined, "seat-a", undefined]);
+  });
+
+  it("reads retired implementers and spawners too, so a spawned-by walk reaches the coordinator", async () => {
+    const rows = [lsJsonRow("mid", "coord", true), lsJsonRow("impl", "mid", true), lsJsonRow("fresh", "coord", false)];
+
+    const spans = await agentChatSpans(broker(rows), "agent-chat")();
+
+    expect(spans.map((s) => [s.name, s.spawnedBy])).toEqual([
+      ["mid", "coord"],
+      ["impl", "mid"],
+      ["fresh", "coord"],
+    ]);
   });
 
   it("fails the read when the broker exits non-zero", async () => {

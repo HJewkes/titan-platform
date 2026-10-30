@@ -3,7 +3,7 @@ import type { WatchRow } from "../shepherd/view.js";
 import type { AgentSpan } from "./flow.js";
 import type { SeatLine } from "./model.js";
 
-/** A merge whose run names no implementer, so no spawned-by chain can be walked. */
+/** A merge whose run names no implementer, or one the roster has no row for, so no spawned-by chain can be walked. */
 const UNATTRIBUTED = "unattributed";
 
 /** Each name's spawner from its latest roster row; the human and absent spawners are left out. */
@@ -33,9 +33,12 @@ function coordinatorOf(name: string, spawners: ReadonlyMap<string, string>): str
  */
 export function seatLines(merged: readonly WatchRow[], roster: readonly AgentSpan[], since: Date): SeatLine[] {
   const spawners = spawnersOf(roster);
+  const onRoster = new Set(roster.map((row) => row.name));
+  const seatOf = (implementer: string | null): string =>
+    implementer && onRoster.has(implementer) ? coordinatorOf(implementer, spawners) : UNATTRIBUTED;
   const lines = new Map<string, SeatLine>();
   const line = (seat: string): SeatLine => lines.get(seat) ?? lines.set(seat, { seat, merges: 0, spawns: 0 }).get(seat)!;
-  for (const row of merged) line(row.implementer ? coordinatorOf(row.implementer, spawners) : UNATTRIBUTED).merges += 1;
+  for (const row of merged) line(seatOf(row.implementer)).merges += 1;
   for (const row of roster) {
     if (isSeat(row.spawnedBy) && Date.parse(row.startedAt) >= since.getTime()) line(coordinatorOf(row.spawnedBy, spawners)).spawns += 1;
   }
