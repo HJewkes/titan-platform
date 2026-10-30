@@ -22,8 +22,8 @@ export const SMOKE_WORKERS = 16;
 
 /** What the render stage cannot draw without: a run that reached tts holds all four. */
 const REQUIRED = ["script", "resolved", "words", "audio"] as const;
-/** Read when the run has them, as the render stage reads them: the owner's pin, resolve's slots, the cited code. */
-const OPTIONAL = ["generated-slots", "slots", "code"] as const;
+/** Read when the run has them, as the render stage reads them: the owner's pin, resolve's slots, the cited code, the built custom layers. */
+const OPTIONAL = ["generated-slots", "slots", "code", "custom-layers"] as const;
 
 const GateReportSchema = z.object({ errors: z.array(z.object({ kind: z.string(), beat: z.string(), reason: z.string() })) });
 
