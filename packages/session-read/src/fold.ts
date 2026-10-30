@@ -101,37 +101,37 @@ export class EventFolder {
   }
 
   result(): TranscriptDelta {
-    const list = <K extends keyof TranscriptDelta>(name: K): TranscriptDelta[K] =>
-      ((this.lists.get(name) ?? []) as unknown[]) as TranscriptDelta[K];
-    const keyed = <K extends keyof TranscriptDelta>(name: K): TranscriptDelta[K] =>
-      ([...(this.byKey.get(name)?.values() ?? [])] as unknown[]) as TranscriptDelta[K];
+    const list = <K extends keyof typeof LIST_OF>(kind: K): EventOf<K>[] =>
+      (this.lists.get(LIST_OF[kind]) ?? []).filter(isKind(kind));
+    const keyed = <K extends SessionEvent["kind"]>(name: string, kind: K): EventOf<K>[] =>
+      [...(this.byKey.get(name)?.values() ?? [])].filter(isKind(kind));
     return {
       sessions: [...this.sessions.values()],
       branches: [...this.branches.values()],
-      turns: keyed("turns"),
-      prs: keyed("prs"),
-      files: keyed("files"),
-      tasks: keyed("tasks"),
-      subagents: keyed("subagents"),
-      subagentTranscripts: keyed("subagentTranscripts"),
-      artifacts: keyed("artifacts"),
-      edges: keyed("edges"),
-      facts: list("facts"),
-      spans: list("spans"),
-      phases: list("phases"),
-      humanEdits: list("humanEdits"),
-      fileCheckpoints: list("fileCheckpoints"),
-      prMerges: list("prMerges"),
-      prCreates: list("prCreates"),
-      reviewVerdicts: list("reviewVerdicts"),
-      requests: list("requests"),
-      toolCalls: list("toolCalls"),
+      turns: keyed("turns", "turn"),
+      prs: keyed("prs", "pr"),
+      files: keyed("files", "file"),
+      tasks: keyed("tasks", "task"),
+      subagents: keyed("subagents", "subagent"),
+      subagentTranscripts: keyed("subagentTranscripts", "subagent_transcript"),
+      artifacts: keyed("artifacts", "artifact"),
+      edges: keyed("edges", "edge"),
+      facts: list("fact"),
+      spans: list("span"),
+      phases: list("phase"),
+      humanEdits: list("human_edit"),
+      fileCheckpoints: list("file_checkpoint"),
+      prMerges: list("pr_merge"),
+      prCreates: list("pr_create"),
+      reviewVerdicts: list("review_verdict"),
+      requests: list("request"),
+      toolCalls: list("tool_call"),
       inbound: list("inbound"),
-      contextBlocks: list("contextBlocks"),
-      compactions: list("compactions"),
-      queueOps: list("queueOps"),
-      signals: list("signals"),
-      costStates: list("costStates"),
+      contextBlocks: list("context_block"),
+      compactions: list("compaction"),
+      queueOps: list("queue_op"),
+      signals: list("signal"),
+      costStates: list("cost_state"),
     };
   }
 
@@ -195,7 +195,8 @@ export class EventFolder {
    */
   private foldTask(event: EventOf<"task">): void {
     const map = this.mapFor("tasks");
-    const existing = map.get(event.taskRef) as EventOf<"task"> | undefined;
+    const found = map.get(event.taskRef);
+    const existing = found?.kind === "task" ? found : undefined;
     if (!existing || (event.status !== null && existing.status === null)) map.set(event.taskRef, event);
   }
 
@@ -244,6 +245,10 @@ const LIST_OF: Record<
   signal: "signals",
   cost_state: "costStates",
 };
+
+function isKind<K extends SessionEvent["kind"]>(kind: K): (event: SessionEvent) => event is EventOf<K> {
+  return (event): event is EventOf<K> => event.kind === kind;
+}
 
 function earliest(a: string | null | undefined, b: string | null): string | null {
   if (!a) return b;

@@ -5,6 +5,7 @@ import { ClaudeTranscriptDecoder } from "./claude-decoder.js";
 import { assertClaudeSessionSource, claudeRecordBelongsToSource, CLAUDE_TRANSCRIPT_FORMAT } from "./claude-source.js";
 import type { NormalizedSessionObservation, SessionSourceDescriptor, SourceTextLocator } from "./normalized.js";
 import { resolveSource, selectedText, streamObservations } from "./observation-stream.js";
+import { asObject } from "./text.js";
 import type { ReadSessionObservationOptions, SessionObservationReadResult } from "./session-observations.js";
 
 export interface ReadClaudeTextOptions {
@@ -39,8 +40,8 @@ async function readSelectedText(source: SessionSourceDescriptor, locator: Source
   const bytes = await readLocatorBytes(source.path, [0, locator.evidence.line.byteOffset, locator.evidence.line.byteLength]);
   if (hashBytes(bytes) !== locator.evidence.line.contentHash) return null;
   const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  const record = JSON.parse(line) as unknown;
-  if (typeof record !== "object" || record === null || Array.isArray(record) || !claudeRecordBelongsToSource(source, record as Record<string, unknown>)) return null;
+  const record = asObject(JSON.parse(line));
+  if (!record || !claudeRecordBelongsToSource(source, record)) return null;
   return selectedText(record, locator.selector);
 }
 
