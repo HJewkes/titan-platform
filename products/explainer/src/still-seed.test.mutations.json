@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-D22 hint drops the words spoken inside each stretch",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "(${seconds(toS - fromS)}${voiced})",
+      "replace": "(${seconds(toS - fromS)})",
+      "kills": [
+        "Q-D22's hint gives the repair what to point at each stretch names the words spoken inside it and the beat's on-screen texts"
+      ]
+    },
+    {
+      "name": "claim-card takes no claim cue",
+      "file": "products/explainer/doctrine/beats/claim-card.yaml",
+      "find": "emphasis: { targets: [claim], treatments: [highlight] }\n",
+      "replace": "",
+      "kills": [
+        "the $0 still seed: naming-only cues before the repair a claim-card whose claim the voice names is cued on that word, not held"
+      ]
+    },
+    {
+      "name": "the uncued-item rule cues a claim-card's claim",
+      "file": "products/explainer/src/still-seed.ts",
+      "find": "|| !ITEM.test(element.target)",
+      "replace": "",
+      "kills": [
+        "the $0 still seed: naming-only cues before the repair a claim-card that stands still nowhere gets no cue"
+      ]
+    }
+  ]
+}

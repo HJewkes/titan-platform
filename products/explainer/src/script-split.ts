@@ -1,4 +1,4 @@
-import { cuelessKind, longestCueGapS, scriptPacing, voicedBudget } from "./lint-cadence.js";
+import { CLAIM_CARD, cuelessKind, longestCueGapS, scriptPacing, voicedBudget } from "./lint-cadence.js";
 import { BEAT_SECONDS } from "./lint-flow.js";
 import { beatCues, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 
@@ -9,7 +9,6 @@ import { beatCues, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
  * stage hands the split to the repair as its starting script and keeps the result only when it beats the seed.
  */
 
-const SPLIT_KIND = "claim-card";
 const [BEAT_FLOOR_S] = BEAT_SECONDS;
 
 /** One beat the split cut: its id, kept by the first piece so every reference stays valid, and each piece's id. */
@@ -78,7 +77,7 @@ function pieces(beat: ScriptBeat, failS: number): ScriptBeat[] | undefined {
 }
 
 const splittable = (beat: ScriptBeat, failS: number): boolean =>
-  cuelessKind(beat) === SPLIT_KIND && beatCues(beat.visual).length === 0 && (longestCueGapS(beat) ?? 0) > failS;
+  cuelessKind(beat) === CLAIM_CARD && beatCues(beat.visual).length === 0 && (longestCueGapS(beat) ?? 0) > failS;
 
 /** Every cue-less claim-card past the stretch limit, split where its sentences allow; the script as it came otherwise. */
 export function splitCuelessBeats(script: ScriptV1): SplitScript {

@@ -2,9 +2,10 @@ import { beatCues, type ScriptBeat, type ScriptV1 } from "../script-schema.js";
 import { StoryboardSchema, type Storyboard } from "../storyboard.js";
 import type { FilledBeat, FilledScript } from "../template-fill/fill.js";
 
-/** What the page draws beside a beat's slots: the fill's reveals, chips and hints, and the chrome's headline and chapter. */
+/** What the page draws beside a beat's slots: the fill's reveals, emphases, chips and hints, and the chrome's headline and chapter. */
 export interface PageExtras {
   reveals: FilledBeat["reveals"];
+  emphases?: FilledBeat["emphases"];
   chips: FilledBeat["chips"];
   hints: FilledBeat["hints"];
   headline: string;
@@ -26,7 +27,7 @@ function pageHints(hints: FilledBeat["hints"], ids: ReadonlyMap<string, string>)
 function pageExtras(script: ScriptV1, beat: ScriptBeat, drawn: FilledBeat, ids: ReadonlyMap<string, string>): PageExtras {
   const index = script.chapters.findIndex((chapter) => chapter.id === beat.chapter);
   return {
-    reveals: drawn.reveals, chips: drawn.chips, hints: pageHints(drawn.hints, ids), headline: beat.visual.assertion,
+    reveals: drawn.reveals, emphases: drawn.emphases, chips: drawn.chips, hints: pageHints(drawn.hints, ids), headline: beat.visual.assertion,
     chapter: { n: index + 1, of: script.chapters.length, label: script.chapters[index]!.label },
   };
 }

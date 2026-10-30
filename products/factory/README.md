@@ -470,7 +470,8 @@ Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/diges
 `icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
 `shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
 unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
-absolute.
+absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
+stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.
 
 ## Owner-queue sources
 
@@ -554,6 +555,11 @@ same implementer (`bs-fix`) with the failing evidence as data. Then `bs-pr`, `bs
 the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
 `deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
 
+A slice may carry its own `preview` and `deploy` booleans. Absent inherits the spec. `false` skips that step (and, for
+deploy, its approval gate) for the slice only, and the slice's outcome lists it in `skipped`, so a skip reads as
+different from a step the spec never had. `true` only matters where the spec enables the step: a slice cannot turn on a
+preview or deploy the spec leaves out, so there it behaves as absent and nothing is recorded.
+
 A fresh `start` over a branch a stopped run left behind picks it up: when `bs-branch` finds the slice branch past
 its base and every gate record in the evidence directory for its head passing, the slice skips `bs-implement` and
 the gate rerun, and round 0 goes on to `bs-preview` and `bs-review` at that head. A branch with any failing or missing
@@ -563,6 +569,8 @@ the admit window) waits and asks again, from one minute doubling to ten, for up 
 Stops, all made by the workflow: a rejected report, review or target set goes back once, and a second rejection
 stops the slice; so does one gate failing `noImprovementRounds` rounds without its score improving, more than
 `maxFixRounds` fix rounds, spend over `sliceBudgetUsd`, Shepherd stopping the PR, or a moved head with red gates.
+A report whose `newPrimitivesRequested` is not empty ends its slice at once with the non-retryable stop
+`needs component: <item1>, <item2>` (items in the order given); an empty or absent list changes nothing.
 Two stopped slices, or the run budget, stop the loop and fail the run with what merged and why the rest did not.
 A gate command exiting 3 twice (a broken sensitivity proof) or a failed deploy cancels the run. `bs-implement`,
 `bs-fix` and `bs-deploy` park on a restart; every other step repeats.

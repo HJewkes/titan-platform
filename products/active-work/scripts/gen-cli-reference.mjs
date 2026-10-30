@@ -7,21 +7,20 @@
  *   node scripts/gen-cli-reference.mjs            # writes docs/cli-reference.md
  *   node scripts/gen-cli-reference.mjs --stdout   # prints to stdout
  *
- * Requires `pnpm build` to have run so `dist/cli.js` exists.
+ * Requires `pnpm build` to have run so `dist/program.js` exists.
  */
-import { spawnSync } from 'node:child_process';
 import { writeFileSync, existsSync, statSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const CLI = resolve(REPO_ROOT, 'dist/cli.js');
+const PROGRAM = resolve(REPO_ROOT, 'dist/program.js');
 const OUT = resolve(REPO_ROOT, 'docs/cli-reference.md');
 const SRC = resolve(REPO_ROOT, 'src');
 
-if (!existsSync(CLI)) {
-  console.error(`error: ${CLI} not found. Run \`pnpm build\` first.`);
+if (!existsSync(PROGRAM)) {
+  console.error(`error: ${PROGRAM} not found. Run \`pnpm build\` first.`);
   process.exit(1);
 }
 
@@ -36,36 +35,31 @@ function newestMtime(dir) {
   return newest;
 }
 
-const distMtime = statSync(CLI).mtimeMs;
+const distMtime = statSync(PROGRAM).mtimeMs;
 const srcMtime = newestMtime(SRC);
 if (srcMtime > distMtime) {
   console.error(
-    `error: ${CLI} is older than src/ (dist stale). Run \`pnpm build:cli\` before regenerating docs.`,
+    `error: ${PROGRAM} is older than src/ (dist stale). Run \`pnpm build:cli\` before regenerating docs.`,
   );
   process.exit(1);
 }
 
-const helpCache = new Map();
+// Imported, not spawned per command: one node start per command cost ~0.25 s each, ~100 times over.
+const { buildProgram } = await import(pathToFileURL(PROGRAM).href);
+const program = buildProgram();
 
-/** Run the built CLI and return its stdout (help is written to stdout by commander). Each path is spawned once. */
+/** Render a command's `--help` in process, as a piped, colourless run of the built CLI would print it. */
 function runHelp(args) {
-  const key = args.join(' ');
-  if (!helpCache.has(key)) helpCache.set(key, spawnHelp(args));
-  return helpCache.get(key);
-}
-
-function spawnHelp(args) {
-  const result = spawnSync(process.execPath, [CLI, ...args, '--help'], {
-    encoding: 'utf8',
-    env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
+  let command = program;
+  for (const name of args) command = command.commands.find((c) => c.name() === name);
+  let out = '';
+  command.configureOutput({
+    writeOut: (text) => (out += text),
+    getOutHelpWidth: () => 80,
+    getOutHasColors: () => false,
   });
-  if (result.status !== 0 && result.status !== null) {
-    // commander exits 0 for help; treat anything else as a soft warning.
-    process.stderr.write(
-      `warn: \`active-work ${args.join(' ')} --help\` exited ${result.status}\n${result.stderr}\n`,
-    );
-  }
-  return (result.stdout || '').trimEnd();
+  command.outputHelp();
+  return out.trimEnd();
 }
 
 /**
@@ -103,13 +97,13 @@ function parseCommands(helpText) {
     }
   }
   if (current) entries.push(current);
+  return withoutHelp(entries);
+}
 
+function withoutHelp(entries) {
   return entries
     .filter((e) => e.name !== 'help')
-    .map((e) => ({
-      ...e,
-      isGroup: /^[a-z]+ commands$/.test(e.description),
-    }));
+    .map((e) => ({ ...e, isGroup: /^[a-z]+ commands$/.test(e.description) }));
 }
 
 /**

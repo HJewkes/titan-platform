@@ -23,6 +23,8 @@ const watchRow = z
     nextAction: z.string(),
     pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).passthrough().nullable(),
     held: z.object({ reason: z.string() }).passthrough().nullable(),
+    /** `hold` is Shepherd's own verdict that the run waits on its hold; the name stays a string so a new stage parses. */
+    stage: z.object({ name: z.string() }).passthrough().nullable().optional(),
     stalled: z.object({ reason: z.string() }).passthrough().nullable(),
   })
   .passthrough();

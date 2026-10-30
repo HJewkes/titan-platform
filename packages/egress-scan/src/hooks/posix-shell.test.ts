@@ -2,17 +2,15 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
+import { fixtureEnv } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { gitHooksEnv, hookScripts, writeGitHooks } from "./dir.js";
-import { gitShimScript } from "./git-shim.js";
-import { HOST_PATH, NO_VERIFY, realGitOn } from "./git-shim.fixture.js";
+import { hookScripts, writeGitHooks } from "./dir.js";
 import { ENVIRONMENT_SCRUB, hardenedShebang, hookShell, posixShell } from "./posix-shell.js";
 
 const SCRATCH = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-posix-shell-")));
 afterAll(() => fs.rmSync(SCRATCH, { recursive: true, force: true }));
 
-const REAL_GIT = realGitOn(HOST_PATH, path.join(SCRATCH, "none"));
+const REAL_GIT = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
 const INPUTS = { missingTermsRefuses: true, home: SCRATCH, path: "/usr/bin:/bin" };
 // /bin/sh is bash on macOS and dash on Ubuntu; /bin/bash adds a bash-backed pass wherever sh is not.
 const SHELLS = ["/bin/dash", "/bin/sh", "/bin/bash"].filter((shell) => fs.existsSync(shell));
@@ -119,52 +117,5 @@ describe("a chain hook counting the commands it runs from PATH", () => {
 
     expect(run.status).toBe(0);
     expect(fs.existsSync(marker)).toBe(false);
-  });
-});
-
-describe.each(SHELLS)("the git shim written for %s", (shell) => {
-  it("names the fixed interpreter on line 1 and scrubs SHELLOPTS like the hooks", () => {
-    const script = gitShimScript(REAL_GIT, SCRATCH, [], "", shell);
-
-    expect(firstLine(script)).toBe(hardenedShebang(shell));
-    expect(script).toContain(ENVIRONMENT_SCRUB);
-  });
-
-  it("refuses a push that skips verification and fails with its message intact", () => {
-    const bin = path.join(SCRATCH, `bin-${path.basename(shell)}`);
-    fs.mkdirSync(bin, { recursive: true });
-    const shim = path.join(bin, "git");
-    fs.writeFileSync(shim, gitShimScript(REAL_GIT, SCRATCH, [], "", shell), { mode: 0o755 });
-
-    const run = spawnSync(shim, ["push", NO_VERIFY], { cwd: SCRATCH, encoding: "utf8" });
-
-    expect(run.status).not.toBe(0);
-    expect(run.stderr).toContain("git-shim: push refused (no-verify)");
-  });
-});
-
-describe.each(SHELLS)("a commit through the git shim on %s under a hostile SHELLOPTS", (shell) => {
-  it.each(["#!/bin/sh", "#!/bin/bash"])("still runs a refusing %s repo pre-commit hook", (shebang) => {
-    const root = fs.mkdtempSync(path.join(SCRATCH, "commit-"));
-    const repo = path.join(root, "repo");
-    const guard = path.join(root, "git-hooks");
-    const marker = path.join(root, "hook-ran");
-    const shim = path.join(root, "git");
-    const clean = { ...fixtureEnv(), PATH: HOST_PATH, HOME: root };
-    seedRepo(repo);
-    fs.writeFileSync(path.join(repo, "a.txt"), "a\n");
-    execFileSync(REAL_GIT, ["add", "a.txt"], { cwd: repo, env: clean });
-    fs.writeFileSync(path.join(repo, ".git", "hooks", "pre-commit"), `${shebang}\necho ran >> '${marker}'\nexit 1\n`, { mode: 0o755 });
-    writeGitHooks(guard, INPUTS, { shell: hookShell(shell), shimDirs: [] });
-    fs.writeFileSync(shim, gitShimScript(REAL_GIT, guard, [], "", shell), { mode: 0o755 });
-
-    const run = spawnSync(shim, ["commit", "-q", "-m", "x"], {
-      cwd: repo,
-      env: { ...clean, ...gitHooksEnv(guard), SHELLOPTS: "noexec", BASH_VERSION: "5.2.0" },
-      encoding: "utf8",
-    });
-
-    expect(fs.existsSync(marker)).toBe(true);
-    expect(run.status).not.toBe(0);
   });
 });

@@ -4,15 +4,19 @@ import type { ScriptV1 } from "../script-schema.js";
 import { splitKeeps } from "../repair-hints-screen.js";
 import { splitPieceClauses } from "../split-piece-rules.js";
 import { splitCuelessBeats, splitHint, type Split } from "../script-split.js";
-import type { Candidate, Repaired } from "./script-draft.js";
+import { seedHint, seedStillCues } from "../still-seed.js";
+import { makesProgress, type Candidate, type Repaired } from "./script-draft.js";
 
-/** Where the repair rounds start: the seed, or its $0 split with the hint naming what the pieces still need. */
+/** Where the repair rounds start: the seed, or its $0 split and still seed with the hint naming what is still owed. */
 interface Start {
   stamped: Stamped;
   /** The split's line in the repair's failure list; absent when the rounds start from the seed. */
   hint?: string;
   candidates: Candidate[];
 }
+
+type Failing = (script: ScriptV1) => L0Result[];
+type Settle = (script: ScriptV1) => Stamped;
 
 const CUE_GAP_ID = "Q-D17";
 
@@ -29,9 +33,9 @@ function splitLine(split: Split, seed: ScriptV1): string {
 /**
  * The split starts the rounds when it clears Q-D17 on every piece and fails no more rows than the seed. It swaps that
  * row for the pieces' unlinked boundaries and copied claim, which only the model can write, so it is a start and never
- * an answer: `keptOverSeed` still asks the repaired script to fail strictly fewer rows than the seed.
+ * an answer: `keptOverSeed` still asks the repaired script to fail fewer rows than the seed, or the seed's own rows on fewer beats.
  */
-export function splitStart(seed: Stamped, failing: (script: ScriptV1) => L0Result[], settle: (script: ScriptV1) => Stamped): Start {
+function claimSplit(seed: Stamped, failing: Failing, settle: Settle): Start {
   const { script, splits } = splitCuelessBeats(seed.script);
   if (splits.length === 0) return { stamped: seed, candidates: [] };
   const stamped = settle(script);
@@ -41,10 +45,34 @@ export function splitStart(seed: Stamped, failing: (script: ScriptV1) => L0Resul
   return { stamped, hint: splits.map((split) => `- split: ${splitLine(split, seed.script)}`).join("\n"), candidates: [{ kind: "split", text: `${JSON.stringify(stamped.script, null, 2)}\n` }] };
 }
 
-/** The repaired script when it fails strictly fewer rows than the seed; else the seed, with the spend and what was tried. */
-export function keptOverSeed(repaired: Repaired, seed: Stamped, seedRows: number): Repaired {
-  if (repaired.after < seedRows) return { ...repaired, before: seedRows };
-  return { script: seed.script, stamps: seed.stamps, usage: repaired.usage, before: seedRows, after: seedRows, candidates: repaired.candidates };
+const withLine = (hint: string | undefined, line: string): string => (hint === undefined ? line : `${hint}\n${line}`);
+
+/**
+ * The still seed (still-seed.ts) runs on the split's start and is kept when it makes progress over it. It is a start
+ * under the same rule as the split: the model still owes the stretches no named word reaches, and `keptOverSeed` judges the end.
+ */
+function stillSeed(start: Start, failing: Failing, settle: Settle): Start {
+  const { script, moves } = seedStillCues(start.stamped.script);
+  if (moves.length === 0) return start;
+  const stamped = settle(script);
+  if (!makesProgress(failing(stamped.script), failing(start.stamped.script))) return start;
+  const candidates = [...start.candidates, { kind: "still-seed", text: `${JSON.stringify(stamped.script, null, 2)}\n` }];
+  return { stamped, hint: withLine(start.hint, `- ${seedHint(moves)}`), candidates };
+}
+
+/** Where the repair rounds start: the claim-card split, then the still seed over it, each kept only when it helps. */
+export const splitStart = (seed: Stamped, failing: Failing, settle: Settle): Start => stillSeed(claimSplit(seed, failing, settle), failing, settle);
+
+/**
+ * The repaired script when it fails fewer rows than the seed, or a reply was kept and it fails the same rows over
+ * fewer beats with none the seed did not fail; else the seed, with the spend and what was tried.
+ */
+export function keptOverSeed(repaired: Repaired, seed: Stamped, seedFailing: readonly L0Result[]): Repaired {
+  // A kept reply is what sets `stripped`, so a split start nobody answered never counts as progress over the seed.
+  const better = repaired.after < seedFailing.length || (repaired.stripped !== undefined && makesProgress(repaired.rows, seedFailing));
+  if (better) return { ...repaired, before: seedFailing.length };
+  const { length: rows } = seedFailing;
+  return { script: seed.script, stamps: seed.stamps, usage: repaired.usage, before: rows, after: rows, rows: [...seedFailing], candidates: repaired.candidates };
 }
 
 /** The failure list a round sends, with the split's line when the rounds started from one; each is kept for the stage note. */

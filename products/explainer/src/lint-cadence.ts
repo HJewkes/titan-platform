@@ -54,26 +54,74 @@ function drawn(beat: ScriptBeat): Drawn | undefined {
 
 export const voicedBudget = (beat: ScriptBeat): BudgetRow | undefined => drawn(beat)?.budget;
 
-/** The kind the beat is drawn as when no script cue can move it (a claim-card, a button), else undefined. */
+/** The one kind whose only cue target is its own text: a cue past its first word lights the claim. */
+export const CLAIM_CARD = "claim-card";
+
+/**
+ * The kind the beat is drawn as when none of its cues moves it: a kind that takes no cue (a button), or a claim-card
+ * with no cue on its claim yet; else undefined.
+ */
 export function cuelessKind(beat: ScriptBeat): string | undefined {
   const found = drawn(beat);
-  return found && !found.takesCues ? found.kind : undefined;
+  if (!found) return undefined;
+  const uncuedClaim = found.kind === CLAIM_CARD && beatCues(beat.visual).length === 0;
+  return !found.takesCues || uncuedClaim ? found.kind : undefined;
+}
+
+interface PlannedCue {
+  cue: string;
+  /** Seconds into the beat's speech at the voiced band rate. */
+  s: number;
+}
+
+interface PlannedClock {
+  cues: PlannedCue[];
+  /** The end of the voiced words, held to plannedS. */
+  endS: number;
+  /** The voiced words' length at the band rate, unheld, as truing reads the speech. */
+  speechS: number;
+  /** Any spoken word's time into the speech, or undefined for a word the beat never says. */
+  wordS: (word: string) => number | undefined;
+}
+
+function wordClock(beat: ScriptBeat, wordsPerS: number): (word: string) => number | undefined {
+  const index = spokenWordIndex(beat);
+  return (word) => {
+    try {
+      return index(word) / wordsPerS;
+    } catch {
+      return undefined;
+    }
+  };
 }
 
 /**
- * The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. A kind
- * that takes no cue counts none, as qa's picture-change sees no cue move it.
+ * The beat's planned speech clock: each cue at its word's time, and the end of the voiced words. A kind that takes no
+ * cue counts none, as qa's picture-change sees no cue move it.
  */
-export function longestCueGapS(beat: ScriptBeat): number | undefined {
+export function plannedCues(beat: ScriptBeat): PlannedClock | undefined {
   const found = drawn(beat);
   if (!found) return undefined;
   const { budget, takesCues } = found;
   const voiced = spellSpokenNumbers(beat);
   const index = spokenWordIndex(voiced);
-  const endS = Math.min(beat.plannedS, budget.words / budget.wordsPerS);
-  const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => Math.min(endS, index(cue) / budget.wordsPerS));
-  const times = [0, ...cues, endS].sort((a, b) => a - b);
-  return Math.max(0, ...times.slice(1).map((t, i) => t - times[i]!));
+  const speechS = budget.words / budget.wordsPerS;
+  const endS = Math.min(beat.plannedS, speechS);
+  const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => ({ cue, s: Math.min(endS, index(cue) / budget.wordsPerS) }));
+  return { cues, endS, speechS, wordS: wordClock(voiced, budget.wordsPerS) };
+}
+
+/** The stretches from the cut at 0, between the given times, to `endS`, each as its start and end. */
+export function stretches(times: readonly number[], endS: number): [number, number][] {
+  const sorted = [0, ...times, endS].sort((a, b) => a - b);
+  return sorted.slice(1).map((t, i) => [sorted[i]!, t]);
+}
+
+/** The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. */
+export function longestCueGapS(beat: ScriptBeat): number | undefined {
+  const planned = plannedCues(beat);
+  if (!planned) return undefined;
+  return Math.max(0, ...stretches(planned.cues.map((cue) => cue.s), planned.endS).map(([from, to]) => to - from));
 }
 
 const isHeld = (beat: ScriptBeat): boolean => beat.band === "held" || (beat.heldS ?? 0) > 0;

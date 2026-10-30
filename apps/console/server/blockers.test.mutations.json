@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the threshold is inclusive, so a blocker at exactly N h shows",
+      "file": "apps/console/server/blockers.ts",
+      "find": ".filter(({ ageMs }) => ageMs > thresholdHours * HOUR)",
+      "replace": ".filter(({ ageMs }) => ageMs >= thresholdHours * HOUR)",
+      "kills": [
+        "bannerBlockers threshold a blocker at exactly N h is not bannered, just over is"
+      ]
+    },
+    {
+      "name": "the threshold ignores its configured hours and stays at 12",
+      "file": "apps/console/server/blockers.ts",
+      "find": ".filter(({ ageMs }) => ageMs > thresholdHours * HOUR)",
+      "replace": ".filter(({ ageMs }) => ageMs > 12 * HOUR)",
+      "kills": [
+        "bannerBlockers threshold a configured N of 24 moves the threshold"
+      ]
+    },
+    {
+      "name": "any held row counts, whatever stage Shepherd reports",
+      "file": "apps/console/server/blockers.ts",
+      "find": "held === null || row.stage?.name !== \"hold\" || row.pendingGate !== null",
+      "replace": "held === null || row.pendingGate !== null",
+      "kills": [
+        "bannerBlockers sources a satisfied hold is not a blocker",
+        "bannerBlockers sources a held run Shepherd does not call holding, such as one stalled in CI, is not bannered"
+      ]
+    },
+    {
+      "name": "a reviewer-held G10 hold counts on the owner banner",
+      "file": "apps/console/server/blockers.ts",
+      "find": "row.pendingGate !== null || isReviewerHold(held.reason)",
+      "replace": "row.pendingGate !== null",
+      "kills": [
+        "bannerBlockers sources a g10-adversary hold is not counted on the owner banner"
+      ]
+    },
+    {
+      "name": "owner gates are never read from Shepherd's rows",
+      "file": "apps/console/server/blockers.ts",
+      "find": "[ownerGate(row), ownerHold(row)]",
+      "replace": "[ownerHold(row)]",
+      "kills": [
+        "bannerBlockers threshold a 148 h wait banners at the 12 h default",
+        "bannerBlockers threshold the same gate shows on the first read past 12 h, not only at 148 h"
+      ]
+    }
+  ]
+}

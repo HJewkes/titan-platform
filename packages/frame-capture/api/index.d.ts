@@ -95,6 +95,12 @@ declare function openCapturePage(browser: Browser, url: string, options: PageOpt
 declare function withCapturePage<T>(browser: Browser, url: string, options: PageOptions, use: (opened: CapturePage) => Promise<T>): Promise<T>;
 /** One frame: advance virtual time, seek (commits through flushSync), await ready(), sync the animations the seek started, screenshot. */
 declare function captureFrame(page: Page, t: number): Promise<Buffer>;
+/**
+ * The viewport as a PNG with the caret hidden. `optimizeForSpeed` swaps Chromium's PNG encoder for a faster zlib
+ * setting: the pixels are the same and the bytes are the same run to run, but the files are about 2.5x larger. At
+ * 1920x1080 it cut a shot from about 42 to 25 ms, which is most of a capture's time.
+ */
+declare function screenshotFrame(page: Page): Promise<Buffer>;
 
 interface FramesOptions extends PageOptions {
     url: string;
@@ -146,4 +152,4 @@ interface Encoder {
 /** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
 declare function startEncoder(out: string, fps: number, audio: string): Encoder;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, settleFonts, startEncoder, withBrowser, withCapturePage };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };

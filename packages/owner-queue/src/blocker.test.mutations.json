@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the future-since check is dropped",
+      "file": "packages/owner-queue/src/deposit.ts",
+      "find": "if (age < -BLOCKER_SKEW_MS) throw",
+      "replace": "if (age < -BLOCKER_SKEW_MS * 1e6) throw",
+      "kills": ["a blocker on a deposit a blocker with an invalid since is refused"]
+    },
+    {
+      "name": "the stale-since check is dropped",
+      "file": "packages/owner-queue/src/deposit.ts",
+      "find": "if (age > BLOCKER_MAX_AGE_MS) throw",
+      "replace": "if (age > BLOCKER_MAX_AGE_MS * 1e6) throw",
+      "kills": ["a blocker on a deposit a blocker with an invalid since is refused"]
+    },
+    {
+      "name": "the blocker is dropped from the deposit schema",
+      "file": "packages/owner-queue/src/deposit.ts",
+      "find": "  blocker: item.blocker,\n",
+      "replace": "",
+      "kills": ["a blocker on a deposit a deposit with a blocker round-trips since and blocks"]
+    }
+  ]
+}

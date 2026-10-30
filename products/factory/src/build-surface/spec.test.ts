@@ -3,7 +3,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { demoSpec, fakeBuild } from "../test-support/build-surface.js";
 import { BUILD_SURFACE_STEPS, DISPATCH_STEPS } from "./manifest.js";
 import { buildSurfaceRoutes } from "./routes.js";
-import { agentNameOf, evidenceDirOf, parseBuildSpec, readySlices } from "./spec.js";
+import { agentNameOf, evidenceDirOf, parseBuildSpec, readySlices, runsStep, skippedSteps } from "./spec.js";
 
 describe("the build spec", () => {
   it("reads the front matter and fills in the defaults the workflow relies on", () => {
@@ -28,6 +28,39 @@ describe("the build spec", () => {
 
     expect(() => parseBuildSpec(demoSpec(long))).toThrow(`gives the agent name "bs-a-very-long-reposito-s${"x".repeat(39)}-rv12", over agent-chat's 64 characters`);
     expect(parseBuildSpec(demoSpec({ ...long, reviewer: undefined })).slices).toHaveLength(1);
+  });
+
+  it("reads a slice's preview and deploy booleans, leaving them absent to inherit the spec", () => {
+    const slices = [{ id: "a", title: "A", brief: "b", preview: false, deploy: true }, { id: "b", title: "B", brief: "b" }];
+
+    const parsed = parseBuildSpec(demoSpec({ slices })).slices;
+
+    expect(parsed.map((slice) => [slice.preview, slice.deploy])).toEqual([[false, true], [undefined, undefined]]);
+  });
+
+  it.each([["preview", "no"], ["deploy", 1], ["preview", { command: ["make"] }]])("refuses a slice's %s of %j, which is not a boolean", (key, value) => {
+    expect(() => parseBuildSpec(demoSpec({ slices: [{ id: "a", title: "A", brief: "b", [key]: value }] }))).toThrow(new RegExp(`slices.0.${key}`));
+  });
+
+  it("runs a step unless the slice says false, and never runs one the spec leaves out, whatever the slice says", () => {
+    const withSteps = parseBuildSpec(demoSpec());
+    const bare = parseBuildSpec(demoSpec({ preview: undefined, deploy: undefined }));
+
+    expect(runsStep(withSteps, { ...withSteps.slices[0]!, preview: false }, "preview")).toBe(false);
+    expect(runsStep(withSteps, { ...withSteps.slices[0]!, preview: true }, "preview")).toBe(true);
+    expect(runsStep(withSteps, withSteps.slices[0]!, "deploy")).toBe(true);
+    expect(runsStep(bare, { ...bare.slices[0]!, deploy: true }, "deploy")).toBe(false);
+  });
+
+  it("lists as skipped only the steps the spec enables and the slice switched off", () => {
+    const withSteps = parseBuildSpec(demoSpec());
+    const bare = parseBuildSpec(demoSpec({ preview: undefined, deploy: undefined }));
+    const off = { preview: false, deploy: false };
+
+    expect(skippedSteps(withSteps, { ...withSteps.slices[0]!, ...off })).toEqual(["preview", "deploy"]);
+    expect(skippedSteps(withSteps, { ...withSteps.slices[0]!, deploy: false })).toEqual(["deploy"]);
+    expect(skippedSteps(withSteps, withSteps.slices[0]!)).toEqual([]);
+    expect(skippedSteps(bare, { ...bare.slices[0]!, ...off })).toEqual([]);
   });
 
   it("refuses a relative clone, since serve reads it from its own directory", () => {
