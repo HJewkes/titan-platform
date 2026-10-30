@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each arithmetic expansion rescans the whole command",
+      "file": "packages/tool-guard/src/shell/lexer.ts",
+      "find": "  const found: Token[][] = [];\n  const end = arithmeticExpansionEnd(",
+      "replace": "  const found: Token[][] = [];\n  s.src.indexOf(\"\\u0000\");\n  const end = arithmeticExpansionEnd(",
+      "kills": [
+        "the hook denies a push after eight kilobytes of pending heredocs with an arithmetic expansion, within a work budget per character"
+      ]
+    }
+  ]
+}

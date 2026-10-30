@@ -7,6 +7,7 @@ import type { ClassifyContext } from "../types.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { expectWorkPerChar } from "../test-support/work-count.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -23,6 +24,9 @@ function classifyCommand(command: string): string[] {
   const event = { kind: "bash" as const, command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null };
   return classify(event, context).map((a) => a.spelling);
 }
+
+/** The hook reads these commands in about 2.5 characters of work per character; a rescan per expansion reads far more. */
+const WORK_PER_CHAR = 8;
 
 /** The hook's own verdict, which is what the agent meets: a ParseError denies. */
 async function hookDenies(command: string): Promise<boolean> {
@@ -102,11 +106,10 @@ describe("a heredoc opened inside a process substitution", () => {
     ["an arithmetic expansion", "cat <(cat <<E)\nE\n$((1))\n"],
     ["a backtick substitution", "cat <(cat <<E)\nE\n`echo x`\n"],
     ["three arithmetic expansions", "cat <(cat <<E)\nE\necho $((2<<1)) $((3)) $((4))\n"],
-  ])("the hook denies a push after eight kilobytes of pending heredocs with %s, in under 750 ms", async (_name, unit) => {
+  ])("the hook denies a push after eight kilobytes of pending heredocs with %s, within a work budget per character", async (_name, unit) => {
     const command = `${unit.repeat(Math.floor(7900 / unit.length))}${PUSH}`;
-    const started = performance.now();
-    const denied = await hookDenies(command);
-    expect(performance.now() - started).toBeLessThan(750);
+    let denied = false;
+    await expectWorkPerChar(async () => void (denied = await hookDenies(command)), command.length, WORK_PER_CHAR);
     expect(denied).toBe(true);
   });
 
