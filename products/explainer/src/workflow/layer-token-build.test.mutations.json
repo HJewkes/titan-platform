@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer build never runs the colour token check",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "const tokens = undefinedTokenFindings(module);",
+      "replace": "const tokens = undefinedTokenFindings(module).slice(0, 0);",
+      "kills": [
+        "the colour token check on custom-layer builds a layer painting with an undefined colour token gets one rebuild naming it",
+        "the colour token check on custom-layer builds fails resolve naming the line when the rebuild still paints with the undefined token"
+      ]
+    }
+  ]
+}

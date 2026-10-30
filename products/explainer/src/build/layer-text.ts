@@ -9,7 +9,9 @@ import type { BuiltLayer } from "./layer-tree.js";
 export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 /** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
 export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule;
+/** qa's frame-wide gates on a layer: content-fill on its settled frame, words-per-frame on every probed frame. */
+export type LayerFrameRule = "content-fill" | "words-per-frame";
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule | LayerFrameRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -117,6 +119,8 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "bad-text": "draw a real value: read the clock as const { t } = useBeatTime(), and format every number before it is shown",
   "unspoken-fact": "draw no number or name the narration does not say; drop it or show only what is spoken",
   "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
+  "content-fill": "spread the settled content across at least 60 % of the frame width, with shapes painted in defined theme tokens",
+  "words-per-frame": "show at most 20 words on screen at once: keep key nouns and numbers, drop the rest",
 };
 
 function ruleFix(row: LayerTextRow, fadedTexts: ReadonlySet<string>): string {
