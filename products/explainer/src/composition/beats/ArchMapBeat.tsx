@@ -59,7 +59,7 @@ function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly M
   return (
     <>
       <h2 className="ex-headline" style={fadeUp(t, 0)}>{headline}</h2>
-      <div className="ex-map" style={{ height: MAP_H, opacity: progress(t, 0) }}>
+      <div className="ex-map" style={{ height: MAP_H, ...fadeUp(t, 0, 16) }}>
         <svg className="ex-map-svg" width={MAP.width} height={MAP_H}>
           <defs>
             <marker id="ex-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
