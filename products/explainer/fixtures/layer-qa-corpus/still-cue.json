@@ -1,0 +1,61 @@
+{
+  "pattern": "A cue word aimed at an element already shown that the layer never moves, so the picture does not change on it",
+  "qa": [
+    "still-cue"
+  ],
+  "elements": [
+    "north",
+    "south"
+  ],
+  "packet": {
+    "beat_id": "routes",
+    "spoken": "The north route left early this morning, and it carried most of the parcels. The south route took the rest.",
+    "cues": [
+      {
+        "action": "V6",
+        "target": "north",
+        "atCue": "north"
+      },
+      {
+        "action": "V6",
+        "target": "north",
+        "atCue": "morning"
+      },
+      {
+        "action": "V6",
+        "target": "north",
+        "atCue": "most"
+      },
+      {
+        "action": "V6",
+        "target": "south",
+        "atCue": "south"
+      }
+    ],
+    "planned_s": 7,
+    "band": "story"
+  },
+  "module": [
+    "import { useBeatTime, useCue } from \"@titan-design/react-ui/motion\";",
+    "",
+    "const clamp = (x: number) => Math.max(0, Math.min(1, x));",
+    "",
+    "export default function Routes() {",
+    "  const { t } = useBeatTime();",
+    "  const cues = { north: useCue(\"north\"), morning: useCue(\"morning\"), south: useCue(\"south\") };",
+    "  const pulse = (at: number) => (t < at ? 0 : clamp(1 - (t - at)));",
+    "  const panel = (p: number) => ({ flex: 1, padding: 40, borderRadius: 24, border: \"3px solid var(--color-border-prominent)\", background: \"var(--color-background-subtle)\", boxShadow: `inset 0 0 0 ${Math.round(p * 10)}px var(--color-brand-primary-solid)` }) as const;",
+    "  const text = { margin: 0, fontSize: 52, fontWeight: 700, color: \"var(--color-text-primary)\" } as const;",
+    "  return (",
+    "    <div style={{ position: \"absolute\", inset: 0, display: \"flex\", gap: 40, padding: 60, alignItems: \"flex-start\", boxSizing: \"border-box\" }}>",
+    "      <div id=\"north\" style={panel(Math.max(pulse(cues.north), pulse(cues.morning)))}>",
+    "        <p style={text}>North route</p>",
+    "      </div>",
+    "      <div id=\"south\" style={panel(pulse(cues.south))}>",
+    "        <p style={text}>South route</p>",
+    "      </div>",
+    "    </div>",
+    "  );",
+    "}"
+  ]
+}

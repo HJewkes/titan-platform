@@ -55,6 +55,24 @@ describe("the layer check's held rules", () => {
     expect(rows).toEqual([]);
   });
 
+  // catches: a build check that reads a cue's pulse only where its estimated clock puts qa's samples, so qa refuses it on the real voice (TP-4617)
+  it("refuses text a pulse covers for half a second after a cue word, which qa holds once its samples land on the pulse", () => {
+    // Arrange
+    const occluded: Finding = { kind: "occluded", el: "div#shelf-2", text: "Returned", at: PANEL };
+    const pulseAfter = (cueS: number) => (t: number): LayerInspection => ({ contentRuns: 3, findings: t >= cueS && t < cueS + 0.5 ? [occluded] : [] });
+    const estimated = { beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 2.2 }] }] };
+    const voiced = { beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 1.775 }] }] };
+    const qaOnVoice = classify(qaSampleMoments(voiced, true).map((m) => ({ ...m, contentRuns: 3, findings: [...pulseAfter(1.775)(m.t).findings] })));
+
+    // Act
+    const rows = heldRows(heldAtSamples(estimated, layerSamplings(estimated), pulseAfter(2.2)));
+
+    // Assert
+    expect(qaOnVoice.errors.map(({ kind }) => kind)).toEqual(["occluded"]);
+    expect(rows.map((row) => [row.rule, row.text])).toEqual([["occluded", "Returned"]]);
+    expect(layerTextHint(rows)).toContain("(draw nothing over text");
+  });
+
   // catches: a build check that never adds late-fill, which qa adds from the beat's cues before it holds anything
   it("refuses a stage still empty past a third of the beat with a cue to come", () => {
     // Arrange

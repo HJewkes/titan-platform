@@ -1,0 +1,38 @@
+{
+  "pattern": "A layer that goes still on its last cue and holds that finished frame for more than 3 s while the voice speaks, which qa now excuses as settled",
+  "qa": [],
+  "elements": ["north", "south"],
+  "packet": {
+    "beat_id": "vans",
+    "spoken": "The north van left first, and the south van followed. Both of them reached the depot well before noon, with every parcel still on board.",
+    "cues": [
+      { "action": "V6", "target": "north", "atCue": "north" },
+      { "action": "V6", "target": "south", "atCue": "south" }
+    ],
+    "planned_s": 9,
+    "band": "story"
+  },
+  "module": [
+    "import { useBeatTime, useCue } from \"@titan-design/react-ui/motion\";",
+    "",
+    "const clamp = (x: number) => Math.max(0, Math.min(1, x));",
+    "",
+    "export default function Vans() {",
+    "  const { t } = useBeatTime();",
+    "  const cues = { north: useCue(\"north\"), south: useCue(\"south\") };",
+    "  const pulse = (at: number) => (t < at ? 0 : clamp(1 - (t - at)));",
+    "  const panel = (p: number) => ({ flex: 1, padding: 40, borderRadius: 24, border: \"3px solid var(--color-border-prominent)\", background: \"var(--color-background-subtle)\", boxShadow: `inset 0 0 0 ${Math.round(p * 10)}px var(--color-brand-primary-solid)` }) as const;",
+    "  const text = { margin: 0, fontSize: 52, fontWeight: 700, color: \"var(--color-text-primary)\" } as const;",
+    "  return (",
+    "    <div style={{ position: \"absolute\", inset: 0, display: \"flex\", gap: 40, padding: 60, alignItems: \"flex-start\", boxSizing: \"border-box\" }}>",
+    "      <div id=\"north\" style={panel(pulse(cues.north))}>",
+    "        <p style={text}>North van</p>",
+    "      </div>",
+    "      <div id=\"south\" style={panel(pulse(cues.south))}>",
+    "        <p style={text}>South van</p>",
+    "      </div>",
+    "    </div>",
+    "  );",
+    "}"
+  ]
+}

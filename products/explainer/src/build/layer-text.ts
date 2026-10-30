@@ -99,8 +99,10 @@ const isQaTextRule = (kind: string): kind is (typeof QA_TEXT_RULES)[number] => Q
 const HELD_FIX: Record<LayerHeldRule, string> = {
   "text-overlap": "give each text its own space: no two texts may overlap",
   "text-box": "keep text off every other element's box: move it or the box so they no longer overlap",
-  "box-overlap": "lay boxes side by side or stacked with a gap: no box may overlap another it does not contain",
-  occluded: "draw nothing over text: move the element that covers it, or the text",
+  "box-overlap":
+    "lay boxes side by side or stacked with a gap: no box may overlap another it does not contain, and no absolute tint or overlay may lie over a card's chips; pulse with a border, an inset box-shadow or the element's own background",
+  occluded:
+    "draw nothing over text: move the element that covers it, or the text, and never lay an absolute tint or overlay over text, however faint; pulse with a border, an inset box-shadow or the element's own background",
   "edge-crossing": "route the line or arrow around the element it crosses, never through its text",
   "off-frame": "keep every painted part inside the 1920 by 1080 frame; an element waiting for its cue is clipped away whole, as clipPath inset(0 100% 0 0)",
   "content-overflow":

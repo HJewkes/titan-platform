@@ -4,8 +4,8 @@
     {
       "name": "the outro's settleBy is not passed to the sweep",
       "file": "products/explainer/src/qa/qa-timeline.ts",
-      "find": "sweepMoments([lead, beat], { settleBy: (b) => (b === beat ? settleBy(beat) : 0) })",
-      "replace": "sweepMoments([lead, beat])",
+      "find": "sweepMoments([lead, beat], { hz, settleBy: (b) => (b === beat ? settleBy(beat) : 0) })",
+      "replace": "sweepMoments([lead, beat], { hz })",
       "kills": [
         "qa stage on a beat that fades out over its last second passes content-fill on an outro, whose settled sample comes before its fade"
       ]
