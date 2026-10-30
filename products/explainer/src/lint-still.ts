@@ -1,22 +1,28 @@
 import { SMALL_MOVE_S } from "./composition/beats/stage/video.js";
-import { drawnBeats } from "./drawn-beats.js";
+import { drawnBeats, isSlots, screenTokens, type DrawnBeat } from "./drawn-beats.js";
+import { drawnTexts, isHeading, type DrawnText } from "./drawn-texts.js";
 import type { L0Check } from "./eval-l0.js";
 import { heldBeats, plannedCues, scriptPacing, stretches } from "./lint-cadence.js";
 import { countRow } from "./lint-text.js";
+import type { TimingProfile } from "./qa/timing-gates.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
+import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { DEFAULT_PADDING } from "./workflow/tts-truing.js";
 
 /**
  * Script-time preflight for qa's static-window (TP-4538). Q-D17 holds cue gaps to picture-change's 8 s, but the
  * picture stands still between reveals, and static-window fails any still run past `pacing.staticMaxS`. Only a cue
  * the drawn kind reveals an element on moves the picture: a template beat's reveals, as resolve's fill draws them.
+ * As qa does, the reading hold of each drawn text the voice does not say is not still time.
  */
 
-/** One planned stretch with nothing revealed, on the beat's voiced clock from the cut. */
+type Pacing = TimingProfile["pacing"];
+
+/** One planned run of still picture, on the beat's voiced clock from the cut. */
 export interface StillStretch {
   fromS: number;
   toS: number;
-  /** The cue word that opens it; none for the stretch from the cut. */
+  /** The cue word that opens the stretch between reveals it lies in; none for the stretch from the cut. */
   after?: string;
 }
 
@@ -25,37 +31,85 @@ interface StillBeat {
   stretches: StillStretch[];
 }
 
-/** The cue words the drawn beat reveals an element on; undefined when the fill does not draw it at script time (a custom layer). */
-function revealWords(script: ScriptV1): (id: string) => ReadonlySet<string> | undefined {
-  const drawn = new Map(drawnBeats(script).map(({ filled }) => [filled.id, new Set(filled.reveals.map((reveal) => reveal.atCue))]));
-  return (id) => drawn.get(id);
+interface Window {
+  fromS: number;
+  toS: number;
+}
+
+const ITEM_TARGET = /^(.+)-(\d+)$/;
+
+/** The words of the slot element a reveal targets: a `<field>-<n>` item's drawn fields, or a whole slot. */
+function targetWords(slots: Record<string, unknown>, target: string): Set<string> {
+  const item = ITEM_TARGET.exec(target);
+  const field = item && Array.isArray(slots[item[1]!]) ? (slots[item[1]!] as unknown[])[Number(item[2]) - 1] : slots[target];
+  const leaves = isSlots(field) ? Object.entries(field).filter(([key]) => key !== "id").map(([, value]) => value) : [field];
+  return new Set(leaves.flatMap((leaf) => (typeof leaf === "string" || typeof leaf === "number" ? screenTokens(String(leaf)) : [])));
+}
+
+// The chrome and the heading rise at the cut; a stage text shows on the reveal whose element holds its words. A text
+// matched to no reveal is given no hold, so the row errs toward qa's fail, not its pass.
+function shownAt(shown: DrawnText, words: readonly string[], reveals: readonly { s: number; words: Set<string> }[]): number | undefined {
+  if (shown.cls.startsWith("xp-") || isHeading(shown)) return 0;
+  return reveals.find((reveal) => words.every((word) => reveal.words.has(word)))?.s;
+}
+
+/** qa's reading holds on a drawn beat: each text not wholly spoken holds max(readingMinS, chars / readingCps) from when it shows. */
+function readingWindows(drawn: DrawnBeat, beat: ScriptBeat, cueAt: (cue: string) => number, pacing: Pacing): Window[] {
+  const spoken = new Set(screenTokens(spellSpokenNumbers(beat).spoken));
+  const reveals = drawn.filled.reveals.map((reveal) => ({ s: cueAt(reveal.atCue), words: targetWords(drawn.filled.slots, reveal.target) }));
+  return (drawnTexts(drawn) ?? []).flatMap((shown) => {
+    const words = screenTokens(shown.text);
+    if (words.length === 0 || words.every((word) => spoken.has(word))) return [];
+    const fromS = shownAt(shown, words, reveals);
+    return fromS === undefined ? [] : [{ fromS, toS: fromS + Math.max(pacing.readingMinS, shown.text.trim().length / pacing.readingCps) }];
+  });
+}
+
+/** The parts of a stretch no reading hold covers. */
+function uncovered([from, to]: [number, number], windows: readonly Window[]): [number, number][] {
+  const runs: [number, number][] = [];
+  let start = from;
+  for (const window of [...windows].sort((a, b) => a.fromS - b.fromS)) {
+    if (window.toS <= start || window.fromS >= to) continue;
+    if (window.fromS > start) runs.push([start, window.fromS]);
+    start = Math.max(start, window.toS);
+  }
+  if (start < to) runs.push([start, to]);
+  return runs;
 }
 
 // A reveal moves for SMALL_MOVE_S, so the picture stands still only between the end of one move and the next cue.
-function stillOver(beat: ScriptBeat, reveals: ReadonlySet<string> | undefined, limitS: number): StillStretch[] {
+function stillOver(beat: ScriptBeat, drawn: DrawnBeat | undefined, pacing: Pacing): StillStretch[] {
   const planned = plannedCues(beat);
   if (!planned) return [];
   const { leadS, tailS } = DEFAULT_PADDING;
+  const reveals = drawn && new Set(drawn.filled.reveals.map((reveal) => reveal.atCue));
   const cues = planned.cues.filter(({ cue }) => reveals === undefined || reveals.has(cue)).map(({ cue, s }) => ({ cue, s: leadS + s }));
+  const times = new Map(cues.map(({ cue, s }) => [cue, s]));
+  const windows = drawn ? readingWindows(drawn, beat, (cue) => times.get(cue) ?? leadS, pacing) : [];
   const opener = new Map(cues.map(({ cue, s }) => [s, cue]));
-  return stretches(cues.map(({ s }) => s), leadS + planned.endS + tailS)
-    .filter(([from, to]) => to - from > limitS + SMALL_MOVE_S)
-    .map(([fromS, toS]) => ({ fromS, toS, ...(opener.has(fromS) ? { after: opener.get(fromS)! } : {}) }));
+  return stretches(cues.map(({ s }) => s), leadS + planned.endS + tailS).flatMap((stretch) => {
+    const after = opener.get(stretch[0]);
+    return uncovered(stretch, windows)
+      .filter(([from, to]) => to - from > pacing.staticMaxS + SMALL_MOVE_S)
+      .map(([fromS, toS]) => ({ fromS, toS, ...(after === undefined ? {} : { after }) }));
+  });
 }
 
-/** Beats with a planned still stretch past the profile's staticMaxS; a held beat is where static-window allows one. */
-export function stillBeats(script: ScriptV1, limitS: number): StillBeat[] {
+/** Beats with a planned still run past the profile's staticMaxS; a held beat is where static-window allows one. */
+export function stillBeats(script: ScriptV1, pacing: Pacing): StillBeat[] {
   const held = new Set(heldBeats(script.beats));
-  const reveals = revealWords(script);
+  // A beat the fill does not draw at script time (a custom layer) counts every cue and no reading hold.
+  const drawn = new Map(drawnBeats(script).map((beat) => [beat.filled.id, beat]));
   return script.beats.filter((beat) => !held.has(beat.id)).flatMap((beat) => {
-    const found = stillOver(beat, reveals(beat.id), limitS);
+    const found = stillOver(beat, drawn.get(beat.id), pacing);
     return found.length > 0 ? [{ beat, stretches: found }] : [];
   });
 }
 
-/** Q-D22: no planned stretch of a beat between revealing cues runs past the profile's `pacing.staticMaxS`. */
+/** Q-D22: no planned still run of a beat, between revealing cues and outside reading holds, passes `pacing.staticMaxS`. */
 export const stillStretchCheck: L0Check = ({ script }) => {
   const pacing = scriptPacing(script);
   if (!pacing) return [];
-  return [countRow("Q-D22", stillBeats(script, pacing.staticMaxS).map(({ beat }) => beat.id))];
+  return [countRow("Q-D22", stillBeats(script, pacing).map(({ beat }) => beat.id))];
 };

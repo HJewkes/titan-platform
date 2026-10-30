@@ -11,6 +11,11 @@ const cue = (target: string, atCue: string) => ({ action: "V6" as const, target,
 const LINT = { spine: parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-explainer/spine.md", import.meta.url), "utf8")), g2p: { tokens: () => [] } };
 const ROUTER = "The router lane rewrote its matcher and merged it before lunch, with the old path kept behind a switch.";
 const ROUTER_ROWS = ["router · Matcher rewrite merged", "router · Merged before lunch", "router · Old path behind a switch"];
+const LONG_LANE =
+  "The router lane rewrote its matcher this morning, tested it against the old path on every dock, merged it before lunch, kept the old path behind a switch for one more day, and then asked the cache lane to warm its store before the evening rush begins.";
+const LONG_REFLECTION =
+  "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
+const claimCard = (plannedS: number, spoken: string, claim: string) => ({ plannedS, spoken, visual: { beat: "claim-card", labels: [claim], cues: [] } });
 
 describe("Q-D22 planned still stretches, qa's static-window at script time", () => {
   it("a beat with a 5 s planned gap between revealing cues fails and names the gap", () => {
@@ -21,7 +26,7 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     expect(row).toMatchObject({ severity: "error", pass: false });
     expect(row.detail_beats).toContain("ships-2");
-    expect(hint).toMatch(/stand still more than 3 s between reveals: .*ships-2 2\.1 s to 7\.3 s after "twelve" \(5\.2 s\)/);
+    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 7\.3 s after "twelve" \(3\.7 s\)/);
   });
 
   it("passes once a revealing cue lands inside the stretch, as its hint asks", () => {
@@ -33,7 +38,8 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
   });
 
   it("a cue on a word no element reveals on does not close a gap", () => {
-    const script = dailyWith("lanes-1", { spoken: ROUTER, visual: { cues: [cue("rows-1", "matcher"), cue("rows-1", "lunch"), cue("rows-2", "switch")] } });
+    const echoes = ["against", "lunch", "switch", "asked"].map((word) => cue("rows-1", word));
+    const script = dailyWith("lanes-1", { spoken: LONG_LANE, visual: { cues: [cue("rows-1", "matcher"), ...echoes, cue("rows-2", "store")] } });
 
     const row = l0Row(script, "Q-D22");
     const hint = repairHint(row, script);
@@ -42,17 +48,35 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
     expect(hint).toMatch(/lanes-1 [\d.]+ s to [\d.]+ s after "matcher"/);
   });
 
-  it("a cue-less claim-card longer than 3.5 s fails unless held", () => {
-    const loose = dailyWith("reflection-2", {});
-    const held = dailyWith("reflection-2", { heldS: 3 });
+  it("a cue-less claim-card still past its reading hold fails unless held", () => {
+    const loose = dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION });
+    const held = dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION, heldS: 3 });
 
     const failing = l0Row(loose, "Q-D22");
     const passing = l0Row(held, "Q-D22");
+    const hint = repairHint(failing, loose) ?? "";
 
     expect(failing.detail_beats).toContain("reflection-2");
-    expect(repairHint(failing, loose)).toContain("reflection-2 0 s to 5.5 s from the cut (5.5 s)");
-    expect(repairHint(failing, loose)).toContain("reflection-2 is a claim-card, which reveals nothing on a cue");
+    expect(hint).toMatch(/reflection-2 [\d.]+ s to [\d.]+ s from the cut/);
+    expect(hint).toContain("reflection-2 is a claim-card, which reveals nothing on a cue: hold it, show a claim the voice does not read word for word");
+    expect(hint).not.toContain("trim its words");
     expect(passing.detail_beats).not.toContain("reflection-2");
+  });
+
+  // Regression: Q-D22 once counted qa's reading holds as still time, so no unheld claim-card could pass it with Q-D19.
+  it("three unheld claim-cards that pass the fill floor and the echo rule pass on the reading time of their unspoken text", () => {
+    const cards = [
+      ["ships-2", claimCard(5, "The matcher now answers in a fraction of the old time, tail gone.", "Matching got fast")],
+      ["reflection-1", claimCard(5, "Waiting is the real cost: drafts sit idle behind the shared review queue.", "Waiting costs the most")],
+      ["reflection-2", claimCard(5, "Small lanes ship faster than one big queue, and today showed it again.", "Small lanes win")],
+    ] as const;
+    const script = cards.reduce((built, [id, patch]) => dailyWith(id, patch, built), dailyWith("ships-1", {}));
+    const ids = cards.map(([id]) => id);
+    const failing = (check: string) => l0Row(script, check).detail_beats.filter((id) => (ids as readonly string[]).includes(id));
+
+    const rows = ["Q-D16", "Q-D19", "Q-D22"].map(failing);
+
+    expect(rows).toEqual([[], [], []]);
   });
 
   it("a failing still stretch reaches the L0 repair prompt with its hint", () => {
@@ -61,7 +85,7 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     const prompt = repairPrompt("", script, failureList(failing, loadRuleRegistry(), script, LINT));
 
-    expect(prompt).toContain("- Q-D22: No planned stretch of a beat between cues that reveal an element runs past the profile's pacing.staticMaxS, unless the beat is held");
-    expect(prompt).toMatch(/Found: beats whose picture would stand still more than 3 s between reveals: .*ships-2/);
+    expect(prompt).toContain("- Q-D22: No planned still run of a beat, between cues that reveal an element and outside the reading hold of text it does not say, passes the profile's pacing.staticMaxS, unless the beat is held");
+    expect(prompt).toMatch(/Found: beats whose picture would stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2/);
   });
 });
