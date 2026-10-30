@@ -61,7 +61,8 @@ export interface ShadowWiring {
 
 /** Shepherd reviews only an open head at green CI that no carry signed off, so those parts of the snapshot are what it already held. */
 function reviewedPr({ pr, head }: ShadowInput): PullRequest {
-  return { number: pr, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: "", headSha: head, headRepo: null, baseRef: "", draft: false, mergeableState: "unknown", behind: false, autoMerge: false };
+  const unmerged = { merged: false, mergeSha: null, mergedAt: null, autoMerge: false };
+  return { number: pr, state: "open", ...unmerged, headRef: "", headSha: head, headRepo: null, baseRef: "", draft: false, mergeableState: "unknown", behind: false };
 }
 
 /** Every profile the policy could plan; with no installed check wired, each reads as installed, as the dispatch would find it. */
@@ -75,7 +76,8 @@ function shadowSnapshot(input: ShadowInput, policy: PanelPolicy, installed: (pro
   const target: ReviewTarget = { repo: input.repo, pr: input.pr, head: input.head };
   const facts = { ...target, base: "", changedFiles: [] };
   const head = { pr: reviewedPr(input), ci: "green" as const, facts, sizeUnread: input.reviewClass !== "standard" };
-  return { target, head, proof: proofStanding(input.proof, input.head), carry: { kind: "no-carry" }, checkout: { kind: "ready" }, headroom: { opus: true, account: "available" }, profiles: profilesOf(policy, installed) };
+  const passing = { carry: { kind: "no-carry" }, checkout: { kind: "ready" }, headroom: { opus: true, account: "available" } } as const;
+  return { target, head, proof: proofStanding(input.proof, input.head), ...passing, profiles: profilesOf(policy, installed) };
 }
 
 function decisionWord(decision: PreflightDecision): string {
@@ -88,7 +90,9 @@ function decisionWord(decision: PreflightDecision): string {
 function dispatchClass({ dispatched }: ShadowInput): FailureClass | undefined {
   if (dispatched.kind === "dispatched") return undefined;
   const profile = dispatched.profile ?? "";
-  const record = dispatched.refused === undefined ? { kind: "never-started" as const, name: "", profile, degraded: false } : { kind: "refused" as const, name: "", profile, degraded: false, error: dispatched.refused, message: dispatched.reason ?? "" };
+  const member = { name: "", profile, degraded: false };
+  const { refused, reason } = dispatched;
+  const record = refused === undefined ? { kind: "never-started" as const, ...member } : { kind: "refused" as const, ...member, error: refused, message: reason ?? "" };
   return classifyFailure(record)?.class;
 }
 
@@ -150,12 +154,14 @@ export interface ShadowRound {
   verdict: Verdict;
 }
 
-const pick = (record: Readonly<Record<string, unknown>>, keys: readonly string[]): Record<string, unknown> => Object.fromEntries(keys.flatMap((key) => (record[key] === undefined ? [] : [[key, record[key]]])));
+const pick = (record: Readonly<Record<string, unknown>>, keys: readonly string[]): Record<string, unknown> =>
+  Object.fromEntries(keys.flatMap((key) => (record[key] === undefined ? [] : [[key, record[key]]])));
 
 /** Records the round's shadow at its head; the round count is how often this head's shadow was recorded before. */
 export function recordShadow(ctx: WorkflowContext, { target, proof, intent, dispatched, verdict }: ShadowRound): Promise<z.infer<typeof ReviewShadowRead>> {
   const stepId = `${REVIEW_SHADOW_STEP}:${target.head}`;
   const reviewClass = intent.class === "g10" || intent.class === "standard" ? { reviewClass: intent.class } : {};
-  const input = { ...target, round: ctx.iteration(stepId) + 1, proof, ...reviewClass, dispatched: pick(dispatched, ["kind", "refused", "reason", "profile"]), verdict: pick(verdict, ["kind", "cause"]) };
+  const records = { dispatched: pick(dispatched, ["kind", "refused", "reason", "profile"]), verdict: pick(verdict, ["kind", "cause"]) };
+  const input = { ...target, round: ctx.iteration(stepId) + 1, proof, ...reviewClass, ...records };
   return step(ctx, stepId, input, ReviewShadowRead);
 }
