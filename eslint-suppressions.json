@@ -455,11 +455,6 @@
       "count": 1
     }
   },
-  "packages/store-sqlite/src/tables/span-fts.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
   "packages/store-sqlite/src/tables/span-fts.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -478,11 +473,6 @@
   "packages/style-checker/src/runners/tool-runner.ts": {
     "titan/max-function-lines": {
       "count": 2
-    }
-  },
-  "packages/style-checker/src/runners/vulture-audit.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
     }
   },
   "packages/style-profile/src/exporters/editorconfig.ts": {
@@ -530,11 +520,6 @@
       "count": 1
     }
   },
-  "packages/workflow/src/durable-harness-runner.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/workflow/src/durable-harness-runner.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -542,16 +527,6 @@
   },
   "packages/workflow/src/prompt.ts": {
     "titan/max-line-length": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/run-state-rules.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/runners.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },

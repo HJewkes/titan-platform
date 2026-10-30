@@ -4,9 +4,11 @@ import {
   createDurableHarnessDispatcher,
   type DurableHarnessSuccess,
   type HarnessAdapter,
+  type HarnessRunRequestFor,
   type HarnessRunResult,
 } from "@titan-design/agent";
 import { SqliteExecutionLedger, executionLedgerMigration } from "@titan-design/agent-lifecycle";
+import { partialFake } from "@titan-design/test-kit";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { durableHarnessRunner } from "./durable-harness-runner.js";
@@ -54,13 +56,18 @@ function setup() {
   runMigrations(db, [gateMigration(1), workflowMigration(2), executionLedgerMigration(3), gateResolverMigration(4)]);
   let now = Date.now();
   const ledger = new SqliteExecutionLedger<DurableHarnessSuccess<unknown, "codex">>(db, { now: () => new Date(now).toISOString() });
-  let finish!: (result: HarnessRunResult<string, "codex">) => void;
-  const native = new Promise<HarnessRunResult<string, "codex">>(resolve => { finish = resolve; });
-  const run = vi.fn<HarnessAdapter<"codex">["run"]>(async request => {
+  let finish!: (result: HarnessRunResult<unknown, "codex">) => void;
+  const native = new Promise<HarnessRunResult<unknown, "codex">>(resolve => { finish = resolve; });
+  const run = vi.fn((request: HarnessRunRequestFor<"codex", unknown>) => {
     request.onProgress?.({ kind: "execution_started", harness: "codex", atMs: now, execution: successful.execution! });
-    return native as Promise<HarnessRunResult<never, "codex">>;
   });
-  const adapter: HarnessAdapter<"codex"> = { descriptor: codexExecCapabilities(), run: run as HarnessAdapter<"codex">["run"] };
+  const adapter: HarnessAdapter<"codex"> = {
+    descriptor: codexExecCapabilities(),
+    async run<T>(request: HarnessRunRequestFor<"codex", T>) {
+      run(request);
+      return Object.assign(partialFake<HarnessRunResult<T, "codex">>(), await native);
+    },
+  };
   function dispatcher(supervisorId: string) {
     return createDurableHarnessDispatcher(adapter, { ledger, supervisorId, leaseMs: 60_000 }, { now: () => now });
   }
@@ -173,7 +180,7 @@ describe("durable harness workflow integration", () => {
     const first = fixture.runtime("first");
     const runId = first.runtime.start("work");
     const active = await acknowledged(first.runtime, runId);
-    fixture.finish({ ...successful, output: { kind: "structured", value: new Date() as unknown as string } });
+    fixture.finish({ ...successful, output: { kind: "structured", value: new Date() } });
     const final = await first.runtime.wait(runId);
     expect(final.status).toBe("recovery_required");
     expect(final.activeSteps.work?.runnerRef).toBe(active.executionId);
