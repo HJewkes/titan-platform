@@ -661,7 +661,7 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     const { outcome, result } = await scene.run("review", fixFirst("fix it"));
 
     expect(outcome.ok).toBe(true);
-    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1", payload: expect.stringContaining("fix it") }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
   });
 
   it("spawns a successor for a retired implementer at a FIX_FIRST, though its transcript is warm", async () => {
@@ -691,7 +691,30 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1", payload: expect.stringContaining("fix it") }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
+  });
+
+  it("messages a held FIX_FIRST's findings to the implementer that no successor could relieve", async () => {
+    const scene = wakeStep();
+    scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    const { result } = await scene.run("review", fixFirst("the parser drops the last field"));
+
+    const message = scene.agents.asked.find((ask) => ask.verb === "message");
+    expect(message?.name).toBe("impl-a");
+    expect(message?.message).toContain("the parser drops the last field");
+    expect(result).toMatchObject({ held: { payload: expect.stringContaining("the parser drops the last field") } });
+  });
+
+  it("still holds, recording the failure, when the message to the implementer fails", async () => {
+    const scene = wakeStep();
+    scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+    scene.agents.fail.message = [new Error("broker refused the message")];
+
+    const { outcome, result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(outcome.ok).toBe(true);
+    expect(result).toMatchObject({ held: { agent: "impl-a-s1" }, predecessor: { agent: "impl-a", sent: false, detail: "the predecessor message failed: Error" } });
   });
 
   it("keeps a resume that fails with anything but a refusal unhandled, and starts no successor", async () => {
@@ -789,7 +812,7 @@ describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner"
     held.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
 
     expect((await woken.run("ci-red")).result).toMatchObject({ kind: "woken" });
-    expect((await held.run("review", fixFirst("fix it"))).result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect((await held.run("review", fixFirst("fix it"))).result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1", payload: expect.stringContaining("fix it") }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
     expect(sent).toEqual([]);
   });
 });
@@ -1129,7 +1152,7 @@ describe("wakePhase", () => {
 
     const { outcome, stepIds } = await runPhase(agents, fake, async () => undefined);
 
-    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1", payload: expect.stringContaining("fix it") } });
     expect(isHeld(outcome!)).toBe(true);
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0"]);
   });

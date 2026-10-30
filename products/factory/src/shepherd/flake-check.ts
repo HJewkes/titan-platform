@@ -101,8 +101,8 @@ export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], he
 }
 
 /** A send-back whose successor agent-chat refused takes the same route as an exit with no push: the seat, else the owner. */
-export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, held: { reason: string; held: { agent: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
-  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: held.reason };
+export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, held: { reason: string; held: { agent: string; payload?: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
+  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: { reason: held.reason, ...(held.held.payload !== undefined && { payload: held.held.payload }) } };
   throw await noticeOrGate(run, { kind, headSha, payload }, exit, `a human abandoned the PR after no fixer could start at a ${kind} wake`, leave);
 }
 
@@ -110,7 +110,7 @@ export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], hea
  * The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. After a
  * fix-proof wake that gate also offers the owner's waive-proof, as the NO_REPRO send-back does.
  */
-async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: string }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
+async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: { reason: string; payload?: string } }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
   const tell = async () => {
     const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
