@@ -19,6 +19,27 @@
       "kills": [
         "a stacked child retargeted to main after its parent squash-merged (TP-4566) wakes the implementer for one conflict round at once, with no merge-order wait"
       ]
+    },
+    {
+      "name": "any invalid reference reads as a stale base",
+      "file": "products/factory/src/shepherd/stale-base.ts",
+      "find": "if ((await port.getHeadSha(input.repo, ref)) === null) return { staleBase: ref };",
+      "replace": "return { staleBase: ref };",
+      "kills": ["a red that ran on a base the PR no longer has (TP-4605) wakes ci-red for an invalid reference whose branch still exists"]
+    },
+    {
+      "name": "every red on a stale base gets a merge-main round",
+      "file": "products/factory/src/shepherd/stale-base.ts",
+      "find": "  if (staleBase === null || run.staleBases.has(staleBase)) return undefined;",
+      "replace": "  if (staleBase === null) return undefined;",
+      "kills": ["a red that ran on a base the PR no longer has (TP-4605) wakes ci-red when the head the merge-main round pushed is red too"]
+    },
+    {
+      "name": "a seen retarget alone is no stale base",
+      "file": "products/factory/src/shepherd/stale-base.ts",
+      "find": "  if (input.retargetedFrom !== undefined) return { staleBase: input.retargetedFrom };\n",
+      "replace": "",
+      "kills": ["a red that ran on a base the PR no longer has (TP-4605) gives a child Shepherd saw retargeted a merge-main round, whatever its log says"]
     }
   ]
 }
