@@ -9,7 +9,7 @@ import path from "node:path";
 import { z } from "zod";
 import { depositItemId, ownerItemDepositSchema } from "@titan-design/owner-queue";
 import { MAX_DEPOSIT_BYTES, depositFileNames } from "@titan-design/owner-queue/spool";
-import { DEFAULT_BLOCKER_HOURS } from "./config.js";
+import { DEFAULT_BLOCKER_HOURS } from "./blocker-hours.js";
 import { openDepositNames, spoolNames } from "./inbox.js";
 import { pinnedLive } from "./inbox-blocking.js";
 import type { Invalidation } from "./invalidation.js";

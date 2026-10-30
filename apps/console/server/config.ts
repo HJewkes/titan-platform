@@ -4,6 +4,7 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
+import { blockerHoursFrom } from "./blocker-hours.js";
 import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 import type { ConfigStorePaths } from "./config-store/compare.js";
@@ -19,8 +20,6 @@ const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
 /** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
 const FACTORY_PORT = 7410;
-/** TP-4388 decision 1: a single owner gate banners at 12 h, the same as a raised blocker. */
-export const DEFAULT_BLOCKER_HOURS = 12;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 
@@ -285,16 +284,6 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   const url = URL.canParse(raw) ? new URL(raw) : null;
   if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
   return raw;
-}
-
-const MAX_BLOCKER_HOURS = 720;
-
-/** Whole hours, 1 to 30 days; a typo is refused, since a silent default would hide or flood the banner. */
-function blockerHoursFrom(raw: string | undefined): number {
-  if (raw === undefined || raw === "") return DEFAULT_BLOCKER_HOURS;
-  const hours = Number(raw);
-  if (!Number.isInteger(hours) || hours < 1 || hours > MAX_BLOCKER_HOURS) throw new Error(`TITAN_CONSOLE_BLOCKER_HOURS must be whole hours from 1 to ${MAX_BLOCKER_HOURS}, got "${raw}"`);
-  return hours;
 }
 
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */
