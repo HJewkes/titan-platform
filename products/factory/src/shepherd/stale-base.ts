@@ -1,3 +1,4 @@
+import { dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
@@ -42,6 +43,17 @@ async function readStaleBase(port: Pick<GitHubPort, "latestCheckRuns" | "jobLogT
 
 export function staleBaseRoute(deps: Pick<ShepherdDeps, "port" | "now">): StepRoute {
   return codeRoute(STALE_BASE_STEP, deps.now, (input: StaleBaseInput) => readStaleBase(deps.port, input));
+}
+
+const StaleBasePayload = z.looseObject({ staleBase: z.string() });
+
+/** The brief of a wake `staleBaseOf` asked for, undefined for any other payload. A rerun replays the old base, so even a merge that brings nothing needs a new head. */
+export function staleBaseWake(headSha: string, baseRef: string, payload: unknown): { reason: string; payload: string } | undefined {
+  const stale = StaleBasePayload.safeParse(payload);
+  if (!stale.success) return undefined;
+  const why = `CI at head ${headSha} ran against a former base of this PR, named in the fence below, not its current base, so that red says nothing about your code and a rerun repeats it.`;
+  const ask = "Change no code for it. Merge the current base from origin: `git fetch origin`, `git merge origin/<base>`, and push with a plain `git push`. If the merge is already up to date, push `git commit --allow-empty -m \"Rerun CI on the new base\"` instead, so CI runs on that base.";
+  return { reason: `${why} ${ask}`, payload: `${dataFence("base branch", baseRef)}\n\n${dataFence("former base", stale.data.staleBase)}` };
 }
 
 export interface StaleBaseRun extends RetargetRun {

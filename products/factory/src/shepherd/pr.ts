@@ -45,7 +45,7 @@ import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { conflictRound, noteRetarget } from "./retarget-conflict.js";
+import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
 import { staleBaseOf, staleBaseRoute, type StaleBaseRun } from "./stale-base.js";
 import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
@@ -115,7 +115,8 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, staleBases: new Set(), staleBaseReads: 0, orderSteps: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, orderSteps: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ staleBases: new Set(), staleBaseReads: 0 },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
     ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
@@ -171,12 +172,6 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (!isConflict(run, outcome)) return outcome;
   countConflictRound(run);
   return onConflict(run, outcome.headSha);
-}
-
-function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
-  if (outcome.kind !== "stopped") return false;
-  const dirty = outcome.reason === "not-mergeable" && run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
-  return outcome.reason === "conflict" || dirty;
 }
 
 /**

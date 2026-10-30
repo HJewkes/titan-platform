@@ -8,9 +8,10 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { noRunWake } from "./ci-norun.js";
 import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
-import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
+import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, ordinal, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
 import type { MergeBaseException } from "./merge-base-exception.js";
 export { withMergeBaseException } from "./merge-base-exception.js";
+import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
@@ -164,24 +165,10 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
   return `${intro} The files both sides changed follow.${registries}`;
 }
 
-const StaleBasePayload = z.looseObject({ staleBase: z.string() });
-
-/** A rerun replays the old base, so the only way to a verdict on the new one is a new head, and that holds when the merge brings nothing. */
-function staleBaseWake(input: WakeFacts, pr: PullRequest, staleBase: string): { reason: string; payload: string } {
-  const why = `CI at head ${input.headSha} ran against a former base of this PR, named in the fence below, not its current base, so that red says nothing about your code and a rerun repeats it.`;
-  const ask = "Change no code for it. Merge the current base from origin: `git fetch origin`, `git merge origin/<base>`, and push with a plain `git push`. If the merge is already up to date, push `git commit --allow-empty -m \"Rerun CI on the new base\"` instead, so CI runs on that base.";
-  return { reason: `${why} ${ask}`, payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("former base", staleBase)}` };
-}
-
 /** `earlier` is the run's FIX_FIRSTs before this one, oldest first; a payload recorded before it existed has none. */
 const FixFirst = z.looseObject({ text: z.string().optional(), earlier: z.array(FixFirstEntrySchema).optional() });
 
 export { defectClassSection };
-
-function ordinal(n: number): string {
-  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-  return `${n}${suffix}`;
-}
 
 const STRUCTURAL = "Do not patch the items one by one: fix the defect class at the one boundary where a single change covers every instance, then check that each blocking item in the findings is covered by it.";
 const NO_CLASS = "The reviewer named no defect class. Name the class these items share and the boundary where one fix covers it in your final message, then fix it there.";
@@ -324,8 +311,8 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {
-      const stale = StaleBasePayload.safeParse(input.payload);
-      if (stale.success) return staleBaseWake(input, pr, stale.data.staleBase);
+      const stale = staleBaseWake(head, pr.baseRef, input.payload);
+      if (stale) return stale;
       const conflict = await conflictFiles(port, input, pr);
       return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
     }
