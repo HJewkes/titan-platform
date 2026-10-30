@@ -30,7 +30,7 @@ function testName(result: UnknownRecord): string | null {
   if (typeof result.fullName === "string") return result.fullName;
   const ancestors = Array.isArray(result.ancestorTitles) ? result.ancestorTitles : [];
   if (typeof result.title !== "string" || !ancestors.every((title) => typeof title === "string")) return null;
-  return [...(ancestors as string[]), result.title].join(" ");
+  return [...ancestors, result.title].join(" ");
 }
 
 const DECLINED: ReadonlySet<unknown> = new Set(["skipped", "todo"]);

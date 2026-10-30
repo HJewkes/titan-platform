@@ -900,31 +900,6 @@
       "count": 1
     }
   },
-  "packages/fix-proof/src/classify.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/config.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/fix-proof/src/plan.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/report.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/result-line.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
   "packages/hitl/src/base-store.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
