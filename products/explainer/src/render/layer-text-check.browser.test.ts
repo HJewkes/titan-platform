@@ -9,7 +9,7 @@ import { buildPage } from "../composition/page.test-helpers.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
 
-// Synthetic: hand-written layers for an invented parcel desk; no builder wrote them.
+// Synthetic: hand-written layers for an invented parcel desk; no builder wrote them. Each spans the frame width, so qa's content-fill gate passes.
 const BROWSER_TIMEOUT_MS = 240_000;
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk.", cues: [], planned_s: 3 };
@@ -23,20 +23,20 @@ export default function Desk() {
 
 /** Sized for a 14 px caption: the page raises it to the floor, so qa reads no small text. */
 const SMALL_CAPTION = layer(`const { t } = useBeatTime();
-  return <div style={{ position: "absolute", left: 120, top: 80 }}>
+  return <div style={{ position: "absolute", left: 120, right: 120, top: 80 }}>
     <div id="count" style={{ fontSize: 96 }}>{Math.round(Math.min(t, 1) * 12)}</div>
     <div style={{ fontSize: 14 }}>parcels at the desk</div>
   </div>;`);
 /** Arithmetic on the clock object itself, so the count reads NaN. */
 const NAN_COUNT = layer(`const t = useBeatTime() as unknown as number;
-  return <div id="count" style={{ position: "absolute", left: 120, top: 80, fontSize: 96 }}>{Math.round(t * 12)} parcels</div>;`);
+  return <div id="count" style={{ position: "absolute", left: 120, right: 120, top: 80, fontSize: 96 }}>{Math.round(t * 12)} parcels</div>;`);
 /** A line placed past the bottom of the stage box, where the source band sits. */
 const PAST_THE_BOX = layer(`useBeatTime();
-  return <div id="footer" style={{ position: "absolute", left: 120, bottom: -120, fontSize: 48 }}>last scan at the desk</div>;`);
+  return <div id="footer" style={{ position: "absolute", left: 120, right: 120, bottom: -120, fontSize: 48 }}>last scan at the desk</div>;`);
 
 /** A 56 px count on a filled bar, in the colours `text` on `fill`. */
 const onBar = (text: string, fill: string) => layer(`useBeatTime();
-  return <div style={{ position: "absolute", left: 120, top: 80, padding: 24, background: "${fill}" }}>
+  return <div style={{ position: "absolute", left: 120, right: 120, top: 80, padding: 24, background: "${fill}" }}>
     <div id="count" style={{ fontSize: 56, color: "${text}" }}>12</div>
   </div>;`);
 
@@ -46,7 +46,7 @@ const cueTimed = (shown: string) => `import { useBeatTime, useCue } from "@titan
 export default function Desk() {
   const { t } = useBeatTime();
   const at = useCue("desk");
-  return <div id="count" style={{ position: "absolute", left: 120, top: 80, fontSize: 96, opacity: t >= at ? 1 : 0 }}>${shown}</div>;
+  return <div id="count" style={{ position: "absolute", left: 120, right: 120, top: 80, fontSize: 96, opacity: t >= at ? 1 : 0 }}>${shown}</div>;
 }
 `;
 const CUED_PACKET = { ...PACKET, cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
