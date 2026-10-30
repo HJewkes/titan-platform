@@ -130,7 +130,7 @@ function MeterBar({ account }: { account: PoolAccount }): ReactNode {
     { key: "guard", label: "Per-day guard", value: account.perDayGuard, className: "border-status-error" },
   ];
   return (
-    <div className="relative h-3 w-full overflow-hidden rounded bg-surface-sunken" role="img" aria-label={`${account.pool}: ${meterCaption(account)}`}>
+    <div className="relative h-3 w-full overflow-hidden rounded border border-hairline-strong bg-surface-raised" role="img" aria-label={`${account.pool}: ${meterCaption(account)}`}>
       <div className="absolute inset-y-0 left-0 bg-data-2" style={{ width: `${before}%` }} data-testid={`coord-meter-before-${account.pool}`} />
       <div className="absolute inset-y-0 bg-brand-primary" style={{ left: `${before}%`, width: `${today}%` }} data-testid={`coord-meter-today-${account.pool}`} />
       {markers.map((marker) =>
