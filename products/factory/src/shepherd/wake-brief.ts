@@ -164,6 +164,15 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
   return `${intro} The files both sides changed follow.${registries}`;
 }
 
+const StaleBasePayload = z.looseObject({ staleBase: z.string() });
+
+/** A rerun replays the old base, so the only way to a verdict on the new one is a new head, and that holds when the merge brings nothing. */
+function staleBaseWake(input: WakeFacts, pr: PullRequest, staleBase: string): { reason: string; payload: string } {
+  const why = `CI at head ${input.headSha} ran against a former base of this PR, named in the fence below, not its current base, so that red says nothing about your code and a rerun repeats it.`;
+  const ask = "Change no code for it. Merge the current base from origin: `git fetch origin`, `git merge origin/<base>`, and push with a plain `git push`. If the merge is already up to date, push `git commit --allow-empty -m \"Rerun CI on the new base\"` instead, so CI runs on that base.";
+  return { reason: `${why} ${ask}`, payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("former base", staleBase)}` };
+}
+
 /** `earlier` is the run's FIX_FIRSTs before this one, oldest first; a payload recorded before it existed has none. */
 const FixFirst = z.looseObject({ text: z.string().optional(), earlier: z.array(FixFirstEntrySchema).optional() });
 
@@ -315,6 +324,8 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {
+      const stale = StaleBasePayload.safeParse(input.payload);
+      if (stale.success) return staleBaseWake(input, pr, stale.data.staleBase);
       const conflict = await conflictFiles(port, input, pr);
       return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
     }
