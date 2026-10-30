@@ -1,10 +1,10 @@
-import { noReproProceedOf } from "@titan-design/review-panel";
+import { endsReview, proofStanding } from "@titan-design/fix-proof";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { fixProofRoute, noReproOf, unverifiedOf, type FixProofReadSchema } from "./fix-proof.js";
 import { proofBaseOf } from "./fix-proof-base.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
@@ -79,9 +79,10 @@ async function proofWaivedAt(ctx: WorkflowContext, head: string): Promise<boolea
  * still come back as the panel's NO_REPRO, so its waiver is read too.
  */
 export async function proofStandingAt(ctx: WorkflowContext, head: string, proof: z.infer<typeof FixProofReadSchema>): Promise<{ ended: Verdict } | { standing: ProofStanding }> {
-  const noRepro = fixProofVerdict(proof, head);
-  const unverified = fixProofStanding(proof, head);
-  const proceeds = noRepro !== undefined && noReproProceedOf(unverified?.unverified) !== undefined;
+  const read = proofStanding(proof, head);
+  const noRepro = noReproOf(read, head);
+  const unverified = unverifiedOf(read);
+  const proceeds = noRepro !== undefined && !endsReview(read);
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
   if (noRepro && !proceeds && !waived) return { ended: noRepro };
   const proofBase = proofBaseOf(proof, head);

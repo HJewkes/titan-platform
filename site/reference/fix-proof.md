@@ -35,6 +35,11 @@ This package is the pure core of that gate. It adds three primitives:
   its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
   skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
+- `proofStanding(read, head)` is the one reading of a fix-proof read at a head that Shepherd's gate,
+  the owner's waiver and the review panel's aggregate all derive from: `proved`, `no-repro`,
+  `unverified`, `unproven` or `none`. `endsReview` says whether a NO_REPRO stops the review before
+  any reviewer starts; `needsTestsSeat` says whether the tests seat is blocking. An `unproven` line
+  answers no to the first and yes to the second.
 
 ## When to reach for it
 
