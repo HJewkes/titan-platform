@@ -28,6 +28,16 @@
       "kills": [
         "the agent-chat implementer runner gives up, naming the gate's reason, once the deferrals outlast the retry bound"
       ]
+    },
+    {
+      "name": "an account-limit refusal fails the step at once",
+      "file": "products/factory/src/agent-chat-implementer.ts",
+      "find": "      const resetsAt = limitResetOf(error, askedAt);\n",
+      "replace": "      const resetsAt = undefined as number | undefined;\n      if (accountLimitRefusal(error) !== undefined) throw error;\n",
+      "kills": [
+        "defers an account-limit refusal until the reset time it names instead of failing the step",
+        "backs off like a load deferral when an account-limit refusal names no reset"
+      ]
     }
   ]
 }

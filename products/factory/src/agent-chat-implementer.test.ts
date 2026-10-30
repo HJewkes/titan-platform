@@ -1,4 +1,4 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { agentChatImplementerRunner, type FinalMessages } from "./agent-chat-implementer.js";
@@ -16,12 +16,12 @@ function row(name: string, presence: string, generation = 1): AgentRow {
 const fenced = (value: unknown) => `Done.\n\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 
 /** A broker whose roster walks through the given presences, one per read, staying on the last; its gate defers the first `deferrals` asks. */
-function fakeBroker(presences: string[], messages: { text: string; writtenAt: number }[], deferrals = 0) {
+function fakeBroker(presences: string[], messages: { text: string; writtenAt: number }[], deferrals = 0, refusal: Error = new SpawnDeferred("load5 50.45 is past the limit 48")) {
   const spawned: SpawnRequest[] = [];
   const resumed: { name: string; message: string }[] = [];
   const slept: number[] = [];
   const admit = () => {
-    if (deferrals-- > 0) throw new SpawnDeferred("load5 50.45 is past the limit 48");
+    if (deferrals-- > 0) throw refusal;
   };
   let reads = 0;
   let clock = 1_000;
@@ -38,6 +38,10 @@ function fakeBroker(presences: string[], messages: { text: string; writtenAt: nu
   const runner = agentChatImplementerRunner({ agents, messages: final, now: () => clock, sleep: async (ms) => void (slept.push(ms), (clock += ms)), pollMs: 10, startGraceMs: 50, timeoutMs: 1_000, spawnRetry: { firstMs: 100, maxMs: 300, totalMs: 1_000 } });
   return { runner, spawned, resumed, slept, name };
 }
+
+const LIMIT_NOTICE = "Not spawned: reviewer account limit: account /synthetic/accounts/first five_hour 96% at or over ceiling 95%";
+/** The fake clock reads 1 000 ms, so the next 15:30 UTC is the first one after that instant: 1970-01-01T15:30Z. */
+const RESET_AT = Date.UTC(1970, 0, 1, 15, 30);
 
 const signal = new AbortController().signal;
 const spawn = (name: string) => ({ name, profile: "bd-implementer", cwd: "/tmp/demo", brief: "build it", task: "demo/DM-1", schema: ReportSchema });
@@ -105,6 +109,33 @@ describe("the agent-chat implementer runner", () => {
 
     await expect(broker.runner.start(spawn(broker.name), signal)).rejects.toThrow("bs-demo was not admitted within 0 minutes: load5 50.45 is past the limit 48");
     expect(broker.spawned).toEqual([]);
+  });
+
+  it("defers an account-limit refusal until the reset time it names instead of failing the step", async () => {
+    const refusal = new DispatchError(`${LIMIT_NOTICE}; resets 15:30 UTC\ncode: reviewer_account_limit retryable: true`);
+    const broker = fakeBroker(["none", "live", "exited"], [{ text: fenced(REPORT), writtenAt: RESET_AT + 710 }], 1, refusal);
+
+    const result = await broker.runner.start(spawn(broker.name), signal);
+
+    expect(result.report).toEqual(REPORT);
+    expect(broker.slept[0]).toBe(RESET_AT - 1_000);
+    expect(broker.spawned).toHaveLength(1);
+  });
+
+  it("backs off like a load deferral when an account-limit refusal names no reset", async () => {
+    const refusal = new DispatchError(`${LIMIT_NOTICE}\ncode: reviewer_account_limit retryable: true`);
+    const broker = fakeBroker(["none", "live", "exited"], [{ text: fenced(REPORT), writtenAt: 1_110 }], 1, refusal);
+
+    const result = await broker.runner.start(spawn(broker.name), signal);
+
+    expect(result.report).toEqual(REPORT);
+    expect(broker.slept[0]).toBe(100);
+  });
+
+  it("fails on a refusal that is not an account limit or a gate deferral", async () => {
+    const broker = fakeBroker(["none"], [], 1, new DispatchError("pool exhausted\ncode: pool_busy retryable: true"));
+
+    await expect(broker.runner.start(spawn(broker.name), signal)).rejects.toThrow("pool exhausted");
   });
 
   it("gives up once the timeout passes with the agent still running", async () => {
