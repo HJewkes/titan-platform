@@ -7,7 +7,7 @@ import { SPLIT_PIECE_RULES } from "./split-piece-rules.js";
 const BEAT = "reflection-2";
 const SPOKEN = "No gate on the floor waited on the lead, and the dock scanner is the slowest stage.";
 
-const baseline = (): ScriptV1 => dailyWith(BEAT, { spoken: SPOKEN, plannedS: 12, visual: { assertion: "The scanner is slow", labels: ["Scanner"], chips: [] } as never });
+const baseline = (): ScriptV1 => dailyWith(BEAT, { spoken: SPOKEN, plannedS: 12, visual: { assertion: "The scanner is slow", labels: ["Scanner"], chips: [] } });
 
 // Every text a split piece's claim, chip and labels can break a rule with: echoed, numbered, long, and unsourced.
 const hostile = (): ScriptV1 =>
@@ -18,7 +18,7 @@ const hostile = (): ScriptV1 =>
       assertion: `${SPOKEN} Also 4242 more words so this claim runs far past two lines of the band and the ten word cap`,
       labels: [SPOKEN, "A label of far more than three words and 7777"],
       chips: [{ kind: "verified", text: `${SPOKEN} 9191` }],
-    } as never,
+    },
   });
 
 const rowsOf = (script: ScriptV1): Map<string, string> => new Map(runL0(script).map((row) => [row.check_id, JSON.stringify([row.pass, row.value, row.detail_beats])]));
