@@ -42,6 +42,8 @@ export interface FakeBuild {
   registered: { repo: string; pr: number; task: string; implementer: string }[];
   /** Agent-step calls in order, as `<step id>`. */
   agentCalls: string[];
+  /** New components every implementer report requests. */
+  newPrimitives: string[];
 }
 
 interface FakeOptions {
@@ -49,6 +51,8 @@ interface FakeOptions {
   gate?: GateScript;
   /** Exit status of the report validator for a head; 0 accepts. */
   reportCheck?: (head: string) => number;
+  /** What the implementer's report asks for as new design-system components. */
+  newPrimitives?: string[];
   /** Exit status of the spec's preflight command; 0 when absent. */
   preflight?: number;
   /** Branches already on the remote, as a stopped earlier run left them. */
@@ -83,7 +87,7 @@ function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, option
 export function fakeBuild(options: FakeOptions = {}): FakeBuild {
   const evidence = new Map<string, unknown[]>(Object.entries(options.evidence ?? {}));
   const prs = new Map<string, number>();
-  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA], ...Object.entries(options.branches ?? {})]), registered: [], agentCalls: [] };
+  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA], ...Object.entries(options.branches ?? {})]), registered: [], agentCalls: [], newPrimitives: options.newPrimitives ?? [] };
   fake.ports = {
     now: () => Date.parse("2026-10-28T12:00:00Z"),
     readText: async () => options.spec ?? demoSpec(),
@@ -119,7 +123,7 @@ function stubAgentRoutes(fake: FakeBuild): StepRoute[] {
     const head = shaOf(++pushes);
     fake.branches.set(`build-surface/${slice}`, head);
     fake.agentCalls.push(stepId);
-    return { head, targetsCovered: [], newPrimitivesRequested: [], deviations: [], ideas: [] };
+    return { head, targetsCovered: [], newPrimitivesRequested: fake.newPrimitives, deviations: [], ideas: [] };
   };
   const review = (prompt: string, stepId: string): ReviewReport => {
     fake.agentCalls.push(stepId);

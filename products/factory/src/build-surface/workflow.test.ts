@@ -83,6 +83,28 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(fake.agentCalls).toEqual(["bs-implement:shell", "bs-fix:shell:0r"]);
   });
 
+  it("stops a slice that asks for new components with their names, and does not retry it", async () => {
+    const fake = fakeBuild({ newPrimitives: ["DataGrid", "Stepper"] });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/shell \(needs component: DataGrid, Stepper\)/);
+    expect(fake.agentCalls).toEqual(["bs-implement:shell"]);
+    expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(false);
+  });
+
+  it("goes on past a report that asks for no new components", async () => {
+    const fake = fakeBuild({ newPrimitives: [] });
+    const { host, runId } = start(fake);
+
+    await drive(host, runId);
+
+    expect(fake.agentCalls).toContain("bs-implement:shell");
+    expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(true);
+  });
+
   it("stops a slice once one gate fails three rounds with no score improvement", async () => {
     const fake = fakeBuild({ gate: () => ({ status: 1, records: [{ gate: "G6", pass: false, score: 0.5 }] }) });
     const { host, runId } = start(fake);
