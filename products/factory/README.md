@@ -376,8 +376,9 @@ implementer, as for one on a model its pool no longer runs, the same wake spawns
 instead, under the same spawn load gate. Other failures are not refusals and still reach the
 owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
 `sh-wake-implementer` records the refusal and `held`. A held FIX_FIRST then takes the route of a
-fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
-the run waits for a new head with no owner gate open. When that notice is not sent, and for a
+fixer that exits with no push: `sh-held-verdict` posts the FIX_FIRST findings as one PR comment,
+marked per head so a repeat refusal posts no second one, and `sh-exit-notice` tells the repo's seat
+why no fixer started, with the findings, and the run waits for a new head with no owner gate open. When that notice is not sent, and for a
 held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
 next action and the wake's timeline entry name the refusal; the row says the seat was told only when
 `sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`

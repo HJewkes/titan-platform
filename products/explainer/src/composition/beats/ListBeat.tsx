@@ -1,5 +1,6 @@
 import { useBeatTime } from "@titan-design/react-ui/motion";
 import { litBox, useLit } from "./stage/emphasis.js";
+import { rise } from "./stage/entrance.js";
 import { fadeUp, progress, SMALL_EXIT_S } from "./stage/video.js";
 
 /**
@@ -63,8 +64,8 @@ function ListRow({ item, t }: { item: ListItem; t: number }) {
 /** In at 0 s, out (at the exit scale of the entrance) so it is gone by `yieldsAtS`, absolutely placed over the rows. */
 function yieldingHeading(t: number, yieldsAtS: number) {
   const out = progress(t, Math.max(0, yieldsAtS - SMALL_EXIT_S), SMALL_EXIT_S);
-  const { opacity, transform } = fadeUp(t, 0);
-  return { position: "absolute" as const, opacity: opacity * (1 - out), transform };
+  const entered = progress(t, 0);
+  return { position: "absolute" as const, ...rise(Math.min(entered, 1 - out), 32) };
 }
 
 /** Rows tick in on their cues under a heading, and light when a later cue names them again. */

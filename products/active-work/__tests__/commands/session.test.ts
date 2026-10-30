@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import wrap from '../../src/commands/wrap.js';
+import { stringifyFrontmatter } from '../../src/utils/gray-matter-io.js';
 import sessionList from '../../src/commands/session-list.js';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../setup/test-helpers.js';
 import type { CommandContext } from '../../src/registry/index.js';
@@ -10,21 +10,23 @@ function makeCtx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
 }
 
-/** `wrap` is the only way to write a session file; use it to seed the list. */
-function writeSession(
+/**
+ * Seed a session file directly. Going through `wrap` also sweeps git state for
+ * `process.cwd()` (this whole repo), which is what blew the 30 s budget when the
+ * full suite loaded the machine; `session.list` only needs the file on disk.
+ */
+async function writeSession(
   activeRoot: string,
-  overrides: Record<string, unknown>,
-): Promise<{ path: string; filename: string }> {
-  return wrap.run(
-    wrap.args.parse({
-      slug: 'sample-initiative',
-      track: 'canonical',
-      no_loops: true,
-      no_notes: true,
-      no_tasks: true,
-      ...overrides,
-    }),
-    makeCtx(activeRoot),
+  fields: { session_id: string; started: string; ended: string; track?: string; body: string },
+): Promise<void> {
+  const { body, ...frontmatter } = fields;
+  const sessionsDir = path.join(activeRoot, 'sample-initiative', 'sessions');
+  const { started } = fields;
+  const stamp = `${started.slice(0, 10)}-${started.slice(11, 13)}${started.slice(14, 16)}`;
+  await fs.writeFile(
+    path.join(sessionsDir, `${stamp}-${fields.session_id}.md`),
+    stringifyFrontmatter(body, { track: 'canonical', no_loops: true, ...frontmatter }),
+    'utf8',
   );
 }
 

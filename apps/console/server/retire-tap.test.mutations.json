@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the act skips the digest check, so a stale confirm still posts",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": " || tapDigest(prepared.key, readBack, prepared.readAt) !== confirm",
+      "replace": "",
+      "kills": [
+        "taps.act on an agent page refuses CHANGED when another agent took the name between prepare and act"
+      ]
+    },
+    {
+      "name": "a live agent is offered a retire",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "  if (entry.state !== \"exited\") return `${name} is ${entry.state}; retire a working agent at the terminal`;\n",
+      "replace": "",
+      "kills": [
+        "taps.prepare on an agent page answers no-action for a live agent with no merged PR, without asking the factory",
+        "taps.prepare on an agent page a live agent inside the grace period offers no force retire"
+      ]
+    },
+    {
+      "name": "a seat is offered a retire",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "  if (entry.seat !== null && entry.seat === entry.name) return \"a seat is retired by its owner session\";\n",
+      "replace": "",
+      "kills": [
+        "taps.prepare on an agent page answers no-action for a seat, without asking the factory"
+      ]
+    },
+    {
+      "name": "the page's op asks for --force",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "agentId: entry.agentId, force: false }",
+      "replace": "agentId: entry.agentId, force: true }",
+      "kills": [
+        "taps.prepare on an agent page reads an exited agent back from the factory's preview with a confirm, previewing a plain retire"
+      ]
+    },
+    {
+      "name": "a moved outcome drops the current agent id",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "    case \"moved\":\n      return movedMessage(outcome);",
+      "replace": "    case \"moved\":\n      return \"moved\";",
+      "kills": [
+        "taps.act on an agent page a moved agent shows moved with its current id"
+      ]
+    }
+  ]
+}
