@@ -26,7 +26,7 @@ import { migrationHint } from "./SessionFormat.js";
 import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
 import { useMediaQuery } from "./FramePins.js";
-import { BELOW_MD, PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { BELOW_MD, PHONE_TAP_LINK } from "./phone.js";
 
 type SessionsList = ConsoleCommands["sessions.list"]["result"];
 type SessionRow = SessionsList["sessions"][number];
@@ -74,7 +74,7 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
 function Trail({ name }: { name: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem className={PHONE_TAP} onPress={() => open({ view: "agents" })}>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "agents" })}>
         Agents
       </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{name}</BreadcrumbItem>
