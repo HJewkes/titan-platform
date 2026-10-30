@@ -2,7 +2,8 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { dayWindow, mergedInWindow, prSetHash, readShipped, writeDigest, type ShippedDigest } from "./shipped.js";
+import { dayWindow } from "./coord-day.js";
+import { mergedInWindow, prSetHash, readShipped, writeDigest, type ShippedDigest } from "./shipped.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
