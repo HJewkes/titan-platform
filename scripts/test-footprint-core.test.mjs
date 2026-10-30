@@ -163,6 +163,12 @@ describe("rendering", () => {
     expect(markdown).toContain("| 1 | big | 910 | 34 | 0 |");
   });
 
+  it("ranks memory by growth as well, so a shared fork's baseline does not hide the file that grew", () => {
+    const grown = buildReport({ rows: [row({ file: `${ROOT}/flat`, memoryPeakKb: 9000, memoryStartKb: 9000 }), row({ file: `${ROOT}/grew`, memoryPeakKb: 5120, memoryStartKb: 1024 })], root: ROOT });
+
+    expect(renderMarkdown(grown)).toContain("| 1 | grew | 4 | 5 | thread |");
+  });
+
   it("writes every file to the tsv, CPU first", () => {
     const lines = renderTsv(report).trim().split("\n");
 

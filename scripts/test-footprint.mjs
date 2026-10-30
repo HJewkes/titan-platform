@@ -13,6 +13,8 @@
 // - Spawns are the worker's direct children; what a shell or git starts in turn is in the CPU, not the count.
 // - Peak fds in a thread file include the other files sharing its process. Peak memory is VmHWM for a fork and V8 heap
 //   plus external for a thread, whose RSS is the shared process's; children's memory is not included.
+// - Each file gets its own TMPDIR, so a module that caches tmpdir() across a shared fork leaves later files' paths in the
+//   first file's dir, and a test asserting that cached path against tmpdir() fails here and nowhere else.
 // - A /tmp entry is split over the files running when it appeared, and other users of the machine count too.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";

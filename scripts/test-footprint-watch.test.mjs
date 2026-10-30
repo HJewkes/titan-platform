@@ -39,7 +39,9 @@ describe("the tree tally", () => {
     writeFileSync(join(base, "f-one", "repo", ".git", "HEAD"), "ref");
     writeFileSync(join(base, "stray.txt"), "x");
 
-    await vi.waitFor(() => expect(tally.byDir).toEqual({ "f-one": { files: 1, dirs: 2 }, "(run root)": { files: 1, dirs: 0 } }));
+    // Sums the tally: a footprint run of this test puts the whole root under its own f- dir.
+    const totals = () => Object.values(tally.byDir).reduce((sum, { files, dirs }) => ({ files: sum.files + files, dirs: sum.dirs + dirs }), { files: 0, dirs: 0 });
+    await vi.waitFor(() => expect(totals()).toEqual({ files: 2, dirs: 2 }));
     close();
   });
 

@@ -85,6 +85,7 @@ function joinRow(row, { watch, timingByFile, root, created, left }) {
     state: timing?.state ?? null,
     workerSeconds: timing ? timing.totalMs / 1000 : null,
     cpuMs: row.userMs + row.sysMs + row.childMs,
+    memoryGrowthKb: row.memoryPeakKb - row.memoryStartKb,
     // The watcher can lose a burst past the inotify queue; what a file left existed, so it counts as created.
     created: Math.max(seen.files + seen.dirs, leftInTmpdir),
     tmpCreatedShare: created.get(row) ?? 0,
@@ -165,6 +166,8 @@ const RANKINGS = [
   ["files and dirs created", "created", ["created", "left", "/tmp share"], (r) => [r.created, r.left, count(r.tmpCreatedShare)]],
   ["peak open fds", "peakFds", ["peak fds", "fds at start", "pool"], (r) => [r.peakFds, r.startFds, r.pool]],
   ["peak memory", "memoryPeakKb", ["peak MB", "at start MB", "pool"], (r) => [megabytes(r.memoryPeakKb), megabytes(r.memoryStartKb), r.pool]],
+  // A shared fork starts each file on the graph its earlier files loaded, so peak alone ranks that baseline.
+  ["memory growth during the file", "memoryGrowthKb", ["growth MB", "peak MB", "pool"], (r) => [megabytes(r.memoryGrowthKb), megabytes(r.memoryPeakKb), r.pool]],
 ];
 
 function rankingTable(files, [label, key, headers, cells], limit) {
@@ -196,7 +199,7 @@ export function renderMarkdown(report, limit = TOP) {
   return [...totalsLines(report), ...RANKINGS.flatMap((ranking) => rankingTable(report.files, ranking, limit)), ...tmpPrefixLines(report.run, limit)].join("\n");
 }
 
-const TSV_COLUMNS = ["file", "project", "pool", "state", "workerSeconds", "cpuMs", "userMs", "sysMs", "childMs", "childEstimated", "spawns", "childWallMs", "created", "left", "tmpCreatedShare", "tmpLeftShare", "peakFds", "memoryPeakKb"];
+const TSV_COLUMNS = ["file", "project", "pool", "state", "workerSeconds", "cpuMs", "userMs", "sysMs", "childMs", "childEstimated", "spawns", "childWallMs", "created", "left", "tmpCreatedShare", "tmpLeftShare", "peakFds", "memoryPeakKb", "memoryGrowthKb"];
 
 /** Every file, CPU first, one row each, for joins with the timing corpus. */
 export function renderTsv(report) {
