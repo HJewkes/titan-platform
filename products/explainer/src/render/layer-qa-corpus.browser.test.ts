@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { launch } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { BuilderRef } from "../build/beat-worker.js";
-import type { LayerCheckInput, LayerTextCheck } from "../build/layer-text.js";
+import type { LayerTextCheck } from "../build/layer-text.js";
 import { buildPage } from "../composition/page.test-helpers.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
@@ -20,19 +21,25 @@ const BROWSER_TIMEOUT_MS = 240_000;
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const NO_USAGE = { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 };
 
-interface CorpusCase {
-  file: string;
-  pattern: string;
+const CorpusCaseSchema = z.object({
+  pattern: z.string(),
   /** The kinds qa held on the layer's render; empty for a layer qa passes. */
-  qa: string[];
-  elements: string[];
-  packet: LayerCheckInput["packet"];
+  qa: z.array(z.string()),
+  elements: z.array(z.string()),
+  packet: z.object({
+    beat_id: z.string(),
+    spoken: z.string(),
+    cues: z.array(z.object({ action: z.literal("V6"), target: z.string(), atCue: z.string() })),
+    planned_s: z.number(),
+    band: z.literal("story"),
+  }),
   /** The layer's source, one line per entry. */
-  module: string[];
-}
+  module: z.array(z.string()),
+});
+type CorpusCase = z.infer<typeof CorpusCaseSchema> & { file: string };
 
 const CORPUS: CorpusCase[] = readdirSync(CORPUS_DIR).filter((file) => file.endsWith(".json")).sort()
-  .map((file) => ({ file, ...(JSON.parse(readFileSync(path.join(CORPUS_DIR, file), "utf8")) as Omit<CorpusCase, "file">) }));
+  .map((file) => ({ file, ...CorpusCaseSchema.parse(JSON.parse(readFileSync(path.join(CORPUS_DIR, file), "utf8"))) }));
 
 let pageDir: string;
 let check: LayerTextCheck;

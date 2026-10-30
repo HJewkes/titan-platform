@@ -19,7 +19,7 @@ const startingAt = (timeline: QaTimeline, shiftS: number): QaTimeline => ({ beat
  * cue word and a sweep tick follows (TP-4617). Where that happens depends on real word times, which resolve does not have,
  * so the check also sweeps every tenth of a second: a finding qa could see on two samples, as a pulse on a cue, is held.
  */
-export const LAYER_DENSE_SWEEP_HZ = 10;
+const LAYER_DENSE_SWEEP_HZ = 10;
 
 /**
  * qa's own samplings of the timeline as planned, its swept sampling with each beat started at every 2 Hz phase, and the
