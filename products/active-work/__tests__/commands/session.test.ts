@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import wrap from '../../src/commands/wrap.js';
 import sessionList from '../../src/commands/session-list.js';
-import { withTempActiveRoot } from '../setup/test-helpers.js';
+import { withEmptyActiveRoot, withTempActiveRoot } from '../setup/test-helpers.js';
 import type { CommandContext } from '../../src/registry/index.js';
 
 function makeCtx(activeRoot: string): CommandContext {
@@ -111,6 +111,17 @@ describe('session.list', () => {
       expect(result.errors[0]?.error).toMatch(/Frontmatter validation failed/);
       // The valid fixture is still returned.
       expect(result.sessions.map((s) => s.frontmatter.session_id)).toContain('fixture001');
+    });
+  });
+
+  it('reads the context root even when ACTIVE_ROOT points at another root', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      // A concurrent case re-pointing the process-wide env must not redirect this list.
+      await withEmptyActiveRoot(async () => {
+        const result = await sessionList.run({ slug: 'sample-initiative' }, makeCtx(activeRoot));
+
+        expect(result.sessions.map((s) => s.frontmatter.session_id)).toEqual(['fixture001']);
+      });
     });
   });
 });

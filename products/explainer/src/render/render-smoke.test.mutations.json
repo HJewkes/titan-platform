@@ -9,6 +9,15 @@
       "kills": [
         "fails on held QA errors, reporting each row's kind and beat, and renders no second time"
       ]
+    },
+    {
+      "name": "the smoke leaves the run's custom-layers artifact out of the render inputs",
+      "file": "products/explainer/src/render/render-smoke.ts",
+      "find": "\"code\", \"custom-layers\"] as const;",
+      "replace": "\"code\"] as const;",
+      "kills": [
+        "draws a custom beat's layer from the run's custom-layers artifact"
+      ]
     }
   ]
 }
