@@ -5,6 +5,7 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { expectLinearTime, LINEARITY_CPU_MS } from "../test-support/linear-time.js";
+import { expectLinearWork } from "../test-support/work-count.js";
 import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
@@ -431,8 +432,8 @@ describe("arithmetic that mentions a hooked parameter", () => {
     expect(arithmeticHooked("i = i + 1")).toBeNull();
   });
 
-  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
-    expectLinearTime((n) => {
+  it("reads a long word in linear time", async () => {
+    await expectLinearWork((n) => {
       const value = `$((${"a[".repeat(n)}`;
       const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
@@ -481,8 +482,8 @@ describe("an assignment whose bound name the shell computes", () => {
     expect(hooked(line)).toBeNull();
   });
 
-  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
-    expectLinearTime((n) => {
+  it("reads a long word in linear time", async () => {
+    await expectLinearWork((n) => {
       const value = "]=".repeat(n);
       const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
       return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
