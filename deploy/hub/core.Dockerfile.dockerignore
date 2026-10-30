@@ -7,6 +7,7 @@
 !packages/egress-scan
 !packages/eslint-plugin
 !packages/fix-proof
+!packages/worktree
 !deploy/hub/package.json
 !deploy/hub/src
 **/node_modules
