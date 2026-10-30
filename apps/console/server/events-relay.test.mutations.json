@@ -23,8 +23,8 @@
     {
       "name": "a non-string run id is kept",
       "file": "apps/console/server/events-relay.ts",
-      "find": "return typeof runId === \"string\" && RUN_ID.test(runId) ? { runId } : {};",
-      "replace": "return runId !== undefined && RUN_ID.test(String(runId)) ? { runId: String(runId) } : {};",
+      "find": "if (typeof frame?.runId === \"string\" && RUN_ID.test(frame.runId)) ids.runId = frame.runId;",
+      "replace": "if (frame?.runId !== undefined && RUN_ID.test(String(frame.runId))) ids.runId = String(frame.runId);",
       "kills": [
         "factoryIds drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object"
       ]
