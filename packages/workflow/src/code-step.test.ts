@@ -1,10 +1,9 @@
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { CodeStepFailure, codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
-import { routedRunner, type RoutedStepInput, type StepRoute } from "./routed-runner.js";
+import { routedRunner, type StepRoute } from "./routed-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
 import type { WorkflowFn, WorkflowRun } from "./types.js";
@@ -42,7 +41,7 @@ describe("code steps", () => {
       throw new CodeStepFailure("over budget", { costUsd: 1.5 });
     });
 
-    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: "{}" }));
+    const outcome = await route.runner.run({ runId: "r", workflowName: "w", stepId: "read", iteration: 0, prompt: "{}", signal: new AbortController().signal, attempt: 0, requestKey: "k" });
 
     expect(outcome).toEqual({ ok: false, error: "over budget", retryable: false, usage: { costUsd: 1.5 } });
   });
