@@ -122,8 +122,29 @@ function excusedFrames(input: TimingInput): boolean[] {
     for (let i = Math.max(0, Math.round(fromS * input.fps)); i < Math.min(excused.length, Math.round(toS * input.fps)); i++) excused[i] = true;
   };
   for (const beat of input.timeline.beats) if (input.held.has(beat.id)) mark(beat.startS, beat.startS + beat.durationS);
-  for (const span of unspokenSpans(input)) mark(span.fromS, span.fromS + readingS(input, span.text));
+  for (const span of unspokenSpans(input)) {
+    const fromS = revealS(input, span);
+    mark(fromS, fromS + readingS(input, span.text));
+  }
   return excused;
+}
+
+/**
+ * When a text really appeared, somewhere after the last sample without it: the earliest cue of its beat in that gap,
+ * else the first frame there that moves after a still one, else the first sample showing it. Starting the reading
+ * hold at that sample would excuse up to a sample gap of still picture past the hold (TP-4557).
+ */
+function revealS(input: TimingInput, span: TextSpan): number {
+  const beat = input.timeline.beats.find((b) => b.id === span.beat);
+  const before = input.probed.filter((m) => m.t < span.fromS - EPS).at(-1)?.t ?? -Infinity;
+  const fromS = Math.max(before, beat?.startS ?? span.fromS);
+  const cues = (beat ? beat.cues.map((cue) => beat.startS + cue.atS) : []).filter((t) => t >= fromS - EPS && t <= span.fromS + EPS);
+  if (cues.length > 0) return Math.min(...cues);
+  const { diffs, fps } = input;
+  for (let i = Math.max(1, Math.round(fromS * fps)); i <= Math.min(diffs.length - 1, Math.round(span.fromS * fps)); i++) {
+    if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return i / fps;
+  }
+  return span.fromS;
 }
 
 /** Runs of frames whose change from the frame before stays at or under the static level, outside the excused frames. */
