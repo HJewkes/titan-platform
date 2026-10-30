@@ -74,9 +74,9 @@ const TOP_BLOCKERS = 3;
 
 /** The inbox's blocking count, its rounds waiting over six hours, and its newest three; each opens the inbox, which holds the commands. */
 function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[]; waiting: number; gaps: number }): ReactNode {
+  const tap = usePhoneTap();
   if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;
   const openInbox = () => open({ view: "inbox" });
-  const tap = usePhoneTap();
   return (
     <Card variant="outline" testID="home-inbox">
       <CardContent>

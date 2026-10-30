@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the inbox link keeps only its text's height on a phone",
+      "file": "apps/console/src/pages/HomeNeedsYou.tsx",
+      "find": "<Link color=\"primary\" className={tap} onPress={openInbox}>",
+      "replace": "<Link color=\"primary\" onPress={openInbox}>",
+      "kills": [
+        "the home inbox card on a phone gives the inbox link a 44px tap target"
+      ]
+    },
+    {
+      "name": "the inbox card reads the viewport only once it has something to show",
+      "file": "apps/console/src/pages/HomeNeedsYou.tsx",
+      "find": "  const tap = usePhoneTap();\n  if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;\n  const openInbox = () => open({ view: \"inbox\" });\n",
+      "replace": "  if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;\n  const openInbox = () => open({ view: \"inbox\" });\n  const tap = usePhoneTap();\n",
+      "kills": [
+        "the home inbox card on a phone holds one media listener as the blocking count drops to zero and comes back"
+      ]
+    }
+  ]
+}
