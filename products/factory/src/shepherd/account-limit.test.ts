@@ -4,6 +4,13 @@ import { MAX_RESET_AHEAD_MS, RECHECK_AFTER_MS, accountHoldReason, believedReset,
 const at = (iso: string) => Date.parse(iso);
 
 describe("parseLimitReset", () => {
+  it("reads the 24-hour UTC reset the spawn refusal gives, rolling to tomorrow once it has passed", () => {
+    const notice = "reviewer account limit: five_hour 96% at or over ceiling 95%; resets 15:30 UTC";
+
+    expect(parseLimitReset(notice, at("2026-10-29T10:00:00Z"))).toBe(at("2026-10-29T15:30:00Z"));
+    expect(parseLimitReset(notice, at("2026-10-29T16:00:00Z"))).toBe(at("2026-10-30T15:30:00Z"));
+  });
+
   it("reads the 2026-10-08 weekly notice as Oct 10 6pm Denver daylight time", () => {
     const notice = "You've hit your weekly limit · resets Oct 10 at 6pm (America/Denver)";
 
