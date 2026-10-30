@@ -43,6 +43,13 @@ export interface RosterEntry {
   anomaly?: string
 }
 
+/** What a live connection reads as: blocked beats stalled beats running. */
+function statusWhileConnected({ blocked = false, idleMs, stalledAfterMs }: PresenceInput): RosterStatus {
+  if (blocked) return 'blocked'
+  if (stalledAfterMs !== undefined && idleMs !== undefined && idleMs >= stalledAfterMs) return 'stalled?'
+  return 'running'
+}
+
 /**
  * Pair the durable lifecycle with ephemeral presence.
  *
@@ -52,38 +59,25 @@ export interface RosterEntry {
  * reconnect ladder a durable agent can only change presence, never vanish.
  */
 export function pairPresence(agent: AgentIdentity, presence: PresenceInput): RosterEntry {
-  const { connected, blocked = false, idleMs, stalledAfterMs } = presence
-
-  const connectedStatus = (): RosterStatus => {
-    if (blocked) return 'blocked'
-    if (stalledAfterMs !== undefined && idleMs !== undefined && idleMs >= stalledAfterMs) return 'stalled?'
-    return 'running'
-  }
-
+  const { connected } = presence
+  const live = statusWhileConnected(presence)
   switch (agent.state) {
     case 'spawning':
-      return { agent, status: connected ? connectedStatus() : 'starting' }
+      return { agent, status: connected ? live : 'starting' }
     case 'live':
-      return { agent, status: connected ? connectedStatus() : 'reconnecting' }
+      return { agent, status: connected ? live : 'reconnecting' }
     case 'detached':
       return connected
-        ? {
-            agent,
-            status: connectedStatus(),
-            anomaly: 'detached identity holds a live connection; trusting presence',
-          }
+        ? { agent, status: live, anomaly: 'detached identity holds a live connection; trusting presence' }
         : { agent, status: 'detached' }
     case 'exited':
       return connected
         ? {
             agent,
-            status: connectedStatus(),
+            status: live,
             anomaly: 'exited identity holds a live connection; the exit handler fired while a socket lives',
           }
-        : {
-            agent,
-            status: agent.exit?.failedToStart === true ? 'failed' : 'finished',
-          }
+        : { agent, status: agent.exit?.failedToStart === true ? 'failed' : 'finished' }
     case 'retired':
       return { agent, status: 'retired' }
   }
