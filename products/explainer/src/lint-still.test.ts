@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { dailyWith, l0Row } from "./daily-script.test-helpers.js";
 import { runL0 } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
+import { scriptPacing } from "./lint-cadence.js";
+import { stillBeats } from "./lint-still.js";
 import { loadRuleRegistry } from "./rules.js";
 import { parseSpine } from "./spine-schema.js";
 import { failingErrors, failureList, repairPrompt } from "./workflow/script-draft.js";
@@ -26,7 +28,7 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     expect(row).toMatchObject({ severity: "error", pass: false });
     expect(row.detail_beats).toContain("ships-2");
-    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 7\.3 s after "twelve" \(3\.7 s\)/);
+    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 8\.3 s after "twelve" \(4\.7 s\)/);
   });
 
   it("passes once a revealing cue lands inside the stretch, as its hint asks", () => {
@@ -57,7 +59,7 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
     const hint = repairHint(failing, loose) ?? "";
 
     expect(failing.detail_beats).toContain("reflection-2");
-    expect(hint).toMatch(/reflection-2 [\d.]+ s to [\d.]+ s from the cut/);
+    expect(hint).toMatch(/reflection-2 [\d.]+ s to [\d.]+ s after "What"/);
     expect(hint).toContain("reflection-2 is a claim-card, which reveals nothing on a cue: hold it, show a claim the voice does not read word for word");
     expect(hint).not.toContain("trim its words");
     expect(passing.detail_beats).not.toContain("reflection-2");
@@ -89,3 +91,39 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
     expect(prompt).toMatch(/Found: beats whose picture would stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2/);
   });
 });
+
+// Every text here is spoken, so no reading hold covers a stretch and only the picture's own motion breaks it.
+const SAID = "What did each lane move? The router lane merged its matcher rewrite and kept the old path behind a switch.";
+const SAID_ROWS = ["router · Matcher rewrite merged", "router · Kept the old path", "router · Behind a switch"];
+const saidLane = (cues: { action: "V6"; target: string; atCue: string }[]) =>
+  dailyWith("lanes-1", { spoken: SAID, visual: { assertion: "The router lane merged its matcher", labels: SAID_ROWS, cues } });
+const stillOf = (script: ReturnType<typeof dailyWith>, id: string) => stillBeats(script, scriptPacing(script)!).find(({ beat }) => beat.id === id)?.stretches ?? [];
+
+describe("Q-D22 reads the picture qa sees: fill reveals, the settle and each kind's own motion", () => {
+  it("a row the fill reveals on the first word closes the stretch from the cut", () => {
+    const script = saidLane([cue("rows-2", "merged")]);
+
+    const early = stillOf(script, "lanes-1").filter(({ fromS }) => fromS < 3);
+
+    expect(early).toEqual([]);
+  });
+
+  it("a beat whose voice runs short of plan stands still through the settle", () => {
+    const script = saidLane([cue("rows-2", "merged"), cue("rows-3", "kept")]);
+
+    const found = stillOf(script, "lanes-1");
+
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ after: "kept" });
+    expect(found[0]!.toS).toBeCloseTo(9, 0);
+  });
+
+  it("an outro's fade is motion", () => {
+    const script = dailyWith("ask-1", { plannedS: 5.5 });
+
+    const row = l0Row(script, "Q-D22");
+
+    expect(row.detail_beats).not.toContain("ask-1");
+  });
+});
+

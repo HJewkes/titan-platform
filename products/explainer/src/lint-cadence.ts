@@ -66,19 +66,41 @@ interface PlannedCue {
   s: number;
 }
 
+interface PlannedClock {
+  cues: PlannedCue[];
+  /** The end of the voiced words, held to plannedS. */
+  endS: number;
+  /** The voiced words' length at the band rate, unheld, as truing reads the speech. */
+  speechS: number;
+  /** Any spoken word's time into the speech, or undefined for a word the beat never says. */
+  wordS: (word: string) => number | undefined;
+}
+
+function wordClock(beat: ScriptBeat, wordsPerS: number): (word: string) => number | undefined {
+  const index = spokenWordIndex(beat);
+  return (word) => {
+    try {
+      return index(word) / wordsPerS;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 /**
  * The beat's planned speech clock: each cue at its word's time, and the end of the voiced words. A kind that takes no
  * cue counts none, as qa's picture-change sees no cue move it.
  */
-export function plannedCues(beat: ScriptBeat): { cues: PlannedCue[]; endS: number } | undefined {
+export function plannedCues(beat: ScriptBeat): PlannedClock | undefined {
   const found = drawn(beat);
   if (!found) return undefined;
   const { budget, takesCues } = found;
   const voiced = spellSpokenNumbers(beat);
   const index = spokenWordIndex(voiced);
-  const endS = Math.min(beat.plannedS, budget.words / budget.wordsPerS);
+  const speechS = budget.words / budget.wordsPerS;
+  const endS = Math.min(beat.plannedS, speechS);
   const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => ({ cue, s: Math.min(endS, index(cue) / budget.wordsPerS) }));
-  return { cues, endS };
+  return { cues, endS, speechS, wordS: wordClock(voiced, budget.wordsPerS) };
 }
 
 /** The stretches from the cut at 0, between the given times, to `endS`, each as its start and end. */
