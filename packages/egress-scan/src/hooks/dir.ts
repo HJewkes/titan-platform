@@ -56,6 +56,7 @@ const PROBE_TIMEOUT_MS = 5000;
 const executableOnPath = (name: string, searchPath: string): string | undefined =>
   searchPath
     .split(":")
+    .filter((dir) => path.isAbsolute(dir))
     .map((dir) => path.join(dir, name))
     .find((file) => {
       try {
@@ -153,6 +154,9 @@ const NO_REWRITE_DIR = "no-rewrite";
 /**
  * The hooks dir a `no-rewrite` profile's git runs with (CC-1633): under the guard's own dir, so the
  * pretool's protected path covers it, and with its own git shim dir beside it.
+ *
+ * git leaves a typed `push --mirror`'s deletions off the hook's stdin, and an agent that first deletes its own
+ * refs/remotes/* sends nothing the hook refuses, so the caller must refuse a typed `--mirror` before git runs.
  */
 export const noRewriteHooksDir = (hooksDir: string): string => path.join(hooksDir, NO_REWRITE_DIR);
 

@@ -14,7 +14,7 @@ interface ScanInputs {
     missingTermsRefuses: boolean;
     /** The owner's home from the passwd entry; derives the term list's path. */
     home: string;
-    /** The broker's own PATH, absolute entries only; the hook never uses the agent's PATH. */
+    /** The broker's own PATH; the hook bakes its absolute entries only and never uses the agent's PATH. */
     path: string;
     /** Checks the scanner on the PATH the hook bakes once, at write time; absent, every push checks it. */
     probe?: (bakedPath: string) => ScannerFacts | undefined;
@@ -80,6 +80,9 @@ declare function hookScripts(inputs: ScanInputs, { shell, shimDirs }: HookSetup,
 /**
  * The hooks dir a `no-rewrite` profile's git runs with (CC-1633): under the guard's own dir, so the
  * pretool's protected path covers it, and with its own git shim dir beside it.
+ *
+ * git leaves a typed `push --mirror`'s deletions off the hook's stdin, and an agent that first deletes its own
+ * refs/remotes/* sends nothing the hook refuses, so the caller must refuse a typed `--mirror` before git runs.
  */
 declare const noRewriteHooksDir: (hooksDir: string) => string;
 /** The dir's name carries the policy, so a plan that selected it rewrites it the same way on resume. */

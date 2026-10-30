@@ -22,7 +22,7 @@ export interface ScanInputs {
   missingTermsRefuses: boolean;
   /** The owner's home from the passwd entry; derives the term list's path. */
   home: string;
-  /** The broker's own PATH, absolute entries only; the hook never uses the agent's PATH. */
+  /** The broker's own PATH; the hook bakes its absolute entries only and never uses the agent's PATH. */
   path: string;
   /** Checks the scanner on the PATH the hook bakes once, at write time; absent, every push checks it. */
   probe?: (bakedPath: string) => ScannerFacts | undefined;
@@ -246,12 +246,16 @@ const canonical = (dir: string): string => {
 
 const isWithin = (dir: string, root: string): boolean => dir === root || dir.startsWith(`${root}${path.sep}`);
 
-/** The broker PATH less every entry at or under a shim dir; exact paths, so a lookalike name stays. */
+/**
+ * The broker PATH less every relative entry and every entry at or under a shim dir; exact paths, so a lookalike
+ * name stays. git runs the hook from the pushed worktree, so a relative entry would find a `git` or scanner the agent
+ * planted there.
+ */
 export function withoutShimDirs(brokerPath: string, shimDirs: readonly string[]): string {
   const roots = shimDirs.map(canonical);
   return brokerPath
     .split(":")
-    .filter((dir) => dir !== "" && !roots.some((root) => isWithin(canonical(dir), root)))
+    .filter((dir) => path.isAbsolute(dir) && !roots.some((root) => isWithin(canonical(dir), root)))
     .join(":");
 }
 

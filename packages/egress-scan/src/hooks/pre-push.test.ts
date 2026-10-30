@@ -36,6 +36,8 @@ interface FixtureOptions {
   scanner?: string;
   terms?: string;
   missingTermsRefuses?: boolean;
+  /** PATH entries placed ahead of the fixture's own tool dir. */
+  pathPrefix?: string;
 }
 
 function scanPath(root: string, scanner: string): string {
@@ -56,7 +58,7 @@ function commit(work: string, branch: string, file: string, text = `${file}\n`):
 }
 
 /** main and feat/x on the origin, the work repo on feat/x, and git pointed at the written hooks dir. */
-function fixture({ noRewrite = true, scanner = CLEAN_SCANNER, terms = "zq7leakterm\n", missingTermsRefuses = true }: FixtureOptions = {}): Fixture {
+function fixture({ noRewrite = true, scanner = CLEAN_SCANNER, terms = "zq7leakterm\n", missingTermsRefuses = true, pathPrefix = "" }: FixtureOptions = {}): Fixture {
   const root = fs.mkdtempSync(path.join(SCRATCH, "repo-"));
   const work = path.join(root, "work");
   const origin = path.join(root, "origin.git");
@@ -70,7 +72,7 @@ function fixture({ noRewrite = true, scanner = CLEAN_SCANNER, terms = "zq7leakte
   }
   const shared = path.join(root, "chat", "git-hooks");
   const hooks = noRewrite ? noRewriteHooksDir(shared) : shared;
-  writeGitHooks(hooks, { missingTermsRefuses, home: owner, path: scanPath(root, scanner) }, { shell: SHELL, shimDirs: [] });
+  writeGitHooks(hooks, { missingTermsRefuses, home: owner, path: `${pathPrefix}${scanPath(root, scanner)}` }, { shell: SHELL, shimDirs: [] });
   const env = { ...fixtureEnv(), ...gitHooksEnv(hooks) };
   const git = (...args: string[]) => {
     const out = spawnSync("git", args, { cwd: work, env, encoding: "utf8" });
@@ -119,6 +121,21 @@ describe("pre-push under the no-rewrite policy", () => {
     expect(result.code).not.toBe(0);
     expect(result.stderr).toMatch(POLICY);
     expect(result.stderr).toMatch(why);
+    expect(originRefs(f)).toBe(before);
+  });
+
+  it("refuses a non-fast-forward even with a git the agent planted under a relative PATH entry", () => {
+    const f = fixture({ pathPrefix: "node_modules/.bin:" });
+    const planted = path.join(f.work, "node_modules", ".bin");
+    fs.mkdirSync(planted, { recursive: true });
+    fs.writeFileSync(path.join(planted, "git"), `#!/bin/sh\ncase " $* " in *" merge-base "*) exit 0 ;; esac\nexec ${JSON.stringify(REAL_GIT)} "$@"\n`, { mode: 0o755 });
+    rewriteFeatX(f);
+    const before = originRefs(f);
+
+    const result = f.git("push", "--force", "origin", "feat/x");
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toMatch(/refs\/heads\/feat\/x is not a fast-forward of the remote's tip/);
     expect(originRefs(f)).toBe(before);
   });
 

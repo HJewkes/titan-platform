@@ -58,6 +58,14 @@ describe("writeGitHooks", () => {
     expect(read(dir, "pre-push")).toContain("PATH='/usr/bin'; export PATH");
   });
 
+  it("never bakes a relative PATH entry, which would resolve in the pushed worktree", () => {
+    const dir = path.join(scratch(), "git-hooks");
+
+    writeGitHooks(dir, { ...INPUTS, path: "node_modules/.bin:/usr/bin:.:bin:/bin" }, { shell: SHELL, shimDirs: [] });
+
+    expect(read(dir, "pre-push")).toContain("PATH='/usr/bin:/bin'; export PATH");
+  });
+
   it("refuses every push when the PATH holds nothing but shim dirs", () => {
     const root = scratch();
     const shim = path.join(root, "git-bin");
@@ -115,6 +123,12 @@ describe("probeScanner", () => {
 
   it("bakes nothing for a scanner written within the last two seconds", () => {
     expect(probeScanner(toolDir("pre-push; scanned as text", 0))).toBeUndefined();
+  });
+
+  it("ignores a scanner found only through a relative PATH entry", () => {
+    const bin = toolDir("pre-push; scanned as text", 60_000);
+
+    expect(probeScanner(path.relative(process.cwd(), bin))).toBeUndefined();
   });
 
   it("bakes nothing when the PATH has no scanner", () => {
