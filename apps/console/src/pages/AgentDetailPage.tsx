@@ -79,6 +79,24 @@ function Trail({ name }: { name: string }): ReactNode {
 
 /** Card and Avatar stand in for react-ui's AgentCard until TP-858 is released. */
 function AgentCard({ agent }: { agent: RosterEntry }): ReactNode {
+  return (
+    <Card testID="agent-card">
+      <CardContent>
+        <HStack gap={3} align="center">
+          <Avatar size="lg" colorFromName={agent.name} alt={agent.name} />
+          <div className="min-w-0 flex-1">
+            <VStack gap={1}>
+              <AgentHeading agent={agent} />
+              <AgentDetails agent={agent} />
+            </VStack>
+          </div>
+        </HStack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentDetails({ agent }: { agent: RosterEntry }): ReactNode {
   const facts = [
     agent.spawnedBy ? `Spawned by ${agent.spawnedBy}` : null,
     agent.taskId ? `Task ${agent.taskId}` : null,
@@ -86,25 +104,40 @@ function AgentCard({ agent }: { agent: RosterEntry }): ReactNode {
     agent.costUsd === null ? null : `Cost ${formatCost(agent.costUsd)}`,
   ].filter((fact): fact is string => fact !== null);
   return (
-    <Card testID="agent-card">
-      <CardContent>
-        <HStack gap={3} align="center">
-          <Avatar size="lg" colorFromName={agent.name} alt={agent.name} />
-          <VStack gap={1}>
-            <HStack gap={2} align="center">
-              <Typography variant="h5">{agent.name}</Typography>
-              <StatePill state={agent.state} />
-            </HStack>
-            {agent.workingOn ? <Typography variant="body2">{agent.workingOn}</Typography> : null}
-            {facts.length > 0 ? (
-              <Typography variant="caption" color="secondary">
-                {facts.join(" · ")}
-              </Typography>
-            ) : null}
-          </VStack>
-        </HStack>
-      </CardContent>
-    </Card>
+    <>
+      {agent.workingOn ? (
+        <Typography variant="body2">
+          <Ellipsis text={agent.workingOn} />
+        </Typography>
+      ) : null}
+      {facts.length > 0 ? (
+        <Typography variant="caption" color="secondary">
+          <Ellipsis text={facts.join(" · ")} />
+        </Typography>
+      ) : null}
+    </>
+  );
+}
+
+function AgentHeading({ agent }: { agent: RosterEntry }): ReactNode {
+  return (
+    <HStack gap={2} align="center">
+      <div className="min-w-0">
+        <Typography variant="h5">
+          <Ellipsis text={agent.name} testID="agent-card-name" />
+        </Typography>
+      </div>
+      <StatePill state={agent.state} />
+    </HStack>
+  );
+}
+
+/** One line that ellipsizes in a narrow card; the title carries the full text. */
+function Ellipsis({ text, testID }: { text: string; testID?: string }): ReactNode {
+  return (
+    <span className="block min-w-0 max-w-full truncate whitespace-nowrap" title={text} data-testid={testID}>
+      {text}
+    </span>
   );
 }
 

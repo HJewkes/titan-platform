@@ -148,6 +148,15 @@ describe("an agent's detail", () => {
     expect(within(run).getByText("HB-7")).toBeTruthy();
   });
 
+  it("a long agent name on a phone-width card is ellipsized with the full name in its title", async () => {
+    const name = "harbor-dock-index-builder-".repeat(4) + "impl";
+    const long = snapshot({ [snapshotKey("agents.roster", {})]: successEnvelope({ ...ROSTER, agents: [agent(name, { workingOn: "Build the dock index for the harbor" })] }) });
+    renderConsole(`#/agents/${name}`, long);
+    const title = await within(await screen.findByTestId("agent-card")).findByTestId("agent-card-name");
+    expect(title.getAttribute("title")).toBe(name);
+    expect(title.className).toContain("truncate");
+  });
+
   it("opens a run's session", async () => {
     renderConsole("#/agents/harbor-impl", healthy(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("run-row-run-1")).getByRole("link"));

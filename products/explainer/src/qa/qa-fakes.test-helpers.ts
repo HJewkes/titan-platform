@@ -80,6 +80,7 @@ function fakePage(options: FakeQaOptions, inspected: number[], probed: number[])
         probed.push(t);
         return { beat, t, ...(options.probeAt?.(t) ?? FULL_STAGE) };
       }),
+    frame: async (t) => (advanceTo(t), Buffer.from(`png:${t}`)),
     crops: fakeCrops,
     close: async () => undefined,
   };

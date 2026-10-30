@@ -1,5 +1,6 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { ImplementerRunner } from "../agent-chat-implementer.js";
+import type { FixTasks } from "../shepherd/main-red.js";
 import type { LandState } from "./schemas.js";
 
 export interface CommandRun {
@@ -44,4 +45,6 @@ export interface BuildSurfacePorts {
   /** One structured `claude -p` turn; returns the answer and what it cost. */
   extract(request: ExtractRequest): Promise<{ output: unknown; costUsd?: number }>;
   shepherd: ShepherdPort;
+  /** Where a broken gate or spec files its task. */
+  tasks: Pick<FixTasks, "findByTag" | "add">;
 }

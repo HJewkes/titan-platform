@@ -102,6 +102,6 @@ describe("the build-surface routes", () => {
     const assisted = BUILD_SURFACE_STEPS.filter((step) => step.kind === "assisted").map((step) => step.id);
 
     expect(dispatch.sort()).toEqual(Object.keys(DISPATCH_STEPS).sort());
-    expect(assisted).toEqual(["device-check", "deploy-approve", "final-walk"]);
+    expect(assisted).toEqual(["device-check", "infra-park", "deploy-approve", "final-walk"]);
   });
 });

@@ -18,6 +18,7 @@ import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+import { PHASE_STALL_LIMIT_MS } from "./phase-limits.js";
 import { spawnQueuePosition } from "./review-queue.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
@@ -242,14 +243,6 @@ export interface RowInput {
 }
 
 const MINUTE = 60_000;
-
-/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
-export const PHASE_STALL_LIMIT_MS: Readonly<Partial<Record<Phase, number>>> = {
-  ci: 60 * MINUTE,
-  fixing: 240 * MINUTE,
-  review: 120 * MINUTE,
-  merging: 15 * MINUTE,
-};
 
 function overstayReason(phase: Phase, since: string, now: Date): string | undefined {
   const limit = PHASE_STALL_LIMIT_MS[phase];

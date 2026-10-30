@@ -16,5 +16,6 @@ export function forwardOnly(page: QaPage): QaPage {
     ...page,
     inspectAt: async (t, options) => (seek("inspect", t), page.inspectAt(t, options)),
     probe: async (moments) => (moments.forEach(({ t }) => seek("probe", t)), page.probe(moments)),
+    frame: async (t) => (seek("frame", t), page.frame(t)),
   };
 }

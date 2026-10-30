@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { gitBehind } from "./deploy-behind.js";
 import { deployHealth, withGitBehind } from "./deploy-health.js";
 
@@ -138,9 +138,15 @@ function commitFile(repo: string, path: string, text: string): string {
   return git(repo, "rev-parse", "HEAD");
 }
 
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 /** A deploy checkout running `deployed` that has fetched an origin/main one commit past it. */
 function checkoutBehindBy(path: string): { checkout: string; deployed: string } {
   const dir = mkdtempSync(join(tmpdir(), "factory-behind-paths-"));
+  scratchDirs.push(dir);
   const origin = join(dir, "origin");
   git(dir, "init", "--quiet", "--initial-branch=main", origin);
   commitFile(origin, "pnpm-workspace.yaml", "packages:\n  - products/*\n");

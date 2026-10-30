@@ -552,7 +552,17 @@ its report (the last fenced JSON block of its final message, `ImplementerReportS
 from the evidence directory; exit 0 and every record passing at that head is green. Green gates go to
 `bs-preview` (and once per slice the owner's `device-check:<slice>` gate, when the spec names a device step), then
 `bs-review`, a read-only reviewer at that head whose report `bs-review-check` validates. Anything red resumes the
-same implementer (`bs-fix`) with the failing evidence as data. Then `bs-pr`, `bs-shepherd` (registers the PR with
+same implementer (`bs-fix`) with the failing evidence as data. A red gate is routed first by its record's `failure.class`
+(`src/build-surface/failure-route.ts`):
+
+| `failure.class` | Route |
+| --- | --- |
+| `code`, absent or unrecognized | `bs-fix`, under the fix caps |
+| `infra` | `bs-health` (the spec's optional `gate.health`), one gate rerun, then the owner's `infra-park:<slice>` gate; no fix round is counted |
+| `gate-broken`, `spec` | stop the slice and file a task (`bs-file-task`) |
+
+When records disagree, stop beats retry and retry beats fix. A record's `failure.signature` groups failures through
+`@titan-design/cluster`: one task per group, tagged so a repeat of the same failure finds that task instead of filing another. Then `bs-pr`, `bs-shepherd` (registers the PR with
 the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
 `deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
 
