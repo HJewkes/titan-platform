@@ -16,6 +16,6 @@ try {
     ...(parsed.launcherPidEnv === undefined ? {} : { launcherPidEnv: parsed.launcherPidEnv }),
   });
 } catch (err) {
-  process.stderr.write(`titan-agent-launch: ${(err as Error).message}\n`);
+  process.stderr.write(`titan-agent-launch: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(66);
 }

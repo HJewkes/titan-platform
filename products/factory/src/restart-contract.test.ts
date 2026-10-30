@@ -74,6 +74,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-carry-seat": `${RECORD}: the seat an approval carried under`,
   "sh-review-scope": `${RECORD}: the fix diff a fix-round re-review may read as scoped`,
   "sh-scope-check": `${RECORD}: a scoped fix round's out-of-range and repeated FIX_FIRST items`,
+  "sh-review-shadow": `${RECORD}: what review-workflow would have decided at a round, read once with the installed profiles`,
   "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,
   "sh-approval-carry:fix": `${RECORD}: an approval carried across a small fix`,
   "sh-approval-carry:own": `${RECORD}: an approval carried across an own merge-up`,

@@ -80,3 +80,7 @@ export type {
   ReviewCost,
   TranscriptRef,
 } from "./corpus/index.js";
+export { FAILURE_FIXTURES, SEED_CASES } from "./review-workflow/cases.js";
+export { replayCase, replaySuite, type ReplayResult, type ReplayVariant, type ReplayWorld } from "./review-workflow/replay.js";
+export type { ReplayExpected, ReplayInput } from "./review-workflow/scenario.js";
+export { scoreReplay, type ReplayScore } from "./review-workflow/score.js";

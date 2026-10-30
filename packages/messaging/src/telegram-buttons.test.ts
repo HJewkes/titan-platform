@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SendInput } from "./contract.js";
+import { postedBody } from "./telegram-fakes.js";
 import { TELEGRAM_MAX_TEXT_LENGTH, TelegramTransport } from "./telegram.js";
 
 const TOKEN = "123456789:AAH-fake-bot-token_for-tests";
@@ -15,7 +16,7 @@ function recordingTransport(): Recorder {
     token: TOKEN,
     chatIdFor: () => 4242,
     fetch: async (_url, init) => {
-      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      bodies.push(postedBody(init));
       return new Response(JSON.stringify({ ok: true, result: { message_id: 5 } }));
     },
   });

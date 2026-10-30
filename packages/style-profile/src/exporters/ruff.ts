@@ -69,7 +69,7 @@ function applyRule(
   if (category === "structure" && name === "importOrder") {
     acc.select.add("I");
     if (Array.isArray(rule.convention)) {
-      acc.isort = { sectionOrder: rule.convention as string[] };
+      acc.isort = { sectionOrder: rule.convention };
     }
   }
 
@@ -84,7 +84,7 @@ function applyRule(
 }
 
 function lineLengthOf(profile: Profile): number | undefined {
-  const lineLengthRule = profile.formatting?.lineLength;
+  const lineLengthRule = profile.formatting.lineLength;
   if (lineLengthRule && typeof lineLengthRule.convention === "number") {
     return lineLengthRule.convention;
   }
@@ -97,12 +97,7 @@ function buildRuffConfig(profile: Profile): RuffConfig {
   const fixable = new Set<string>(["ALL"]);
 
   for (const category of CATEGORY_KEYS) {
-    const section = profile[category];
-    if (!section) continue;
-
-    for (const [name, rule] of Object.entries(
-      section as Record<string, StyleRule>,
-    )) {
+    for (const [name, rule] of Object.entries(profile[category])) {
       if (rule.confidence < thresholds.info) continue;
       applyRule(category, name, rule, acc);
     }
