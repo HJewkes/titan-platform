@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   BODY_FILE_RULE,
   IMPLEMENTER_WITHOUT_SHEPHERD,
@@ -18,20 +19,22 @@ import {
  * captured from agent-chat's own blocks, is updated on purpose.
  */
 
-interface Golden {
-  maxBlockChars: number;
-  implementer: string;
-  implementerWithoutShepherd: string;
-  reviewer: string;
-  reviewerWithoutShepherd: string;
-}
+const Golden = z.object({
+  maxBlockChars: z.number(),
+  implementer: z.string(),
+  implementerWithoutShepherd: z.string(),
+  reviewer: z.string(),
+  reviewerWithoutShepherd: z.string(),
+});
 
-const golden = JSON.parse(
-  readFileSync(
-    new URL("./fixtures/return-contract-blocks.golden.json", import.meta.url),
-    "utf8"
+const golden = Golden.parse(
+  JSON.parse(
+    readFileSync(
+      new URL("./fixtures/return-contract-blocks.golden.json", import.meta.url),
+      "utf8"
+    )
   )
-) as Golden;
+);
 
 /** The commands a block shows: backticked spans that start with a command it teaches, and the CI paste. */
 function shownCommands(block: string): string[] {
