@@ -4,6 +4,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { followRef, isWebTarget, openExternal, queueUrl } from "./homeLinks.js";
+import { usePhoneTap } from "./phone.js";
 import { ageOf, badgeOf, type InboxItem } from "./InboxPage.js";
 
 type QueueItem = ConsoleCommands["agents.queue"]["result"]["items"][number];
@@ -75,10 +76,11 @@ const TOP_BLOCKERS = 3;
 function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[]; waiting: number; gaps: number }): ReactNode {
   if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;
   const openInbox = () => open({ view: "inbox" });
+  const tap = usePhoneTap();
   return (
     <Card variant="outline" testID="home-inbox">
       <CardContent>
-        <Link color="primary" onPress={openInbox}>
+        <Link color="primary" className={tap} onPress={openInbox}>
           {`Inbox: ${blockers.length} blocking${waiting > 0 ? `, ${waiting} ${waiting === 1 ? "round" : "rounds"} waiting over 6 h` : ""}${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
         </Link>
         {blockers.slice(0, TOP_BLOCKERS).map((item) => (

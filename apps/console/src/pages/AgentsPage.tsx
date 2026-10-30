@@ -20,6 +20,7 @@ import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { AgentDetailPage } from "./AgentDetailPage.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
+import { PHONE_TAP, usePhone, usePhoneTap } from "./phone.js";
 
 const TABS = [
   ["roster", "Roster"],
@@ -52,11 +53,12 @@ function Roster(): ReactNode {
 function RosterBody({ roster: { agents, reconnecting } }: { roster: { agents: readonly RosterEntry[]; reconnecting: boolean } }): ReactNode {
   const [finished, setFinished] = useState(false);
   const shown = finished ? agents.filter((agent) => agent.state === "exited") : agents;
+  const tap = usePhoneTap();
   return (
     <VStack gap={3}>
       {reconnecting ? <Alert status="warning" message="The broker restarted moments ago and is still refilling presence; a missing live agent may not have exited." /> : null}
-      {agents.length === 0 ? null : <Checkbox label="Finished, not retired" isChecked={finished} onCheckedChange={(checked: boolean) => setFinished(checked)} testID="agents-finished" />}
-      {agents.length === 0 ? <NoAgents /> : <RosterTable agents={shown} />}
+      {agents.length === 0 ? null : <Checkbox label="Finished, not retired" className={tap} isChecked={finished} onCheckedChange={(checked: boolean) => setFinished(checked)} testID="agents-finished" />}
+      {agents.length === 0 ? <NoAgents /> : <RosterRows agents={shown} />}
     </VStack>
   );
 }
@@ -67,6 +69,42 @@ function NoAgents(): ReactNode {
       <Typography variant="subtitle1">No agents</Typography>
       <Typography variant="caption" color="secondary">
         The agent-chat broker knows no agents.
+      </Typography>
+    </VStack>
+  );
+}
+
+/** One tree, not a CSS swap of two, as on the Tasks list. */
+function RosterRows({ agents }: { agents: readonly RosterEntry[] }): ReactNode {
+  return usePhone() ? <RosterCards agents={agents} /> : <RosterTable agents={agents} />;
+}
+
+function RosterCards({ agents }: { agents: readonly RosterEntry[] }): ReactNode {
+  return (
+    <VStack>
+      {agents.map((agent) => (
+        <RosterCard key={agent.id} agent={agent} />
+      ))}
+    </VStack>
+  );
+}
+
+function RosterCard({ agent }: { agent: RosterEntry }): ReactNode {
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`agent-card-${agent.name}`}>
+      <HStack gap={2} align="center" justify="between">
+        <HStack gap={2} align="center" className="min-w-0">
+          <Avatar size="xs" colorFromName={agent.name} alt={agent.name} />
+          <Link color="primary" className={`${PHONE_TAP} break-words`} onPress={() => open({ view: "agents", id: agent.name })}>
+            {agent.name}
+          </Link>
+        </HStack>
+        <StatePill state={agent.state} />
+      </HStack>
+      {agent.workingOn ? <Typography variant="body2" className="break-words">{agent.workingOn}</Typography> : null}
+      <Typography variant="caption" color="secondary" className="break-words">
+        {`${agent.spawnedBy ? `Spawned by ${agent.spawnedBy} · ` : ""}${formatCost(agent.costUsd)} · last seen `}
+        <DateTime value={agent.lastEventAt} format="datetime" fallback="unknown" />
       </Typography>
     </VStack>
   );
