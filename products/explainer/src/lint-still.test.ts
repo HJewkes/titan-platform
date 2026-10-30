@@ -93,10 +93,10 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 });
 
 // Every text here is spoken, so no reading hold covers a stretch and only the picture's own motion breaks it.
-const SAID = "What did each lane move? The router lane merged its matcher rewrite and kept the old path behind a switch.";
+const SAID = "What did each lane move? In lanes, router merged its matcher rewrite and kept the old path behind a switch.";
 const SAID_ROWS = ["router · Matcher rewrite merged", "router · Kept the old path", "router · Behind a switch"];
 const saidLane = (cues: { action: "V6"; target: string; atCue: string }[]) =>
-  dailyWith("lanes-1", { spoken: SAID, visual: { assertion: "The router lane merged its matcher", labels: SAID_ROWS, cues } });
+  dailyWith("lanes-1", { spoken: SAID, visual: { assertion: "Router merged its matcher", labels: SAID_ROWS, cues } });
 const stillOf = (script: ReturnType<typeof dailyWith>, id: string) => stillBeats(script, scriptPacing(script)!).find(({ beat }) => beat.id === id)?.stretches ?? [];
 
 describe("Q-D22 reads the picture qa sees: fill reveals, the settle and each kind's own motion", () => {
