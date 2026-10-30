@@ -192,6 +192,9 @@ function cdpSession(page: Page): Promise<CDPSession> {
   return session
 }
 
+/** An immediate second ask hit the same busy compositor in CI (TP-4615); a short wait lets it drain. */
+const SCREENSHOT_RETRY_BACKOFF_MS = 150
+
 const HIDE_CARET_ID = '__frame-capture-hide-caret'
 
 /** What `page.screenshot({ caret: 'hide' })` injects around each shot, left in place once instead. */
@@ -217,6 +220,7 @@ export async function screenshotFrame(page: Page): Promise<Buffer> {
   } catch (error) {
     // Headless Chromium occasionally answers "Unable to capture screenshot" under load; the frame is already committed.
     if (!String(error).includes('Unable to capture screenshot')) throw error
+    await new Promise((resolve) => setTimeout(resolve, SCREENSHOT_RETRY_BACKOFF_MS))
     return Buffer.from((await shot()).data, 'base64')
   }
 }
