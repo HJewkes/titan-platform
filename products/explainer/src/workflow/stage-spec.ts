@@ -34,7 +34,7 @@ export const STAGE_VERSIONS: Record<CachedStage, string> = {
   eval: "x13",
   resolve: "p5c2s2f2s2d8",
   tts: "p6d",
-  render: "m10c11",
+  render: "m10c12",
   qa: "x10z",
   sheets: "x10",
 };
@@ -110,10 +110,10 @@ export const StageConfigSchema = z.object({
   video: VideoRefSchema.optional(),
   /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
   qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
-  /** The render's capture workers, its two-run and no-QA switches, the pre-capture gate profile and the style pack's CSS. */
+  /** The render's capture workers, its two-run and no-QA switches, the gate profile, the type's timing thresholds qa's gate rows read, and the style pack's CSS. */
   render: z.object({
     workers: z.number().int().positive(), twoRun: z.boolean(), noQa: z.boolean(),
-    gate: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema }), styleCss: z.string().optional(),
+    gate: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema }), timing: TimingProfileSchema.optional(), styleCss: z.string().optional(),
   }).optional(),
   /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
   builder: BuilderRefSchema.optional(),
@@ -174,10 +174,11 @@ function qaConfig(settings: RunSettings, params: Variant["params"]): StageConfig
   return { qa: { ...loadQaGate(settings.profile), sweep, timing }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
-/** Render gates on the same profile qa reads, so an edit to it re-keys render too; a host's worker count is part of the key. */
+/** Render gates on the same profile and timing qa reads, so an edit to either re-keys render too; a host's worker count is part of the key. */
 function renderConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const p = RenderParamsSchema.parse(params);
-  const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile) };
+  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile), timing };
   return { render, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
