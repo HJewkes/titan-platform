@@ -26,6 +26,9 @@ export interface RenderEngine {
   render: (input: RenderInput) => Promise<RenderResult>;
 }
 
+/** The stage's own scratch sits in tmpdir, which can be a tmpfs, so a capture's spill goes beside the artifact store instead. */
+export const renderSpillDir = (dataDir: string): string => path.join(dataDir, "render-spill");
+
 export const defaultRenderEngine = (): RenderEngine => ({ page: defaultCompositionPage, render: (input) => renderVideo(input) });
 
 interface RenderConfig {
@@ -40,6 +43,8 @@ interface RenderConfig {
   /** The run's video type and its timing thresholds, as the qa stage reads them, for qa's gate rows after encode. */
   profile?: string;
   timing?: TimingProfile;
+  /** Where capture spills frames; `renderSpillDir` of the data dir in a run. */
+  spillDir?: string;
 }
 
 interface RenderStageInput extends Omit<ModelStageInput, "store"> {
@@ -127,7 +132,7 @@ async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEng
   const served = await servePage(run.pageDir, writeTimeline(outDir, run.timeline));
   try {
     const qa = { mode: config.noQa ? "skip" : "gate", gate: config.gate, ...(encoded ? { encoded } : {}) } as const;
-    return await engine.render({ timeline: run.timeline, pageUrl: served.url, pageSha: run.pageSha, audio: run.audio, workers: config.workers, outDir, stem: STEM, qa });
+    return await engine.render({ timeline: run.timeline, pageUrl: served.url, pageSha: run.pageSha, audio: run.audio, workers: config.workers, outDir, stem: STEM, qa, ...(config.spillDir ? { spillDir: config.spillDir } : {}) });
   } finally {
     await served.close();
   }

@@ -56,6 +56,8 @@ interface SmokeInput {
   qa: QaEngine;
   timing: TimingProfile;
   workers: number;
+  /** Where capture spills frames; `renderSpillDir` of the run store's data dir. */
+  spillDir?: string;
   /** Where each render's `qa.json` is kept, since the render stage deletes its scratch. */
   keepDir: string;
 }
@@ -101,7 +103,7 @@ function heldRows(keepDir: string): HeldRow[] {
 
 async function renderOnce(input: SmokeInput, inputs: Record<string, string>, engine: RenderEngine): Promise<Record<string, string>> {
   const stage = { artifacts: inputs, store: input.store, from: { runId: `smoke-${input.runId}`, stage: "render" }, remainingUsd: 0 };
-  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing }, engine, input.qa);
+  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing, ...(input.spillDir ? { spillDir: input.spillDir } : {}) }, engine, input.qa);
   return outcome.outputs;
 }
 

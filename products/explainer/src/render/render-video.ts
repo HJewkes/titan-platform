@@ -49,6 +49,8 @@ export interface RenderInput {
   workers: number;
   outDir: string;
   stem: string;
+  /** Where capture spills frames waiting on the head chunk: real disk with room for the video's PNGs; `outDir` by default. */
+  spillDir?: string;
   /** The pre-capture QA gate; without it the manifest records `qaGate: "absent"`. */
   qa?: RenderQa;
 }
@@ -121,7 +123,7 @@ async function capture(input: RenderInput, paths: OutPaths, deps: RenderDeps): P
   const encoder = deps.startEncoder(paths.mp4, RENDER_FPS, paths.mix);
   const options: FramesOptions = {
     url: input.pageUrl, fps: RENDER_FPS, frames: Math.round(mixDurationS(input.timeline) * RENDER_FPS),
-    workers: input.workers, spillDir: input.outDir, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
+    workers: input.workers, spillDir: input.spillDir ?? input.outDir, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
   };
   try {
     const frames = await deps.captureFrames(options, (_, png) => encoder.write(png));
