@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, open, rm, type FileHandle } from 'node:fs/promises'
 import path from 'node:path'
+import { SPILL_PREFIX, sweepStaleSpills } from './spill-sweep.js'
 
 export type Sink = (index: number, png: Buffer) => Promise<void>
 export type Range = [from: number, to: number]
@@ -66,7 +67,9 @@ export class OrderedSink {
   }
 
   private spillDirectory(): Promise<string> {
-    return (this.directory ??= mkdir(this.spillParent, { recursive: true }).then(() => mkdtemp(path.join(this.spillParent, 'frame-spill-'))))
+    return (this.directory ??= mkdir(this.spillParent, { recursive: true })
+      .then(() => sweepStaleSpills(this.spillParent))
+      .then(() => mkdtemp(path.join(this.spillParent, `${SPILL_PREFIX}${process.pid}-`))))
   }
 
   private async nextFrame(): Promise<Buffer | undefined> {
