@@ -33,10 +33,10 @@ const BASE_STAGE_VERSIONS: Record<CachedStage, string> = {
   script: "x41",
   rewrite: "x23",
   eval: "x24",
-  resolve: "p5c2s2f2s2d15",
+  resolve: "p5c2s2f2s2d14",
   tts: "p6d",
-  render: "m10c19",
-  qa: "x11h",
+  render: "m10c18",
+  qa: "x11g",
   sheets: "x10",
 };
 
