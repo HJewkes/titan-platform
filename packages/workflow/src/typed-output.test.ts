@@ -100,10 +100,10 @@ describe("typed dispatch output", () => {
 
     const finished = await rt.wait(rt.start("review"));
 
-    const error = errors[0] as StepOutputInvalidError;
+    const error = errors[0];
     expect(run).toHaveBeenCalledTimes(1);
     expect(events.filter((event) => event.type === "step_retry")).toEqual([]);
-    expect(error).toBeInstanceOf(StepOutputInvalidError);
+    if (!(error instanceof StepOutputInvalidError)) throw new Error("the step did not fail as StepOutputInvalidError");
     expect(error).toBeInstanceOf(StepFailedError);
     expect(error).toMatchObject({ kind: "schema", retryable: false, usage: { costUsd: 0.2 } });
     expect(error.issues.join()).toMatch(/verdict/);

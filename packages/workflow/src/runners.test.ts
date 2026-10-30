@@ -1,4 +1,5 @@
 import type { AgentRunDeps } from "@titan-design/agent";
+import { partialFake } from "@titan-design/test-kit";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
@@ -23,6 +24,9 @@ const oneDispatch: WorkflowFn = async (ctx) => {
   await ctx.dispatch("work", "read-only judgement");
 };
 
+type QueryStream = ReturnType<NonNullable<AgentRunDeps["query"]>>;
+type StreamMessage = QueryStream extends AsyncGenerator<infer Message, void> ? Message : never;
+
 function structuredQuery(structured: unknown, result: Record<string, unknown> = {}): NonNullable<AgentRunDeps["query"]> {
   const messages = [
     { type: "system", subtype: "init", apiKeySource: "none", model: "claude-sonnet-5", tools: [], permissionMode: "dontAsk", claude_code_version: "2.1.300", session_id: "sess-1" },
@@ -40,12 +44,12 @@ function structuredQuery(structured: unknown, result: Record<string, unknown> = 
       ...result,
     },
   ];
-  return (() => {
+  return () => {
     async function* generate() {
-      yield* messages;
+      for (const message of messages) yield Object.assign(partialFake<StreamMessage>(), message);
     }
-    return Object.assign(generate(), { close: () => undefined });
-  }) as unknown as NonNullable<AgentRunDeps["query"]>;
+    return partialFake<QueryStream>(Object.assign(generate(), { close: () => undefined }));
+  };
 }
 
 describe("idempotentRunner", () => {
@@ -209,10 +213,10 @@ describe("agentRunner", () => {
 
     expect(finished.status).toBe("failed");
     expect(run).toHaveBeenCalledTimes(1);
-    expect(caught).toBeInstanceOf(StepOutputInvalidError);
+    if (!(caught instanceof StepOutputInvalidError)) throw new Error("the step did not fail as StepOutputInvalidError");
     expect(caught).toMatchObject({ kind: "schema", retryable: false, usage: { costUsd: 0.12 } });
-    expect((caught as StepOutputInvalidError).message).toContain("verdict");
-    expect((caught as StepOutputInvalidError).message).not.toContain("3");
+    expect(caught.message).toContain("verdict");
+    expect(caught.message).not.toContain("3");
   });
 
   it("fails a step as StepOutputInvalidError when a legacy agentRunner reports schema_invalid", async () => {
