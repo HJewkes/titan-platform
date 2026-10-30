@@ -41,7 +41,9 @@ describe("a template lighting the element a cue names", () => {
     const list = <ListFrame heading="Desk" items={ROWS} />;
 
     // Act
-    const [before, during, after] = [CUE_S - 0.5, CUE_S + FLOW_DWELL_S / 2, CUE_S + FLOW_DWELL_S + 0.5].map((t) => htmlAt(t, emphases, list));
+    const before = htmlAt(CUE_S - 0.5, emphases, list);
+    const during = htmlAt(CUE_S + FLOW_DWELL_S / 2, emphases, list);
+    const after = htmlAt(CUE_S + FLOW_DWELL_S + 0.5, emphases, list);
 
     // Assert
     expect(styleOf(before, "rows-1")).not.toContain("box-shadow");
