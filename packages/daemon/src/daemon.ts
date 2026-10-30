@@ -8,7 +8,7 @@
  * decides how the process terminates.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
+import { createServer as createHttpsServer, Server as HttpsServer } from "node:https";
 import type { ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
@@ -228,7 +228,7 @@ async function listenContentOrClose({ origin, remote, host, hosts, bound, graceM
   let port = origin.port;
   const app = (guards: RequestGuardOptions, gate?: RemoteListener["gate"]) => buildContentApp({ mountRoutes: origin.mountRoutes, guards, gate, port: () => port });
   try {
-    opened.push(await bind(app({ allowedHosts: hosts, portOnly: true }).fetch, { hostname: host, port }).bound);
+    opened.push(await bind({ fetch: app({ allowedHosts: hosts, portOnly: true }).fetch }, { hostname: host, port }).bound);
     port = boundPortOf(opened[0]!, port);
     if (remote) {
       const tls = trackTlsFiles(remote.options.tls, remote.options.allowedHosts ?? []);
@@ -310,7 +310,7 @@ function listenLoopback(
   target: ListenTarget,
   mcp: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null,
 ): Promise<ServerType> {
-  const { server, bound } = bind(fetch, target);
+  const { server, bound } = bind({ fetch }, target);
   if (mcp) spliceMcpRoute(server, mcp);
   return bound;
 }
@@ -320,17 +320,19 @@ function listenLoopback(
  * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
  */
 async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
-  const server = await bind(app.fetch, { hostname: remote.options.host, port }, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
-  reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
+  const server = await bind(
+    { fetch: app.fetch, createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) },
+    { hostname: remote.options.host, port },
+  ).bound;
+  if (!(server instanceof HttpsServer)) throw new Error("the remote listener did not create an https server");
+  reloadTlsOnChange(server, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
   return server;
 }
 
-type ServerFactory = Pick<ServeOptions, "createServer" | "serverOptions">;
-
-function bind(fetch: Hono["fetch"], target: ListenTarget, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
+function bind(options: ServeOptions, target: ListenTarget): { server: ServerType; bound: Promise<ServerType> } {
   let server!: ServerType;
   const bound = new Promise<ServerType>((resolve, reject) => {
-    server = listenOn({ fetch, ...factory } as ServeOptions, target, () => {
+    server = listenOn(options, target, () => {
       server.off("error", onBindError);
       resolve(server);
     });

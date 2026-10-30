@@ -152,9 +152,10 @@ function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
       await stream.writeSSE({ event: SSE_EVENTS.READY, data: SSE_READY_DATA });
       // Hold the connection open, emitting periodic heartbeats so proxies and dead-peer
       // detection keep the stream healthy until the client aborts.
-      while (!stream.aborted) {
+      const aborted = (): boolean => stream.aborted;
+      while (!aborted()) {
         await stream.sleep(SSE_HEARTBEAT_MS);
-        if (stream.aborted) break;
+        if (aborted()) break;
         await stream.writeSSE({ event: SSE_EVENTS.PING, data: String(Date.now()) });
       }
       unsubscribe?.();

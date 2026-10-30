@@ -229,9 +229,6 @@
     }
   },
   "packages/daemon/src/daemon.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    },
     "titan/no-internal-module-mock": {
       "count": 1
     }
