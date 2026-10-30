@@ -73,7 +73,7 @@ describe("SpanFtsTables", () => {
   it("leaves no span row behind when the FTS insert fails", () => {
     const { db, fts } = setup();
     fts.index(span("session:a", 0), "alpha");
-    const unbindable = { not: "text" } as unknown as string;
+    const unbindable: string = JSON.parse(JSON.stringify({ not: "text" }));
 
     expect(() => fts.index(span("session:b", 1), unbindable)).toThrow();
 
@@ -144,7 +144,10 @@ describe("SpanFtsTables scope", () => {
 
   it("reuses one prepared statement per scope shape, not per query", () => {
     const fts = crowded();
-    const statements = () => (fts as unknown as { scopedSearchStmts: Map<string, unknown> }).scopedSearchStmts.size;
+    const statements = () => {
+      const cache: unknown = Reflect.get(fts, "scopedSearchStmts");
+      return cache instanceof Map ? cache.size : -1;
+    };
 
     fts.search("alpha", 5, { ownerPrefix: "note:" });
     fts.search("beta", 5, { ownerPrefix: "session:" });
