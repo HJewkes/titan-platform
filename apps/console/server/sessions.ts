@@ -36,7 +36,7 @@ export interface Degraded {
 }
 
 /** The graph records no producer, so the fix names the tool that owns it rather than the one that wrote it. */
-export const GRAPH_NOT_MIGRATED_FIX = "Upgrade active-work, then run `active miner refresh`: opening the graph read-write applies the pending migrations.";
+const GRAPH_NOT_MIGRATED_FIX = "Upgrade active-work, then run `active miner refresh`: opening the graph read-write applies the pending migrations.";
 
 interface ModelUsage {
   model: string;
