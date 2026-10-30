@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
 import { litBox, useLit } from "./stage/emphasis.js";
-import { progressAt } from "./stage/entrance.js";
+import { progressAt, rise } from "./stage/entrance.js";
 
 /**
  * Port of the daily spike's StatBeat.tsx (SOURCE_REV 6a09ca2) without its own Beat. The fill gives figures and no
@@ -31,7 +31,7 @@ function statDisplay(local: number, value: number): string {
 function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }) {
   const lit = useLit()(figure.id, t);
   return (
-    <div className="beat-stat" data-reveal={figure.id} style={{ opacity: progressAt(t, atS), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
+    <div className="beat-stat" data-reveal={figure.id} style={{ ...rise(progressAt(t, atS), 24), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
       <span className="beat-stat-label">{figure.label}</span>
       <span className="beat-stat-value">
         <span className="beat-stat-figure" style={{ minWidth: `${figure.value.toFixed(places(figure.value)).length}ch` }}>{statDisplay(t - atS, figure.value)}</span>
