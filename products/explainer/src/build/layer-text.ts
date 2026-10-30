@@ -1,6 +1,7 @@
 import type { Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
 import { cueResolverFromWords } from "../cues.js";
 import type { BuilderRef } from "./beat-worker.js";
+import { FULL_COLOUR_RULE } from "./layer-fade.js";
 import type { LayerPacket } from "./layer-packet.js";
 import type { BuiltLayer } from "./layer-tree.js";
 
@@ -115,13 +116,17 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
 };
 
-function ruleFix(row: LayerTextRow): string {
+function ruleFix(row: LayerTextRow, fadedTexts: ReadonlySet<string>): string {
   if (row.fact !== undefined) return `the narration never says ${row.fact}: ${RULE_FIX[row.rule]}`;
   const { contrast } = row;
   if (contrast === undefined) return RULE_FIX[row.rule];
-  return `${contrast.colour} on ${contrast.ground} is ${contrast.ratio}:1, under the ${contrast.need}:1 its size needs: ${RULE_FIX[row.rule]}`;
+  const fade = fadedTexts.has(row.text) ? `; it is mid-fade, so ${FULL_COLOUR_RULE}` : "";
+  return `${contrast.colour} on ${contrast.ground} is ${contrast.ratio}:1, under the ${contrast.need}:1 its size needs: ${RULE_FIX[row.rule]}${fade}`;
 }
 
-/** What a rebuild is told about the elements the last build drew against qa's text rules, as a field of its packet. */
-export const layerTextHint = (rows: readonly LayerTextRow[]): string =>
-  `the last build broke qa's text rules: ${rows.map((row) => `${row.rule} on ${row.element} ${JSON.stringify(row.text)} (${ruleFix(row)})`).join("; ")}`;
+/**
+ * What a rebuild is told about the elements the last build drew against qa's text rules, as a field of its packet.
+ * `fadedTexts` are the texts the layer's source fades by opacity (TP-4527); a contrast row on one of them says so.
+ */
+export const layerTextHint = (rows: readonly LayerTextRow[], fadedTexts: ReadonlySet<string> = new Set()): string =>
+  `the last build broke qa's text rules: ${rows.map((row) => `${row.rule} on ${row.element} ${JSON.stringify(row.text)} (${ruleFix(row, fadedTexts)})`).join("; ")}`;

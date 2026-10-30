@@ -20,14 +20,14 @@ const LEDGER_CUE = { cues: [{ action: "V6", target: "scan-card", atCue: "ledger"
 const LITERAL_SECOND = `import { useBeatTime } from "@titan-design/react-ui/motion";
 export default function Layer() {
   const { t } = useBeatTime();
-  return <div id="scan-card" style={{ opacity: t > 6.4 ? 1 : 0 }}>Scan held</div>;
+  return <div id="scan-card" style={{ transform: t > 6.4 ? "none" : "translateY(40px)" }}>Scan held</div>;
 }
 `;
 const CUE_TIMED = `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
 export default function Layer() {
   const { t } = useBeatTime();
   const at = useCue("ledger");
-  return <div id="scan-card" style={{ opacity: t > at ? 1 : 0 }}>Scan held</div>;
+  return <div id="scan-card" style={{ transform: t > at ? "none" : "translateY(40px)" }}>Scan held</div>;
 }
 `;
 const span = (text: string) => `export default () => <span id="scans">${text}</span>;\n`;

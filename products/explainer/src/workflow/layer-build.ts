@@ -7,6 +7,7 @@ import { compileLayer } from "../build/compile-gate.js";
 import { formatUntimed, untimedCueHint, untimedCues } from "../build/layer-cues.js";
 import { missingCueElements, missingElementsHint } from "../build/layer-elements.js";
 import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
+import { fadedTextFindings, fadeHint } from "../build/layer-fade.js";
 import { fontFindings, fontHint } from "../build/layer-fonts.js";
 import { formatLayerRow, layerTextHint, type LayerTextCheck } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree, type BuiltLayer } from "../build/layer-tree.js";
@@ -234,27 +235,32 @@ async function timedFromCues(deps: LayerRouteDeps, worker: BeatWorker, packet: B
 }
 
 /**
- * The $0 text check after the cue check (TP-4418): a layer that draws text under qa's floor, under the chrome, under qa's
- * contrast ratio (TP-4525) or as `NaN` is rebuilt once, told each element and rule. The rebuild's spend joins the build's; a rebuild that does not
- * compile, drops a cue target or still breaks a rule fails the beat with a row per element.
+ * The $0 text check after the cue-timing check (TP-4418): a layer that draws text under qa's floor, under the chrome,
+ * under qa's contrast ratio (TP-4525) or as `NaN`, or that fades text in by opacity (TP-4527, read from its source), is
+ * rebuilt once, told each element and rule. All findings share that one rebuild, whose spend joins the build's; a
+ * rebuild that does not compile, drops a cue target or still breaks a rule fails the beat with a row per element.
  */
 async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, layer: BuiltLayer): Promise<{ build: LayerBuild; error?: string }> {
   const { textCheck } = deps;
-  if (!textCheck) return { build: layer.build };
   const check = (build: LayerBuild) =>
-    textCheck({ builder: worker.builder, layer: { ...layer, build }, packet: packet.packet }).catch((error: unknown) => {
-      throw new CheckUnavailable(error, build);
-    });
+    textCheck
+      ? textCheck({ builder: worker.builder, layer: { ...layer, build }, packet: packet.packet }).catch((error: unknown) => {
+          throw new CheckUnavailable(error, build);
+        })
+      : Promise.resolve([]);
+  const fades = (build: LayerBuild) => fadedTextFindings(build.module);
   const rows = await check(layer.build);
-  if (rows.length === 0) return { build: layer.build };
-  const again = await workerBuild(deps, worker, hintedPacket(packet, layerTextHint(rows)));
+  const faded = fades(layer.build);
+  if (rows.length === 0 && faded.length === 0) return { build: layer.build };
+  const told = [...(rows.length > 0 ? [layerTextHint(rows, new Set(faded.map(({ text }) => text)))] : []), ...(faded.length > 0 ? [fadeHint(layer.beatId, faded)] : [])];
+  const again = await workerBuild(deps, worker, hintedPacket(packet, told.join("; ")));
   const rebuilt: LayerBuild = { ...again, usage: addUsage(layer.build.usage, again.usage) };
   const verdict = await compileLayer(rebuilt.module);
   if (!verdict.ok) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer does not compile: ${verdict.error}` };
   const missing = missingCueElements(packet.packet.cues.map((cue) => cue.target), rebuilt);
   if (missing.length > 0) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer exposes no element for cue targets ${missing.join(", ")}` };
-  const still = await check(rebuilt);
-  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks qa's text rules after one rebuild: ${still.map(formatLayerRow).join("; ")}` };
+  const still = [...(await check(rebuilt)).map(formatLayerRow), ...fades(rebuilt).map(({ element, text }) => `${layer.beatId} ${element} fades text ${JSON.stringify(text)} by opacity`)];
+  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks qa's text rules after one rebuild: ${still.join("; ")}` };
 }
 
 /**
