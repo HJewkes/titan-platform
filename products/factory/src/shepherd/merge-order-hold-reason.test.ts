@@ -39,16 +39,15 @@ function parkedWorld() {
   return partialFake<FactoryContext>({ host, shepherd: routes.shepherd! });
 }
 
-const command = <K extends "shepherd.timeline" | "shepherd.status">(name: K, args: object, ctx: FactoryContext) => {
-  const cmd = SHEPHERD_COMMAND_MAP[name];
-  return cmd.run(cmd.args.parse(args) as never, ctx) as ReturnType<(typeof SHEPHERD_COMMAND_MAP)[K]["run"]>;
-};
+const { "shepherd.timeline": timelineCommand, "shepherd.status": statusCommand } = SHEPHERD_COMMAND_MAP;
+const timeline = (ctx: FactoryContext) => timelineCommand.run(timelineCommand.args.parse({ repo: REPO, pr: 103 }), ctx);
+const status = (ctx: FactoryContext) => statusCommand.run(statusCommand.args.parse({ repo: REPO, pr: 103 }), ctx);
 
 describe("a run parked behind the merge-order guard (TP-4137)", () => {
   it("names the reservation, its holder's phase and since in the timeline row", async () => {
     const ctx = parkedWorld();
 
-    const { row } = await command("shepherd.timeline", { repo: REPO, pr: 103 }, ctx);
+    const { row } = await timeline(ctx);
 
     expect(row.phase).toBe("merging");
     expect(row.nextAction).toBe(NAMED);
@@ -60,7 +59,7 @@ describe("a run parked behind the merge-order guard (TP-4137)", () => {
   it("names the same wait in the status row", async () => {
     const ctx = parkedWorld();
 
-    const [row] = await command("shepherd.status", { repo: REPO, pr: 103 }, ctx);
+    const [row] = await status(ctx);
 
     expect(row?.nextAction).toBe(NAMED);
     expect(row?.stalled?.reason).toContain(NAMED);
@@ -70,7 +69,7 @@ describe("a run parked behind the merge-order guard (TP-4137)", () => {
     const ctx = parkedWorld();
     new MergeOrder(ctx.host.db).release(REPO, "run-101", { at: minutes(20), actor: "demo-seat", reason: "landed" });
 
-    const { row } = await command("shepherd.timeline", { repo: REPO, pr: 103 }, ctx);
+    const { row } = await timeline(ctx);
 
     expect(row.orderWait).toEqual({ behind: 101, holderPhase: null, since: null, reason: WAIT });
   });
