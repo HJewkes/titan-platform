@@ -49,6 +49,25 @@ describe("runDigestVerb", () => {
     expect(out.join("")).toContain("wrote ");
   });
 
+  it("lists coordinators from the broker roster and pools from pace.json (TP-4626)", async () => {
+    const { root, env } = workspace();
+    mkdirSync(join(root, "agent-chat"));
+    writeFileSync(join(root, "agent-chat/pace.json"), JSON.stringify({ at: 0, pools: { "pool-a": { sevenDay: 41, fiveHour: 9, stale: false } } }));
+    const roster = [
+      { name: "lead-coord", spawnedBy: "human", profile: "coordinator", presence: "live", spawnedAt: "2026-03-09T00:00:00Z" },
+      { name: "worker-1", spawnedBy: "lead-coord", profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T18:00:00Z" },
+    ];
+    const brokerOnly: Exec = async (bin, args, timeoutMs) => (args[0] === "agent" ? { code: 0, stdout: JSON.stringify(roster), stderr: "" } : noAgentChat(bin, args, timeoutMs));
+    const merged = watchRow({ pr: 5, implementer: "worker-1", phase: "done", outcome: { kind: "merged", reason: null }, phaseSince: "2026-03-10T19:00:00Z" });
+    const rows: FactoryCall = async (name, args) => (name === "shepherd.list" ? { ok: true, data: [merged] } : call(name, args));
+    const { out, io } = capture(env);
+
+    await runDigestVerb(io, rows, { dryRun: true }, { exec: brokerOnly, now: NOW });
+
+    expect(out.join("")).toContain("## Seats (merged, spawned)\n- lead-coord: 1, 1");
+    expect(out.join("")).toContain("- pool-a: week 41%, 5h 9%");
+  });
+
   it("prints the digest and writes nothing on a dry run", async () => {
     const { root, env } = workspace();
     const { out, io } = capture(env);

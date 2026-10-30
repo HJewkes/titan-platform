@@ -108,7 +108,7 @@ export const DigestConfigSchema = z.strictObject({
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
-  logsDir: absolutePath.optional(),
+  logsDir: absolutePath.optional(), // Unread since TP-4626 moved Seats to the roster; kept so a config that sets it still loads.
   push: DigestPushConfigSchema.optional(), consoleOrigin: ConsoleOriginSchema.optional(),
 });
 
