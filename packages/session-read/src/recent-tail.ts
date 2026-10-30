@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import { messageOf } from "./absent.js";
 import type { SourceLineEvidence } from "./normalized.js";
 import type { RecentSessionReadError } from "./recent-types.js";
 
@@ -150,10 +151,6 @@ function lineEvidence(sourceId: string, bytes: Buffer, byteOffset: number): Sour
     lineNumber: null,
     nativeOrdinal: null,
   };
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function closeSafely(fileDescriptor: number): void {
