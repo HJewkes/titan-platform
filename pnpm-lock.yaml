@@ -1492,6 +1492,9 @@ importers:
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
+      '@titan-design/review-workflow':
+        specifier: workspace:^
+        version: link:../../packages/review-workflow
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
