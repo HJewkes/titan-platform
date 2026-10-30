@@ -320,10 +320,7 @@ function listenLoopback(
  * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
  */
 async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
-  const server = await bind(
-    { fetch: app.fetch, createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) },
-    { hostname: remote.options.host, port },
-  ).bound;
+  const server = await bind({ fetch: app.fetch, createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }, { hostname: remote.options.host, port }).bound;
   if (!(server instanceof HttpsServer)) throw new Error("the remote listener did not create an https server");
   reloadTlsOnChange(server, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
   return server;
