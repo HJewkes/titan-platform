@@ -325,7 +325,7 @@ describe("seatFixFirst", () => {
     });
 
     it("keeps no home path, URL or token from the error's text in the reason", async () => {
-      const leaky = new DispatchError(`profile at ${os.homedir()}/.agent-chat/x.json via https://db.example.invalid/x ghp_FAKE0000SECRET`);
+      const leaky = new DispatchError(`profile at /home/runner/.agent-chat/x.json via https://db.example.invalid/x ghp_FAKE0000SECRET`);
 
       const check = await seatFixFirst(async () => Promise.reject(leaky), readerOf([]), target);
 

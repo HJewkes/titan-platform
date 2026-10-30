@@ -34,6 +34,11 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   }
 });
 
+// Uncapped, an in-process vite build gives each fork a rolldown pool per core, and idle workers spin in sched_yield (TP-4604).
+it("caps rolldown's thread pools for everything the test run starts", () => {
+  for (const pool of ["ROLLDOWN_WORKER_THREADS", "RAYON_NUM_THREADS"]) expect(Number(process.env[pool]), pool).toBeGreaterThan(0);
+});
+
 // A scoped CI run selects projects by name; one left off the list silently runs none of its tests.
 it("names every project in a scoped CI run", () => {
   const scoped = vitestArgs({ mode: "scoped", dirs: [] });
