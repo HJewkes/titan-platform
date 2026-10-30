@@ -55,11 +55,14 @@ const BRIEF: PropertyDescriptor = {
 function spawnedFrom(row: JournalRow, id: string): AgentIdentity {
   const agent = spawnedFields(row, id)
   Object.defineProperty(agent, SPAWN_ROW, { value: row })
-  return Object.defineProperty(agent, 'brief', BRIEF) as AgentIdentity
+  Object.defineProperty(agent, 'brief', BRIEF)
+  return agent
 }
 
-const spawnedFields = (row: JournalRow, id: string): Omit<AgentIdentity, 'brief'> => ({
+// `brief` is replaced by the getter in `spawnedFrom`; the placeholder keeps the literal an honest AgentIdentity.
+const spawnedFields = (row: JournalRow, id: string): AgentIdentity => ({
   agentId: id,
+  brief: '',
   name: row.target ?? row.meta.name ?? '',
   profile: row.meta.profile ?? '',
   state: 'spawning',
