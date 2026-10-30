@@ -4,7 +4,7 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
-import { blockerHoursFrom } from "./blocker-hours.js";
+import { blockerHoursFrom, type BlockerConfig } from "./blocker-hours.js";
 import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 import type { ConfigStorePaths } from "./config-store/compare.js";
@@ -26,7 +26,7 @@ export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 /** Where the repo-review skill writes its folders, under the active-work root. */
 const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
-export interface ConsoleConfig {
+export interface ConsoleConfig extends BlockerConfig {
   /** 0 binds an ephemeral port. */
   port: number;
   /**
@@ -108,8 +108,6 @@ export interface ConsoleConfig {
   hostSurfaces?: HostSurfaceRoots;
   /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
   videoRoots?: string[];
-  /** Hours a blocker waits before the banner shows it, from `TITAN_CONSOLE_BLOCKER_HOURS`; absent in a hand-built config means 12. */
-  blockerHours?: number;
   /** What `serve` prints once at start: settings that were dropped rather than refused, so the console still starts. */
   startupWarnings?: string[];
 }
