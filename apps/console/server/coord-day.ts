@@ -25,7 +25,7 @@ export interface CoordinatorDayConfig {
   shippedDir?: string;
 }
 
-const DEFAULT_DAY_START = "07:00";
+export const DEFAULT_DAY_START = "07:00";
 const DAY_START = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const WINDOW_MS = 7 * 86_400_000;

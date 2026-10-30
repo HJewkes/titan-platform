@@ -55,6 +55,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("config.surfaces"),
   row("console.build"),
   row("coord.pools", {}, { maxBytes: 4 * KB, maxUpstreamCalls: 0 }),
+  row("coord.shipped", { date: "2031-01-01" }, { maxBytes: 2 * KB, maxUpstreamCalls: 1 }),
   row("gates.strip", RUN, { maxBytes: 1 * KB, maxUpstreamCalls: 4 }),
   row("graph.ego", { ref: "task:AA-1" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1 }),
   row("inbox.list", {}, { maxMs: 4200, maxBytes: 150 * KB, maxUpstreamCalls: 5, maxUpstreamCallsWarm: 3 }),

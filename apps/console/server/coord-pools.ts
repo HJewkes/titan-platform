@@ -11,11 +11,12 @@ const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const paceRow = z
   .object({
     pool: z.string(),
-    sevenDay: z.number(),
-    ageSeconds: z.number(),
-    stale: z.boolean(),
-    resetsAt: z.number(),
-    target: z.number(),
+    // agent-chat writes a pool with no reading with these as null and level "no_reading".
+    sevenDay: z.number().nullable(),
+    ageSeconds: z.number().nullable(),
+    stale: z.boolean().nullable().optional(),
+    resetsAt: z.number().nullable(),
+    target: z.number().nullable(),
     level: z.string(),
     members: z.array(z.string()).optional(),
   })
@@ -119,6 +120,7 @@ interface Inputs {
 
 function accountOf(row: z.infer<typeof paceRow>, { window, now, charter, readings }: Inputs): PoolAccount {
   const members = row.members ?? [row.pool];
+  if (row.sevenDay === null || row.resetsAt === null) return { ...errorAccount(row.pool, members, `${row.pool}: no reading`), level: row.level, ageSeconds: row.ageSeconds, stale: row.stale ?? null };
   const history = readings === null ? null : dayUsage(readings.get(row.pool) ?? [], row.sevenDay, window, row.resetsAt);
   const perDays = members.map((member) => charter?.get(member)?.perDay).filter((value): value is number => typeof value === "number");
   // The account is shared by its members, so the tightest of their limits binds.
@@ -127,13 +129,19 @@ function accountOf(row: z.infer<typeof paceRow>, { window, now, charter, reading
     pool: row.pool, members, current: row.sevenDay, beforeToday: history?.beforeToday ?? null, today: history?.today ?? null,
     reserveLine: reserveLineOf(charter?.get(row.pool)?.reserve ?? null, row.resetsAt, now), target: row.target, level: row.level,
     perDayGuard: history === null ? null : perDayGuard(history.beforeToday, smallest),
-    resetsAt: row.resetsAt, ageSeconds: row.ageSeconds, stale: row.stale,
+    resetsAt: row.resetsAt, ageSeconds: row.ageSeconds, stale: row.stale ?? null,
   };
 }
 
-async function readPace(agentChatDir: string): Promise<z.infer<typeof paceRow>[]> {
+type PaceEntry = { row: z.infer<typeof paceRow> } | { pool: string; error: string };
+
+/** Each row is parsed on its own, so one the schema rejects costs only its own account. */
+async function readPace(agentChatDir: string): Promise<PaceEntry[]> {
   const doc = paceDoc.parse(JSON.parse(await readFile(path.join(agentChatDir, "pace.json"), "utf8")));
-  return Object.values(doc.pools).map((row) => paceRow.parse(row));
+  return Object.entries(doc.pools).map(([pool, value]) => {
+    const row = paceRow.safeParse(value);
+    return row.success ? { row: row.data } : { pool, error: `pace.json ${pool}: ${row.error.issues[0]?.message ?? "unreadable row"}` };
+  });
 }
 
 interface PoolsOptions {
@@ -157,5 +165,5 @@ export async function readPools({ roots, dayStart, now, date }: PoolsOptions): P
     const error = paceGaps[0] ?? "pace.json: unreadable";
     return { ...head, accounts: [...(charter?.keys() ?? [])].map((pool) => errorAccount(pool, [pool], error)), gaps: [...gaps, error] };
   }
-  return { ...head, accounts: pace.map((row) => accountOf(row, { window, now, charter, readings })), gaps };
+  return { ...head, accounts: pace.map((entry) => ("row" in entry ? accountOf(entry.row, { window, now, charter, readings }) : errorAccount(entry.pool, [entry.pool], entry.error))), gaps };
 }

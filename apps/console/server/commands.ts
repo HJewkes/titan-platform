@@ -33,6 +33,7 @@ import { roundsAnswerRecCommands } from "./round-rec-answer.js";
 import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
+import { shippedCommands, type ShippedOptions } from "./shipped.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
@@ -84,8 +85,10 @@ export interface ConsoleSources {
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
-  /** Optional so test sources need not build one; absent, the `coord.*` reads are not served. */
+  /** Optional so test sources need not build one; absent, `coord.pools` is not served. */
   coordinator?: CoordinatorSource;
+  /** Optional so test sources need not build one; absent, `coord.shipped` is not served. */
+  shipped?: ShippedOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
   /** Hours before `blockers.banner` shows an item; absent means 12. */
@@ -155,7 +158,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, invalidation, blockerHours }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -181,6 +184,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...videoNotesCommands(videos, videoNotify),
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
+    ...(shipped === undefined ? {} : shippedCommands(shepherd, shipped)),
     ...workCommands(activeWork, work),
     ...(coordinator === undefined ? {} : coordinatorCommands(coordinator)),
   };

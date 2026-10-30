@@ -109,6 +109,16 @@ describe("coord.pools", () => {
     expect(result.gaps.join("\n")).toMatch(/TITAN_CONSOLE_AUTONOMY_DIR/);
   });
 
+  it("keeps healthy accounts when one pool has no reading", async () => {
+    const idle = { pool: "workout", sevenDay: null, fiveHour: null, ageSeconds: null, stale: null, resetsAt: null, target: null, behind: null, needs: null, level: "no_reading" };
+    await writeFile(path.join(chat, "pace.json"), JSON.stringify({ at: NOW, pools: { ...PACE.pools, workout: idle } }));
+
+    const result = await pools(source());
+
+    expect(result.accounts.map((account) => [account.pool, account.error === undefined])).toEqual([["claude", true], ["agents", true], ["workout", false]]);
+    expect(result.accounts[2]).toMatchObject({ level: "no_reading", current: null });
+  });
+
   it("uses the window of a given date", async () => {
     await writeFile(path.join(chat, "pace.json"), JSON.stringify(PACE));
 

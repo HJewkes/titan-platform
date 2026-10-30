@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stopped run counts as shipped",
+      "file": "apps/console/server/shipped.ts",
+      "find": "outcomeOf.safeParse(row).data?.outcome.kind === \"merged\" && since",
+      "replace": "since",
+      "kills": [
+        "mergedInWindow keeps the run merged inside the window, not one merged before it or one stopped inside it"
+      ]
+    },
+    {
+      "name": "the window end is inclusive",
+      "file": "apps/console/server/shipped.ts",
+      "find": "since < window.to;",
+      "replace": "since <= window.to;",
+      "kills": [
+        "mergedInWindow ends the window at the next day start, exclusive"
+      ]
+    },
+    {
+      "name": "a changed merged set never marks the digest stale",
+      "file": "apps/console/server/shipped.ts",
+      "find": "stale: digest !== null && digest.prSetHash !== prSetHash(merged)",
+      "replace": "stale: false",
+      "kills": [
+        "coord.shipped read marks the digest stale when a PR merged after it was built"
+      ]
+    },
+    {
+      "name": "the digest file is written world-readable",
+      "file": "apps/console/server/shipped.ts",
+      "find": "const DIGEST_MODE = 0o600;",
+      "replace": "const DIGEST_MODE = 0o644;",
+      "kills": [
+        "writeDigest writes the file owner-only and leaves no temp file behind"
+      ]
+    },
+    {
+      "name": "the read lists every run, not only the finished ones",
+      "file": "apps/console/server/shipped.ts",
+      "find": "shepherd.list(\"finished\")",
+      "replace": "shepherd.list(\"all\")",
+      "kills": [
+        "coord.shipped read reports built:false with the merged list when no digest exists, and calls only Shepherd's finished list"
+      ]
+    }
+  ]
+}

@@ -26,6 +26,13 @@
       "kills": ["coord.pools computes the reserve line from the charter reserve and the day of the window"]
     },
     {
+      "name": "a row with a null reading is rejected for the whole file",
+      "file": "apps/console/server/coord-pools.ts",
+      "find": "sevenDay: z.number().nullable(),",
+      "replace": "sevenDay: z.number(),",
+      "kills": ["coord.pools keeps healthy accounts when one pool has no reading"]
+    },
+    {
       "name": "a missing autonomy dir hides the pace.json meters",
       "file": "apps/console/server/coord-pools.ts",
       "find": "if (roots === undefined) return",
