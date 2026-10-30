@@ -10,7 +10,8 @@ import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
-import { PHONE_TAP } from "./phone.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP } from "./phone.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
@@ -137,9 +138,12 @@ function choiceLabel(index: number, choice: string, frame: string | undefined): 
 
 /** `choiceLabel` with the option's markdown rendered, and a badge on the option a shown recommendation picks. */
 function ChoiceLabel({ index, choice, frame, recommended }: { index: number; choice: string; frame: string | undefined; recommended: boolean }): ReactNode {
+  const phone = useMediaQuery(BELOW_MD);
+  // A scale step is its own digit, so on a phone the key hint would read "1 1" (TP-4623).
+  const repeatsLabel = phone && choice === String(index + 1);
   return (
     <>
-      {index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}
+      {index < MAX_KEYED_CHOICES && !repeatsLabel ? `${index + 1}  ` : null}
       <InlineMarkdown text={choice} />
       {frame === undefined ? null : ` (frame: ${frame})`}
       {recommended ? <span className="ml-2 inline-flex"><Pill variant="subtle" size="xs" tone="info">Recommended</Pill></span> : null}
