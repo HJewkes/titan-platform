@@ -35,7 +35,7 @@ const LABEL_WORDS = 3;
 /** G10's limit: a display text sharing this many narration words in a row repeats the sentence. */
 export const SHARED_RUN_WORDS = 5;
 /** Assertion-evidence slides averaged about 21 words against 41 for topic-bullet ones: the near-20 line, not a tested threshold. */
-const FRAME_WORDS = 20;
+export const FRAME_WORDS = 20;
 /**
  * Code is the beat's evidence, not prose to read against the narration. The probe's tag is a text node's own parent
  * (a highlight `span` inside `div.ex-code-line`, never `pre` or `code`), so code is told apart by the beat's slot kind.
@@ -265,13 +265,14 @@ function g10Shared(input: TimingInput): TimingGate {
 const FRAME_CHROME: ReadonlySet<string> = new Set(["xp-chapter", "xp-chapter-count", "xp-chip-kind", "ex-list-tick", "ex-list-ref", "ex-map-step"]);
 const isChrome = (cls: string): boolean => cls.split(/\s+/).some((name) => FRAME_CHROME.has(name));
 
+/** The words on screen together in one probed frame, as words-per-frame counts them: series chrome is read once, not per frame. */
+export const frameWords = (texts: readonly Pick<ProbedText, "text" | "cls">[]): number =>
+  texts.filter((t) => !isChrome(t.cls)).reduce((sum, t) => sum + tokens(t.text).length, 0);
+
 /** words-per-frame: the words on screen together at each sampled moment of a prose beat stay at or under 20. */
 function wordsPerFrame({ probed, timeline }: TimingInput): TimingGate {
   const code = new Set(timeline.beats.filter((beat) => beat.kind !== undefined && CODE_KINDS.has(beat.kind)).map((beat) => beat.id));
-  const counts = probed.filter((moment) => !code.has(moment.beat)).map((moment) => ({
-    beat: moment.beat,
-    n: moment.texts.filter((t) => !isChrome(t.cls)).reduce((sum, t) => sum + tokens(t.text).length, 0),
-  }));
+  const counts = probed.filter((moment) => !code.has(moment.beat)).map((moment) => ({ beat: moment.beat, n: frameWords(moment.texts) }));
   const over = counts.filter((c) => c.n > FRAME_WORDS);
   const value = counts.length === 0 ? null : Math.max(...counts.map((c) => c.n));
   return { id: "words-per-frame", value, threshold: `≤ ${FRAME_WORDS} words on screen`, pass: over.length === 0, beats: uniq(over.map((c) => c.beat)) };
