@@ -85,7 +85,7 @@ describe("the perf fixture", () => {
     const withdrawals = (await readFile(path.join(fixture.config.inboxDir, "withdrawals.jsonl"), "utf8")).trim().split("\n");
 
     expect(rounds).toHaveLength(DISK_SIZES.rounds);
-    expect(spool.filter((name) => name.endsWith(".json") && !name.endsWith(".answer.json"))).toHaveLength(DISK_SIZES.deposits);
+    expect(spool.filter((name) => name.endsWith(".json") && !name.endsWith(".answer.json"))).toHaveLength(DISK_SIZES.deposits + DISK_SIZES.blockers);
     expect(withdrawals).toHaveLength(DISK_SIZES.withdrawnDeposits);
     expect(fixture.state.activeWork.tasks).toHaveLength(AW_SIZES.initiatives * AW_SIZES.tasksPerInitiative);
     expect(fixture.state.factory.finished).toHaveLength(FACTORY_SIZES.finishedRuns);
