@@ -68,7 +68,7 @@ describe("the inbox page's Approve merge rows", () => {
     renderInbox(mergeGate(LINEAGE));
     fireEvent.click(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge"));
     const sheet = await screen.findByTestId("inbox-confirm");
-    expect(within(sheet).getByTestId("ship-lineage").textContent).toBe(LINEAGE_TEXT);
+    expect((await within(sheet).findByTestId("ship-lineage")).textContent).toBe(LINEAGE_TEXT);
   });
 
   it("a gate with no lineage shows lineage unknown", async () => {
