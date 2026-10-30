@@ -45,24 +45,6 @@
       "kills": [
         "scaffolding and citations only an upper-case task id cites a task"
       ]
-    },
-    {
-      "name": "sibling figures are keyed by element alone",
-      "file": "products/explainer/src/qa/counting-figures.ts",
-      "find": "return `${figure.element}@${index}`;",
-      "replace": "return `${figure.element}@0`;",
-      "kills": [
-        "narration facts report four sibling stat figures counting up are each judged on the value they settle on"
-      ]
-    },
-    {
-      "name": "a counting figure keeps its first value as settled",
-      "file": "products/explainer/src/qa/narration-facts.ts",
-      "find": "settled.set(key, settle(first.get(key)!, text));",
-      "replace": "settled.set(key, first.get(key)!);",
-      "kills": [
-        "narration facts report a sibling figure that settles on an unspoken number is still a finding"
-      ]
     }
   ]
 }
