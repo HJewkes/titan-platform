@@ -215,6 +215,11 @@
       "count": 3
     }
   },
+  "packages/agent-lifecycle/src/sqlite-execution-ledger.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 5
+    }
+  },
   "packages/agent-protocol/src/lifecycle-correlations.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

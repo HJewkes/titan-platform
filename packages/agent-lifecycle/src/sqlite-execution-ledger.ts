@@ -6,9 +6,6 @@ import { canonicalJson } from "./canonical-json.js";
 import type { ApplyExecutionTransitionResult, ExecutionLedger, SqliteExecutionLedgerOptions } from "./execution-ledger.js";
 import { DEFAULT_EXECUTION_TABLE } from "./migration.js";
 
-// The ledger wrote these documents itself, so parsing trusts their shape; it is the one place that does.
-function parseStored<T>(text: string): T { return JSON.parse(text); }
-
 function textColumn(row: unknown, key: "record" | "transition"): string {
   const value = typeof row === "object" && row !== null ? Reflect.get(row, key) : undefined;
   if (typeof value !== "string") throw new TypeError(`stored row has no ${key}`);
@@ -52,13 +49,13 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   listRecoverable(limit = 100): ExecutionRecord<TResult>[] {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError("limit must be a positive safe integer");
     const rows = this.db.prepare(recoverableSql(this.snapshot)).all(limit);
-    return rows.map(row => parseStored<ExecutionRecord<TResult>>(textColumn(row, "record")));
+    return rows.map(row => JSON.parse(textColumn(row, "record")) as ExecutionRecord<TResult>);
   }
 
   events(executionId: string): ExecutionTransition<TResult>[] {
     const rows = this.db.prepare(`SELECT transition FROM ${this.eventTable} WHERE execution_id = ? ORDER BY revision`)
       .all(executionId);
-    return rows.map(row => parseStored<ExecutionTransition<TResult>>(textColumn(row, "transition")));
+    return rows.map(row => JSON.parse(textColumn(row, "transition")) as ExecutionTransition<TResult>);
   }
 
   apply(transition: ExecutionTransition<TResult>): ApplyExecutionTransitionResult<TResult> {
@@ -66,7 +63,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
     try { canonical = canonicalJson(transition); }
     catch (error) { return { ok: false, kind: "invalid_transition", reason: message(error) }; }
     // Freeze the caller's input at the transaction boundary; retain no caller-owned references.
-    const event = parseStored<ExecutionTransition<TResult>>(canonical);
+    const event = JSON.parse(canonical) as ExecutionTransition<TResult>;
     const problem = envelopeProblem(event);
     if (problem) return { ok: false, kind: "invalid_transition", reason: problem };
     return this.db.transaction(() => this.applyInside(event, canonical)).immediate();
@@ -76,7 +73,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
     const receipt = this.db.prepare(`SELECT transition,record FROM ${this.eventTable} WHERE execution_id = ? AND event_id = ?`)
       .get(event.executionId, event.eventId);
     if (receipt) return textColumn(receipt, "transition") === canonical
-      ? { ok: true, applied: false, record: parseStored<ExecutionRecord<TResult>>(textColumn(receipt, "record")) }
+      ? { ok: true, applied: false, record: JSON.parse(textColumn(receipt, "record")) as ExecutionRecord<TResult> }
       : { ok: false, kind: "event_conflict", reason: "event ID already records a different transition" };
     const current = this.get(event.executionId);
     const invalid = this.validateLiveTransition(current, event);
@@ -130,7 +127,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   }
 
   private decode(raw: unknown): ExecutionRecord<TResult> | undefined {
-    return raw === undefined ? undefined : parseStored<ExecutionRecord<TResult>>(textColumn(raw, "record"));
+    return raw === undefined ? undefined : JSON.parse(textColumn(raw, "record")) as ExecutionRecord<TResult>;
   }
 }
 
