@@ -28,7 +28,7 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     expect(row).toMatchObject({ severity: "error", pass: false });
     expect(row.detail_beats).toContain("ships-2");
-    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 8\.3 s after "twelve" \(4\.7 s\)/);
+    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 8\.3 s after "twelve" \(4\.7 s, saying "/);
   });
 
   it("passes once a revealing cue lands inside the stretch, as its hint asks", () => {

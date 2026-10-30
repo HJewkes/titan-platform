@@ -41,7 +41,7 @@ interface Window {
 const ITEM_TARGET = /^(.+)-(\d+)$/;
 
 /** The words of the slot element a reveal targets: a `<field>-<n>` item's drawn fields, or a whole slot. */
-function targetWords(slots: Record<string, unknown>, target: string): Set<string> {
+export function targetWords(slots: Record<string, unknown>, target: string): Set<string> {
   const item = ITEM_TARGET.exec(target);
   const items: unknown = item ? slots[item[1]!] : undefined;
   const field: unknown = item && Array.isArray(items) ? items[Number(item[2]) - 1] : slots[target];
