@@ -299,6 +299,9 @@ importers:
 
   packages/agent-dispatch:
     dependencies:
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
