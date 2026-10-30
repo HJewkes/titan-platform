@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { writeGitShim } from "./git-shim.js";
 import { gitHooksEnv } from "./dir.js";
-import { HOST_PATH, NO_VERIFY, realGitOn } from "./git-shim.fixture.js";
+import { HOST_PATH, NO_VERIFY, realGitOn, installExecutable } from "./git-shim.fixture.js";
 
 /** TP-783, against real git, a temp repo and a local bare remote; fixtures copied from leak-git-shim.test.ts. */
 
@@ -39,7 +39,7 @@ function fixture(): Fixture {
   const shimDir = path.join(root, "git-bin");
   const home = path.join(root, "home");
   for (const dir of [work, guard, home]) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(guard, "pre-push"), "#!/bin/sh\ncat >/dev/null\n", { mode: 0o755 });
+  installExecutable(path.join(guard, "pre-push"), "#!/bin/sh\ncat >/dev/null\n");
   git(root, "init", "-q", "--bare", remote);
   git(work, "init", "-q", "-b", "main");
   fs.writeFileSync(path.join(work, "file.txt"), "one\n");
@@ -59,7 +59,7 @@ function fixture(): Fixture {
 
 function runScript(fx: Fixture, body: string): ReturnType<typeof spawnSync> & { stdout: string; stderr: string } {
   const script = path.join(fx.work, "..", `script-${++count}.sh`);
-  fs.writeFileSync(script, `#!/bin/sh\nexport ${IDENTITY}\n${body}\n`, { mode: 0o755 });
+  installExecutable(script, `#!/bin/sh\nexport ${IDENTITY}\n${body}\n`);
   return spawnSync(script, { cwd: fx.work, env: fx.env, encoding: "utf8", timeout: 10_000 });
 }
 

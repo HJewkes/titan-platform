@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { gitShimScript, writeGitShim } from "./git-shim.js";
-import { type GitShimFixture as Fixture, gitShimHarness, HOST_PATH, NO_VERIFY, realGitOn } from "./git-shim.fixture.js";
+import { type GitShimFixture as Fixture, gitShimHarness, HOST_PATH, NO_VERIFY, realGitOn, installExecutable } from "./git-shim.fixture.js";
 
 /**
  * TP-596, against real git, temp repos and a local bare remote. Each push test names the
@@ -130,7 +130,7 @@ describe("the agent git shim failing closed when it cannot resolve a push (fix r
   ])("refuses %s when the builtin list could not be read", (command, rule) => {
     const fx = fixture();
     const real = realGitOn(HOST_PATH, fx.shimDir);
-    fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []), { mode: 0o755 });
+    installExecutable(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []));
 
     const run = runScript(fx, command);
     const status = runScript(fx, 'git rev-parse --verify -q refs/heads/absent; echo "status=$?"');
@@ -220,7 +220,7 @@ describe("the agent git shim and help.autocorrect (fix round 2)", () => {
     const fx = fixture();
     const bin = path.join(fx.work, "..", "ext-bin");
     fs.mkdirSync(bin);
-    fs.writeFileSync(path.join(bin, "git-hello"), "#!/bin/sh\necho hello\n", { mode: 0o755 });
+    installExecutable(path.join(bin, "git-hello"), "#!/bin/sh\necho hello\n");
 
     const run = runScript(fx, `PATH='${bin}':$PATH git -c help.autocorrect=immediate hello`);
 
@@ -231,7 +231,7 @@ describe("the agent git shim and help.autocorrect (fix round 2)", () => {
   it("runs builtins under autocorrect when the baked builtin list is empty", () => {
     const fx = fixture();
     const real = realGitOn(HOST_PATH, fx.shimDir);
-    fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []), { mode: 0o755 });
+    installExecutable(path.join(fx.shimDir, "git"), gitShimScript(real, fx.guard, []));
 
     const run = runScript(fx, "git -c help.autocorrect=1 rev-parse --abbrev-ref HEAD");
 
@@ -405,8 +405,8 @@ describe("the agent git shim letting a push to a local repository skip the hooks
         .split(" ")
         .map((word) => `case " $* " in *" ${word} "*) ;; *) exec '${REAL_GIT}' "$@" ;; esac`)
         .join("\n");
-      fs.writeFileSync(failing, `#!/bin/sh\n${match}\necho 'error: injected' >&2\nexit 3\n`, { mode: 0o755 });
-      fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(failing, fx.guard, []), { mode: 0o755 });
+      installExecutable(failing, `#!/bin/sh\n${match}\necho 'error: injected' >&2\nexit 3\n`);
+      installExecutable(path.join(fx.shimDir, "git"), gitShimScript(failing, fx.guard, []));
 
       const run = foreignPush(fx, "origin main");
 

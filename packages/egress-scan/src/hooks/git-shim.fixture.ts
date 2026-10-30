@@ -88,7 +88,7 @@ function makeFixture(root: string, pair: RepoPair, shellAliases: readonly string
   const home = path.join(root, "home");
   const marker = path.join(root, "pre-push-ran");
   for (const dir of [guard, home]) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(guard, "pre-push"), `#!/bin/sh\ncat >/dev/null\ntouch '${marker}'\n`, { mode: 0o755 });
+  installExecutable(path.join(guard, "pre-push"), `#!/bin/sh\ncat >/dev/null\ntouch '${marker}'\n`);
   expect(writeGitShim(shimDir, guard, HOST_PATH, shellAliases, { HOME: home })).toBe(true);
   const env = {
     PATH: `${shimDir}:/usr/bin:/bin`,
@@ -99,6 +99,20 @@ function makeFixture(root: string, pair: RepoPair, shellAliases: readonly string
     ...gitHooksEnv(guard),
   };
   return { work, remote, guard, shimDir, marker, env };
+}
+
+/**
+ * Installs an executable at `file` without this process ever holding it open for writing. Tests run on
+ * worker threads of one process, and a sibling thread's fork inherits any fd open at that moment; on
+ * Linux, exec'ing a file a child still has open for write fails ETXTBSY. Letting `cp` do the write keeps
+ * the fd in a process that has exited before the first exec.
+ */
+export function installExecutable(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  fs.writeFileSync(staging, contents);
+  fs.chmodSync(staging, 0o755);
+  execFileSync("cp", ["-p", staging, file]);
+  fs.rmSync(staging);
 }
 
 /** A scratch dir removed after the file's tests, and fixtures whose only remote is a local bare repo. */
@@ -120,7 +134,7 @@ export function gitShimHarness(): GitShimHarness {
   /** Runs a script file, as make or an npm script would; a recursing shim is killed by the timeout. */
   function runScript(fx: GitShimFixture, body: string): ScriptRun {
     const script = path.join(fx.work, "..", `script-${++count}.sh`);
-    fs.writeFileSync(script, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    installExecutable(script, `#!/bin/sh\n${body}\n`);
     return expectSpawned(spawnSync(script, { cwd: fx.work, env: fx.env, encoding: "utf8", timeout: 10_000 }), body);
   }
 

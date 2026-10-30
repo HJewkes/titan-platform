@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { gitShimScript } from "./git-shim.js";
 import { posixShell } from "./posix-shell.js";
-import { type GitShimFixture, gitShimHarness, HOST_PATH, NO_VERIFY } from "./git-shim.fixture.js";
+import { type GitShimFixture, gitShimHarness, HOST_PATH, NO_VERIFY, installExecutable } from "./git-shim.fixture.js";
 
 /**
  * CC-612 and the ac#357 follow-ups (CC-613 slice c), against real git, temp repos and a local bare
@@ -31,9 +31,7 @@ function withFakeFilters(fx: GitShimFixture, checks: Partial<Record<Filter, stri
   const byName: Partial<Record<string, string>> = checks;
   for (const [name, real] of Object.entries(REAL_FILTERS)) {
     const check = byName[name] ?? LOCALE_CHECK;
-    fs.writeFileSync(path.join(dir, name), `#!/bin/sh\n${check}\nexec '${real}' "$@"\n`, {
-      mode: 0o755,
-    });
+    installExecutable(path.join(dir, name), `#!/bin/sh\n${check}\nexec '${real}' "$@"\n`);
   }
   return { ...fx, env: { ...fx.env, LANG: "en_US.UTF-8", PATH: `${dir}:${fx.env.PATH}` } };
 }
@@ -82,7 +80,7 @@ describe("the agent git shim running every text filter under LC_ALL=C (CC-613 sl
   // Kills: LC_ALL=C removed from the tr that reads the builtin list when none was baked in.
   it("reads the builtin list itself, so a shell alias named like a builtin never runs", () => {
     const fx = withFakeFilters(fixture());
-    fs.writeFileSync(path.join(fx.shimDir, "git"), gitShimScript(realGit, fx.guard, [], "", posixShell(), ["ev"]), { mode: 0o755 });
+    installExecutable(path.join(fx.shimDir, "git"), gitShimScript(realGit, fx.guard, [], "", posixShell(), ["ev"]));
     git(fx.work, "config", "alias.log", "!echo hijack");
 
     const run = runScript(fx, "git log -1 --format=%s");
