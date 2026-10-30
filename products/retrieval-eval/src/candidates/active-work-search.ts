@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ScoredHit } from "../metrics.js";
+import { isRecord, stringField } from "../record.js";
 import type { Candidate } from "./candidate.js";
 
 const run = promisify(execFile);
@@ -19,11 +20,6 @@ interface SearchHit {
   path?: string;
   class?: string;
   excerpt?: string;
-}
-
-interface SearchResponse {
-  ok?: boolean;
-  data?: { hits?: SearchHit[] };
 }
 
 export interface ActiveWorkSearchOptions {
@@ -55,16 +51,26 @@ export function activeWorkSearch(options: ActiveWorkSearchOptions): Candidate {
  * own row, not the run. A zero row is visible in the output, an exception is not.
  */
 export function hitsOf(stdout: string, activeRoot: string): ScoredHit[] {
-  let parsed: SearchResponse;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout) as SearchResponse;
+    parsed = JSON.parse(stdout);
   } catch {
     return [];
   }
-  return (parsed.data?.hits ?? []).map((hit) => ({
+  return searchHitsOf(parsed).map((hit) => ({
     id: hit.ref ?? hit.path ?? "",
     aliases: aliasesOf(hit, activeRoot),
     chars: (hit.excerpt ?? "").length,
+  }));
+}
+
+function searchHitsOf(response: unknown): SearchHit[] {
+  if (!isRecord(response) || !isRecord(response.data) || !Array.isArray(response.data.hits)) return [];
+  return response.data.hits.filter(isRecord).map((hit) => ({
+    ref: stringField(hit, "ref"),
+    path: stringField(hit, "path"),
+    class: stringField(hit, "class"),
+    excerpt: stringField(hit, "excerpt"),
   }));
 }
 

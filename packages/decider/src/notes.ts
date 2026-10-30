@@ -99,7 +99,7 @@ async function listDirs(root: string): Promise<string[]> {
     const entries = await readdir(root, { withFileTypes: true });
     return entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name).sort();
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (isMissing(err)) return [];
     throw err;
   }
 }

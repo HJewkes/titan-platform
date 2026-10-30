@@ -20,8 +20,8 @@ function mean(values: readonly number[]): number {
 function percentile(sorted: readonly number[], p: number): number {
   const position = (sorted.length - 1) * p;
   const below = Math.floor(position);
-  const low = sorted[below] as number;
-  const high = sorted[Math.min(below + 1, sorted.length - 1)] as number;
+  const low = sorted[below] ?? Number.NaN;
+  const high = sorted[Math.min(below + 1, sorted.length - 1)] ?? Number.NaN;
   return low === high ? low : low + (high - low) * (position - below);
 }
 
@@ -38,7 +38,7 @@ export function bootstrapCI(values: readonly number[], options: BootstrapOptions
   const sample = new Array<number>(values.length);
   const stats = new Array<number>(resamples);
   for (let r = 0; r < resamples; r++) {
-    for (let i = 0; i < values.length; i++) sample[i] = values[randomInt(random, values.length)] as number;
+    for (let i = 0; i < values.length; i++) sample[i] = values[randomInt(random, values.length)] ?? Number.NaN;
     stats[r] = statistic(sample);
   }
   stats.sort((x, y) => x - y);
@@ -54,7 +54,7 @@ export function pairedBootstrap(
 ): Interval {
   if (a.length !== b.length) throw new RangeError(`paired arms differ in length: ${a.length} and ${b.length}`);
   return bootstrapCI(
-    a.map((value, i) => value - (b[i] as number)),
+    a.map((value, i) => value - (b[i] ?? Number.NaN)),
     options,
   );
 }

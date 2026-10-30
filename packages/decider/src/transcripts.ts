@@ -119,7 +119,7 @@ async function scanFile(file: TranscriptFile, since: SourceWatermark | undefined
 }
 
 function questionsOf(input: unknown): QuestionInput[] {
-  const questions = (input as { questions?: unknown } | null)?.questions;
+  const questions = typeof input === "object" && input !== null && "questions" in input ? input.questions : undefined;
   return Array.isArray(questions)
     ? questions.filter((q): q is QuestionInput => typeof q === "object" && q !== null)
     : [];

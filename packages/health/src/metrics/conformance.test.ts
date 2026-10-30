@@ -79,12 +79,14 @@ function paths(value: unknown, prefix: string[] = []): string[][] {
   return [prefix, ...children].filter((path) => path.length > 0);
 }
 
-function withWrongTypeAt(root: unknown, path: string[]): unknown {
-  const copy = structuredClone(root) as Record<string, unknown>;
-  const parent = path.slice(0, -1).reduce<Record<string, unknown>>((node, key) => node[key] as Record<string, unknown>, copy);
-  const last = path[path.length - 1]!;
-  parent[last] = typeof parent[last] === "object" && parent[last] !== null ? "wrong" : { wrong: true };
-  return copy;
+function withWrongTypeAt(node: unknown, path: string[]): unknown {
+  const [head, ...rest] = path;
+  if (head === undefined) return typeof node === "object" && node !== null ? "wrong" : { wrong: true };
+  if (typeof node !== "object" || node === null) throw new Error(`no node at ${path.join(".")}`);
+  if (Array.isArray(node)) return node.map((child, index) => (String(index) === head ? withWrongTypeAt(child, rest) : child));
+  return Object.fromEntries(
+    Object.entries(node).map(([key, child]) => [key, key === head ? withWrongTypeAt(child, rest) : child]),
+  );
 }
 
 describe.each([

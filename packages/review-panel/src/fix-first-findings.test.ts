@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import type { ReviewerMessage } from "./ports.js";
@@ -8,7 +9,7 @@ const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
 const block = (verdict: string, head = HEAD) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${head}`;
-const said = (text: string, writtenAt: number): ReviewerMessage => ({ agentId: "a", sessionId: "s", writtenAt, text, locator: {} as SourceTextLocator });
+const said = (text: string, writtenAt: number): ReviewerMessage => ({ agentId: "a", sessionId: "s", writtenAt, text, locator: partialFake<SourceTextLocator>() });
 
 describe("fixFirstFindings", () => {
   it("joins every FIX_FIRST at the head that says more than its block, oldest first, each once", () => {

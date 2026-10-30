@@ -2,6 +2,7 @@ import { GateStoreSchemaOutdated, MemoryGateStore, type GateAuthorize, type Gate
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import type { MatrixEvent } from "@titan-design/matrix-bus";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -192,7 +193,7 @@ describe("hitlQueueSource records who resolved the gate", () => {
   });
 
   it("an authorize that does not return a decision fails the batch loudly instead of refusing", async () => {
-    const promised = (() => Promise.resolve({ allowed: true })) as unknown as GateAuthorize;
+    const promised = partialFake<GateAuthorize>(() => Promise.resolve({ allowed: true }));
     const { store, hub, state, mirror } = await rig(undefined, new MemoryGateStore({ authorize: promised }));
     const gate = store.create({ prompt: "merge?" });
     await mirror.reconcile();
