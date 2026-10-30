@@ -92,6 +92,8 @@
   font-size: calc(var(--beat-display) * 1.5);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  /* A prefix wrapping above its number would hide the width from the stage fit, which then never shrinks the tile. */
+  white-space: nowrap;
 }
 /* Holds the settled figure's width while it counts up, so the stage fit does not resize the card every frame. */
 .beat-stat-figure {

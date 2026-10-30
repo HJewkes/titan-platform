@@ -77,12 +77,14 @@ describe("the stage fit", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const read = () => {
       const edge = (el: Element) => el.getBoundingClientRect();
       const tiles = [...document.querySelectorAll(".beat-stat")].map(edge);
-      return { left: Math.min(...tiles.map((r) => r.left)), right: Math.max(...tiles.map((r) => r.right)), shown: [...document.querySelectorAll(".beat-stat-value")].map((el) => el.textContent) };
+      const valueHeights = [...document.querySelectorAll(".beat-stat-value")].map((el) => el.getBoundingClientRect().height);
+      return { left: Math.min(...tiles.map((r) => r.left)), right: Math.max(...tiles.map((r) => r.right)), valueHeights, shown: [...document.querySelectorAll(".beat-stat-value")].map((el) => el.textContent) };
     };
 
     const { value } = await atMoment(fixture, 2.9, read);
 
     assert.deepEqual(value.shown, shown);
+    assert.ok(value.valueHeights.every((h) => h === value.valueHeights[0]), `a value wrapped: heights ${value.valueHeights.join(", ")}`);
     assert.ok(value.left >= SIDE_MARGIN_PX - 1, `left tile edge ${value.left} px`);
     assert.ok(STAGE.width - value.right >= SIDE_MARGIN_PX - 1, `right tile edge ${STAGE.width - value.right} px from the frame edge`);
   });
