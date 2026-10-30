@@ -27,6 +27,25 @@
       "kills": [
         "words-per-frame frame chrome does not count toward words per frame"
       ]
+    },
+    {
+      "name": "static-window reading hold starts at the first sample showing a text",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "const fromS = revealS(input, span);",
+      "replace": "const fromS = span.fromS;",
+      "kills": [
+        "static-window gate a text revealed between two probe samples starts the hold at the cue that revealed it, not at the sample that first showed it",
+        "static-window gate a text revealed between two probe samples starts the hold where the picture starts to move when no cue falls between the samples"
+      ]
+    },
+    {
+      "name": "reveal ignores motion onset when no cue falls between the samples",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return i / fps;",
+      "replace": "if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return span.fromS;",
+      "kills": [
+        "static-window gate a text revealed between two probe samples starts the hold where the picture starts to move when no cue falls between the samples"
+      ]
     }
   ]
 }
