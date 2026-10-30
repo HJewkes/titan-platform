@@ -157,13 +157,17 @@ function clipped(h: Inspector, el: Element, r: Rect): Rect | null {
   return out
 }
 
+function parked(h: Inspector, r: Rect): boolean {
+  return r.right <= 0 || r.bottom <= 0 || r.left >= h.opts.W || r.top >= h.opts.H
+}
+
 function shown(h: Inspector, el: Element): boolean {
   return h.opacity(el) > 0.1 && h.clipped(el, h.asR(el.getBoundingClientRect())) !== null
 }
 
-export const GEOMETRY_STEPS: PartialSteps<'rgba' | 'opacity' | 'describe' | 'r4' | 'rect' | 'inter' | 'shrink' | 'unionRect' | 'asR' | 'related'
+export const GEOMETRY_STEPS: PartialSteps<'rgba' | 'opacity' | 'describe' | 'r4' | 'rect' | 'inter' | 'shrink' | 'unionRect' | 'asR' | 'parked' | 'related'
   | 'decor' | 'inFlight' | 'within' | 'sitsOn' | 'isBox' | 'isPainted' | 'textOf' | 'twinOf' | 'add' | 'innerOf' | 'turned' | 'insetOf' | 'clipped'
   | 'shown'> = {
-  rgba, opacity, describe, r4, rect, inter, shrink, unionRect, asR, related, decor, inFlight, within, sitsOn, isBox, isPainted, textOf, twinOf, add,
+  rgba, opacity, describe, r4, rect, inter, shrink, unionRect, asR, parked, related, decor, inFlight, within, sitsOn, isBox, isPainted, textOf, twinOf, add,
   innerOf, turned, insetOf, clipped, shown,
 }
