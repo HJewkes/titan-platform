@@ -93,7 +93,7 @@ type Fallback = "resume" | "message";
  */
 export type WakeStepResult =
   | { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number }
-  | { kind: "unhandled"; reason: string; held?: { agent: string; payload?: string }; notice?: SpawnerNotice; predecessor?: PredecessorMessage };
+  | { kind: "unhandled"; reason: string; held?: { agent: string }; notice?: SpawnerNotice; predecessor?: PredecessorMessage };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
@@ -363,11 +363,11 @@ function refusedWake(error: unknown, signal: AbortSignal): WakeStepResult {
   return unhandled(`the wake was refused: ${failureOf(error)}`);
 }
 
-/** A held wake keeps its findings for its seat's own route, and the lineage's newest agent is messaged them now. */
+/** A held wake's seat is told by its own route; the lineage's newest agent is messaged its findings now. */
 async function tellHeld(agents: ImplementerAgents, task: WakeTask, result: WakeStepResult, signal: AbortSignal): Promise<WakeStepResult> {
   if (result.kind !== "unhandled" || result.held === undefined) return result;
   const predecessor = await messagePredecessor(agents, task, result.reason, signal);
-  return { ...result, held: { ...result.held, payload: task.payload }, predecessor };
+  return { ...result, predecessor };
 }
 
 /** A held wake's seat is told by its own route. */

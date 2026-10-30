@@ -18,8 +18,6 @@ export const EXIT_NOTICE_STEPS: readonly StepDeclaration[] = [{ id: EXIT_NOTICE_
 
 /** Long enough for a DONE report's status lines, short enough for one chat message. */
 export const REPORT_MAX_CHARS = 600;
-/** A held wake's findings are the seat's whole fix brief, so they get more room than a report, still within one message. */
-export const HELD_PAYLOAD_MAX_CHARS = 2_000;
 
 /** The last thing the exited agent wrote, from its transcript; `writtenAt` is epoch milliseconds. */
 export interface LastReport {
@@ -85,8 +83,8 @@ const ExitNoticeInput = z.object({
   wake: z.object({ agent: z.string().min(1), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
   /** Why a held wake's successor never started; the notice then reads no report, since no agent ran. */
   held: z.string().optional(),
-  /** The held wake's findings, as its brief would have carried them; absent on a run recorded before they were kept. */
-  heldPayload: z.string().optional(),
+  /** A held FIX_FIRST's findings, so the seat can start a fixer or fix it without the reviewer's transcript. */
+  findings: z.string().optional(),
 });
 type ExitNoticeInput = z.infer<typeof ExitNoticeInput>;
 
@@ -108,7 +106,7 @@ function causeText(cause: ExitCause, wake: WakeEvidence, held?: string): string 
   return `${wake.agent} took the wake (mode ${wake.mode ?? "unrecorded"}) and wrote after it, but pushed nothing`;
 }
 
-const bounded = (text: string, max = REPORT_MAX_CHARS): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const bounded = (text: string): string => (text.length > REPORT_MAX_CHARS ? `${text.slice(0, REPORT_MAX_CHARS - 1)}…` : text);
 
 function wakeLine(wake: WakeEvidence): string {
   return `mode ${wake.mode ?? "unrecorded"}${wake.fallback === undefined ? "" : `, after a ${wake.fallback} fallback`}`;
@@ -134,12 +132,12 @@ export function noticeText(input: ExitNoticeInput, cause: ExitCause, report: Las
   ].join("\n");
 }
 
-/** A held wake started no agent, so the seat is told why, what the wake asked for, and what it can start or push by hand. */
-function heldText({ repo, pr, headSha, round, kind, wake, held, heldPayload }: ExitNoticeInput): string {
+/** A held wake started no agent, so the seat is told why and what it can start or push by hand. */
+function heldText({ repo, pr, headSha, round, kind, wake, held, findings }: ExitNoticeInput): string {
   return [
     `Shepherd: ${repo}#${pr} round ${round}: no fixer took the ${kind} wake at head ${headSha}.`,
     `Why: ${causeText("held", wake, held)}.`,
-    ...(heldPayload === undefined ? [] : [dataFence("wake findings", bounded(heldPayload, HELD_PAYLOAD_MAX_CHARS))]),
+    ...(findings === undefined ? [] : [`The reviewer's FIX_FIRST findings follow.\n${dataFence("review findings", findings)}`]),
     "The run waits for a new head, with no owner gate. Next: start a fixer on the PR's branch once agent-chat admits it, push a fix yourself, or close the PR to end the run.",
   ].join("\n");
 }
@@ -182,12 +180,6 @@ export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: 
 export const exitNoticeRoute = (now: () => number, ports: ExitNoticePorts | undefined): StepRoute =>
   codeRoute(EXIT_NOTICE_STEP, now, async (raw: unknown) => sendExitNotice(ports, ExitNoticeInput.parse(raw)));
 
-/** Why a held wake started no fixer, and the findings it would have carried. */
-export interface HeldCause {
-  reason: string;
-  payload?: string;
-}
-
 /** Heads a seat was told about, per run; a replay of the run's notice steps rebuilds the set. */
 const noticedHeads = new WeakMap<object, Set<string>>();
 
@@ -195,6 +187,12 @@ const noticedHeads = new WeakMap<object, Set<string>>();
 const SEAT_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "ci-red"]);
 
 type NoticeRun = GateRun & { state: { round: number } };
+
+/** Why a held wake's successor never started, and the FIX_FIRST findings it would have been handed. */
+export interface HeldNotice {
+  reason: string;
+  findings?: string;
+}
 
 /**
  * A run recorded before this step went straight to the sent-back gate. Where the record continues, only a recorded
@@ -212,11 +210,11 @@ function recordedWithoutNotice(run: NoticeRun): boolean {
  * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, no
  * record of the wake, or a run whose record took the gate without a notice.
  */
-export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: HeldCause): Promise<ExitNoticeResult | undefined> {
+export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: HeldNotice): Promise<ExitNoticeResult | undefined> {
   const noticed = noticedHeads.get(run.ctx) ?? noticedHeads.set(run.ctx, new Set()).get(run.ctx)!;
   if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined || recordedWithoutNotice(run)) return undefined;
-  const heldInput = { ...(held !== undefined && { held: held.reason }), ...(held?.payload !== undefined && { heldPayload: held.payload }) };
-  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...heldInput }, ExitNoticeResult);
+  const heldFields = { ...(held !== undefined && { held: held.reason }), ...(held?.findings !== undefined && { findings: held.findings }) };
+  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...heldFields }, ExitNoticeResult);
   if (result.sent) noticed.add(headSha);
   return result;
 }

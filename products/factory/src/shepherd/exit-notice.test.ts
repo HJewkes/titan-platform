@@ -9,7 +9,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { HELD_PAYLOAD_MAX_CHARS, REPORT_MAX_CHARS, exitCause, noticeText, sendExitNotice, type ExitNoticePorts, type LastReport } from "./exit-notice.js";
+import { REPORT_MAX_CHARS, exitCause, noticeText, sendExitNotice, type ExitNoticePorts, type LastReport } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeEvidence, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -183,8 +183,8 @@ describe("a woken fixer that exits with no push", () => {
 describe("a held send-back, whose successor agent-chat refused", () => {
   const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
 
-  function heldFixer(payload?: string): ShepherdPhases {
-    const held: HeldWake = { kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1", ...(payload !== undefined && { payload }) } };
+  function heldFixer(): ShepherdPhases {
+    const held: HeldWake = { kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } };
     return { ...exitedFixer(), wake: async () => held };
   }
 
@@ -202,19 +202,6 @@ describe("a held send-back, whose successor agent-chat refused", () => {
     expect(sends[0]!.text).toContain(REFUSAL);
     expect(sends[0]!.text).not.toContain("Last report");
     expect(w.host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
-  });
-
-  it("carries the held wake's findings to the seat, cut to the notice's cap", async () => {
-    const { sends, ports } = seat();
-    const fake = fakeGitHub();
-    const findings = `the parser drops the last field\n${"x".repeat(HELD_PAYLOAD_MAX_CHARS)}`;
-    const w = world(ports, fake, ":memory:", heldFixer(findings));
-    fake.addPr({ headSha: H1 });
-    const runId = start(w);
-
-    await waitingForHead(w.host, runId);
-
-    expect(sends[0]!.text).toContain(dataFence("wake findings", `${findings.slice(0, HELD_PAYLOAD_MAX_CHARS - 1)}…`));
   });
 
   it("opens the sent-back gate naming the refusal when the seat notice fails", async () => {

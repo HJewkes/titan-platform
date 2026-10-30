@@ -6,12 +6,13 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, ciRedFailing, sentBackGate, type GateRun } from "./gates.js";
-import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts, type HeldCause } from "./exit-notice.js";
+import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts, type HeldNotice } from "./exit-notice.js";
+import { HELD_VERDICT_STEPS, commentHeldVerdict, heldFindings, heldVerdictRoute } from "./held-verdict.js";
 import { seatOrGate } from "./gate-route.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
-/** The steps `afterFixerExit` records: the flake check, then the seat notice. */
-export const FIXER_EXIT_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }, ...EXIT_NOTICE_STEPS];
+/** The steps `afterFixerExit` and `afterHeldWake` record: the flake check, a held verdict's PR comment, then the seat notice. */
+export const FIXER_EXIT_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }, ...HELD_VERDICT_STEPS, ...EXIT_NOTICE_STEPS];
 
 const FlakeCheckResult = z.looseObject({ outside: z.boolean(), detail: z.string() });
 
@@ -52,7 +53,11 @@ function flakeCheckRoute(port: GitHubPort, now: () => number): StepRoute {
   return codeRoute(FLAKE_CHECK_STEP, now, async (input: FlakeCheckInput) => failuresOutsideDiff(port, input).catch((error: unknown) => ({ outside: false, detail: `the check could not read: ${error instanceof Error ? error.message : String(error)}` })));
 }
 
-export const fixerExitRoutes = (port: GitHubPort, now: () => number, exitNotice: ExitNoticePorts | undefined): StepRoute[] => [flakeCheckRoute(port, now), exitNoticeRoute(now, exitNotice)];
+export const fixerExitRoutes = (port: GitHubPort, now: () => number, exitNotice: ExitNoticePorts | undefined): StepRoute[] => [
+  flakeCheckRoute(port, now),
+  heldVerdictRoute(port, now),
+  exitNoticeRoute(now, exitNotice),
+];
 
 const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string(), workflowRunId: z.number().nullable() })) });
 
@@ -100,9 +105,14 @@ export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], he
   throw await noticeOrGate(run, { kind, headSha, payload }, exit, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`, leave);
 }
 
-/** A send-back whose successor agent-chat refused takes the same route as an exit with no push: the seat, else the owner. */
-export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, held: { reason: string; held: { agent: string; payload?: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
-  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: { reason: held.reason, ...(held.held.payload !== undefined && { payload: held.held.payload }) } };
+/**
+ * A send-back whose successor agent-chat refused takes the same route as an exit with no push: the seat, else the owner.
+ * A FIX_FIRST's findings otherwise live only in the reviewer's transcript, so they go on the PR and in the seat's notice.
+ */
+export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, held: { reason: string; held: { agent: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
+  const findings = heldFindings(kind, payload);
+  await commentHeldVerdict(run, headSha, findings);
+  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: { reason: held.reason, ...(findings !== undefined && { findings }) } };
   throw await noticeOrGate(run, { kind, headSha, payload }, exit, `a human abandoned the PR after no fixer could start at a ${kind} wake`, leave);
 }
 
@@ -110,7 +120,7 @@ export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], hea
  * The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. After a
  * fix-proof wake that gate also offers the owner's waive-proof, as the NO_REPRO send-back does.
  */
-async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: HeldCause }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
+async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: WakeRequest["kind"]; headSha: string; payload: unknown }, exit: { reason: string; wake?: WakeEvidence; held?: HeldNotice }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
   const tell = async () => {
     const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };

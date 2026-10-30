@@ -1,4 +1,4 @@
-import { drawnBeats, PAGE_KINDS, screenTokens, type DrawnBeat } from "./drawn-beats.js";
+import { drawnBeats, PAGE_KINDS, refusedBeats, screenTokens, type DrawnBeat } from "./drawn-beats.js";
 import { drawnTexts, isHeading, isLabel, type DrawnText } from "./drawn-texts.js";
 import type { L0Check } from "./eval-l0.js";
 import { countRow } from "./lint-text.js";
@@ -63,7 +63,7 @@ export const stillOpenings = (script: ScriptV1): { beat: string; kind: string; f
   });
 
 /** Q-D20: no heading the page draws holds more than 10 words, and no label more than 3 (qa's G9, predicted). */
-export const headingWordsCheck: L0Check = ({ script }) => [countRow("Q-D20", overlongTexts(script).map((found) => found.beat), "tagged")];
+export const headingWordsCheck: L0Check = ({ script }) => [countRow("Q-D20", [...refusedBeats(script), ...overlongTexts(script).map((found) => found.beat)], "tagged")];
 
 /** Q-D21: every predicted beat's picture moves within 0.2 s of its cut (qa's G7, predicted). */
-export const firstMotionCheck: L0Check = ({ script }) => [countRow("Q-D21", stillOpenings(script).map((found) => found.beat), "tagged")];
+export const firstMotionCheck: L0Check = ({ script }) => [countRow("Q-D21", [...refusedBeats(script), ...stillOpenings(script).map((found) => found.beat)], "tagged")];

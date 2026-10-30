@@ -1,7 +1,7 @@
 import { doctrine } from "./lint-cadence.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { draftFill } from "./script-fill.js";
-import type { FilledBeat } from "./template-fill/fill.js";
+import { FillError, type FilledBeat } from "./template-fill/fill.js";
 
 /**
  * The script's template beats as the page will draw them (TP-4470): resolve's template fill, fallbacks included, which
@@ -56,4 +56,14 @@ export function drawnBeats(script: ScriptV1): DrawnBeat[] {
   const found = drawn(script);
   drawnByScript.set(script, found);
   return found;
+}
+
+/**
+ * Beats the fill refuses, which draw nothing here (a cue-target fault still fills, so it is not one). A row that
+ * predicts qa from the drawn beats lists them as findings, so a script it cannot read fails instead of passing
+ * unchecked; the template-fill row carries the fault itself.
+ */
+export function refusedBeats(script: ScriptV1): string[] {
+  const filled = draftFill(script, doctrine().specs);
+  return filled instanceof FillError ? filled.refusals.map((refusal) => refusal.beat) : [];
 }
