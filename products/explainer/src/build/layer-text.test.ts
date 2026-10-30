@@ -1,9 +1,9 @@
-import { DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
+import { classify, DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
 import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
-import { heldLowContrast, qaSamplings } from "../qa/layer-contrast.js";
-import { badTextRows, contrastRows, distinctRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
+import { heldAtSamples, qaSamplings } from "../qa/layer-contrast.js";
+import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
 const AT = { x: 0, y: 0, w: 10, h: 10 };
@@ -84,10 +84,10 @@ describe("the layer check's contrast rows", () => {
 
   it("the build check and qa's low-contrast gate agree on the same element", () => {
     // Arrange
-    const held = heldLowContrast(SAMPLINGS, () => [WHITE_ON_AMBER]);
+    const held = heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]);
 
     // Act
-    const rows = contrastRows(held);
+    const rows = heldRows(held);
     const { below } = contrastReport([], held, CONTRAST, DEFAULT_OPTIONS).text;
 
     // Assert
@@ -100,7 +100,7 @@ describe("the layer check's contrast rows", () => {
     const findingsAt = shownAt([1.9, 6.9], SLIDING_CHIP);
 
     // Act
-    const rows = contrastRows(heldLowContrast(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
 
     // Assert
     expect(rows).toEqual([]);
@@ -111,7 +111,7 @@ describe("the layer check's contrast rows", () => {
     const findingsAt = shownAt([1.9, 5], SLIDING_CHIP);
 
     // Act
-    const rows = contrastRows(heldLowContrast(SAMPLINGS, findingsAt));
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
 
     // Assert
     expect(rows.map((row) => [row.text, row.atS])).toEqual([["cleared", 1.9]]);
@@ -119,7 +119,7 @@ describe("the layer check's contrast rows", () => {
 
   it("tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix", () => {
     // Arrange
-    const rows = contrastRows(heldLowContrast(SAMPLINGS, () => [WHITE_ON_AMBER]));
+    const rows = heldRows(heldAtSamples(SAMPLINGS, () => [WHITE_ON_AMBER]));
 
     // Act
     const hint = layerTextHint(rows);
@@ -129,5 +129,22 @@ describe("the layer check's contrast rows", () => {
       "the last build broke qa's text rules: low-contrast on div#count \"12\" (#ffffff on #f5a524 is 2.04:1, under the 3:1 its size needs: "
         + "text on a filled shape uses that fill's on- text token, as var(--color-on-brand-primary) on var(--color-brand-primary-solid), or use a darker fill)",
     );
+  });
+
+  // catches: a build check that holds only low-contrast at qa's samples, so qa refuses an off-frame card the build passed
+  it("the layer build check holds off-frame the same way qa does", () => {
+    // Arrange
+    const card: Finding = { kind: "off-frame", el: "div.lane", text: "Deploy", at: AT };
+    const passing: Finding = { kind: "off-frame", el: "div.chip", text: "cleared", at: AT };
+    const findingsAt = (t: number) => [...shownAt([1.9, 5], card)(t), ...shownAt([6.9], passing)(t)];
+    const qaHeld = SAMPLINGS.flatMap((moments) => classify(moments.map((m) => ({ ...m, contentRuns: 0, findings: findingsAt(m.t) }))).errors);
+
+    // Act
+    const rows = heldRows(heldAtSamples(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows.map((row) => [row.rule, row.element, row.atS])).toEqual([["off-frame", "div.lane", 1.9]]);
+    expect([...new Set(qaHeld.map((held) => held.finding.el))]).toEqual(["div.lane"]);
+    expect(layerTextHint(rows)).toContain("off-frame on div.lane \"Deploy\" (keep every painted part inside the 1920 by 1080 frame");
   });
 });

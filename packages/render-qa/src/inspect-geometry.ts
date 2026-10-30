@@ -111,16 +111,46 @@ function innerOf(h: Inspector, el: Element): Rect {
   return h.rect(r.left + parseFloat(s.borderLeftWidth), r.top + parseFloat(s.borderTopWidth), r.right - parseFloat(s.borderRightWidth), r.bottom - parseFloat(s.borderBottomWidth))
 }
 
-/** The part of `r` left after every `clip-path: inset(...)` on `el` and its ancestors. */
+/** A rotation or skew on `el` or an ancestor: an inset's edges no longer run along the page axes. */
+function turned(_h: Inspector, el: Element): boolean {
+  for (let e: Element | null = el; e && e.nodeType === 1; e = e.parentElement) {
+    const s = getComputedStyle(e)
+    if (s.rotate !== 'none' && parseFloat(s.rotate) !== 0) return true
+    if (s.transform === 'none') continue
+    const m = /^matrix\(([^)]*)\)/.exec(s.transform)
+    if (!m || (m[1] ?? '').split(',').slice(1, 3).some((v) => Math.abs(parseFloat(v)) > 1e-6)) return true
+  }
+  return false
+}
+
+/**
+ * The page rect `e`'s `clip-path: inset(...)` leaves of its border box, `undefined` when it has none or one this cannot
+ * read (a calc()). Percentages are of the box; lengths scale with it, since `e`'s drawn box may be scaled.
+ */
+function insetOf(h: Inspector, e: Element): Rect | undefined {
+  const m = /^inset\(([^)]*)\)/.exec(getComputedStyle(e).clipPath)
+  if (!m) return undefined
+  const box = h.asR(e.getBoundingClientRect())
+  const local = e instanceof HTMLElement ? [e.offsetWidth, e.offsetHeight] : [box.width, box.height]
+  const len = (v: string | undefined, side: number, own: number) => (v?.endsWith('%') ? (side * parseFloat(v)) / 100 : parseFloat(v ?? '0') * (own > 0 ? side / own : 1))
+  const v = (m[1] ?? '').split(/\s+round\s/)[0]!.trim().split(/\s+/)
+  const [t, r, b, l] = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]]
+  const [w, ht] = [box.width, box.height]
+  const c = h.rect(box.left + len(l, w, local[0]!), box.top + len(t, ht, local[1]!), box.right - len(r, w, local[0]!), box.bottom - len(b, ht, local[1]!))
+  return [c.left, c.top, c.right, c.bottom].some(Number.isNaN) ? undefined : c
+}
+
+/**
+ * The part of `r` left after every `clip-path: inset(...)` on `el` and its ancestors: what is painted. Null when the
+ * clips leave nothing. Under a rotation or skew the inset math is unclear, so `r` is kept whole.
+ */
 function clipped(h: Inspector, el: Element, r: Rect): Rect | null {
+  if (h.turned(el)) return r
   let out = r
   for (let e: Element | null = el; e && e.nodeType === 1; e = e.parentElement) {
-    const m = /^inset\(([^)]*)\)/.exec(getComputedStyle(e).clipPath)
-    if (!m) continue
-    const v = (m[1] ?? '').trim().split(/\s+/).map(parseFloat)
-    const [t, rt, b, l] = [v[0] ?? 0, v[1] ?? v[0] ?? 0, v[2] ?? v[0] ?? 0, v[3] ?? v[1] ?? v[0] ?? 0]
-    const box = h.asR(e.getBoundingClientRect())
-    const c = h.rect(Math.max(out.left, box.left + l), Math.max(out.top, box.top + t), Math.min(out.right, box.right - rt), Math.min(out.bottom, box.bottom - b))
+    const clip = h.insetOf(e)
+    if (!clip) continue
+    const c = h.rect(Math.max(out.left, clip.left), Math.max(out.top, clip.top), Math.min(out.right, clip.right), Math.min(out.bottom, clip.bottom))
     if (c.width <= 0 || c.height <= 0) return null
     out = c
   }
@@ -132,7 +162,8 @@ function shown(h: Inspector, el: Element): boolean {
 }
 
 export const GEOMETRY_STEPS: PartialSteps<'rgba' | 'opacity' | 'describe' | 'r4' | 'rect' | 'inter' | 'shrink' | 'unionRect' | 'asR' | 'related'
-  | 'decor' | 'inFlight' | 'within' | 'sitsOn' | 'isBox' | 'isPainted' | 'textOf' | 'twinOf' | 'add' | 'innerOf' | 'clipped' | 'shown'> = {
+  | 'decor' | 'inFlight' | 'within' | 'sitsOn' | 'isBox' | 'isPainted' | 'textOf' | 'twinOf' | 'add' | 'innerOf' | 'turned' | 'insetOf' | 'clipped'
+  | 'shown'> = {
   rgba, opacity, describe, r4, rect, inter, shrink, unionRect, asR, related, decor, inFlight, within, sitsOn, isBox, isPainted, textOf, twinOf, add,
-  innerOf, clipped, shown,
+  innerOf, turned, insetOf, clipped, shown,
 }

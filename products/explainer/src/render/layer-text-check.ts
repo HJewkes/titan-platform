@@ -2,11 +2,11 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DEFAULT_OPTIONS, type Finding, type InspectOptions, type Moment, type ProbedMoment } from "@titan-design/render-qa";
-import { badTextRows, contrastRows, distinctRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
+import { badTextRows, distinctRows, heldRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";
 import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js";
-import { heldLowContrast, qaSamplings } from "../qa/layer-contrast.js";
+import { heldAtSamples, qaSamplings } from "../qa/layer-contrast.js";
 import { narrationRows } from "../qa/layer-narration.js";
 import { timelineFromArtifact } from "../qa/qa-timeline.js";
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
@@ -36,7 +36,7 @@ async function layerPage(input: LayerCheckInput, built: BuiltPage, scratch: stri
 interface Moments {
   /** Each reveal once it settles, then the beat's end: the text rules and the probes read these. */
   reveal: readonly number[];
-  /** qa's own samples, which the low-contrast rule is held over, as qa holds it. */
+  /** qa's own samples, which the low-contrast and off-frame rules are held over, as qa holds them. */
   samplings: readonly Moment[][];
 }
 
@@ -53,15 +53,15 @@ async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: 
     rows.push(...qaRows(beat, t, findings.get(t)!));
     probed.push(...(await page.probe([{ beat, t }])));
   }
-  const contrast = contrastRows(heldLowContrast(moments.samplings, (t) => findings.get(t) ?? []));
-  return distinctRows([...rows, ...contrast, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
+  const sampled = heldRows(heldAtSamples(moments.samplings, (t) => findings.get(t) ?? []));
+  return distinctRows([...rows, ...sampled, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
 }
 
 /**
  * The $0 check after a layer build: the layer alone on the composition page, seeked to each reveal point, held to qa's
  * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts and G10 rules
- * against the beat's spoken words. Low-contrast text is held only where qa would hold it: over qa's own samples, by its
- * persistence rule. No model call; Chromium only.
+ * against the beat's spoken words. Low-contrast text and off-frame elements are held only where qa would hold them: over qa's
+ * own samples, by its persistence rule. No model call; Chromium only.
  */
 export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerTextCheck {
   const engine = deps.engine ?? chromiumQaEngine();

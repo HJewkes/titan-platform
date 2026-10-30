@@ -92,6 +92,12 @@ const { black, silence, freeze } = await mediaScan('out/video.mp4') // each a li
 A `low-contrast` finding carries the run's `ratio`, the `need` its size called for, and its text and ground colours
 as drawn (`fg`, `bg`, `#rrggbb`), so a caller can name the fix without measuring again.
 
+The box rules (`off-frame`, `box-overlap`, `text-box`, `edge-crossing`, `crowding`, `content-overflow`) and a text
+run's `off-frame` judge what is painted: the layout box less what a `clip-path: inset(...)` on the element or an
+ancestor hides, percentages read against the box. A box clipped away whole is not judged, so a card waiting for its
+cue behind a clip reveal is not off-frame; a partly clipped one is judged, and annotated, on its painted rect. Under a
+rotation or skew the inset's edges leave the page axes, so the layout box is kept.
+
 ## The data-qa-* protocol
 
 A page tells the inspector what its layout means with attributes on its own elements.
