@@ -27,6 +27,24 @@
       "kills": [
         "a task's detail renders the shell first, then fills in branch pull requests and mentions"
       ]
+    },
+    {
+      "name": "a later page replaces the rows already shown",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "const rows = [...shown, ...page.tasks];",
+      "replace": "const rows = [...page.tasks];",
+      "kills": [
+        "the tasks list shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor"
+      ]
+    },
+    {
+      "name": "the first page shows no skeleton while it loads",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "if (tasks.status === \"loading\") return <TasksSkeleton />;",
+      "replace": "if (tasks.status === \"loading\") return null;",
+      "kills": [
+        "the tasks list shows loading, empty and failed states"
+      ]
     }
   ]
 }

@@ -84,7 +84,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("work.task", { id: "AA-1" }, { maxMs: 9800, maxBytes: 1 * KB, maxUpstreamCalls: 4 }),
   row("work.taskArtifacts", { id: "AA-1", slug: "amber-00" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1 }),
   row("work.taskMentions", { id: "AA-1" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1 }),
-  row("work.tasks", {}, { maxMs: 9700, maxBytes: 2304 * KB }),
+  row("work.tasks", {}, { maxMs: 9700, maxBytes: 12 * KB }),
 ];
 
 export function budgetFor(rpc: string): RpcBudget | undefined {

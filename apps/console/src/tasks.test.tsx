@@ -29,10 +29,10 @@ const ROWS = [
   row("LD-3", { slug: "lantern-docs", title: "Merge the battery chapters", severity: "medium", stage: "in-progress", stageReason: "Worktree on branch pc-ld-3 in example/lantern", stageGuessed: false }),
 ];
 
-const tasksOf = (rows: readonly Row[], perStage?: number): TasksResult => ({
+const tasksOf = (rows: readonly Row[]): TasksResult => ({
   fetchedAt: "2031-03-05T00:00:00.000Z",
   evidence: { repos: ["example/orbit"], degraded: [] },
-  ...listPage(rows, perStage === undefined ? {} : { perStage }),
+  ...listPage(rows, {}),
 });
 
 const TASKS = tasksOf(ROWS);
@@ -74,28 +74,28 @@ const deferred = (mentions: TaskMentions = MENTIONS, artifacts: TaskArtifacts = 
   [snapshotKey("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" })]: successEnvelope(artifacts),
 });
 
-/** The unfiltered `work.tasks` answer each recorded snapshot holds, which a filtered read is cut from. */
-const unfiltered = new WeakMap<Snapshot, TasksResult>();
+/** Every row behind each recorded snapshot's unfiltered first page, which a filtered or later page is cut from. */
+const unfiltered = new WeakMap<Snapshot, { tasks: TasksResult; rows: readonly Row[] }>();
 
-function recorded(tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred()): Snapshot {
+function recorded(tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred(), rows: readonly Row[] = tasks.tasks): Snapshot {
   const snapshot = snapshotOf({
     ...later,
     [snapshotKey("work.tasks", {})]: successEnvelope(tasks),
     [snapshotKey("work.task", { id: "OR-1" })]: successEnvelope(detail),
     [snapshotKey("work.task", { id: "OR-404" })]: errorEnvelope("No task OR-404 in any initiative", EXIT.NOINPUT),
   });
-  unfiltered.set(snapshot, tasks);
+  unfiltered.set(snapshot, { tasks, rows });
   return snapshot;
 }
 
-/** Answers a filtered `work.tasks` from the recorded unfiltered one, through the server's own filter. */
+/** Answers a filtered or later `work.tasks` page from the recorded rows, through the server's own filter. */
 function snapshotSource(snapshot: Snapshot): DataSource {
   const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
   return {
     call: async (name, args, options) => {
       const all = unfiltered.get(snapshot);
       if (name !== "work.tasks" || all === undefined || Object.keys(args ?? {}).length === 0) return inner.call(name, args, options);
-      return successEnvelope({ ...all, ...listPage(all.tasks, tasksArgs.parse(args)) });
+      return successEnvelope({ ...all.tasks, ...listPage(all.rows, tasksArgs.parse(args)) });
     },
     subscribe: (handlers, options) => inner.subscribe(handlers, options),
   };
@@ -187,12 +187,18 @@ describe("the tasks list", () => {
     expect(await screen.findByText(/Could not load tasks/)).toBeTruthy();
   });
 
-  it("titles a capped stage with every match and says the rest are filtered out", async () => {
-    renderConsole("#/tasks", recorded(tasksOf([...ROWS, row("OR-5", { title: "Name the relays" })], 1)));
+  it("shows the first 50 rows, titles each stage with every match, and loads the rest on the cursor", async () => {
+    const many = Array.from({ length: 60 }, (_, n) => row(`OR-${n + 100}`, {}));
+    renderConsole("#/tasks", recorded(tasksOf(many), DETAIL, deferred(), many));
     await screen.findByTestId("stage-group-ready");
-    expect(within(group("ready")).getByText("Ready (2)")).toBeTruthy();
-    expect(within(group("ready")).getByText("Showing the first 1 by priority; filter to see the rest.")).toBeTruthy();
-    expect(within(group("review")).queryByText(/Showing the first/)).toBeNull();
+    expect(shownIds()).toHaveLength(50);
+    expect(within(group("ready")).getByText("Ready (60)")).toBeTruthy();
+    expect(within(group("ready")).getByText("Showing 50 of 60 by priority; load more or filter to see the rest.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Load more (50 of 60 shown)"));
+    await screen.findByTestId("task-row-OR-159");
+    expect(shownIds()).toEqual(many.map((entry) => entry.id));
+    expect(screen.queryByText(/^Load more/)).toBeNull();
+    expect(within(group("ready")).queryByText(/^Showing/)).toBeNull();
   });
 
   it("warns when stage evidence is degraded", async () => {

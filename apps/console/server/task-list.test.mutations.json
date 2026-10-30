@@ -11,13 +11,13 @@
       ]
     },
     {
-      "name": "the list sends every row of each stage again",
+      "name": "the list sends every matching row again",
       "file": "apps/console/server/task-list.ts",
-      "find": "++counts[row.stage] <= perStage",
-      "replace": "++counts[row.stage] > 0",
+      "find": "const end = start + (args.limit ?? LIMIT);",
+      "replace": "const end = Infinity;",
       "kills": [
-        "a task list page caps each stage at perStage rows in the given order, and still counts every match",
-        "a task list page caps at 200 rows a stage by default"
+        "a task list page sends limit rows in the given order with a cursor to the rest, and still counts every match",
+        "a task list page sends 50 rows by default"
       ]
     },
     {
@@ -27,6 +27,16 @@
       "replace": "initiatives: [...new Set(tasks.map((row) => row.slug))].sort()",
       "kills": [
         "a task list page names every initiative with a row, whatever the filters"
+      ]
+    },
+    {
+      "name": "the cursor is ignored and every page restarts at the first row",
+      "file": "apps/console/server/task-list.ts",
+      "find": "const start = Number(args.cursor ?? 0);",
+      "replace": "const start = 0;",
+      "kills": [
+        "a task list page walks every matching row once by following the cursor, ending on a null cursor",
+        "a task list page pages the filtered rows, not every row"
       ]
     }
   ]

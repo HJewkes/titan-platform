@@ -4,6 +4,7 @@ import type { ServedCommands } from "../../src/data/rpc.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
 import { TWIN_VIDEO_EDITS, TWIN_VIDEO_PROPS } from "./video-props.js";
+import { listPage, listRow, type TasksArgs } from "../task-list.js";
 
 type Served = ServedCommands;
 export type TwinCommand = keyof Served & string;
@@ -213,11 +214,9 @@ const TASKS = [
 
 const EVIDENCE = { repos: ["orbit/relay"], degraded: [] };
 
-function tasksAnswer(rows: readonly TaskRow[]): TasksResult {
-  const counts: TasksResult["counts"] = { blocked: 0, ready: 0, "in-progress": 0, review: 0, done: 0 };
-  for (const row of rows) counts[row.stage] += 1;
-  const tasks = rows.map(({ slug, id, title, severity, stage, stageReason, stageGuessed }) => ({ slug, id, title, ...(severity ? { severity } : {}), stage, stageReason, stageGuessed }));
-  return { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks, counts, initiatives: [...new Set(TASKS.map((row) => row.slug))].sort(), evidence: EVIDENCE };
+/** Cut by the server's own filter and pager, so a twin page reads exactly what the daemon would send for those args. */
+function tasksAnswer(args: TasksArgs): TasksResult {
+  return { fetchedAt: new Date(TWIN_NOW).toISOString(), ...listPage(TASKS.map(listRow), args), evidence: EVIDENCE };
 }
 
 const TASK_DETAIL: Served["work.task"]["result"] = {
@@ -319,8 +318,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.list", { limit: 50 }, { sessions: SESSIONS, nextBefore: null, degraded: null }),
   answer("sessions.list", { agent: "relay-builder", limit: 50 }, { sessions: SESSIONS.slice(0, 1), nextBefore: null, degraded: null }),
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
-  answer("work.tasks", {}, tasksAnswer(TASKS)),
-  answer("work.tasks", { stage: "blocked" }, tasksAnswer(TASKS.filter((row) => row.stage === "blocked"))),
+  ...[{}, { stage: "blocked" as const }, { initiative: "orbit-relay" }].map((args) => answer("work.tasks", args, tasksAnswer(args))),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
   answer("work.taskMentions", { id: "OR-12" }, { mentions: [], degraded: null }),
   answer("work.taskArtifacts", { id: "OR-12", slug: TASK_DETAIL.task.slug }, { branches: [], degraded: [] }),
