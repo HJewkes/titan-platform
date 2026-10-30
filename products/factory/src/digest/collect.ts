@@ -109,9 +109,9 @@ function autoPassSection(rows: readonly WatchRow[], since: Date): Pick<DigestMod
   return passed.length > 0 ? { autoPassed: passed } : {};
 }
 
-function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting"> {
-  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
-  return waiting.length > 0 ? { waiting } : {};
+function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting" | "ownerGateAlarm"> {
+  const owner = waitingGates(rows, now).owner;
+  return owner.length > 0 ? { waiting: owner.slice(0, WAITING_SHOWN), ownerGateAlarm: owner } : {};
 }
 
 /** Owner friction and flow, the sections that are left out when their port is missing or fails. */
