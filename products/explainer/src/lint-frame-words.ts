@@ -58,4 +58,7 @@ function frameCount(beat: DrawnBeat): FrameCount | undefined {
 export const frameCounts = (script: ScriptV1): FrameCount[] => drawnBeats(script).flatMap((beat) => frameCount(beat) ?? []);
 
 /** Q-D15: no template beat's fullest frame holds more than 20 words (qa's words-per-frame, predicted from the script). */
-export const frameWordsCheck: L0Check = ({ script }) => [countRow("Q-D15", [...refusedBeats(script), ...frameCounts(script).filter((count) => count.words > FRAME_MAX_WORDS).map((count) => count.beat)], "tagged")];
+export const frameWordsCheck: L0Check = ({ script }) => {
+  const over = frameCounts(script).filter((count) => count.words > FRAME_MAX_WORDS).map((count) => count.beat);
+  return [countRow("Q-D15", [...refusedBeats(script), ...over], "tagged")];
+};
