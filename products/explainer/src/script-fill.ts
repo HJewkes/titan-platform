@@ -46,11 +46,27 @@ function cueFault(beat: FilledBeat, specs: ReadonlyMap<string, BeatSpec>, failur
  * sim beat that falls back has no slots to sweep, so resolve cuts it and its cues are never drawn.
  */
 function cueTargetFaults(draft: ScriptV1, filled: FilledScript, specs: ReadonlyMap<string, BeatSpec>): DraftFillFault[] {
-  const byId = new Map(filled.beats.filter((beat) => beat.fallback?.from !== SIM_BEAT).map((beat) => [beat.id, beat]));
-  const beats = draft.beats.flatMap(({ id, visual }) => (byId.has(id) ? [{ id, visual: { ...visual, beat: byId.get(id)!.spec } }] : []));
-  const failures = emphasisTargetGate({ beats, specs, slots: Object.fromEntries(filled.beats.map((beat) => [beat.id, beat.slots])) });
+  const { byId, failures } = cueTargetFailures(draft, filled, specs);
   const failed = [...new Set(failures.map((f) => f.beat))];
   return failed.map((id) => cueFault(byId.get(id)!, specs, failures.filter((f) => f.beat === id)));
+}
+
+function cueTargetFailures(draft: ScriptV1, filled: FilledScript, specs: ReadonlyMap<string, BeatSpec>) {
+  const byId = new Map(filled.beats.filter((beat) => beat.fallback?.from !== SIM_BEAT).map((beat) => [beat.id, beat]));
+  const beats = draft.beats.flatMap(({ id, visual }) => (byId.has(id) ? [{ id, visual: { ...visual, beat: byId.get(id)!.spec } }] : []));
+  return { byId, failures: emphasisTargetGate({ beats, specs, slots: Object.fromEntries(filled.beats.map((beat) => [beat.id, beat.slots])) }) };
+}
+
+/**
+ * Per beat, the indexes of the cues whose target names no element the fill draws, for the beats whose every refused
+ * cue is such an orphan: a cue that names two elements is left to the repair, since dropping it would hide a choice.
+ */
+export function orphanCues(draft: ScriptV1, specs: ReadonlyMap<string, BeatSpec> = loadBeatSpecs()): ReadonlyMap<string, readonly number[]> {
+  const filled = draftFill(draft, specs);
+  if (filled instanceof FillError) return new Map();
+  const { failures } = cueTargetFailures(draft, filled, specs);
+  const beats = [...new Set(failures.map((f) => f.beat))].filter((beat) => failures.every((f) => f.beat !== beat || f.problem === "no-element"));
+  return new Map(beats.map((beat) => [beat, failures.filter((f) => f.beat === beat).map((f) => f.cue)]));
 }
 
 /** Resolve's template fill run on the draft's fillable beats, with no slots pin and no code, or the FillError it throws. */

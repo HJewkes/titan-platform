@@ -26,6 +26,7 @@ import {
 } from "./script-draft.js";
 import { hinted, keptOverSeed, splitStart } from "./split-start.js";
 import { holdStillBeats } from "../still-seed.js";
+import { dropOrphanCues } from "../orphan-cues.js";
 import { StageFailure } from "./stage-failure.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
@@ -95,7 +96,8 @@ export const MAX_REPAIR_ROUNDS = 4;
  * kept only when it parses and fails fewer rows, or the same rows over fewer beats, so a round never makes the script worse.
  */
 async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
-  const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];
+  const errorRows = (script: ScriptV1) => failingErrors(lint.rows(script));
+  const failing = (script: ScriptV1) => [...errorRows(script), ...fillRows(script)];
   const seedFailing = failing(draft.script);
   const seedRows = seedFailing.length;
   if (seedRows === 0) return undefined;
@@ -109,10 +111,11 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
     prompt: (script, rows) => repairPrompt(prompt, script, hinted(hints, failureList(rows, rules, script, lint), start.hint)),
     read: (outcome) => checked(outcome, plan),
     // A reply can drop the seed's hold or leave a button still, and code holds one with no model call.
-    settle: (script) => settle(holdStillBeats(script)),
+    settle: (script) => settle(dropOrphanCues(holdStillBeats(script), errorRows).script),
   });
   const kept = keptOverSeed(repaired, draft, seedFailing);
-  const detail = `${kept.before} failing error checks before repair, ${kept.after} after`;
+  const spliced = kept.spliced.length > 0 ? `; spliced chapters ${kept.spliced.join(", ")}` : "";
+  const detail = `${kept.before} failing error checks before repair, ${kept.after} after${spliced}`;
   return { ...kept, candidates: [...start.candidates, ...kept.candidates], hints, check: { name: "l0-repair", gate: false, pass: kept.after === 0, detail } };
 }
 
@@ -153,7 +156,7 @@ async function repairedDraft(call: Call, prompt: string, plan: ScriptPlan, lint:
 
 /** The single-call path: one draft call and its one retry, the ledger stamp, then the L0 repair rounds. */
 async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint): Promise<Written> {
-  const draft = await draftScript(call, prompt, wholeScript(plan));
+  const draft = await draftScript(call, prompt, wholeScript(plan, (script) => failingErrors(lint.rows(script))));
   const retries = draft.retried ? 1 : 0;
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
@@ -165,8 +168,9 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
  * rows need. Its own name, not `draft`, keeps a base whose plan holds a draft from turning a later run into a resume.
  */
 async function seededDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint, seed: ScriptV1): Promise<Written> {
-  const stamped = stampLedgerTerms(planned(seed, plan), lint.spine, lint.rows);
-  return repairedDraft(call, prompt, plan, lint, { stamped, usage: NO_USAGE, retries: 0, stripped: [], dropped: [], retimed: [] });
+  const { script, moves } = dropOrphanCues(planned(seed, plan), (candidate) => failingErrors(lint.rows(candidate)));
+  const stamped = stampLedgerTerms(script, lint.spine, lint.rows);
+  return repairedDraft(call, prompt, plan, lint, { stamped, usage: NO_USAGE, retries: 0, stripped: [], dropped: moves, retimed: [] });
 }
 
 /** Each call's kind and spend, kept in `calls` for the stage's per-call note. */

@@ -22,10 +22,19 @@
     {
       "name": "a model reply is not held by code",
       "file": "products/explainer/src/workflow/model-stages.ts",
-      "find": "settle: (script) => settle(holdStillBeats(script)),",
-      "replace": "settle,",
+      "find": "settle(dropOrphanCues(holdStillBeats(script), errorRows).script)",
+      "replace": "settle(dropOrphanCues(script, errorRows).script)",
       "kills": [
         "a reply that leaves the closing button still is held by code and kept"
+      ]
+    },
+    {
+      "name": "a seed keeps its orphan cues",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "dropOrphanCues(planned(seed, plan), (candidate) => failingErrors(lint.rows(candidate)))",
+      "replace": "({ script: planned(seed, plan), moves: [] as string[] })",
+      "kills": [
+        "an orphan cue target in the seed is dropped by code, so a seed whose only fault it was makes no model call"
       ]
     }
   ]

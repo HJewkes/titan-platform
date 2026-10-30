@@ -14,11 +14,13 @@ import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import type { RuleRegistry } from "../rules.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
 import { FILL_RULE, fillHint, TEMPLATE_FILL_ID } from "../script-fill.js";
+import { dropOrphanCues } from "../orphan-cues.js";
 import { parseScript } from "../script-load.js";
 import { DraftScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } from "../unknown-words.js";
+import { spliceChapters, type Measured } from "./chapter-splice.js";
 import { issueText, repairReply, replyObject } from "./script-reply.js";
 import { addUsage, NO_USAGE, type Check, type StageUsage } from "./records.js";
 
@@ -204,9 +206,11 @@ export type Call = (prompt: string, kind?: string) => Promise<StepRunOutcome>;
 export interface Reader {
   check: (outcome: StepRunOutcome) => Checked;
   faults: (script: ScriptV1) => string[];
+  /** The failing L0 rows a $0 orphan-cue drop must not add to; absent, a reply keeps its orphaned cues for the retry. */
+  failing?: (script: ScriptV1) => L0Result[];
 }
 
-export const wholeScript = (plan: ScriptPlan): Reader => ({ check: (outcome) => checked(outcome, plan), faults: planFaults });
+export const wholeScript = (plan: ScriptPlan, failing?: Reader["failing"]): Reader => ({ check: (outcome) => checked(outcome, plan), faults: planFaults, ...(failing ? { failing } : {}) });
 
 export interface Draft extends Checked {
   usage: StageUsage;
@@ -215,11 +219,13 @@ export interface Draft extends Checked {
   retimed: string[];
 }
 
-/** A parsed reply re-timed against the reader's own faults, so a draft that only needs seconds costs no retry. */
+/** A parsed reply with its orphan cues dropped and re-timed against the reader's own faults, so a draft that only needs those costs no retry. */
 function retimedReply(reply: Checked, reader: Reader): Checked & { retimed: string[] } {
   if (!reply.script) return { ...reply, retimed: [] };
-  const { draft, moves } = retimeOverBudget(reply.script, reader.faults);
-  return { ...reply, script: draft, retimed: moves };
+  const orphans = reader.failing ? dropOrphanCues(reply.script, reader.failing) : { script: reply.script, moves: [] };
+  const { draft, moves } = retimeOverBudget(orphans.script, reader.faults);
+  const dropped = [...(reply.dropped ?? []), ...orphans.moves];
+  return { ...reply, script: draft, retimed: moves, ...(dropped.length > 0 ? { dropped } : {}) };
 }
 
 /** One retry naming each beat over resolve's word cap and the runtime; kept only when it parses and fails fewer. */
@@ -318,6 +324,8 @@ export interface Repaired {
   dropped?: string[];
   /** Every round's reply, kept or rejected, so a failed stage can store what the repair tried. */
   candidates: Candidate[];
+  /** The chapters spliced in from replies the rounds did not keep, as `ships from reply 2`. */
+  spliced: string[];
 }
 
 /** One round's reply as the stage stores it: the parsed script before its ledger stamp, else the reply's own text. */
@@ -362,15 +370,10 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
 export const asksFrom = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
   after.length !== before.length ? after.length < before.length : failingBeats(after) < failingBeats(before) || (failingBeats(after) === failingBeats(before) && bringsInRule(after, before));
 
-interface Measured {
-  stamped: Stamped;
-  rows: L0Result[];
-}
-
 /**
  * Up to `rounds` rounds. A reply is kept when it makes progress over the kept script (`makesProgress`). Each round asks
  * from the best reply so far (`asksFrom`), relinted, so its hint names that reply's own rows and never a stretch an
- * earlier round already fixed.
+ * earlier round already fixed. After the last round, the chapters of the replies not kept are spliced in where they help.
  */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
   let kept: Measured = { stamped: start, rows: loop.failing(start.script) };
@@ -379,6 +382,7 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let usage = NO_USAGE;
   let keptReply: Pick<Repaired, "stripped" | "dropped"> = {};
   const candidates: Candidate[] = [];
+  const replies: (Measured & { kind: string })[] = [];
   for (let round = 0; round < loop.rounds && kept.rows.length > 0; round++) {
     const { reply, usage: spent, candidate } = await roundReply(call, loop, base.stamped.script, base.rows, `repair-${round + 1}`);
     usage = addUsage(usage, spent);
@@ -386,10 +390,14 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
     const stamped = reply.script && loop.settle(reply.script);
     if (!stamped) continue;
     const next = { stamped, rows: loop.failing(stamped.script) };
+    replies.push({ ...next, kind: `repair-${round + 1}` });
     if (makesProgress(next.rows, kept.rows)) [kept, keptReply] = [next, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
     if (asksFrom(next.rows, base.rows)) base = next;
   }
-  return { ...kept.stamped, usage, before, after: kept.rows.length, rows: kept.rows, candidates, ...keptReply };
+  // Only into a kept reply: a start the code made (a split, a still seed) is never an answer, so no splice makes it one.
+  const answered = keptReply.stripped !== undefined;
+  const { kept: final, spliced } = answered ? spliceChapters(kept, replies, { failing: loop.failing, settle: loop.settle, better: makesProgress }) : { kept, spliced: [] };
+  return { ...final.stamped, usage, before, after: final.rows.length, rows: final.rows, candidates, spliced, ...keptReply };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */
