@@ -43,7 +43,8 @@ const ITEM_TARGET = /^(.+)-(\d+)$/;
 /** The words of the slot element a reveal targets: a `<field>-<n>` item's drawn fields, or a whole slot. */
 function targetWords(slots: Record<string, unknown>, target: string): Set<string> {
   const item = ITEM_TARGET.exec(target);
-  const field = item && Array.isArray(slots[item[1]!]) ? (slots[item[1]!] as unknown[])[Number(item[2]) - 1] : slots[target];
+  const items: unknown = item ? slots[item[1]!] : undefined;
+  const field: unknown = item && Array.isArray(items) ? items[Number(item[2]) - 1] : slots[target];
   const leaves = isSlots(field) ? Object.entries(field).filter(([key]) => key !== "id").map(([, value]) => value) : [field];
   return new Set(leaves.flatMap((leaf) => (typeof leaf === "string" || typeof leaf === "number" ? screenTokens(String(leaf)) : [])));
 }
