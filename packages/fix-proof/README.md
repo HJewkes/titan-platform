@@ -36,6 +36,13 @@ the `fix-proof` bin does the git and vitest work.
   vitest and builtins that cannot start a process, worker or evaluated source needs none, since
   no mutation may target a carried file), no test was
   deleted or renamed out of the tests, and every selected test ran and passed at head: the proof a test-only diff can give.
+- `proofStanding(read, head)`: the one reading of a fix-proof read (`ProofReadInput`: a judged
+  line, trusted or `untrusted`, a workflow-only diff's `workflow-ci` read, an `error` read, or a
+  `skipped` or `missing` one) at a head. It is `proved`, `no-repro` (with `proceeds` when the caller
+  lets a test-only or non-source NO_REPRO through), `unverified` (a `FixProofUnverified` reason, and
+  the read's error text as `detail`), `unproven` or `none`. `endsReview(standing)` and
+  `needsTestsSeat(standing)` answer the two questions callers ask of it; `unproven` needs the tests
+  seat but does not end the review.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)

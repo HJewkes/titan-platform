@@ -71,6 +71,14 @@ export {
   type FixProofResult,
   type ParsedResultLine,
 } from "./result-line.js";
+export {
+  endsReview,
+  needsTestsSeat,
+  proofStanding,
+  type FixProofUnverified,
+  type ProofReadInput,
+  type ProofStanding,
+} from "./standing.js";
 export { runCli, USAGE } from "./cli.js";
 export { spawnExec, type Exec, type ExecOptions, type ExecResult } from "./exec.js";
 export { DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_COMMAND, errorLine, run, type RunOptions } from "./run.js";

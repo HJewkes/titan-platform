@@ -1,4 +1,5 @@
 import type { LineSource } from "@titan-design/evidence";
+import type { ProofReadInput } from "@titan-design/fix-proof";
 import type { PullRequest } from "@titan-design/github";
 import type { Headroom, PrFacts, ReviewClock, ReviewerAgent, ReviewerDispatch, ReviewerReader, ReviewTarget } from "@titan-design/review-panel";
 import type { MemberNamer } from "./types.js";
@@ -15,8 +16,8 @@ export interface SnapshotPort {
   read(target: ReviewTarget): Promise<HeadSnapshot>;
 }
 
-/** `line` is the raw `fix-proof/v1` line; `none` means no proof ran; `unread` means one may have and could not be read. */
-export type ProofRead = { kind: "line"; line: string } | { kind: "none" } | { kind: "unread"; reason: string };
+/** The read `proofStanding` takes, so the workflow judges a head's proof exactly as every other fix-proof reader does. */
+export type ProofRead = ProofReadInput;
 
 export interface ProofReaderPort {
   read(target: ReviewTarget): Promise<ProofRead>;
