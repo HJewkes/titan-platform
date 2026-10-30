@@ -184,11 +184,7 @@ export class ReviewVoiceExtractor implements StyleExtractor {
       });
     }
 
-    observations.sort(
-      (a, b) =>
-        ((b.metadata?.count as number) ?? 0) -
-        ((a.metadata?.count as number) ?? 0),
-    );
+    observations.sort((a, b) => metadataCount(b) - metadataCount(a));
 
     return observations;
   }
@@ -259,4 +255,9 @@ export class ReviewVoiceExtractor implements StyleExtractor {
 
     return observations;
   }
+}
+
+function metadataCount(observation: Observation): number {
+  const count = observation.metadata?.count;
+  return typeof count === "number" ? count : 0;
 }
