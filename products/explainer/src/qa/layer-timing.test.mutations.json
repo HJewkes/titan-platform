@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "static-window grants a custom layer the settled-speech allowance",
+      "name": "a custom layer settles at its cut, not its last cue",
       "file": "products/explainer/src/qa/timing-gates.ts",
-      "find": "if (beat.layer === \"custom\" || starts.length === 0) return undefined;",
-      "replace": "if (starts.length === 0) return undefined;",
+      "find": "const reveals = beat.layer === \"custom\" ? beat.cues.map((cue) => cue.atS) : (beat.reveals ?? []);",
+      "replace": "const reveals = beat.reveals ?? [];",
       "kills": [
-        "qa's timing gates on a custom layer gives a finished layer under speech no settled allowance, as qa does not"
+        "qa's timing gates on a custom layer refuses a 4 s still stretch before the last cue even under speech"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "staticOver(input).over.map((run) => ({ fromS",
       "replace": "staticOver(input).over.slice(0, 0).map((run) => ({ fromS",
       "kills": [
-        "qa's timing gates on a custom layer names a 3.5 s still stretch after the last cue and tells the rebuild to change the picture inside it"
+        "qa's timing gates on a custom layer names a 3.4 s silent stretch after the last cue and tells the rebuild to change the picture inside it"
       ]
     },
     {
