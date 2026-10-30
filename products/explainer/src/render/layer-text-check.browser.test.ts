@@ -1,13 +1,22 @@
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { FontLoadError, launch } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BuilderRef } from "../build/beat-worker.js";
 import type { LayerTextCheck } from "../build/layer-text.js";
 import { buildPage } from "../composition/page.test-helpers.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
+
+// The in-process vite build runs rolldown, whose tokio and rayon pools default to one thread per core; their idle
+// workers spin in sched_yield, which on a loaded many-core host burned tens of sys-seconds for one small page build.
+// Hoisted so the caps are in the environment before vite's native binding starts either pool.
+vi.hoisted(() => {
+  process.env.ROLLDOWN_WORKER_THREADS ??= "4";
+  process.env.RAYON_NUM_THREADS ??= "4";
+});
 
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them. Each spans the frame width, so qa's content-fill gate passes.
 const BROWSER_TIMEOUT_MS = 240_000;
@@ -139,7 +148,9 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
 
   // Mutation: the check swallows the font error, or drops the URL from it.
   it("fails as an infra error naming the face and the URL when a font file is missing from the page", async () => {
-    const broken = await buildPage();
+    // A copy, not a second build: each in-process vite build spins up rolldown's CPU-wide thread pools.
+    const broken = mkdtempSync(path.join(tmpdir(), "explainer-broken-page-"));
+    cpSync(pageDir, broken, { recursive: true });
     const [woff2] = readdirSync(path.join(broken, "assets")).filter((f) => f.endsWith(".woff2"));
     rmSync(path.join(broken, "assets", woff2!));
     const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }), engine: chromiumQaEngine(undefined, browser) });
