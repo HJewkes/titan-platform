@@ -13,14 +13,18 @@ const SLOTS = BEAT_SLOTS.map.parse({
   edges: STOPS.slice(1).map((_, i) => ({ id: `edges-${i + 1}`, from: `nodes-${i + 1}`, to: `nodes-${i + 2}` })),
 });
 
-function mapStyleAt(t: number): string {
-  const html = renderToStaticMarkup(
+function mapHtmlAt(t: number): string {
+  return renderToStaticMarkup(
     <MotionProvider clock={seekClock(t)}>
       <Beat startS={0} durationS={6}>
         <ArchMapKindBeat slots={SLOTS} reveal={revealFrom([])} hints={{}} />
       </Beat>
     </MotionProvider>,
   );
+}
+
+function mapStyleAt(t: number): string {
+  const html = mapHtmlAt(t);
   return /class="ex-map"[^>]*style="([^"]*)"/.exec(html)?.[1] ?? "";
 }
 
@@ -35,5 +39,24 @@ describe("an arch-map entering", () => {
     // Assert
     expect(style).not.toBe("");
     expect(style).not.toMatch(/opacity:\s*0\.\d/);
+  });
+});
+
+describe("an arch-map's layout", () => {
+  it("a three-node path spans at least 80% of the map box and sits centred", () => {
+    // Arrange
+    const boxWidth = 1728;
+
+    // Act
+    const html = mapHtmlAt(0.1);
+    const nodes = [...html.matchAll(/class="ex-map-node"[^>]*style="[^"]*?left:\s*([\d.]+)px;[^"]*?width:\s*([\d.]+)px/g)]
+      .map((m) => ({ left: Number(m[1]), right: Number(m[1]) + Number(m[2]) }));
+    const left = Math.min(...nodes.map((n) => n.left));
+    const right = Math.max(...nodes.map((n) => n.right));
+
+    // Assert
+    expect(nodes).toHaveLength(3);
+    expect(right - left).toBeGreaterThanOrEqual(0.8 * boxWidth);
+    expect(left).toBeCloseTo(boxWidth - right, 1);
   });
 });
