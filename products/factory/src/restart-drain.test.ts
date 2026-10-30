@@ -267,6 +267,24 @@ describe("draining before a restart", () => {
     expect(polls).toBe(1);
   });
 
+  it("restarts once the runs busy at the start clear, though runs admitted meanwhile are still busy", async () => {
+    const admitted: BusyRun = { runId: "run-admitted", step: "sh-review:def5678", phase: "review" };
+    const merging: BusyRun = { runId: "run-merge", step: "merge:0", phase: "merging" };
+
+    const { outcome, reports, polls } = await drain([[REVIEW], [REVIEW, admitted], [REVIEW, admitted, merging], [admitted, merging]]);
+
+    expect(outcome).toEqual({ proceed: true, atRestart: { ok: true, busy: [admitted, merging] } });
+    expect(polls).toBe(4);
+    expect(reports.at(-1)).toContain("run-admitted sh-review:def5678 (busy since the drain began, not waited for)");
+  });
+
+  it("still waits on a park-routed step that turns busy after the drain began", async () => {
+    const { outcome, polls } = await drain([[REVIEW], [REVIEW, CHORE], [CHORE], []]);
+
+    expect(outcome).toMatchObject({ proceed: true });
+    expect(polls).toBe(4);
+  });
+
   it("still refuses a busy park-routed step when the drain is skipped", async () => {
     const { outcome } = await drain([[CHORE]], { wait: false });
 
