@@ -4,14 +4,14 @@
     {
       "name": "a reply is kept on fewer rows only",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "&& failingBeats(after) < failingBeats(before);",
-      "replace": "&& false;",
+      "find": "&& failingBeats(after) < failingBeats(before));",
+      "replace": "&& false);",
       "kills": ["the repair keeps partial progress a reply that clears some beats of the one failing row is kept for the next round"]
     },
     {
       "name": "a new failing row is accepted with fewer beats",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "after.every((row) => known.has(row.check_id)) && ",
+      "find": "!bringsInRule(after, before) && ",
       "replace": "",
       "kills": ["the repair keeps partial progress a reply that adds a failing row is refused even with fewer beats"]
     },

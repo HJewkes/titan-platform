@@ -345,11 +345,12 @@ async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: r
 
 const failingBeats = (rows: readonly L0Result[]): number => rows.reduce((sum, row) => sum + row.detail_beats.length, 0);
 
+/** Whether `after` fails a rule `before` did not. */
+const bringsInRule = (after: readonly L0Result[], before: readonly L0Result[]): boolean => after.some((row) => !before.some((was) => was.check_id === row.check_id));
+
 /** Fewer failing rows, or the same rows (none new) naming fewer beats in total, so a round that clears some beats is not thrown away. */
 export function makesProgress(after: readonly L0Result[], before: readonly L0Result[]): boolean {
-  if (after.length < before.length) return true;
-  const known = new Set(before.map((row) => row.check_id));
-  return after.length === before.length && after.every((row) => known.has(row.check_id)) && failingBeats(after) < failingBeats(before);
+  return after.length < before.length || (after.length === before.length && !bringsInRule(after, before) && failingBeats(after) < failingBeats(before));
 }
 
 /**
@@ -359,7 +360,7 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
  * script got better, so it never decides what the repair keeps.
  */
 export const asksFrom = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
-  after.length !== before.length ? after.length < before.length : failingBeats(after) < failingBeats(before) || (failingBeats(after) === failingBeats(before) && after.some((row) => !before.some((was) => was.check_id === row.check_id)));
+  after.length !== before.length ? after.length < before.length : failingBeats(after) < failingBeats(before) || (failingBeats(after) === failingBeats(before) && bringsInRule(after, before));
 
 interface Measured {
   stamped: Stamped;
