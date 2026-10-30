@@ -3,6 +3,7 @@ import type { MergeFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
+import type { ConditionKind } from "./vocabulary.js";
 
 const FROM_HEAD = "b".repeat(40);
 const HEAD = "a".repeat(40);
@@ -10,7 +11,7 @@ const HEAD_TREE = "c".repeat(40);
 const REMERGE_TREE = "d".repeat(40);
 const APP = 15368;
 const REVIEWER = { agentId: "rv-1", sessionId: "session-1" };
-const REMERGE = "verdict-merge-carried-remerge-clean";
+const REMERGE: ConditionKind = "verdict-merge-carried-remerge-clean";
 
 /** A MERGE at FROM_HEAD carried to HEAD, a merge of the base whose remerge-diff touched only a generated file. */
 function remergedFacts(): MergeFacts {
@@ -65,7 +66,7 @@ describe("MRG-AU-RM: an automation merge on a verdict carried across a merge tha
     expect(decide(facts)).toEqual({ verdict: "allow", ruleId: "MRG-AU-RC" });
   });
 
-  const REFUSALS: [string, (facts: MergeFacts) => void, string?][] = [
+  const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind?][] = [
     ["a remerge path that is not generated", (f) => { f.carry!.remergePaths = ["CAPABILITIES.md", "src/a.ts"]; }],
     ["a generated-only rule that touched nothing", (f) => { f.carry!.remergePaths = []; }],
     ["an empty rule whose trees differ", (f) => { Object.assign(f.carry!, { rule: "remerge-empty", remergePaths: [] }); }],
@@ -82,7 +83,7 @@ describe("MRG-AU-RM: an automation merge on a verdict carried across a merge tha
 
   it.each(REFUSALS)("falls back to the owner gate on %s", (_name, patch, condition = REMERGE) => {
     const facts = patched(patch);
-    expect(unmetConditions([condition as "pr-kind-not-security"], { merge: facts })).toEqual([condition]);
+    expect(unmetConditions([condition], { merge: facts })).toEqual([condition]);
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
   });
 });

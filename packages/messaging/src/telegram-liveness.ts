@@ -1,5 +1,6 @@
 import type { ProbeOptions } from "./liveness.js";
 import { fetchWithTimeout } from "./liveness.js";
+import { isRecord } from "./record.js";
 import { isAbortError } from "./send-failure.js";
 import type { TelegramConfig } from "./telegram.js";
 import { methodUrl, readEnvelope } from "./telegram.js";
@@ -12,14 +13,13 @@ export type TelegramLiveness =
     };
 
 function readBot(result: unknown): TelegramLiveness {
-  const user = result as { id?: unknown; username?: unknown } | null;
-  if (!user || typeof user !== "object") {
+  if (!isRecord(result)) {
     return { state: "dark", reason: "bad-response" };
   }
   return {
     state: "alive",
-    username: typeof user.username === "string" ? user.username : undefined,
-    botId: typeof user.id === "number" ? user.id : undefined,
+    username: typeof result.username === "string" ? result.username : undefined,
+    botId: typeof result.id === "number" ? result.id : undefined,
   };
 }
 

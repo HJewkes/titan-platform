@@ -25,16 +25,21 @@ export type PipelineFactory = (
 
 const MISSING = "@huggingface/transformers is not installed; add it as a dependency or use the ollama/hash embedders";
 
+function isPipelineFactory(value: unknown): value is PipelineFactory {
+  return typeof value === "function";
+}
+
 async function defaultLoadPipeline(): Promise<PipelineFactory> {
   const name = "@huggingface/transformers";
-  let mod: { pipeline?: unknown };
+  let mod: unknown;
   try {
-    mod = (await import(name)) as { pipeline?: unknown };
+    mod = await import(name);
   } catch (err) {
     throw new Error(MISSING, { cause: err });
   }
-  if (typeof mod.pipeline !== "function") throw new Error(MISSING);
-  return mod.pipeline as PipelineFactory;
+  const pipeline = typeof mod === "object" && mod !== null && "pipeline" in mod ? mod.pipeline : undefined;
+  if (!isPipelineFactory(pipeline)) throw new Error(MISSING);
+  return pipeline;
 }
 
 /** In-process ONNX embeddings. Downloads the model on first use; weights are cached by the runtime. */

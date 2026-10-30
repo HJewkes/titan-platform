@@ -2,6 +2,7 @@ import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { isRecord } from "../record.js";
 
 /**
  * Raw Claude Code transcripts, read as lines rather than through the session
@@ -86,11 +87,11 @@ export async function* streamRecords(file: string): AsyncGenerator<Record<string
 
 /** The `tool_use` blocks one record carries, stamped with that record's metadata. */
 export function toolUsesIn(record: Record<string, unknown>): ToolUse[] {
-  const content = (record.message as { content?: unknown })?.content;
+  const content = contentOf(record.message);
   if (!Array.isArray(content)) return [];
   return content.filter(isToolUse).map((item) => ({
     name: item.name,
-    input: (item.input ?? {}) as Record<string, unknown>,
+    input: isRecord(item.input) ? item.input : {},
     timestamp: typeof record.timestamp === "string" ? record.timestamp : undefined,
     sessionId: typeof record.sessionId === "string" ? record.sessionId : undefined,
     cwd: typeof record.cwd === "string" ? record.cwd : undefined,
@@ -100,15 +101,14 @@ export function toolUsesIn(record: Record<string, unknown>): ToolUse[] {
 function parseLine(line: string): Record<string, unknown> | undefined {
   try {
     const record: unknown = JSON.parse(line);
-    return typeof record === "object" && record !== null ? (record as Record<string, unknown>) : undefined;
+    return isRecord(record) ? record : undefined;
   } catch {
     return undefined;
   }
 }
 
 function isToolUse(item: unknown): item is { type: string; name: string; input?: unknown } {
-  const candidate = item as { type?: unknown; name?: unknown };
-  return candidate?.type === "tool_use" && typeof candidate.name === "string";
+  return isRecord(item) && item.type === "tool_use" && typeof item.name === "string";
 }
 
 export interface TranscriptHead {
@@ -147,10 +147,14 @@ export async function readHead(file: string, headLines = 60): Promise<Transcript
 
 /** A turn's content is a string or a list of blocks; only the text of it matters here. */
 export function textOf(message: unknown): string {
-  const content = (message as { content?: unknown })?.content;
+  const content = contentOf(message);
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((item) => (typeof item === "string" ? item : ((item as { text?: string })?.text ?? "")))
+    .map((item: unknown) => (typeof item === "string" ? item : isRecord(item) ? (item.text ?? "") : ""))
     .join("\n");
+}
+
+function contentOf(message: unknown): unknown {
+  return isRecord(message) ? message.content : undefined;
 }
