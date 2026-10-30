@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the waited-on set is retaken on every poll, so runs admitted mid-drain hold the restart",
+      "name": "the waited-on set is retaken each poll, so mid-drain admissions hold the restart",
       "file": "products/factory/src/restart-drain.ts",
       "find": "waitedOn ??= new Set(",
       "replace": "waitedOn = new Set(",
