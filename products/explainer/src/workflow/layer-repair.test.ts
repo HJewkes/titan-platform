@@ -57,6 +57,8 @@ describe("the repair round on a custom layer that fails the compile gate", () =>
 
       const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
       expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(REPAIRED);
+      expect(record.usage.usd).toBeCloseTo(0.05, 10);
+      expect(record.usage.costUnknown).toBeUndefined();
     } finally {
       if (savedTmp === undefined) delete process.env.TMPDIR;
       else process.env.TMPDIR = savedTmp;
