@@ -39,6 +39,24 @@
       ]
     },
     {
+      "name": "a reviewer-held G10 hold counts on the owner banner",
+      "file": "apps/console/server/blockers.ts",
+      "find": "row.pendingGate !== null || isReviewerHold(held.reason)",
+      "replace": "row.pendingGate !== null",
+      "kills": [
+        "bannerBlockers sources a g10-adversary hold is not counted on the owner banner"
+      ]
+    },
+    {
+      "name": "every hold is treated as reviewer-held",
+      "file": "apps/console/server/blockers.ts",
+      "find": "REVIEWER_HOLD_CLASSES.has(reason.includes(\":\") ? reason.slice(0, reason.indexOf(\":\")) : \"\")",
+      "replace": "reason.includes(\":\")",
+      "kills": [
+        "bannerBlockers sources an owner-gate hold still banners at 12 h"
+      ]
+    },
+    {
       "name": "owner gates are never read from Shepherd's rows",
       "file": "apps/console/server/blockers.ts",
       "find": "[ownerGate(row), ownerHold(row)]",

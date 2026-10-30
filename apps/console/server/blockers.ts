@@ -24,6 +24,8 @@ const MAX_ITEMS = 5;
 const MAX_SUMMARY = 120;
 /** Shepherd's `SEAT_STEPS`, mirrored because the console cannot depend on titan-factory: a seat answers these, not the owner. */
 const SEAT_STEPS: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "stuck-behind"]);
+/** Shepherd's G10 hold classes (`HOLD_CLASSES` in hold-reason.ts), mirrored for the same reason: a reviewer releases these, not the owner. */
+const REVIEWER_HOLD_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
 /** As the inbox's: short enough that a gate answered elsewhere leaves the banner soon. */
 const BANNER_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
 
@@ -66,6 +68,8 @@ const clip = (text: string): string => (text.length > MAX_SUMMARY ? `${text.slic
 const prOf = (row: WatchRow): string => `${row.repo}#${row.pr}`;
 const inboxLink = (id: string): string => `#/inbox/${encodeURIComponent(id)}`;
 const baseStep = (stepId: string): string => stepId.replace(/:\d+$/, "");
+/** Read as Shepherd's `holdClassOf` reads it: the text before the first colon. */
+const isReviewerHold = (reason: string): boolean => REVIEWER_HOLD_CLASSES.has(reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : "");
 
 type Unaged = Omit<BannerBlocker, "ageHours">;
 
@@ -93,11 +97,12 @@ function ownerGate(row: WatchRow): Unaged | undefined {
 
 /**
  * Whether a run waits on its hold is Shepherd's call (merge step, phase, the head a reviewer satisfied), so the banner
- * reads its `hold` stage instead of re-deriving it. A hold with a gate pending waits on the gate, listed on its own.
+ * reads its `hold` stage instead of re-deriving it. A hold with a gate pending waits on the gate, listed on its own, and
+ * a G10 hold waits on a reviewer, so it never counts on the owner's line.
  */
 function ownerHold(row: WatchRow): Unaged | undefined {
   const { held } = row;
-  if (!pinnedLive(row) || held === null || row.stage?.name !== "hold" || row.pendingGate !== null) return undefined;
+  if (!pinnedLive(row) || held === null || row.stage?.name !== "hold" || row.pendingGate !== null || isReviewerHold(held.reason)) return undefined;
   const link = `#/shepherd/${encodeURIComponent(prOf(row))}`;
   return { id: `held:${row.runId}`, source: "owner-hold", summary: clip(`${prOf(row)} is held: ${held.reason}`), blocks: prOf(row), asker: "shepherd", since: row.phaseSince, link };
 }

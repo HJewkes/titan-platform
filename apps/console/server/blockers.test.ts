@@ -85,6 +85,20 @@ describe("bannerBlockers sources", () => {
     expect(result.count).toBe(0);
   });
 
+  it("a g10-adversary hold is not counted on the owner banner", () => {
+    const reviewerHeld = (runId: string, pr: number, reason: string): WatchRow => ({ ...held(runId, pr, 48 * HOUR), held: { reason } });
+
+    const result = banner({ rows: [reviewerHeld("run-1", 7, "g10-adversary: security touch"), reviewerHeld("run-2", 8, "g10-review: policy touch")] });
+
+    expect(result.count).toBe(0);
+  });
+
+  it("an owner-gate hold still banners at 12 h", () => {
+    const ownerHeld = { ...held("run-1", 7, 12 * HOUR + MINUTE), held: { reason: "owner-asked: wait for the design call" } };
+
+    expect(banner({ rows: [ownerHeld] }).items.map((item) => item.id)).toEqual(["held:run-1"]);
+  });
+
   it("a seat-step gate never shows, even repeated", () => {
     const result = banner({ rows: [gated("run-1", 7, 48 * HOUR, "ci-failed"), gated("run-2", 8, 48 * HOUR, "sh-sent-back:2")] });
 
