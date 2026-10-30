@@ -110,7 +110,7 @@ describe("shepherd status with merge order", () => {
     const w = orderWorld();
     const stalled = { ...row("run-103", 103, "merging"), stalled: { reason: "30 min in merging, over the 15 min limit" } };
 
-    expect(statusOrder(w.services, stalled).stalled).toEqual({ reason: `30 min in merging, over the 15 min limit; merge order: waiting behind #101 (${SHARED})` });
+    expect(statusOrder(w.services, stalled).stalled).toEqual({ reason: `30 min in merging, over the 15 min limit; merge order: waiting behind #101 (${SHARED}); #101 reserved since ${minutes(0)}` });
     expect(statusOrder(w.services, row("run-103", 103, "merging")).stalled).toBeUndefined();
   });
 });

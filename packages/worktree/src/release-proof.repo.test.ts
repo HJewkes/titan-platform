@@ -3,8 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator } from "./allocator.js";
+import type { WorktreeAllocation } from "./reattach.js";
 import { inspectForRelease } from "./release-safety.js";
 import { runGit } from "./git.js";
 
@@ -17,16 +18,35 @@ afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) fs.rmS
 // The gh shims finish in milliseconds; the default 3s bound reads a loaded CI runner as no proof (TP-4367).
 const ghTimeoutMs = 120_000;
 
-async function fixture(proof = "head", mode: "git" | "git-or-merged-pr-tip" = "git-or-merged-pr-tip") {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "merged-tip-"))); roots.push(root);
+// Allocating a worktree and committing on both sides costs a dozen git processes; every case starts from the same
+// one, so it is built once and copied. Git records the worktree's absolute path in two files, which the copy rewrites.
+interface Template { root: string; cwd: string; branch: string; tip: string; ref: Record<string, string> }
+let template: Template;
+beforeAll(async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "merged-tip-template-")));
   const repo = path.join(root, "repo"); fs.mkdirSync(repo); seedRepo(repo);
-  const allocator = createWorktreeAllocator({ releaseProof: mode, ghTimeoutMs });
-  const allocation = await allocator.allocate({ baseCwd: repo, agentName: "alice" });
+  const allocation = await createWorktreeAllocator({ ghTimeoutMs }).allocate({ baseCwd: repo, agentName: "alice" });
   fs.writeFileSync(path.join(allocation.cwd, "feature.ts"), "branch\n");
   git(["add", "feature.ts"], allocation.cwd); git(["commit", "-m", "feature"], allocation.cwd);
   const tip = git(["rev-parse", "HEAD"], allocation.cwd);
   fs.writeFileSync(path.join(repo, "feature.ts"), "main changed since squash\n");
   git(["add", "feature.ts"], repo); git(["commit", "-m", "later main"], repo);
+  template = { root, cwd: allocation.cwd, branch: "agent-chat/alice", tip, ref: allocation.ref };
+});
+afterAll(() => fs.rmSync(template.root, { recursive: true, force: true }));
+function relocate(file: string, from: string, to: string): void { fs.writeFileSync(file, fs.readFileSync(file, "utf8").replaceAll(from, to)); }
+
+async function fixture(proof = "head", mode: "git" | "git-or-merged-pr-tip" = "git-or-merged-pr-tip") {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "merged-tip-"))); roots.push(root);
+  fs.cpSync(template.root, root, { recursive: true });
+  const repo = path.join(root, "repo");
+  const cwd = template.cwd.replace(template.root, root);
+  relocate(path.join(cwd, ".git"), template.root, root);
+  relocate(path.join(repo, ".git/worktrees/alice/gitdir"), template.root, root);
+  const allocator = createWorktreeAllocator({ releaseProof: mode, ghTimeoutMs });
+  const ref = Object.fromEntries(Object.entries(template.ref).map(([k, v]) => [k, v.replaceAll(template.root, root)]));
+  const allocation: WorktreeAllocation = { cwd, note: "", ref };
+  const tip = template.tip;
   const pr = { state: "MERGED", headRefOid: proof === "head" ? tip : "f".repeat(40), commits: [{ oid: tip }] };
   const bin = path.join(root, "bin"); fs.mkdirSync(bin);
   const response = path.join(root, "pr.json"); fs.writeFileSync(response, JSON.stringify(pr));

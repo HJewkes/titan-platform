@@ -11,6 +11,7 @@ export function addUsage(total: StepUsage | undefined, next: StepUsage | undefin
   const cacheWrite5mTokens = tokens(total.cacheWrite5mTokens, next.cacheWrite5mTokens);
   const cacheWrite1hTokens = tokens(total.cacheWrite1hTokens, next.cacheWrite1hTokens);
   const model = total.model !== undefined && total.model === next.model ? total.model : undefined;
+  const peaks = [total.peakContextTokens, next.peakContextTokens].filter((peak) => peak !== undefined);
   return {
     costUsd: total.costUsd + next.costUsd,
     ...(inputTokens === undefined ? {} : { inputTokens }),
@@ -19,6 +20,7 @@ export function addUsage(total: StepUsage | undefined, next: StepUsage | undefin
     ...(cacheWrite5mTokens === undefined ? {} : { cacheWrite5mTokens }),
     ...(cacheWrite1hTokens === undefined ? {} : { cacheWrite1hTokens }),
     ...(model === undefined ? {} : { model }),
+    ...(peaks.length === 0 ? {} : { peakContextTokens: Math.max(...peaks) }),
     ...(total.costUnknown || next.costUnknown ? { costUnknown: true as const } : {}),
   };
 }

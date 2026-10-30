@@ -2,9 +2,10 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryContext } from "../registry.js";
-import { blockers, orderDriving, orderWaiting, withinTtl, type Reservation } from "./merge-order.js";
+import { blockers, orderDriving, orderWaiting, withinTtl, type OrderWait, type Reservation } from "./merge-order.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { MergeOrderServices } from "./services.js";
+import type { Phase } from "./step-phase.js";
 import type { WatchRow } from "./view.js";
 
 const ClearReason = z.string().trim().min(1, "a clear needs a non-empty --reason").max(500);
@@ -96,23 +97,43 @@ export const orderCommand = defineCommand<OrderArgs, OrderResult, FactoryContext
   run: async (args, ctx) => runOrder(args, ctx),
 });
 
+/** The reservation a merging run waits behind: its PR, the phase its own run is in, and when it was taken (TP-4137). */
+interface OrderHold {
+  behind: number;
+  holderPhase: Phase | null;
+  since: string | null;
+  reason: string;
+}
+
 /** What a status row adds: the order wait its merge step read last, and the reservation it holds. */
 export interface StatusOrder {
   nextAction?: string;
   stalled?: WatchRow["stalled"];
+  orderWait?: OrderHold;
   mergeOrder?: Pick<OrderRow, "since" | "state" | "paths" | "waiting">;
 }
+
+/** The phase a run is in now; undefined when it is no longer registered. */
+type PhaseOf = (runId: string) => Phase | undefined;
 
 /** A merge past its phase limit while it waits behind a reservation names that wait, not only the minutes (TP-4133). */
 function stalledBehind(row: WatchRow, reason: string): Pick<StatusOrder, "stalled"> {
   return row.stalled ? { stalled: { reason: `${row.stalled.reason}; ${reason}` } } : {};
 }
 
-export function statusOrder(services: MergeOrderServices | undefined, row: WatchRow): StatusOrder {
+function orderHold(services: MergeOrderServices, wait: OrderWait, phaseOf: PhaseOf): OrderHold {
+  const holder = services.order().list(wait.repo).find((reservation) => reservation.pr === wait.behind);
+  const holderPhase = (holder && phaseOf(holder.runId)) ?? null;
+  const held = holder ? `; #${wait.behind} reserved since ${holder.since}${holderPhase ? `, its run in ${holderPhase}` : ""}` : "";
+  return { behind: wait.behind, holderPhase, since: holder?.since ?? null, reason: `${wait.reason}${held}` };
+}
+
+export function statusOrder(services: MergeOrderServices | undefined, row: WatchRow, phaseOf: PhaseOf = () => undefined): StatusOrder {
   if (services === undefined || row.pr === null) return {};
   const wait = row.phase === "merging" ? services.waits.get(row.runId) : undefined;
+  const hold = wait && orderHold(services, wait, phaseOf);
   const own = services.order().list(row.repo).find((reservation) => reservation.runId === row.runId);
   const [held] = own === undefined ? [] : orderRows(services, [own]);
   const reserved = held && { mergeOrder: { since: held.since, state: held.state, paths: held.paths, waiting: held.waiting } };
-  return { ...(wait && { nextAction: wait.reason, ...stalledBehind(row, wait.reason) }), ...reserved };
+  return { ...(hold && { nextAction: hold.reason, ...stalledBehind(row, hold.reason), orderWait: hold }), ...reserved };
 }
