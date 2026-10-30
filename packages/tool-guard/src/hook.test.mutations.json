@@ -38,6 +38,16 @@
       "kills": [
         "handle over real script files behind dynamic wrapper words, case folding on refuses scripts past the line's budget, names the script to split off, and each half then passes"
       ]
+    },
+    {
+      "name": "reading a script rescans it from every eighth character to the end",
+      "file": "packages/tool-guard/src/context.ts",
+      "find": "    readScript: (p) => wholeScript(p, rfs),",
+      "replace": "    readScript: (p) => {\n      const text = wholeScript(p, rfs);\n      for (let i = 0; i < text.length; i += 8) text.indexOf(\"\\u0000\", i);\n      return text;\n    },",
+      "kills": [
+        "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a python3` running a script of paths, cost near-linear in size",
+        "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a node` running a script of paths, cost near-linear in size"
+      ]
     }
   ]
 }
