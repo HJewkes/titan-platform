@@ -92,10 +92,8 @@ describe("generateEslintConfig", () => {
     const rulesConfig = entries.find(
       (c) => c.rules?.["@typescript-eslint/naming-convention"],
     );
-    const rule = rulesConfig!.rules![
-      "@typescript-eslint/naming-convention"
-    ] as unknown[];
-    expect(rule[0]).toBe("error");
+    const rule = rulesConfig!.rules!["@typescript-eslint/naming-convention"];
+    expect(Array.isArray(rule) && rule[0]).toBe("error");
   });
 
   it("maps import ordering to perfectionist plugin", () => {
@@ -112,8 +110,8 @@ describe("generateEslintConfig", () => {
       (c) => c.rules?.["max-lines-per-function"],
     );
     expect(rulesConfig).toBeDefined();
-    const rule = rulesConfig!.rules!["max-lines-per-function"] as unknown[];
-    expect(rule).toContainEqual(expect.objectContaining({ max: 28 }));
+    const rule = rulesConfig!.rules!["max-lines-per-function"];
+    expect(rule).toEqual(expect.arrayContaining([expect.objectContaining({ max: 28 })]));
   });
 
   it("maps file naming to unicorn/filename-case", () => {
@@ -156,8 +154,8 @@ describe("generateEslintConfig", () => {
       naming: { variables: { convention: "camelCase", confidence: 0.5, stability: "low" } },
     };
     const { entries } = generateEslintConfig(infoProfile);
-    const rule = entries[0]!.rules!["@typescript-eslint/naming-convention"] as unknown[];
-    expect(rule[0]).toBe("warn");
+    const rule = entries[0]!.rules!["@typescript-eslint/naming-convention"];
+    expect(Array.isArray(rule) && rule[0]).toBe("warn");
   });
 
   it("forwards an unmapped naming convention as a skipped rule, and still emits the rest of the config", () => {

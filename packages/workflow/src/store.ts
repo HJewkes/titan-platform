@@ -128,7 +128,7 @@ export class WorkflowRunStore {
   }
 
   get(id: string): WorkflowRun | undefined {
-    const raw = this.db.prepare(`SELECT * FROM ${this.table} WHERE id = ?`).get(id) as RawRunRow | undefined;
+    const raw = this.db.prepare<[string], RawRunRow>(`SELECT * FROM ${this.table} WHERE id = ?`).get(id);
     return raw ? toRun(raw) : undefined;
   }
 
@@ -142,7 +142,7 @@ export class WorkflowRunStore {
   }
 
   private runsWhere(condition: string, ...params: string[]): WorkflowRun[] {
-    const rows = this.db.prepare(`SELECT * FROM ${this.table} WHERE ${condition} ORDER BY started_at`).all(...params) as RawRunRow[];
+    const rows = this.db.prepare<string[], RawRunRow>(`SELECT * FROM ${this.table} WHERE ${condition} ORDER BY started_at`).all(...params);
     return rows.map(toRun);
   }
 
@@ -256,15 +256,17 @@ export function newRun(id: string, workflowName: string, params: Record<string, 
 }
 
 function toRun(raw: RawRunRow): WorkflowRun {
-  const active = JSON.parse(raw.active_steps) as Record<string, Partial<ActiveStep> & Pick<ActiveStep, "stepId" | "iterKey" | "startedAt">>;
+  const active: Record<string, Partial<ActiveStep> & Pick<ActiveStep, "stepId" | "iterKey" | "startedAt">> = JSON.parse(raw.active_steps);
+  const params: Record<string, string> = JSON.parse(raw.params);
+  const stepResults: Record<string, StepResult> = JSON.parse(raw.step_results);
   return {
     id: raw.id,
     workflowName: raw.workflow_name,
     ...(raw.definition_version == null ? {} : { definitionVersion: raw.definition_version }),
-    params: JSON.parse(raw.params) as Record<string, string>,
+    params,
     status: raw.status,
     currentStep: raw.current_step,
-    stepResults: JSON.parse(raw.step_results) as Record<string, StepResult>,
+    stepResults,
     activeSteps: Object.fromEntries(Object.entries(active).map(([key, step]) => [key, normalizeActiveStep(step)])),
     revision: raw.revision,
     ownerGeneration: raw.owner_generation,

@@ -50,7 +50,8 @@ export function codeRecordRoute<I>(match: string, fn: (input: I, step: RoutedSte
   const errorText = options.errorText ?? ((message: string) => message);
   const run = async (step: RoutedStepInput) => {
     try {
-      const { usage, ...record } = await fn(JSON.parse(step.prompt) as I, step);
+      const input: I = JSON.parse(step.prompt);
+      const { usage, ...record } = await fn(input, step);
       return { ok: true as const, output: JSON.stringify(envelope(record, step)), ...(usage ? { usage } : {}) };
     } catch (error) {
       const usage = error instanceof CodeStepFailure ? { usage: error.usage } : {};

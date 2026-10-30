@@ -15,6 +15,7 @@ import {
 } from "@titan-design/hitl";
 import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunContext, type ContextDeps } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
@@ -125,7 +126,7 @@ function replayContext(run: WorkflowRun, gates: GateStore, authority?: WorkflowA
 }
 
 /** A table whose every read throws, so a replay that consults the table fails loudly. */
-const UNREADABLE_TABLE = new Proxy({} as PolicyTable, {
+const UNREADABLE_TABLE = new Proxy(partialFake<PolicyTable>(), {
   get: () => {
     throw new Error("the table was consulted on replay");
   },

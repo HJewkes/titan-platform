@@ -20,28 +20,26 @@ export interface RuffConfig {
 type RuffLint = NonNullable<RuffConfig["lint"]> & { select: string[] };
 
 function addNaming(profile: Profile, lint: RuffLint): void {
-  if (profile.naming) {
-    const hasNamingRules = Object.values(profile.naming).some(
-      (rule) => rule.confidence >= profile.severityThresholds.info,
-    );
-    if (hasNamingRules) lint.select.push("N");
-  }
+  const hasNamingRules = Object.values(profile.naming).some(
+    (rule) => rule.confidence >= profile.severityThresholds.info,
+  );
+  if (hasNamingRules) lint.select.push("N");
 }
 
 function addImportOrder(profile: Profile, lint: RuffLint): void {
-  const importOrder = profile.structure?.importOrder;
+  const importOrder = profile.structure.importOrder;
   if (importOrder && importOrder.confidence >= profile.severityThresholds.info) {
     lint.select.push("I");
     if (Array.isArray(importOrder.convention)) {
       lint.isort = {
-        "section-order": importOrder.convention as string[],
+        "section-order": importOrder.convention,
       };
     }
   }
 }
 
 function addFunctionDocs(profile: Profile, lint: RuffLint): void {
-  const functionDocs = profile.documentation?.functionDocs;
+  const functionDocs = profile.documentation.functionDocs;
   if (functionDocs && functionDocs.confidence >= profile.severityThresholds.info) {
     lint.select.push("D");
     const conv = functionDocs.convention;
@@ -56,7 +54,7 @@ function addFunctionDocs(profile: Profile, lint: RuffLint): void {
 }
 
 function addComplexity(profile: Profile, lint: RuffLint): void {
-  const maxLines = profile.structure?.functionMaxLines;
+  const maxLines = profile.structure.functionMaxLines;
   if (
     maxLines &&
     maxLines.confidence >= profile.severityThresholds.info &&
@@ -76,7 +74,7 @@ export function generateRuffConfig(profile: Profile): RuffConfig {
   addFunctionDocs(profile, lint);
   addComplexity(profile, lint);
 
-  const lineLength = profile.formatting?.lineLength;
+  const lineLength = profile.formatting.lineLength;
   if (lineLength && typeof lineLength.convention === "number") {
     config["line-length"] = lineLength.convention;
   }

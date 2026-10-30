@@ -12,7 +12,7 @@ export type RetryStep =
   | { action: "heal"; heal: HealKind; times: number | null };
 
 /** The key S7's fixer fingerprint is built from, joined with the class's own detail (a profile name, a shape, a step id). */
-export type FixerKey = "profile" | "dispatch" | "timeout" | "parser" | "plan-aggregate-mismatch" | "repeat" | "schema";
+export type FixerKey = "profile" | "dispatch" | "timeout" | "parser" | "plan-aggregate-mismatch" | "repeat" | "schema" | "heal-ineffective";
 
 /** What follows once a row's steps are spent; there is no owner action (decision 515). */
 export type RetryTerminal =
@@ -69,4 +69,5 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = [
   { class: "deterministic-repeat", steps: [], then: { kind: "fixer", key: "repeat" } },
   { class: "schema-drift", steps: [], then: { kind: "fixer", key: "schema" } },
   { class: "proof-spec-problem", steps: [], then: { kind: "stop", outcome: "proof-spec-problem" } },
+  { class: "heal-ineffective", steps: [], then: { kind: "fixer", key: "heal-ineffective" } },
 ];
