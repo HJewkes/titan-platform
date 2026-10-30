@@ -25,6 +25,7 @@ import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { useMediaQuery } from "./FramePins.js";
 import { GuessedCaption, STAGE_ORDER, TaskStageBadge, stageLabel } from "./TaskParts.js";
 
 type TasksResult = ConsoleCommands["work.tasks"]["result"];
@@ -170,10 +171,49 @@ function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResu
             {group.rows.length < counts[group.stage] ? (
               <Typography variant="caption" color="secondary">{`Showing ${group.rows.length} of ${counts[group.stage]} by priority; load more or filter to see the rest.`}</Typography>
             ) : null}
-            <StageTable rows={group.rows} />
+            <StageRows rows={group.rows} />
           </SectionContent>
         </Section>
       ))}
+    </VStack>
+  );
+}
+
+/** Tailwind's `md` breakpoint: below it the five columns squeeze the initiative over the title. */
+export const BELOW_MD = "(max-width: 767px)";
+
+/** One tree, not a CSS swap of two, so a 50-row page renders its rows once. */
+function StageRows({ rows }: { rows: readonly Row[] }): ReactNode {
+  return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;
+}
+
+function StageCards({ rows }: { rows: readonly Row[] }): ReactNode {
+  return (
+    <VStack>
+      {rows.map((row) => (
+        <StageCard key={row.id} row={row} />
+      ))}
+    </VStack>
+  );
+}
+
+/** A phone tap needs a 44px target, more than the id's line of text gives it. */
+const TAP_TARGET = "inline-flex min-h-11 min-w-11 items-center";
+
+function StageCard({ row }: { row: Row }): ReactNode {
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`task-card-${row.id}`}>
+      <HStack gap={2} align="center" justify="between">
+        <Link color="primary" className={TAP_TARGET} onPress={() => open({ view: "tasks", id: row.id })}>
+          {row.id}
+        </Link>
+        <TaskStageBadge stage={row.stage} />
+      </HStack>
+      <Typography variant="body1" className="break-words">
+        {row.title}
+      </Typography>
+      {row.stageGuessed ? <GuessedCaption /> : <Typography variant="caption" color="secondary" className="break-words">{row.stageReason}</Typography>}
+      <Typography variant="caption" color="secondary" className="break-words">{`${row.slug} · ${row.severity ?? "no severity"}`}</Typography>
     </VStack>
   );
 }
