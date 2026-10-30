@@ -160,7 +160,9 @@ const headingHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
   const named = [
     ...refusedNotes(script, row),
-    ...overlongTexts(script).filter((found) => failing.has(found.beat)).map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`),
+    ...overlongTexts(script)
+      .filter((found) => failing.has(found.beat))
+      .map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`),
   ];
   const holds = namedBeats(script, row).flatMap((beat) => shortenedStill(script, beat) ?? []);
   return [`on-screen text over its cap, a heading at most ${HEADING_MAX_WORDS} words and a label at most ${LABEL_MAX_WORDS}: ${named.join("; ")}. An outro or button draws its first label (or, with none, the assertion) as its heading line; shorten each heading or label to its key words and say the rest`, ...holds].join("; ");
@@ -179,7 +181,8 @@ function shortenedStill(script: ScriptV1, beat: ScriptBeat): string | undefined 
 
 const motionHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
-  const named = [...refusedNotes(script, row), ...stillOpenings(script).filter((found) => failing.has(found.beat)).map((found) => `${found.beat} (as ${found.kind}, first moves at ${found.firstS} s)`)];
+  const still = stillOpenings(script).filter((found) => failing.has(found.beat));
+  const named = [...refusedNotes(script, row), ...still.map((found) => `${found.beat} (as ${found.kind}, first moves at ${found.firstS} s)`)];
   return `beats whose picture holds still past 0.2 s after the cut: ${named.join(", ")}. Each draws no headline and opens on an element that waits for its spoken cue; cite the beat's source in a chip, whose line rises at once, or draw it as a kind with a headline`;
 };
 
