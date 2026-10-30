@@ -115,6 +115,15 @@ describe("acceptVerdict malformed record", () => {
     expect(acceptVerdict(input, [foreign])).toEqual({ kind: "none" });
   });
 
+  it("records nothing for a message whose locator is missing or malformed, rather than throwing", () => {
+    const locators: unknown[] = [undefined, null, "x", {}, { source: null }, { source: { conversation: null } }];
+    for (const locator of locators) {
+      const malformed = Object.assign(said("no verdict here"), { locator });
+
+      expect(acceptVerdict(input, [malformed])).toEqual({ kind: "none" });
+    }
+  });
+
   it("records nothing for a message written before dispatch", () => {
     const early = said("no verdict here", { writtenAt: DISPATCHED_AT - 1 });
 
