@@ -1,24 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { harnessRefusal, parseProfile } from "./index.js";
+import { harnessRefusal, parseProfile, type ProfileParseResult } from "./index.js";
 
 /** CC-1516: `harness` defaults to claude-code, and a codex profile refuses every launch until CC-1517. */
 
 const base = { model: "gpt-5-codex", allowedTools: ["Read"], isolation: "none", surface: "headless" };
+
+function refusalOf(profile: ProfileParseResult): string | undefined {
+  if ("error" in profile) throw new Error(profile.error);
+  return harnessRefusal(profile);
+}
 
 describe("profile harness field (CC-1516)", () => {
   it("leaves a profile without the field unchanged and launchable", () => {
     const profile = parseProfile("plain", { ...base, model: "sonnet" });
 
     expect(profile).not.toHaveProperty("harness");
-    expect(harnessRefusal(profile as never)).toBeUndefined();
+    expect(refusalOf(profile)).toBeUndefined();
   });
 
   it("keeps an explicit claude-code harness and launches it", () => {
     const profile = parseProfile("explicit", { ...base, model: "opus", harness: "claude-code" });
 
     expect(profile).toMatchObject({ harness: "claude-code" });
-    expect(harnessRefusal(profile as never)).toBeUndefined();
+    expect(refusalOf(profile)).toBeUndefined();
   });
 
   it("refuses an unknown harness at load, naming the allowed values", () => {
@@ -40,7 +45,7 @@ describe("profile harness field (CC-1516)", () => {
     const profile = parseProfile("codex-worker", { ...base, harness: "codex" });
 
     expect(profile).toMatchObject({ harness: "codex", model: "gpt-5-codex" });
-    expect(harnessRefusal(profile as never)).toBe(
+    expect(refusalOf(profile)).toBe(
       'harness_unsupported: profile "codex-worker" uses harness "codex", unsupported until the Codex launch plan (CC-1517)',
     );
   });

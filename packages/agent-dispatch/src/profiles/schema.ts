@@ -73,7 +73,7 @@ export type ContractChoice = (typeof CONTRACT_CHOICES)[number];
 const member =
   <T extends string>(values: readonly T[]) =>
   (value: unknown): value is T =>
-    values.includes(value as never);
+    values.some((entry) => entry === value);
 
 export const isIsolationName = member(ISOLATION_NAMES);
 export const isSurfaceName = member(SURFACE_NAMES);
@@ -84,6 +84,7 @@ export const isPushPolicy = member(PUSH_POLICIES);
 export const isRole = member(AGENT_ROLES);
 export const isHarness = member(HARNESSES);
 export const isContractChoice = member(CONTRACT_CHOICES);
+export const isSettingSource = member(SETTING_SOURCES);
 
 /**
  * A profile bundles the things that always travel together, so a spawn is one noun rather than

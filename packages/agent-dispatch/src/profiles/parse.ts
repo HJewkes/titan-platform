@@ -21,9 +21,14 @@ import {
   isHarness,
   isPushPolicy,
   isRole,
+  isSettingSource,
   type AgentProfile,
+  type AgentRole,
+  type CacheTtl,
+  type ContractChoice,
   type EffortLevel,
   type IsolationName,
+  type PushPolicy,
   type SettingSource,
   type SurfaceLifetime,
   type SurfaceName,
@@ -31,27 +36,45 @@ import {
 
 type Body = Record<string, unknown>;
 
+/** A body every check passed: what the checks establish, written down for the compiler. */
+interface ValidBody extends Body {
+  model: string;
+  allowedTools: string[];
+  disallowedTools?: string[];
+  [DENY_ALIAS]?: string[];
+  isolation: IsolationName;
+  surface: SurfaceName;
+  surfaceLifetime?: SurfaceLifetime;
+  role?: AgentRole;
+  remoteControl?: boolean;
+  returnContract?: ContractChoice;
+  effort?: EffortLevel;
+  cacheTtl?: CacheTtl;
+  pushPolicy?: PushPolicy;
+  env?: Record<string, string>;
+  settingSources?: SettingSource[];
+}
+
 /** A refusal for one field family, or undefined when the family is valid. */
 type Check = (name: string, body: Body) => string | undefined;
 
 export type ProfileParseResult = AgentProfile | { error: string };
 
+const isObject = (value: unknown): value is Body => typeof value === "object" && value !== null;
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
 const isSettingSources = (value: unknown): value is SettingSource[] =>
-  isStringArray(value) && value.every((entry) => SETTING_SOURCES.includes(entry as never));
+  isStringArray(value) && value.every(isSettingSource);
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.values(value).every((entry) => typeof entry === "string");
+  isObject(value) && !Array.isArray(value) && Object.values(value).every((entry) => typeof entry === "string");
 
 function oneOfError(name: string, body: Body, field: string, values: readonly string[], required: boolean): string | undefined {
   const value = body[field];
   if (!required && value === undefined) return undefined;
-  return values.includes(value as never) ? undefined : `${name}: "${field}" must be one of ${values.join(", ")}`;
+  return values.some((entry) => entry === value) ? undefined : `${name}: "${field}" must be one of ${values.join(", ")}`;
 }
 
 function stringListError(name: string, body: Body, field: string, required: boolean): string | undefined {
@@ -171,70 +194,69 @@ const needs = ({ deny, when, workersOnly }: DerivedDeny, denied: string[], allow
   !allowed.some((tool) => tool.startsWith(deny.slice(0, deny.indexOf(":"))));
 
 /** `disallowedTools` and its alias as one list, plus each derived deny the file needs. */
-function fileDenies(file: string, body: Body): { denied?: string[]; warnings: string[] } {
-  const listed = [...((body.disallowedTools as string[]) ?? []), ...((body[DENY_ALIAS] as string[]) ?? [])];
+function fileDenies(file: string, body: ValidBody): { denied?: string[]; warnings: string[] } {
+  const listed = [...(body.disallowedTools ?? []), ...(body[DENY_ALIAS] ?? [])];
   const denied = [...new Set(listed)];
-  const added = DERIVED_DENIES.filter((rule) => needs(rule, denied, body.allowedTools as string[], body.role));
+  const added = DERIVED_DENIES.filter((rule) => needs(rule, denied, body.allowedTools, body.role));
   const warnings = added.map(({ deny, why }) => `${file}: "${deny}" is denied too; ${why}`);
   const named = body.disallowedTools !== undefined || body[DENY_ALIAS] !== undefined;
   if (!named && added.length === 0) return { warnings };
   return { denied: [...denied, ...added.map((rule) => rule.deny)], warnings };
 }
 
-function identityFields(name: string, body: Body, denied: string[] | undefined) {
+function identityFields(name: string, body: ValidBody, denied: string[] | undefined) {
   return {
     name,
     description: typeof body.description === "string" ? body.description : "",
     ...(isHarness(body.harness) ? { harness: body.harness } : {}),
-    model: body.model as string,
-    allowedTools: body.allowedTools as string[],
+    model: body.model,
+    allowedTools: body.allowedTools,
     ...(denied === undefined ? {} : { disallowedTools: denied }),
   };
 }
 
-function placementFields(body: Body) {
+function placementFields(body: ValidBody) {
   return {
-    isolation: body.isolation as IsolationName,
-    surface: body.surface as SurfaceName,
-    ...(body.surfaceLifetime === undefined ? {} : { surfaceLifetime: body.surfaceLifetime as SurfaceLifetime }),
+    isolation: body.isolation,
+    surface: body.surface,
+    ...(body.surfaceLifetime === undefined ? {} : { surfaceLifetime: body.surfaceLifetime }),
     ...(isRole(body.role) ? { role: body.role } : {}),
     ...(body.remoteControl === true ? { remoteControl: true } : {}),
   };
 }
 
-function optionFields(body: Body) {
+function optionFields(body: ValidBody) {
   return {
     ...(isContractChoice(body.returnContract) ? { returnContract: body.returnContract } : {}),
-    ...(body.effort === undefined ? {} : { effort: body.effort as EffortLevel }),
+    ...(body.effort === undefined ? {} : { effort: body.effort }),
     ...(isCacheTtl(body.cacheTtl) ? { cacheTtl: body.cacheTtl } : {}),
     ...(isPushPolicy(body.pushPolicy) ? { pushPolicy: body.pushPolicy } : {}),
     promptPrelude: typeof body.promptPrelude === "string" ? body.promptPrelude : "",
   };
 }
 
-function extraFields(body: Body, warnings: string[]): Partial<AgentProfile> {
+function extraFields(body: ValidBody, warnings: string[]): Partial<AgentProfile> {
   return {
-    ...(typeof body.mcpServers === "object" && body.mcpServers !== null
-      ? { mcpServers: body.mcpServers as Record<string, unknown> }
-      : {}),
-    ...(body.env === undefined ? {} : { env: body.env as Record<string, string> }),
-    ...(body.settingSources === undefined ? {} : { settingSources: body.settingSources as SettingSource[] }),
+    ...(isObject(body.mcpServers) ? { mcpServers: body.mcpServers } : {}),
+    ...(body.env === undefined ? {} : { env: body.env }),
+    ...(body.settingSources === undefined ? {} : { settingSources: body.settingSources }),
     ...Object.fromEntries(LEAN_FLAGS.filter((field) => body[field] !== undefined).map((field) => [field, body[field]])),
     ...(warnings.length === 0 ? {} : { warnings }),
   };
 }
 
-/**
- * Returns the profile or an explanatory error, never a partially-trusted object: a profile that
- * half-loaded would grant whatever its defaults happened to be.
- */
-export function parseProfile(name: string, raw: unknown, file: string = `${name}.json`): ProfileParseResult {
-  if (typeof raw !== "object" || raw === null) return { error: `${name}: not a JSON object` };
-  const body = raw as Body;
+/** The first family's refusal, or undefined when every check passed and `body` is a {@link ValidBody}. */
+function firstError(name: string, body: Body): string | undefined {
   for (const check of CHECKS) {
     const error = check(name, body);
-    if (error !== undefined) return { error };
+    if (error !== undefined) return error;
   }
+  return undefined;
+}
+
+const checked = (body: Body, error: string | undefined): body is ValidBody => error === undefined;
+
+function buildProfile(name: string, file: string, body: ValidBody): AgentProfile {
   const denies = fileDenies(file, body);
   const warnings = [...unknownKeyWarnings(file, body), ...denies.warnings];
   return {
@@ -243,4 +265,14 @@ export function parseProfile(name: string, raw: unknown, file: string = `${name}
     ...optionFields(body),
     ...extraFields(body, warnings),
   };
+}
+
+/**
+ * Returns the profile or an explanatory error, never a partially-trusted object: a profile that
+ * half-loaded would grant whatever its defaults happened to be.
+ */
+export function parseProfile(name: string, raw: unknown, file: string = `${name}.json`): ProfileParseResult {
+  if (!isObject(raw)) return { error: `${name}: not a JSON object` };
+  const error = firstError(name, raw);
+  return checked(raw, error) ? buildProfile(name, file, raw) : { error: String(error) };
 }

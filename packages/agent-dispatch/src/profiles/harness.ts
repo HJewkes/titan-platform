@@ -7,7 +7,7 @@ const CLAUDE_MODEL = /^(?:opus|sonnet|haiku|fable)\b|^claude-/i;
 export function harnessError(name: string, body: Record<string, unknown>): string | undefined {
   if (body.harness === undefined) return undefined;
   if (!isHarness(body.harness)) return `${name}: "harness" must be one of ${HARNESSES.join(", ")}`;
-  if (body.harness === "codex" && CLAUDE_MODEL.test(body.model as string))
+  if (body.harness === "codex" && CLAUDE_MODEL.test(String(body.model)))
     return `${name}: "model" ${JSON.stringify(body.model)} is a Claude model; a "harness": "codex" profile names a Codex model`;
   return undefined;
 }
