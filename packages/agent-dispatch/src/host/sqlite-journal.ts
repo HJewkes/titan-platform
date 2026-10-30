@@ -41,6 +41,12 @@ const COLUMNS = 'kind, ts, actor, target, msg_id, ref, body, meta'
 
 const agentIdOf = (row: JournalRow): string | null => (row.kind === 'agent_spawned' ? row.msgId : row.ref)
 
+const parseMeta = (text: string): Record<string, string> => {
+  const parsed: unknown = JSON.parse(text)
+  if (typeof parsed !== 'object' || parsed === null) throw new Error('journal row meta is not an object')
+  return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]))
+}
+
 const toRow = (stored: StoredRow): JournalRow => ({
   kind: stored.kind,
   ts: stored.ts,
@@ -49,15 +55,15 @@ const toRow = (stored: StoredRow): JournalRow => ({
   msgId: stored.msg_id,
   ref: stored.ref,
   body: stored.body,
-  meta: JSON.parse(stored.meta) as Record<string, string>,
+  meta: parseMeta(stored.meta),
 })
 
 function sqliteJournal(db: Db): AgentJournal {
   const insert = db.prepare(
     `INSERT INTO dispatch_journal (agent_id, ${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-  const all = db.prepare(`SELECT ${COLUMNS} FROM dispatch_journal ORDER BY seq`)
-  const forAgent = db.prepare(`SELECT ${COLUMNS} FROM dispatch_journal WHERE agent_id = ? ORDER BY seq`)
+  const all = db.prepare<[], StoredRow>(`SELECT ${COLUMNS} FROM dispatch_journal ORDER BY seq`)
+  const forAgent = db.prepare<[string], StoredRow>(`SELECT ${COLUMNS} FROM dispatch_journal WHERE agent_id = ? ORDER BY seq`)
   return {
     append: (row) => {
       insert.run(
@@ -72,8 +78,8 @@ function sqliteJournal(db: Db): AgentJournal {
         JSON.stringify(row.meta),
       )
     },
-    rows: () => (all.all() as StoredRow[]).map(toRow),
-    rowsFor: (agentId) => (forAgent.all(agentId) as StoredRow[]).map(toRow),
+    rows: () => all.all().map(toRow),
+    rowsFor: (agentId) => forAgent.all(agentId).map(toRow),
   }
 }
 
