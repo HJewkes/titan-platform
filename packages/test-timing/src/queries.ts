@@ -54,6 +54,12 @@ interface RunGroup {
 
 const groupIdOf = (run: RunRow) => (run.shard ? run.id.replace(/:\d+$/, "") : run.id);
 
+const shardCount = (shard: string | null) => Number(shard?.split("/")[1] ?? 1);
+
+// A file shares its runner with a third of the suite under three shards and with all of it unsharded, so its time is
+// only comparable within one layout: the shard count joins the runner class.
+const seriesClass = (run: RunRow) => (run.shard ? `${run.runner_class}/${shardCount(run.shard)}shards` : run.runner_class);
+
 /**
  * A sharded CI run is one artifact per shard; together they are one suite run. A group missing a shard is dropped, so
  * a cancelled shard never reads as a fast suite.
@@ -64,12 +70,11 @@ function completeGroups(runs: RunRow[]): Map<string, RunGroup> {
   for (const run of runs) {
     const id = groupIdOf(run);
     const known = groups.get(id);
-    groups.set(id, { id, runnerClass: run.runner_class, commit: run.commit_sha, startedMs: Math.min(known?.startedMs ?? run.started_ms, run.started_ms) });
+    groups.set(id, { id, runnerClass: seriesClass(run), commit: run.commit_sha, startedMs: Math.min(known?.startedMs ?? run.started_ms, run.started_ms) });
     shards.set(id, (shards.get(id) ?? new Set()).add(run.shard ?? "1/1"));
   }
   for (const [id, seen] of shards) {
-    const count = Number([...seen][0]?.split("/")[1] ?? 1);
-    if (seen.size !== count) groups.delete(id);
+    if (seen.size !== shardCount([...seen][0] ?? null)) groups.delete(id);
   }
   return groups;
 }

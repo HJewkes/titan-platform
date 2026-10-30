@@ -95,17 +95,18 @@ describe("timingReport run selection", () => {
     suiteRun(4, () => 0.2, { scope: { mode: "scoped", filters: [] } });
     suiteRun(5, () => 0.5, { id: "gha:5:1:1", shard: "1/2" });
 
-    const [suite] = timingReport(db).suites;
+    const suites = timingReport(db).suites.map((suite) => [suite.runnerClass, suite.verdicts.map((verdict) => verdict.point.runId)]);
 
-    expect(suite?.verdicts.map((verdict) => verdict.point.runId)).toEqual(["gha:0:1:1", "gha:1:1:1", "gha:2:1:1", "gha:3:1:1"]);
+    expect(suites).toEqual([["gha-4c", ["gha:0:1:1", "gha:1:1:1", "gha:2:1:1", "gha:3:1:1"]]]);
   });
 
-  it("sums the shards of one run into a single suite point", () => {
-    suiteRun(0, () => 1, { id: "gha:9:1:1", shard: "1/2" });
-    suiteRun(0, () => 1, { id: "gha:9:1:2", shard: "2/2" });
+  it("sums the shards of one run into a single suite point, apart from unsharded runs", () => {
+    suiteRun(0, () => 1);
+    suiteRun(1, () => 1, { id: "gha:9:1:1", shard: "1/2" });
+    suiteRun(1, () => 1, { id: "gha:9:1:2", shard: "2/2" });
 
-    const [suite] = timingReport(db).suites;
+    const suites = timingReport(db).suites.map((suite) => [suite.runnerClass, suite.verdicts.map((verdict) => verdict.point.runId)]);
 
-    expect(suite?.verdicts.map((verdict) => verdict.point.runId)).toEqual(["gha:9:1"]);
+    expect(suites).toEqual([["gha-4c", ["gha:0:1:1"]], ["gha-4c/2shards", ["gha:9:1"]]]);
   });
 });
