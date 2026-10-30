@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the initiative list's link keeps its 16px line",
+      "file": "apps/console/src/pages/InitiativesPage.tsx",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_LINK} onPress={() => open({ view: \"initiatives\", id: row.slug })}>",
+      "replace": "<Link color=\"primary\" onPress={() => open({ view: \"initiatives\", id: row.slug })}>",
+      "kills": [
+        "a press target on a phone gives each initiative's link a 44px tap"
+      ]
+    },
+    {
+      "name": "the brief's section steps keep their 24px",
+      "file": "apps/console/src/pages/InitiativeDetailPage.tsx",
+      "find": "<InitiativeBrief className={PHONE_TAP_BUTTONS} ",
+      "replace": "<InitiativeBrief ",
+      "kills": [
+        "a press target on a phone gives the initiative's breadcrumb, record tabs and brief steps a 44px tap"
+      ]
+    },
+    {
+      "name": "the findings chips keep their small size",
+      "file": "apps/console/src/pages/ReviewFindings.tsx",
+      "find": "<Chip key={option} size=\"sm\" className={PHONE_TAP}",
+      "replace": "<Chip key={option} size=\"sm\"",
+      "kills": [
+        "a press target on a phone gives the review findings' filter chips a 44px tap"
+      ]
+    },
+    {
+      "name": "config's Settings tab keeps its 34px",
+      "file": "apps/console/src/pages/ConfigPage.tsx",
+      "find": "<Tab className={PHONE_TAP}>Settings</Tab>",
+      "replace": "<Tab>Settings</Tab>",
+      "kills": [
+        "a press target on a phone gives config's tabs a 44px tap"
+      ]
+    },
+    {
+      "name": "the shepherd run link keeps its 16px line",
+      "file": "apps/console/src/pages/ShepherdPage.tsx",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_LINK} onPress={() => open({ view: \"shepherd\", id: ref })}>",
+      "replace": "<Link color=\"primary\" onPress={() => open({ view: \"shepherd\", id: ref })}>",
+      "kills": [
+        "a press target on a phone gives each shepherd run's link a 44px tap"
+      ]
+    }
+  ]
+}

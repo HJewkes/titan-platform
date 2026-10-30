@@ -1,5 +1,5 @@
 /** A phone tap needs a 44px target, taller than a tab, chip or small button draws itself; a desktop keeps each control's own size. */
-export const PHONE_TAP = "max-md:min-h-11";
+export const PHONE_TAP = "max-md:min-h-11 max-md:min-w-11";
 
 /** The same for a link, which lays out inline and so ignores a min height until it is a flex box; a short id also needs the width. */
 export const PHONE_TAP_LINK = "max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center";
