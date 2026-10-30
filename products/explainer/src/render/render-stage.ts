@@ -1,15 +1,18 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import type { Timeline } from "../composition/timeline.js";
 import type { QaGate } from "../qa/gate-profile.js";
 import { sha256, type ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
-import type { Check, StageOutcome } from "../workflow/records.js";
+import { NO_USAGE, type Check, type StageOutcome } from "../workflow/records.js";
+import { StageFailure } from "../workflow/stage-failure.js";
 import { renameWordsBeats } from "./beat-ids.js";
 import { compileTimeline, writeTimeline } from "./compile-timeline.js";
 import { defaultCompositionPage, servePage, treeSha, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers, type PageLayer } from "./custom-layers.js";
+import { QaRefused } from "./qa-gate.js";
 import { renderBoard } from "./render-board.js";
 import { renderVideo, RenderWordsSchema, type RenderInput, type RenderResult, type RenderWords } from "./render-video.js";
 
@@ -125,6 +128,21 @@ function stored(input: RenderStageInput, run: Prepared, result: RenderResult, ou
   };
 }
 
+const HeldReportSchema = z.object({ errors: z.array(z.object({ kind: z.string(), beat: z.string(), ts: z.array(z.number()).min(1), el: z.string().optional() })) });
+
+/** One held row in short form: kind, beat, first ts, element. */
+const heldRow = ({ kind, beat, ts, el }: z.infer<typeof HeldReportSchema>["errors"][number]): string => `${kind} ${beat} @${ts[0]}s${el === undefined ? "" : ` ${el}`}`;
+
+/** The scratch dir goes with the failure, so the refusal keeps `qa.json` as an artifact of the failed record and names its sha. */
+function keptRefusal(input: RenderStageInput, refusal: QaRefused): StageFailure {
+  const sha = input.store.putFile(refusal.qaJson, "qa-report", input.from);
+  const rows = HeldReportSchema.parse(JSON.parse(readFileSync(refusal.qaJson, "utf8"))).errors.map(heldRow);
+  const message = `qa: refusing to render ${STEM}: ${refusal.heldErrors} held errors (qa.json stored as artifact ${sha}): ${rows.join("; ")}; or render with qa mode "skip"`;
+  const failure = new StageFailure(message, NO_USAGE, 0, [], { "qa-report": sha });
+  failure.cause = refusal;
+  return failure;
+}
+
 /**
  * The `explainer.render` body (workflow plan §2.3 stage 8): script and resolved through the template fill to a
  * storyboard, compiled with the voiced words to `timeline.json`, rendered on the composition page behind the QA gate.
@@ -140,6 +158,8 @@ export async function runRenderStage(input: RenderStageInput, config: RenderConf
     const { frames, durationS, draft, qaGate } = result.data;
     const notes = [`${frames} frames, ${durationS} s at ${config.workers} workers${draft ? ", DRAFT" : ""}, qa ${qaGate}`, ...run.notes];
     return { outputs: stored(input, run, result, outDir), checks, notes };
+  } catch (error) {
+    throw error instanceof QaRefused ? keptRefusal(input, error) : error;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
