@@ -4,6 +4,8 @@ import { claudeSourceFromPath, readSessionObservations } from "@titan-design/ses
 import type { ReviewerMessage } from "@titan-design/review-panel";
 import { CodeStepFailure, type StepUsage } from "@titan-design/workflow";
 import type { ZodType } from "zod";
+import { AgentLeftRunning, messageOf, stopAgent } from "./agent-stop.js";
+import type { TellOwner } from "./owner-ops/standing-answers.js";
 import type { AgentChatAgents } from "./shepherd/agents.js";
 import { accountLimitRefusal } from "./shepherd/account-fallback.js";
 import { believedReset, parseLimitReset } from "./shepherd/account-limit.js";
@@ -18,6 +20,10 @@ const IMPLEMENTER_TIMEOUT_MS = 6 * 60 * 60_000;
 const POLL_MS = 30_000;
 /** A resume returns once the broker accepts it, so the row can still read exited from the turn before for a while. */
 const START_GRACE_MS = 5 * 60_000;
+/** Three polls, about a minute and a half, for an agent told to stop to push and exit before its retire is tried again. */
+const STOP_GRACE_POLLS = 3;
+/** Ten polls, about five minutes, of a transcript that will not read before a budget stops trusting it. */
+const MAX_UNREAD_POLLS = 10;
 /**
  * A spawn-gate deferral (load, memory pressure, the admit window) reads the machine now, not the slice: wait and ask again,
  * doubling the wait up to `maxMs`, and give up once the next wait would pass `totalMs` since the first ask.
@@ -42,8 +48,14 @@ interface ImplementerSpawn {
   schema?: ZodType;
   /** Recorded as `--role`; a read-only reviewer runs through the same wait and report read. */
   role?: AgentRole;
-  /** What the agent may spend on this turn; past it the agent is retired mid-turn. Absent never stops it. */
+  turn?: TurnLimits;
+}
+
+interface TurnLimits {
+  /** What the agent may spend on this turn; past it the agent is stopped mid-turn. Absent never stops it. */
   budgetUsd?: number;
+  /** When the step first started, which a restart keeps: spend from then on is this turn's, however late the wait attached. */
+  firstStartedAtMs?: number;
 }
 
 interface ImplementerReport {
@@ -58,14 +70,16 @@ interface ImplementerReport {
 /** One implementer lineage per name: start it once, then resume the same session for each fix round. */
 export interface ImplementerRunner {
   start(request: ImplementerSpawn, signal: AbortSignal): Promise<ImplementerReport>;
-  resume(name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, budgetUsd?: number): Promise<ImplementerReport>;
+  resume(name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, turn?: TurnLimits): Promise<ImplementerReport>;
 }
 
 /** The finished turn's messages, oldest first; none while the turn is unfinished. */
 export type FinalMessages = (row: AgentRow) => Promise<readonly Pick<ReviewerMessage, "text" | "writtenAt">[]>;
 
 interface ImplementerRunnerOptions {
-  agents: Pick<AgentChatAgents, "roster" | "spawn" | "resume" | "retire">;
+  agents: Pick<AgentChatAgents, "roster" | "spawn" | "resume" | "message" | "retire">;
+  /** Told about an agent still live after every way of stopping it failed. */
+  tellOwner: TellOwner;
   messages?: FinalMessages;
   meter?: StepMeter;
   now?: () => number;
@@ -74,6 +88,8 @@ interface ImplementerRunnerOptions {
   timeoutMs?: number;
   startGraceMs?: number;
   spawnRetry?: SpawnRetry;
+  stopGracePolls?: number;
+  maxUnreadPolls?: number;
 }
 
 type ResolvedOptions = Required<Omit<ImplementerRunnerOptions, "agents">> & Pick<ImplementerRunnerOptions, "agents">;
@@ -116,31 +132,40 @@ interface Wait {
   schema: ZodType | undefined;
   signal: AbortSignal;
   budgetUsd: number | undefined;
+  /** The start of the turn's spend; earlier than `askedAt` when the wait attached to a turn already running. */
+  meterFromMs: number;
   /** The newest row the wait saw, kept so a turn that ends in an error can still be metered. */
   row?: AgentRow;
+  /** The newest good meter reading, a floor if a later read fails. */
+  spent?: StepUsage;
+  unreadPolls: number;
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+async function readMeter(options: ResolvedOptions, wait: Wait, row: AgentRow): Promise<StepUsage | undefined> {
+  const spent = await options.meter(row, wait.meterFromMs).catch(() => undefined);
+  wait.unreadPolls = spent ? 0 : wait.unreadPolls + 1;
+  if (spent) wait.spent = spent;
+  return spent;
 }
 
-/** Retires the agent; a refusal (never forced, so unpushed work refuses it) is said in the failure, because it may still be spending. */
-async function retireOverBudget(options: ResolvedOptions, name: string, why: string): Promise<never> {
-  try {
-    await options.agents.retire?.(name);
-  } catch (error) {
-    throw new Error(`${name} ${why}, and retiring it was refused, so it may still be running: ${messageOf(error)}`);
-  }
-  throw new Error(`${name} was retired: it ${why}`);
+/** Why a budget can no longer hold; a few unread polls are transient, but a meter that stays dark must not read as under budget. */
+function overBudget(spent: StepUsage | undefined, budgetUsd: number, unreadPolls: number, maxUnreadPolls: number): string | undefined {
+  const budget = `$${budgetUsd.toFixed(2)} budget`;
+  if (spent?.costUnknown) return `has spend with no price, so its ${budget} cannot be checked`;
+  if (spent && spent.costUsd > budgetUsd) return `spent $${spent.costUsd.toFixed(2)} of its ${budget}`;
+  return unreadPolls >= maxUnreadPolls ? `could not be metered for ${unreadPolls} polls in a row, so its ${budget} cannot be checked` : undefined;
 }
 
-/** A meter that cannot be read this poll says nothing; only spend it did read, or spend it cannot price, retires the agent. */
 async function stopOverBudget(options: ResolvedOptions, wait: Wait, row: AgentRow): Promise<void> {
-  const { budgetUsd } = wait;
+  const { budgetUsd, name, signal } = wait;
   if (budgetUsd === undefined || row.presence === "exited") return;
-  const spent = await options.meter(row, wait.askedAt).catch(() => undefined);
-  if (spent?.costUnknown) await retireOverBudget(options, wait.name, `has spend with no price, so its $${budgetUsd.toFixed(2)} budget cannot be checked`);
-  if (spent && spent.costUsd > budgetUsd) await retireOverBudget(options, wait.name, `spent $${spent.costUsd.toFixed(2)} of its $${budgetUsd.toFixed(2)} budget`);
+  const why = overBudget(await readMeter(options, wait, row), budgetUsd, wait.unreadPolls, options.maxUnreadPolls);
+  if (why === undefined) return;
+  const observe = async (seen: AgentRow) => {
+    wait.row = seen;
+    await readMeter(options, wait, seen);
+  };
+  await stopAgent(options, { name, why, signal, observe });
 }
 
 /** Polls the roster until `name` has exited with a report written since the ask; an exit with none rejects. */
@@ -166,7 +191,9 @@ async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<Omit<I
 /** The turn's spend once it is over; a turn that ran and cannot be read is unmetered, never free. */
 async function turnUsage(options: ResolvedOptions, wait: Wait): Promise<StepUsage> {
   if (!wait.row) return UNMETERED;
-  return (await options.meter(wait.row, wait.askedAt).catch(() => undefined)) ?? UNMETERED;
+  const read = await options.meter(wait.row, wait.meterFromMs).catch(() => undefined);
+  if (read) return read;
+  return wait.spent ? { ...wait.spent, costUnknown: true } : UNMETERED;
 }
 
 /** Waits for the report and prices the turn, on a failed turn too, so a budget counts what the failure already spent. */
@@ -176,7 +203,8 @@ async function meteredReport(options: ResolvedOptions, wait: Wait): Promise<Impl
     return { ...report, usage: await turnUsage(options, wait) };
   } catch (error) {
     if (wait.signal.aborted) throw error;
-    throw new CodeStepFailure(messageOf(error), await turnUsage(options, wait));
+    const usage = await turnUsage(options, wait);
+    throw new CodeStepFailure(messageOf(error), error instanceof AgentLeftRunning ? { ...usage, costUnknown: true } : usage);
   }
 }
 
@@ -218,24 +246,26 @@ async function whenAdmitted(options: ResolvedOptions, name: string, signal: Abor
  * waited on, so a re-dispatch after a park never spawns a second agent under the name.
  */
 export function agentChatImplementerRunner(options: ImplementerRunnerOptions): ImplementerRunner {
-  const waits = { pollMs: POLL_MS, timeoutMs: IMPLEMENTER_TIMEOUT_MS, startGraceMs: START_GRACE_MS, spawnRetry: SPAWN_RETRY };
+  const waits = { pollMs: POLL_MS, timeoutMs: IMPLEMENTER_TIMEOUT_MS, startGraceMs: START_GRACE_MS, spawnRetry: SPAWN_RETRY, stopGracePolls: STOP_GRACE_POLLS, maxUnreadPolls: MAX_UNREAD_POLLS };
   const defaults = { messages: transcriptFinalMessages(), meter: transcriptMeter, now: Date.now, sleep: abortableSleep, ...waits };
   const resolved: ResolvedOptions = { ...defaults, ...options };
-  const resume = async (name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, budgetUsd?: number) => {
+  const waitFor = (name: string, askedAt: number, schema: ZodType | undefined, signal: AbortSignal, turn: TurnLimits) =>
+    meteredReport(resolved, { name, askedAt, schema, signal, budgetUsd: turn.budgetUsd, meterFromMs: turn.firstStartedAtMs ?? askedAt, unreadPolls: 0 });
+  const resume = async (name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, turn: TurnLimits = {}) => {
     const askedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.resume(name, message));
-    return meteredReport(resolved, { name, askedAt, schema, signal, budgetUsd });
+    return waitFor(name, askedAt, schema, signal, turn);
   };
   return {
     async start(request, signal) {
       const existing = latestRow(request.name, await resolved.agents.roster());
       const askedAt = resolved.now();
-      const { budgetUsd } = request;
-      if (existing?.presence === "exited" && existing.status !== "retired") return resume(request.name, request.brief, request.schema, signal, budgetUsd);
-      if (existing && existing.status !== "retired") return meteredReport(resolved, { name: request.name, askedAt, schema: request.schema, signal, budgetUsd });
+      const { turn = {} } = request;
+      if (existing?.presence === "exited" && existing.status !== "retired") return resume(request.name, request.brief, request.schema, signal, turn);
+      if (existing && existing.status !== "retired") return waitFor(request.name, askedAt, request.schema, signal, turn);
       const { name, profile, brief, cwd, task } = request;
       const spawn = { name, profile, brief, cwd, role: request.role ?? "implementer", ...(task !== undefined && { task }) };
       const admittedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.spawn(spawn));
-      return meteredReport(resolved, { name, askedAt: admittedAt, schema: request.schema, signal, budgetUsd });
+      return waitFor(name, admittedAt, request.schema, signal, turn);
     },
     resume,
   };

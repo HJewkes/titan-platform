@@ -276,17 +276,23 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     }
     const oneSlice = (budgets: object) => demoSpec({ preview: undefined, reviewer: undefined, deploy: undefined, slices: [{ id: "shell", title: "Shell", brief: "b" }], ...budgets });
 
-    /** Real implement and fix routes over a stubbed implementer; each turn's budget is kept for the assert. */
+    const REAL_AGENT_ROUTES = ["bs-implement", "bs-fix", "bs-review"];
+
+    /** Real implement, fix and review routes over a stubbed implementer; each turn's budget is kept for the assert. */
     function metered(fake: FakeBuild, turn: (round: number) => StepUsage) {
       const budgets: (number | undefined)[] = [];
       const turns = { pushed: 0 };
       const answer = async (budgetUsd: number | undefined) => (budgets.push(budgetUsd), turnOf(fake, turns, turn(budgets.length - 1)));
-      fake.ports.implementer = { start: (request) => answer(request.budgetUsd), resume: (_name, _message, _schema, _signal, budgetUsd) => answer(budgetUsd) };
-      const real = buildSurfaceAgentRoutes(fake.ports).filter((route) => route.match === "bs-implement" || route.match === "bs-fix");
-      const routes = stubbedRoutes(fake).filter((route) => route.match !== "bs-implement" && route.match !== "bs-fix").concat(real);
+      fake.ports.implementer = { start: (request) => answer(request.turn?.budgetUsd), resume: (_name, _message, _schema, _signal, turn) => answer(turn?.budgetUsd) };
+      return { ...hostOver(fake), budgets };
+    }
+
+    function hostOver(fake: FakeBuild) {
+      const real = buildSurfaceAgentRoutes(fake.ports).filter((route) => REAL_AGENT_ROUTES.includes(route.match));
+      const routes = stubbedRoutes(fake).filter((route) => !REAL_AGENT_ROUTES.includes(route.match)).concat(real);
       const host = openFactoryHost({ dbPath: ":memory:", workflows: [buildSurfaceWorkflow()], routes, gatePollMs: 5 });
       hosts.push(host);
-      return { host, runId: host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }), budgets };
+      return { host, runId: host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }) };
     }
 
     const walkFinal = async (host: FactoryHost, runId: string) => {
@@ -305,6 +311,27 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
       expect(run.status).toBe("completed");
       expect(budgets).toEqual([1]);
       expect(Object.values(host.runtime.status(runId)!.stepResults).find((step) => step.stepId === "bs-implement:shell")?.usage).toEqual(usage);
+    });
+
+    it("hands the reviewer what the slice has left and the step's first start", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1, reviewer: { profile: "reviewer-ro" } }) });
+      const turns = { pushed: 0 };
+      const asked: { role: string | undefined; budgetUsd: number | undefined; firstStartedAtMs: number | undefined }[] = [];
+      fake.ports.implementer = {
+        start: async ({ role, turn, brief }) => {
+          asked.push({ role, budgetUsd: turn?.budgetUsd, firstStartedAtMs: turn?.firstStartedAtMs });
+          if (role !== "reviewer") return turnOf(fake, turns, { costUsd: 0.25 });
+          const head = /at exactly head ([0-9a-f]{40})/.exec(brief)![1]!;
+          return { agent: "reviewer", agentId: "r", sessionId: "s2", report: { head, verdict: "PASS", rows: [{ rubric: 1, result: "pass" }] }, usage: { costUsd: 0.1 } };
+        },
+        resume: () => Promise.reject(new Error("no fix round")),
+      };
+      const { host, runId } = hostOver(fake);
+
+      await walkFinal(host, runId);
+
+      expect(asked.map(({ role, budgetUsd }) => ({ role, budgetUsd }))).toEqual([{ role: undefined, budgetUsd: 1 }, { role: "reviewer", budgetUsd: 0.75 }]);
+      expect(asked.every(({ firstStartedAtMs }) => Number.isFinite(firstStartedAtMs))).toBe(true);
     });
 
     it("stops a slice whose finished agent step passed the cap", async () => {
