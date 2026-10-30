@@ -5,7 +5,7 @@ import { configPath, loadConfig } from "../config.js";
 const LINK_TIMEOUT_MS = 10_000;
 const URL_LINE = /^https?:\/\/\S+$/;
 
-export type LinkExec = (argv: readonly string[]) => Promise<SafeExecResult>;
+type LinkExec = (argv: readonly string[]) => Promise<SafeExecResult>;
 /** The console URL that opens the inbox on `id`, or undefined when the console cannot say. */
 export type InboxLink = (env: NodeJS.ProcessEnv, id: string) => Promise<string | undefined>;
 
