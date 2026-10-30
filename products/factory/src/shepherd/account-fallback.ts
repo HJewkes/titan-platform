@@ -6,13 +6,13 @@ const ACCOUNT_LIMIT_CODE = "reviewer_account_limit";
 const CODE_TRAILER = /\n\s*code: (\S+) retryable: (?:true|false)$/;
 const MAX_CAUSE_DEPTH = 4;
 
-/** True only for the broker's coded account-limit refusal, found on the error or a cause it wraps; a pool, name or load refusal is not one. */
-function isAccountLimitRefusal(error: unknown): boolean {
+/** The refusal itself only for the broker's coded account-limit refusal, found on the error or a cause it wraps; a pool, name or load refusal is not one. */
+export function accountLimitRefusal(error: unknown): DispatchError | undefined {
   let at = error;
   for (let depth = 0; depth <= MAX_CAUSE_DEPTH && at instanceof Error; depth++, at = at.cause) {
-    if (at instanceof DispatchError && CODE_TRAILER.exec(at.message.trim())?.[1] === ACCOUNT_LIMIT_CODE) return true;
+    if (at instanceof DispatchError && CODE_TRAILER.exec(at.message.trim())?.[1] === ACCOUNT_LIMIT_CODE) return at;
   }
-  return false;
+  return undefined;
 }
 
 /** How a log line names an account; agent-chat's default one is spawned under no config directory. */
@@ -29,7 +29,7 @@ export async function spawnOnAccounts<D extends string | undefined>(name: string
       if (index > 0) console.warn(`shepherd: ${name} spawned on the fallback account ${accountName(configDir)}`);
       return;
     } catch (error) {
-      if (index === accounts.length - 1 || !isAccountLimitRefusal(error)) throw error;
+      if (index === accounts.length - 1 || accountLimitRefusal(error) === undefined) throw error;
       console.warn(`shepherd: ${name}'s spawn was refused at the account limit on ${accountName(configDir)}; trying ${accountName(accounts[index + 1])}`);
     }
   }
