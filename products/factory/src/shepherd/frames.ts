@@ -1,8 +1,9 @@
 import type { EventHub } from "@titan-design/daemon";
+import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
 import type { Db } from "@titan-design/store-sqlite";
 import type { WorkflowEvent } from "@titan-design/workflow";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type FactoryRoutes } from "../host.js";
-import type { ShepherdServices } from "./services.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 
 export const SHEPHERD_FRAME_EVENT = "shepherd";
@@ -19,6 +20,8 @@ export interface ShepherdFrame {
   pr?: number;
   runId?: string;
   stepId?: string;
+  /** Which workflow's run moved, so the console refetches only the reads it feeds; absent from frames no run caused, and from older factories. */
+  workflow?: "autoresearch" | "shepherd";
   at: string;
 }
 
@@ -28,6 +31,8 @@ interface ShepherdFramesOptions {
   now?: () => number;
   /** The registration behind a run, so run and gate frames carry its repo and PR; absent or throwing means they carry neither. */
   registrationOf?: (runId: string) => { repo: string; pr: number | null } | undefined;
+  /** The workflow name behind a run; absent or throwing means its frames carry no workflow. */
+  workflowNameOf?: (runId: string) => string | undefined;
 }
 
 interface ShepherdFrames {
@@ -54,9 +59,12 @@ interface ServeFrames {
 export function openFramedHost(options: FactoryHostOptions & FramedHostOptions): { host: FactoryHost; frames: ServeFrames } {
   let db: Db | undefined;
   const services = options.routes.shepherd;
-  const source = shepherdFrames({ pollMs: options.framePollMs, now: options.now, registrationOf: services && ((runId) => services.store.get().byRun(runId)) });
-  const routes = tapDatabase(options.routes, (opened) => (db = opened));
+  const opened: { host?: FactoryHost } = {};
+  const workflowNameOf = (runId: string): string | undefined => opened.host?.runtime.status(runId)?.workflowName;
+  const source = shepherdFrames({ pollMs: options.framePollMs, now: options.now, registrationOf: services && ((runId) => services.store.get().byRun(runId)), workflowNameOf });
+  const routes = tapDatabase(options.routes, (bound) => (db = bound));
   const host = openFactoryHost({ ...options, routes, onEvent: (event) => (options.onEvent?.(event), source.onEvent(event)) });
+  opened.host = host;
   const unlisten = subscribe(services, source);
   return {
     host,
@@ -96,8 +104,13 @@ export function shepherdFrames(options: ShepherdFramesOptions = {}): ShepherdFra
   const pending = coalescer(options.coalesceMs ?? FRAME_COALESCE_MS, (frame) => hub?.broadcast({ event: SHEPHERD_FRAME_EVENT, data: JSON.stringify(frame) }));
   const emit = (frame: ShepherdFrame): void => void (!closed && hub !== undefined && pending.push(frame));
   return {
-    onEvent: (event) => emit({ v: 1, kind: kindOf(event), ...registrationFields(options.registrationOf, event.runId), runId: event.runId, ...("stepId" in event && { stepId: event.stepId }), at: at() }),
-    onChange: ({ repo, pr, runId }) => emit({ v: 1, kind: "registration", repo, ...(pr !== null && { pr }), runId, at: at() }),
+    onEvent: (event) => {
+      const { runId } = event;
+      emit({ v: 1, kind: kindOf(event), ...registrationFields(options.registrationOf, runId), ...workflowField(options.workflowNameOf, runId), runId, ...("stepId" in event && { stepId: event.stepId }), at: at() });
+    },
+    onChange: ({ repo, pr, runId }) => {
+      emit({ v: 1, kind: "registration", repo, ...(pr !== null && { pr }), ...workflowField(options.workflowNameOf, runId), runId, at: at() });
+    },
     start(nextHub, db) {
       if (closed) return;
       hub = nextHub;
@@ -146,6 +159,23 @@ function pollCommits(db: Db, pollMs: number, onCommit: () => void): ReturnType<t
 
 function kindOf(event: WorkflowEvent): ShepherdFrameKind {
   return event.type === "gate_opened" ? "gate" : "run";
+}
+
+/** Only workflows known not to feed autoresearch's reads say so; any other name, and every future one, carries no label and so refetches everything. */
+const WORKFLOW_LABELS = new Map<string, NonNullable<ShepherdFrame["workflow"]>>([
+  [AUTORESEARCH_WORKFLOW, "autoresearch"],
+  [AUTORESEARCH_VALIDATE_WORKFLOW, "autoresearch"],
+  [SHEPHERD_WORKFLOW, "shepherd"],
+]);
+
+function workflowField(workflowNameOf: ShepherdFramesOptions["workflowNameOf"], runId: string): Pick<ShepherdFrame, "workflow"> {
+  try {
+    const name = workflowNameOf?.(runId);
+    const workflow = name === undefined ? undefined : WORKFLOW_LABELS.get(name);
+    return workflow === undefined ? {} : { workflow };
+  } catch {
+    return {};
+  }
 }
 
 function registrationFields(registrationOf: ShepherdFramesOptions["registrationOf"], runId: string): { repo?: string; pr?: number } {
