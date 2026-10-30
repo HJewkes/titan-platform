@@ -18,6 +18,24 @@
       "kills": [
         "test-timing ingest-gh stores every shard and attempt of a main run and leaves a none-scope pull request run with no rows"
       ]
+    },
+    {
+      "name": "a sha is cut at its commit date even when the corpus ran it",
+      "file": "scripts/test-timing.mjs",
+      "find": "    if (seen !== null) return seen;\n",
+      "replace": "",
+      "kills": [
+        "test-timing slower cuts at the commit's first run in the corpus and lists the suite first"
+      ]
+    },
+    {
+      "name": "the report is printed but never left for seats",
+      "file": "scripts/test-timing.mjs",
+      "find": "    writeAtomic(join(out, \"report.md\"), `${markdown}\\n`);\n",
+      "replace": "",
+      "kills": [
+        "test-timing report writes report.md and report.json for seats and flags a held 20% suite rise"
+      ]
     }
   ]
 }

@@ -33,7 +33,8 @@ stores those records in a SQLite corpus of `runs` and `files` rows that later qu
   min-of-last-N rose at least 25% and 500 ms over the minimum of the runs before, and every project's `trend`.
   `slowerSince(db, cutMs)` answers "what got slower since this commit or date"; `commitStartedMs` turns a sha prefix
   into the cut. All of them read full-scope runs only, one series per runner class and shard layout (`gha-4c`,
-  `gha-4c/3shards`), with a sharded run's shards summed into one point.
+  `gha-4c/3shards`), with a sharded run's shards summed into one point. `renderReportMarkdown` and
+  `renderSlowerMarkdown` turn either into the markdown a seat reads.
 - A report compares like with like: every file row carries `runner_class` (`<runner>-<cpus>c`), indexed with file
   and project, and every run keeps its `host`.
 

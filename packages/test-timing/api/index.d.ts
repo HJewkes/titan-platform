@@ -369,4 +369,13 @@ interface SlowerFinding extends SeriesId {
 /** Every suite, project and file whose minimum after `cutMs` rose over its minimum before it, largest rise first. */
 declare function slowerSince(db: Db, cutMs: number, options?: SlowerOptions): SlowerFinding[];
 
-export { ANOMALY_RULE, type AnomalyRule, type ArtifactName, GROWTH_RULE, type GhRunMeta, type Growth, type GrowthFinding, type GrowthRule, type IngestResult, type LegacyUpgrade, type Level, type Point, type ProjectTrend, type RawRef, type ReportOptions, type RunVerdict, type Series, type SeriesFilter, type SeriesId, type Shift, type SlowerFinding, type SlowerOptions, type SpoolOptions, type SpoolResult, type SuiteRuns, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingReport, type TimingRun, type TimingStoreOptions, type TimingStoreStats, archiveRaw, commitStartedMs, fileSafeId, ghRunFetched, growthOf, ingestArtifact, ingestGhArtifact, ingestRecord, ingestSpool, isLegacyArtifact, markGhRunFetched, openTimingStore, parseArtifactName, parseTimingArtifact, readSeries, runVerdicts, runnerClass, shiftAt, slowerSince, storeStats, timingArtifactReadSchema, timingArtifactSchema, timingReport, trendOf, upgradeLegacyArtifact };
+/** The report a seat reads: anomalies first, then growth, the suite runs and every project's trend. */
+declare function renderReportMarkdown(report: TimingReport, { top }?: {
+    top?: number;
+}): string;
+/** "What got slower since <label>", largest rise first. */
+declare function renderSlowerMarkdown(findings: SlowerFinding[], label: string, { top }?: {
+    top?: number;
+}): string;
+
+export { ANOMALY_RULE, type AnomalyRule, type ArtifactName, GROWTH_RULE, type GhRunMeta, type Growth, type GrowthFinding, type GrowthRule, type IngestResult, type LegacyUpgrade, type Level, type Point, type ProjectTrend, type RawRef, type ReportOptions, type RunVerdict, type Series, type SeriesFilter, type SeriesId, type Shift, type SlowerFinding, type SlowerOptions, type SpoolOptions, type SpoolResult, type SuiteRuns, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingReport, type TimingRun, type TimingStoreOptions, type TimingStoreStats, archiveRaw, commitStartedMs, fileSafeId, ghRunFetched, growthOf, ingestArtifact, ingestGhArtifact, ingestRecord, ingestSpool, isLegacyArtifact, markGhRunFetched, openTimingStore, parseArtifactName, parseTimingArtifact, readSeries, renderReportMarkdown, renderSlowerMarkdown, runVerdicts, runnerClass, shiftAt, slowerSince, storeStats, timingArtifactReadSchema, timingArtifactSchema, timingReport, trendOf, upgradeLegacyArtifact };

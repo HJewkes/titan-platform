@@ -13,3 +13,4 @@ export type { GrowthFinding, ProjectTrend, ReportOptions, SeriesId, SlowerFindin
 export { slowerSince, timingReport } from "./report.js";
 export type { AnomalyRule, Growth, GrowthRule, Point, RunVerdict, Shift } from "./trend.js";
 export { ANOMALY_RULE, GROWTH_RULE, growthOf, runVerdicts, shiftAt, trendOf } from "./trend.js";
+export { renderReportMarkdown, renderSlowerMarkdown } from "./render.js";
