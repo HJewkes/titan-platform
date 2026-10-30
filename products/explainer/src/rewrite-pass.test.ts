@@ -155,8 +155,8 @@ describe("rewriteScript guard and revert", () => {
     // Act
     const { script: out, report } = await rewrite(script, fakeRewriter(addsRow), { rounds: 1 });
 
-    // Assert
-    expect(report.rounds[0]!.reverted).toEqual([{ beat: "k3", rows: ["template-fill"] }]);
+    // Assert: a beat the fill refuses also fails the drawn-model Q-D15 (TP-4506), which runs on every type.
+    expect(report.rounds[0]!.reverted).toEqual([{ beat: "k3", rows: ["Q-D15", "template-fill"] }]);
     expect(labelsOf(out, "k3")).toEqual(rows);
     expect(spokenOf(out, "k2")).toContain("at the counter");
   });
