@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { SQL_NOW, quoteIdent, type Db } from "../open.js";
+import { SQL_NOW, parseJsonObject, quoteIdent, type Db } from "../open.js";
 
 /**
  * Content-addressed cache for anything that is a pure function of some text
@@ -56,18 +56,18 @@ export class CacheBlobTable {
 
   constructor(db: Db, { name = "cache_blob" }: CacheBlobOptions = {}) {
     const t = quoteIdent(name);
-    this.getStmt = db.prepare(`SELECT value, meta FROM ${t} WHERE namespace = ? AND model = ? AND content_hash = ?`);
+    this.getStmt = db.prepare<[string, string, string], { value: Buffer; meta: string | null }>(`SELECT value, meta FROM ${t} WHERE namespace = ? AND model = ? AND content_hash = ?`);
     this.putStmt = db.prepare(
       `INSERT INTO ${t} (namespace, model, content_hash, value, meta) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (namespace, model, content_hash) DO NOTHING`,
     );
-    this.countStmt = db.prepare(`SELECT count(*) AS n FROM ${t} WHERE namespace = ? AND model = ?`);
+    this.countStmt = db.prepare<[string, string], { n: number }>(`SELECT count(*) AS n FROM ${t} WHERE namespace = ? AND model = ?`);
   }
 
   get(key: CacheKey): CacheHit | undefined {
-    const raw = this.getStmt.get(key.namespace, key.model, hashFor(key)) as { value: Buffer; meta: string | null } | undefined;
+    const raw = this.getStmt.get(key.namespace, key.model, hashFor(key));
     if (raw === undefined) return undefined;
-    return { value: raw.value, meta: raw.meta === null ? null : (JSON.parse(raw.meta) as Record<string, unknown>) };
+    return { value: raw.value, meta: raw.meta === null ? null : parseJsonObject(raw.meta) };
   }
 
   /** Store once; a second put for the same key is a no-op. Returns true when written. */
@@ -87,6 +87,6 @@ export class CacheBlobTable {
   }
 
   count(namespace: string, model: string): number {
-    return (this.countStmt.get(namespace, model) as { n: number }).n;
+    return this.countStmt.get(namespace, model)?.n ?? 0;
   }
 }

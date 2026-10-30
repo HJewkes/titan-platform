@@ -1799,59 +1799,6 @@
       "count": 1
     }
   },
-  "packages/store-sqlite/src/kit.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/store-sqlite/src/migrations.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/store-sqlite/src/migrations.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/open.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/tables/cache-blob.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/store-sqlite/src/tables/edge.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/store-sqlite/src/tables/entity.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/store-sqlite/src/tables/span-fts.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/tables/span-fts.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/store-sqlite/src/tables/watermark.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/style-analyzer/src/aggregator/aggregator.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
