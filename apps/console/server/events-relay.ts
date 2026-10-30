@@ -135,11 +135,17 @@ export function brokerIds(data: string): RelayedIds {
 
 /** A factory frame names the run it moved and its workflow; only those are kept, never its repo, PR or step. */
 export function factoryIds(data: string): RelayedIds {
-  const frame = parseObject(data);
-  const ids: RelayedIds = {};
-  if (typeof frame?.runId === "string" && RUN_ID.test(frame.runId)) ids.runId = frame.runId;
-  if (frame?.workflow === "autoresearch" || frame?.workflow === "shepherd") ids.workflow = frame.workflow;
-  return ids;
+  return { ...factoryRunId(data), ...factoryWorkflow(data) };
+}
+
+function factoryRunId(data: string): RelayedIds {
+  const runId = parseObject(data)?.runId;
+  return typeof runId === "string" && RUN_ID.test(runId) ? { runId } : {};
+}
+
+function factoryWorkflow(data: string): RelayedIds {
+  const workflow = parseObject(data)?.workflow;
+  return workflow === "autoresearch" || workflow === "shepherd" ? { workflow } : {};
 }
 
 function parseObject(data: string): Record<string, unknown> | null {

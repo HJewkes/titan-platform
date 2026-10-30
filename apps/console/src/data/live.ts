@@ -79,20 +79,28 @@ export function useReturnInvalidation(): void {
 /** One pending timer per source at most, refetching the union of what its frames asked for; cleared on unmount. */
 function useCoalescedInvalidate(coalesceMs: number): (source: RelaySource, reads: readonly Read[]) => void {
   const invalidate = useInvalidate();
-  const pending = useRef(new Map<RelaySource, { timer: ReturnType<typeof setTimeout>; reads: Set<Read> }>());
+  const pending = useRef(new Map<RelaySource, ReturnType<typeof setTimeout>>());
+  const wanted = useRef(new Map<RelaySource, Set<Read>>());
   useEffect(() => {
-    const entries = pending.current;
+    const timers = pending.current;
     return () => {
-      entries.forEach(({ timer }) => clearTimeout(timer));
-      entries.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+      wanted.current.clear();
     };
   }, []);
   return useCallback(
     (source, reads) => {
-      const queued = pending.current.get(source);
-      if (queued) return reads.forEach((read) => queued.reads.add(read));
-      const entry = { timer: setTimeout(() => (pending.current.delete(source), invalidate([...entry.reads])), coalesceMs), reads: new Set(reads) };
-      pending.current.set(source, entry);
+      const union = wanted.current.get(source) ?? new Set<Read>();
+      reads.forEach((read) => union.add(read));
+      wanted.current.set(source, union);
+      if (pending.current.has(source)) return;
+      const fire = (): void => {
+        pending.current.delete(source);
+        wanted.current.delete(source);
+        invalidate([...union]);
+      };
+      pending.current.set(source, setTimeout(fire, coalesceMs));
     },
     [coalesceMs, invalidate],
   );

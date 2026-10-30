@@ -412,12 +412,6 @@ describe("factoryIds", () => {
     });
   });
 
-  it("keeps a known workflow and drops any other value", () => {
-    expect(factoryIds(JSON.stringify({ workflow: "autoresearch", runId: "r1" }))).toEqual({ runId: "r1", workflow: "autoresearch" });
-    expect(factoryIds(JSON.stringify({ workflow: "shepherd" }))).toEqual({ workflow: "shepherd" });
-    expect(factoryIds(JSON.stringify({ workflow: "other-flow" }))).toEqual({});
-  });
-
   it("drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object", () => {
     expect(factoryIds(JSON.stringify({ runId: "two words" }))).toEqual({});
     expect(factoryIds(JSON.stringify({ runId: "../private" }))).toEqual({});

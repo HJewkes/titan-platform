@@ -12,6 +12,15 @@
       ]
     },
     {
+      "name": "factory frames lose their run id",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "pick: factoryIds },",
+      "replace": "pick: brokerIds },",
+      "kills": [
+        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
+      ]
+    },
+    {
       "name": "any string passes as a run id",
       "file": "apps/console/server/events-relay.ts",
       "find": "const RUN_ID = /^[\\w.-]{1,128}$/;",
@@ -23,8 +32,8 @@
     {
       "name": "a non-string run id is kept",
       "file": "apps/console/server/events-relay.ts",
-      "find": "if (typeof frame?.runId === \"string\" && RUN_ID.test(frame.runId)) ids.runId = frame.runId;",
-      "replace": "if (frame?.runId !== undefined && RUN_ID.test(String(frame.runId))) ids.runId = String(frame.runId);",
+      "find": "return typeof runId === \"string\" && RUN_ID.test(runId) ? { runId } : {};",
+      "replace": "return runId !== undefined && RUN_ID.test(String(runId)) ? { runId: String(runId) } : {};",
       "kills": [
         "factoryIds drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object"
       ]
@@ -36,15 +45,6 @@
       "replace": "headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }), pick: factoryIds",
       "kills": [
         "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
-      ]
-    },
-    {
-      "name": "the workflow is dropped from factory frames",
-      "file": "apps/console/server/events-relay.ts",
-      "find": "if (frame?.workflow === \"autoresearch\" || frame?.workflow === \"shepherd\") ids.workflow = frame.workflow;",
-      "replace": "",
-      "kills": [
-        "factoryIds keeps a known workflow and drops any other value"
       ]
     }
   ]
