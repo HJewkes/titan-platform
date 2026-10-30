@@ -53,6 +53,23 @@ describe("fleetView", () => {
     expect(text(detail)).toBe("  DEMO-12 · #41 · reported 3m ago");
   });
 
+  it("draws agent-supplied strings without control characters, keeping columns aligned", () => {
+    const snapshot = fixtureSnapshot(["roster: \u001b]0;owned\u0007broke"]);
+    const builder = snapshot.agents.find((agent) => agent.name === "builder-a");
+    if (builder === undefined) throw new Error("fixture lost builder-a");
+    Object.assign(builder, { name: "evil\u001b[2Jname", task: "TASK\u009b31m-1\nx", model: "\u001b[5mopus" });
+
+    const view = fleetView(snapshot, NOW_MS);
+    const all = [...view.header, ...view.rows].flat().map((segment) => segment.text).join("");
+    const row = text(rowOf(view.rows, "evil"));
+
+    const controls = [...all].filter((char) => (char.codePointAt(0) ?? 0) <= 0x1f || /[\u007f-\u009f]/.test(char));
+    expect(controls).toEqual([]);
+    expect(row.startsWith("● evil[2Jname      opus   acct-a")).toBe(true);
+    expect(all).toContain("TASK31m-1x");
+    expect(all).toContain("! roster: ]0;ownedbroke");
+  });
+
   it("puts each source error in the header", () => {
     const view = fleetView(fixtureSnapshot(["roster: broker down"]), NOW_MS);
 

@@ -35,9 +35,23 @@ function statusLinePath(entry: RosterEntry, env: NodeJS.ProcessEnv): string | nu
   return join(dir, `${entry.sessionId}.json`);
 }
 
-async function cli(address: BrokerAddress, args: string[]): Promise<string> {
-  const { stdout } = await run(address.cli, args, { timeout: 20_000, maxBuffer: 32 * 1024 * 1024 });
-  return stdout;
+export interface CliOptions {
+  env: NodeJS.ProcessEnv;
+  timeout: number;
+  maxBuffer: number;
+}
+
+/** Runs one CLI and resolves its stdout; `execFile` in production, a fake in tests. */
+export type CliRunner = (file: string, args: string[], options: CliOptions) => Promise<{ stdout: string }>;
+
+const execRunner: CliRunner = (file, args, options) => run(file, args, { ...options, encoding: "utf8" });
+
+/**
+ * agent-chat's client starts a broker when it finds none. A panel that polls every 15 s must
+ * only read, never bring back a broker someone stopped, so every call forbids the autostart.
+ */
+function cliOptions(env: NodeJS.ProcessEnv): CliOptions {
+  return { env: { ...env, AGENT_CHAT_NO_AUTOSTART: "1" }, timeout: 20_000, maxBuffer: 32 * 1024 * 1024 };
 }
 
 async function statusLine(entry: RosterEntry, env: NodeJS.ProcessEnv) {
@@ -50,10 +64,11 @@ async function statusLine(entry: RosterEntry, env: NodeJS.ProcessEnv) {
   }
 }
 
-export function nodeSources(address: BrokerAddress, env: NodeJS.ProcessEnv): FeedSources {
+export function nodeSources(address: BrokerAddress, env: NodeJS.ProcessEnv, runner: CliRunner = execRunner): FeedSources {
+  const cli = async (args: string[]) => (await runner(address.cli, args, cliOptions(env))).stdout;
   return {
-    roster: async () => parseRoster(await cli(address, ["agent", "ls", "--json"])),
-    accounts: async () => parseAccounts(await cli(address, ["agent", "budget", "--accounts", "--json"])),
+    roster: async () => parseRoster(await cli(["agent", "ls", "--json"])),
+    accounts: async () => parseAccounts(await cli(["agent", "budget", "--accounts", "--json"])),
     slots: async () => {
       const res = await fetch(`http://127.0.0.1:${address.port}/health`, { signal: AbortSignal.timeout(5_000) });
       if (!res.ok) throw new Error(`/health answered ${res.status}`);

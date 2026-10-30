@@ -22,6 +22,15 @@ describe("FeedReader", () => {
     expect(reader.problem).toBe("the feed exited: Error: spawn agent-chat ENOENT");
   });
 
+  it("strips control characters from the feed's stderr before showing it", () => {
+    const reader = new FeedReader();
+    reader.stderrText("Error: \u001b]0;retitled\u0007bad \u009b2Jthing\n");
+
+    reader.exited("exited");
+
+    expect(reader.problem).toBe("the feed exited: Error: ]0;retitledbad 2Jthing");
+  });
+
   it("keeps the last snapshot when a line is not one", () => {
     const reader = new FeedReader();
     reader.stdout(`${JSON.stringify(fixtureSnapshot())}\n`);

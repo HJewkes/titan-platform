@@ -1,4 +1,4 @@
-import { bar, fit, formatAge, formatUsd, shortModel } from "./format.js";
+import { bar, fit, formatAge, formatUsd, shortModel, stripControls } from "./format.js";
 import type { AccountStrip, AgentRow, Snapshot } from "./snapshot.js";
 import type { UsageWindow } from "./inputs.js";
 
@@ -26,7 +26,8 @@ export const FEED_QUIET_MS = 60_000;
 const NAME_WIDTH = 16;
 /** Wide enough for `$999.99`, so a figure never runs into the context cell. */
 const COST_WIDTH = 7;
-const seg = (text: string, tone: Tone = "plain"): Segment => ({ text, tone });
+/** Every cell is built here, so no agent-supplied string reaches the pane with control characters. */
+const seg = (text: string, tone: Tone = "plain"): Segment => ({ text: stripControls(text), tone });
 
 function pctTone(pct: number): Tone {
   if (pct >= 90) return "bad";

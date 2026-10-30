@@ -1,4 +1,5 @@
 import { parseFrameData } from "../events.js";
+import { stripControls } from "../format.js";
 import type { Snapshot } from "../snapshot.js";
 
 const STDERR_KEPT = 2_000;
@@ -31,7 +32,7 @@ export class FeedReader {
       if (line.trim() === "") continue;
       const parsed = parseFrameData(line);
       if (!isSnapshot(parsed)) {
-        this.problem = `the feed printed a line that is not a snapshot: ${line.slice(0, 80)}`;
+        this.problem = `the feed printed a line that is not a snapshot: ${stripControls(line).slice(0, 80)}`;
         continue;
       }
       this.snapshot = parsed;
@@ -47,6 +48,6 @@ export class FeedReader {
 
   exited(how: string): void {
     const tail = this.stderr.trim().split("\n").pop();
-    this.problem = `the feed ${how}${tail ? `: ${tail}` : ""}`;
+    this.problem = stripControls(`the feed ${how}${tail ? `: ${tail}` : ""}`);
   }
 }

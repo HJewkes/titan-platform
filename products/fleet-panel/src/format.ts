@@ -1,3 +1,16 @@
+/** C0 (newline and ESC included), DEL and C1: a terminal acts on these instead of printing them. */
+const isControl = (code: number): boolean => code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+
+/**
+ * Agent names, tasks, models and error text come from other processes; an ESC in one could
+ * repaint or retitle the owner's terminal. They are drawn with the controls removed.
+ */
+export function stripControls(text: string): string {
+  let clean = "";
+  for (const char of text) if (!isControl(char.codePointAt(0) ?? 0)) clean += char;
+  return clean;
+}
+
 /** `4s`, `12m`, `3h05m`, `2d`: short enough for a table cell. */
 export function formatAge(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
@@ -27,7 +40,9 @@ export function shortModel(model: string | null): string {
   return family === undefined ? model : family.toLowerCase();
 }
 
-export function fit(text: string, width: number): string {
+/** Controls are removed before measuring, so a column stays aligned once they are gone. */
+export function fit(raw: string, width: number): string {
+  const text = stripControls(raw);
   if (width <= 0) return "";
   if (text.length > width) return width === 1 ? "…" : `${text.slice(0, width - 1)}…`;
   return text.padEnd(width);
