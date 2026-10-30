@@ -324,11 +324,6 @@
       "count": 1
     }
   },
-  "packages/owner-queue/src/spool.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/queue-mirror/src/hitl.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
