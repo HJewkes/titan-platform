@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { Policy } from "./fake-ports.js";
 
 interface Effect {
@@ -17,10 +18,9 @@ type FilePolicy = Policy & {
   usd?: { eval?: number; micro?: number };
 };
 
-const readPolicy = (policyPath: string): FilePolicy => {
-  const parsed: unknown = JSON.parse(readFileSync(policyPath, "utf8"));
-  return parsed as FilePolicy;
-};
+const FilePolicyShape = z.custom<FilePolicy>((value) => typeof value === "object" && value !== null);
+
+const readPolicy = (policyPath: string) => FilePolicyShape.parse(JSON.parse(readFileSync(policyPath, "utf8")));
 
 /** The tree's applied/ dir has one marker file per mechanism; an older fixture's applied.txt lists them one per line. */
 function appliedIn(tree: string): string[] {
