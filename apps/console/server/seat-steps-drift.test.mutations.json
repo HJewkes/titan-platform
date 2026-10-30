@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the console mirror gains a seat step Shepherd does not have",
+      "file": "apps/console/server/blockers.ts",
+      "find": "new Set([\"ci-failed\", \"sh-sent-back\", \"stuck-behind\"])",
+      "replace": "new Set([\"ci-failed\", \"sh-sent-back\", \"stuck-behind\", \"approve-merge\"])",
+      "kills": [
+        "the console SEAT_STEPS mirror equals Shepherd's seat steps"
+      ]
+    },
+    {
+      "name": "the console mirror drops a seat step Shepherd has",
+      "file": "apps/console/server/blockers.ts",
+      "find": "new Set([\"ci-failed\", \"sh-sent-back\", \"stuck-behind\"])",
+      "replace": "new Set([\"ci-failed\", \"sh-sent-back\"])",
+      "kills": [
+        "the console SEAT_STEPS mirror equals Shepherd's seat steps"
+      ]
+    }
+  ]
+}
