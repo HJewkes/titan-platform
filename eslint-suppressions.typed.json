@@ -3429,36 +3429,8 @@
       "count": 2
     }
   },
-  "products/retrieval-eval/src/candidates/active-work-search.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/cli.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/corpus/transcripts.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
   "products/retrieval-eval/src/pairs.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/served/blocks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/workspace-layout.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
   },
