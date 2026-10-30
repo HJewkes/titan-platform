@@ -49,11 +49,12 @@ function targetWords(slots: Record<string, unknown>, target: string): Set<string
   return new Set(leaves.flatMap((leaf) => (typeof leaf === "string" || typeof leaf === "number" ? screenTokens(String(leaf)) : [])));
 }
 
-// The chrome and the heading rise at the cut; a stage text shows on the reveal whose element holds its words. A text
-// matched to no reveal is given no hold, so the row errs toward qa's fail, not its pass.
+// The chrome rises at the cut; a stage text shows on the reveal whose element holds its words (an outro's line on its
+// own reveal), and a heading no reveal draws rises at the cut. Any other text is given no hold, so the row errs toward
+// qa's fail, not its pass.
 function shownAt(shown: DrawnText, words: readonly string[], reveals: readonly { s: number; words: Set<string> }[]): number | undefined {
-  if (shown.cls.startsWith("xp-") || isHeading(shown)) return 0;
-  return reveals.find((reveal) => words.every((word) => reveal.words.has(word)))?.s;
+  if (shown.cls.startsWith("xp-")) return 0;
+  return reveals.find((reveal) => words.every((word) => reveal.words.has(word)))?.s ?? (isHeading(shown) ? 0 : undefined);
 }
 
 /** qa's reading holds on a drawn beat: each text not wholly spoken holds max(readingMinS, chars / readingCps) from when it shows. */

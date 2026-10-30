@@ -22,4 +22,11 @@ describe("the drawn kinds' motion, as the templates draw it", () => {
 
     expect(long - short).toBeCloseTo(2 * CLAIM_WORD_EACH_S, 6);
   });
+
+  it("an outro, which draws no action, stops moving once its line has risen; a button's action rises after it", () => {
+    const outro = revealMotionS({ spec: "outro", slots: { line: "Answer the open question" } });
+    const button = revealMotionS({ spec: "button", slots: { line: "Read the digest", action: "Open digest" } });
+
+    expect(button - outro).toBeCloseTo(OUTRO_ACTION_S, 6);
+  });
 });

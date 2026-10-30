@@ -35,7 +35,9 @@ function claimEntranceS(slots: FilledBeat["slots"]): number {
 export function revealMotionS(filled: Pick<FilledBeat, "spec" | "slots">): number {
   if (filled.spec === "claim-card") return claimEntranceS(filled.slots);
   if (filled.spec === "stat") return Math.max(MOTION.duration.slow, STAT_COUNT_START_S + springSettleS(STAT_COUNT_SPRING, COUNT_VISIBLE));
-  if (OUTRO_KINDS.has(filled.spec)) return OUTRO_ACTION_S + MOTION.duration.slow;
+  // A button's action rises after its line; an outro (OutroKindBeat) draws no action.
+  if (filled.spec === "button") return OUTRO_ACTION_S + MOTION.duration.slow;
+  if (filled.spec === "outro") return MOTION.duration.slow;
   return SMALL_MOVE_S;
 }
 
