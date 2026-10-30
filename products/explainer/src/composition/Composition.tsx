@@ -3,6 +3,7 @@ import { Beat, BeatFrame, MotionProvider, type SeekClock } from "@titan-design/r
 import type { ReactElement } from "react";
 import { Chrome, Stage } from "./beats/stage/Chrome.js";
 import { BeatFrame as StageFrame } from "./beats/stage/BeatFrame.js";
+import { EmphasisContext, litFrom } from "./beats/stage/emphasis.js";
 import { RevealContext, revealFrom } from "./beats/stage/reveal.js";
 import { CustomLayer } from "./custom-layer.js";
 import { resolveBeat } from "./registry.js";
@@ -27,14 +28,16 @@ function PageBeat({ beat, view }: ViewProps) {
   );
 }
 
-/** A stage kind sits in the box between the chrome bands, its elements landing on their reveal times. */
+/** A stage kind sits in the box between the chrome bands, its elements landing on their reveal times and lit on later cues. */
 function StageBeat({ beat, view, headline }: ViewProps) {
   return (
     <RevealContext value={revealFrom(beat.reveals ?? [])}>
-      <Stage beat={beat.id}>
-        <StageFrame kind={beat.kind}>{view}</StageFrame>
-      </Stage>
-      <Chrome headline={headline ? beat.headline : undefined} chips={beat.chips ?? []} chapter={beat.chapter} />
+      <EmphasisContext value={litFrom(beat.emphases ?? [])}>
+        <Stage beat={beat.id}>
+          <StageFrame kind={beat.kind}>{view}</StageFrame>
+        </Stage>
+        <Chrome headline={headline ? beat.headline : undefined} chips={beat.chips ?? []} chapter={beat.chapter} />
+      </EmphasisContext>
     </RevealContext>
   );
 }

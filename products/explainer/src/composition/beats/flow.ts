@@ -12,7 +12,7 @@ export const RAIL_Y = MAP.nodeTop + MAP.nodeH / 2;
 /** The spike's box height, which kept room under the row for its loop edge; a path keeps it so the layout matches. */
 export const MAP_H = MAP.nodeTop + MAP.nodeH + MAP.loopDrop + 90;
 const HOP_S = SMALL_MOVE_S;
-const LIT_RAMP_S = 0.2;
+export const LIT_RAMP_S = 0.2;
 
 type Point = readonly [number, number];
 

@@ -2,6 +2,7 @@ import { spring, useBeatTime } from "@titan-design/react-ui/motion";
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
+import { litBox, useLit } from "./stage/emphasis.js";
 import { progressAt } from "./stage/entrance.js";
 
 /**
@@ -28,8 +29,9 @@ function statDisplay(local: number, value: number): string {
 }
 
 function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }) {
+  const lit = useLit()(figure.id, t);
   return (
-    <div className="beat-stat" data-reveal={figure.id} style={{ opacity: progressAt(t, atS) }}>
+    <div className="beat-stat" data-reveal={figure.id} style={{ opacity: progressAt(t, atS), ...litBox(lit, "var(--color-surface-raised)") }}>
       <span className="beat-stat-label">{figure.label}</span>
       <span className="beat-stat-value">
         <span className="beat-stat-figure" style={{ minWidth: `${figure.value.toFixed(places(figure.value)).length}ch` }}>{statDisplay(t - atS, figure.value)}</span>
@@ -39,7 +41,7 @@ function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }
   );
 }
 
-/** stat: one card per figure, each landing on its cue and counting up on a spring. */
+/** stat: one card per figure, each landing on its cue and counting up on a spring, lit when a later cue names it. */
 export function StatKindBeat({ slots, reveal }: BeatViewProps<z.infer<(typeof BEAT_SLOTS)["stat"]>>) {
   const { t } = useBeatTime();
   return (

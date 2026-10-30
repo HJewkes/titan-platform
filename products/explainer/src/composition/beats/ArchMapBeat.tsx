@@ -3,6 +3,7 @@ import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
 import { MAP, MAP_H, nodeLeft, nodeLit, RAIL_Y, tokenAt } from "./flow.js";
+import { useLit } from "./stage/emphasis.js";
 import { fadeUp, mix, progress, SMALL_MOVE_S } from "./stage/video.js";
 
 /**
@@ -42,18 +43,27 @@ function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit
   );
 }
 
-/** Each edge draws once both its ends are named. */
-function Edges({ nodes, t }: { nodes: readonly MapNode[]; t: number }) {
+const EDGE_W = 5;
+const LIT_EDGE_W = 12;
+
+/** A lit edge thickens and turns brand while a cue names it. */
+const litEdge = (lit: number) => (lit > 0 ? { stroke: mix("var(--color-text-secondary)", "var(--color-brand-primary)", lit), strokeWidth: EDGE_W + (LIT_EDGE_W - EDGE_W) * lit } : {});
+
+/** Each edge draws once both its ends are named, and lights when a cue names it. */
+function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly string[]; t: number }) {
+  const lit = useLit();
   return nodes.slice(1).map((node, i) => {
     const drawAtS = Math.max(node.atS, nodes[i]!.atS) + SMALL_MOVE_S;
     const x0 = nodeLeft(i) + MAP.nodeW + ARROW_INSET;
     const x1 = x0 + (MAP.gap - 2 * ARROW_INSET) * progress(t, drawAtS);
-    return x1 > x0 ? <line key={node.id} x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" /> : null;
+    const id = edges[i]!;
+    return x1 > x0 ? <line key={node.id} data-reveal={id} x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" style={litEdge(lit(id, t))} /> : null;
   });
 }
 
-function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly MapNode[] }) {
+function ArchMapFrame({ headline, nodes, edges }: { headline: string; nodes: readonly MapNode[]; edges: readonly string[] }) {
   const { t } = useBeatTime();
+  const lit = useLit();
   const flowAtS = Math.max(...nodes.map((node) => node.atS)) + FLOW_AFTER_S;
   const token = tokenAt(t, flowAtS, nodes.length);
   return (
@@ -66,10 +76,10 @@ function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly M
               <path d="M0 0 L10 5 L0 10 z" className="ex-map-arrowhead" />
             </marker>
           </defs>
-          <Edges nodes={nodes} t={t} />
+          <Edges nodes={nodes} edges={edges} t={t} />
           {token && <circle cx={token[0]} cy={token[1]} r={18} className="ex-map-token" />}
         </svg>
-        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} t={t} lit={nodeLit(t, k, flowAtS, nodes.length)} />)}
+        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} t={t} lit={Math.max(nodeLit(t, k, flowAtS, nodes.length), lit(node.id, t))} />)}
       </div>
     </>
   );
@@ -95,7 +105,8 @@ function notAPath(slots: MapSlots): string | null {
 
 /**
  * arch-map: a left-to-right path of 2 to 5 numbered slots, each node filled as it is named, edges drawn once both
- * ends exist, then a token that walks the path with a 0.8 s dwell per node. Any other map (a node count outside
+ * ends exist, then a token that walks the path with a 0.8 s dwell per node. A node or edge a later cue names lights
+ * as the token lights a node. Any other map (a node count outside
  * that range, edges that are not exactly node n to node n+1, a focus, an edge label) fails the page by name: the
  * fill's map_state route copies the script map's own edges, which this view would otherwise draw as a path.
  */
@@ -103,5 +114,5 @@ export function ArchMapKindBeat({ slots, reveal }: BeatViewProps<MapSlots>) {
   const refusal = notAPath(slots);
   if (refusal) throw new Error(`arch-map ${refusal}`);
   const nodes = slots.nodes.map((node) => ({ id: node.id, label: node.label, atS: reveal(node.id) ?? 0 }));
-  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} />;
+  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} edges={slots.edges.map((edge) => edge.id)} />;
 }
