@@ -1449,24 +1449,6 @@
       "count": 1
     }
   },
-  "packages/registry/src/envelope.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/registry/src/invoke.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/registry/src/zod-introspect.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/retrieval/src/rerank.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
