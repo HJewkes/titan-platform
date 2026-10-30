@@ -67,6 +67,17 @@ describe("the $0 still seed: naming-only cues before the repair", () => {
     expect(l0Row(seedStillCues(roomy).script, "Q-D22").detail_beats).not.toContain("reflection-2");
   });
 
+  // Regression: the uncued-item rule once cued a claim-card's claim, which lands on the first word with no cue of its own.
+  it("a claim-card that stands still nowhere gets no cue", () => {
+    const card = { plannedS: 5, spoken: "Waiting is the real cost: drafts sit idle behind the shared review queue.", visual: { beat: "claim-card", labels: ["Waiting costs the most"], cues: [] } };
+    const script = dailyWith("reflection-1", card);
+
+    const seeded = beatOf(seedStillCues(script).script, "reflection-1");
+
+    expect(l0Row(script, "Q-D22").detail_beats).not.toContain("reflection-1");
+    expect(seeded.visual.cues).toEqual([]);
+  });
+
   it("a claim-card whose claim the voice names is cued on that word, not held", () => {
     const script = stillCard(["ask-1"], "Shared review queue");
 
