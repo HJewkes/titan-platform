@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { Aggregator } from "./aggregator.js";
-import type { Observation, ObservationCategory } from "../extractors/types.js";
+import { isObservationCategory, type Observation } from "../extractors/types.js";
 
 function makeObservation(
   overrides: Partial<Observation> & Pick<Observation, "type" | "value">,
 ): Observation {
   const type = overrides.type;
+  const prefix = type.indexOf(".") > 0 ? type.substring(0, type.indexOf(".")) : type;
   const category =
-    overrides.category ??
-    ((type.indexOf(".") > 0 ? type.substring(0, type.indexOf(".")) : type) as ObservationCategory);
+    overrides.category ?? (isObservationCategory(prefix) ? prefix : "patterns");
 
   return {
     file: "test.ts",
