@@ -209,27 +209,26 @@ function countCharAt(read: () => unknown, cap: number): number {
 }
 
 /**
- * Each shape's span, repeated inside one argument-position subscript, and the characters the hook may read per character
- * of a 16 KB script of it: about 1.5 times what each was measured to read. Each span costs several readings, so the
- * linear rows range from 19 to 1 090. A shorter script spreads each row's fixed cost over fewer characters, so these
- * caps sit closer to the measurement than a 64 KB script's did. The $${ row read 6 947 per character at 64 KB when the
- * glob compiler searched to the end for each unterminated `[` (TP-4051); it reads 1 116 at 16 KB now.
+ * Each shape's span, repeated inside one argument-position subscript, the size in KB of the script the hook reads, and
+ * the characters it may read per character of that script. Per-character work is flat in the size, so a 16 KB script
+ * proves the linear rows as well as a 64 KB one did; their caps are about 1.25 times the measured 19, 32, 38 and 832.
  *
- * The $${, closed ${ and closed $(( rows were measured while V8 refused to compile the script's 98 KB glob word as a
- * RegExp at its first test ("Regular expression too large"), which ended the reading before its case-folded pass. The
- * linear glob matcher compiles it (TP-4223), so both passes now run: 1 129, 644 and 1 103 per character.
+ * The $${, closed ${ and closed $(( rows keep 64 KB and caps of about twice their measurement: a quadratic rescan adds
+ * per-character work in proportion to the size, so a mild one hides under a cap at 16 KB and passes it at 64 KB. The $${
+ * row read 6 947 per character when the glob compiler searched to the end for each unterminated `[` (TP-4051). They were
+ * measured while V8 refused to compile the script's 98 KB glob word as a RegExp at its first test ("Regular expression
+ * too large"), which ended the reading before its case-folded pass. The linear glob matcher compiles it (TP-4223), so
+ * both passes now run: 1 129, 644 and 1 103 per character.
  */
-const SPAN_SHAPES: Array<[string, string, number]> = [
-  ["$${ openers, each a bare { to bash", "$${x[", 1_700],
-  ["nested ${ openers", "${x[", 40],
-  ["closed ${ spans", "${x[0]}", 1_000],
-  ["backquote spans", "`[]`", 65],
-  ["nested $( openers", "$(x[", 55],
-  ["closed $( spans", "$(f [0])", 1_250],
-  ["closed $(( spans", "$(( ${#a[@]} ))", 1_650],
+const SPAN_SHAPES: Array<[string, number, string, number]> = [
+  ["$${ openers, each a bare { to bash", 64, "$${x[", 2_300],
+  ["nested ${ openers", 16, "${x[", 23],
+  ["closed ${ spans", 64, "${x[0]}", 1_300],
+  ["backquote spans", 16, "`[]`", 40],
+  ["nested $( openers", 16, "$(x[", 47],
+  ["closed $( spans", 16, "$(f [0])", 1_040],
+  ["closed $(( spans", 64, "$(( ${#a[@]} ))", 2_200],
 ];
-
-const SCRIPT_BYTES = 16_000;
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
@@ -242,8 +241,8 @@ async function scriptDecision(script: string): Promise<string | null> {
 }
 
 describe("a subscript holding many span openers", () => {
-  cpuBudgetIt.each(SPAN_SHAPES)("the hook denies a push after a 16 KB script of %s, within the budget", BUDGET_MS, async (_name, span, workPerChar) => {
-    const script = spanScript(span, Math.floor(SCRIPT_BYTES / span.length));
+  cpuBudgetIt.each(SPAN_SHAPES)("the hook denies a push after a script of %s at %i KB, within the budget", BUDGET_MS, async (_name, kb, span, workPerChar) => {
+    const script = spanScript(span, Math.floor((kb * 1000) / span.length));
     let decision: string | null = null;
 
     await expectWorkPerChar(async () => (decision = await scriptDecision(script)), script.length, workPerChar);
@@ -251,7 +250,7 @@ describe("a subscript holding many span openers", () => {
     expect(decision).toBe("deny");
   });
 
-  it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {
+  it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, _kb, span) => {
     // A count of characters read measures work without a clock a loaded runner skews.
     const work = (openers: number) => countCharAt(() => tokenize(spanScript(span, openers)), openers * WORK_PER_OPENER);
 
