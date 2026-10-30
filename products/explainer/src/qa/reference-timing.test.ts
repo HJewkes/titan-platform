@@ -112,7 +112,7 @@ describe("timing report", () => {
 });
 
 describe("text spans", () => {
-  const counting = (value: string, t: number): ProbedMoment => moment(t, [[value, "div.tile"]]);
+  const counting = (value: string, t: number): ProbedMoment => ({ ...moment(t, [[value, "div.tile"]]), texts: [{ ...text(value, "div.tile"), lines: [{ x: 40, y: 300, width: 80, height: 40 }] }] });
 
   it("a number counting up in one element is one reading span", () => {
     // Arrange
