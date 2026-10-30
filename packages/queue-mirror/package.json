@@ -46,5 +46,8 @@
     "@titan-design/hitl": "workspace:^",
     "@titan-design/matrix-bus": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
   }
 }

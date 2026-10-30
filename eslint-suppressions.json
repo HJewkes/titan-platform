@@ -226,16 +226,6 @@
       "count": 1
     }
   },
-  "packages/embed/src/create.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 6
-    }
-  },
-  "packages/embed/src/prefixes.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
   "packages/eslint-plugin/src/no-commented-code.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -309,11 +299,6 @@
       "count": 1
     }
   },
-  "packages/queue-mirror/src/hitl.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/react-app/src/hooks/event-bus.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -331,11 +316,6 @@
   },
   "packages/react-app/src/hooks/query-store.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/accept-verdict.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },

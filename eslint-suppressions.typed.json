@@ -1070,29 +1070,6 @@
       "count": 1
     }
   },
-  "packages/embed/src/create.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
-    }
-  },
-  "packages/embed/src/local-embedder.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/embed/src/ollama-embedder.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/embed/src/prefixes.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
   "packages/eslint-plugin/src/max-function-lines.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1383,49 +1360,6 @@
       "count": 5
     }
   },
-  "packages/queue-mirror/src/hitl.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/queue-mirror/src/hitl.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/queue-mirror/src/integration.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/queue-mirror/src/memory-source.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/queue-mirror/src/mirror.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/queue-mirror/src/mirror.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/queue-mirror/src/sqlite-state.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/queue-mirror/src/supervise.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
   "packages/react-app/src/hooks/hooks.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1457,41 +1391,6 @@
   "packages/retrieval/src/retrievers/vector.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "packages/review-panel/src/accept-verdict.differential.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    }
-  },
-  "packages/review-panel/src/accept-verdict.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/accept-verdict.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    }
-  },
-  "packages/review-panel/src/classify.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/depth-floor.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/review-panel/src/fix-first-findings.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/review-panel/src/glob.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "packages/rpc-client/src/client/canonical-key.ts": {
@@ -3411,36 +3310,8 @@
       "count": 2
     }
   },
-  "products/retrieval-eval/src/candidates/active-work-search.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/cli.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/corpus/transcripts.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
   "products/retrieval-eval/src/pairs.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/served/blocks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/retrieval-eval/src/workspace-layout.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
   },
