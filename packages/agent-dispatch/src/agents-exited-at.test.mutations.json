@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the roster read drops the exit time, so no forced retire can ever check its grace",
+      "name": "the roster read drops the exit time",
       "file": "packages/agent-dispatch/src/agents.ts",
       "find": "    ...optionalField(value, \"exitedAt\", isStringOrNull),\n",
       "replace": "",
