@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "TITAN_CONSOLE_DAY_START is ignored",
+      "file": "apps/console/server/config.ts",
+      "find": "dayStart: dayStartFrom(env.TITAN_CONSOLE_DAY_START),",
+      "replace": "dayStart: dayStartFrom(undefined),",
+      "kills": ["console config day start takes TITAN_CONSOLE_DAY_START and refuses a value that is not HH:MM"]
+    },
+    {
+      "name": "the summaries dir leaves the state dir",
+      "file": "apps/console/server/config.ts",
+      "find": "shippedDir: path.join(stateDir, \"shipped\"),",
+      "replace": "shippedDir: path.join(stateDir, \"digests\"),",
+      "kills": ["console config day start defaults the coordinator day to 07:00 and keeps its summaries under the state dir"]
+    }
+  ]
+}

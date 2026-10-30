@@ -11,6 +11,7 @@ import type { ConfigStorePaths } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
+import { dayStartFrom } from "./coord-day.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -92,6 +93,10 @@ export interface ConsoleConfig extends BlockerConfig {
   gateAnswers: boolean;
   /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
   coordinatorRoots?: CoordinatorRoots;
+  /** `HH:MM` local time a coordinator day starts at, from `TITAN_CONSOLE_DAY_START`; absent in a hand-built config means 07:00. */
+  dayStart?: string;
+  /** Where the once-a-day summaries of what shipped are written and read; defaults to `<stateDir>/shipped`. */
+  shippedDir?: string;
   /**
    * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_DIR`, the same one
    * `config.surfaces` reads (no default, so nothing reads a tree the owner did not name) and the materialized document, by default in
@@ -164,6 +169,8 @@ export function resolveConfig(
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
     ...surfaceRootsFrom(env, home),
+    dayStart: dayStartFrom(env.TITAN_CONSOLE_DAY_START),
+    shippedDir: path.join(stateDir, "shipped"),
   };
   assertCoherent(config);
   return config;

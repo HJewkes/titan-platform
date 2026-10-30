@@ -10,6 +10,7 @@ import { brokerAnswerer } from "./broker-answer.js";
 import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
+import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import type { UpstreamObserver } from "./perf/timed-fetch.js";
@@ -183,6 +184,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
+    coordinator: { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart) },
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
