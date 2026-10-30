@@ -44,6 +44,14 @@ heap cap; it takes about a minute and names any chunk that runs out of heap. Exi
 file is next touched. Fix a new hit with a type guard or a parse, not a disable comment:
 `pnpm lint` does not run these rules, so it reports such a comment as unused.
 
+## Measuring what tests cost the machine
+
+`node scripts/test-footprint.mjs run --out <dir> [-- <vitest args>]` is one vitest run with a row per test file: CPU
+with children, child processes, paths created and left under `TMPDIR` and `/tmp`, peak fds and peak memory. It keeps
+the project's pool settings and writes `footprint.md` (totals and rankings) and `files.tsv` (every file) to `<dir>`.
+`node scripts/test-footprint.mjs report <dir>` redoes the report from the records. Linux only, since it reads `/proc`.
+The header of `scripts/test-footprint.mjs` says which figures are exact and which are estimates.
+
 ## The egress scan
 
 This repository is public. [egress-scan](/reference/egress-scan) refuses pushes that add an

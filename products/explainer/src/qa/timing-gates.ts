@@ -21,8 +21,9 @@ import { z } from "zod";
 import type { BeatSlotRef } from "../beat-slots.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { TypeProfile } from "../profile-schema.js";
+import { SETTLED_SPEECH_MAX_S, settledSpeechExcuses, type SettledSpeech } from "../settled-speech.js";
 import type { ScriptTiming } from "../timing.js";
-import { timelineS, type QaTimeline } from "./qa-timeline.js";
+import { timelineS, type QaBeat, type QaTimeline } from "./qa-timeline.js";
 import { earlyReveal, holdThroughReference, textSpans, type TextSpan } from "./reference-timing.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
@@ -163,18 +164,36 @@ function staticRuns(input: TimingInput): { from: number; frames: number }[] {
   return runs;
 }
 
-/** Every static run, in seconds, and those longer than the profile allows. */
-function staticOver(input: TimingInput) {
-  const runs = staticRuns(input).map((run) => ({ ...run, s: run.frames / input.fps }));
-  return { runs, over: runs.filter((run) => run.s > input.profile.pacing.staticMaxS) };
+/**
+ * A beat's settled picture, from its last reveal (its cut, when it reveals nothing) to its end, and its speech, from its
+ * first word's start to its last's. qa cannot see what a custom layer draws, so it never settles; an unvoiced beat has no speech.
+ */
+function settledSpeech(input: TimingInput, beat: QaBeat): SettledSpeech | undefined {
+  const starts = (input.words.get(beat.id)?.words ?? []).map((word) => beat.startS + word.startS);
+  if (beat.layer === "custom" || starts.length === 0) return undefined;
+  const settled = { fromS: beat.startS + Math.max(0, ...(beat.reveals ?? [])), toS: beat.startS + beat.durationS };
+  return { settled, speech: { fromS: Math.min(...starts), toS: Math.max(...starts) } };
 }
 
-/** The longest still picture that is neither a reading hold nor a declared held beat. */
+/** Every static run, in seconds, that no settled frame under speech excuses, and those longer than the profile allows. */
+function staticOver(input: TimingInput) {
+  const { staticMaxS } = input.profile.pacing;
+  const excused = (run: { from: number; s: number }) => {
+    const fromS = run.from / input.fps;
+    const beat = input.timeline.beats.find((b) => b.id === beatAt(input.timeline, fromS));
+    return run.s > staticMaxS && settledSpeechExcuses({ fromS, toS: fromS + run.s }, beat && settledSpeech(input, beat), staticMaxS);
+  };
+  const runs = staticRuns(input).map((run) => ({ ...run, s: run.frames / input.fps })).filter((run) => !excused(run));
+  return { runs, over: runs.filter((run) => run.s > staticMaxS) };
+}
+
+/** The longest still picture that is not a reading hold, a declared held beat or a settled frame under speech. */
 export function staticWindow(input: TimingInput): TimingGate {
   const { staticMaxS } = input.profile.pacing;
   const { runs, over } = staticOver(input);
   const beats = uniq(over.flatMap((run) => beatAt(input.timeline, run.from / input.fps) ?? []));
-  return { id: "static-window", value: r(Math.max(0, ...runs.map((run) => run.s))), threshold: `≤ ${staticMaxS} s`, pass: over.length === 0, beats };
+  const threshold = `≤ ${staticMaxS} s (≤ ${SETTLED_SPEECH_MAX_S} s settled under speech)`;
+  return { id: "static-window", value: r(Math.max(0, ...runs.map((run) => run.s))), threshold, pass: over.length === 0, beats };
 }
 
 const wordsByBeat = (words: ScriptTiming) => Object.fromEntries([...words].map(([id, beat]) => [id, beat.words ?? []]));
