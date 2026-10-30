@@ -86,7 +86,7 @@ function seedBaseCi(fake: FakeGitHub, validate: string): void {
   fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
   fake.setRuns(MERGE_BASE, [successRun("validate", 31, undefined, validate), successRun("dag-check", 32)]);
 }
-const TEST_GLOBS = JSON.stringify({ tests: ["packages/*/src/**/*.test.ts"], carry: [] });
+const TEST_GLOBS = JSON.stringify({ tests: ["packages/*/src/**/*.test.ts"], carry: ["**/test-support/**", "**/fixtures/**"] });
 
 /** What the test-only classifier reads: the merge base, the repo's fix-proof config there and at main, and each changed file's blobs. */
 function seedDiffReads(fake: FakeGitHub, files: readonly PrFile[]): void {
@@ -253,6 +253,30 @@ describe("sh-fix-proof in reviewPhase", () => {
       expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
       expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofWaivedAt");
       expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    });
+
+    describe("a test-only registration whose diff is test support with no test in it (TP-4573 replays tp#2837)", () => {
+      const SUPPORT_ONLY: PrFile[] = [
+        { path: ".changeset/support-refactor.md", status: "added" },
+        { path: "packages/x/fixtures/fake.sh", status: "removed" },
+        { path: "packages/x/src/test-support/fake-port.ts", status: "modified" },
+      ];
+      const noTests = actionsLog(resultLine(H, "no-tests"));
+
+      it("goes on to a reviewer with no owner gate, marked no-repro-test-only", async () => {
+        const { verdicts, spawns, inputs } = await review(scene({ log: noTests, files: SUPPORT_ONLY }));
+
+        expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+        expect(spawns).toHaveLength(1);
+        expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
+      });
+
+      it.each(["correctness", "security"])("keeps NO_REPRO for a %s registration on the same diff", async (kind) => {
+        const { verdicts, spawns } = await review(scene({ kind, log: noTests, files: SUPPORT_ONLY }));
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+        expect(spawns).toEqual([]);
+      });
     });
 
     it("keeps NO_REPRO when the diff also changes source", async () => {

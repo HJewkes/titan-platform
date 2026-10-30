@@ -22,7 +22,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { orderCommand, statusOrder, type StatusOrder } from "./merge-order-command.js";
+import { orderCommand, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { mergeBaseCommand } from "./merge-base-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
@@ -38,7 +38,7 @@ import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
-import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
+import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
 
 /** Transitional, for workflows.ts until TP-2466 b repoints it. */
@@ -274,7 +274,7 @@ const statusCommand = defineCommand<StatusArgs, StatusRow[], FactoryContext>({
   description: "One row per shepherded PR whose run has not finished, optionally narrowed to a repo or a PR (which lists its finished runs too): phase, head, next action, blockers, and whether new stacking on it is frozen; all lists every finished run as well",
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional(), all: z.boolean().optional() }),
   result: z.custom<StatusRow[]>(),
-  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, ...statusOrder(servicesOf(ctx).mergeOrder, row), stackFrozen: stackFrozen(run) })),
+  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...withOrder(ctx.host, servicesOf(ctx), row), stackFrozen: stackFrozen(run) })),
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
@@ -287,16 +287,17 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   run: async ({ state }, ctx) => watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
-const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
+const timelineCommand = defineCommand<PrRefArgs, PrTimeline & { row: StatusOrder }, FactoryContext>({
   name: "shepherd.timeline",
   description: "The watch row for owner/repo#pr and every step result, gate, hold, release, freeze and thaw its run recorded, oldest first",
   args: PrRefArgs,
-  result: z.custom<PrTimeline>(),
+  result: z.custom<PrTimeline & { row: StatusOrder }>(),
   async run({ repo, pr }, ctx) {
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run), services.store.get().eventsOf(registration.runId)) };
+    const row = withOrder(ctx.host, services, rowOf(ctx.host, services, registration, run));
+    return { row, entries: timelineEntries(run, gatesOf(ctx.host, run), services.store.get().eventsOf(registration.runId)) };
   },
 });
 

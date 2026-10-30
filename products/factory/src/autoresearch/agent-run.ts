@@ -89,13 +89,16 @@ export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSig
   return { row: turn.row, final: finalOf(name, turn.text), usage: turn.usage };
 }
 
-type Request = Awaited<ReturnType<typeof extractTranscript>>["requests"][number];
+export type TranscriptRequest = Awaited<ReturnType<typeof extractTranscript>>["requests"][number];
 
 /** A response split over several transcript lines repeats its usage on each, so it counts once. */
-function sumUsage(requests: readonly Request[]): DispatchUsage {
-  const once = [...new Map(requests.map((request) => [request.requestId, request])).values()];
+export function distinctRequests(requests: readonly TranscriptRequest[]): TranscriptRequest[] {
+  return [...new Map(requests.map((request) => [request.requestId, request])).values()];
+}
+
+function sumUsage(requests: readonly TranscriptRequest[]): DispatchUsage {
   const total: DispatchUsage = { usd: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, retries: 0 };
-  for (const request of once) {
+  for (const request of distinctRequests(requests)) {
     total.usd += priceRequest(request, request.model, request.ts).costUsd;
     total.cacheReadTokens += request.cacheReadTokens;
     total.cacheWrite5mTokens += request.cacheCreation5mTokens;

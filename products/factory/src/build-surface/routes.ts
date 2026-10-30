@@ -1,6 +1,7 @@
-import { codeRecordRoute, type RoutedStepInput, type StepRoute } from "@titan-design/workflow";
+import { codeRecordRoute, type RoutedStepInput, type StepRoute, type StepUsage } from "@titan-design/workflow";
 import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
+import { stepClock } from "../workflows/deadline.js";
 import { DISPATCH_STEPS } from "./manifest.js";
 import type { BuildSurfacePorts } from "./ports.js";
 import { GateEvidenceSchema, ImplementerReportSchema, ReviewReportSchema, type GateRun, type LandState, type Validation } from "./schemas.js";
@@ -16,12 +17,15 @@ const PARKED: Readonly<Record<string, string>> = {
   "bs-deploy": "the deploy command was interrupted and may have half-run; check the live surface before resuming",
 };
 
-/** Every step's answer is `{result}` inside an evidence record; a thrown error fails the step without a retry. */
-function bsRoute<I>(match: string, ports: Pick<BuildSurfacePorts, "now">, fn: (input: I, signal: AbortSignal) => Promise<object & { costUsd?: number }>): StepRoute {
+type StepAnswer = object & { costUsd?: number; usage?: StepUsage };
+
+/** Every step's answer is `{result}` inside an evidence record; a thrown error fails the step without a retry. A `usage` answer is the step's usage. */
+function bsRoute<I>(match: string, ports: Pick<BuildSurfacePorts, "now">, fn: (input: I, signal: AbortSignal, step: RoutedStepInput) => Promise<StepAnswer>): StepRoute {
   const envelope = (record: object, step: RoutedStepInput) => evidenceRecord(`build-surface.${match}`, step, new Date(ports.now()).toISOString(), record);
   const route = codeRecordRoute(match, async (input: I, step) => {
-    const result = await fn(input, step.signal);
-    return { result, ...(result.costUsd !== undefined && { usage: { costUsd: result.costUsd } }) };
+    const { usage, ...result } = await fn(input, step.signal, step);
+    const costed = usage ?? (result.costUsd === undefined ? undefined : { costUsd: result.costUsd });
+    return { result, ...(costed && { usage: costed }) };
   }, { envelope, errorText: redactForEvidence });
   const onRestart = DISPATCH_STEPS[match]!;
   const parked = PARKED[match];
@@ -141,10 +145,16 @@ export function buildSurfaceCodeRoutes(ports: BuildSurfacePorts): StepRoute[] {
 export function buildSurfaceAgentRoutes(ports: BuildSurfacePorts): StepRoute[] {
   return [
     bsRoute("bs-extract", ports, (input: I.ExtractInput, signal) => extract(ports, input, signal)),
-    bsRoute("bs-implement", ports, (input: I.ImplementInput, signal) => ports.implementer.start({ ...input, schema: ImplementerReportSchema }, signal)),
-    bsRoute("bs-fix", ports, (input: I.FixInput, signal) => ports.implementer.resume(input.name, input.message, ImplementerReportSchema, signal)),
-    bsRoute("bs-review", ports, (input: I.ImplementInput, signal) => ports.implementer.start({ ...input, role: "reviewer", schema: ReviewReportSchema }, signal)),
+    bsRoute("bs-implement", ports, (input: I.ImplementInput, signal, step) => ports.implementer.start({ ...input, turn: turnOf(input, step), schema: ImplementerReportSchema }, signal)),
+    bsRoute("bs-fix", ports, (input: I.FixInput, signal, step) => ports.implementer.resume(input.name, input.message, ImplementerReportSchema, signal, turnOf(input, step))),
+    bsRoute("bs-review", ports, (input: I.ImplementInput, signal, step) => ports.implementer.start({ ...input, turn: turnOf(input, step), role: "reviewer", schema: ReviewReportSchema }, signal)),
   ];
+}
+
+/** The turn's limits off the step: its budget from the input, and its first start, which a restart keeps, from the runtime. */
+function turnOf(input: { budgetUsd: number }, step: RoutedStepInput) {
+  const { firstStartedAtMs } = stepClock(step);
+  return { budgetUsd: input.budgetUsd, ...(firstStartedAtMs !== undefined && { firstStartedAtMs }) };
 }
 
 export function buildSurfaceRoutes(ports: BuildSurfacePorts): StepRoute[] {

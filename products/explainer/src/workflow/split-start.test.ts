@@ -17,6 +17,9 @@ const FACTS = "# Facts\n\n| Id | Claim |\n|---|---|\n| F1 | The dock scanner is 
 const REPAIRED_ID = "parcel-floor-day-linked";
 const SPLIT_HINT = "- split: reflection-2 was split by code into reflection-2, reflection-2b, reflection-2c: give each boundary a spoken link";
 
+// Synthetic: the router lane keeps talking past 6 s after its last row lands, naming nothing on screen.
+const LONG_LANE_TALK =
+  "The router lane rewrote its matcher and merged it before lunch with the old path behind a switch; all afternoon the night shift watched every dock answer each scan on time, and nobody had to wait.";
 const seed = (): ScriptV1 => dailyWith("reflection-2", { plannedS: 20, heldS: 4, spoken: THREE_SENTENCES });
 const splitOfSeed = (): ScriptV1 => splitCuelessBeats(seed()).script;
 
@@ -127,11 +130,15 @@ describe("the split as the repair's starting script", () => {
   });
 
   it("the still seed starts the repair on the split, never as its answer", async () => {
-    const { prompts, draft } = await runSeeded(seed(), [stillStretchCheck]);
+    // ships-2's slow tail lands after a long gap, and lanes-1 talks on past 6 s after its last row: still stretches the seed works on.
+    const ships = (): ScriptV1 => dailyWith("ships-2", { visual: { cues: [{ action: "V6", target: "series-1", atCue: "matcher" }, { action: "V6", target: "series-3", atCue: "gone" }] } }, seed());
+    const still = () => dailyWith("lanes-1", { spoken: LONG_LANE_TALK }, ships());
+
+    const { prompts, draft } = await runSeeded(still(), [stillStretchCheck], still());
 
     expect(prompts[0]).toContain("- still seed: code cued each element on a word that names it (");
     expect(prompts[0]).toContain('{"action":"V6","target":"series-1","atCue":"forty"}');
-    expect(draft.beats.map((beat) => beat.visual.cues)).toEqual(seed().beats.map((beat) => beat.visual.cues));
+    expect(draft.beats.map((beat) => beat.visual.cues)).toEqual(still().beats.map((beat) => beat.visual.cues));
   });
 });
 
@@ -156,5 +163,28 @@ describe("a reply that leaves the closing button still", () => {
     expect(prompts).toHaveLength(1);
     expect(draft.id).toBe(LABELLED_ID);
     expect(draft.beats.find((beat) => beat.id === "ask-1")!.heldS).toBe(3);
+  });
+});
+
+describe("an orphan cue target", () => {
+  it("is dropped from a seed by code, so a seed whose only fault it was makes no model call", async () => {
+    const orphaned = dailyWith("lanes-4", { visual: { cues: [{ action: "V6", target: "series-1", atCue: "monday" }, { action: "V6", target: "series-9", atCue: "today" }] } });
+
+    const { draft, prompts, outcome } = await runSeeded(orphaned, [cueGapCheck], orphaned);
+
+    expect(prompts).toHaveLength(0);
+    expect(draft.beats.find((beat) => beat.id === "lanes-4")!.visual.cues.map((cue) => cue.target)).toEqual(["series-1"]);
+    expect(outcome.notes).toContain("orphan cue dropped: lanes-4 series-9 (names no element the fill draws)");
+  });
+
+  it("is dropped from a drafted reply before its plan check, so it costs no plan retry", async () => {
+    const orphaned = dailyWith("lanes-4", { visual: { cues: [{ action: "V6", target: "series-1", atCue: "monday" }, { action: "V6", target: "series-9", atCue: "today" }] } });
+    const { artifacts, ...rest } = stageInput(orphaned);
+    const model = fakeModel(orphaned);
+
+    const outcome = await runScriptStage({ ...rest, artifacts: { spine: artifacts.spine!, facts: artifacts.facts! } }, { model: "fake", profile: "daily-overview", runnerFor: model.runnerFor, l0Checks: [cueGapCheck], g2p: { tokens: () => [] } });
+
+    expect(model.prompts).toHaveLength(1);
+    expect(outcome.notes).toContain("orphan cue dropped: lanes-4 series-9 (names no element the fill draws)");
   });
 });

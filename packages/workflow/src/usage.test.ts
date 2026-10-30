@@ -49,6 +49,12 @@ describe("addUsage", () => {
     expect(addUsage({ costUsd: 1, model: "a" }, { costUsd: 1, model: "b" })).toEqual({ costUsd: 2 });
   });
 
+  it("keeps the larger peak context, and a peak only one side reported", () => {
+    expect(addUsage({ costUsd: 1, peakContextTokens: 50 }, { costUsd: 1, peakContextTokens: 90 })?.peakContextTokens).toBe(90);
+    expect(addUsage({ costUsd: 1 }, { costUsd: 1, peakContextTokens: 90 })?.peakContextTokens).toBe(90);
+    expect(addUsage({ costUsd: 1 }, { costUsd: 1 })).not.toHaveProperty("peakContextTokens");
+  });
+
   it("carries costUnknown from either side into the sum", () => {
     expect(addUsage({ costUsd: 1 }, { costUsd: 0, costUnknown: true })).toEqual({ costUsd: 1, costUnknown: true });
     expect(addUsage({ costUsd: 0, costUnknown: true }, { costUsd: 1 })).toEqual({ costUsd: 1, costUnknown: true });
