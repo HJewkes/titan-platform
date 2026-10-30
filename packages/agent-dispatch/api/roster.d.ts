@@ -300,7 +300,198 @@ declare function resolvePredecessor(agents: AgentLog, source: PredecessorSource,
 /** The role a spawner did not state, read from the agent's name first and its profile second. */
 declare function inferWorkRole(profile: string, name: string): string;
 
-export { AGENT_LIFECYCLES, AGENT_ORIGINS, type AgentExit, type AgentIdentity, type AgentLifecycle, AgentLog, type AgentOrigin, HUMAN, LAUNCHERS, type Launcher, type PredecessorFacts, type PredecessorResult, type PredecessorSource, type PresenceInput, type QueueItem, ROSTER_STATUSES, type RosterEntry, type RosterFilter, type RosterHidden, type RosterStatus, type RosterView, type TranscriptVerdict, callerName, filterRoster, foldAgent, groupByAgent, inferWorkRole, launchedByBroker, launcherOf, newestByName, pairPresence, predecessorFacts, predecessorSection, resolvePredecessor, stoppedAt, viewRoster };
+/**
+ * CC-266 and CC-255: what a headless agent was doing when it exited without the
+ * return-contract report, read from the tail of its transcript.
+ *
+ * The broker decides WHETHER it reported from its own log; this module only
+ * names the last action, for the spawner's notice and the digest. Its output
+ * leaves the machine's private context, so a command becomes a short pattern
+ * (`Bash(gh pr create)`) and never the command line, which can hold paths.
+ */
+/** The final turn fits well inside this; a megabyte transcript is never read whole. */
+declare const EXIT_TAIL_BYTES: number;
+declare const UNKNOWN_ACTION = "unknown";
+declare const NO_TOOL_CALL = "no tool call";
+/** The `meta.event` on the notice row, and what the digest groups by. */
+declare const UNREPORTED_EXIT = "unreported-exit";
+interface ExitTail {
+    lastAction: string;
+    pendingBackground: boolean;
+}
+type Block = Record<string, unknown>;
+/** Never throws: a missing, unreadable or garbled transcript reads as `unknown`. */
+declare function readExitTail(file: string | undefined, maxBytes?: number): ExitTail;
+/** Pure: the last main-thread tool call and whether background work was still pending. */
+declare function exitTailOf(text: string): ExitTail;
+/** `mcp__plugin_x__chat_send` reads as `chat_send`; Bash keeps its program and an allowlisted verb. */
+declare function actionPattern(toolUse: Block): string;
+/** The spawner's notice: a clipped name and a bounded pattern, so it stays under 300 characters. */
+declare function unreportedExitText(name: string, tail: ExitTail): string;
+
+/**
+ * CC-236: a path the brief names inside the cwd that resolves, through a symlink,
+ * outside the cwd and every granted dir makes a headless worker's Write wait on a
+ * prompt nobody answers. Advisory only: one warning per such path, never a refusal.
+ */
+declare function crossingBriefPaths(brief: string, cwd: string, grantedDirs: readonly string[]): string[];
+
+/**
+ * Mode switching (CC-23): move a running agent between headless and a terminal
+ * window, keeping its identity, its conversation and its place in the roster.
+ * Only the plan lives here: who may switch what, where a surfaced agent lands, and
+ * what the switched agent is told. Stopping and relaunching the process is the product's.
+ *
+ * Surfacing may be aimed at another agent, because the case it exists for is an agent too
+ * stuck to ask: a blocked headless agent is invisible to the view that would unblock it.
+ * Backgrounding is self-only, with no target field at all, so one peer cannot make
+ * another's work invisible.
+ *
+ * A switch stops the process and resumes from the transcript, so an in-flight turn is lost.
+ */
+/** A placement the surface ladder understands; a surfaced agent lands on one of these. */
+type SurfacePlacement = "iterm-tab" | "iterm-pane";
+/** Told to an agent that has just been pulled into a terminal by someone else. */
+declare const SURFACED_NOTICE: string;
+/** The continuation turn a backgrounded agent resumes on, since `-p` refuses without one. */
+declare const BACKGROUNDED_BRIEF: string;
+interface SwitchOutcome {
+    ok: boolean;
+    reason?: string;
+    name?: string;
+    agentId?: string;
+    /** Where it actually landed, which the placement ladder may have downgraded. */
+    surface?: string;
+    warnings?: string[];
+}
+/**
+ * Where a surfaced agent should appear: beside its requester when the requester has a
+ * window, otherwise in a window of its own. With no anchor `iterm-tab` falls down the
+ * ladder to a new window, which needs no anchor and so cannot fail to find one.
+ */
+declare function placementFor(anchor: string | undefined): SurfacePlacement;
+/** Can this agent be pulled into a terminal, and is there any point? */
+declare function checkSurfaceable(identity: AgentIdentity | undefined, name: string): string | undefined;
+/**
+ * Can this agent send ITSELF headless?
+ *
+ * `hostPid` is refused rather than worked around: signalling the MCP subprocess instead of
+ * Claude Code severs the bus and leaves a live session no peer can reach and that cannot tell.
+ */
+declare function checkBackgroundable(identity: AgentIdentity | undefined, name: string, hostPid: number | undefined): string | undefined;
+
+/**
+ * CC-126: bringing an agent back WITH its conversation. The pure half: the decisions a
+ * resume makes from an identity, a transcript verdict and a directory check the product supplies.
+ * Finding the transcript, re-creating a removed worktree and launching stay with the product.
+ *
+ * Two routes, because retire is absorbing. An agent that finished or detached still holds its
+ * identity and name, so a resume relaunches that identity. A retired one has given its name
+ * up, so it comes back as a new identity that resumes its session id.
+ *
+ * Durable identity is not durable context: `--resume` replays a transcript Claude Code owns and
+ * may have reaped. A missing transcript is refused rather than launched, since `claude --resume`
+ * on an unknown id exits without doing anything.
+ */
+/** A removed worktree that can be re-created, and the repository it was cut from. */
+interface ReattachTree {
+    gitRoot: string;
+    worktree: string;
+    branch: string;
+    adopted?: boolean;
+}
+/** The turn a headless resume starts on when the coordinator sent nothing to say. */
+declare const RESUMED_BRIEF: string;
+declare const verdictLine: (t: TranscriptVerdict) => string;
+/** CC-1472: why an identity cannot be resumed on any host, from its record alone. */
+declare function identityBlocker(agent: AgentIdentity): string | undefined;
+/**
+ * Why an identity cannot be resumed, or undefined when it can. `reattach` says its gone
+ * worktree can come back; `cwdExists` is the product's directory check.
+ */
+declare function resumeBlocker(agent: AgentIdentity, transcript: TranscriptVerdict, cwdExists: (dir: string) => boolean, reattach?: ReattachTree): string | undefined;
+/** The refusal for a name nothing live holds, pointing a retired one at the spawn route. */
+declare function missingAgent(name: string, retired: AgentIdentity | undefined, gone?: ReattachTree): string;
+/** The reply to a resume, shared by every surface so each says the same thing. */
+declare function describeResume(name: string, res: {
+    ok: boolean;
+    reason?: string;
+    transcript?: TranscriptVerdict;
+    warnings?: string[];
+    deduped?: boolean;
+    /** CC-1472: the machine a host resume launched on. */
+    host?: string;
+}): {
+    ok: boolean;
+    lines: string[];
+};
+
+/**
+ * CC-915: what a later task-to-eval exporter and throughput model need about an agent that
+ * nothing else keeps. A squash merge and branch cleanup lose a worktree's base commit for good,
+ * and a role read back out of a profile name is a guess, so both are written on the agent's own
+ * rows while they are known.
+ */
+declare const WORK_ROLES: readonly ["implementer", "reviewer", "shepherd-review", "planner", "other"];
+/** One of {@link WORK_ROLES}, or `fix-round-<n>` for Shepherd's n-th fix round. */
+type WorkRole = (typeof WORK_ROLES)[number] | `fix-round-${number}`;
+declare const isWorkRole: (value: string) => value is WorkRole;
+declare const WORK_ROLE_CHOICES: string;
+interface ExperimentArm {
+    id: string;
+    arm: string;
+}
+/** Runs `git <args>` in `cwd`; null when git fails, so a missing config reads as absent. */
+type GitRunner = (args: string[], cwd: string) => Promise<string | null>;
+/** What provenance reads of an allocation: the ref the isolation strategy recorded. */
+interface ProvenanceAllocation {
+    cwd: string;
+    ref?: Record<string, string>;
+}
+/** `owner/name` of a GitHub remote URL; undefined for any other remote. */
+declare const githubRepoOf: (url: string) => string | undefined;
+/**
+ * The worktree half of the provenance, as row meta: repo, branch and base. A
+ * branch this allocation did not cut records no base rather than a wrong one; a
+ * non-worktree allocation records nothing.
+ */
+declare function worktreeProvenance(allocation: ProvenanceAllocation, git: GitRunner): Promise<Record<string, string>>;
+/** CC-168: frames arrive from more than one surface, so the shape is checked here and not only by the tool. */
+declare const isExperimentArm: (value: unknown) => value is ExperimentArm;
+/**
+ * A burndown spawn always runs a task, so one without an id is a caller bug that
+ * would leave the run unattributable; a role outside the vocabulary is refused
+ * rather than recorded, since the exporter groups by it.
+ */
+declare function assignmentRefusal(req: {
+    task?: string;
+    workRole?: string;
+    spawnedAs?: string;
+    experiment?: ExperimentArm;
+}): string | undefined;
+type AssignmentRequest = {
+    task?: string;
+    workRole?: string;
+    name: string;
+    experiment?: ExperimentArm;
+    slice?: string;
+    routeOverride?: string;
+    /** The `route_*` meta a dispatcher decided; only the keys `/routing` defines are written. */
+    route?: Readonly<Record<string, string>>;
+};
+/** The task and role half, as row meta; `work_role_inferred` marks a role nobody stated. */
+declare function assignmentMeta(req: AssignmentRequest, profile: string): Record<string, string>;
+/** Everything a spawn row carries: the worktree half from the allocation, the assignment half from the request. */
+declare function spawnProvenance(allocation: ProvenanceAllocation, req: AssignmentRequest, profile: string, git: GitRunner): Promise<Record<string, string>>;
+/**
+ * A teleport successor stands in its predecessor's tree on its predecessor's task,
+ * so it carries the predecessor's folded provenance rather than re-deriving it: the
+ * fold already holds a base a fresh-branch resume replaced, and a stated role stays
+ * stated rather than becoming a guess from the profile.
+ */
+declare function successorProvenance(predecessor: AgentIdentity | undefined): Record<string, string>;
+
+export { AGENT_LIFECYCLES, AGENT_ORIGINS, type AgentExit, type AgentIdentity, type AgentLifecycle, AgentLog, type AgentOrigin, type AssignmentRequest, BACKGROUNDED_BRIEF, EXIT_TAIL_BYTES, type ExitTail, type ExperimentArm, type GitRunner, HUMAN, LAUNCHERS, type Launcher, NO_TOOL_CALL, type PredecessorFacts, type PredecessorResult, type PredecessorSource, type PresenceInput, type ProvenanceAllocation, type QueueItem, RESUMED_BRIEF, ROSTER_STATUSES, type ReattachTree, type RosterEntry, type RosterFilter, type RosterHidden, type RosterStatus, type RosterView, SURFACED_NOTICE, type SurfacePlacement, type SwitchOutcome, type TranscriptVerdict, UNKNOWN_ACTION, UNREPORTED_EXIT, WORK_ROLES, WORK_ROLE_CHOICES, type WorkRole, actionPattern, assignmentMeta, assignmentRefusal, callerName, checkBackgroundable, checkSurfaceable, crossingBriefPaths, describeResume, exitTailOf, filterRoster, foldAgent, githubRepoOf, groupByAgent, identityBlocker, inferWorkRole, isExperimentArm, isWorkRole, launchedByBroker, launcherOf, missingAgent, newestByName, pairPresence, placementFor, predecessorFacts, predecessorSection, readExitTail, resolvePredecessor, resumeBlocker, spawnProvenance, stoppedAt, successorProvenance, unreportedExitText, verdictLine, viewRoster, worktreeProvenance };
 
 // ./dist/ports.d.ts
 /**
