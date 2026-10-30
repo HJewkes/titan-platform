@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import { recommended as titan } from "@titan-design/eslint-plugin";
+import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
@@ -102,6 +103,12 @@ export default tseslint.config(
         { paths: [{ name: "gray-matter", message: "Import parseFrontmatter and friends from src/utils/gray-matter-io.ts: a bare gray-matter import executes `---js` frontmatter." }] },
       ],
     },
+  },
+  // A hook called conditionally or after an early return breaks React's call order; only the rules-of-hooks rule is on, not the plugin's compiler rules.
+  {
+    files: ["apps/*/src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: { "react-hooks/rules-of-hooks": "error" },
   },
   { languageOptions: { globals: globals.node } },
   { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },
