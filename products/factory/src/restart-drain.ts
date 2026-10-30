@@ -207,6 +207,6 @@ function atDeadline(view: PollView, options: DrainOptions, report: (text: string
   if (parked.length > 0 && !options.force) {
     return { proceed: false, why: `${stopped} with a park-routed step busy; a restart now leaves its run recovery_required. Wait, or rerun with --force:\n${describeBusy(parked)}` };
   }
-  report(`${stopped}; restarting with ${view.busy.length} busy run(s):\n${describeBusy(view.busy)}`);
+  report(`${stopped}; restarting with ${view.busy.length} busy run(s):\n${describeBusy(view.busy, view.held, view.admitted)}`);
   return { proceed: true, atRestart: view.health };
 }

@@ -860,7 +860,7 @@ titan-factory service install --port 7411 --mcp
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
 | `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`, `stale CLI`); a deploy the pacer holds adds `; deploy <sha> waits: <why> until <time>` to the line and `deployWaitSha`, `deployWaitWhy` and `deployWaitUntil` to `detail`; `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured; a `stale CLI` alone still exits 0 |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until the runs `/health` listed busy at the start clear, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 
@@ -919,8 +919,10 @@ It never starts, stops or restarts the job.
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
 other platform these six verbs fail with one line.
 
-`service restart` drains first. It polls `/health` every 5 s until its `busy` list is
-empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
+`service restart` drains first. It polls `/health` every 5 s until no run that was busy at its
+first answer is still busy, and prints the busy runs once a minute. Serve keeps admitting review
+and merge steps during the drain, so a run that turns busy later does not hold the restart, and
+the drain names it instead; a park-routed step holds the restart whenever it is busy. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
 its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still

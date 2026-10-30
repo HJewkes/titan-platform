@@ -5,6 +5,7 @@ import { behindTrain, busyRuns, describeBusy, drainForRestart, heldSkipped, NO_A
 const MINUTE = 60_000;
 const REVIEW: BusyRun = { runId: "run-review", step: "sh-await-verdict:abc1234", phase: "review" };
 const CHORE: BusyRun = { runId: "run-chore", step: "post-merge", phase: "park" };
+const ADMITTED: BusyRun = { runId: "run-admitted", step: "sh-review:def5678", phase: "review" };
 
 function run(id: string, currentStep: string | null, status: WorkflowRun["status"] = "running", workflowName = "land-pr"): WorkflowRun {
   return { id, workflowName, params: {}, status, currentStep, stepResults: {}, activeSteps: {}, revision: 1, ownerGeneration: 1, startedAt: "2026-01-01T00:00:00.000Z", completedAt: null, error: null };
@@ -268,13 +269,26 @@ describe("draining before a restart", () => {
   });
 
   it("restarts once the runs busy at the start clear, though runs admitted meanwhile are still busy", async () => {
-    const admitted: BusyRun = { runId: "run-admitted", step: "sh-review:def5678", phase: "review" };
     const merging: BusyRun = { runId: "run-merge", step: "merge:0", phase: "merging" };
 
-    const { outcome, reports, polls } = await drain([[REVIEW], [REVIEW, admitted], [REVIEW, admitted, merging], [admitted, merging]]);
+    const { outcome, reports, polls } = await drain([[REVIEW], [REVIEW, ADMITTED], [REVIEW, ADMITTED, merging], [ADMITTED, merging]]);
 
-    expect(outcome).toEqual({ proceed: true, atRestart: { ok: true, busy: [admitted, merging] } });
+    expect(outcome).toEqual({ proceed: true, atRestart: { ok: true, busy: [ADMITTED, merging] } });
     expect(polls).toBe(4);
+    expect(reports.at(-1)).toContain("run-admitted sh-review:def5678 (busy since the drain began, not waited for)");
+  });
+
+  it("takes the runs it waits on from the first answer when serve starts out silent", async () => {
+    const { outcome, polls } = await drain([null, [REVIEW], [REVIEW, ADMITTED], [ADMITTED]]);
+
+    expect(outcome).toEqual({ proceed: true, atRestart: { ok: true, busy: [ADMITTED] } });
+    expect(polls).toBe(4);
+  });
+
+  it("names a run that turned busy during the drain when the timeout restarts over it", async () => {
+    const { reports } = await drain([[REVIEW], [REVIEW, ADMITTED]], { timeoutMs: MINUTE });
+
+    expect(reports.at(-1)).toContain("the drain timed out; restarting with 1 busy run(s)");
     expect(reports.at(-1)).toContain("run-admitted sh-review:def5678 (busy since the drain began, not waited for)");
   });
 

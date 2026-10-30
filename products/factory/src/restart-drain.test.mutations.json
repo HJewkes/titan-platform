@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the waited-on set is retaken on every poll, so runs admitted mid-drain hold the restart",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "waitedOn ??= new Set(",
+      "replace": "waitedOn = new Set(",
+      "kills": [
+        "draining before a restart restarts once the runs busy at the start clear, though runs admitted meanwhile are still busy"
+      ]
+    },
+    {
+      "name": "a park-routed step that turns busy mid-drain no longer holds the restart",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "run.phase === \"park\" || waitedOn.has(run.runId)",
+      "replace": "waitedOn.has(run.runId)",
+      "kills": [
+        "draining before a restart still waits on a park-routed step that turns busy after the drain began"
+      ]
+    },
+    {
+      "name": "a silent first poll fixes an empty waited-on set",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "const health = await ports.health(options.port);",
+      "replace": "const health = await ports.health(options.port); waitedOn ??= new Set(readBusy(health).map((run) => run.runId));",
+      "kills": [
+        "draining before a restart takes the runs it waits on from the first answer when serve starts out silent"
+      ]
+    },
+    {
+      "name": "the restart stops counting runs that turned busy during the drain",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "const skipped = view.held.length + view.admitted.length;",
+      "replace": "const skipped = view.held.length;",
+      "kills": [
+        "draining before a restart restarts once the runs busy at the start clear, though runs admitted meanwhile are still busy"
+      ]
+    },
+    {
+      "name": "the timeout report drops runs that turned busy during the drain",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "restarting with ${view.busy.length} busy run(s):\\n${describeBusy(view.busy, view.held, view.admitted)}",
+      "replace": "restarting with ${view.busy.length} busy run(s):\\n${describeBusy(view.busy)}",
+      "kills": [
+        "draining before a restart names a run that turned busy during the drain when the timeout restarts over it"
+      ]
+    }
+  ]
+}
