@@ -16,7 +16,7 @@ const ROUTE_ORDER: readonly GateRoute[] = ["stop", "retry", "fix"];
 
 /** An absent or unrecognized class reads as `code`: the fix loop is the route the round and no-improvement caps already bound. */
 export function gateFailureClass(raw: string | undefined): GateFailureClass {
-  return (GATE_FAILURE_CLASSES as readonly string[]).includes(raw ?? "") ? (raw as GateFailureClass) : "code";
+  return GATE_FAILURE_CLASSES.find((known) => known === raw) ?? "code";
 }
 
 type GateRow = GateRun["gates"][number];
