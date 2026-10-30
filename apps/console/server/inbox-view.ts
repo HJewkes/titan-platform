@@ -19,7 +19,8 @@ import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
-import { UNWIRED_LINEAGE, type LineageReader, type ShipLineage } from "./ship-lineage.js";
+import { withLineage } from "./inbox-lineage.js";
+import type { ShipLineage } from "./ship-lineage.js";
 import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -300,18 +301,6 @@ const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(ro
 export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], { strips = new Map(), liveAgents, now = Date.now() }: ItemFacts = {}): InboxItem[] {
   const joins = { rows: byRunId(rows), strips, liveAgents, now };
   return markAged(oneRowPerRound(onePerPr(foldCoveredGates(order.map((item) => inboxItem(item, joins))))), now).sort(byInboxOrder);
-}
-
-/** Unwired or unread, a merge gate still carries a lineage, so its row says "lineage unknown" rather than showing nothing. */
-async function withLineage(items: InboxItem[], read: LineageReader | undefined): Promise<InboxItem[]> {
-  return Promise.all(
-    items.map(async (item) => {
-      const { action } = item;
-      if (action.kind !== "resolve-gate" || action.decision !== "merge") return item;
-      const lineage = read === undefined ? UNWIRED_LINEAGE : await read({ repo: action.repo, pr: action.pr, headSha: action.headSha });
-      return { ...item, lineage };
-    }),
-  );
 }
 
 /** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
