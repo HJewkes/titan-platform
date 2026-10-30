@@ -134,7 +134,7 @@ export async function readSpoolBlockers(dir: string): Promise<{ items: SpoolBloc
 
 export interface BlockerSources {
   spoolDir: string;
-  shepherd: ShepherdSource;
+  shepherd: Pick<ShepherdSource, "list">;
   thresholdHours?: number;
   now?: () => number;
 }

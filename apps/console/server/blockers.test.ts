@@ -6,6 +6,7 @@ import { depositItemId } from "@titan-design/owner-queue";
 import { withdrawnFileName, writeDeposit } from "@titan-design/owner-queue/spool";
 import { bannerBlockers, blockersCommands, type BannerInput, type SpoolBlocker } from "./blockers.js";
 import { resolveConfig } from "./config.js";
+import type { ConsoleContext } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -32,6 +33,8 @@ const held = (runId: string, pr: number, sinceMs: number, satisfiedAt?: string):
 function spoolBlocker(depositId: string, sinceMs: number, overrides: Partial<SpoolBlocker> = {}): SpoolBlocker {
   return { id: depositItemId("seat-a", depositId), asker: "seat-a", summary: `Blocked on ${depositId}`, blocker: { since: ago(sinceMs), blocks: "EX-2 cannot start" }, ...overrides };
 }
+
+const CTX: ConsoleContext = { warnings: [], format: "json", surface: "in-process", auth: null, ownerWrites: false };
 
 const banner = (input: Partial<BannerInput>) => bannerBlockers({ spoolItems: [], rows: [], now: NOW, thresholdHours: 12, ...input });
 
@@ -139,7 +142,7 @@ describe("blockers.banner", () => {
   const deposit = (depositId: string, blocker?: { since: string; blocks: string }) =>
     writeDeposit(dir, { depositId, asker: "seat-a", kind: "do", door: "two-way", summary: `Deposit ${depositId}`, context: "Synthetic.", keys: [], ...(blocker && { blocker }) });
 
-  const shepherd = (list: ShepherdSource["list"]): ShepherdSource => ({ list }) as ShepherdSource;
+  const shepherd = (list: ShepherdSource["list"]): Pick<ShepherdSource, "list"> => ({ list });
 
   it("lists open blocker deposits from the spool and a gap when Shepherd cannot be read", async () => {
     await deposit("plain");
@@ -148,7 +151,7 @@ describe("blockers.banner", () => {
     await writeFile(path.join(dir, withdrawnFileName(depositItemId("seat-a", "cleared"))), "{}\n");
     const commands = blockersCommands({ spoolDir: dir, shepherd: shepherd(() => Promise.reject(new Error("factory down"))), now: () => NOW });
 
-    const result = await commands["blockers.banner"].run({}, {} as never);
+    const result = await commands["blockers.banner"].run({}, CTX);
 
     expect(result.items.map((item) => item.summary)).toEqual(["Deposit raised"]);
     expect(result.gaps).toEqual(["shepherd: factory down"]);
@@ -158,8 +161,8 @@ describe("blockers.banner", () => {
     const states: string[] = [];
     const commands = blockersCommands({ spoolDir: dir, shepherd: shepherd(async (state) => (states.push(state), [gated("run-1", 7, 148 * HOUR)])), now: () => NOW });
 
-    await commands["blockers.banner"].run({}, {} as never);
-    const result = await commands["blockers.banner"].run({}, {} as never);
+    await commands["blockers.banner"].run({}, CTX);
+    const result = await commands["blockers.banner"].run({}, CTX);
 
     expect(states).toEqual(["active"]);
     expect(result).toMatchObject({ count: 1, gaps: [] });
