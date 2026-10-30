@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import type { Snapshot } from "@titan-design/rpc-client";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { BELOW_MD } from "./pages/phone.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 
 /*
  * jsdom lays nothing out, so these check the layout a phone gets and the classes that size it;
@@ -19,8 +19,8 @@ beforeAll(async () => {
   snapshot = await twinSnapshot();
 });
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 

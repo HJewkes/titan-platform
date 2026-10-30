@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, type RenderResult } from "@testing-library/react";
+import { act, cleanup, render, type RenderResult } from "@testing-library/react";
 import { RpcProvider } from "@titan-design/react-app";
 import { staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
@@ -36,4 +36,14 @@ function RoutedPage({ route }: { route: Route }): ReactNode {
   const Page = PAGES[route.view];
   if (!Page) throw new Error(`no page is registered for ${route.view}`);
   return <Page route={route} />;
+}
+
+/**
+ * Unmounts what `renderPage` mounted, then lets the macrotask a late snapshot resolution or React's scheduler queued
+ * run inside `act`. Left pending, it fires after the file's jsdom is torn down and fails the run with
+ * "window is not defined" (TP-4636).
+ */
+export async function unmountPages(): Promise<void> {
+  cleanup();
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 }

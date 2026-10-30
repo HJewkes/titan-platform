@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { unmountPages } from "./render-page.test-helpers.js";
 import type { ReactNode } from "react";
 import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
@@ -8,7 +9,7 @@ import type { DataSource } from "@titan-design/rpc-client";
 import { useInvalidate } from "./data/rpc.js";
 import { NeedsYouRegion } from "./pages/HomeNeedsYou.js";
 
-afterEach(cleanup);
+afterEach(unmountPages);
 
 // Synthetic inbox answers; nothing here comes from a real inbox.
 const blocker = (id: string) => ({
