@@ -140,6 +140,15 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     assert.deepEqual(turned.kinds, ['off-frame'])
   })
 
+  // catches: a wholly off-frame card not marked parked, which leaves the beat's samples no way to tell it is waiting
+  test('a card waiting wholly past the right edge is marked parked, a half-past one is not', async () => {
+    const waiting = (await kindsAt('parked-right-bad')).findings.find((f) => f.kind === 'off-frame')
+    const half = (await kindsAt('off-frame-bad')).findings.find((f) => f.kind === 'off-frame')
+
+    assert.equal(waiting?.parked, true)
+    assert.equal(half?.parked, undefined)
+  })
+
   test('every finding carries the rectangle to annotate', async () => {
     const { findings } = await kindsAt('text-overlap-bad')
     assert.ok(findings.every((f) => f.at.w > 0 && f.at.h > 0))
