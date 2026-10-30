@@ -11,7 +11,7 @@ import type { ConfigStorePaths } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
-import { dayStartFrom } from "./coord-day.js";
+import { coordinatorDayFrom, type CoordinatorDayConfig } from "./coord-day.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -27,7 +27,7 @@ export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 /** Where the repo-review skill writes its folders, under the active-work root. */
 const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
-export interface ConsoleConfig extends BlockerConfig {
+export interface ConsoleConfig extends BlockerConfig, CoordinatorDayConfig {
   /** 0 binds an ephemeral port. */
   port: number;
   /**
@@ -93,10 +93,6 @@ export interface ConsoleConfig extends BlockerConfig {
   gateAnswers: boolean;
   /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
   coordinatorRoots?: CoordinatorRoots;
-  /** `HH:MM` local time a coordinator day starts at, from `TITAN_CONSOLE_DAY_START`; absent in a hand-built config means 07:00. */
-  dayStart?: string;
-  /** Where the once-a-day summaries of what shipped are written and read; defaults to `<stateDir>/shipped`. */
-  shippedDir?: string;
   /**
    * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_DIR`, the same one
    * `config.surfaces` reads (no default, so nothing reads a tree the owner did not name) and the materialized document, by default in
@@ -168,9 +164,7 @@ export function resolveConfig(
     ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
-    ...surfaceRootsFrom(env, home),
-    dayStart: dayStartFrom(env.TITAN_CONSOLE_DAY_START),
-    shippedDir: path.join(stateDir, "shipped"),
+    ...surfaceRootsFrom(env, home, stateDir),
   };
   assertCoherent(config);
   return config;
@@ -222,9 +216,9 @@ function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.
   };
 }
 
-/** Where `config.surfaces` reads the coordinator files and this host's own config. */
-function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
-  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
+/** Where `config.surfaces` reads the coordinator files and this host's own config, plus the coordinator view's day. */
+function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces" | "dayStart" | "shippedDir"> {
+  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home), ...coordinatorDayFrom(env, stateDir) };
 }
 
 export const AGENT_CHAT_NOT_FOUND = "agent-chat is not on PATH, so no seat is told when its round is answered; set TITAN_CONSOLE_AGENT_CHAT_BIN to its absolute path";

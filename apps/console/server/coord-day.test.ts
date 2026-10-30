@@ -51,7 +51,7 @@ describe("pool usage in the day", () => {
   });
 
   it("skips readings of a rolled window and has no guard without a per-day limit", () => {
-    const rows = [{ ...reading(local(10, 30, 6, 50), 0, resetsAt), rolled: true }, reading(local(10, 29, 12), 17, resetsAt)];
+    const rows = [{ ...reading(local(10, 30, 6, 50), 0, resetsAt), rolled: true as const }, reading(local(10, 29, 12), 17, resetsAt)];
 
     expect(dayUsage(rows, 20, window, resetsAt)).toEqual({ beforeToday: 17, today: 3 });
     expect(perDayGuard(17, null)).toBeNull();

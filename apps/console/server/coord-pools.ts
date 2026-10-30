@@ -22,7 +22,7 @@ const paceRow = z
   .passthrough();
 const paceDoc = z.object({ pools: z.record(z.string(), z.unknown()) }).passthrough();
 
-export const accountResult = z.object({
+const accountResult = z.object({
   pool: z.string(),
   members: z.array(z.string()),
   current: z.number().nullable(),
@@ -37,10 +37,10 @@ export const accountResult = z.object({
   stale: z.boolean().nullable(),
   error: z.string().optional(),
 });
-export type PoolAccount = z.infer<typeof accountResult>;
+type PoolAccount = z.infer<typeof accountResult>;
 
 export const poolsResult = z.object({ date: z.string(), from: z.string(), to: z.string(), accounts: z.array(accountResult), gaps: z.array(z.string()) });
-export type PoolsResult = z.infer<typeof poolsResult>;
+type PoolsResult = z.infer<typeof poolsResult>;
 
 interface CharterPool {
   reserve: number | null;
@@ -134,7 +134,7 @@ async function readPace(agentChatDir: string): Promise<z.infer<typeof paceRow>[]
   return Object.values(doc.pools).map((row) => paceRow.parse(row));
 }
 
-export interface PoolsOptions {
+interface PoolsOptions {
   roots: CoordinatorRoots | undefined;
   dayStart: string;
   now: number;

@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /** Epoch ms bounds of one coordinator day: it starts at the configured local time, not at midnight. */
 export interface DayWindow {
   /** The local calendar date the window starts on, `YYYY-MM-DD`. */
@@ -16,6 +18,13 @@ export interface PoolReading {
   rolled?: true;
 }
 
+export interface CoordinatorDayConfig {
+  /** `HH:MM` local time a coordinator day starts at, from `TITAN_CONSOLE_DAY_START`; absent in a hand-built config means 07:00. */
+  dayStart?: string;
+  /** Where the once-a-day summaries of what shipped are written and read; defaults to `<stateDir>/shipped`. */
+  shippedDir?: string;
+}
+
 const DEFAULT_DAY_START = "07:00";
 const DAY_START = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -26,6 +35,10 @@ export function dayStartFrom(raw: string | undefined): string {
   if (raw === undefined || raw === "") return DEFAULT_DAY_START;
   if (!DAY_START.test(raw)) throw new Error(`TITAN_CONSOLE_DAY_START must be HH:MM from 00:00 to 23:59, got "${raw}"`);
   return raw;
+}
+
+export function coordinatorDayFrom(env: NodeJS.ProcessEnv, stateDir: string): Required<CoordinatorDayConfig> {
+  return { dayStart: dayStartFrom(env.TITAN_CONSOLE_DAY_START), shippedDir: path.join(stateDir, "shipped") };
 }
 
 export const isCalendarDate = (value: string): boolean => {
