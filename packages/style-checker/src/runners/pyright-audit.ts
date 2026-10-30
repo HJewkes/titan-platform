@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import { AUDIT_PYRIGHT_RULES, generatePyrightAuditConfig } from "../generators/pyright-audit.js";
 import { auditRoot } from "./paths.js";
 import { runPythonTool } from "./python-tool.js";
@@ -16,13 +17,22 @@ const PYRIGHT: PythonToolSpec = {
   expect: { successCodes: new Set([0, 1]) },
 };
 
-interface PyrightDiagnostic {
-  file: string;
-  severity: string;
-  message: string;
-  rule?: string;
-  range: { start: { line: number; character: number }; end: { line: number } };
-}
+const PyrightDiagnosticSchema = z.object({
+  file: z.string(),
+  severity: z.string(),
+  message: z.string(),
+  rule: z.string().optional(),
+  // pyright leaves `range` out for a diagnostic at an empty 0:0 range.
+  range: z
+    .object({
+      start: z.object({ line: z.number(), character: z.number() }),
+      end: z.object({ line: z.number() }),
+    })
+    .optional(),
+});
+const PyrightOutputSchema = z.object({ generalDiagnostics: z.array(PyrightDiagnosticSchema) });
+
+type PyrightDiagnostic = z.infer<typeof PyrightDiagnosticSchema>;
 
 export interface PyrightOptions extends AuditOptions {
   /** The interpreter whose site-packages pyright resolves third-party imports from. */
@@ -30,11 +40,12 @@ export interface PyrightOptions extends AuditOptions {
 }
 
 function toDiagnostic(d: PyrightDiagnostic & { rule: string }): CheckDiagnostic {
+  const start = d.range?.start ?? { line: 0, character: 0 };
   return {
     file: d.file,
-    line: d.range.start.line + 1,
-    endLine: d.range.end.line + 1,
-    column: d.range.start.character + 1,
+    line: start.line + 1,
+    endLine: (d.range?.end.line ?? 0) + 1,
+    column: start.character + 1,
     severity: "warn",
     message: d.message,
     category: "redundant-check",
@@ -53,7 +64,7 @@ function unparsedFiles(entries: PyrightDiagnostic[]): ToolFailure[] {
 }
 
 export function parsePyrightOutput({ stdout }: ToolOutput): ParsedOutput {
-  const entries = (JSON.parse(stdout) as { generalDiagnostics: PyrightDiagnostic[] }).generalDiagnostics;
+  const entries = PyrightOutputSchema.parse(JSON.parse(stdout)).generalDiagnostics;
   const audited = entries.filter((d): d is PyrightDiagnostic & { rule: string } => AUDIT_PYRIGHT_RULES.includes(d.rule ?? ""));
   return { diagnostics: audited.map(toDiagnostic), failures: unparsedFiles(entries) };
 }

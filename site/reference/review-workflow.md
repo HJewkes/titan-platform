@@ -7,8 +7,9 @@
 npm install @titan-design/review-workflow
 ```
 
-Status: types, ports, step ids, the outcome union, the failure classes, `DEFAULT_RETRY_POLICY`, heals, the fixer and
-preflight. The recipe (`reviewHead`) and the registrable definition arrive in later releases (TP-3916).
+Status: types, ports, step ids, the outcome union, the failure classes, `DEFAULT_RETRY_POLICY`, heals, the fixer,
+preflight and the recipe (`reviewHead`, `REVIEW_STEP_BODIES`). The registrable definition arrives in a later release
+(TP-3916).
 
 ## The problem it solves
 
@@ -56,6 +57,33 @@ const decision = preflight(await preflightRead({ target, policy }, ports), polic
 // { kind: "fixer", fixerCase: { failure: "start-refused:profile", key: "profile", detail: ["reviewer"] } }
 ```
 
+## The recipe
+
+`reviewHead(host, input, policy)` reviews one full head. The host passes `call(stepId, input, schema)`, which records a
+step and returns its answer; Shepherd binds it to its own `step`, a standalone run to `@titan-design/workflow`'s
+`codeStep`. Each step's body is in `REVIEW_STEP_BODIES` under its `ReviewStepIds` key, so the host registers the bodies
+and the recipe stays control flow only.
+
+1. `preflight`, then at most one heal pass and one re-read; a decision that still asks for a heal goes to the fixer as
+   `heal-ineffective`.
+2. `intent` records the plan. Every member is dispatched before any is awaited.
+3. Each member walks its class's row: `classifyFailure` names the class, and the row's steps run in order within the
+   member's budget. One fresh retry per member, under the attempt-2 name, whichever class asked for it.
+4. `aggregate` over every member's result, then the outcome: `MERGE`, `FIX_FIRST`, `NO_REPRO` for a fix-proof shortfall,
+   or `no-verdict` with the classes that were spent.
+
+A member with a verdict is settled and never dispatched again, so tp#2145's two MERGEs cost two sessions, not eight. The
+same refusal twice (a malformed reply after its correction, or a spawn refused with the same text) goes to the fixer at
+once. With `historyNext`, a step the recipe added is skipped when a replayed record names another step there: a run
+recorded before preflight reads its plan from the intent.
+
+```ts
+import { reviewHead } from "@titan-design/review-workflow";
+
+const outcome = await reviewHead({ call: (id, input, schema) => codeStep(ctx, id, input, schema) }, input, { plan: policy });
+// { kind: "needs-fixer", fingerprint: "parser:no_block", failure: "malformed", head }
+```
+
 ## The retry policy
 
 Each row lists same-head steps, taken in order, then a terminal.
@@ -75,6 +103,7 @@ Each row lists same-head steps, taken in order, then a terminal.
 | `deterministic-repeat` | none | fixer `repeat` |
 | `schema-drift` | none | fixer `schema` |
 | `proof-spec-problem` | none | stop `proof-spec-problem` |
+| `heal-ineffective` | none | fixer `heal-ineffective` |
 
 ```ts
 import { DEFAULT_RETRY_POLICY } from "@titan-design/review-workflow";
@@ -90,7 +119,10 @@ Verified against 0.1.0.
 - It pushes nothing. A head behind its base is `needs-update` and a dirty one is `conflict`; catching up is the author's
   lane.
 - No row routes to the owner. A hard error goes to the fixer, which diagnoses it.
-- There is no recipe yet, so nothing in this release reads the retry policy.
+- `reviewHead` reviews full heads only. Shepherd keeps its scoped re-review until it calls the recipe.
+- The recipe does not yet detect `throttled`, `stale-head`, `deterministic-repeat`, `schema-drift` or
+  `proof-spec-problem`; their rows are data for the hosts that will.
+- The fixer only proposes; it changes nothing (owner question TP-3916 Q1).
 
 ## Gotchas
 
