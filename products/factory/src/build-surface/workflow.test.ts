@@ -1,10 +1,15 @@
+import { partialFake } from "@titan-design/test-kit";
+import { CodeStepFailure, StepFailedError, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { DEMO_REPO, demoSpec, fakeBuild, shaOf, stubbedRoutes, type FakeBuild, type GateScript } from "../test-support/build-surface.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 import { buildSurfaceAgentRoutes } from "./routes.js";
+import { sliceStep, type SliceRun } from "./slice-run.js";
+import type { BuildSpec, Slice } from "./spec.js";
 import { buildSurfaceWorkflow } from "./workflow.js";
 
 const hosts: FactoryHost[] = [];
@@ -260,5 +265,103 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     const run = await host.runtime.wait(host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }));
 
     expect(run.error).toMatch(/spend \$0\.50 is over the slice cap of \$0\.25/);
+  });
+
+  describe("agent-chat spend against the budgets", () => {
+    /** One finished turn: it pushes the next head, as the fake's own implementer does, so the report check accepts it. */
+    function turnOf(fake: FakeBuild, turns: { pushed: number }, usage: StepUsage) {
+      const head = shaOf(++turns.pushed);
+      fake.branches.set("build-surface/shell", head);
+      return { agent: "bs-demo-repo-shell", agentId: "a", sessionId: "s", report: { head, targetsCovered: [], newPrimitivesRequested: [], deviations: [], ideas: [] }, usage };
+    }
+    const oneSlice = (budgets: object) => demoSpec({ preview: undefined, reviewer: undefined, deploy: undefined, slices: [{ id: "shell", title: "Shell", brief: "b" }], ...budgets });
+
+    /** Real implement and fix routes over a stubbed implementer; each turn's budget is kept for the assert. */
+    function metered(fake: FakeBuild, turn: (round: number) => StepUsage) {
+      const budgets: (number | undefined)[] = [];
+      const turns = { pushed: 0 };
+      const answer = async (budgetUsd: number | undefined) => (budgets.push(budgetUsd), turnOf(fake, turns, turn(budgets.length - 1)));
+      fake.ports.implementer = { start: (request) => answer(request.budgetUsd), resume: (_name, _message, _schema, _signal, budgetUsd) => answer(budgetUsd) };
+      const real = buildSurfaceAgentRoutes(fake.ports).filter((route) => route.match === "bs-implement" || route.match === "bs-fix");
+      const routes = stubbedRoutes(fake).filter((route) => route.match !== "bs-implement" && route.match !== "bs-fix").concat(real);
+      const host = openFactoryHost({ dbPath: ":memory:", workflows: [buildSurfaceWorkflow()], routes, gatePollMs: 5 });
+      hosts.push(host);
+      return { host, runId: host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }), budgets };
+    }
+
+    const walkFinal = async (host: FactoryHost, runId: string) => {
+      await gateOpened(host, gateId(runId, "final-walk"));
+      host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+      return host.runtime.wait(runId);
+    };
+
+    it("records an under-budget agent step's usage on its step result and goes on", async () => {
+      const usage = { costUsd: 0.4, peakContextTokens: 120_000 };
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId, budgets } = metered(fake, () => usage);
+
+      const run = await walkFinal(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(budgets).toEqual([1]);
+      expect(Object.values(host.runtime.status(runId)!.stepResults).find((step) => step.stepId === "bs-implement:shell")?.usage).toEqual(usage);
+    });
+
+    it("stops a slice whose finished agent step passed the cap", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId } = metered(fake, () => ({ costUsd: 1.25 }));
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/spend \$1\.25 is over the slice cap of \$1/);
+      expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(false);
+    });
+
+    it("hands a fix round only what the slice has left", async () => {
+      const gate: GateScript = (_slice, _head, round) => (round === 0 ? { status: 1, records: [{ gate: "G4", pass: false, score: 0.4 }] } : { status: 0, records: [{ gate: "G4", pass: true, score: 1 }] });
+      const fake = fakeBuild({ gate, spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId, budgets } = metered(fake, () => ({ costUsd: 0.25 }));
+
+      await walkFinal(host, runId);
+
+      expect(budgets).toEqual([1, 0.75]);
+    });
+
+    it("stops the wave when a retired agent's step fails", async () => {
+      const slices = [{ id: "shell", title: "Shell", brief: "b" }, { id: "panel", title: "Panel", brief: "b" }];
+      const gate: GateScript = () => ({ status: 1, records: [{ gate: "G4", pass: false, score: 0.4 }] });
+      const fake = fakeBuild({ gate, spec: oneSlice({ sliceBudgetUsd: 1, slices, concurrency: 1 }) });
+      const { host, runId, budgets } = metered(fake, (round) => {
+        if (round === 0) return { costUsd: 0.5 };
+        throw new CodeStepFailure("bs-demo-repo-shell was retired: it spent $0.70 of its $0.50 budget", { costUsd: 0.75 });
+      });
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/retired: it spent \$0\.70 of its \$0\.50 budget/);
+      expect(run.error).toMatch(/stopped by failure/);
+      expect(run.error).toMatch(/not started: panel/);
+      expect(budgets).toEqual([1, 0.5]);
+    });
+
+    it("reports a failed step's overshoot on top of the slice's earlier spend, so the run's budget counts all of it", async () => {
+      const ctx = partialFake<WorkflowContext>({ dispatch: () => Promise.reject(new StepFailedError("bs-fix:shell:1", 0, "retired", { usage: { costUsd: 0.75 } })) });
+      const run = partialFake<SliceRun>({ ctx, spec: partialFake<BuildSpec>({ sliceBudgetUsd: 1 }), slice: partialFake<Slice>({ id: "shell" }), spentUsd: 0.5, costUnknown: false, halt: { reason: null } });
+
+      const failure = await sliceStep(run, "bs-fix", 1, {}, z.object({})).catch((error: unknown) => error);
+
+      expect((failure as StepFailedError).usage).toEqual({ costUsd: 1.25 });
+      expect((failure as StepFailedError).reason).toBe("retired");
+    });
+
+    it("stops the slice on an agent step with no price, and the run reads cost_unknown", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId } = metered(fake, () => ({ costUsd: 0, costUnknown: true }));
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/spend has no price/);
+      expect(run.error).toMatch(/stopped by cost_unknown/);
+    });
   });
 });

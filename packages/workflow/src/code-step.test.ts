@@ -2,7 +2,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
+import { CodeStepFailure, codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
 import { routedRunner, type StepRoute } from "./routed-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
@@ -36,6 +36,16 @@ const echo = codeRoute("echo", async (input: { count: number }) => input);
 const hanging: StepRoute = { match: "echo", onRestart: "repeat", runner: { run: () => new Promise(() => undefined) } };
 
 describe("code steps", () => {
+  it("reports what a CodeStepFailure spent on the failed step, without a retry", async () => {
+    const route = codeRecordRoute("read", async () => {
+      throw new CodeStepFailure("over budget", { costUsd: 1.5 });
+    });
+
+    const outcome = await route.runner.run({ prompt: "{}" } as Parameters<typeof route.runner.run>[0]);
+
+    expect(outcome).toEqual({ ok: false, error: "over budget", retryable: false, usage: { costUsd: 1.5 } });
+  });
+
   it("hands a body its JSON input and returns its answer to the workflow", async () => {
     const rt = runtime(makeDb(), [countItems([]), echo]);
 

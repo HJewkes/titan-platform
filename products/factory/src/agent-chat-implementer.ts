@@ -2,6 +2,7 @@ import os from "node:os";
 import { lastFencedJson, type AgentRole, type AgentRow } from "@titan-design/agent-dispatch";
 import { claudeSourceFromPath, readSessionObservations } from "@titan-design/session-read";
 import type { ReviewerMessage } from "@titan-design/review-panel";
+import { CodeStepFailure, type StepUsage } from "@titan-design/workflow";
 import type { ZodType } from "zod";
 import type { AgentChatAgents } from "./shepherd/agents.js";
 import { accountLimitRefusal } from "./shepherd/account-fallback.js";
@@ -9,6 +10,7 @@ import { believedReset, parseLimitReset } from "./shepherd/account-limit.js";
 import { finishedTurnMessages } from "./shepherd/reviewer-reader.js";
 import { SpawnDeferred } from "./shepherd/spawn-gate.js";
 import { latestRow } from "./shepherd/wake-roster.js";
+import { transcriptMeter, UNMETERED, type StepMeter } from "./step-usage.js";
 import { sleep as abortableSleep } from "./workflows/deadline.js";
 
 /** Six hours: an implementer's slice is long work, and the run's own budget is the real cap. */
@@ -40,6 +42,8 @@ interface ImplementerSpawn {
   schema?: ZodType;
   /** Recorded as `--role`; a read-only reviewer runs through the same wait and report read. */
   role?: AgentRole;
+  /** What the agent may spend on this turn; past it the agent is retired mid-turn. Absent never stops it. */
+  budgetUsd?: number;
 }
 
 interface ImplementerReport {
@@ -47,20 +51,23 @@ interface ImplementerReport {
   agentId: string;
   sessionId: string;
   report: unknown;
+  /** What this turn alone cost; a failed turn carries it on its `CodeStepFailure` instead. */
+  usage: StepUsage;
 }
 
 /** One implementer lineage per name: start it once, then resume the same session for each fix round. */
 export interface ImplementerRunner {
   start(request: ImplementerSpawn, signal: AbortSignal): Promise<ImplementerReport>;
-  resume(name: string, message: string, schema: ZodType | undefined, signal: AbortSignal): Promise<ImplementerReport>;
+  resume(name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, budgetUsd?: number): Promise<ImplementerReport>;
 }
 
 /** The finished turn's messages, oldest first; none while the turn is unfinished. */
 export type FinalMessages = (row: AgentRow) => Promise<readonly Pick<ReviewerMessage, "text" | "writtenAt">[]>;
 
 interface ImplementerRunnerOptions {
-  agents: Pick<AgentChatAgents, "roster" | "spawn" | "resume">;
+  agents: Pick<AgentChatAgents, "roster" | "spawn" | "resume" | "retire">;
   messages?: FinalMessages;
+  meter?: StepMeter;
   now?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
@@ -108,16 +115,44 @@ interface Wait {
   askedAt: number;
   schema: ZodType | undefined;
   signal: AbortSignal;
+  budgetUsd: number | undefined;
+  /** The newest row the wait saw, kept so a turn that ends in an error can still be metered. */
+  row?: AgentRow;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Retires the agent; a refusal (never forced, so unpushed work refuses it) is said in the failure, because it may still be spending. */
+async function retireOverBudget(options: ResolvedOptions, name: string, why: string): Promise<never> {
+  try {
+    await options.agents.retire?.(name);
+  } catch (error) {
+    throw new Error(`${name} ${why}, and retiring it was refused, so it may still be running: ${messageOf(error)}`);
+  }
+  throw new Error(`${name} was retired: it ${why}`);
+}
+
+/** A meter that cannot be read this poll says nothing; only spend it did read, or spend it cannot price, retires the agent. */
+async function stopOverBudget(options: ResolvedOptions, wait: Wait, row: AgentRow): Promise<void> {
+  const { budgetUsd } = wait;
+  if (budgetUsd === undefined || row.presence === "exited") return;
+  const spent = await options.meter(row, wait.askedAt).catch(() => undefined);
+  if (spent?.costUnknown) await retireOverBudget(options, wait.name, `has spend with no price, so its $${budgetUsd.toFixed(2)} budget cannot be checked`);
+  if (spent && spent.costUsd > budgetUsd) await retireOverBudget(options, wait.name, `spent $${spent.costUsd.toFixed(2)} of its $${budgetUsd.toFixed(2)} budget`);
 }
 
 /** Polls the roster until `name` has exited with a report written since the ask; an exit with none rejects. */
-async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<ImplementerReport> {
+async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<Omit<ImplementerReport, "usage">> {
   let sawRunning = false;
   for (;;) {
     const elapsed = options.now() - wait.askedAt;
     if (elapsed > options.timeoutMs) throw new Error(`${wait.name} sent no report within ${Math.round(options.timeoutMs / 60_000)} minutes`);
     const row = latestRow(wait.name, await options.agents.roster());
+    wait.row = row ?? wait.row;
     if (row?.status === "retired") throw new Error(`${wait.name} was retired before it reported`);
+    if (row) await stopOverBudget(options, wait, row);
     if (row && row.presence !== "exited") sawRunning = true;
     if (row?.presence === "exited") {
       const report = reportSince(await options.messages(row), wait.askedAt);
@@ -125,6 +160,23 @@ async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<Implem
       if (sawRunning || elapsed >= options.startGraceMs) throw new Error(`${wait.name} exited with no fenced JSON report`);
     }
     await options.sleep(options.pollMs, wait.signal);
+  }
+}
+
+/** The turn's spend once it is over; a turn that ran and cannot be read is unmetered, never free. */
+async function turnUsage(options: ResolvedOptions, wait: Wait): Promise<StepUsage> {
+  if (!wait.row) return UNMETERED;
+  return (await options.meter(wait.row, wait.askedAt).catch(() => undefined)) ?? UNMETERED;
+}
+
+/** Waits for the report and prices the turn, on a failed turn too, so a budget counts what the failure already spent. */
+async function meteredReport(options: ResolvedOptions, wait: Wait): Promise<ImplementerReport> {
+  try {
+    const report = await awaitReport(options, wait);
+    return { ...report, usage: await turnUsage(options, wait) };
+  } catch (error) {
+    if (wait.signal.aborted) throw error;
+    throw new CodeStepFailure(messageOf(error), await turnUsage(options, wait));
   }
 }
 
@@ -167,22 +219,23 @@ async function whenAdmitted(options: ResolvedOptions, name: string, signal: Abor
  */
 export function agentChatImplementerRunner(options: ImplementerRunnerOptions): ImplementerRunner {
   const waits = { pollMs: POLL_MS, timeoutMs: IMPLEMENTER_TIMEOUT_MS, startGraceMs: START_GRACE_MS, spawnRetry: SPAWN_RETRY };
-  const defaults = { messages: transcriptFinalMessages(), now: Date.now, sleep: abortableSleep, ...waits };
+  const defaults = { messages: transcriptFinalMessages(), meter: transcriptMeter, now: Date.now, sleep: abortableSleep, ...waits };
   const resolved: ResolvedOptions = { ...defaults, ...options };
-  const resume = async (name: string, message: string, schema: ZodType | undefined, signal: AbortSignal) => {
+  const resume = async (name: string, message: string, schema: ZodType | undefined, signal: AbortSignal, budgetUsd?: number) => {
     const askedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.resume(name, message));
-    return awaitReport(resolved, { name, askedAt, schema, signal });
+    return meteredReport(resolved, { name, askedAt, schema, signal, budgetUsd });
   };
   return {
     async start(request, signal) {
       const existing = latestRow(request.name, await resolved.agents.roster());
       const askedAt = resolved.now();
-      if (existing?.presence === "exited" && existing.status !== "retired") return resume(request.name, request.brief, request.schema, signal);
-      if (existing && existing.status !== "retired") return awaitReport(resolved, { name: request.name, askedAt, schema: request.schema, signal });
+      const { budgetUsd } = request;
+      if (existing?.presence === "exited" && existing.status !== "retired") return resume(request.name, request.brief, request.schema, signal, budgetUsd);
+      if (existing && existing.status !== "retired") return meteredReport(resolved, { name: request.name, askedAt, schema: request.schema, signal, budgetUsd });
       const { name, profile, brief, cwd, task } = request;
       const spawn = { name, profile, brief, cwd, role: request.role ?? "implementer", ...(task !== undefined && { task }) };
       const admittedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.spawn(spawn));
-      return awaitReport(resolved, { name, askedAt: admittedAt, schema: request.schema, signal });
+      return meteredReport(resolved, { name, askedAt: admittedAt, schema: request.schema, signal, budgetUsd });
     },
     resume,
   };
