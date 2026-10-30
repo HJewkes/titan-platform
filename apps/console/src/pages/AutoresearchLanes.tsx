@@ -8,6 +8,7 @@ import { AutoresearchStageStrip } from "./AutoresearchStageStepper.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { STAGES, boardLadders, currentStage, ideaFromQuery, ideaRoute, stageSpans } from "./autoresearch-lanes.js";
 import { useNow } from "./autoresearch-live.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 /** Design §1.3: the current round's ideas, one card each, in the column of the stage they are in. */
 export function AutoresearchLanes({ run }: { run: ArRunView }): ReactNode {
@@ -49,7 +50,7 @@ function LaneCard({ run, ladder, now }: { run: ArRunView; ladder: ArLadder; now:
           {outcome === null ? null : <Typography variant="caption">{outcomeText(outcome)}</Typography>}
           <HStack gap={3} wrap>
             <ImplementerLink ladder={ladder} />
-            <Link color="primary" href={href(details)} onPress={() => open(details)} testID={`autoresearch-card-details-${idea.id}`}>
+            <Link color="primary" className={PHONE_TAP_ID_LINK} href={href(details)} onPress={() => open(details)} testID={`autoresearch-card-details-${idea.id}`}>
               Details
             </Link>
           </HStack>
