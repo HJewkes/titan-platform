@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { LlmProvider, LlmResponse } from "./llm.js";
 import { Enricher, type AggregatedFeature } from "./enricher.js";
-import type { ObservationCategory } from "../extractors/types.js";
+import { isObservationCategory } from "../extractors/types.js";
 
 function createMockProvider(
   response: string = "Generated description.",
@@ -15,11 +15,16 @@ function createMockProvider(
   };
 }
 
+function categoryOf(type: string): AggregatedFeature["category"] {
+  const prefix = type.split(".")[0] ?? "";
+  return isObservationCategory(prefix) ? prefix : "patterns";
+}
+
 function makeFeature(
   overrides: Partial<AggregatedFeature> & Pick<AggregatedFeature, "type">,
 ): AggregatedFeature {
   return {
-    category: overrides.type.split(".")[0] as ObservationCategory,
+    category: categoryOf(overrides.type),
     convention: "some-pattern",
     distribution: {
       values: new Map([["some-pattern", 10]]),
@@ -98,16 +103,15 @@ describe("Enricher", () => {
 
       await enricher.enrich(features);
 
-      const generateCall = (mockProvider.generate as ReturnType<typeof vi.fn>)
-        .mock.calls[0];
+      const generateCall = vi.mocked(mockProvider.generate).mock.calls[0];
       const messages = generateCall![0];
       const userMessage = messages.find(
         (m: { role: string }) => m.role === "user",
       );
 
-      expect(userMessage.content).toContain("documentation.comment-placement");
-      expect(userMessage.content).toContain("imperative");
-      expect(userMessage.content).toContain("72%");
+      expect(userMessage?.content).toContain("documentation.comment-placement");
+      expect(userMessage?.content).toContain("imperative");
+      expect(userMessage?.content).toContain("72%");
     });
   });
 
@@ -212,8 +216,7 @@ describe("Enricher", () => {
 
       await enricher.enrich(features);
 
-      const generateCall = (mockProvider.generate as ReturnType<typeof vi.fn>)
-        .mock.calls[0];
+      const generateCall = vi.mocked(mockProvider.generate).mock.calls[0];
       const options = generateCall![1];
       expect(options.maxTokens).toBeLessThanOrEqual(400);
     });
