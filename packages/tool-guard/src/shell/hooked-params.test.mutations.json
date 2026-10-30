@@ -11,10 +11,10 @@
       ]
     },
     {
-      "name": "the option walk keeps its read states in a string it rescans per state",
+      "name": "the option walk rescans its read states every 32 states",
       "file": "packages/tool-guard/src/shell/hooked-params.ts",
-      "find": "  const seen = new Set<string>();",
-      "replace": "  let seenText = \"\";\n  const seen = { has: (key: string) => seenText.includes(`|${key}|`), add: (key: string) => void (seenText += `|${key}|`) };",
+      "find": "    seen.add(key);",
+      "replace": "    seen.add(key);\n    if (seen.size % 32 === 0) for (const done of seen) done.charCodeAt(0);",
       "kills": [
         "an option word the walk reads both ways reads a long run of either-letters in linear time",
         "an option word the walk reads both ways slots the operands once when many readings end options: read, whose -p ends options in zsh",
