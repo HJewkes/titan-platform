@@ -32,3 +32,25 @@ describe("the Q-D22 hint for a still closing button", () => {
     expect(hint).toContain("so add the item within Q-D20 (a heading of at most 10 words and a label of at most 3) and Q-D15");
   });
 });
+
+describe("the Q-D20 hint for a closing button", () => {
+  // Regression (TP-4565): a repair shortened a button's label and left it still, since only Q-D22's hint said to hold it.
+  it("names the hold, so a shorter label does not leave the button still", () => {
+    const script = dailyWith("ask-1", { visual: { labels: ["Answer the call today: how do we get every lane into one shared queue?"] } });
+    const row = l0Row(script, "Q-D20");
+
+    const hint = repairHint(row, script) ?? "";
+
+    expect(row.detail_beats).toContain("ask-1");
+    expect(hint).toContain("ask-1 is a button, which reveals nothing on a cue, so a shorter label leaves it standing still: hold it with heldS as well");
+    expect(hint).toContain("to pass Q-D22 (a piece that is not held stands still at most");
+  });
+
+  it("asks no hold of a button already held", () => {
+    const script = dailyWith("ask-1", { heldS: 3, visual: { labels: ["Answer the call today: how do we get every lane into one shared queue?"] } });
+
+    const hint = repairHint(l0Row(script, "Q-D20"), script) ?? "";
+
+    expect(hint).not.toContain("heldS");
+  });
+});

@@ -352,13 +352,19 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
   return after.length === before.length && after.every((row) => known.has(row.check_id)) && failingBeats(after) < failingBeats(before);
 }
 
+const ruleIds = (rows: readonly L0Result[]): string => rows.map((row) => row.check_id).sort().join(" ");
+
 /**
- * Fewer failing rows, or as many naming fewer beats, whichever rules they are: what the next round starts from. Unlike
- * `makesProgress` it takes a reply that swaps a row for another, which is a better place to ask from but no proof
- * the script got better, so it never decides what the repair keeps.
+ * Fewer failing rows, or as many naming fewer beats, whichever rules they are, or a tie under other rules: what the
+ * next round starts from. Unlike `makesProgress` it takes a reply that swaps a row for another, which is a better place
+ * to ask from (the swapped-in row is what the model has not yet been told) but no proof the script got better, so it
+ * never decides what the repair keeps.
  */
-export const asksFromFewer = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
-  after.length < before.length || (after.length === before.length && failingBeats(after) < failingBeats(before));
+export function asksFrom(after: readonly L0Result[], before: readonly L0Result[]): boolean {
+  if (after.length !== before.length) return after.length < before.length;
+  const [beats, was] = [failingBeats(after), failingBeats(before)];
+  return beats < was || (beats === was && ruleIds(after) !== ruleIds(before));
+}
 
 interface Measured {
   stamped: Stamped;
@@ -367,7 +373,7 @@ interface Measured {
 
 /**
  * Up to `rounds` rounds. A reply is kept when it makes progress over the kept script (`makesProgress`). Each round asks
- * from the best reply so far (`asksFromFewer`), relinted, so its hint names that reply's own rows and never a stretch an
+ * from the best reply so far (`asksFrom`), relinted, so its hint names that reply's own rows and never a stretch an
  * earlier round already fixed.
  */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
@@ -385,7 +391,7 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
     if (!stamped) continue;
     const next = { stamped, rows: loop.failing(stamped.script) };
     if (makesProgress(next.rows, kept.rows)) [kept, keptReply] = [next, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
-    if (asksFromFewer(next.rows, base.rows)) base = next;
+    if (asksFrom(next.rows, base.rows)) base = next;
   }
   return { ...kept.stamped, usage, before, after: kept.rows.length, rows: kept.rows, candidates, ...keptReply };
 }

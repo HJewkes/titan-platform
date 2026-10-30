@@ -32,7 +32,7 @@
     {
       "name": "each round asks from the kept script only",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "if (asksFromFewer(next.rows, base.rows)) base = next;",
+      "find": "if (asksFrom(next.rows, base.rows)) base = next;",
       "replace": "base = kept;",
       "kills": ["each round asks from the best reply so far a reply that swaps the row for one on fewer beats is the next round's draft and rows, though not kept"]
     }

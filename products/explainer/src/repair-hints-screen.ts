@@ -148,8 +148,18 @@ const headingHint: Hint = (script, row) => {
   const named = overlongTexts(script)
     .filter((found) => failing.has(found.beat))
     .map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`);
-  return `on-screen text over its cap, a heading at most ${HEADING_MAX_WORDS} words and a label at most ${LABEL_MAX_WORDS}: ${named.join("; ")}. An outro or button draws its first label (or, with none, the assertion) as its heading line; shorten each heading or label to its key words and say the rest`;
+  const holds = namedBeats(script, row).flatMap((beat) => shortenedStill(script, beat) ?? []);
+  return [`on-screen text over its cap, a heading at most ${HEADING_MAX_WORDS} words and a label at most ${LABEL_MAX_WORDS}: ${named.join("; ")}. An outro or button draws its first label (or, with none, the assertion) as its heading line; shorten each heading or label to its key words and say the rest`, ...holds].join("; ");
 };
+
+// The label's reading time is what keeps a cue-less kind's picture from standing still, so shortening it can swap
+// Q-D20 for Q-D22; the hold answers both and adds no words.
+function shortenedStill(script: ScriptV1, beat: ScriptBeat): string | undefined {
+  const kind = cuelessKind(beat);
+  if (kind === undefined || kind === CLAIM_CARD || heldBeats([beat]).length > 0) return undefined;
+  const max = (scriptPacing(script) ?? PACING_DEFAULTS).held[1];
+  return `${beat.id} is a ${kind}, which reveals nothing on a cue, so a shorter label leaves it standing still: hold it with heldS as well (at most ${max} held beats in all), to pass ${capClauses(["Q-D22"])}`;
+}
 
 const motionHint: Hint = (script, row) => {
   const failing = new Set(row.detail_beats);
