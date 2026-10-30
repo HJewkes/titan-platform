@@ -5,7 +5,7 @@ import type { ArPorts } from "@titan-design/autoresearch";
 import { inProcessCaller } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
 import { seedRepoWithOrigin, withHistory } from "@titan-design/test-kit/git";
-import type { WorkflowRun } from "@titan-design/workflow";
+import type { WorkflowEvent, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -81,5 +81,20 @@ describe("a configured factory", () => {
     expect(run.status).toBe("failed");
     expect(run.error).toContain(`[pin-not-on-main] ${side}`);
     expect(Object.values(run.stepResults).map((result) => result.stepId)).not.toContain("ar-pin");
+  });
+
+  it("binds a host and hears an event through both the routes' own hooks and autoresearch's", () => {
+    const own = { bound: vi.fn(() => () => undefined), heard: vi.fn() };
+    const base = Object.assign([], { bindHost: own.bound, onEvent: own.heard });
+    const routes = withAutoresearch(base, arConfigFixture("/tmp/ar-fixture", { fixture: { clone: "/tmp/ar-fixture/a" } }));
+    const event: WorkflowEvent = { type: "step_complete", runId: "run-1", stepId: "post-merge", iteration: 0, signal: null };
+
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [], routes });
+    hosts.push(host);
+    routes.onEvent?.(event);
+
+    expect(own.bound).toHaveBeenCalledWith(host);
+    expect(own.heard).toHaveBeenCalledWith(event);
+    expect(routes.workflows?.length).toBeGreaterThan(0);
   });
 });

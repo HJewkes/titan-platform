@@ -71,6 +71,7 @@ import { shadowHeldCheck } from "./shepherd/train-shadow-held.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
 import { withAutoresearch } from "./autoresearch/configured.js";
+import { chorePruning } from "./workflows/chore-prune.js";
 import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { buildSurfaceRoutes, buildSurfaceWorkflow, factoryBuildPorts } from "./build-surface/index.js";
@@ -326,7 +327,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
   const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), visualThreshold: visualThresholdOf(config), ...overrides, seats });
-  return withAutoresearch(Object.assign(routes, { config }), config.get().autoresearch);
+  return withAutoresearch(Object.assign(routes, { config, ...chorePruning(chores) }), config.get().autoresearch);
 }
 
 function logGhCall(line: GhCallLine): void {

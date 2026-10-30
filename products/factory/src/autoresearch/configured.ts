@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { ArPorts } from "@titan-design/autoresearch";
 import { loadLimits } from "@titan-design/agent-dispatch/limits/node";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
+import { composeRoutes } from "../compose-routes.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { arAgentPorts } from "./agents.js";
 import type { ArConfig } from "./config.js";
@@ -80,7 +81,6 @@ function autoresearchWiring(config: ArConfig, build?: (config: ArConfig, name: s
 export function withAutoresearch(routes: FactoryRoutes, config: ArConfig | undefined): FactoryRoutes {
   if (!config) return routes;
   const wiring = autoresearchWiring(config);
-  const { database, shepherd, config: configRef, bindHost } = routes;
-  if (bindHost) throw new Error("withAutoresearch: the routes already bind a host");
-  return Object.assign([...routes, ...wiring.routes], { database, shepherd, config: configRef, ...wiring.host });
+  const { database, shepherd, config: configRef } = routes;
+  return Object.assign([...routes, ...wiring.routes], { database, shepherd, config: configRef, ...wiring.host, ...composeRoutes(routes, wiring.host) });
 }

@@ -9,6 +9,15 @@
       "kills": [
         "a serve stopped mid-step hands its run to the next serve a serve stopped with SIGTERM mid-step releases its lease, so the successor adopts the run and completes it"
       ]
+    },
+    {
+      "name": "a completed post-merge step does not prune its chore files",
+      "file": "products/factory/src/workflows/chore-prune.ts",
+      "find": "if (event.type !== \"step_complete\" || !isPostMerge(event.stepId)) return;",
+      "replace": "return;",
+      "kills": [
+        "a serve stopped mid-step hands its run to the next serve a serve killed with SIGKILL mid-chore: the post-merge chore finishes in its own process and the successor records it"
+      ]
     }
   ]
 }
