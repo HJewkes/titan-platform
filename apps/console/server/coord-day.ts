@@ -42,7 +42,7 @@ export function coordinatorDayFrom(env: NodeJS.ProcessEnv, stateDir: string): Re
   return { dayStart: dayStartFrom(env.TITAN_CONSOLE_DAY_START), shippedDir: path.join(stateDir, "shipped") };
 }
 
-export const isCalendarDate = (value: string): boolean => {
+const isCalendarDate = (value: string): boolean => {
   const match = DATE.exec(value);
   if (match === null) return false;
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];

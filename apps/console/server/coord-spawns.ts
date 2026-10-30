@@ -47,7 +47,7 @@ export function readLifecycleRows(file: string, since: number): LifecycleRow[] |
   if (!db) return null;
   try {
     if (COLUMNS.some((column) => !hasColumn(db, "events", column))) return null;
-    return db.prepare(LIFECYCLE_SQL).all({ since }) as LifecycleRow[];
+    return db.prepare<[{ since: number }], LifecycleRow>(LIFECYCLE_SQL).all({ since });
   } finally {
     db.close();
   }

@@ -53,7 +53,7 @@ function onlySpawner(spawns: readonly SpawnFact[]): string | null {
 }
 
 /** The branch names the run exactly; a task match counts only when one coordinator's implementers carried that task. */
-export function spawnerOf(row: FinishedRow, ref: PrRef, spawns: readonly SpawnFact[]): string | null {
+function spawnerOf(row: FinishedRow, ref: PrRef, spawns: readonly SpawnFact[]): string | null {
   const inRepo = spawns.filter((spawn) => sameRepo(spawn.repo, row.repo));
   const byBranch = inRepo.filter((spawn) => spawn.branch === row.branch);
   if (byBranch.length > 0) return onlySpawner(byBranch);
@@ -85,7 +85,7 @@ interface Grouping {
 }
 
 /** One card per coordinator that spawned an agent in the window or owns a PR merged in it. */
-export function groupCards({ window, spawns, runs, seats }: Grouping): { cards: Card[]; unattributed: PrRef[] } {
+function groupCards({ window, spawns, runs, seats }: Grouping): { cards: Card[]; unattributed: PrRef[] } {
   const cards = new Map<string, Card>();
   const cardOf = (name: string): Card => cards.get(name) ?? cards.set(name, emptyCard(name, seats)).get(name)!;
   for (const spawn of spawns) if (spawn.at >= window.from && spawn.at < window.to) addSpawn(cardOf(spawn.spawnedBy), spawn);
@@ -93,8 +93,12 @@ export function groupCards({ window, spawns, runs, seats }: Grouping): { cards: 
   const unattributed: PrRef[] = [];
   for (const { row, ref } of runs) {
     const spawner = spawnerOf(row, ref, inReach);
-    if (spawner === null) unattributed.push(ref);
-    else (cardOf(spawner).prsMerged.push(ref), cardOf(spawner).tasks.push({ id: ref.task }));
+    if (spawner === null) {
+      unattributed.push(ref);
+      continue;
+    }
+    cardOf(spawner).prsMerged.push(ref);
+    cardOf(spawner).tasks.push({ id: ref.task });
   }
   const ordered = [...cards.values()].sort((a, b) => b.agentsRun - a.agentsRun || a.coordinator.localeCompare(b.coordinator));
   return { cards: ordered.map((entry) => ({ ...entry, tasks: uniqueTasks(entry.tasks) })), unattributed };
@@ -108,12 +112,12 @@ async function withTitles(activeWork: ActiveWork, cards: Card[], gaps: string[])
   const titles = await activeWork
     .read("task.list", { all_initiatives: true, status: "all" })
     .then(({ tasks }) => new Map(tasks.map((task) => [task.id, task.title])))
-    .catch((err: unknown) => (gaps.push(`active-work task titles: ${(err as Error).message}`), null));
+    .catch((err: unknown) => (gaps.push(`active-work task titles: ${err instanceof Error ? err.message : String(err)}`), null));
   if (titles === null) return cards;
   return cards.map((entry) => ({ ...entry, tasks: entry.tasks.map(({ id }) => ({ id, ...(titles.has(id) && { title: titles.get(id)! }) })) }));
 }
 
-export interface CardsOptions {
+interface CardsOptions {
   roots: CoordinatorRoots | undefined;
   dayStart: string;
   now: number;

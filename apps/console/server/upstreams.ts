@@ -170,6 +170,10 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
+function coordinatorOf(config: ConsoleConfig, shepherd: ShepherdSource, activeWork: ActiveWork): ConsoleSources["coordinator"] {
+  return { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart), cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath } };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
   const invalidation = createInvalidation();
   const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
@@ -184,11 +188,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
-    coordinator: {
-      roots: config.coordinatorRoots,
-      dayStart: dayStartFrom(config.dayStart),
-      cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath },
-    },
+    coordinator: coordinatorOf(config, shepherd, activeWork),
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),

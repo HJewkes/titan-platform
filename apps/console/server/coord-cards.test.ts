@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase } from "@titan-design/store-sqlite";
-import type { ActiveWork } from "./active-work.js";
+import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
 import { EVENTS_DB_UNREADABLE, readCards, type CardsSource } from "./coord-cards.js";
 import type { FinishedRow } from "./shipped.js";
 
@@ -37,10 +37,17 @@ function merged(pr: number, branch: string, task: string, since = "5T12:00:00"):
   };
 }
 
-const titled: ActiveWork = {
-  read: (async () => ({ tasks: [{ slug: "example", id: "EX-1", title: "First task", priority: 1, status: "open", updated: "2031-03-05" }] })) as ActiveWork["read"],
-};
-const failing: ActiveWork = { read: (async () => Promise.reject(new Error("daemon down"))) as ActiveWork["read"] };
+/** Answers every read with one titled task, or rejects every read, as a daemon that is down would. */
+function fakeActiveWork(answer: () => Promise<unknown>): ActiveWork {
+  function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  function read(): Promise<unknown> {
+    return answer();
+  }
+  return { read };
+}
+
+const titled = fakeActiveWork(() => Promise.resolve({ tasks: [{ slug: "example", id: "EX-1", title: "First task", priority: 1, status: "open", updated: "2031-03-05" }] }));
+const failing = fakeActiveWork(() => Promise.reject(new Error("daemon down")));
 
 let dir: string;
 beforeEach(async () => {
