@@ -27,7 +27,6 @@ graph TD
     chatProtocol["chat-protocol"]
     clusterPkg["cluster"]
     codeParser["code-parser"]
-    egressScan["egress-scan"]
     embed["embed"]
     eslintPlugin["eslint-plugin"]
     evidence["evidence"]
@@ -47,6 +46,7 @@ graph TD
     agentLifecycle["agent-lifecycle"]
     agentSurface["agent-surface"]
     daemon["daemon"]
+    egressScan["egress-scan"]
     frameCapture["frame-capture"]
     github["github"]
     health["health"]
@@ -129,6 +129,7 @@ graph TD
   decider --> storeSqlite
   dispatchLedger --> storeSqlite
   egressScan --> fixProof
+  egressScan --> worktree
   graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
