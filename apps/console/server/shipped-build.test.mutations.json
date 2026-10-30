@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the model's PR list is trusted",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "return pr === undefined ? [] : [pr];",
+      "replace": "return pr === undefined ? [{ ...batch[0], number: n } as PrRef] : [pr];",
+      "kills": [
+        "shipped build drops a PR number the model invented and leaves a PR it omitted unsummarized"
+      ]
+    },
+    {
+      "name": "an unchanged PR set is rebuilt",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "if (read.built && !read.stale && !options.force) return",
+      "replace": "if (false) return",
+      "kills": [
+        "shipped build makes no model call for an unchanged PR set, and rebuilds it with force"
+      ]
+    },
+    {
+      "name": "a 403 does not stop later reads",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "    if (state.forbidden) break;\n",
+      "replace": "",
+      "kills": [
+        "shipped build splits 95 PRs into 3 batches and, on a 403 at PR 50, leaves 50 to 95 unsummarized and still writes"
+      ]
+    },
+    {
+      "name": "one unbounded batch per initiative",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "export const BATCH_SIZE = 40;",
+      "replace": "export const BATCH_SIZE = 1000;",
+      "kills": [
+        "shipped build splits 95 PRs into 3 batches and, on a 403 at PR 50, leaves 50 to 95 unsummarized and still writes"
+      ]
+    },
+    {
+      "name": "a logged-out CLI writes a half digest",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "if (result.failure.kind === \"auth_misconfigured\") throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "shipped build rejects with exit 2 and writes no file when claude is not logged in"
+      ]
+    }
+  ]
+}

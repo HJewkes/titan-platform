@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dry run calls the model",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "  if (dryRun) return none;\n",
+      "replace": "",
+      "kills": [
+        "shipped build options dry run calls no model and writes nothing, but reports the prompt size"
+      ]
+    },
+    {
+      "name": "the group filter is ignored",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "(name) => group === undefined || name === group",
+      "replace": "(name) => name !== \"\"",
+      "kills": [
+        "shipped build options with a group, calls the model for that initiative only and lists the others unsummarized"
+      ]
+    },
+    {
+      "name": "the call cap is ignored",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "if (state.calls >= MAX_CALLS) return none;",
+      "replace": "",
+      "kills": [
+        "shipped build options stops at 12 model calls a day and leaves later initiatives unsummarized"
+      ]
+    },
+    {
+      "name": "PR bodies are sent whole",
+      "file": "apps/console/server/shipped-build.ts",
+      "find": "bytes.length <= BODY_BYTES ? body :",
+      "replace": "true ? body :",
+      "kills": [
+        "shipped build options cuts each PR body to 1 KB in the prompt"
+      ]
+    },
+    {
+      "name": "any --date value is accepted",
+      "file": "apps/console/server/cli-shipped.ts",
+      "find": "DATE.test(argv[i + 1] ?? \"\")",
+      "replace": "(argv[i + 1] ?? \"\") !== \"\"",
+      "kills": [
+        "shipped build arguments refuses a date that is not YYYY-MM-DD and a repeated flag"
+      ]
+    }
+  ]
+}
