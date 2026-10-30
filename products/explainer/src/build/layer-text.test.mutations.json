@@ -2,12 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the layer check skips qa's low-contrast findings",
+      "name": "the layer check holds no low-contrast rows",
       "file": "products/explainer/src/build/layer-text.ts",
-      "find": "[\"small-text\", \"under-chrome\", \"low-contrast\"]",
-      "replace": "[\"small-text\", \"under-chrome\"]",
+      "find": "if (kind !== \"low-contrast\") return [];",
+      "replace": "return [];",
       "kills": [
         "the layer check's contrast rows the build check and qa's low-contrast gate agree on the same element",
+        "the layer check's contrast rows holds text faint in two samples in a row, as qa does",
         "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
       ]
     },

@@ -2,7 +2,8 @@ import { DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
 import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
-import { badTextRows, distinctRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
+import { heldLowContrast, qaSamplings } from "../qa/layer-contrast.js";
+import { badTextRows, contrastRows, distinctRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
 const AT = { x: 0, y: 0, w: 10, h: 10 };
@@ -28,7 +29,7 @@ describe("the layer check's rows", () => {
   it("keeps qa's small-text and under-chrome findings and no other kind", () => {
     const findings = [
       { kind: "small-text", el: "div.label", text: "held", at: AT },
-      { kind: "wrap", el: "div.dim", text: "faint", at: AT },
+      { kind: "low-contrast", el: "div.dim", text: "faint", at: AT },
       { kind: "under-chrome", el: "div.foot", text: "last scan", at: AT },
     ];
 
@@ -75,13 +76,18 @@ describe("the rebuild hint for qa's narration rules", () => {
 describe("the layer check's contrast rows", () => {
   /** White on an amber bar as qa's in-page low-contrast rule reports it. */
   const WHITE_ON_AMBER: Finding = { kind: "low-contrast", el: "div#count", text: "12", px: 56, ratio: 2.04, need: 3, fg: "#ffffff", bg: "#f5a524", at: AT };
+  /** A chip that slides across the stage, faint only where qa catches it mid-slide. */
+  const SLIDING_CHIP: Finding = { kind: "low-contrast", el: "div.chip", text: "cleared", px: 40, ratio: 2.35, need: 3, fg: "#3a7a5a", bg: "#32302e", at: AT };
+  /** qa's samples of a 10 s beat with cues at 1 s and 6 s: start, enter, 1.9 s, the 5 s midpoint, 6.9 s and the end. */
+  const SAMPLINGS = qaSamplings({ beats: [{ id: "b1", startS: 0, durationS: 10, cues: [{ name: "desk", atS: 1 }, { name: "scan", atS: 6 }] }] });
+  const shownAt = (seconds: readonly number[], finding: Finding) => (t: number) => (seconds.includes(t) ? [finding] : []);
 
   it("the build check and qa's low-contrast gate agree on the same element", () => {
     // Arrange
-    const held = [{ kind: "low-contrast", beat: "b1", finding: WHITE_ON_AMBER, ts: [2], samples: 2, reason: "held" as const }];
+    const held = heldLowContrast(SAMPLINGS, () => [WHITE_ON_AMBER]);
 
     // Act
-    const rows = qaRows("b1", 2, [WHITE_ON_AMBER]);
+    const rows = contrastRows(held);
     const { below } = contrastReport([], held, CONTRAST, DEFAULT_OPTIONS).text;
 
     // Assert
@@ -89,9 +95,31 @@ describe("the layer check's contrast rows", () => {
     expect(below.map((run) => [run.text, run.ratio])).toEqual([["12", 2.04]]);
   });
 
+  it("a moving chip that qa does not hold is not rebuilt", () => {
+    // Arrange
+    const findingsAt = shownAt([1.9, 6.9], SLIDING_CHIP);
+
+    // Act
+    const rows = contrastRows(heldLowContrast(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows).toEqual([]);
+  });
+
+  it("holds text faint in two samples in a row, as qa does", () => {
+    // Arrange
+    const findingsAt = shownAt([1.9, 5], SLIDING_CHIP);
+
+    // Act
+    const rows = contrastRows(heldLowContrast(SAMPLINGS, findingsAt));
+
+    // Assert
+    expect(rows.map((row) => [row.text, row.atS])).toEqual([["cleared", 1.9]]);
+  });
+
   it("tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix", () => {
     // Arrange
-    const rows = qaRows("b1", 2, [WHITE_ON_AMBER]);
+    const rows = contrastRows(heldLowContrast(SAMPLINGS, () => [WHITE_ON_AMBER]));
 
     // Act
     const hint = layerTextHint(rows);

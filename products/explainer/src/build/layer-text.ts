@@ -1,14 +1,14 @@
-import type { Finding, ProbedMoment } from "@titan-design/render-qa";
+import type { Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
 import { cueResolverFromWords } from "../cues.js";
 import type { BuilderRef } from "./beat-worker.js";
 import type { LayerPacket } from "./layer-packet.js";
 import type { BuiltLayer } from "./layer-tree.js";
 
 /** qa's own finding kinds the build check holds a layer to, then the text no frame may show. */
-export const QA_TEXT_RULES = ["small-text", "under-chrome", "low-contrast"] as const;
+export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 /** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
 export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "bad-text" | LayerNarrationRule;
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "bad-text" | LayerNarrationRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -76,12 +76,16 @@ function contrastOf({ ratio, need, fg, bg }: Finding): LayerContrast | undefined
   return ratio === undefined || need === undefined || fg === undefined || bg === undefined ? undefined : { ratio, need, colour: fg, ground: bg };
 }
 
-/** qa's small-text, under-chrome and low-contrast findings at one moment, as rows. */
+/** qa's small-text and under-chrome findings at one moment, as rows. */
 export const qaRows = (beat: string, atS: number, findings: readonly Finding[]): LayerTextRow[] =>
-  findings.flatMap((finding) => {
-    if (!isQaTextRule(finding.kind)) return [];
-    const contrast = finding.kind === "low-contrast" ? contrastOf(finding) : undefined;
-    return [{ beat, element: finding.el, rule: finding.kind, text: finding.text ?? "", atS, ...(contrast ? { contrast } : {}) }];
+  findings.flatMap(({ kind, el, text }) => (isQaTextRule(kind) ? [{ beat, element: el, rule: kind, text: text ?? "", atS }] : []));
+
+/** The low-contrast findings qa holds, as rows first seen at the finding's first sample. */
+export const contrastRows = (held: readonly HeldFinding[]): LayerTextRow[] =>
+  held.flatMap(({ kind, beat, finding, ts }) => {
+    if (kind !== "low-contrast") return [];
+    const contrast = contrastOf(finding);
+    return [{ beat, element: finding.el, rule: "low-contrast" as const, text: finding.text ?? "", atS: ts[0] ?? 0, ...(contrast ? { contrast } : {}) }];
   });
 
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */
