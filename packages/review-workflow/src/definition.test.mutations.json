@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the definition is registered with no version",
+      "file": "packages/review-workflow/src/definition.ts",
+      "find": "runtime.register(workflow.name, workflow.run, { version: workflow.version });",
+      "replace": "runtime.register(workflow.name, workflow.run);",
+      "kills": ["reviewRunner parks a run pinned to an older definition version as recovery_required and never replays it"]
+    },
+    {
+      "name": "a resolve resumes nothing",
+      "file": "packages/review-workflow/src/definition.ts",
+      "find": "resolveFingerprint(options.ports.parking, fingerprint, async (parked) => rerun(parked.runId))",
+      "replace": "resolveFingerprint(options.ports.parking, fingerprint, async () => { throw new Error(\"not resumed\"); })",
+      "kills": ["reviewRunner parks a run on its fingerprint and reviews it again as a fresh run once the fingerprint resolves"]
+    }
+  ]
+}
