@@ -27,8 +27,9 @@ function row(runId: string, pr: number, overrides: Partial<WatchRow> = {}): Watc
 const gated = (runId: string, pr: number, sinceMs: number, stepId = "approve-merge"): WatchRow =>
   row(runId, pr, { pendingGate: { gateId: `${runId}/${stepId}`, stepId, since: ago(sinceMs) } });
 
-const held = (runId: string, pr: number, sinceMs: number, satisfiedAt?: string): WatchRow =>
-  row(runId, pr, { phase: "merging", phaseSince: ago(sinceMs), held: { reason: "ci-policy-weakened: a check was dropped", ...(satisfiedAt !== undefined && { satisfiedAt }) } });
+/** A held row in the stage Shepherd reports for it: `hold` only when its own `waitsOnHold` says the run waits. */
+const held = (runId: string, pr: number, sinceMs: number, stage = "hold", phase = "merging"): WatchRow =>
+  row(runId, pr, { phase, phaseSince: ago(sinceMs), held: { reason: "ci-policy-weakened: a check was dropped" }, stage: { name: stage, minutes: 0 } });
 
 function spoolBlocker(depositId: string, sinceMs: number, overrides: Partial<SpoolBlocker> = {}): SpoolBlocker {
   return { id: depositItemId("seat-a", depositId), asker: "seat-a", summary: `Blocked on ${depositId}`, blocker: { since: ago(sinceMs), blocks: "EX-2 cannot start" }, ...overrides };
@@ -72,10 +73,16 @@ describe("bannerBlockers threshold", () => {
 
 describe("bannerBlockers sources", () => {
   it("a satisfied hold is not a blocker", () => {
-    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, ago(HOUR)), held("run-2", 8, 48 * HOUR)] });
+    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, "land"), held("run-2", 8, 48 * HOUR)] });
 
     expect(result.items.map((item) => item.id)).toEqual(["held:run-2"]);
     expect(result.items[0]).toMatchObject({ source: "owner-hold", link: "#/shepherd/example-org%2Frepo%238" });
+  });
+
+  it("a held run Shepherd does not call holding, such as one stalled in CI, is not bannered", () => {
+    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, "ci", "ci"), held("run-2", 8, 48 * HOUR, "review", "review"), { ...held("run-3", 9, 48 * HOUR), stage: null }] });
+
+    expect(result.count).toBe(0);
   });
 
   it("a seat-step gate never shows, even repeated", () => {
