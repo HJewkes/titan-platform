@@ -5,8 +5,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fixtureEnv, type SeedFiles, seedRepo, seedRepoWithOrigin } from "@titan-design/test-kit/git";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixtureEnv, removeTemplates, type SeedFiles, seedRepo, seedRepoWithOrigin } from "@titan-design/test-kit/git";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator, type WorktreeRequest } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
 import {
@@ -31,6 +31,12 @@ process.env.npm_config_fetch_timeout = "15000";
 process.env.npm_config_fetch_retry_maxtimeout = "10000";
 
 const tmpdirs: string[] = [];
+
+// Node children (npx, npm) fill a compile cache under TMPDIR that nothing else in this file registers.
+afterAll(() => {
+  removeTemplates();
+  fs.rmSync(path.join(os.tmpdir(), "node-compile-cache"), { recursive: true, force: true });
+});
 
 afterEach(() => {
   while (tmpdirs.length > 0)

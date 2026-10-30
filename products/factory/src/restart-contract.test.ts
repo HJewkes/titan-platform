@@ -129,6 +129,8 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "bs-implement": `${WRITE}: spawns the slice implementer`,
   "bs-report-check": `${READ}: the verdict on an implementer's report`,
   "bs-gates": `${READ}: runs the repo's gates at a head`,
+  "bs-health": `${READ}: the repo's health probe before an infra rerun`,
+  "bs-file-task": `${WRITE}: files the task for a broken gate or spec`,
   "bs-preview": `${WRITE}: syncs the preview at a head`,
   "bs-review": `${WRITE}: dispatches the slice reviewer`,
   "bs-review-check": `${READ}: the verdict on a review`,
