@@ -12,15 +12,6 @@
       ]
     },
     {
-      "name": "factory frames lose their run id",
-      "file": "apps/console/server/events-relay.ts",
-      "find": "pick: factoryIds },",
-      "replace": "pick: brokerIds },",
-      "kills": [
-        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
-      ]
-    },
-    {
       "name": "any string passes as a run id",
       "file": "apps/console/server/events-relay.ts",
       "find": "const RUN_ID = /^[\\w.-]{1,128}$/;",
@@ -45,6 +36,16 @@
       "replace": "headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }), pick: factoryIds",
       "kills": [
         "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
+      ]
+    },
+    {
+      "name": "the backoff doubles past its cap",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "    await sleep(Math.min(timing.baseDelayMs * 2 ** failures, timing.maxDelayMs), signal);",
+      "replace": "    await sleep(timing.baseDelayMs * 2 ** failures, signal);",
+      "kills": [
+        "the events relay backs off between refused dials, doubling to the cap, and relays nothing",
+        "the factory relay source redials a dropped factory stream with the same doubling backoff, announcing each reopen"
       ]
     }
   ]

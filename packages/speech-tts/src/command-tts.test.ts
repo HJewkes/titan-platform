@@ -126,16 +126,15 @@ describe("commandTts hardening", () => {
   });
 
   // Mutation caught: stdout is counted only once the command exits, so an endless stream runs to the deadline.
+  // The flood never exits, so only a kill on the count yields this error; the deadline's error names the timeout.
   it("kills a command whose stdout passes maxOutputBytes, while it is still writing", async () => {
     const pidFile = join(scratch(), "pid");
     const tts = provider(stub("--mode", "flood", "--pid-file", pidFile), { maxOutputBytes: 2 * 1024 * 1024 });
-    const started = Date.now();
 
     const error = await tts.synthesize({ text: "hi" }, "narrator", { timeoutMs: 20_000 }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(TtsFailedError);
     expect(String(error)).toContain("stdout passed maxOutputBytes (2097152)");
-    expect(Date.now() - started).toBeLessThan(10_000);
     await expect.poll(() => isAlive(Number(readFileSync(pidFile, "utf8"))), { timeout: 2_000 }).toBe(false);
   });
 

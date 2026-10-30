@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
@@ -814,7 +814,7 @@ describe("a long round sends in about one human-only read (TP-4001)", () => {
     { questionId: "report-notes", text: "Print the cone number." },
     ...EXTRA.map((questionId) => ({ questionId, value: 3 })),
   ];
-  /** Real but short, so twelve serial reads (3.6 s) and one (0.3 s) are far apart on any CI runner. */
+  /** Real, so twelve answers overlap one read in flight. */
   const READ_MS = 300;
   let kilnSha: string;
 
@@ -848,13 +848,24 @@ describe("a long round sends in about one human-only read (TP-4001)", () => {
     expect(reads.calls).toBe(1);
   });
 
-  it("responds in about one read's latency, not twelve", async () => {
-    const { decisionLog } = slowHumanOnly();
-    const started = performance.now();
+  // Each read waits until the test releases it, so the releases count the read latencies the response sat behind.
+  it("responds in one read's latency, not twelve", async () => {
+    const waiting: (() => void)[] = [];
+    const humanOnly = () => new Promise<HumanOnly>((resolve) => waiting.push(() => resolve({ known: true, initiatives: new Set() })));
+    const decisionLog = createDecisionLog({ stateDir: path.join(root, "state"), decisionsFile: null, humanOnly });
+    const state = { settled: false };
+    const response = submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog).finally(() => (state.settled = true));
 
-    await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog);
+    let released = 0;
+    for (;;) {
+      await vi.waitFor(() => expect(state.settled || waiting.length > 0).toBe(true));
+      if (state.settled) break;
+      waiting.shift()!();
+      released += 1;
+    }
 
-    expect(performance.now() - started).toBeLessThan(3 * READ_MS);
+    expect((await response).envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect(released).toBe(1);
   });
 
   it("responds while the round listener is still running, and keeps the submit when it fails", async () => {

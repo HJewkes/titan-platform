@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the lock record is read with a plain blocking read",
+      "file": "packages/anthropic-account/src/node/credentials-write.ts",
+      "find": "    const read = readGatedFile(path.join(configDir, REFRESH_LOCK_HOLDER), { maxBytes: MAX_HOLDER_BYTES, ownerUid: uid });\n    if (read.status !== \"read\") return null;\n    const parsed = holderSchema.safeParse(JSON.parse(read.bytes.toString(\"utf8\")));",
+      "replace": "    const parsed = holderSchema.safeParse(JSON.parse(fs.readFileSync(path.join(configDir, REFRESH_LOCK_HOLDER), \"utf8\")));",
+      "kills": [
+        "refreshIfNeeded trusts only its own regular file as the lock holder record never reclaims a lock whose record is wider than 0600",
+        "refreshIfNeeded trusts only its own regular file as the lock holder record never reclaims a lock whose record has a second name",
+        "refreshIfNeeded trusts only its own regular file as the lock holder record returns promptly, leaving the lock, when the record is a FIFO"
+      ]
+    }
+  ]
+}

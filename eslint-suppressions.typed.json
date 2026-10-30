@@ -1095,11 +1095,6 @@
       "count": 1
     }
   },
-  "packages/daemon/src/lifecycle.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/daemon/src/lifecycle.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5

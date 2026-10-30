@@ -175,7 +175,9 @@ describe("octokitClient", () => {
 
     expect(budget.lanes.rest).toEqual({ limit: 5000, remaining: 4321, used: 679, resetAt: reset * 1000 });
     expect(budget.cooldowns).toEqual([{ lane: "graphql", class: "secondary", until: expect.any(Number) }]);
-    expect(budget.cooldowns[0]!.until - Date.now()).toBeGreaterThan(28_000);
+    // The fake clock stood between NOW + 5 s and NOW + 6 s when the 403 came back, so the 30 s cooldown ends 30 s on.
+    expect(budget.cooldowns[0]!.until).toBeGreaterThanOrEqual(NOW + 35_000);
+    expect(budget.cooldowns[0]!.until).toBeLessThanOrEqual(NOW + 36_000);
   });
 
   it("drops a cooldown from the budget once it has passed", async () => {

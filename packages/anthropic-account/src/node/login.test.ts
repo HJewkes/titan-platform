@@ -8,6 +8,7 @@ import {
   errorText,
   makeFifo,
   makeTempHome,
+  releasedAReader,
   removeTempHome,
   thrown,
   unblockFifoLater,
@@ -226,7 +227,7 @@ describe("readLoginState checks the descriptor it reads", () => {
 
     it.skipIf(process.platform === "win32")(
       "refuses it promptly instead of blocking on the open",
-      () => {
+      async () => {
         writeCredentials(fakeCredentials());
         const fifo = path.join(configDir, "pipe");
         makeFifo(fifo);
@@ -234,11 +235,10 @@ describe("readLoginState checks the descriptor it reads", () => {
         unblocker = unblockFifoLater(credentials);
         swapBeforeOpen(() => fs.renameSync(fifo, credentials));
         const read = vi.spyOn(fs, "readSync");
-        const started = Date.now();
 
         const state = readLoginState(configDir, { now: NOW, uid });
 
-        expect(Date.now() - started).toBeLessThan(500);
+        expect(await releasedAReader(unblocker)).toBe(false);
         expect(state).toEqual({ status: "refused", reason: "not-a-regular-file" });
         expect(read).not.toHaveBeenCalled();
       },

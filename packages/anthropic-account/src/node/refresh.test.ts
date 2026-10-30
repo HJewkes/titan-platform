@@ -8,6 +8,7 @@ import {
   errorText,
   makeFifo,
   makeTempHome,
+  releasedAReader,
   removeTempHome,
   unblockFifoLater,
   writeFileWithMode,
@@ -507,11 +508,10 @@ describe("refreshIfNeeded trusts only its own regular file as the lock holder re
       fs.mkdirSync(path.join(profile.configDir, REFRESH_LOCK));
       makeFifo(holderFile());
       unblocker = unblockFifoLater(holderFile());
-      const started = Date.now();
 
       const result = await refresh(fakeFetch(() => granted()).fetch);
 
-      expect(Date.now() - started).toBeLessThan(500);
+      expect(await releasedAReader(unblocker)).toBe(false);
       expect(result).toEqual({ status: "locked" });
       expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
     },

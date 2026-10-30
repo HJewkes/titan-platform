@@ -33,17 +33,6 @@ const MOTION_PATHS = [
 
 // Tests that still compare a clock with a limit. TP-4264 empties this list and TP-4076 owns the two tool-guard files; only remove entries.
 const CLOCK_BUDGET_BASELINE = [
-  "apps/console/server/events-relay.test.ts",
-  "apps/console/server/rounds-submit.test.ts",
-  "packages/anthropic-account/src/node/login.test.ts",
-  "packages/anthropic-account/src/node/refresh.test.ts",
-  "packages/anthropic-account/src/node/usage-file.test.ts",
-  "packages/daemon/src/file-watch.test.ts",
-  "packages/daemon/src/lifecycle.test.ts",
-  "packages/github/src/octokit-client.test.ts",
-  "packages/speech-tts/src/command-tts.test.ts",
-  "packages/speech-tts/src/fake-tts.test.ts",
-  "packages/speech-tts/src/http-tts.test.ts",
   "packages/tool-guard/src/merge-lint/merge-lint.test.ts",
   "packages/tool-guard/src/shell/procsub-heredoc.test.ts",
 ];

@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,16 +12,19 @@ export function makeFifo(file: string): void {
 
 // A reader blocked opening the FIFO would hang the test thread for good, and no in-process
 // timer can fire meanwhile. This child opens the write end from 1.5 s on, which releases such
-// a reader, so code that blocks shows up as slow instead of hanging the run.
+// a reader, so code that blocks fails the test instead of hanging the run. A non-blocking open
+// of the write end succeeds only while a reader holds the FIFO, so exit code 0 says it released
+// one; a SIGTERM before that exits 3.
 const UNBLOCK_FIFO = `
 const fs = require("node:fs");
+process.on("SIGTERM", () => process.exit(3));
 const started = Date.now();
 const tick = () => {
   try {
     fs.closeSync(fs.openSync(process.argv[1], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK));
     process.exit(0);
   } catch {
-    if (Date.now() - started > 6000) process.exit(0);
+    if (Date.now() - started > 6000) process.exit(3);
     setTimeout(tick, 100);
   }
 };
@@ -29,6 +33,17 @@ setTimeout(tick, 1500);
 
 export function unblockFifoLater(fifo: string): ChildProcess {
   return spawn(process.execPath, ["-e", UNBLOCK_FIFO, fifo], { stdio: "ignore" });
+}
+
+// Stops the unblocker and reports whether it ever had to release a reader blocked on the open.
+// The child exits in the same turn as its open, so a SIGTERM it handles always comes after.
+export async function releasedAReader(unblocker: ChildProcess): Promise<boolean> {
+  if (unblocker.exitCode === null && unblocker.signalCode === null) {
+    const exited = once(unblocker, "exit");
+    unblocker.kill();
+    await exited;
+  }
+  return unblocker.exitCode === 0;
 }
 
 // Runs `swap` once, straight after the first lstat of `file`, to stage a race.
