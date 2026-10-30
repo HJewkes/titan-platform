@@ -57,11 +57,7 @@ export function placementFor(anchor: string | undefined): SurfacePlacement {
 }
 
 /** Shared by both directions: an identity has to be one the product can relaunch. */
-function relaunchable(
-  identity: AgentIdentity | undefined,
-  name: string
-): string | undefined {
-  if (identity === undefined) return `no agent named "${name}"`;
+function relaunchable(identity: AgentIdentity, name: string): string | undefined {
   if (identity.origin === "adopted")
     return (
       `${name} is an ordinary session this broker did not launch, so there is no launch plan to ` +
@@ -76,9 +72,10 @@ export function checkSurfaceable(
   identity: AgentIdentity | undefined,
   name: string
 ): string | undefined {
+  if (identity === undefined) return `no agent named "${name}"`;
   const blocked = relaunchable(identity, name);
   if (blocked) return blocked;
-  if (isInteractiveSurface((identity as AgentIdentity).surface))
+  if (isInteractiveSurface(identity.surface))
     return `${name} is already in a terminal; \`agent-chat agent attach ${name}\` goes to it`;
   return undefined;
 }
@@ -94,9 +91,10 @@ export function checkBackgroundable(
   name: string,
   hostPid: number | undefined
 ): string | undefined {
+  if (identity === undefined) return `no agent named "${name}"`;
   const blocked = relaunchable(identity, name);
   if (blocked) return blocked;
-  if (!isInteractiveSurface((identity as AgentIdentity).surface))
+  if (!isInteractiveSurface(identity.surface))
     return `${name} is already running headless`;
   if (hostPid === undefined)
     return (

@@ -92,16 +92,11 @@ export async function worktreeProvenance(
   };
 }
 
+const nonEmpty = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
+
 /** CC-168: frames arrive from more than one surface, so the shape is checked here and not only by the tool. */
-export const isExperimentArm = (value: unknown): value is ExperimentArm => {
-  const { id, arm } = (value ?? {}) as Record<string, unknown>;
-  return (
-    typeof id === "string" &&
-    id.trim() !== "" &&
-    typeof arm === "string" &&
-    arm.trim() !== ""
-  );
-};
+export const isExperimentArm = (value: unknown): value is ExperimentArm =>
+  typeof value === 'object' && value !== null && 'id' in value && 'arm' in value && nonEmpty(value.id) && nonEmpty(value.arm)
 
 /**
  * A burndown spawn always runs a task, so one without an id is a caller bug that
@@ -109,18 +104,18 @@ export const isExperimentArm = (value: unknown): value is ExperimentArm => {
  * rather than recorded, since the exporter groups by it.
  */
 export function assignmentRefusal(req: {
-  task?: string;
-  workRole?: string;
-  spawnedAs?: string;
-  experiment?: ExperimentArm;
+  task?: string
+  workRole?: string
+  spawnedAs?: string
+  experiment?: ExperimentArm
 }): string | undefined {
   if (req.experiment !== undefined && !isExperimentArm(req.experiment))
-    return "experiment needs a non-empty id and arm";
+    return 'experiment needs a non-empty id and arm'
   if (req.workRole !== undefined && !isWorkRole(req.workRole))
-    return `role must be one of: ${WORK_ROLE_CHOICES}; got "${req.workRole}"`;
-  if (req.spawnedAs === "burndown" && (req.task ?? "").trim() === "")
-    return "a burndown spawn needs a task id; send `task` with the frame";
-  return undefined;
+    return `role must be one of: ${WORK_ROLE_CHOICES}; got "${req.workRole}"`
+  if (req.spawnedAs === 'burndown' && (req.task ?? '').trim() === '')
+    return 'a burndown spawn needs a task id; send `task` with the frame'
+  return undefined
 }
 
 export type AssignmentRequest = {
