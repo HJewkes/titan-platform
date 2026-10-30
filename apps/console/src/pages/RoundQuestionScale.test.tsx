@@ -13,7 +13,7 @@ const scale: Question = { id: "fill", kind: "scale", prompt: "How full is the ja
 
 const scaleText = (): string => {
   render(<RoundQuestion question={scale} position={1} answer={undefined} onChoose={() => undefined} active onActivate={() => undefined} />);
-  return (screen.getByRole("radiogroup").textContent ?? "").replace(/\s+/g, "");
+  return screen.getByRole("radiogroup").textContent.replace(/\s+/g, "");
 };
 
 const onPhone = (): void =>
