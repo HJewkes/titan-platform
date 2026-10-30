@@ -19,7 +19,7 @@ import {
 import type { ReviewSummary } from "../../server/reviews.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 const COUNT_WIDTH = 64;
 const DATE_WIDTH = 160;
@@ -139,7 +139,7 @@ function ReviewsStack({ reviews }: { reviews: readonly ReviewSummary[] }): React
 function ReviewName({ review }: { review: ReviewSummary }): ReactNode {
   return (
     <VStack gap={0}>
-      <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "reviews", id: review.name })}>
+      <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "reviews", id: review.name })}>
         {review.name}
       </Link>
       {review.remote ? <Typography variant="caption" color="secondary">{remoteSlug(review.remote)}</Typography> : null}

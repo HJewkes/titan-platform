@@ -23,7 +23,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 export type WatchRow = ConsoleCommands["shepherd.list"]["result"][number];
 type WaitingGate = ConsoleCommands["shepherd.waiting"]["result"]["owner"][number];
@@ -121,7 +121,7 @@ function PrLink({ row }: { row: WatchRow }): ReactNode {
   if (row.pr === null) return <Typography variant="body2">{`${row.repo} (${row.branch})`}</Typography>;
   const ref = prRef(row.repo, row.pr);
   return (
-    <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "shepherd", id: ref })}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "shepherd", id: ref })}>
       {ref}
     </Link>
   );

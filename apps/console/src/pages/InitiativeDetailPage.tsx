@@ -31,7 +31,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
-import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_ID_LINK } from "./phone.js";
 
 type Detail = ConsoleCommands["work.initiative"]["result"];
 
@@ -83,7 +83,7 @@ function Heading({ initiative }: { initiative: Detail["initiative"] }): ReactNod
 function Trail({ slug }: { slug: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "initiatives" })}>Initiatives</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "initiatives" })}>Initiatives</BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{slug}</BreadcrumbItem>
     </Breadcrumbs>
   );

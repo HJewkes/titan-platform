@@ -23,7 +23,7 @@ import { href, open } from "../router.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { ideaRoute } from "./autoresearch-lanes.js";
 import { bugRepeatRates, REGISTRY_TAIL, registryTails, type RoundRepeats } from "./autoresearch-registries.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 
 const PERCENT = 100;
 
@@ -128,7 +128,7 @@ function Bugs({ runId, rows }: { runId: string; rows: ArRegistries["bugs"] }): R
 function IdeaLink({ runId, ideaId }: { runId: string; ideaId: string }): ReactNode {
   const target = ideaRoute(runId, ideaId);
   return (
-    <Link color="primary" className={PHONE_TAP_LINK} href={href(target)} onPress={() => open(target)} testID={`autoresearch-registry-idea-${ideaId}`}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} href={href(target)} onPress={() => open(target)} testID={`autoresearch-registry-idea-${ideaId}`}>
       {shortId(ideaId)}
     </Link>
   );

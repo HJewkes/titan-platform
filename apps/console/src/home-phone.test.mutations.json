@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the inbox link keeps only its text's height on a phone",
+      "file": "apps/console/src/pages/HomeNeedsYou.tsx",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_LINK} onPress={openInbox}>",
+      "replace": "<Link color=\"primary\" onPress={openInbox}>",
+      "kills": [
+        "the home inbox card on a phone gives the inbox link a 44px tap target",
+        "the home inbox card on a phone hides the card when the blocking count drops to zero and brings it back with its tap target"
+      ]
+    },
+    {
+      "name": "the inbox card stays up with no blockers",
+      "file": "apps/console/src/pages/HomeNeedsYou.tsx",
+      "find": "if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;",
+      "replace": "",
+      "kills": [
+        "the home inbox card on a phone hides the card when the blocking count drops to zero and brings it back with its tap target"
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
     {
       "name": "the initiative list's link keeps its 16px line",
       "file": "apps/console/src/pages/InitiativesPage.tsx",
-      "find": "<Link color=\"primary\" className={PHONE_TAP_LINK} onPress={() => open({ view: \"initiatives\", id: row.slug })}>",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: \"initiatives\", id: row.slug })}>",
       "replace": "<Link color=\"primary\" onPress={() => open({ view: \"initiatives\", id: row.slug })}>",
       "kills": [
         "a press target on a phone gives each initiative's link a 44px tap"
@@ -40,7 +40,7 @@
     {
       "name": "the shepherd run link keeps its 16px line",
       "file": "apps/console/src/pages/ShepherdPage.tsx",
-      "find": "<Link color=\"primary\" className={PHONE_TAP_LINK} onPress={() => open({ view: \"shepherd\", id: ref })}>",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: \"shepherd\", id: ref })}>",
       "replace": "<Link color=\"primary\" onPress={() => open({ view: \"shepherd\", id: ref })}>",
       "kills": [
         "a press target on a phone gives each shepherd run's link a 44px tap"

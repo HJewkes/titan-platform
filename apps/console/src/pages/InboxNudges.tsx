@@ -4,7 +4,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 import { useConfirmOnPhone } from "./PhoneConfirm.js";
 
 type RoundNudge = ConsoleCommands["inbox.list"]["result"]["nudges"][number];
@@ -46,7 +46,7 @@ function NudgeCard({ nudge }: { nudge: RoundNudge }): ReactNode {
               <Pill key={each.questionId} variant="subtle" size="xs">{`${each.questionId}: ${each.answer}`}</Pill>
             ))}
           </HStack>
-          <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "rounds", id: nudge.roundId })}>
+          <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "rounds", id: nudge.roundId })}>
             Open round
           </Link>
           {nudge.oneTap ? <RecTap nudge={nudge} /> : <Typography variant="caption" color="secondary">{`No one-tap answer: ${nudge.withoutTap ?? "unknown"}`}</Typography>}

@@ -13,7 +13,7 @@ import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -209,7 +209,7 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
           </HStack>
           <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
           <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
-          <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open(parseRoute(row.link))}>
+          <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(parseRoute(row.link))}>
             {DERIVED_LINK[row.kind]}
           </Link>
         </VStack>
@@ -341,7 +341,7 @@ function ReadBackWithLineage({ item, prepared }: { item: InboxItem; prepared: In
 function EvidenceLink({ evidence }: { evidence: string }): ReactNode {
   if (!/^(#|https?:\/\/)/.test(evidence)) return <Typography variant="mono">{evidence}</Typography>;
   return (
-    <Link color="primary" className={PHONE_TAP_LINK} onPress={() => followEvidence(evidence)}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => followEvidence(evidence)}>
       {evidence.startsWith("#") ? "Open evidence" : evidence}
     </Link>
   );
