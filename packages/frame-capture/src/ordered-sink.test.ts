@@ -46,8 +46,8 @@ const spilledBytes = () =>
     .reduce((sum, entry) => sum + statSync(path.join(entry.parentPath, entry.name)).size, 0)
 
 describe('OrderedSink', () => {
-  // Mutations: ChunkSpill.append keeps the PNG in a Map instead of the file (nothing on disk); take reads at offset 0
-  // (wrong bytes); emit stops waiting on the sink for the head chunk (the head worker runs on while the sink stalls).
+  // Mutations: ChunkSpill.append writes nothing to the file (nothing on disk); take reads at offset 0 (wrong bytes);
+  // every chunk spills (the head chunk's frames leave memory, and the sink sees frames late).
   test('a stalled head chunk spills the later chunks, holds one frame, then drains identical bytes in order', async () => {
     const { calls, sink, release } = gatedSink()
     const received: Buffer[] = []
@@ -65,17 +65,22 @@ describe('OrderedSink', () => {
     assert.ok(received.every((buf, i) => buf.equals(png(i))), 'a frame came back with other bytes')
   })
 
-  // Mutation: emit resolves without waiting on the sink; the head worker piles its whole chunk into memory.
-  test('a sink slower than capture leaves at most one frame per worker waiting in memory', async () => {
-    let waiting = 0
-    let peak = 0
-    const track = (delta: number) => (peak = Math.max(peak, (waiting += delta)))
-    const ordered = new OrderedSink(RANGES, () => new Promise((resolve) => setTimeout(resolve, 1)), parent)
+  // Mutation: emit resolves without waiting on the sink; the worker runs ahead and its frames pile up in memory.
+  test('a sink slower than capture holds its worker to one frame ahead', async () => {
+    let handedOver = 0
+    let reached = 0
+    let lead = 0
+    const ordered = new OrderedSink([[0, 8]], async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      reached++
+    }, parent)
 
-    await Promise.all(RANGES.map((range) => sweep(ordered, range, track)))
+    await sweep(ordered, [0, 8], (delta) => {
+      if (delta === 1) lead = Math.max(lead, ++handedOver - reached)
+    })
     await ordered.drained()
 
-    assert.ok(peak <= RANGES.length, `${peak} frames waited at once`)
+    assert.equal(lead, 1)
   })
 
   // Mutation: the sink hands a finished chunk on without removing its spill; the first chunk's file outlives its frames.
