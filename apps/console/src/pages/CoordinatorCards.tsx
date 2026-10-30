@@ -14,7 +14,7 @@ type DayArgs = ServedCommands["coord.cards"]["args"];
 const CARD_SKELETONS = 3;
 
 /** A null cost means no agent's exit row reported one, which is not the same as spending nothing. */
-export const costLabel = (costUsd: number | null): string => (costUsd === null ? "n/a" : `$${costUsd.toFixed(2)}`);
+const costLabel = (costUsd: number | null): string => (costUsd === null ? "n/a" : `$${costUsd.toFixed(2)}`);
 
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
 

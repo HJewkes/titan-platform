@@ -16,7 +16,7 @@ const GAP_MEANINGS: readonly [prefix: string, meaning: string][] = [
   ["coordinator roots", "The console has no agent-chat or autonomy directory configured, so no account can be read."],
 ];
 
-export function explainPoolGap(gap: string): string {
+function explainPoolGap(gap: string): string {
   return GAP_MEANINGS.find(([prefix]) => gap.startsWith(prefix))?.[1] ?? gap;
 }
 

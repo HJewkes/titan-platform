@@ -9,13 +9,13 @@ import { PHONE_TAP } from "./phone.js";
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The day the query names; a malformed one is dropped so the page shows today rather than an error. */
-export function dateFrom(query: string | undefined): string | undefined {
+function dateFrom(query: string | undefined): string | undefined {
   const date = new URLSearchParams(query ?? "").get("date");
   return date !== null && CALENDAR_DATE.test(date) ? date : undefined;
 }
 
 /** Calendar arithmetic only, in UTC, so a daylight-saving change never skips or repeats a day. */
-export function shiftDate(date: string, days: number): string {
+function shiftDate(date: string, days: number): string {
   const at = new Date(`${date}T00:00:00Z`);
   at.setUTCDate(at.getUTCDate() + days);
   return at.toISOString().slice(0, 10);
