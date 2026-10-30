@@ -46,6 +46,7 @@ const CLOCK_BUDGET_BASELINE = [
   "packages/speech-tts/src/fake-tts.test.ts",
   "packages/speech-tts/src/http-tts.test.ts",
   "packages/tool-guard/src/merge-lint/merge-lint.test.ts",
+  "packages/tool-guard/src/shell/procsub-heredoc.test.ts",
 ];
 
 export default tseslint.config(
