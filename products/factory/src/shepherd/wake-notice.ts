@@ -40,3 +40,34 @@ export async function noticeSpawner(ports: ExitNoticePorts, roster: () => Promis
   }
 }
 
+/** What a held wake told the lineage's newest agent, which can still push the fix by hand. */
+export type PredecessorMessage = { agent: string; sent: boolean; detail: string };
+
+type HeldWakeFacts = NoticedWake & { payload: string };
+
+interface LineageAgents {
+  roster(): Promise<readonly AgentRow[]>;
+  message(name: string, text: string): Promise<void>;
+}
+
+function heldMessage(wake: HeldWakeFacts, reason: string): string {
+  const { input, pr } = wake;
+  const intro = `Shepherd: ${input.repo}#${input.pr} at head ${input.headSha}: no fixer could start for the ${input.kind} wake: ${reason}.`;
+  return `${intro}\n\nThe wake's findings follow. Push a fix on branch \`${pr.headRef}\` if you can, or tell your seat you cannot.\n\n${wake.payload}`;
+}
+
+/**
+ * A held wake starts no agent, so its findings would reach only the seat; the lineage's newest agent, else the registered
+ * implementer, is messaged them too. It runs inside the wake step, so a replay sends nothing. Throws only on abort.
+ */
+export async function messagePredecessor(agents: LineageAgents, wake: HeldWakeFacts, reason: string, signal: AbortSignal): Promise<PredecessorMessage> {
+  let agent = wake.implementer;
+  try {
+    agent = newestAgent(wake, await agents.roster())?.name ?? wake.implementer;
+    await agents.message(agent, heldMessage(wake, reason));
+    return { agent, sent: true, detail: `told ${agent}` };
+  } catch (error) {
+    signal.throwIfAborted();
+    return { agent, sent: false, detail: `the predecessor message failed: ${failureOf(error)}` };
+  }
+}
