@@ -6,6 +6,7 @@ import { href, open, type Route } from "../router.js";
 import { setPositionOf, setQuery, type SetPosition } from "./round-set.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 const roundRoute = (round: RoundSummary): Route => ({ view: "rounds", id: round.id });
 const setRoute = (set: string): Route => ({ view: "rounds", query: setQuery(set) });
@@ -24,7 +25,7 @@ export function RoundSetLinks({ rounds, id }: { rounds: readonly RoundSummary[];
   return (
     <HStack gap={3} align="center" wrap testID="round-set-nav">
       <StepLink step="prev" round={position.prev} />
-      <Link color="primary" href={href(setRoute(position.set))} onPress={() => open(setRoute(position.set))}>
+      <Link color="primary" className={PHONE_TAP_LINK} href={href(setRoute(position.set))} onPress={() => open(setRoute(position.set))}>
         {`${position.set} · ${position.index} of ${position.size}`}
       </Link>
       <StepLink step="next" round={position.next} />
@@ -40,9 +41,9 @@ const stepText = (step: "prev" | "next", id: string | null): string => {
 
 /** An end of the set keeps its label, disabled, so the row does not shift between rounds. */
 function StepLink({ step, round }: { step: "prev" | "next"; round: RoundSummary | null }): ReactNode {
-  if (round === null) return <Link isDisabled>{stepText(step, null)}</Link>;
+  if (round === null) return <Link isDisabled className={PHONE_TAP_LINK}>{stepText(step, null)}</Link>;
   return (
-    <Link color="primary" href={href(roundRoute(round))} onPress={() => open(roundRoute(round))}>
+    <Link color="primary" className={PHONE_TAP_LINK} href={href(roundRoute(round))} onPress={() => open(roundRoute(round))}>
       {stepText(step, round.id)}
     </Link>
   );

@@ -6,6 +6,7 @@ import { answerText, firstOpen, type CheckFrame, type CheckVerdict, type CheckGr
 import { pinNumber, type Pin } from "./frame-pins.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { PHONE_TAP } from "./phone.js";
 
 /**
  * Whether the round shows its check-before-send screen, and the question a step from it lands on. The screen stands in
@@ -90,8 +91,8 @@ export function RoundCheck({ manifest, groups, general, check, onSend: sendable,
 function UnansweredNav({ onlyOpen, onToggle, onNext }: { onlyOpen: boolean; onToggle: () => void; onNext: () => void }): ReactNode {
   return (
     <HStack gap={2} wrap role="group" aria-label="Unanswered questions">
-      <Button size="sm" variant={onlyOpen ? "solid" : "outline"} color="secondary" aria-pressed={onlyOpen} onPress={onToggle} testID="round-check-filter"><ButtonText>Show only unanswered</ButtonText></Button>
-      <Button size="sm" variant="outline" onPress={onNext} testID="round-check-next-unanswered"><ButtonText>Answer next unanswered</ButtonText></Button>
+      <Button size="sm" variant={onlyOpen ? "solid" : "outline"} color="secondary" className={PHONE_TAP} aria-pressed={onlyOpen} onPress={onToggle} testID="round-check-filter"><ButtonText>Show only unanswered</ButtonText></Button>
+      <Button size="sm" variant="outline" className={PHONE_TAP} onPress={onNext} testID="round-check-next-unanswered"><ButtonText>Answer next unanswered</ButtonText></Button>
     </HStack>
   );
 }
@@ -100,8 +101,8 @@ function CheckActions({ partial, check, onSend }: { partial: number; check: Send
   return (
     <VStack gap={1}>
       <HStack gap={3} wrap align="center">
-        <Button variant={partial > 0 ? "solid" : "outline"} color={partial > 0 ? "primary" : "secondary"} onPress={check.close} testID="round-check-back"><ButtonText>Back to answering</ButtonText></Button>
-        <Button variant={partial > 0 ? "outline" : "solid"} color="primary" isDisabled={onSend === undefined} onPress={() => onSend?.()} testID="round-check-send">
+        <Button variant={partial > 0 ? "solid" : "outline"} color={partial > 0 ? "primary" : "secondary"} className={PHONE_TAP} onPress={check.close} testID="round-check-back"><ButtonText>Back to answering</ButtonText></Button>
+        <Button variant={partial > 0 ? "outline" : "solid"} color="primary" className={PHONE_TAP} isDisabled={onSend === undefined} onPress={() => onSend?.()} testID="round-check-send">
           <ButtonText>{partial > 0 ? `Send partial: ${partial} unanswered` : "Send answers"}</ButtonText>
         </Button>
       </HStack>

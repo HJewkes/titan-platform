@@ -26,6 +26,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD } from "./phone.js";
 import { GuessedCaption, STAGE_ORDER, TaskStageBadge, stageLabel } from "./TaskParts.js";
 
 type TasksResult = ConsoleCommands["work.tasks"]["result"];
@@ -178,9 +179,6 @@ function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResu
     </VStack>
   );
 }
-
-/** Tailwind's `md` breakpoint: below it the five columns squeeze the initiative over the title. */
-export const BELOW_MD = "(max-width: 767px)";
 
 /** One tree, not a CSS swap of two, so a 50-row page renders its rows once. */
 function StageRows({ rows }: { rows: readonly Row[] }): ReactNode {
