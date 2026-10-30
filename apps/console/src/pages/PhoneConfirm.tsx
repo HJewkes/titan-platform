@@ -4,7 +4,7 @@ import { useMediaQuery } from "./FramePins.js";
 import { BELOW_MD, PHONE_TAP } from "./phone.js";
 
 /** An owner write a press sends. `isDisabled` is read at each render, so a step armed before it went off closes. */
-export interface ConfirmAction {
+interface ConfirmAction {
   id: string;
   /** The confirm button's label, such as "Confirm Ship". */
   confirm: string;

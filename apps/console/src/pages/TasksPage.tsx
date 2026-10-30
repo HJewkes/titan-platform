@@ -180,6 +180,9 @@ function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResu
   );
 }
 
+// The shell and its tests import the breakpoint from here; it lives in phone.ts beside the other phone sizes.
+export { BELOW_MD };
+
 /** One tree, not a CSS swap of two, so a 50-row page renders its rows once. */
 function StageRows({ rows }: { rows: readonly Row[] }): ReactNode {
   return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;

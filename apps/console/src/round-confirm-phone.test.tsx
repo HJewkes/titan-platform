@@ -2,7 +2,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
-import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource } from "@titan-design/rpc-client";
+import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS, stagedRound, twoPrRound, type StagedRound } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
@@ -36,7 +36,7 @@ const onPhone = (): void =>
 
 /** A synthetic round page whose rounds.submit answers "submitted"; returns the args of each submit it was sent. */
 async function renderRound(id: string, source = FIXTURE_ROUNDS): Promise<unknown[]> {
-  const snapshot = {
+  const snapshot: Snapshot = {
     format: SNAPSHOT_FORMAT,
     createdAt: "2031-03-05T00:00:00.000Z",
     calls: {

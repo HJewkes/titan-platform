@@ -66,6 +66,7 @@ const RECORDED: readonly Pick<TwinCall, "command" | "args">[] = [
   recorded("rounds.get", { id: "ship-tile-r1" }),
   recorded("rounds.get", { id: "kiln-schedule-r2" }),
   recorded("rounds.get", { id: "lantern-cards-r1" }),
+  recorded("rounds.frames", { id: "lantern-cards-r1" }),
   recorded("rounds.frames", { id: "ship-tile-r1" }),
   ...SHIP_TILE_FRAMES.map(([key, view]) => recorded("rounds.frame", { id: "ship-tile-r1", key, view })),
 ];
