@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { BlockerBanner } from "./BlockerBanner.js";
 import { BuildFooter } from "./BuildFooter.js";
 import { useRelayInvalidation, useReturnInvalidation } from "./data/live.js";
 import { useRoutePerf } from "./data/perf.js";
@@ -26,6 +27,7 @@ export function App(): ReactNode {
       activeKey={route.view}
       onNavigate={navigate}
     >
+      <BlockerBanner />
       <StaleLine />
       <RoutedView route={route} />
       <BuildFooter />
