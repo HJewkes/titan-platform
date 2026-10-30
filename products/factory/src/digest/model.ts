@@ -115,6 +115,10 @@ export interface DigestModel {
   autoPassed?: AutoPassed[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
+  /** Every gate waiting on the owner, oldest first, for the stale-gate alarm; `waiting` is this list cut to five. Absent when none is. */
+  ownerGateAlarm?: WaitingGate[];
+  /** The console origin the alarm links to; absent when `digest.consoleOrigin` is unset. */
+  consoleOrigin?: string;
   /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */
   flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */

@@ -14,11 +14,12 @@ export interface DigestRun {
   slot: DigestSlot;
   windowMinutes: number;
   full: boolean;
+  consoleOrigin?: string;
 }
 
-export async function buildDigest({ sources, now, slot, windowMinutes, full }: DigestRun): Promise<string> {
+export async function buildDigest({ sources, now, slot, windowMinutes, full, consoleOrigin }: DigestRun): Promise<string> {
   const model = await collectDigest({ sources, now, slot, windowMinutes });
-  return renderMarkdown(rankDigest(model, full ? NO_CAPS : DEFAULT_CAPS));
+  return renderMarkdown(rankDigest({ ...model, ...(consoleOrigin !== undefined && { consoleOrigin }) }, full ? NO_CAPS : DEFAULT_CAPS));
 }
 
 export interface Delivery {

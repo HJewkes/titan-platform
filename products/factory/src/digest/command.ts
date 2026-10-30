@@ -111,7 +111,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
     flow: { taskCreated: activeWorkTaskDates({ origin: activeWorkOrigin(io.env) }), roster: agentChatSpans(deps.exec ?? execProcess, agentChatBin) },
     agentChat: (minutes) => readAgentChat(deps.exec ?? execProcess, agentChatBin, minutes),
   };
-  const markdown = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true });
+  const markdown = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin });
   if (flags.dryRun) return (io.stdout(markdown), 0);
   const { written, warnings } = await deliverDigest(markdown, slot, digestDirectories(config, io.env), config.digest?.push);
   for (const warning of warnings) io.stderr(`warning: ${warning}\n`);
