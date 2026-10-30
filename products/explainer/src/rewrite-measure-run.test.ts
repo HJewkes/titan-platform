@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli } from "./rewrite-cli.js";
-import { choppy, fakeRewriter } from "./rewrite-fixtures.test-helpers.js";
+import { choppy, cuedChoppy, fakeRewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { MeasureSummary } from "./rewrite-measure.js";
 import type { RewriteResult } from "./rewrite-pass.js";
 import type { ScriptV1 } from "./script-schema.js";
@@ -105,7 +105,7 @@ describe("explainer rewrite measure", () => {
       built += 1;
       return async () => ({ status: "accepted" });
     };
-    const argv = ["rewrite", "measure", write("alpha.json", choppy()), "--judge", write("judge.json", sonnet), "--out-dir", outDir(), "--samples", "2", "--speech-vet"];
+    const argv = ["rewrite", "measure", write("alpha.json", cuedChoppy()), "--judge", write("judge.json", sonnet), "--out-dir", outDir(), "--samples", "2", "--speech-vet"];
 
     const code = await runRewriteCli(argv, { harness: () => fakeRewriter().harness, speechVet, out: () => {}, err: () => {} });
 

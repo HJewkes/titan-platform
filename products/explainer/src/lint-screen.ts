@@ -31,10 +31,16 @@ function screenTexts(script: ScriptV1, beat: ScriptBeat): ScreenText[] {
   return (drawn && drawnTexts(drawn)) ?? scriptTexts(beat);
 }
 
+type UnspokenNumber = { fact: string; shown: string };
+
+const unspokenIn = (beat: ScriptBeat, texts: readonly ScreenText[]): UnspokenNumber[] =>
+  unspokenFacts(beat.id, texts, spokenOf(beat)).filter((fact) => fact.kind === "number").map(({ fact, shown }) => ({ fact, shown }));
+
 /** The numbers the beat shows that its spoken text never says, each with the text that shows it. */
-export function unspokenNumbers(script: ScriptV1, beat: ScriptBeat): { fact: string; shown: string }[] {
-  return unspokenFacts(beat.id, screenTexts(script, beat), spokenOf(beat)).filter((fact) => fact.kind === "number").map(({ fact, shown }) => ({ fact, shown }));
-}
+export const unspokenNumbers = (script: ScriptV1, beat: ScriptBeat): UnspokenNumber[] => unspokenIn(beat, screenTexts(script, beat));
+
+/** Q-D14 on one beat's own assertion, labels and chips, for a caller that holds the beat but not the script it is drawn in. */
+export const unspokenFieldNumbers = (beat: ScriptBeat): UnspokenNumber[] => unspokenIn(beat, scriptTexts(beat));
 
 /** The on-screen texts that repeat at least five of the beat's spoken words in a row. */
 export const echoedLabels = (script: ScriptV1, beat: ScriptBeat): string[] =>

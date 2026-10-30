@@ -28,7 +28,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 
 const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "number-vague", "device-added",
-  "closer-added", "label-bare", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
+  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
@@ -70,11 +70,12 @@ describe("renderRewritePrompt", () => {
     expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain(only);
   });
 
-  it("directs against new lists of three and bare-number labels", () => {
+  it("directs against new lists of three and numbers moved to labels", () => {
     const prompt = renderRewritePrompt(chapter, chapterBeats, plan(1));
 
     expect(prompt).toMatch(/do not build a new list of three/);
-    expect(prompt).toMatch(/with the noun it counts/);
+    expect(prompt).toMatch(/Never put a number in `labels_added`/);
+    expect(prompt).toContain('- Numbers: this beat speaks "12", "two". Keep the one its claim turns on and cut the others with the clause they count; put none of them in labels_added.');
   });
 
   it("tells a triad beat to label every item without singling one out", () => {
@@ -99,7 +100,7 @@ describe("renderRewritePrompt", () => {
     expect(notesIn(prompt)).toEqual([
       "- Your last version was not used: a sentence was too long to say in one breath; split it.",
       "- Your last version was not used: keep one item of the list in the line.",
-      "- Your last version was not used: the number left the line without its noun in a label; label it with the noun it counts.",
+      "- Your last version was not used: a number the screen shows left the line; keep saying it, and put no number in a label.",
     ]);
   });
 

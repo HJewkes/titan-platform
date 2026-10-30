@@ -36,6 +36,15 @@
       "kills": [
         "rewriteScript guard and revert re-declares a reading the rewrite dropped, so the beat is kept rather than reverted for Q-V10"
       ]
+    },
+    {
+      "name": "a rewrite round keeps a beat the guard rejects",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "  if (rejections.length > 0) {\n    merged.rejected.push(",
+      "replace": "  if (rejections.length > 99) {\n    merged.rejected.push(",
+      "kills": [
+        "rewriteScript guard and revert keeps a beat whose rewrite cuts the number a cue lands on, and reports the lost cue"
+      ]
     }
   ]
 }

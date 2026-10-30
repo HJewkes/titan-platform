@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "Q-D14 runs on pr-overview too",
+      "name": "Q-D14 is scoped away from pr-overview again",
       "file": "products/explainer/doctrine/rules.yaml",
-      "find": "checks: [\"Q-D14\"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary]",
-      "replace": "checks: [\"Q-D14\"], except_profiles: [repo-tour, repo-argument, paper-summary]",
+      "find": "checks: [\"Q-D14\"], scope: chapter",
+      "replace": "checks: [\"Q-D14\"], except_profiles: [pr-overview], scope: chapter",
       "kills": [
         "L0 rules scoped by structure scopes Q-W8, Q-F3, Q-F4 and Q-F5 to design-journey in the shipped registry"
       ]
@@ -16,7 +16,7 @@
       "find": "l0: { severity: error, status: implemented, checks: [\"Q-D20\"]",
       "replace": "l0: { severity: warning, status: implemented, checks: [\"Q-D20\"]",
       "kills": [
-        "the shipped Q-rule registry holds the 84 rules: 64 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings"
+        "the shipped Q-rule registry holds the 85 rules: 65 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings"
       ]
     }
   ]
