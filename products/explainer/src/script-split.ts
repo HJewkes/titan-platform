@@ -97,4 +97,4 @@ export function splitCuelessBeats(script: ScriptV1): SplitScript {
 
 /** The repair's job on one split: what code did, and what the pieces still need from the model. */
 export const splitHint = ({ id, pieces: ids }: Split): string =>
-  `${id} was split by code into ${ids.join(", ")}: give each boundary a spoken link and give each piece a claim and chip from its own words or facts`;
+  `${id} was split by code into ${ids.join(", ")}: give each boundary a spoken link and give each piece a claim and chip in other words than the spoken line, drawn from the piece's own facts`;

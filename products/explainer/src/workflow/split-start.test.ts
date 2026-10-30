@@ -117,4 +117,11 @@ describe("the split as the repair's starting script", () => {
 
     expect(prompts[0]).toContain(splitKeeps(seed().beats.find((beat) => beat.id === "reflection-2")!));
   });
+
+  it("the split hint asks for a chip in other words than the spoken line", async () => {
+    const { prompts } = await runSeeded(splitOfSeed());
+
+    expect(prompts[0]).toContain("a claim and chip in other words than the spoken line, drawn from the piece's own facts");
+    expect(prompts[0]).toContain("no claim, chip or label repeating 5 or more spoken words in a row");
+  });
 });
