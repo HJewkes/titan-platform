@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fixtureEnv, gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
+import { type HistoryCommit, fixtureEnv, gitIn, seedRepoWithOrigin, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { restackOnto } from "./stack-restack.js";
 import type { Git } from "./tree-carry.js";
@@ -201,15 +201,17 @@ const STACK_CASES: { name: string; edit: (level: number, read: Read) => Record<s
 
 const LEVELS = ["p", "c", "g", "h"];
 
+/** Builds the stack with one fast-import and pushes it once, in place of a checkout, add and commit per level. */
 function buildStack(s: Scratch, edit: (level: number, read: Read) => Record<string, string>, depth: number): string[] {
   const names = LEVELS.slice(0, depth);
-  names.forEach((name, level) => {
-    branchFrom(s, names[level - 1] ?? "main", name);
-    const files = Object.entries(edit(level, s.read));
-    for (const [file, text] of files) writeFileSync(join(root, "work", file), text);
-    s.git("add", ...files.map(([file]) => file));
-    s.git("commit", "-q", "-m", `${name} edits its files`);
+  const tree = new Map([["base.txt", lines("base")]]);
+  const read: Read = (file) => tree.get(file) ?? "";
+  const commits = names.map((name, level): HistoryCommit => {
+    const files = edit(level, read);
+    for (const [file, text] of Object.entries(files)) tree.set(file, text);
+    return { branch: name, from: names[level - 1] ?? "main", files, message: `${name} edits its files` };
   });
+  withHistory(join(root, "work"), commits);
   s.git("push", "-q", "origin", ...names);
   return names;
 }
@@ -217,9 +219,7 @@ function buildStack(s: Scratch, edit: (level: number, read: Read) => Record<stri
 /** The tree `rebase --onto main <upstream>` gives the child, built on a detached HEAD that is never pushed. */
 function rebaseOntoTree(s: Scratch, upstream: string, childHead: string): string {
   s.git("rebase", "-q", "--onto", "main", upstream, childHead);
-  const tree = s.git("rev-parse", "HEAD^{tree}");
-  s.git("checkout", "-q", "main");
-  return tree;
+  return s.git("rev-parse", "HEAD^{tree}");
 }
 
 /** Each origin branch's head, by branch name. */
