@@ -47,15 +47,15 @@ async function originHasBranch(gitRoot: string, branch: string, timeoutMs: numbe
     await gitText(["ls-remote", "--exit-code", "--heads", "origin", `refs/heads/${branch}`], gitRoot, timeoutMs);
     return true;
   } catch (err) {
-    if ((err as { code?: unknown }).code === 2) return false;
+    if (typeof err === "object" && err !== null && "code" in err && err.code === 2) return false;
     throw new OriginUnreachableError(branch, firstLine(err));
   }
 }
 
-const firstLine = (err: unknown): string =>
-  String((err as { stderr?: unknown }).stderr || (err as Error).message)
-    .trim()
-    .split("\n")[0] ?? "unknown error";
+const firstLine = (err: unknown): string => {
+  const stderr = typeof err === "object" && err !== null && "stderr" in err ? err.stderr : undefined;
+  return String(stderr || (err instanceof Error ? err.message : err)).trim().split("\n")[0] ?? "unknown error";
+};
 
 /** Local first, since it may hold commits origin never saw; a squash merge deletes both. */
 async function branchSource(gitRoot: string, branch: string, timeoutMs: number): Promise<BranchSource> {

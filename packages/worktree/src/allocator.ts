@@ -120,12 +120,16 @@ function unrecoverableAssigned(assigned: string, record: WorktreeRecord | undefi
 }
 
 async function adoptAssigned(
-  req: WorktreeRequest,
+  assignedWorktree: string,
+  record: WorktreeRecord | undefined,
   gitRoot: string,
   opts: WorktreeOptions
 ): Promise<WorktreeAllocation> {
-  const assigned = path.resolve(req.assignedWorktree as string);
-  if (!existsSync(assigned)) return readoptWorktree(req.assignedRecord as WorktreeRecord, opts);
+  const assigned = path.resolve(assignedWorktree);
+  if (!existsSync(assigned)) {
+    if (record === undefined) throw new MissingAssignedWorktreeRecordError(assigned);
+    return readoptWorktree(record, opts);
+  }
   const branch = (await gitOrNull(["rev-parse", "--abbrev-ref", "HEAD"], assigned)) ?? "HEAD";
   return {
     cwd: assigned,
@@ -178,7 +182,7 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
   if (gitRoot === null) throw new Error(`${req.baseCwd} is not a git repository`);
   const [refusal] = (await preflight(req, gitRoot, opts)).refusals;
   if (refusal !== undefined) throw refusal;
-  if (req.assignedWorktree !== undefined) return adoptAssigned(req, gitRoot, opts);
+  if (req.assignedWorktree !== undefined) return adoptAssigned(req.assignedWorktree, req.assignedRecord, gitRoot, opts);
 
   const branch = branchFor(req.agentName, opts);
   const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
