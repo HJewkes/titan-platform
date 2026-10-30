@@ -4,8 +4,8 @@
     {
       "name": "the layer check holds no low-contrast rows",
       "file": "products/explainer/src/build/layer-text.ts",
-      "find": "if (kind !== \"low-contrast\") return [];",
-      "replace": "return [];",
+      "find": "if (!isHeldRule(kind)) return [];",
+      "replace": "if (!isHeldRule(kind) || kind === \"low-contrast\") return [];",
       "kills": [
         "the layer check's contrast rows the build check and qa's low-contrast gate agree on the same element",
         "the layer check's contrast rows holds text faint in two samples in a row, as qa does",

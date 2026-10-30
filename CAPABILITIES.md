@@ -86,6 +86,7 @@ Before adding code:
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. |
 | [`explainer`](#cap-explainer) | product | You are building a step of the explainer video pipeline and need its file contracts or its pure helpers. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. |
+| [`fleet-panel`](#cap-fleet-panel) | product | You want to watch the agent-chat fleet from inside Claude Code: a docked pane of running |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`titan`](#cap-titan) | product | You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. |
@@ -1239,7 +1240,8 @@ Key exports:
 - `line-reader`: `LineReader`
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
-- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
+- `distinct-requests`: `distinctRequests`
+- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-speech-vet"></a>
@@ -1642,6 +1644,28 @@ Key exports:
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
 - More in `products/factory/src/index.ts`
+
+<a id="cap-fleet-panel"></a>
+
+### `fleet-panel`
+
+Tier product, private, `products/fleet-panel`. Claude Code mod: a live panel of running agent-chat agents, their accounts, context and spend
+
+**Use this when:**
+
+You want to watch the agent-chat fleet from inside Claude Code: a docked pane of running
+agents with their account, context fill, spend and last Status report, plus per-account
+usage. For a browser view of the same broker use agent-chat's own dashboard; for spend
+reports over past sessions use `session-analytics`.
+
+Key exports:
+
+- `inputs`: `parseAccounts`, `parseRoster`, `parseSlots`, `parseStatusLine`
+- `events`: `EventBook`, `SseParser`, `statusReportOf`
+- `snapshot`: `accountChip`, `buildSnapshot`
+- `view-model`: `fleetView`
+- `feed`: `Feed`, `ReconcileSchedule`
+- More in `products/fleet-panel/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

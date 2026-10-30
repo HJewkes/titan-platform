@@ -1,5 +1,5 @@
-import { classify, type Finding, type HeldFinding, type Moment } from "@titan-design/render-qa";
-import { qaSampleMoments, type QaTimeline } from "./qa-timeline.js";
+import { addLateFill, classify, ERROR_KINDS, type FrameInspection, type HeldFinding, type Moment } from "@titan-design/render-qa";
+import { qaCues, qaSampleMoments, type QaTimeline } from "./qa-timeline.js";
 
 /** Where each qa gate looks: render's pre-capture refusal reads the cue moments, the qa stage adds the 2 Hz sweep. */
 const qaSamplings = (timeline: QaTimeline): Moment[][] => [qaSampleMoments(timeline, false), qaSampleMoments(timeline, true)];
@@ -20,21 +20,33 @@ export function layerSamplings(timeline: QaTimeline): Moment[][] {
   return [...qaSamplings(timeline), ...phased];
 }
 
-/** qa's finding kinds the build check holds over qa's own samples, not only at the settled reveals. */
-const SAMPLED_RULES = ["low-contrast", "off-frame"] as const;
+/**
+ * The finding kinds the build check holds a layer to over qa's samples: every kind render-qa can gate, the list each qa
+ * gate profile picks from, so no profile can hold a kind the check skips.
+ */
+const LAYER_HELD_KINDS: readonly (typeof ERROR_KINDS)[number][] = ERROR_KINDS;
+
+type LayerInspection = Pick<FrameInspection, "findings" | "contentRuns">;
 
 const heldKey = ({ kind, beat, finding }: HeldFinding): string => [kind, beat, finding.el, finding.text, finding.twin].join("|");
 
 /**
- * The low-contrast and off-frame findings qa would fail, over each sampling's frames: off-frame by render-qa's own
- * persistence rule (two consecutive samples, or the settled end), low-contrast at any one sample, because qa's contrast
- * report counts transient findings too. `findingsAt` gives the findings at a second.
+ * The findings qa would fail, over each sampling's frames of `timeline`, with `late-fill` added from its cues as qa adds
+ * it: every kind in `LAYER_HELD_KINDS` by render-qa's own persistence rule (two consecutive samples, or the settled end),
+ * and low-contrast at any one sample too, because qa's contrast report counts transient findings. `inspectionAt` gives
+ * the inspection at a second.
  */
-export function heldAtSamples(samplings: readonly Moment[][], findingsAt: (t: number) => readonly Finding[]): HeldFinding[] {
+export function heldAtSamples(timeline: QaTimeline, samplings: readonly Moment[][], inspectionAt: (t: number) => LayerInspection): HeldFinding[] {
+  const cues = qaCues(timeline);
+  const durations = new Map(timeline.beats.map((beat) => [beat.id, beat.durationS]));
   const held = new Map<string, HeldFinding>();
   for (const moments of samplings) {
-    const frames = moments.map(({ beat, local, t, kind }) => ({ beat, local, t, kind, contentRuns: 0, findings: [...findingsAt(t)] }));
-    const { errors, info } = classify(frames, { gate: SAMPLED_RULES });
+    const frames = moments.map(({ beat, local, t, kind }) => {
+      const { contentRuns, findings } = inspectionAt(t);
+      return { beat, local, t, kind, contentRuns, findings: [...findings] };
+    });
+    addLateFill(frames, cues, durations);
+    const { errors, info } = classify(frames, { gate: LAYER_HELD_KINDS });
     for (const finding of [...errors, ...info.filter(({ kind }) => kind === "low-contrast")]) if (!held.has(heldKey(finding))) held.set(heldKey(finding), finding);
   }
   return [...held.values()];

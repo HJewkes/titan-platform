@@ -1485,6 +1485,8 @@ importers:
         specifier: 7.0.0
         version: 7.0.0
 
+  products/fleet-panel: {}
+
   products/retrieval-eval:
     dependencies:
       '@titan-design/app-paths':
