@@ -69,7 +69,7 @@ function asRecord(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new SquashInputError(`${field} must be an object`);
   }
-  return value as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(value));
 }
 
 function asArray(value: unknown, field: string): unknown[] {

@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the installed check is inverted",
+      "file": "packages/review-workflow/src/preflight.ts",
+      "find": "const refused = planned.plan.members.find((member) => !installed(member.profile));",
+      "replace": "const refused = planned.plan.members.find((member) => installed(member.profile));",
+      "kills": ["preflight refuses a plan whose adversary is lowered to an uninstalled profile before any dispatch (tp#1986)"]
+    },
+    {
+      "name": "the snapshot drops the base the proof judged",
+      "file": "packages/review-workflow/src/preflight-read.ts",
+      "find": "...(proofBase !== undefined && { proofBase }), ",
+      "replace": "",
+      "kills": ["preflightRead keeps the base the proof judged, for a later merge guard"]
+    },
+    {
+      "name": "an unproven head plans no tests member",
+      "file": "packages/review-workflow/src/plan-for-head.ts",
+      "find": "const planned = needsTestsSeat(standing) ? withTestsMember(held, hold !== undefined) : held;",
+      "replace": "const planned = held;",
+      "kills": ["preflight plans a blocking tests member for a head whose proof reads unproven"]
+    },
+    {
+      "name": "a carried merge-up is reviewed again",
+      "file": "packages/review-workflow/src/preflight.ts",
+      "find": "if (carry.kind === \"carries\") return { kind: \"carried\", head, from: carry.from };",
+      "replace": "",
+      "kills": ["preflight stops a clean merge-up of a head the review signed off as carried"]
+    },
+    {
+      "name": "CI's failed proof of a workflow-only head cannot be waived",
+      "file": "packages/review-workflow/src/preflight.ts",
+      "find": "waivable: workflowCi };",
+      "replace": "waivable: false };",
+      "kills": ["preflight stops a workflow-only head CI did not prove as a waivable NO_REPRO"]
+    }
+  ]
+}

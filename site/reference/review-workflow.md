@@ -7,8 +7,8 @@
 npm install @titan-design/review-workflow
 ```
 
-Status: types, ports, step ids, the outcome union, the failure classes and `DEFAULT_RETRY_POLICY`. The recipe
-(`reviewHead`), preflight, heals, the fixer and the registrable definition arrive in later releases (TP-3916).
+Status: types, ports, step ids, the outcome union, the failure classes, `DEFAULT_RETRY_POLICY`, heals, the fixer and
+preflight. The recipe (`reviewHead`) and the registrable definition arrive in later releases (TP-3916).
 
 ## The problem it solves
 
@@ -21,8 +21,8 @@ This package is the vocabulary for running that review as a resumable workflow:
 - `ReviewWorkflowPorts`: every read and effect the review takes. `snapshot` reads the PR, its CI roll-up and the facts
   classification needs; `proofReader` reads the head's fix-proof as `@titan-design/fix-proof`'s `ProofReadInput`; `carry` probes for a clean merge-up of a
   signed-off head; `checkout` reports and refreshes the reviewer's read-only checkout; `dispatch` and `reader` are
-  review-panel's reviewer ports; `source` reads cited files; `fixer` spawns a diagnosis agent; `clock`, `headroom` and an
-  optional `namer` complete the set.
+  review-panel's reviewer ports; `source` reads cited files; `fixer` spawns a diagnosis agent; `profiles` says whether an
+  agent profile is installed; `clock`, `headroom` and an optional `namer` complete the set.
 - `ReviewStepIds` and `DEFAULT_REVIEW_STEP_IDS`: the ids the steps record under (`review-preflight`, `review-await` and
   so on). A host with older records injects its own ids so its history stays continuous.
 - `ReviewOutcome`: `MERGE`, `FIX_FIRST`, `NO_REPRO`, `carried`, `head-moved`, `needs-update`, `conflict`,
@@ -35,6 +35,26 @@ This package is the vocabulary for running that review as a resumable workflow:
 You host a PR review (Shepherd, a CLI, an eval replay) and want the same ports, outcomes and failure rules as every other
 host. To run a panel in memory with no durable steps, use [`review-panel`](/reference/review-panel)'s
 `reviewPullRequest`. To run steps durably, use [`workflow`](/reference/workflow).
+
+## Preflight
+
+`preflightRead({ target, policy, hold? }, ports)` reads everything once and returns a `PreflightSnapshot`, including the
+proof standing and the base the proof judged. `preflight(snapshot, policy)` is pure and checks in this order:
+
+1. not open (draft, closed, merged), head moved, CI not green: `stop`;
+2. a NO_REPRO that `endsReview`: `stop(NO_REPRO)`, waivable only for CI's own failed proof of a workflow-only diff;
+3. a carried merge-up: `stop(carried)`; mergeable state `behind` or `dirty`: `stop(needs-update)` or `stop(conflict)`;
+4. the plan (`planForHead`): a member whose profile is not installed gives `fixer` with case
+   `start-refused:profile` and the profile as detail, before any member starts;
+5. a checkout that is not ready, or a held account: `{ kind: "heal", heals }`, the shape `healOnce` takes;
+6. otherwise `go` with the plan.
+
+```ts
+import { preflight, preflightRead } from "@titan-design/review-workflow";
+
+const decision = preflight(await preflightRead({ target, policy }, ports), policy);
+// { kind: "fixer", fixerCase: { failure: "start-refused:profile", key: "profile", detail: ["reviewer"] } }
+```
 
 ## The retry policy
 
@@ -70,7 +90,7 @@ Verified against 0.1.0.
 - It pushes nothing. A head behind its base is `needs-update` and a dirty one is `conflict`; catching up is the author's
   lane.
 - No row routes to the owner. A hard error goes to the fixer, which diagnoses it.
-- This release reads none of its own data: there is no recipe yet.
+- There is no recipe yet, so nothing in this release reads the retry policy.
 
 ## Gotchas
 
