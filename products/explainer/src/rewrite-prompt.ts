@@ -32,12 +32,11 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     markup: "a linked word was dropped or changed; keep each one exactly as written",
     terms: "too many of the original's own words went missing; keep its wording and change less",
     length: "the line grew or shrank too far; keep it close to the original's length",
-    "number-lost": "the number left the line without its noun in a label; label it with the noun it counts",
+    "number-lost": "a number the screen shows left the line; keep saying it, and put no number in a label",
     "number-invented": "a count appeared that the original never says; add no number of your own",
     "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
     "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
     "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
-    "label-bare": "a label held only a number; give it the noun it counts",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",
@@ -61,7 +60,7 @@ function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
     ...(numbers
-      ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and return the others as on-screen labels.`]
+      ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and cut the others with the clause they count; put none of them in labels_added.`]
       : []),
     ...(triads
       ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]

@@ -26,8 +26,9 @@ const pilotSpine = parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-e
 const emittedBy = (profile: string) => runL0(ScriptSchema.parse({ ...scriptWith(), profile }), layout, L0_CHECKS, undefined, pilotSpine).map((row) => row.check_id);
 const emittedCheckIds = new Set([...emittedBy("repo-tour"), ...emittedBy("daily-overview")]);
 
-// TP-4470's script preflight rows, rolled out on daily-overview first.
+// TP-4470's script preflight rows: Q-D14 to Q-D19 run on every type since TP-4475; the rest still on daily-overview only.
 const SCRIPT_PREFLIGHT_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19", "Q-D20", "Q-D21", "Q-D22"];
+const EVERY_TYPE_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19"];
 
 const rule = (overrides: Partial<Rule> = {}): Rule => ({
   id: "Q-V1",
@@ -78,7 +79,7 @@ describe("L0 rules scoped by structure", () => {
     const outside = checksScopedAway(registry, { structure: "scqa", profile: "pr-overview" });
 
     expect(["Q-W8", "Q-F3", "Q-F4", "Q-F5", "Q-E15"].every((id) => outside.has(id))).toBe(true);
-    expect([...checksScopedAway(registry, { profile: "pr-overview" })].sort()).toEqual(SCRIPT_PREFLIGHT_IDS);
+    expect([...checksScopedAway(registry, { profile: "pr-overview" })].sort()).toEqual(SCRIPT_PREFLIGHT_IDS.filter((id) => !EVERY_TYPE_IDS.includes(id)));
     expect(SCRIPT_PREFLIGHT_IDS.filter((id) => checksScopedAway(registry, { profile: "daily-overview" }).has(id))).toEqual([]);
   });
 });

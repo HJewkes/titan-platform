@@ -29,9 +29,9 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
   gather: "g2",
   audition: "pp10",
-  script: "x39",
-  rewrite: "x21",
-  eval: "x22",
+  script: "x40",
+  rewrite: "x22",
+  eval: "x23",
   resolve: "p5c2s2f2s2d13",
   tts: "p6d",
   render: "m10c18",

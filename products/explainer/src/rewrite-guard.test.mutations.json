@@ -34,9 +34,9 @@
       "find": "|a number of|various|a range of|dozens|hundreds|thousands|millions",
       "replace": "",
       "kills": [
-        "guardBeat number-vague rejects a number of standing in for a number moved to a label",
-        "guardBeat number-vague rejects hundreds standing in for a number moved to a label",
-        "guardBeat number-vague rejects various standing in for a number moved to a label"
+        "guardBeat number-vague rejects a number of standing in for a number cut from the line",
+        "guardBeat number-vague rejects hundreds standing in for a number cut from the line",
+        "guardBeat number-vague rejects various standing in for a number cut from the line"
       ]
     }
   ]

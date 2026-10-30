@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli, type RewriteCliDeps } from "./rewrite-cli.js";
-import { BEATS, choppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
+import { BEATS, cuedChoppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { RewriteReport } from "./rewrite-pass.js";
 import { ScriptSchema } from "./script-schema.js";
 import { pipelineScript } from "./spike-fixtures.test-helpers.js";
@@ -47,8 +47,8 @@ function fakeVet(status: string) {
 }
 
 // Every beat in its compliant form but h1, which stays choppy: triads starts green and h1 is the one directed beat.
-const triadFree = (): unknown => choppy(Object.fromEntries(Object.entries(BEATS).filter(([id]) => id !== "h1").map(([id, [, rewrite]]) =>
-  [id, { spoken: rewrite.after, visual: { assertion: "The desk refuses unknown parcels", job: "numbers", labels: rewrite.labels ?? [] } }])));
+const triadFree = (): unknown => cuedChoppy(Object.fromEntries(Object.entries(BEATS).filter(([id]) => id !== "h1").map(([id, [, rewrite]]) =>
+  [id, { spoken: rewrite.after, visual: { assertion: "The desk refuses unknown parcels", job: "numbers", labels: [] } }])));
 
 // Keeps h1 choppy but adds a list of three, which turns the triads row red.
 const triadH1: Rewriter = (id) =>
@@ -63,10 +63,10 @@ describe("explainer rewrite", () => {
   });
 
   it("writes the rewritten script and its report, prints the row deltas and exits 0 when every target row passes", async () => {
-    const { code, out } = await run(write("in.json", choppy()), ["--report", join(dir, "report.json")]);
+    const { code, out } = await run(write("in.json", cuedChoppy()), ["--report", join(dir, "report.json")]);
 
     expect(code).toBe(0);
-    expect(ScriptSchema.parse(readJson("out.json")).beats.find((beat) => beat.id === "h2")!.visual.labels).toEqual(["3 sent back"]);
+    expect(ScriptSchema.parse(readJson("out.json")).beats.find((beat) => beat.id === "h2")!.visual.labels).toEqual([]);
     expect(readReport().rounds[0]).toMatchObject({ round: 1, kept: true });
     const line = JSON.parse(out);
     expect(line).toMatchObject({ pass: true, calls: 4, failed_calls: 0, out: join(dir, "out.json") });
@@ -75,7 +75,7 @@ describe("explainer rewrite", () => {
   });
 
   it("still writes the script but exits 1 when target rows stay red", async () => {
-    const { code, out } = await run(write("in.json", choppy()), [], { harness: () => failing.harness });
+    const { code, out } = await run(write("in.json", cuedChoppy()), [], { harness: () => failing.harness });
 
     expect(code).toBe(1);
     expect(ScriptSchema.parse(readJson("out.json")).beats).toHaveLength(12);
@@ -86,7 +86,7 @@ describe("explainer rewrite", () => {
     const judge = write("bad-judge.json", { provider: "nope", model: "x" });
     const out = join(dir, "out.json");
 
-    const code = await runRewriteCli(["rewrite", write("in.json", choppy()), "--judge", judge, "--out", out], { err: () => {} });
+    const code = await runRewriteCli(["rewrite", write("in.json", cuedChoppy()), "--judge", judge, "--out", out], { err: () => {} });
 
     expect(code).toBe(2);
     expect(existsSync(out)).toBe(false);
@@ -94,7 +94,7 @@ describe("explainer rewrite", () => {
 
   it("exits 2 on an input that is not JSON, and on an out-of-range round count", async () => {
     expect((await run(write("in.json", "{ not json"))).code).toBe(2);
-    expect((await run(write("in.json", choppy()), ["--rounds", "3"])).code).toBe(2);
+    expect((await run(write("in.json", cuedChoppy()), ["--rounds", "3"])).code).toBe(2);
     expect(existsSync(join(dir, "out.json"))).toBe(false);
   });
 
@@ -115,7 +115,7 @@ describe("explainer rewrite --speech-vet", () => {
     // h1 gets the seconds to speak LONG_H1 within its word cap.
     const vet = fakeVet("accepted");
 
-    await run(write("in.json", choppy({ h1: { plannedS: 13 } })), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
+    await run(write("in.json", cuedChoppy({ h1: { plannedS: 13 } })), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
       harness: () => fakeRewriter(longH1).harness,
       speechVet: vet.speechVet,
     });
@@ -127,7 +127,7 @@ describe("explainer rewrite --speech-vet", () => {
   it("rejects that sentence when speech-vet does not accept it", async () => {
     const vet = fakeVet("rejected");
 
-    const { err } = await run(write("in.json", choppy()), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
+    const { err } = await run(write("in.json", cuedChoppy()), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
       harness: () => fakeRewriter(longH1).harness,
       speechVet: vet.speechVet,
     });
@@ -140,7 +140,7 @@ describe("explainer rewrite --speech-vet", () => {
   it("vets nothing without the flag, so the long sentence keeps the plain cap", async () => {
     const vet = fakeVet("accepted");
 
-    await run(write("in.json", choppy()), ["--rounds", "1", "--report", join(dir, "report.json")], {
+    await run(write("in.json", cuedChoppy()), ["--rounds", "1", "--report", join(dir, "report.json")], {
       harness: () => fakeRewriter(longH1).harness,
       speechVet: vet.speechVet,
     });
@@ -150,7 +150,7 @@ describe("explainer rewrite --speech-vet", () => {
   });
 
   it("runs without verdicts and says so when no vetter can be built", async () => {
-    const { code, err } = await run(write("in.json", choppy()), ["--speech-vet"], {
+    const { code, err } = await run(write("in.json", cuedChoppy()), ["--speech-vet"], {
       speechVet: () => Promise.reject(new Error("no Kokoro model")),
     });
 
