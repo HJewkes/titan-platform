@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
 import { EventHub, silentLogger } from "@titan-design/daemon";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -41,6 +42,7 @@ const FrameSchema = z.object({
   pr: z.number().optional(),
   runId: z.string().optional(),
   stepId: z.string().optional(),
+  workflow: z.enum(["autoresearch", "shepherd"]).optional(),
   at: z.string(),
 });
 
@@ -112,12 +114,12 @@ describe("shepherd frames on serve's /events hub", () => {
 });
 
 describe("shepherdFrames", () => {
-  function started(): { frames: ShepherdFrame[]; source: ReturnType<typeof shepherdFrames> } {
+  function started(workflowNameOf?: (runId: string) => string | undefined): { frames: ShepherdFrame[]; source: ReturnType<typeof shepherdFrames> } {
     vi.useFakeTimers();
     const hub = new EventHub();
     const db = openDatabase(":memory:");
     cleanups.push(() => void db.close());
-    const source = shepherdFrames({ pollMs: POLL_MS, now: () => 0 });
+    const source = shepherdFrames({ pollMs: POLL_MS, now: () => 0, workflowNameOf });
     source.start(hub, db);
     cleanups.push(() => source.close());
     return { frames: framesOf(hub), source };
@@ -134,6 +136,30 @@ describe("shepherdFrames", () => {
     vi.advanceTimersByTime(250);
 
     expect(frames).toEqual([{ v: 1, kind: "gate", runId: "r1", stepId: "approve-merge", at: "1970-01-01T00:00:00.000Z" }]);
+  });
+
+  it("an autoresearch run's frame carries kind autoresearch", () => {
+    const { frames, source } = started((runId) => (runId === "ar-1" ? AUTORESEARCH_WORKFLOW : "shepherd-pr"));
+
+    source.onEvent({ type: "step_started", runId: "ar-1", stepId: "propose", iteration: 0 });
+    source.onEvent({ type: "step_started", runId: "pr-1", stepId: "review", iteration: 0 });
+    vi.advanceTimersByTime(250);
+
+    expect(frames.map(({ runId, workflow }) => [runId, workflow])).toEqual([
+      ["ar-1", "autoresearch"],
+      ["pr-1", "shepherd"],
+    ]);
+  });
+
+  it("a frame whose run has no known workflow carries none", () => {
+    const { frames, source } = started(() => {
+      throw new Error("run gone");
+    });
+
+    source.onEvent({ type: "step_started", runId: "r1", stepId: "review", iteration: 0 });
+    vi.advanceTimersByTime(250);
+
+    expect(frames[0]).not.toHaveProperty("workflow");
   });
 
   it("a gate frame never carries the gate's prompt or summary", () => {

@@ -45,6 +45,33 @@
       "kills": [
         "useRelayInvalidation coalesces a burst of factory frames into one refetch of only the autoresearch and blocker reads"
       ]
+    },
+    {
+      "name": "a shepherd frame refetches autoresearch reads",
+      "file": "apps/console/src/data/live.ts",
+      "find": "return workflow === \"shepherd\" ? SHEPHERD_FRAME_INVALIDATES : RELAY_INVALIDATES.factory;",
+      "replace": "return RELAY_INVALIDATES.factory;",
+      "kills": [
+        "useRelayInvalidation a shepherd frame no longer refetches autoresearch reads"
+      ]
+    },
+    {
+      "name": "a frame without a workflow refetches only blockers",
+      "file": "apps/console/src/data/live.ts",
+      "find": "return workflow === \"shepherd\" ? SHEPHERD_FRAME_INVALIDATES : RELAY_INVALIDATES.factory;",
+      "replace": "return workflow === \"autoresearch\" ? RELAY_INVALIDATES.factory : SHEPHERD_FRAME_INVALIDATES;",
+      "kills": [
+        "useRelayInvalidation a frame without a kind keeps the old invalidation"
+      ]
+    },
+    {
+      "name": "a later frame cannot widen a queued refetch",
+      "file": "apps/console/src/data/live.ts",
+      "find": "if (queued) return reads.forEach((read) => queued.reads.add(read));",
+      "replace": "if (queued) return;",
+      "kills": [
+        "useRelayInvalidation an autoresearch frame in the same window as a shepherd one still refetches autoresearch reads"
+      ]
     }
   ]
 }

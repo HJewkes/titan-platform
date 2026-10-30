@@ -24,6 +24,8 @@ interface RelayedEvent {
   target?: string;
   /** The factory workflow run a frame moved, which the run pages already show. */
   runId?: string;
+  /** Which workflow's run a factory frame moved; absent from an older factory's frames. */
+  workflow?: "autoresearch" | "shepherd";
 }
 
 type RelayedIds = Omit<RelayedEvent, "kind">;
@@ -131,10 +133,13 @@ export function brokerIds(data: string): RelayedIds {
   return ids;
 }
 
-/** A factory frame names the run it moved; only that id is kept, never its repo, PR or step. */
+/** A factory frame names the run it moved and its workflow; only those are kept, never its repo, PR or step. */
 export function factoryIds(data: string): RelayedIds {
-  const runId = parseObject(data)?.runId;
-  return typeof runId === "string" && RUN_ID.test(runId) ? { runId } : {};
+  const frame = parseObject(data);
+  const ids: RelayedIds = {};
+  if (typeof frame?.runId === "string" && RUN_ID.test(frame.runId)) ids.runId = frame.runId;
+  if (frame?.workflow === "autoresearch" || frame?.workflow === "shepherd") ids.workflow = frame.workflow;
+  return ids;
 }
 
 function parseObject(data: string): Record<string, unknown> | null {

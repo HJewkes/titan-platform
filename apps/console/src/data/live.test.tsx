@@ -14,7 +14,7 @@ const COALESCE_MS = 40;
 const READS = ["work.portfolio", "agents.roster", "autoresearch.runs", "autoresearch.run", "blockers.banner"] as const;
 
 /** A daemon stand-in that counts calls per command and lets the test push relayed frames and stream status. */
-function countingSource(): { source: DataSource; calls: Map<string, number>; push(event: string): void; status(next: LiveStatus): void } {
+function countingSource(): { source: DataSource; calls: Map<string, number>; push(event: string, data?: object): void; status(next: LiveStatus): void } {
   const calls = new Map<string, number>();
   let handlers: EventHandlers | undefined;
   const source: DataSource = {
@@ -31,7 +31,7 @@ function countingSource(): { source: DataSource; calls: Map<string, number>; pus
   return {
     source,
     calls,
-    push: (event) => handlers?.onEvent({ event, data: JSON.stringify({ kind: "message" }) }),
+    push: (event, data = { kind: "message" }) => handlers?.onEvent({ event, data: JSON.stringify(data) }),
     status: (next) => handlers?.onStatus?.(next),
   };
 }
@@ -82,6 +82,48 @@ describe("useRelayInvalidation", () => {
     });
     await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
     await pause(COALESCE_MS * 3);
+
+    expect(counts(calls)).toEqual([1, 1, 2, 2, 2]);
+  });
+
+  it("a shepherd frame no longer refetches autoresearch reads", async () => {
+    const { calls, push } = await renderReads();
+
+    act(() => push("factory", { kind: "shepherd", workflow: "shepherd", runId: "r1" }));
+    await waitFor(() => expect(calls.get("blockers.banner")).toBe(2));
+    await pause(COALESCE_MS * 3);
+
+    expect(counts(calls)).toEqual([1, 1, 1, 1, 2]);
+  });
+
+  it("an autoresearch frame refetches autoresearch reads", async () => {
+    const { calls, push } = await renderReads();
+
+    act(() => push("factory", { kind: "shepherd", workflow: "autoresearch", runId: "ar-0001" }));
+    await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
+    await pause(COALESCE_MS * 3);
+
+    expect(counts(calls)).toEqual([1, 1, 2, 2, 2]);
+  });
+
+  it("a frame without a kind keeps the old invalidation", async () => {
+    const { calls, push } = await renderReads();
+
+    act(() => push("factory", { kind: "shepherd", runId: "r1" }));
+    await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
+    await pause(COALESCE_MS * 3);
+
+    expect(counts(calls)).toEqual([1, 1, 2, 2, 2]);
+  });
+
+  it("an autoresearch frame in the same window as a shepherd one still refetches autoresearch reads", async () => {
+    const { calls, push } = await renderReads();
+
+    act(() => {
+      push("factory", { kind: "shepherd", workflow: "shepherd" });
+      push("factory", { kind: "shepherd", workflow: "autoresearch" });
+    });
+    await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
 
     expect(counts(calls)).toEqual([1, 1, 2, 2, 2]);
   });
