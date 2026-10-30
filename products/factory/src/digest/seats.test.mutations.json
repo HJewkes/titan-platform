@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a merge counts for its implementer, not its coordinator",
+      "file": "products/factory/src/digest/seats.ts",
+      "find": "line(row.implementer ? coordinatorOf(row.implementer, spawners) : UNATTRIBUTED)",
+      "replace": "line(row.implementer ?? UNATTRIBUTED)",
+      "kills": [
+        "seat lines credits each merge and spawn to the coordinator at the top of the spawned-by chain"
+      ]
+    }
+  ]
+}

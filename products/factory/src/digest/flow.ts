@@ -3,6 +3,9 @@ import type { FlowStats } from "./model.js";
 
 /** One broker agent's life, as the roster reads it. `endedAt` is absent while the agent is live; an exited agent without one cannot be measured. */
 export interface AgentSpan {
+  name: string;
+  /** Absent or `human` when the owner started the agent; the Seats section walks this chain up to the coordinator. */
+  spawnedBy?: string;
   profile: string;
   startedAt: string;
   endedAt?: string;

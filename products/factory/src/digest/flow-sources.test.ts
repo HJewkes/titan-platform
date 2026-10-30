@@ -5,16 +5,18 @@ import type { Exec } from "./sources.js";
 const roster = (rows: object[]): Exec => async () => ({ code: 0, stdout: JSON.stringify(rows), stderr: "" });
 
 describe("flow sources", () => {
-  it("reads roster rows as spans, live where a session holds the name", async () => {
+  it("reads roster rows as spans, live where a session holds the name, keeping a spawner that is not the human", async () => {
     const rows = [
       { profile: "implementer", presence: "live", spawnedAt: "2026-03-10T10:00:00Z", name: "a" },
-      { profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T10:00:00Z", exitedAt: "2026-03-10T11:00:00Z" },
+      { profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T10:00:00Z", exitedAt: "2026-03-10T11:00:00Z", name: "b", spawnedBy: "seat-a" },
+      { profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T10:00:00Z", name: "c", spawnedBy: null },
     ];
 
     const spans = await agentChatSpans(roster(rows), "agent-chat")();
 
-    expect(spans.map((s) => s.live)).toEqual([true, false]);
+    expect(spans.map((s) => s.live)).toEqual([true, false, false]);
     expect(spans[1]?.endedAt).toBe("2026-03-10T11:00:00Z");
+    expect(spans.map((s) => s.spawnedBy)).toEqual([undefined, "seat-a", undefined]);
   });
 
   it("fails the read when the broker exits non-zero", async () => {

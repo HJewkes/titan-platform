@@ -108,6 +108,7 @@ export const DigestConfigSchema = z.strictObject({
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
+  /** Read by nothing since the Seats section moved to the broker roster (TP-4626); kept so a config that sets it still loads. */
   logsDir: absolutePath.optional(),
   push: DigestPushConfigSchema.optional(), consoleOrigin: ConsoleOriginSchema.optional(),
 });
