@@ -104,9 +104,13 @@ const start = defineCommand<StartArgs, ArStarted, FactoryContext>({
   result: z.custom<ArStarted>(),
   async run({ target, pin, config }, ctx) {
     const settings = configured(ctx);
-    if (!settings.targets[target]) throw refused(`[no-target] ${target} is not under autoresearch.targets`, EXIT.CONFIG);
+    const targetConfig = settings.targets[target];
+    if (!targetConfig) throw refused(`[no-target] ${target} is not under autoresearch.targets`, EXIT.CONFIG);
     refuseBusy(ctx.host, target);
-    const runSettings = RunSettingsSchema.parse({ ...settings.run, ...config });
+    // Cadence settings make the engine cut; a target with no snapshot config has no port to cut through.
+    const { snapshot, ...run } = settings.run;
+    const cadence = targetConfig.snapshot ? { snapshot: snapshot ?? {} } : {};
+    const runSettings = RunSettingsSchema.parse({ ...run, ...cadence, ...config });
     const runId = ctx.host.runtime.start(AUTORESEARCH_WORKFLOW, { target, pin, config: JSON.stringify(runSettings) });
     return { runId, status: ctx.host.runtime.status(runId)?.status ?? "running" };
   },

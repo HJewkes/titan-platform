@@ -82,6 +82,26 @@ describe("autoresearch routes", () => {
     expect(body).toMatchObject({ result: { head: "bbb" }, move: { run: "run-1", round: 2, idea: "i-1", from: "aaa", to: "bbb", delta: 1.5, sigma: 0.25, pin: "ppp", runDigests: ["d1", "d2"] } });
   });
 
+  it("records a sync that moved the ratchet as one ratchet move of kind sync, with the frozen paths it allowed", async () => {
+    const answer = { state: "merged" as const, merged: { from: "aaa", to: "ccc", main: "mmm" }, treeChanged: true, allowedFrozen: ["eval/score.sh"] };
+    const ports: ArPorts = { ...answeringPorts(), sync: async () => answer };
+    const sync = { ...RUN_PIN, round: 3, pr: 7, branch: "autoresearch/fixture-snap/run-1/m1", head: "aaa", ratchetRef: MOVE.ratchetRef, ratchetPrefix: MOVE.ratchetPrefix, tree: MOVE.tree, resolved: "ccc", allowedFrozen: ["eval/score.sh"] };
+
+    const { body } = await callRoute("sync", sync, ports);
+
+    expect(body).toMatchObject({ kind: "autoresearch.ratchet", result: { state: "merged" }, move: { run: "run-1", round: 3, from: "aaa", to: "ccc", kind: "sync", pr: 7, resolved: "ccc", allowedFrozen: ["eval/score.sh"] } });
+  });
+
+  it("records a sync that moved nothing as a sync, with no move", async () => {
+    const ports: ArPorts = { ...answeringPorts(), sync: async () => ({ state: "open" }) };
+    const sync = { ...RUN_PIN, round: 3, pr: 7, branch: "autoresearch/fixture-snap/run-1/m1", head: "aaa", ratchetRef: MOVE.ratchetRef, ratchetPrefix: MOVE.ratchetPrefix, tree: MOVE.tree };
+
+    const { body } = await callRoute("sync", sync, ports);
+
+    expect(body).toMatchObject({ kind: "autoresearch.sync", result: { state: "open" } });
+    expect(body).not.toHaveProperty("move");
+  });
+
   it("hands the load gate the step's first start time, so a restart keeps its deadline", async () => {
     const seen: unknown[] = [];
     const ports = { ...answeringPorts(), loadWait: async (input: unknown) => (seen.push(input), { waitedMs: 0 }) };

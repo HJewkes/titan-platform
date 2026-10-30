@@ -446,4 +446,17 @@ describe("the autoresearch block", () => {
     expect(() => load(section({ cases: ["val-1"] }))).toThrow(/autoresearch\.targets\.fixture/);
     expect(() => load({ ...section({}), stages: { planner: { profile: "p", ttl: "1h" }, implementer: { profile: "i" } } })).toThrow(/autoresearch\.stages\.planner/);
   });
+
+  const SNAPSHOT = { repo: "fixture-owner/fixture-repo", task: "fixture/FX-1", implementer: "fixture-seat", logDir: "ar-log" };
+
+  it("reads a target's snapshot block", () => {
+    expect(load(section({ snapshot: { ...SNAPSHOT, reviewer: "fixture-reviewer" } })).autoresearch?.targets.fixture?.snapshot).toEqual({ ...SNAPSHOT, reviewer: "fixture-reviewer" });
+  });
+
+  it("refuses a snapshot log dir that leaves the repo, a repo that is not owner/name and an unknown snapshot key", () => {
+    expect(() => load(section({ snapshot: { ...SNAPSHOT, logDir: "../x" } }))).toThrow(/autoresearch\.targets\.fixture\.snapshot\.logDir: must be a path inside the target repo/);
+    expect(() => load(section({ snapshot: { ...SNAPSHOT, logDir: "/abs/log" } }))).toThrow(/snapshot\.logDir/);
+    expect(() => load(section({ snapshot: { ...SNAPSHOT, repo: "fixture-repo" } }))).toThrow(/snapshot\.repo: must be owner\/name/);
+    expect(() => load(section({ snapshot: { ...SNAPSHOT, kind: "feature" } }))).toThrow(/autoresearch\.targets\.fixture\.snapshot/);
+  });
 });

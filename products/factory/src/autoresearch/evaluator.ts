@@ -28,6 +28,7 @@ import {
 import { execDatedGit, mergeOnto } from "./integrate.js";
 import { execGit, ratchetFastForward, remoteDefaultBranch, seedRatchet } from "./ratchet.js";
 import { lastLine, runCommand } from "./run-command.js";
+import { snapshotPorts, type SnapshotWiring } from "./snapshot-ports.js";
 
 export interface EvaluatorOptions {
   /** A clone of the target repo; its `origin` holds the ratchet branch. */
@@ -43,6 +44,8 @@ export interface EvaluatorOptions {
   validatorCases?: readonly ValidatorCase[];
   /** The phase registry, one JSON line per finished phase; absent, the registry step records no path. */
   registryPath?: string;
+  /** A target configured for snapshots; absent, the snapshot and sync ports are omitted and the engine never cuts. */
+  snapshot?: SnapshotWiring;
   now?: () => number;
 }
 
@@ -52,7 +55,7 @@ export interface ValidatorCase {
   caseSet?: string;
 }
 
-type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "integrate" | "archive" | "validate" | "registry">;
+type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "integrate" | "archive" | "validate" | "registry" | "snapshot" | "sync">;
 
 type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string; defaultBranch: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
@@ -92,6 +95,7 @@ async function refuseFrozenClasses(clone: string, pin: string, bounds: Bounds, f
 }
 
 const evaluatorTreeOf = (workRoot: string, runId: string) => join(workRoot, `eval-${runId}`);
+const integrationTreeOf = (workRoot: string, runId: string) => join(workRoot, `int-${runId}`);
 
 /** A run is judged against the default branch, so a pin from a side branch would ratchet work main never had. */
 async function refuseOffMain(clone: string, pin: string, defaultBranch: string): Promise<void> {
@@ -115,7 +119,7 @@ async function pinRun(options: EvaluatorOptions, runId: string, rev: string): Pr
   await refuseOffMain(clone, pin, defaultBranch);
   const adapter = await readAdapter(clone, pin, adapterDir);
   await refuseFrozenClasses(clone, pin, adapter.bounds, adapter.target.frozen);
-  const [evaluatorTree, integrationTree] = [evaluatorTreeOf(workRoot, runId), join(workRoot, `int-${runId}`)];
+  const [evaluatorTree, integrationTree] = [evaluatorTreeOf(workRoot, runId), integrationTreeOf(workRoot, runId)];
   await checkout(clone, evaluatorTree, pin);
   await checkout(clone, integrationTree, pin);
   const { ratchetPrefix } = adapter.target;
@@ -200,7 +204,17 @@ async function suiteRows(session: Session, idea: Idea, tree: string, revs: [stri
     const proof = resolveIn(session.evaluatorTree, renderCommand(session.target.testProof, { base: revs[0], head: revs[1] }));
     rows.push(await timedRow("test-proof", proof, tree, signal));
   }
+  await backAtHead(tree, revs[1]);
   return rows;
+}
+
+/**
+ * A target's suite or proof may check out the base to show the test failing there. The evals that follow run in this
+ * tree, the integration tree among them, so it is put back at the head L0 was asked about before they measure it.
+ */
+async function backAtHead(tree: string, head: string): Promise<void> {
+  if ((await execGit(["rev-parse", "HEAD"], tree)) === head) return;
+  await execGit(["checkout", "--quiet", "--detach", head], tree);
 }
 
 /** L0 in the idea's tree. The bounds rows come from one pure pass and share its time; every row runs, and the first failure is the code. */
@@ -339,5 +353,6 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
     archive: (input) => archiveRound(options.archiveDir, input),
     validate: (input, signal) => validateLook(options, session, input, signal),
     registry: async ({ row }) => appendRegistryRow(options.registryPath, row),
+    ...(options.snapshot && snapshotPorts(options.snapshot, session.of, (runId) => integrationTreeOf(options.workRoot, runId))),
   };
 }

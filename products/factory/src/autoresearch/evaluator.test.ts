@@ -45,11 +45,12 @@ const BOUNDS = {
 const ADAPTER = {
   "ar/eval.sh": [
     'mkdir -p "$4/.artifacts/$3"',
+    'git -C "$4" rev-parse HEAD > "$4/.artifacts/$3/head"',
     'if [ -e "$4/drift" ]; then echo "# edited" >> ar/score.py; git -c user.name=x -c user.email=x@example.invalid commit -qam drift; fi',
     'printf \'{"schema":"ar-result/v2","case":"%s","repeat":"%s","metrics":{"score":1},"usd":0.5,"wall_s":0,"artifact_dir":"%s"}\\n\' "$2" "$3" "$4/.artifacts/$3"',
   ].join("\n"),
   "ar/micro.sh": ['mkdir -p "$1/.artifacts"', 'printf "%s\\n" "$@" > "$1/.artifacts/micro.argv"', 'printf \'{"schema":"ar-micro/v1","rung":"L1-replay","predicted_direction_met":true,"usd":0.1,"signal":"%s"}\\n\' "$3"'].join("\n"),
-  "ar/proof.sh": ["mkdir -p .artifacts", 'echo "$1 $2" > .artifacts/proof-ran', "test ! -e proof-fails"].join("\n"),
+  "ar/proof.sh": ["mkdir -p .artifacts", 'echo "$1 $2" > .artifacts/proof-ran', 'if [ -e move-head ]; then git checkout --quiet --detach "$1"; fi', "test ! -e proof-fails"].join("\n"),
   "ar/score.py": "def score(run):\n    return 0\n",
 };
 
@@ -276,6 +277,19 @@ describe("evaluator L0", () => {
     expect(l0).toMatchObject({ ok: false, code: "unit-suite" });
     expect(l0.checks!.filter((row) => !row.ok).map((row) => row.name)).toEqual(["unit-suite", "test-proof"]);
     expect(l0.checks!.every((row) => typeof row.ms === "number" && row.ms >= 0)).toBe(true);
+  });
+
+  it("puts the tree back at the head it checked when the test proof checked out the base, so the next eval measures that head", async () => {
+    const repo = await fixture();
+    await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const gate = await ideaTree(repo, "moves-head", GATE_EDIT);
+    writeFiles(gate.tree, { "move-head": "" });
+
+    await repo.ports.staticCheck({ ...repo.run, idea: idea("accept-gate"), ...gate }, signal);
+    await repo.ports.evalCase({ ...repo.run, tree: gate.tree, case: "t-alpha", key: "k-head", rung: "seed" }, signal);
+
+    expect(readFileSync(join(gate.tree, ".artifacts", "proof-ran"), "utf8").trim()).toBe(`${gate.base} ${gate.head}`);
+    expect(readFileSync(join(gate.tree, ".artifacts", "k-head", "head"), "utf8").trim()).toBe(gate.head);
   });
 
   it("reads the params file at base and head and refuses an out-of-range value", async () => {
