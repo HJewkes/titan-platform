@@ -6,6 +6,7 @@ import type { RefusedReason } from "../login.js";
 import { readGatedFile } from "./gated-read.js";
 import { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES } from "./login.js";
 import { syncDir } from "./usage-file.js";
+import { errorCode } from "./narrow.js";
 
 // Claude Code 2.1.x serializes its own refresh with two proper-lockfile locks, each a
 // directory made with mkdir: this one in the config dir and a legacy one beside it. Its
@@ -76,7 +77,7 @@ function makeLockDir(dir: string): HeldDir | null {
   try {
     fs.mkdirSync(dir);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return null;
+    if (errorCode(error) === "EEXIST") return null;
     throw error;
   }
   const { ino, ctimeMs } = fs.lstatSync(dir);
@@ -106,7 +107,7 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    return errorCode(error) === "EPERM";
   }
 }
 
@@ -146,7 +147,7 @@ function unlinkIfPresent(file: string): void {
   try {
     fs.unlinkSync(file);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (errorCode(error) !== "ENOENT") throw error;
   }
 }
 

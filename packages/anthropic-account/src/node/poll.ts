@@ -8,6 +8,7 @@ import { clearBackoff, nextBackoff, readBackoff, writeBackoff, type PollBackoff 
 import { discoverProfiles, type DiscoverOptions } from "./profiles.js";
 import { redactedError } from "./redact-error.js";
 import { writeReading } from "./usage-file.js";
+import { isRecord } from "./narrow.js";
 
 export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 // The beta flag Claude Code itself sends with an OAuth bearer token.
@@ -95,7 +96,8 @@ function assertOptions(now: number, timeoutMs: number): void {
 
 function tokenOf(credentials: unknown): string | null {
   try {
-    const token = (credentials as { claudeAiOauth: { accessToken: unknown } }).claudeAiOauth.accessToken;
+    const oauth = isRecord(credentials) ? credentials.claudeAiOauth : undefined;
+    const token = isRecord(oauth) ? oauth.accessToken : undefined;
     return typeof token === "string" && TOKEN_SHAPE.test(token) ? token : null;
   } catch {
     return null;
