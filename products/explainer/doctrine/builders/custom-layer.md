@@ -58,6 +58,11 @@ The packet describes a single beat and nothing about its neighbours:
   union of the painted boxes on the beat's last frame.
 - No text is smaller than 40 px, the video's type floor. The page raises smaller text to 40 px, so a
   layout sized for smaller text overflows its box.
+- Never set a fixed `height` on a panel, card or chip around text that can wrap. A label wraps to a
+  second line at 40 px and over sooner than it looks, and the stack then runs past the panel's
+  bottom. Let the panel grow with its content, or shorten the label so it fits on one line. The
+  build check holds the layer to every rule qa's gate holds, content overflow, overlaps and
+  orphaned wraps among them, at qa's own samples, and refuses what qa would.
 - Never show `NaN`, `undefined`, `null` or `[object …]`. The build check refuses a layer that does.
 - Text on a filled shape uses that fill's `--color-on-…` token: `var(--color-on-brand-primary)` on
   `var(--color-brand-primary-solid)`, `var(--color-on-status-warning)` on

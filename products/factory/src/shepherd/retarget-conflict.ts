@@ -17,6 +17,13 @@ export function noteRetarget(run: RetargetRun, ci: CiSnapshot): CiSnapshot {
   return ci;
 }
 
+/** An update-branch conflict, or a stop at a head the last CI read showed dirty. */
+export function isConflict(run: Pick<RetargetRun, "lastCi">, outcome: LandOutcome): boolean {
+  if (outcome.kind !== "stopped") return false;
+  const dirty = outcome.reason === "not-mergeable" && run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
+  return outcome.reason === "conflict" || dirty;
+}
+
 /** Wakes a fixer with `payload`; true when an agent took it and a new head is up. */
 type Wake = (payload: unknown) => Promise<boolean>;
 

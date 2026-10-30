@@ -28,7 +28,8 @@ interface OrderInput extends PrTarget {
 
 const ReserveResult = z.looseObject({ reserved: z.boolean(), ahead: z.array(z.string()) });
 type Reserved = z.infer<typeof ReserveResult>;
-const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean() });
+/** `bounded` marks a wait the merging stall limit ended, which the merge guard reads (TP-4569). */
+const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean(), bounded: z.literal(true).optional() });
 type Waited = z.infer<typeof WaitResult>;
 const ReleaseResult = z.looseObject({ released: z.boolean() });
 
@@ -127,7 +128,10 @@ async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: rea
  * TP-4434: a conflicted PR queued behind a reservation held through a long review round sat in `merging` until the TTL,
  * so a wait past the merging stall limit gives up its turn and wakes the fixer at the base as it stands.
  */
-const waitedOut = (own: Reservation, now: number): boolean => now - Date.parse(own.since) >= MERGING_STALL_LIMIT_MS;
+function waitedOut(deps: MergeOrderStepDeps, input: OrderInput): boolean {
+  const own = deps.order().list(input.repo).find((reservation) => reservation.runId === input.runId);
+  return own !== undefined && deps.now() - Date.parse(own.since) >= MERGING_STALL_LIMIT_MS;
+}
 
 /** The open PRs the reserving run still waits on: earlier live overlapping reservations, then the runs it let merge first. */
 async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<number[]> {
@@ -135,7 +139,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const order = deps.order();
   const reservations = order.list(input.repo);
   const own = reservations.find((reservation) => reservation.runId === input.runId);
-  if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now()) || waitedOut(own, deps.now())) return [];
+  if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now())) return [];
   const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()), orderWaiting(order));
   const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
@@ -156,6 +160,7 @@ async function waitTurn(deps: MergeOrderStepDeps, input: OrderInput, signal: Abo
   for (;;) {
     signal.throwIfAborted();
     if (await headMoved(deps.port, input)) return { waitedBehind: [...waitedBehind], moved: true };
+    if (waitedOut(deps, input)) return { waitedBehind: [...waitedBehind], moved: false, bounded: true };
     const behind = await waitingOn(deps, input);
     if (behind.length === 0) return { waitedBehind: [...waitedBehind], moved: false };
     behind.forEach((pr) => waitedBehind.add(pr));

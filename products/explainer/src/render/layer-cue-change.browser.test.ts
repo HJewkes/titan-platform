@@ -15,7 +15,7 @@ const cue = (atCue: string) => ({ action: "V6" as const, target: "desk", atCue }
 /** "parcels" reveals the desk card; "full" names it again once it is shown. */
 const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk, and the desk is full.", cues: [cue("parcels"), cue("full")], planned_s: 8 };
 
-/** The desk card opens by clip-path on "parcels"; `onFull` is its style once "full" is spoken. */
+/** The desk card opens by clip-path on "parcels"; `onFull` is its style once "full" is spoken. Two runs, so qa sees no late-fill. */
 const deskLayer = (onFull: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
 
 export default function Desk() {
@@ -30,7 +30,7 @@ export default function Desk() {
     color: "var(--color-text-primary)", background: "var(--color-background-subtle)",
     clipPath: \`inset(0 \${100 - open * 100}% 0 0)\`,
     ...(${onFull}),
-  }}>12 parcels</div>;
+  }}><span>Desk</span><span style={{ marginLeft: 48 }}>12 parcels</span></div>;
 }
 `;
 /** The repeat cue draws an outline outside the card's own clip-path, which cuts it away. */
