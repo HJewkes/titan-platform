@@ -2,12 +2,14 @@
   "v": 1,
   "mutations": [
     {
-      "name": "each arithmetic expansion rescans the whole command",
+      "name": "the lexer rescans the whole command at every step",
       "file": "packages/tool-guard/src/shell/lexer.ts",
-      "find": "  const found: Token[][] = [];\n  const end = arithmeticExpansionEnd(",
-      "replace": "  const found: Token[][] = [];\n  s.src.indexOf(\"\\u0000\");\n  const end = arithmeticExpansionEnd(",
+      "find": "  while (s.i < s.src.length) {\n",
+      "replace": "  while (s.i < s.src.length) {\n    s.src.indexOf(\"\\u0000\");\n",
       "kills": [
-        "the hook denies a push after eight kilobytes of pending heredocs with an arithmetic expansion, within a work budget per character"
+        "the hook denies a push after eight kilobytes of pending heredocs with an arithmetic expansion, within a work budget per character",
+        "the hook denies a push after eight kilobytes of pending heredocs with a backtick substitution, within a work budget per character",
+        "the hook denies a push after eight kilobytes of pending heredocs with three arithmetic expansions, within a work budget per character"
       ]
     }
   ]
