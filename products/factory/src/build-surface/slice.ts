@@ -2,12 +2,12 @@ import type { StepResult } from "@titan-design/workflow";
 import { z } from "zod";
 import { DEPLOY_APPROVE } from "./manifest.js";
 import { buildRounds, runGates } from "./rounds.js";
-import { evidenceDirOf } from "./spec.js";
+import { evidenceDirOf, runsStep, skippedSteps, STEPS } from "./spec.js";
 import * as S from "./schemas.js";
 import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
 
 /** What a finished slice hands the outer loop: its merge, so the next wave knows which dependencies are in. */
-export const SliceOutcomeSchema = z.object({ slice: z.string(), pr: z.number().int(), head: z.string(), mergeSha: z.string(), deployed: z.boolean() });
+export const SliceOutcomeSchema = z.object({ slice: z.string(), pr: z.number().int(), head: z.string(), mergeSha: z.string(), deployed: z.boolean(), skipped: z.array(z.enum(STEPS)).default([]) });
 export type SliceOutcome = z.infer<typeof SliceOutcomeSchema>;
 
 /** The preflight's exit 10 asks for a fresh extraction, which every slice start already runs, so it proceeds like 0. */
@@ -54,7 +54,7 @@ async function awaitLand(run: SliceRun, pr: number, head: string): Promise<strin
 /** The deploy is the last step; with `approve` set the owner says yes at the merge sha first. A failed deploy stops the whole run. */
 async function deploy(run: SliceRun, mergeSha: string): Promise<boolean> {
   const spec = run.spec.deploy;
-  if (!spec) return false;
+  if (!spec || !runsStep(run.spec, run.slice, "deploy")) return false;
   if (spec.approve) {
     const schema = S.DeployAnswer(mergeSha);
     const options = [{ id: "deploy", label: "Deploy it" }, { id: "skip", label: "Do not deploy this slice" }];
@@ -73,13 +73,13 @@ export async function runSlice(run: SliceRun): Promise<StepResult> {
   const targets = await extractTargets(run);
   const evidenceDir = evidenceDirOf(run.spec, run.slice.id, "{head}");
   const { green, merged } = await sliceStep(run, "bs-branch", undefined, { repo: run.spec.repo, branch: run.branch, base: run.spec.base, evidenceDir, cwd: run.spec.clone }, S.BranchSchema);
-  if (merged) return { ...run.last!, data: { slice: run.slice.id, ...merged, deployed: false }, usage: { costUsd: run.spentUsd } };
+  if (merged) return { ...run.last!, data: { slice: run.slice.id, ...merged, deployed: false, skipped: skippedSteps(run.spec, run.slice) }, usage: { costUsd: run.spentUsd } };
   const head = await buildRounds(run, targets, green);
   const opened = { repo: run.spec.repo, branch: run.branch, base: run.spec.base, title: `${run.slice.title} (${run.slice.id})`, body: prBody(run, head) };
   const { pr } = await sliceStep(run, "bs-pr", undefined, opened, S.PrSchema);
   await sliceStep(run, "bs-shepherd", undefined, { repo: run.spec.repo, pr, task: run.slice.task ?? run.spec.task, implementer: run.agent }, S.RegisteredSchema);
   const mergeSha = await awaitLand(run, pr, head);
   const deployed = await deploy(run, mergeSha);
-  const outcome: SliceOutcome = { slice: run.slice.id, pr, head, mergeSha, deployed };
+  const outcome: SliceOutcome = { slice: run.slice.id, pr, head, mergeSha, deployed, skipped: skippedSteps(run.spec, run.slice) };
   return { ...run.last!, data: { ...outcome }, usage: { costUsd: run.spentUsd } };
 }
