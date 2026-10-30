@@ -1,5 +1,5 @@
 import type { L0Check } from "./eval-l0.js";
-import { drawnBeats, screenTokens, slotList as list, type DrawnBeat } from "./drawn-beats.js";
+import { drawnBeats, refusedBeats, screenTokens, slotList as list, type DrawnBeat } from "./drawn-beats.js";
 import { drawnTexts, type DrawnText } from "./drawn-texts.js";
 import { countRow } from "./lint-text.js";
 import type { ScriptV1 } from "./script-schema.js";
@@ -58,4 +58,4 @@ function frameCount(beat: DrawnBeat): FrameCount | undefined {
 export const frameCounts = (script: ScriptV1): FrameCount[] => drawnBeats(script).flatMap((beat) => frameCount(beat) ?? []);
 
 /** Q-D15: no template beat's fullest frame holds more than 20 words (qa's words-per-frame, predicted from the script). */
-export const frameWordsCheck: L0Check = ({ script }) => [countRow("Q-D15", frameCounts(script).filter((count) => count.words > FRAME_MAX_WORDS).map((count) => count.beat), "tagged")];
+export const frameWordsCheck: L0Check = ({ script }) => [countRow("Q-D15", [...refusedBeats(script), ...frameCounts(script).filter((count) => count.words > FRAME_MAX_WORDS).map((count) => count.beat)], "tagged")];

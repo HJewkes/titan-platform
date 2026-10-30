@@ -1,6 +1,6 @@
 import { doctrine } from "./lint-cadence.js";
 import type { ScriptV1 } from "./script-schema.js";
-import { draftFill } from "./script-fill.js";
+import { draftFill, draftFillRefusals } from "./script-fill.js";
 import type { FilledBeat } from "./template-fill/fill.js";
 
 /**
@@ -57,3 +57,9 @@ export function drawnBeats(script: ScriptV1): DrawnBeat[] {
   drawnByScript.set(script, found);
   return found;
 }
+
+/**
+ * Beats the fill refuses, which draw nothing here. A row that predicts qa from the drawn beats lists them as findings,
+ * so a script it cannot read fails instead of passing unchecked (template-fill is not an eval L0 check).
+ */
+export const refusedBeats = (script: ScriptV1): string[] => draftFillRefusals(script).map((fault) => fault.beat);
