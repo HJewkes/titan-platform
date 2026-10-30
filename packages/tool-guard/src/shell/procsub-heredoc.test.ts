@@ -25,7 +25,10 @@ function classifyCommand(command: string): string[] {
   return classify(event, context).map((a) => a.spelling);
 }
 
-/** The hook reads these commands in about 2.5 characters of work per character; a rescan per expansion reads far more. */
+/**
+ * The hook reads these commands in about 2.5 characters of work per character; a rescan per expansion reads far more.
+ * A rescan that indexes `s.src[k]` directly is not weighed by the work count, so these cases do not catch it.
+ */
 const WORK_PER_CHAR = 8;
 
 /** The hook's own verdict, which is what the agent meets: a ParseError denies. */
