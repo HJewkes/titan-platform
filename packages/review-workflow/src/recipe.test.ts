@@ -3,7 +3,9 @@ import { formatResultLine } from "@titan-design/fix-proof";
 import type { PullRequest } from "@titan-design/github";
 import { DEFAULT_PANEL_TABLE, memberName, type PanelPlan, type ReviewerAgent, type ReviewerMessage, type ReviewTarget } from "@titan-design/review-panel";
 import { partialFake } from "@titan-design/test-kit";
+import { codeRoute, type StepRoute } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { REVIEW_STEP_BODIES, type ReviewBodyPorts } from "./bodies.js";
 import type { ParkedRun, ParkingPort } from "./fixer.js";
 import type { ReviewPlanPolicy } from "./plan-for-head.js";
@@ -102,14 +104,30 @@ function fakeWorld(script: Script, neverStarts: readonly string[] = []) {
   return { world, ports };
 }
 
-type AnyBody = (input: unknown, ports: ReviewBodyPorts, signal: AbortSignal) => Promise<object>;
-const bodyKey = (stepId: string): keyof typeof REVIEW_STEP_BODIES => {
-  const found = Object.entries(DEFAULT_REVIEW_STEP_IDS).find(([, id]) => stepId.split(":")[0] === id);
-  return found![0] as keyof typeof REVIEW_STEP_BODIES;
-};
+/** Each body under its default id, as a host registers them: `codeRoute` parses the stored JSON input the body takes. */
+function routesFor(ports: ReviewBodyPorts): StepRoute[] {
+  const ids = DEFAULT_REVIEW_STEP_IDS;
+  const bodies = REVIEW_STEP_BODIES;
+  type In<K extends keyof typeof bodies> = Parameters<(typeof bodies)[K]>[0];
+  return [
+    codeRoute(ids.preflight, (body: In<"preflight">) => bodies.preflight(body, ports)),
+    codeRoute(ids.heal, (body: In<"heal">) => bodies.heal(body, ports)),
+    codeRoute(ids.intent, (body: In<"intent">) => bodies.intent(body)),
+    codeRoute(ids.dispatch, (body: In<"dispatch">, step) => bodies.dispatch(body, ports, step.signal)),
+    codeRoute(ids.await, (body: In<"await">, step) => bodies.await(body, ports, step.signal)),
+    codeRoute(ids.correct, (body: In<"correct">, step) => bodies.correct(body, ports, step.signal)),
+    codeRoute(ids.lateRead, (body: In<"lateRead">) => bodies.lateRead(body, ports)),
+    codeRoute(ids.aggregate, (body: In<"aggregate">) => bodies.aggregate(body, ports)),
+    codeRoute(ids.fixer, (body: In<"fixer">) => bodies.fixer(body, ports)),
+  ];
+}
 
-/** Runs each step's body over JSON, as a durable host stores it, and replays `recorded` in order until a step runs live. */
+const routeOf = (routes: readonly StepRoute[], stepId: string): StepRoute | undefined =>
+  routes.find((route) => stepId === route.match || stepId.startsWith(`${route.match}:`));
+
+/** Runs each step through its route, as a durable host stores it, and replays `recorded` in order until a step runs live. */
 function fakeHost(ports: ReviewBodyPorts, recorded: readonly (readonly [string, object])[] = []) {
+  const routes = routesFor(ports);
   const steps: string[] = [];
   let cursor = 0;
   const call: StepCall = async (stepId, stepInput, schema) => {
@@ -117,8 +135,10 @@ function fakeHost(ports: ReviewBodyPorts, recorded: readonly (readonly [string, 
     const replayed = recorded[cursor];
     if (replayed?.[0] === stepId) return (cursor += 1), schema.parse(replayed[1]);
     cursor = recorded.length;
-    const body = REVIEW_STEP_BODIES[bodyKey(stepId)] as AnyBody;
-    return schema.parse(JSON.parse(JSON.stringify(await body(JSON.parse(JSON.stringify(stepInput)), ports, new AbortController().signal))));
+    const run = { runId: "run-1", workflowName: "review", stepId, iteration: 0, prompt: JSON.stringify(stepInput), signal: new AbortController().signal, attempt: 0, requestKey: stepId };
+    const outcome = await routeOf(routes, stepId)?.runner.run(run);
+    if (!outcome?.ok) throw new Error(`step ${stepId} failed: ${outcome?.error ?? "no route"}`);
+    return z.object({ result: schema }).parse(JSON.parse(outcome.output)).result;
   };
   const host: ReviewHost = { call, historyNext: () => recorded[cursor]?.[0] };
   return { host, steps };

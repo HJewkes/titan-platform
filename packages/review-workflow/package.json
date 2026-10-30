@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@titan-design/test-kit": "workspace:*",
+    "@titan-design/workflow": "workspace:*",
     "zod": "^4.4.3"
   }
 }

@@ -2,7 +2,7 @@ import { readMalformed, type MemberResult, type PanelMember, type ReviewShape, t
 import type { DispatchInput, ReviewTiming } from "./bodies.js";
 import { classifyFailure, repeats, type AwaitRecord, type ClassifiedFailure, type DispatchRecord } from "./failure.js";
 import type { FixerCase } from "./fixer.js";
-import type { RetryPolicy, RetryRule, RetryStep, RetryTerminal } from "./retry-policy.js";
+import type { HealKind, RetryPolicy, RetryRule, RetryStep, RetryTerminal } from "./retry-policy.js";
 import { AwaitRecordSchema, CorrectRecordSchema, DispatchRecordSchema, type StepCall } from "./step-schemas.js";
 import type { FailureClass, ReviewHeadInput, ReviewStepIds } from "./types.js";
 
@@ -113,12 +113,22 @@ function degrade(ctx: MemberContext, state: MemberState): Promise<Taken> | undef
 }
 
 async function runStep(ctx: MemberContext, state: MemberState, seen: Seen, step: RetryStep): Promise<Taken> {
-  if (step.action === "retry") return retry(ctx, state);
-  if (step.action === "correct") return correct(ctx, state, seen);
-  if (step.action === "late-read") return lateRead(ctx, state, seen);
-  if (step.action !== "heal") return undefined;
-  if (step.heal === "degrade-headroom") return degrade(ctx, state);
-  if (step.heal === "await-account") return { end: { kind: "account-hold", ...accountReset(seen.awaited) } };
+  switch (step.action) {
+    case "retry":
+      return retry(ctx, state);
+    case "correct":
+      return correct(ctx, state, seen);
+    case "late-read":
+      return lateRead(ctx, state, seen);
+    case "heal":
+      return heal(ctx, state, seen, step.heal);
+  }
+}
+
+/** Only the member heals act here; a checkout refresh or a retarget belongs to preflight, so it takes nothing. */
+function heal(ctx: MemberContext, state: MemberState, seen: Seen, kind: HealKind): Promise<Taken> | Taken {
+  if (kind === "degrade-headroom") return degrade(ctx, state);
+  if (kind === "await-account") return { end: { kind: "account-hold", ...accountReset(seen.awaited) } };
   return undefined;
 }
 
