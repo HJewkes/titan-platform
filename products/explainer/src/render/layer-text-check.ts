@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { decodeArgs, DEFAULT_OPTIONS, spawnFfmpeg, type Finding, type InspectOptions, type Moment, type ProbedMoment } from "@titan-design/render-qa";
-import { cueFrameTimes, cueWindows, stillCueRows, type CueWindow } from "../build/layer-cue-change.js";
+import { cueFrameTimes, cueWindows, stillCueRows, type CueWindow } from "../qa/layer-cue-change.js";
 import { badTextRows, distinctRows, heldRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";

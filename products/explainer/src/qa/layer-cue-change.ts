@@ -1,7 +1,7 @@
 import { changedShare } from "@titan-design/render-qa";
-import { STATIC_LEVEL } from "../qa/timing-gates.js";
-import type { LayerPacket } from "./layer-packet.js";
-import type { LayerTextRow } from "./layer-text.js";
+import { STATIC_LEVEL } from "./timing-gates.js";
+import type { LayerPacket } from "../build/layer-packet.js";
+import type { LayerTextRow } from "../build/layer-text.js";
 
 /**
  * Q-D22 counts every cue of a custom layer as a picture change (TP-4596), so a cue that draws nothing, such as an
