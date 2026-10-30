@@ -1172,7 +1172,7 @@ Tier 2, `@titan-design/review-workflow@0.0.0`. PR review as a resumable workflow
 
 **Use this when:**
 
-You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
+You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies; `reviewRunner` runs it standalone as a version-pinned durable workflow. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
 
 Key exports:
 

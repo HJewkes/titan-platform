@@ -1268,7 +1268,7 @@
   },
   "products/factory/src/shepherd/review.ts": {
     "titan/max-line-length": {
-      "count": 15
+      "count": 12
     }
   },
   "products/factory/src/shepherd/reviewer-reader.test.ts": {
