@@ -157,6 +157,7 @@ graph TD
   reviewPanel --> sessionRead
   reviewWorkflow --> agentDispatch
   reviewWorkflow --> evidence
+  reviewWorkflow --> fixProof
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
   rpcClient --> rpcProtocol

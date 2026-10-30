@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a vacuous line its mutants prove is still NO_REPRO",
+      "file": "packages/fix-proof/src/standing.ts",
+      "find": "if (NO_REPRO_VERDICTS.has(result.verdict) && !provedByMutants(result)) {",
+      "replace": "if (NO_REPRO_VERDICTS.has(result.verdict)) {",
+      "kills": [
+        "proofStanding reads a vacuous line its mutants prove as proved, which neither ends the review nor needs the tests seat (tp#2145)"
+      ]
+    },
+    {
+      "name": "an unproven line ends the review",
+      "file": "packages/fix-proof/src/standing.ts",
+      "find": "standing.kind === \"no-repro\" && standing.proceeds === undefined;",
+      "replace": "(standing.kind === \"no-repro\" && standing.proceeds === undefined) || standing.kind === \"unproven\";",
+      "kills": [
+        "proofStanding keeps an unproven line apart: it does not end the review but does need the tests seat"
+      ]
+    }
+  ]
+}

@@ -23,7 +23,7 @@
     {
       "name": "the proof standing ignores a non-source proceed",
       "file": "products/factory/src/shepherd/proof-waiver.ts",
-      "find": "noReproProceedOf(unverified?.unverified) !== undefined;",
+      "find": "!endsReview(read);",
       "replace": "unverified?.unverified === \"no-repro-test-only\";",
       "kills": [
         "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a test-only conversion's NO_REPRO as a fact and lets review proceed under record-fact",
