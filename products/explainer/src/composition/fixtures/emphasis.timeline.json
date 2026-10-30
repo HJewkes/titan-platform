@@ -1,0 +1,50 @@
+{
+  "durationS": 34,
+  "beats": [
+    {
+      "id": "list-lit", "kind": "list", "startS": 0, "durationS": 6, "headline": "Three synthetic rows, the second named again",
+      "slots": { "title": "Rows", "rows": [
+        { "id": "rows-1", "text": "Widgets polished", "mark": "tick" },
+        { "id": "rows-2", "text": "Gadgets checked", "mark": "tick" },
+        { "id": "rows-3", "text": "Gizmos waiting", "mark": "open" }
+      ] },
+      "reveals": [{ "target": "rows-1", "atS": 0.2 }, { "target": "rows-2", "atS": 0.5 }, { "target": "rows-3", "atS": 0.8 }],
+      "emphases": [{ "target": "rows-2", "atS": 3.5 }],
+      "chips": [], "hints": {}, "chapter": { "n": 1, "of": 1, "label": "Synthetic" }
+    },
+    {
+      "id": "bar-lit", "kind": "chart", "startS": 6, "durationS": 6, "headline": "Three synthetic bars, the second named again",
+      "slots": { "kind": "bar", "series": [
+        { "id": "series-1", "label": "widgets", "value": 6 },
+        { "id": "series-2", "label": "gadgets", "value": 4 },
+        { "id": "series-3", "label": "gizmos", "value": 2 }
+      ] },
+      "reveals": [{ "target": "series-1", "atS": 0.2 }],
+      "emphases": [{ "target": "series-2", "atS": 3.5 }],
+      "chips": [], "hints": {}, "chapter": { "n": 1, "of": 1, "label": "Synthetic" }
+    },
+    {
+      "id": "map-lit", "kind": "arch-map", "startS": 12, "durationS": 10, "headline": "Three synthetic stops, a stop and a hop named again",
+      "slots": { "title": "Stops",
+        "nodes": [{ "id": "nodes-1", "label": "Depot" }, { "id": "nodes-2", "label": "Sorter" }, { "id": "nodes-3", "label": "Van" }],
+        "edges": [{ "id": "edges-1", "from": "nodes-1", "to": "nodes-2" }, { "id": "edges-2", "from": "nodes-2", "to": "nodes-3" }] },
+      "reveals": [{ "target": "nodes-1", "atS": 0.2 }, { "target": "nodes-2", "atS": 0.4 }, { "target": "nodes-3", "atS": 0.6 }],
+      "emphases": [{ "target": "nodes-2", "atS": 6 }, { "target": "edges-2", "atS": 8 }],
+      "chips": [], "hints": {}, "chapter": { "n": 1, "of": 1, "label": "Synthetic" }
+    },
+    {
+      "id": "stat-lit", "kind": "stat", "startS": 22, "durationS": 6, "headline": "Two synthetic figures, the first named again",
+      "slots": { "figures": [{ "id": "figures-1", "label": "Widgets", "value": 48 }, { "id": "figures-2", "label": "Gadgets", "value": 12 }] },
+      "reveals": [{ "target": "figures-1", "atS": 0.2 }, { "target": "figures-2", "atS": 0.4 }],
+      "emphases": [{ "target": "figures-1", "atS": 3.5 }],
+      "chips": [], "hints": {}, "chapter": { "n": 1, "of": 1, "label": "Synthetic" }
+    },
+    {
+      "id": "claim-lit", "kind": "claim-card", "startS": 28, "durationS": 6,
+      "slots": { "claim": "Small batches of widgets ship sooner" },
+      "reveals": [{ "target": "claim", "atS": 0.2 }],
+      "emphases": [{ "target": "claim", "atS": 3.5 }],
+      "chips": [], "hints": {}, "chapter": { "n": 1, "of": 1, "label": "Synthetic" }
+    }
+  ]
+}

@@ -43,13 +43,9 @@ function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit
   );
 }
 
-const EDGE_W = 5;
 const LIT_EDGE_W = 12;
 
-/** A lit edge thickens and turns brand while a cue names it. */
-const litEdge = (lit: number) => (lit > 0 ? { stroke: mix("var(--color-text-secondary)", "var(--color-brand-primary)", lit), strokeWidth: EDGE_W + (LIT_EDGE_W - EDGE_W) * lit } : {});
-
-/** Each edge draws once both its ends are named, and lights when a cue names it. */
+/** Each edge draws once both its ends are named; a cue naming it lays a brand stroke under it, the arrowhead unchanged. */
 function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly string[]; t: number }) {
   const lit = useLit();
   return nodes.slice(1).map((node, i) => {
@@ -57,7 +53,14 @@ function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly
     const x0 = nodeLeft(i) + MAP.nodeW + ARROW_INSET;
     const x1 = x0 + (MAP.gap - 2 * ARROW_INSET) * progress(t, drawAtS);
     const id = edges[i]!;
-    return x1 > x0 ? <line key={node.id} data-reveal={id} x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" style={litEdge(lit(id, t))} /> : null;
+    const shown = lit(id, t);
+    if (x1 <= x0) return null;
+    return (
+      <g key={node.id} data-reveal={id}>
+        {shown > 0 && <line x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} stroke="var(--color-brand-primary)" strokeWidth={LIT_EDGE_W} strokeLinecap="round" opacity={shown} />}
+        <line x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" />
+      </g>
+    );
   });
 }
 
