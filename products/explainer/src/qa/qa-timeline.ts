@@ -7,13 +7,15 @@ interface QaCue {
   atS: number;
 }
 
-interface QaBeat {
+export interface QaBeat {
   id: string;
   /** The beat's kind, as the timeline names it. */
   kind?: string;
   startS: number;
   durationS: number;
   cues: QaCue[];
+  /** Beat seconds at which each element the beat draws lands, when the timeline lists its reveals. */
+  reveals?: number[];
   /** Set when a custom layer draws the beat, with the anchor cells it declares. */
   layer?: "custom";
   anchors?: string[];
@@ -26,8 +28,9 @@ export interface QaTimeline {
 
 /** The render's `timeline` artifact; its `cues` are already beat-local seconds. */
 export function timelineFromArtifact(json: unknown): QaTimeline {
-  const beats = parseTimeline(json).beats.map(({ id, kind, startS, durationS, cues, layer, anchors }) => ({
-    id, kind, startS, durationS, cues: Object.entries(cues ?? {}).map(([name, atS]) => ({ name, atS })), ...(layer ? { layer } : {}), ...(anchors ? { anchors } : {}),
+  const beats = parseTimeline(json).beats.map(({ id, kind, startS, durationS, cues, reveals, layer, anchors }) => ({
+    id, kind, startS, durationS, cues: Object.entries(cues ?? {}).map(([name, atS]) => ({ name, atS })),
+    ...(reveals ? { reveals: reveals.map((reveal) => reveal.atS) } : {}), ...(layer ? { layer } : {}), ...(anchors ? { anchors } : {}),
   }));
   return { beats };
 }

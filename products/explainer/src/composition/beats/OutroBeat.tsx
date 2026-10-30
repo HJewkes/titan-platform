@@ -2,7 +2,7 @@ import { interpolate, MOTION, useBeatTime } from "@titan-design/react-ui/motion"
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
-import { enter } from "./stage/entrance.js";
+import { enter, rise } from "./stage/entrance.js";
 import { OUTRO_FADE_OUT_S } from "./stage/outro-fade.js";
 
 /**
@@ -12,8 +12,8 @@ import { OUTRO_FADE_OUT_S } from "./stage/outro-fade.js";
 
 const ACTION_S = 0.9;
 
-/** 1 until the last `OUTRO_FADE_OUT_S` of the beat, then down to 0 at its end. */
-const outroOpacity = (t: number, durationS: number): number => interpolate(t, [durationS - OUTRO_FADE_OUT_S, durationS], [1, 0], { ease: MOTION.ease.inOut });
+/** 1 until the last `OUTRO_FADE_OUT_S` of the beat, then down to 0 at its end; it drives a rise-and-clip exit, never an opacity. */
+const outroPresence = (t: number, durationS: number): number => interpolate(t, [durationS - OUTRO_FADE_OUT_S, durationS], [1, 0], { ease: MOTION.ease.inOut });
 
 interface OutroFrameProps {
   line: string;
@@ -24,7 +24,7 @@ interface OutroFrameProps {
 function OutroFrame({ line, lineAtS, action }: OutroFrameProps) {
   const { t, durationS } = useBeatTime();
   return (
-    <div className="beat-outro" style={{ opacity: outroOpacity(t, durationS) }}>
+    <div className="beat-outro" style={rise(outroPresence(t, durationS), 24)}>
       <h1 className="beat-title" data-reveal="line" style={enter(t, lineAtS)}>{line}</h1>
       {action && (
         <div className="beat-outro-links" data-outro-action="" style={enter(t, lineAtS + ACTION_S)}>

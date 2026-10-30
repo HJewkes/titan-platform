@@ -54,11 +54,15 @@ export interface ImplementInput {
   cwd: string;
   brief: string;
   task?: string;
+  /** What the slice has left; the agent is retired mid-turn past it. */
+  budgetUsd: number;
 }
 
 export interface FixInput {
   name: string;
   message: string;
+  /** What the slice has left; the agent is retired mid-turn past it. */
+  budgetUsd: number;
 }
 
 export interface PrInput {

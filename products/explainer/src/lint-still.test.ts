@@ -18,17 +18,21 @@ const LONG_LANE =
 const LONG_REFLECTION =
   "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
 const claimCard = (plannedS: number, spoken: string, claim: string) => ({ plannedS, spoken, visual: { beat: "claim-card", labels: [claim], cues: [] } });
+/** ships-2 with its slow tail still to land after a long gap: a frame the settled-speech excusal does not cover. */
+const unsettledShips = () => dailyWith("ships-2", { visual: { cues: [cue("series-1", "matcher"), cue("series-3", "gone")] } });
+const STILL_FOUND = "stand still more than 3 s between reveals, outside the reading time of unspoken text (once every element is shown, up to 6 s while the voice speaks): ";
 
 describe("Q-D22 planned still stretches, qa's static-window at script time", () => {
-  it("a beat with a 5 s planned gap between revealing cues fails and names the gap", () => {
-    const script = dailyWith("ships-2", {});
+  it("a beat with a planned gap past 3 s between revealing cues fails and names the gap", () => {
+    const script = unsettledShips();
 
     const row = l0Row(script, "Q-D22");
     const hint = repairHint(row, script);
 
     expect(row).toMatchObject({ severity: "error", pass: false });
     expect(row.detail_beats).toContain("ships-2");
-    expect(hint).toMatch(/stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2 3\.6 s to 8\.3 s after "twelve" \(4\.7 s, saying "/);
+    expect(hint).toContain(STILL_FOUND);
+    expect(hint).toMatch(/ships-2 2\.7 s to 6\.4 s after "matcher" \(3\.7 s, saying "/);
   });
 
   it("passes once a revealing cue lands inside the stretch, as its hint asks", () => {
@@ -92,21 +96,22 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
   });
 
   it("a failing still stretch reaches the L0 repair prompt with its hint", () => {
-    const script = dailyWith("ships-2", {});
+    const script = unsettledShips();
     const failing = failingErrors(runL0(script)).filter((row) => row.check_id === "Q-D22");
 
     const prompt = repairPrompt("", script, failureList(failing, loadRuleRegistry(), script, LINT));
 
-    expect(prompt).toContain("- Q-D22: No planned still run of a beat, between cues that reveal an element and outside the reading hold of text it does not say, passes the profile's pacing.staticMaxS, unless the beat is held");
-    expect(prompt).toMatch(/Found: beats whose picture would stand still more than 3 s between reveals, outside the reading time of unspoken text: .*ships-2/);
+    expect(prompt).toContain("- Q-D22: No planned still run of a beat, between cues that reveal an element and outside the reading hold of text it does not say, passes the profile's pacing.staticMaxS, unless the beat is held or, for at most 6 s, the frame is settled under speech");
+    expect(prompt).toContain(`Found: beats whose picture would ${STILL_FOUND}`);
+    expect(prompt).toMatch(/Found: beats whose picture would stand still .*ships-2/);
   });
 });
 
 // Every text here is spoken, so no reading hold covers a stretch and only the picture's own motion breaks it.
 const SAID = "What did each lane move? In lanes, router merged its matcher rewrite and kept the old path behind a switch.";
 const SAID_ROWS = ["router · Matcher rewrite merged", "router · Kept the old path", "router · Behind a switch"];
-const saidLane = (cues: { action: "V6"; target: string; atCue: string }[]) =>
-  dailyWith("lanes-1", { spoken: SAID, visual: { assertion: "Router merged its matcher", labels: SAID_ROWS, cues } });
+const saidLane = (cues: { action: "V6"; target: string; atCue: string }[], more = "") =>
+  dailyWith("lanes-1", { spoken: SAID + more, visual: { assertion: "Router merged its matcher", labels: SAID_ROWS, cues } });
 const stillOf = (script: ReturnType<typeof dailyWith>, id: string) => stillBeats(script, scriptPacing(script)!).find(({ beat }) => beat.id === id)?.stretches ?? [];
 
 describe("Q-D22 reads the picture qa sees: fill reveals, the settle and each kind's own motion", () => {
@@ -118,14 +123,15 @@ describe("Q-D22 reads the picture qa sees: fill reveals, the settle and each kin
     expect(early).toEqual([]);
   });
 
+  // Past SETTLED_SPEECH_MAX_S, so the stretch after the last reveal fails even though it is settled.
   it("a beat whose voice runs short of plan stands still through the settle", () => {
-    const script = saidLane([cue("rows-2", "merged"), cue("rows-3", "kept")]);
+    const script = saidLane([cue("rows-2", "merged"), cue("rows-3", "kept")], " The switch stays on through the night and the morning shift.");
 
     const found = stillOf(script, "lanes-1");
 
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ after: "kept" });
-    expect(found[0]!.toS).toBeCloseTo(9, 0);
+    expect(found[0]!.toS).toBeCloseTo(13, 0);
   });
 
   it("an outro's fade is motion", () => {

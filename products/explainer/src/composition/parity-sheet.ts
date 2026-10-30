@@ -7,6 +7,7 @@ import { DEFAULT_CELL_WIDTH, LABEL_STRIP_PX, tileArgs, type FfmpegExec } from ".
 import { servePage } from "../render/composition-page.js";
 import { runFfmpeg } from "../render/ffmpeg.js";
 import { OUTRO_FADE_OUT_S } from "./beats/stage/outro-fade.js";
+import { HOOK_ENVELOPE_S } from "./beats/stage/video-timing.js";
 import type { Timeline, TimelineBeat } from "./timeline.js";
 
 /**
@@ -16,8 +17,8 @@ import type { Timeline, TimelineBeat } from "./timeline.js";
 
 const FIRST_AFTER_S = 0.6;
 const SETTLED_BEFORE_END_S = 0.1;
-/** Kinds drawn by the OutroBeat port, which fades its content out at the end: they settle before the fade. */
-const FADES_OUT_S: Readonly<Record<string, number>> = { button: OUTRO_FADE_OUT_S, outro: OUTRO_FADE_OUT_S };
+/** Kinds that clip their content out at the end of the beat (the outro port, the hook): they settle before the exit. */
+const FADES_OUT_S: Readonly<Record<string, number>> = { button: OUTRO_FADE_OUT_S, outro: OUTRO_FADE_OUT_S, hook: HOOK_ENVELOPE_S };
 /** Grey levels a pixel may sit from the background and still count as background (antialiasing, gradients). */
 const INK_TOLERANCE = 8;
 const STAGE = { width: 1920, height: 1080 };
