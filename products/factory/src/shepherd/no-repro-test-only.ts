@@ -1,6 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import { testOnlyDiff } from "./test-only-diff.js";
+import { supportOnlyDiff, testOnlyDiff } from "./test-only-diff.js";
 
 /** A vacuous or test-less proof: the two results the NO_REPRO verdict ends a review on. */
 const VACUOUS_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
@@ -25,12 +25,14 @@ interface NoReproTestOnly {
 /**
  * Decision 424(1): with the flag on, a test-only or correctness registration whose diff the fail-closed classifier reads in full as
  * tests alone does not end its review on a vacuous proof. A result that carries mutants stays NO_REPRO, since a surviving mutation
- * or a refused spec is a verdict on the tests.
+ * or a refused spec is a verdict on the tests. TP-4573: a test-only registration also proceeds on a diff of test support with no test
+ * in it, which no proof can run; a correctness one stays gated there, since nothing shows its fix is in the tests.
  */
 export async function proceedsOnNoRepro(port: GitHubPort, gate: NoReproTestOnly, line: string): Promise<boolean> {
   if (gate.flag !== "on" || !TEST_ONLY_PROOF_KINDS.has(gate.kind)) return false;
   if (!mayProceedLine(line)) return false;
-  return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === "test-only";
+  if ((await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === "test-only") return true;
+  return gate.kind === "test-only" && supportOnlyDiff(port, gate.repo, gate.pr, gate.head);
 }
 
 /**
