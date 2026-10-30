@@ -264,9 +264,6 @@
   "packages/github/src/fake.ts": {
     "titan/max-function-lines": {
       "count": 1
-    },
-    "titan/no-chained-type-assertions": {
-      "count": 1
     }
   },
   "packages/github/src/gh-cli.ts": {
