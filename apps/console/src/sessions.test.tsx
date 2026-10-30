@@ -163,6 +163,12 @@ describe("the sessions list", () => {
     expect(screen.getByText("No session graph at /data/graph.sqlite3")).toBeTruthy();
   });
 
+  it("names the missing migrations and the fix when the graph is not migrated", async () => {
+    const degraded = { reason: "graph-not-migrated", detail: "the graph does not carry migrations", missing: ["7 (example migration)"], fix: "Upgrade the tool, then refresh." } as const;
+    renderConsole("#/sessions", recorded(listWith({ sessions: [], nextBefore: null, degraded })));
+    expect(await screen.findByText("The session list is unavailable: the session graph is older than this console. Missing migrations: 7 (example migration). Upgrade the tool, then refresh. A session still opens by id from a task or agent page.")).toBeTruthy();
+  });
+
   it("says so when the list cannot be read", async () => {
     renderConsole("#/sessions", snapshot({}));
     expect(await screen.findByText(/^Could not load sessions: /)).toBeTruthy();

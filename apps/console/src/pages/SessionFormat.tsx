@@ -89,3 +89,11 @@ export function formatCost(usd: number): string {
 export function usageTokens(row: SessionRow): number {
   return row.usage.reduce((sum, model) => sum + model.inputTokens + model.cacheReadTokens + model.cacheCreationTokens + model.outputTokens, 0);
 }
+
+export type GraphDegraded = NonNullable<ListResult["degraded"]>;
+
+/** What is stale and how to fix it; empty unless the graph is not migrated. */
+export function migrationHint({ missing, fix }: GraphDegraded): string {
+  if (!missing?.length || !fix) return "";
+  return ` Missing migrations: ${missing.join(", ")}. ${fix}`;
+}
