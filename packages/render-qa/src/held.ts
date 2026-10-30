@@ -102,10 +102,25 @@ function groupFindings(frames: readonly SampledFrame[]): Group[] {
   return [...groups.values()]
 }
 
+/**
+ * Drops the parked findings (an element whose painted rect has no area on the frame) of an element that paints on
+ * frame at a later sample of its beat: it waits for its cue, then enters. One that stays parked to the beat's end
+ * keeps its finding, and a partly off-frame sample is never parked, so it is judged as before. The inspector sees
+ * one sample, so only here, over the beat's samples, can an entrance be told from a card that never arrives.
+ */
+function excuseEntrances(frames: readonly SampledFrame[]): SampledFrame[] {
+  const parkedKeys = (f: SampledFrame) => new Set(f.findings.filter((x) => x.parked).map(keyOf))
+  return frames.map((frame, i) => {
+    const later = frames.slice(i + 1).filter((f) => f.beat === frame.beat).map(parkedKeys)
+    const enters = (x: Finding) => later.some((keys) => !keys.has(keyOf(x)))
+    return { ...frame, findings: frame.findings.filter((x) => !(x.parked && enters(x))) }
+  })
+}
+
 /** Frames in time order; consecutive means adjacent samples of the same beat. */
 export function classify(frames: readonly SampledFrame[], options: ClassifyOptions = {}): Held {
   const out: Held = { errors: [], info: [] }
-  for (const { held: g, best, atEnd } of groupFindings(frames)) {
+  for (const { held: g, best, atEnd } of groupFindings(excuseEntrances(frames))) {
     if (!isErrorKind(g.finding, options.gate)) out.info.push({ ...g, reason: 'info-kind' })
     else if (g.kind === 'late-fill') out.errors.push({ ...g, reason: 'timing' })
     else if (FRAME_KINDS.includes(g.kind)) out.errors.push({ ...g, reason: 'frame' })

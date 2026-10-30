@@ -36,6 +36,8 @@ export interface Finding {
   byText?: string
   edge?: string
   orphan?: boolean
+  /** off-frame: the painted rect has no area on the frame, so nothing of it shows at this sample. */
+  parked?: boolean
   op?: number
   px?: number
   ratio?: number
@@ -80,6 +82,8 @@ export interface Inspector {
   shrink(r: Rect, d: number): Rect
   unionRect(rs: Rect[]): Rect
   asR(r: DOMRect): Rect
+  /** True when `r` has no area on the frame: whatever it holds is not on screen. */
+  parked(r: Rect): boolean
   related(a: Element, b: Element): boolean
   decor(el: Element): boolean
   inFlight(el: Element): boolean
