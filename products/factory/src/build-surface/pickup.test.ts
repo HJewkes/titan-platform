@@ -56,3 +56,47 @@ describe("a fresh build-surface start over a branch a stopped run left behind", 
     expect(fake.agentCalls[0]).toBe("bs-implement:shell");
   });
 });
+
+describe("a fresh build-surface start over a slice an earlier run already merged", () => {
+  const head = shaOf(500);
+  const slices = [{ id: "shell", title: "App shell", brief: "Build the shell." }, { id: "pages", title: "Pages", brief: "Build the pages.", dependsOn: ["shell"] }];
+
+  /** Runs a two-slice spec whose first slice's branch is on the remote with `pr`, and returns the fake after the final walk. */
+  async function resume(options: { pr: Record<string, unknown>; ancestors?: string[] }) {
+    const fake = fakeBuild({ spec: demoSpec({ slices }), branches: { "build-surface/shell": head }, prs: { "build-surface/shell": options.pr }, ancestors: options.ancestors });
+    const { host, runId } = start(fake);
+    await approveDeploy(host, runId, "pages", 1);
+    await gateOpened(host, gateId(runId, "final-walk"));
+    host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+    return { fake, run: await host.runtime.wait(runId) };
+  }
+
+  it("skips a slice whose head is in the base and builds the slice that depends on it", async () => {
+    const { fake, run } = await resume({ pr: { number: 7, state: "closed", merged: false, mergeSha: null, headSha: head }, ancestors: [head] });
+
+    expect(run.status).toBe("completed");
+    expect(fake.agentCalls.some((call) => call.endsWith(":shell"))).toBe(false);
+    expect(fake.agentCalls[0]).toBe("bs-implement:pages");
+  });
+
+  it("skips a squash-merged slice whose PR reports merged, though its head is not in the base", async () => {
+    const { fake, run } = await resume({ pr: { number: 7, state: "closed", merged: true, mergeSha: shaOf(700), headSha: head } });
+
+    expect(run.status).toBe("completed");
+    expect(fake.agentCalls.some((call) => call.endsWith(":shell"))).toBe(false);
+    expect(fake.agentCalls[0]).toBe("bs-implement:pages");
+  });
+
+  it("builds a slice again when its PR is open and its head is not in the base", async () => {
+    const spec = demoSpec({ slices: [slices[0]] });
+    const fake = fakeBuild({ spec, branches: { "build-surface/shell": head }, prs: { "build-surface/shell": { number: 7, state: "open", merged: false, mergeSha: null, headSha: head } } });
+    const { host, runId } = start(fake);
+    await approveDeploy(host, runId, "shell", 7);
+    await gateOpened(host, gateId(runId, "final-walk"));
+    host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9007) }, OWNER);
+
+    await host.runtime.wait(runId);
+
+    expect(fake.agentCalls[0]).toBe("bs-implement:shell");
+  });
+});

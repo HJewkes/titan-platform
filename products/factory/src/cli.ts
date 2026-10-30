@@ -19,6 +19,8 @@ import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
+import { registerBlocker } from "./blocker/command.js";
+import type { InboxLink } from "./blocker/link.js";
 import { registerOwnerGates } from "./owner-gates/command.js";
 import { registerPlanner, type PlannerDeps } from "./planner/command.js";
 import { registerAutoresearch } from "./autoresearch/cli.js";
@@ -104,6 +106,8 @@ export interface CliDeps {
   configDeprecations?: (env: NodeJS.ProcessEnv) => string[];
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
+  /** What `blocker raise` asks for the inbox link; defaults to the configured titan-console argv. */
+  inboxLink?: InboxLink;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
   exitAfterServe?: () => void;
 }
@@ -146,7 +150,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

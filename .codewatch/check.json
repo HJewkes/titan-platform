@@ -16,7 +16,6 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
@@ -46,7 +45,8 @@
           "packages/speech-tts",
           "packages/speech-stt",
           "packages/speech-g2p",
-          "packages/test-timing"
+          "packages/test-timing",
+          "packages/egress-scan"
         ],
         "2": [
           "packages/session-read",
@@ -102,7 +102,6 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
@@ -132,7 +131,8 @@
           "packages/speech-tts",
           "packages/speech-stt",
           "packages/speech-g2p",
-          "packages/test-timing"
+          "packages/test-timing",
+          "packages/egress-scan"
         ],
         [
           "packages/session-read",

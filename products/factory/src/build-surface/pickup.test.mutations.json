@@ -27,6 +27,24 @@
       "kills": [
         "a fresh build-surface start over a branch a stopped run left behind implements again when the left branch has a failing gate at its head"
       ]
+    },
+    {
+      "name": "a slice whose head is in the base is built again",
+      "file": "products/factory/src/build-surface/routes.ts",
+      "find": "return ancestry.status === 0 ? {",
+      "replace": "return false ? {",
+      "kills": [
+        "a fresh build-surface start over a slice an earlier run already merged skips a slice whose head is in the base and builds the slice that depends on it"
+      ]
+    },
+    {
+      "name": "a squash-merged slice is built again",
+      "file": "products/factory/src/build-surface/routes.ts",
+      "find": "if (found.merged && found.mergeSha && found.headSha === head)",
+      "replace": "if (false)",
+      "kills": [
+        "a fresh build-surface start over a slice an earlier run already merged skips a squash-merged slice whose PR reports merged, though its head is not in the base"
+      ]
     }
   ]
 }

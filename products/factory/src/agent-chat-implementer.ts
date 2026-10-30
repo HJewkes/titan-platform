@@ -4,6 +4,8 @@ import { claudeSourceFromPath, readSessionObservations } from "@titan-design/ses
 import type { ReviewerMessage } from "@titan-design/review-panel";
 import type { ZodType } from "zod";
 import type { AgentChatAgents } from "./shepherd/agents.js";
+import { accountLimitRefusal } from "./shepherd/account-fallback.js";
+import { believedReset, parseLimitReset } from "./shepherd/account-limit.js";
 import { finishedTurnMessages } from "./shepherd/reviewer-reader.js";
 import { SpawnDeferred } from "./shepherd/spawn-gate.js";
 import { latestRow } from "./shepherd/wake-roster.js";
@@ -126,7 +128,17 @@ async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<Implem
   }
 }
 
-/** Runs `start` once the spawn gate admits it, and returns when that admitted ask was made, so a report is read from then on. */
+/** The epoch ms an account-limit refusal says the account resets, when it names one that is believed; otherwise undefined. */
+function limitResetOf(error: unknown, now: number): number | undefined {
+  const refusal = accountLimitRefusal(error);
+  const reset = refusal && parseLimitReset(refusal.message, now);
+  return reset !== undefined && believedReset(reset, now) === reset ? reset : undefined;
+}
+
+/**
+ * Runs `start` once the spawn gate admits it, and returns when that admitted ask was made, so a report is read from then on.
+ * An account-limit refusal that names its reset wakes at the reset, outside the retry bound: the account, not the machine, is what the wait is for.
+ */
 async function whenAdmitted(options: ResolvedOptions, name: string, signal: AbortSignal, start: () => Promise<void>): Promise<number> {
   const firstAsk = options.now();
   for (let waitMs = options.spawnRetry.firstMs; ; waitMs = Math.min(waitMs * 2, options.spawnRetry.maxMs)) {
@@ -135,9 +147,14 @@ async function whenAdmitted(options: ResolvedOptions, name: string, signal: Abor
       await start();
       return askedAt;
     } catch (error) {
-      if (!(error instanceof SpawnDeferred)) throw error;
+      const resetsAt = limitResetOf(error, askedAt);
+      if (resetsAt !== undefined) {
+        await options.sleep(resetsAt - askedAt, signal);
+        continue;
+      }
+      if (!(error instanceof SpawnDeferred) && accountLimitRefusal(error) === undefined) throw error;
       const minutes = Math.round(options.spawnRetry.totalMs / 60_000);
-      if (askedAt - firstAsk + waitMs > options.spawnRetry.totalMs) throw new Error(`${name} was not admitted within ${minutes} minutes: ${error.message}`);
+      if (askedAt - firstAsk + waitMs > options.spawnRetry.totalMs) throw new Error(`${name} was not admitted within ${minutes} minutes: ${error instanceof Error ? error.message : String(error)}`);
       await options.sleep(waitMs, signal);
     }
   }

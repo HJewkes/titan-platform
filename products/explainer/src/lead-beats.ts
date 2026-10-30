@@ -1,3 +1,4 @@
+import { cuedTargets } from "./beat-load.js";
 import type { BeatSpec } from "./beat-schema.js";
 import type { ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
@@ -8,7 +9,7 @@ export interface LeadBeat {
   spec: BeatSpec;
 }
 
-const targetsOf = (spec: BeatSpec | undefined): readonly string[] => spec?.emphasis?.targets ?? [];
+const targetsOf = (spec: BeatSpec | undefined): readonly string[] => (spec ? cuedTargets(spec) : []);
 
 /** Each chapter's lead beat spec; a chapter row naming no beat, or one the registry lacks, has none. */
 export function leadBeats(spine: SpineV1, specs: ReadonlyMap<string, BeatSpec>): LeadBeat[] {
@@ -22,7 +23,9 @@ export function leadBeats(spine: SpineV1, specs: ReadonlyMap<string, BeatSpec>):
 export function leadBeatLines(leads: readonly LeadBeat[]): string[] {
   return leads.map(({ chapter, spec }) => {
     const targets = targetsOf(spec);
-    const cues = targets.length > 0 ? `emphasis targets: ${targets.join(", ")}` : "no emphasis targets, so no cue is needed";
+    const lit = (spec.emphasis?.targets ?? []).filter((field) => !targets.includes(field));
+    const optional = lit.length > 0 ? `no cue is needed; a cue on ${lit.join(", ")} past its first word lights it` : "no emphasis targets, so no cue is needed";
+    const cues = targets.length > 0 ? `emphasis targets: ${targets.join(", ")}` : optional;
     return `- ${chapter}: ${spec.type} (${cues}). ${spec.summary} ${spec.recipe}`;
   });
 }
@@ -30,7 +33,7 @@ export function leadBeatLines(leads: readonly LeadBeat[]): string[] {
 /**
  * What leaves an emphasis target uncued, so the render would hold a static frame: a beat whose beat spec has emphasis
  * targets and no cue, a beat naming a spec the registry lacks, and a chapter whose lead beat spec, having targets,
- * is on none of its beats. A spec with no emphasis targets needs no cue.
+ * is on none of its beats. A spec with no target lists (a claim-card, whose claim shows on the first word) needs no cue.
  */
 export function uncuedTargets(script: Pick<ScriptV1, "beats">, leads: readonly LeadBeat[], specs: ReadonlyMap<string, BeatSpec>): string[] {
   const beats = script.beats.flatMap(({ id, visual }) => {

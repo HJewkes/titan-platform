@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly test-timing corpus ingest
+
+[Timer]
+# CI artifacts live 90 days; hourly keeps a regression visible within the day it lands.
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
