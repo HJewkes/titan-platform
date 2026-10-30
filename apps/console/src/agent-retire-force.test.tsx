@@ -5,6 +5,7 @@ import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
+import { z } from "zod";
 import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
@@ -32,7 +33,7 @@ const readBack = (effect: string, exitedAt: string | null) => ({ agent: NAME, ag
 const prepare =
   (forceStop: string | null, exitedAt: string | null = EXITED_AT) =>
   (args: unknown): Promise<JsonEnvelope<unknown>> => {
-    const { target } = args as { target: { force?: boolean } };
+    const { target } = z.object({ target: z.looseObject({ force: z.boolean().optional() }) }).parse(args);
     const effect = target.force === true ? "Retire dock-impl (4c1d9e0) with --force: discard what its worktree holds" : "Retire dock-impl (4c1d9e0): release its worktree";
     return Promise.resolve(successEnvelope({ status: "ready", target, readBack: readBack(effect, exitedAt), forceStop, readAt: new Date().toISOString(), confirm: CONFIRM, expiresAt: new Date().toISOString() }));
   };

@@ -6,6 +6,7 @@ import type { BrokerEvent, BrokerSession } from "@titan-design/chat-protocol/age
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
+import { z } from "zod";
 import type { AgentsSource } from "./agents.js";
 import type { BrokerReader } from "./broker.js";
 import type { OwnerActionClient } from "./owner-action.js";
@@ -92,17 +93,15 @@ async function harness(client: OwnerActionClient) {
   });
   const commands = retireTapCommands({ agents: agentsSource(), shepherd: shepherdReader(factory.port) }, { enabled: true, actionsDir: actionsDir(), client, now: () => clock });
   return {
-    prepare: async (target: object) => (await invokeCommand(commands["taps.prepare"], { target }, ownerContext())).envelope as JsonEnvelope<TapPrepareResult>,
+    prepare: async (target: object) => (await invokeCommand(commands["taps.prepare"], { target }, ownerContext())).envelope,
     act: (confirm: string) => invokeCommand(commands["taps.act"], { target: FORCED, confirm }, ownerContext()),
   };
 }
 
 type Ready = Extract<TapPrepareResult, { status: "ready" }>;
 
-function ready(envelope: JsonEnvelope<TapPrepareResult>): Ready {
-  if (!envelope.ok || envelope.data.status !== "ready") throw new Error(`not ready: ${JSON.stringify(envelope)}`);
-  return envelope.data;
-}
+const ready = (envelope: JsonEnvelope<unknown>): Ready =>
+  z.object({ ok: z.literal(true), data: z.custom<Ready>((data) => z.object({ status: z.literal("ready") }).safeParse(data).success) }).parse(envelope).data;
 
 describe("the agent page's forced retire", () => {
   it("a live agent offers no force retire", async () => {
