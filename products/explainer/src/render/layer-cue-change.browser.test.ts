@@ -13,7 +13,7 @@ const BROWSER_TIMEOUT_MS = 240_000;
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const cue = (atCue: string) => ({ action: "V6" as const, target: "desk", atCue });
 /** "parcels" reveals the desk card; "full" names it again once it is shown. */
-const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk, and the desk is full.", cues: [cue("parcels"), cue("full")], planned_s: 8 };
+const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk, and the desk is full.", cues: [cue("parcels"), cue("full")], planned_s: 8, band: "story" as const };
 
 /** The desk card opens by clip-path on "parcels"; `onFull` is its style once "full" is spoken. Two runs, so qa sees no late-fill. */
 const deskLayer = (onFull: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
@@ -65,7 +65,20 @@ describe("the rendered cue check on one custom layer", { timeout: BROWSER_TIMEOU
     const rows = await checkLayer(module);
 
     // Assert
-    expect(rows).toEqual([expect.objectContaining({ beat: "b-desk", element: "desk", rule: "still-cue", text: "full" })]);
+    expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ beat: "b-desk", element: "desk", rule: "still-cue", text: "full" })]));
+    expect(rows.map((row) => row.rule).sort()).toEqual(["static-window", "still-cue"]);
+  });
+
+  // catches: a check that reads only cues, so a layer that stops changing after its last cue passes and qa fails it (TP-4611)
+  it("names the still stretch the dead cue leaves, from the frames the layer draws", async () => {
+    // Arrange
+    const module = CLIPPED_OUTLINE;
+
+    // Act
+    const rows = await checkLayer(module);
+
+    // Assert
+    expect(rows).toContainEqual(expect.objectContaining({ beat: "b-desk", element: "frame", rule: "static-window", text: expect.stringMatching(/^still for 4\.\d s, from 1\.\d s to 6\.0 s of the beat$/) }));
   });
 
   it("passes a repeat cue that lights the shown card at full colour and lets it return to rest", async () => {
