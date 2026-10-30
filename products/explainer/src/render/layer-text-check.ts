@@ -2,11 +2,11 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DEFAULT_OPTIONS, type Finding, type InspectOptions, type Moment, type ProbedMoment } from "@titan-design/render-qa";
-import { badTextRows, distinctRows, heldRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
+import { badTextRows, contentFillRows, distinctRows, frameWordRows, heldRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";
 import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js";
-import { heldAtSamples, qaSamplings } from "../qa/layer-contrast.js";
+import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
 import { narrationRows } from "../qa/layer-narration.js";
 import { timelineFromArtifact } from "../qa/qa-timeline.js";
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
@@ -36,7 +36,7 @@ async function layerPage(input: LayerCheckInput, built: BuiltPage, scratch: stri
 interface Moments {
   /** Each reveal once it settles, then the beat's end: the text rules and the probes read these. */
   reveal: readonly number[];
-  /** qa's own samples, which the low-contrast and off-frame rules are held over, as qa holds them. */
+  /** qa's own samples at every 2 Hz phase the voiced beat start may land on, which low-contrast and off-frame are held over. */
   samplings: readonly Moment[][];
 }
 
@@ -54,14 +54,16 @@ async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: 
     probed.push(...(await page.probe([{ beat, t }])));
   }
   const sampled = heldRows(heldAtSamples(moments.samplings, (t) => findings.get(t) ?? []));
-  return distinctRows([...rows, ...sampled, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
+  const frame = [...contentFillRows(beat, probed.at(-1)!, { width: options.W, height: options.H }), ...frameWordRows(beat, probed)];
+  return distinctRows([...rows, ...sampled, ...frame, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
 }
 
 /**
  * The $0 check after a layer build: the layer alone on the composition page, seeked to each reveal point, held to qa's
- * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts and G10 rules
- * against the beat's spoken words. Low-contrast text and off-frame elements are held only where qa would hold them: over qa's
- * own samples, by its persistence rule. No model call; Chromium only.
+ * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, to qa's words-per-frame gate, to its
+ * content-fill gate on the settled frame, and to qa's narration-facts and G10 rules against the beat's spoken words.
+ * Low-contrast text and off-frame elements are read over qa's own samples at every 2 Hz phase, as qa would read them once
+ * the voice sets the beat's start, so the check is at least as strict as qa wherever that start lands. No model call; Chromium only.
  */
 export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerTextCheck {
   const engine = deps.engine ?? chromiumQaEngine();
@@ -76,7 +78,7 @@ export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerText
       try {
         const page = await engine.open(served.url, options, []);
         try {
-          const moments = { reveal: revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), samplings: qaSamplings(timelineFromArtifact(timeline)) };
+          const moments = { reveal: revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), samplings: layerSamplings(timelineFromArtifact(timeline)) };
           return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, moments, options);
         } finally {
           await page.close();

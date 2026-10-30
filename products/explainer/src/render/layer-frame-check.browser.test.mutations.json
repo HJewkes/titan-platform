@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer check reads qa's sweep at phase 0 only",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "export const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;",
+      "replace": "export const SWEEP_PHASES_S = [0] as const;",
+      "kills": [
+        "the rendered frame check on one custom layer refuses a card off frame that qa holds only once the voiced start moves its 2 Hz sweep"
+      ]
+    },
+    {
+      "name": "the rendered layer check reads no content-fill gate",
+      "file": "products/explainer/src/render/layer-text-check.ts",
+      "find": "const frame = [...contentFillRows(beat, probed.at(-1)!, { width: options.W, height: options.H }), ...frameWordRows(beat, probed)];",
+      "replace": "const frame = [...frameWordRows(beat, probed)];",
+      "kills": [
+        "the rendered frame check on one custom layer flags a layer whose settled content spans under 60 % of the frame width with qa's content-fill gate"
+      ]
+    },
+    {
+      "name": "the rendered layer check reads no words-per-frame gate",
+      "file": "products/explainer/src/render/layer-text-check.ts",
+      "find": "const frame = [...contentFillRows(beat, probed.at(-1)!, { width: options.W, height: options.H }), ...frameWordRows(beat, probed)];",
+      "replace": "const frame = [...contentFillRows(beat, probed.at(-1)!, { width: options.W, height: options.H })];",
+      "kills": [
+        "the rendered frame check on one custom layer flags a layer showing 22 words at once with qa's words-per-frame gate"
+      ]
+    }
+  ]
+}

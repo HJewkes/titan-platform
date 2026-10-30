@@ -1,5 +1,7 @@
 import type { Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
+import { contentFill, MIN_CONTENT_FILL } from "../content-fill.js";
 import { cueResolverFromWords } from "../cues.js";
+import { FRAME_WORDS, frameWords } from "../qa/timing-gates.js";
 import type { BuilderRef } from "./beat-worker.js";
 import { FULL_COLOUR_RULE } from "./layer-fade.js";
 import type { LayerPacket } from "./layer-packet.js";
@@ -9,7 +11,9 @@ import type { BuiltLayer } from "./layer-tree.js";
 export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 /** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
 export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule;
+/** qa's frame-wide gates on a layer: content-fill on its settled frame, words-per-frame on every probed frame. */
+export type LayerFrameRule = "content-fill" | "words-per-frame";
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "off-frame" | "bad-text" | LayerNarrationRule | LayerFrameRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -95,6 +99,19 @@ export const heldRows = (held: readonly HeldFinding[]): LayerTextRow[] =>
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
   probed.flatMap(({ t, texts }) => texts.filter(({ text }) => BAD_TEXT.test(text)).map(({ element, text }) => ({ beat, element, rule: "bad-text" as const, text, atS: t })));
 
+/** qa's content-fill gate on the layer's settled frame: its content spans under 60 % of the frame width. */
+export function contentFillRows(beat: string, settled: Pick<ProbedMoment, "t" | "boxes">, frame: { width: number; height: number }): LayerTextRow[] {
+  const fill = contentFill({ beat, t: settled.t, boxes: settled.boxes }, frame);
+  return fill >= MIN_CONTENT_FILL ? [] : [{ beat, element: "stage", rule: "content-fill", text: `${Math.round(fill * 100)} % of the frame width`, atS: settled.t }];
+}
+
+/** qa's words-per-frame gate on every probed frame of the layer, as one row at the frame with the most words. */
+export function frameWordRows(beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] {
+  const counts = probed.map(({ t, texts }) => ({ t, n: frameWords(texts) })).filter(({ n }) => n > FRAME_WORDS);
+  const most = counts.reduce<(typeof counts)[number] | undefined>((top, count) => (top === undefined || count.n > top.n ? count : top), undefined);
+  return most ? [{ beat, element: "frame", rule: "words-per-frame", text: `${most.n} words on screen`, atS: most.t }] : [];
+}
+
 /** One row per element, rule, text and fact, the earliest moment kept. */
 export function distinctRows(rows: readonly LayerTextRow[]): LayerTextRow[] {
   const first = new Map<string, LayerTextRow>();
@@ -117,6 +134,8 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "bad-text": "draw a real value: read the clock as const { t } = useBeatTime(), and format every number before it is shown",
   "unspoken-fact": "draw no number or name the narration does not say; drop it or show only what is spoken",
   "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
+  "content-fill": "spread the settled content across at least 60 % of the frame width, with shapes painted in defined theme tokens",
+  "words-per-frame": "show at most 20 words on screen at once: keep key nouns and numbers, drop the rest",
 };
 
 function ruleFix(row: LayerTextRow, fadedTexts: ReadonlySet<string>): string {
