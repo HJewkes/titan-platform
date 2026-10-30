@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "light at a 5 % tint with no ring",
+      "file": "products/explainer/src/composition/beats/stage/emphasis.ts",
+      "find": "  if (lit <= 0) return {};",
+      "replace": "  if (lit > 0) return { background: mix(base, \"var(--color-brand-primary)\", lit * 0.05) };",
+      "kills": [
+        "a lit element on the rendered page a lit 'list row' changes more than 10 px of the 320x180 frame, visibly and only inside its box",
+        "a lit element on the rendered page a lit 'bar' changes more than 10 px of the 320x180 frame, visibly and only inside its box",
+        "a lit element on the rendered page a lit 'stat' changes more than 10 px of the 320x180 frame, visibly and only inside its box",
+        "a lit element on the rendered page a lit 'claim' changes more than 10 px of the 320x180 frame, visibly and only inside its box"
+      ]
+    }
+  ]
+}

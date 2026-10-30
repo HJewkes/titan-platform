@@ -78,25 +78,32 @@ function elementBox({ beat, target, box, pad }: { beat: string; target: string; 
 
 const inside = (box: EmphasisBox, x: number, y: number) => x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height;
 
-/** Full-resolution pixels that moved past encoder noise outside `box`: what a treatment changed beyond its element. */
-function changedOutside(a: MarkFrame, b: MarkFrame, box: EmphasisBox): number {
-  let changed = 0;
+/**
+ * A step a viewer sees, not just one past encoder noise: three times the noise tolerance. A tint of under a tenth
+ * moves no channel that far (5 % of the full range is 13 levels), so only a treatment as strong as the token's lit
+ * node clears it.
+ */
+const VISIBLE_LEVELS = 3 * CHANNEL_TOLERANCE;
+
+const movedPast = (a: MarkFrame, b: MarkFrame, at: number, levels: number) => [0, 1, 2, 3].some((c) => Math.abs(a.rgba[at + c]! - b.rgba[at + c]!) > levels);
+
+/** Full-resolution pixels between two frames that moved more than `levels`, counted inside or outside `box`. */
+function movedPixels(a: MarkFrame, b: MarkFrame, box: EmphasisBox, where: "inside" | "outside", levels: number): number {
+  let moved = 0;
   for (let y = 0; y < a.height; y++) {
     for (let x = 0; x < a.width; x++) {
-      if (inside(box, x, y)) continue;
-      const at = (y * a.width + x) * 4;
-      if ([0, 1, 2, 3].some((c) => Math.abs(a.rgba[at + c]! - b.rgba[at + c]!) > CHANNEL_TOLERANCE)) changed++;
+      if (inside(box, x, y) === (where === "inside") && movedPast(a, b, (y * a.width + x) * 4, levels)) moved++;
     }
   }
-  return changed;
+  return moved;
 }
 
 const greyPixelsChanged = (a: Uint8Array, b: Uint8Array) => Math.round(greyChangedShare(a, b) * FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
 
 describe("a lit element on the rendered page", { timeout: BROWSER_TIMEOUT_MS }, () => {
-  // Mutation: light at a 5 % tint with no ring; the lit box then moves under MIN_CHANGED_SHARE past encoder noise.
+  // Mutation: light at a 5 % tint with no ring; no pixel of the lit box then moves VISIBLE_LEVELS, and it fails.
   // The change stays inside the element's own box: the treatment points at what the cue names and moves nothing else.
-  test.each(CASES)("a lit $kind changes more than 10 px of the 320x180 frame", async (lit) => {
+  test.each(CASES)("a lit $kind changes more than 10 px of the 320x180 frame, visibly and only inside its box", async (lit) => {
     // Arrange
     const { beat, startS, target, atS } = lit;
     const before = await frameAt(startS + atS - BEFORE_S, `${target}-before`);
@@ -104,12 +111,14 @@ describe("a lit element on the rendered page", { timeout: BROWSER_TIMEOUT_MS }, 
     const box = await page.evaluate(elementBox, { beat, target, box: "box" in lit ? lit.box : undefined, pad: BOX_PAD_PX });
 
     // Act
-    const inBox = changedShare({ before: before.full, after: during.full, target: box });
+    const step = { before: before.full, after: during.full, target: box };
+    const visible = movedPixels(before.full, during.full, box, "inside", VISIBLE_LEVELS) / (box.width * box.height);
     const greyPx = greyPixelsChanged(before.grey, during.grey);
-    const outside = changedOutside(before.full, during.full, box);
+    const outside = movedPixels(before.full, during.full, box, "outside", CHANNEL_TOLERANCE);
 
     // Assert
-    expect(inBox).toBeGreaterThanOrEqual(MIN_CHANGED_SHARE);
+    expect(changedShare(step)).toBeGreaterThanOrEqual(MIN_CHANGED_SHARE);
+    expect(visible).toBeGreaterThanOrEqual(MIN_CHANGED_SHARE);
     expect(greyPx).toBeGreaterThan(STATIC_WINDOW_PX);
     expect(outside).toBe(0);
   });
