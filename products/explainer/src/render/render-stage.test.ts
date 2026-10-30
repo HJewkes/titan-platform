@@ -1,10 +1,12 @@
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ArtifactStore, sha256 } from "../workflow/artifacts.js";
 import { openState, runOneStage, runVideo } from "../workflow/host.js";
 import { fakeHost, fakeRender, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
+import { StageRecordSchema } from "../workflow/records.js";
+import { readJson, runPaths } from "../workflow/run-dir.js";
 import { runStageChecks } from "../workflow/stage-checks.js";
 import { SYNTHETIC_ANCHORS, SYNTHETIC_LAYER, writeSyntheticTree } from "./custom-layer-fixture.test-helpers.js";
 import type { FakeRenderOptions } from "./render-fakes.test-helpers.js";
@@ -160,6 +162,28 @@ describe("the render stage", () => {
     await expect(render).rejects.toThrow(/qa: refusing to render render: \d+ held errors/);
   });
 
+  it("a render refused by qa stores qa.json on its failed record", async () => {
+    fx = seeded();
+
+    await refusedRender();
+
+    const failed = failedRenderRecord();
+    const report = JSON.parse(artifact(failed.outputs["qa-report"]!));
+    expect(report).toMatchObject({ schema: "explainer.render-qa-gate/v1", pass: false });
+    expect(report.errors.length).toBeGreaterThan(0);
+    expect(failed.notes[0]).toContain(failed.outputs["qa-report"]);
+    expect(failed.notes[0]).not.toContain("explainer-render-");
+  });
+
+  it("the refusal note lists each held row with its beat", async () => {
+    fx = seeded();
+
+    await refusedRender();
+
+    const [note] = failedRenderRecord().notes;
+    expect(note).toMatch(/text-overlap beat-\d+ @[\d.]+s h2/);
+  });
+
   it("reports two-run as a failed, non-gating check when the second render's bytes differ", async () => {
     fx = seeded();
     const same = await renderStage({ twoRun: true });
@@ -180,6 +204,17 @@ describe("the render stage", () => {
     expect(record.checks.map((c) => c.name)).toEqual(["duration-agreement"]);
   });
 });
+
+/** The render stage on a page whose fake qa holds one overlap, so the stage refuses. */
+async function refusedRender(): Promise<void> {
+  const refused = renderStage({}, { qa: { findingsAt: () => [{ kind: "text-overlap", el: "h2", text: "a", other: "b", at: { x: 0, y: 0, w: 9, h: 9 } }] } });
+  await expect(refused).rejects.toThrow(/qa: refusing to render render: \d+ held errors/);
+}
+
+function failedRenderRecord() {
+  const runId = readdirSync(path.join(fx.dataDir, "runs")).find((id) => readJson(runPaths(fx.dataDir, id).failed("render"), StageRecordSchema));
+  return readJson(runPaths(fx.dataDir, runId!).failed("render"), StageRecordSchema)!;
+}
 
 /** A manifest that parses, with the page and mix lengths given. */
 function manifest(pageDurationS: number, durationS: number): RenderManifest {

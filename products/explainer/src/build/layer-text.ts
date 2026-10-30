@@ -1,4 +1,4 @@
-import type { Finding, ProbedMoment } from "@titan-design/render-qa";
+import type { Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
 import { cueResolverFromWords } from "../cues.js";
 import type { BuilderRef } from "./beat-worker.js";
 import type { LayerPacket } from "./layer-packet.js";
@@ -8,7 +8,7 @@ import type { BuiltLayer } from "./layer-tree.js";
 export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 /** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
 export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "bad-text" | LayerNarrationRule;
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "low-contrast" | "bad-text" | LayerNarrationRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -19,6 +19,15 @@ export interface LayerTextRow {
   atS: number;
   /** The number or name an unspoken-fact row shows that the narration never says. */
   fact?: string;
+  /** A low-contrast row's measured ratio, the ratio its size needs, and its text and ground colours as drawn. */
+  contrast?: LayerContrast;
+}
+
+export interface LayerContrast {
+  ratio: number;
+  need: number;
+  colour: string;
+  ground: string;
 }
 
 export interface LayerCheckInput {
@@ -62,9 +71,22 @@ export function revealMoments(cues: Readonly<Record<string, number>>, durationS:
 
 const isQaTextRule = (kind: string): kind is (typeof QA_TEXT_RULES)[number] => QA_TEXT_RULES.some((rule) => rule === kind);
 
+/** The colours and ratios qa's low-contrast rule measured, when the finding carries them all. */
+function contrastOf({ ratio, need, fg, bg }: Finding): LayerContrast | undefined {
+  return ratio === undefined || need === undefined || fg === undefined || bg === undefined ? undefined : { ratio, need, colour: fg, ground: bg };
+}
+
 /** qa's small-text and under-chrome findings at one moment, as rows. */
 export const qaRows = (beat: string, atS: number, findings: readonly Finding[]): LayerTextRow[] =>
   findings.flatMap(({ kind, el, text }) => (isQaTextRule(kind) ? [{ beat, element: el, rule: kind, text: text ?? "", atS }] : []));
+
+/** The low-contrast findings qa holds, as rows first seen at the finding's first sample. */
+export const contrastRows = (held: readonly HeldFinding[]): LayerTextRow[] =>
+  held.flatMap(({ kind, beat, finding, ts }) => {
+    if (kind !== "low-contrast") return [];
+    const contrast = contrastOf(finding);
+    return [{ beat, element: finding.el, rule: "low-contrast" as const, text: finding.text ?? "", atS: ts[0] ?? 0, ...(contrast ? { contrast } : {}) }];
+  });
 
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
@@ -86,12 +108,19 @@ export const formatLayerRow = ({ beat, element, rule, text, atS }: LayerTextRow)
 const RULE_FIX: Record<LayerTextRule, string> = {
   "small-text": "draw it at 40 px or larger",
   "under-chrome": "keep it inside the stage box, inset 0, without running past its edges",
+  "low-contrast":
+    "text on a filled shape uses that fill's on- text token, as var(--color-on-brand-primary) on var(--color-brand-primary-solid), or use a darker fill",
   "bad-text": "draw a real value: read the clock as const { t } = useBeatTime(), and format every number before it is shown",
   "unspoken-fact": "draw no number or name the narration does not say; drop it or show only what is spoken",
   "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
 };
 
-const ruleFix = (row: LayerTextRow): string => (row.fact === undefined ? RULE_FIX[row.rule] : `the narration never says ${row.fact}: ${RULE_FIX[row.rule]}`);
+function ruleFix(row: LayerTextRow): string {
+  if (row.fact !== undefined) return `the narration never says ${row.fact}: ${RULE_FIX[row.rule]}`;
+  const { contrast } = row;
+  if (contrast === undefined) return RULE_FIX[row.rule];
+  return `${contrast.colour} on ${contrast.ground} is ${contrast.ratio}:1, under the ${contrast.need}:1 its size needs: ${RULE_FIX[row.rule]}`;
+}
 
 /** What a rebuild is told about the elements the last build drew against qa's text rules, as a field of its packet. */
 export const layerTextHint = (rows: readonly LayerTextRow[]): string =>

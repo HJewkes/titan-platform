@@ -46,6 +46,15 @@ function nanCheck() {
   return { checked, check };
 }
 
+const AMBER_LAYER = "export default () => <div style={{ background: \"#f5a524\" }}><span id=\"parcels\" style={{ color: \"#ffffff\" }}>12</span></div>;\n";
+const ON_ACCENT_LAYER = "export default () => <div style={{ background: \"var(--color-brand-primary-solid)\" }}><span id=\"parcels\" style={{ color: \"var(--color-on-brand-primary)\" }}>12</span></div>;\n";
+
+/** Stands in for the rendered check: white on the amber fill measures 2.04:1, as qa's low-contrast rule reports it. */
+const amberCheck: LayerTextCheck = async ({ layer }) =>
+  layer.build.module.includes("#f5a524")
+    ? [{ beat: layer.beatId, element: "span#parcels", rule: "low-contrast", text: "12", atS: 1, contrast: { ratio: 2.04, need: 3, colour: "#ffffff", ground: "#f5a524" } }]
+    : [];
+
 const hostWith = (worker: BeatWorker, layerTextCheck: LayerTextCheck) =>
   fakeHost(fx, fakeScriptModel(), fakeRender(), { beatWorker: worker, layerTextCheck });
 
@@ -176,6 +185,33 @@ describe("the text check on custom-layer builds", () => {
 
     // Act
     await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(1);
+  });
+
+  it("a layer drawing white text on an amber bar under 3:1 gets one rebuild naming the text and its ratio", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(AMBER_LAYER, ON_ACCENT_LAYER);
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, amberCheck));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/^the last build broke qa's text rules: low-contrast on span#parcels "12" \(#ffffff on #f5a524 is 2\.04:1, under the 3:1 .*--color-on-brand-primary/);
+    const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+    expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(ON_ACCENT_LAYER);
+  });
+
+  it("a layer whose text passes contrast is not rebuilt", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(ON_ACCENT_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, amberCheck));
 
     // Assert
     expect(packets).toHaveLength(1);

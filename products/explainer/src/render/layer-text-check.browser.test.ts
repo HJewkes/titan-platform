@@ -34,6 +34,12 @@ const NAN_COUNT = layer(`const t = useBeatTime() as unknown as number;
 const PAST_THE_BOX = layer(`useBeatTime();
   return <div id="footer" style={{ position: "absolute", left: 120, bottom: -120, fontSize: 48 }}>last scan at the desk</div>;`);
 
+/** A 56 px count on a filled bar, in the colours `text` on `fill`. */
+const onBar = (text: string, fill: string) => layer(`useBeatTime();
+  return <div style={{ position: "absolute", left: 120, top: 80, padding: 24, background: "${fill}" }}>
+    <div id="count" style={{ fontSize: 56, color: "${text}" }}>12</div>
+  </div>;`);
+
 /** Shows its count when the cue word "desk" is spoken, read through useCue; the page must declare the cue. */
 const cueTimed = (shown: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
 
@@ -96,6 +102,28 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const rows = await checkCued(cueTimed("12 parcels, 3 held"));
 
     expect(rows).toEqual([expect.objectContaining({ beat: "b-desk", rule: "unspoken-fact", text: "12 parcels, 3 held", fact: "3" })]);
+  });
+
+  it("flags white text on an amber bar under 3:1 with its ratio and both colours", async () => {
+    // Arrange
+    const module = onBar("#ffffff", "#f5a524");
+
+    // Act
+    const rows = await checkLayer(module);
+
+    // Assert
+    expect(rows).toEqual([expect.objectContaining({ rule: "low-contrast", text: "12", contrast: { ratio: 2.04, need: 3, colour: "#ffffff", ground: "#f5a524" } })]);
+  });
+
+  it("raises no row for the theme's on-accent text on its accent fill, so the layer is not rebuilt", async () => {
+    // Arrange
+    const module = onBar("var(--color-on-brand-primary)", "var(--color-brand-primary-solid)");
+
+    // Act
+    const rows = await checkLayer(module);
+
+    // Assert
+    expect(rows).toEqual([]);
   });
 
   // Mutation: the page's CSS names a font by a network or absolute URL.

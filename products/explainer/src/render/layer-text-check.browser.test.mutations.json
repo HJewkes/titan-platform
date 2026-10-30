@@ -36,6 +36,15 @@
       "kills": [
         "the rendered text check on one custom layer flags a settled number the narration never says with the unspoken-fact rule"
       ]
+    },
+    {
+      "name": "qa's low-contrast finding drops its colours",
+      "file": "packages/render-qa/src/inspect-frame-rules.ts",
+      "find": "const colours = { need, fg: h.hex(fg), bg: h.hex(bg) }",
+      "replace": "const colours = { need }",
+      "kills": [
+        "the rendered text check on one custom layer flags white text on an amber bar under 3:1 with its ratio and both colours"
+      ]
     }
   ]
 }

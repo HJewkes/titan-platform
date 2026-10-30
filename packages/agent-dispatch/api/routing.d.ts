@@ -1,88 +1,5 @@
-import { P as PriorRouting, W as WorkflowTable, T as TaskFacts } from '../prior.js';
-export { C as CLASSES, a as Classified, D as DISPATCHABLE, I as IMPLEMENTER_LADDER, b as Implementer, M as MERGE_LADDER, c as PATH_LISTS, d as PLAN_LADDER, e as PRIORS, f as PRIOR_ROUTINGS, g as PathList, h as PlanFacts, i as Prior, j as PriorRouter, k as PriorRule, l as Profile, R as REVIEW_LADDER, m as Routed, S as ShapeClass, n as TABLE_VERSION, o as TableRead, p as WorkflowRow, q as classifyTask, r as parseWorkflowTable, s as planFacts, t as priorRoute, u as profileFor, v as unitsOf } from '../prior.js';
-
-/**
- * The `route_*` keys a dispatcher writes on its spawn row, defined once so the writer, the readout and the outcome
- * join cannot drift. The chosen profile is not here: it is the row's own `profile`.
- */
-declare const ROUTE_META_KEYS: readonly ["route_mode", "route_source", "route_prior", "route_reason", "route_requested", "route_wanted", "route_workflow", "route_table", "route_facts", "route_candidate", "route_candidate_wanted"];
-type RouteMetaKey = (typeof ROUTE_META_KEYS)[number];
-declare const FACT_SOURCES: readonly ["plan-slice", "plan", "req", "none"];
-type FactSource = (typeof FACT_SOURCES)[number];
-declare const FACT_NAMES: readonly ["estimate", "done_when", "kind", "owns", "slice"];
-type FactName = (typeof FACT_NAMES)[number];
-/** Which facts a decision saw and where its owns came from, so the readout can measure fact coverage. */
-interface FactsNote {
-    source: FactSource;
-    present: FactName[];
-    /** The task id was found in more than one initiative; the first was read. */
-    ambiguous?: true;
-}
-declare const ROUTE_SOURCES: readonly ["auto", "routed", "agrees", "shadow", "override", "keep-role", "no-task", "table-error"];
-type RouteSource = (typeof ROUTE_SOURCES)[number];
-interface RouteDecision {
-    mode: "off" | "shadow" | "on";
-    source: RouteSource;
-    /** The profile that runs. */
-    profile: string;
-    requested: string;
-    prior?: string;
-    reason?: string;
-    /** The table's own pick, even when it is outside the tiers and so never applied. */
-    wanted?: string;
-    /** The class row the prior sent the task to. */
-    workflow?: string;
-    table?: string;
-    facts?: FactsNote;
-    candidate?: string;
-    candidateWanted?: string;
-    /** One line for the dispatcher's log when the decision changed, or would change, the profile. */
-    note?: string;
-}
-/** The decision as `route_*` string fields; absent parts are left out rather than written empty. */
-declare function routeMeta(decision: RouteDecision): Partial<Record<RouteMetaKey, string>>;
-
-/**
- * The spawn-time route: which implementer profile a spawn runs as, decided from the workflow table. Pure. Routing
- * picks a profile and never refuses: a missing table, missing facts or a pick outside the tiers keeps the request.
- */
-declare const AUTO_PROFILE = "auto";
-/** The profile `auto` runs as whenever the table cannot place it. */
-declare const AUTO_FALLBACK = "bd-implementer";
-/** Fix rounds stay on the profile they asked for: they are logged, never routed. */
-declare const DEFAULT_KEEP_ROLES: readonly string[];
-/** A linted table and its id for the decision log, such as `shape-v1@1a2b3c4d`. */
-interface RouteTable {
-    table: WorkflowTable;
-    id: string;
-}
-interface RouteInput {
-    mode: PriorRouting;
-    requested: string;
-    /** Undefined when the table could not be read or failed its lint; `tableProblem` says why. */
-    table: RouteTable | undefined;
-    tableProblem?: string;
-    taskId?: string;
-    role?: string;
-    keepRoles?: readonly string[];
-    override?: string;
-    facts?: TaskFacts;
-    factsNote?: FactsNote;
-    /** A table evaluated beside the live one; its pick is recorded and never applied. */
-    candidate?: RouteTable;
-}
-declare const FAMILIES: readonly ["bd-", ""];
-type ImplementerFamily = (typeof FAMILIES)[number];
-/** The family a requested profile belongs to, or undefined for a profile the router leaves alone. */
-declare function implementerFamily(profile: string): ImplementerFamily | undefined;
-/** The table's pick at the caller's family, so `implementer` can become `implementer-lite` but never a bd profile. */
-declare function inFamily(wanted: string, family: ImplementerFamily): string | undefined;
-/**
- * The decision for one spawn, or undefined when the spawn is not routed: a profile outside the implementer family,
- * an explicit profile with routing off, or an explicit profile with no task. `auto` is the caller's own request to
- * route, so it classifies in every mode.
- */
-declare function routeSpawn(input: RouteInput): RouteDecision | undefined;
+import { R as RouteSource } from '../route.js';
+export { A as AUTO_FALLBACK, a as AUTO_PROFILE, C as CLASSES, b as Classified, D as DEFAULT_KEEP_ROLES, c as DISPATCHABLE, F as FACT_NAMES, d as FACT_SOURCES, e as FactName, f as FactSource, g as FactsNote, I as IMPLEMENTER_LADDER, h as Implementer, i as ImplementerFamily, M as MERGE_LADDER, P as PATH_LISTS, j as PLAN_LADDER, k as PRIORS, l as PRIOR_ROUTINGS, m as PathList, n as PlanFacts, o as Prior, p as PriorRouter, q as PriorRouting, r as PriorRule, s as Profile, t as REVIEW_LADDER, u as ROUTE_META_KEYS, v as ROUTE_SOURCES, w as RouteDecision, x as RouteInput, y as RouteMetaKey, z as RouteTable, B as Routed, S as ShapeClass, T as TABLE_VERSION, E as TableRead, G as TaskFacts, W as WorkflowRow, H as WorkflowTable, J as classifyTask, K as implementerFamily, L as inFamily, N as parseWorkflowTable, O as planFacts, Q as priorRoute, U as profileFor, V as routeMeta, X as routeSpawn, Y as unitsOf } from '../route.js';
 
 /**
  * The shadow readout over logged spawn rows: how often the table agrees with what dispatchers asked for, how often it
@@ -115,9 +32,9 @@ interface RouteSummary {
 }
 declare function summarizeRoutes(rows: readonly RouteRow[]): RouteSummary;
 
-export { AUTO_FALLBACK, AUTO_PROFILE, DEFAULT_KEEP_ROLES, FACT_NAMES, FACT_SOURCES, type FactName, type FactSource, type FactsNote, type ImplementerFamily, PriorRouting, ROUTE_META_KEYS, ROUTE_SOURCES, type RouteDecision, type RouteInput, type RouteMetaKey, type RouteRow, type RouteSource, type RouteSummary, type RouteTable, TaskFacts, WorkflowTable, implementerFamily, inFamily, routeMeta, routeSpawn, summarizeRoutes };
+export { type RouteRow, RouteSource, type RouteSummary, summarizeRoutes };
 
-// ./dist/prior.d.ts
+// ./dist/route.d.ts
 /**
  * The workflow table as data, and its lint. Every value is a closed enum, so a typo is a lint problem rather than a
  * row that silently matches nothing. Pure: the caller reads the file (`./routing/node` does).
@@ -218,4 +135,87 @@ interface PlanFacts {
 /** The union of the plan's slice owns, or the named slice's owns and points; empty with no plan or a failing one. */
 declare function planFacts(planText: string | undefined, slice?: string): PlanFacts;
 
-export { CLASSES as C, DISPATCHABLE as D, IMPLEMENTER_LADDER as I, MERGE_LADDER as M, type PriorRouting as P, REVIEW_LADDER as R, type ShapeClass as S, type TaskFacts as T, type WorkflowTable as W, type Classified as a, type Implementer as b, PATH_LISTS as c, PLAN_LADDER as d, PRIORS as e, PRIOR_ROUTINGS as f, type PathList as g, type PlanFacts as h, type Prior as i, type PriorRouter as j, type PriorRule as k, type Profile as l, type Routed as m, TABLE_VERSION as n, type TableRead as o, type WorkflowRow as p, classifyTask as q, parseWorkflowTable as r, planFacts as s, priorRoute as t, profileFor as u, unitsOf as v };
+/**
+ * The `route_*` keys a dispatcher writes on its spawn row, defined once so the writer, the readout and the outcome
+ * join cannot drift. The chosen profile is not here: it is the row's own `profile`.
+ */
+declare const ROUTE_META_KEYS: readonly ["route_mode", "route_source", "route_prior", "route_reason", "route_requested", "route_wanted", "route_workflow", "route_table", "route_facts", "route_candidate", "route_candidate_wanted"];
+type RouteMetaKey = (typeof ROUTE_META_KEYS)[number];
+declare const FACT_SOURCES: readonly ["plan-slice", "plan", "req", "none"];
+type FactSource = (typeof FACT_SOURCES)[number];
+declare const FACT_NAMES: readonly ["estimate", "done_when", "kind", "owns", "slice"];
+type FactName = (typeof FACT_NAMES)[number];
+/** Which facts a decision saw and where its owns came from, so the readout can measure fact coverage. */
+interface FactsNote {
+    source: FactSource;
+    present: FactName[];
+    /** The task id was found in more than one initiative; the first was read. */
+    ambiguous?: true;
+}
+declare const ROUTE_SOURCES: readonly ["auto", "routed", "agrees", "shadow", "override", "keep-role", "no-task", "table-error"];
+type RouteSource = (typeof ROUTE_SOURCES)[number];
+interface RouteDecision {
+    mode: "off" | "shadow" | "on";
+    source: RouteSource;
+    /** The profile that runs. */
+    profile: string;
+    requested: string;
+    prior?: string;
+    reason?: string;
+    /** The table's own pick, even when it is outside the tiers and so never applied. */
+    wanted?: string;
+    /** The class row the prior sent the task to. */
+    workflow?: string;
+    table?: string;
+    facts?: FactsNote;
+    candidate?: string;
+    candidateWanted?: string;
+    /** One line for the dispatcher's log when the decision changed, or would change, the profile. */
+    note?: string;
+}
+/** The decision as `route_*` string fields; absent parts are left out rather than written empty. */
+declare function routeMeta(decision: RouteDecision): Partial<Record<RouteMetaKey, string>>;
+
+/**
+ * The spawn-time route: which implementer profile a spawn runs as, decided from the workflow table. Pure. Routing
+ * picks a profile and never refuses: a missing table, missing facts or a pick outside the tiers keeps the request.
+ */
+declare const AUTO_PROFILE = "auto";
+/** The profile `auto` runs as whenever the table cannot place it. */
+declare const AUTO_FALLBACK = "bd-implementer";
+/** Fix rounds stay on the profile they asked for: they are logged, never routed. */
+declare const DEFAULT_KEEP_ROLES: readonly string[];
+/** A linted table and its id for the decision log, such as `shape-v1@1a2b3c4d`. */
+interface RouteTable {
+    table: WorkflowTable;
+    id: string;
+}
+interface RouteInput {
+    mode: PriorRouting;
+    requested: string;
+    /** Undefined when the table could not be read or failed its lint; `tableProblem` says why. */
+    table: RouteTable | undefined;
+    tableProblem?: string;
+    taskId?: string;
+    role?: string;
+    keepRoles?: readonly string[];
+    override?: string;
+    facts?: TaskFacts;
+    factsNote?: FactsNote;
+    /** A table evaluated beside the live one; its pick is recorded and never applied. */
+    candidate?: RouteTable;
+}
+declare const FAMILIES: readonly ["bd-", ""];
+type ImplementerFamily = (typeof FAMILIES)[number];
+/** The family a requested profile belongs to, or undefined for a profile the router leaves alone. */
+declare function implementerFamily(profile: string): ImplementerFamily | undefined;
+/** The table's pick at the caller's family, so `implementer` can become `implementer-lite` but never a bd profile. */
+declare function inFamily(wanted: string, family: ImplementerFamily): string | undefined;
+/**
+ * The decision for one spawn, or undefined when the spawn is not routed: a profile outside the implementer family,
+ * an explicit profile with routing off, or an explicit profile with no task. `auto` is the caller's own request to
+ * route, so it classifies in every mode.
+ */
+declare function routeSpawn(input: RouteInput): RouteDecision | undefined;
+
+export { AUTO_FALLBACK as A, type Routed as B, CLASSES as C, DEFAULT_KEEP_ROLES as D, type TableRead as E, FACT_NAMES as F, type TaskFacts as G, type WorkflowTable as H, IMPLEMENTER_LADDER as I, classifyTask as J, implementerFamily as K, inFamily as L, MERGE_LADDER as M, parseWorkflowTable as N, planFacts as O, PATH_LISTS as P, priorRoute as Q, type RouteSource as R, type ShapeClass as S, TABLE_VERSION as T, profileFor as U, routeMeta as V, type WorkflowRow as W, routeSpawn as X, unitsOf as Y, AUTO_PROFILE as a, type Classified as b, DISPATCHABLE as c, FACT_SOURCES as d, type FactName as e, type FactSource as f, type FactsNote as g, type Implementer as h, type ImplementerFamily as i, PLAN_LADDER as j, PRIORS as k, PRIOR_ROUTINGS as l, type PathList as m, type PlanFacts as n, type Prior as o, type PriorRouter as p, type PriorRouting as q, type PriorRule as r, type Profile as s, REVIEW_LADDER as t, ROUTE_META_KEYS as u, ROUTE_SOURCES as v, type RouteDecision as w, type RouteInput as x, type RouteMetaKey as y, type RouteTable as z };

@@ -108,6 +108,15 @@ describe('the cases the first probe got wrong', { timeout: BROWSER_TIMEOUT_MS },
     assert.deepEqual((await kindsAt('content-overflow-ink-clean')).kinds, [])
   })
 
+  // catches: a low-contrast finding that drops the colours or the threshold it was held to
+  test('a low-contrast finding names its text and ground colours and the ratio its size needed', async () => {
+    const [finding] = (await kindsAt('low-contrast-bad')).findings.filter((f) => f.kind === 'low-contrast')
+    assert.ok(finding)
+    assert.equal(finding.fg, '#4a5058')
+    assert.match(String(finding.bg), /^#[0-9a-f]{6}$/)
+    assert.ok(finding.ratio! < finding.need!)
+  })
+
   test('every finding carries the rectangle to annotate', async () => {
     const { findings } = await kindsAt('text-overlap-bad')
     assert.ok(findings.every((f) => f.at.w > 0 && f.at.h > 0))

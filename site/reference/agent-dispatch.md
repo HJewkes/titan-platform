@@ -186,6 +186,27 @@ A `candidate` table is classified beside the live one, and its pick is recorded 
 counts agreement over `agrees`, `shadow` and `routed` only, so keep-role, override and auto
 rows are not in the denominator.
 
+The `./routing/node` subpath supplies a spawn path with the table and the facts:
+
+```ts
+import { readRouteTable, readSpawnFacts } from "@titan-design/agent-dispatch/routing/node";
+
+const read = readRouteTable("/path/to/shape-v1.yml"); // cached on mtime and size
+const { facts, note } = readSpawnFacts("/path/to/active-work", "EX-7", "b", req.owns ?? []);
+const decision = routeSpawn({
+  mode,
+  requested,
+  taskId: "EX-7",
+  table: read.table,
+  tableProblem: read.problem,
+  facts,
+  factsNote: note,
+});
+```
+
+`readSpawnFacts` never throws. An unknown id, or one that is not a plain file name, gives
+empty facts with source `none`, and the router keeps the requested profile.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are

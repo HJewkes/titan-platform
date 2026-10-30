@@ -1,12 +1,14 @@
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_OPTIONS, type InspectOptions, type ProbedMoment } from "@titan-design/render-qa";
-import { badTextRows, distinctRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
+import { DEFAULT_OPTIONS, type Finding, type InspectOptions, type Moment, type ProbedMoment } from "@titan-design/render-qa";
+import { badTextRows, contrastRows, distinctRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";
 import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js";
+import { heldLowContrast, qaSamplings } from "../qa/layer-contrast.js";
 import { narrationRows } from "../qa/layer-narration.js";
+import { timelineFromArtifact } from "../qa/qa-timeline.js";
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers } from "./custom-layers.js";
 
@@ -31,22 +33,35 @@ async function layerPage(input: LayerCheckInput, built: BuiltPage, scratch: stri
   return { pageDir, timeline: withCustomLayers({ durationS, beats: [beat] }, layers) };
 }
 
-// Virtual time only runs forward, so each moment is inspected and probed before the next is sought.
-async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: readonly number[], options: InspectOptions): Promise<LayerTextRow[]> {
+interface Moments {
+  /** Each reveal once it settles, then the beat's end: the text rules and the probes read these. */
+  reveal: readonly number[];
+  /** qa's own samples, which the low-contrast rule is held over, as qa holds it. */
+  samplings: readonly Moment[][];
+}
+
+// Virtual time only runs forward, so each second is inspected, and probed when it is a reveal, before the next is sought.
+async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: Moments, options: InspectOptions): Promise<LayerTextRow[]> {
   const beat = packet.beat_id;
+  const reveal = new Set(moments.reveal);
+  const findings = new Map<number, Finding[]>();
   const rows: LayerTextRow[] = [];
   const probed: ProbedMoment[] = [];
-  for (const t of moments) {
-    rows.push(...qaRows(beat, t, (await page.inspectAt(t, options)).findings));
+  for (const t of [...new Set([...reveal, ...moments.samplings.flat().map((m) => m.t)])].sort((a, b) => a - b)) {
+    findings.set(t, (await page.inspectAt(t, options)).findings);
+    if (!reveal.has(t)) continue;
+    rows.push(...qaRows(beat, t, findings.get(t)!));
     probed.push(...(await page.probe([{ beat, t }])));
   }
-  return distinctRows([...rows, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
+  const contrast = contrastRows(heldLowContrast(moments.samplings, (t) => findings.get(t) ?? []));
+  return distinctRows([...rows, ...contrast, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
 }
 
 /**
  * The $0 check after a layer build: the layer alone on the composition page, seeked to each reveal point, held to qa's
  * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts and G10 rules
- * against the beat's spoken words. No model call; Chromium only.
+ * against the beat's spoken words. Low-contrast text is held only where qa would hold it: over qa's own samples, by its
+ * persistence rule. No model call; Chromium only.
  */
 export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerTextCheck {
   const engine = deps.engine ?? chromiumQaEngine();
@@ -61,7 +76,8 @@ export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerText
       try {
         const page = await engine.open(served.url, options, []);
         try {
-          return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), options);
+          const moments = { reveal: revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), samplings: qaSamplings(timelineFromArtifact(timeline)) };
+          return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, moments, options);
         } finally {
           await page.close();
         }

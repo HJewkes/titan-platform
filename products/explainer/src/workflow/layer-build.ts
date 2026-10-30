@@ -234,8 +234,8 @@ async function timedFromCues(deps: LayerRouteDeps, worker: BeatWorker, packet: B
 }
 
 /**
- * The $0 text check after the cue check (TP-4418): a layer that draws text under qa's floor, under the chrome or as
- * `NaN` is rebuilt once, told each element and rule. The rebuild's spend joins the build's; a rebuild that does not
+ * The $0 text check after the cue check (TP-4418): a layer that draws text under qa's floor, under the chrome, under qa's
+ * contrast ratio (TP-4525) or as `NaN` is rebuilt once, told each element and rule. The rebuild's spend joins the build's; a rebuild that does not
  * compile, drops a cue target or still breaks a rule fails the beat with a row per element.
  */
 async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, layer: BuiltLayer): Promise<{ build: LayerBuild; error?: string }> {
