@@ -23,6 +23,13 @@ const SliceSchema = z.object({
   branch: z.string().min(1).optional(),
   /** The active-work task the slice's PR delivers; defaults to the spec's `task`. */
   task: z.string().min(1).optional(),
+  /**
+   * Per-slice switches for the spec's `preview` and `deploy`. Absent inherits the spec; `false` skips that step for this slice and the
+   * slice's outcome records it as skipped. `true` only matters where the spec enables the step: a slice cannot turn on a step the spec
+   * leaves out, so it is the same as absent there.
+   */
+  preview: z.boolean().optional(),
+  deploy: z.boolean().optional(),
   /** A one-turn target extraction before the implementer starts; its answer goes into the brief. */
   extract: z.object({ prompt: z.string().min(1), model: z.string().min(1).default("opus"), maxBudgetUsd: z.number().positive().default(2) }).optional(),
 });
@@ -116,3 +123,10 @@ export const reviewerNameOf = (spec: BuildSpec, slice: Slice, round: number): st
 export function evidenceDirOf(spec: BuildSpec, slice: string, head: string): string {
   return resolve(spec.clone, spec.gate.evidence.replaceAll("{slice}", slice).replaceAll("{head}", head));
 }
+
+/** Whether the spec's preview or deploy step runs for this slice: the spec must enable it and the slice must not switch it off. */
+export const STEPS = ["preview", "deploy"] as const;
+export const runsStep = (spec: BuildSpec, slice: Slice, step: (typeof STEPS)[number]): boolean => spec[step] !== undefined && slice[step] !== false;
+
+/** The steps the spec enables that this slice switched off, so a report tells a skip from a step the spec never had. */
+export const skippedSteps = (spec: BuildSpec, slice: Slice): (typeof STEPS)[number][] => STEPS.filter((step) => spec[step] !== undefined && !runsStep(spec, slice, step));

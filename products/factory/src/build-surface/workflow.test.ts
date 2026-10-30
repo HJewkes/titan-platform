@@ -51,6 +51,64 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(deploys).toEqual([shaOf(9001), shaOf(9002)]);
   });
 
+  describe("a slice's own preview and deploy switches", () => {
+    /** Beta waits on alpha so their PRs, and the last merge the final walk names, come in a fixed order. */
+    const twoSlices = (first: Record<string, unknown>) => [{ id: "alpha", title: "Alpha", brief: "b", ...first }, { id: "beta", title: "Beta", brief: "b", dependsOn: ["alpha"] }];
+    const callsOf = (fake: FakeBuild, verb: string) => fake.commands.filter((command) => command.argv[1] === verb).map((command) => command.env.BS_SLICE).sort();
+
+    /** Approves the deploys of the slices that ask, then the final walk. */
+    async function finish(host: FactoryHost, runId: string, approved: Record<string, number> = {}) {
+      for (const [slice, pr] of Object.entries(approved)) await approveDeploy(host, runId, slice, pr);
+      await gateOpened(host, gateId(runId, "final-walk"));
+      host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9002) }, OWNER);
+      return host.runtime.wait(runId);
+    }
+
+    it("skips the preview for the slice that says false while its sibling runs it", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ deploy: undefined, slices: twoSlices({ preview: false }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "preview")).toEqual(["beta"]);
+      expect(stepsOf(host, runId).filter((step) => step.startsWith("bs-preview:"))).toEqual(["bs-preview:beta:0:0"]);
+    });
+
+    it("skips the deploy for the slice that says false, with no approval gate, while its sibling deploys", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ slices: twoSlices({ deploy: false }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId, { beta: 2 });
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "deploy")).toEqual(["beta"]);
+      expect(stepsOf(host, runId).some((step) => step.startsWith("deploy-approve:alpha"))).toBe(false);
+      expect(stepsOf(host, runId).filter((step) => step.startsWith("bs-deploy:"))).toEqual(["bs-deploy:beta:0"]);
+    });
+
+    it("inherits the spec when the switches are absent", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ slices: twoSlices({}) }) });
+      const { host, runId } = start(fake);
+
+      await finish(host, runId, { alpha: 1, beta: 2 });
+
+      expect(callsOf(fake, "preview")).toEqual(["alpha", "beta"]);
+      expect(callsOf(fake, "deploy")).toEqual(["alpha", "beta"]);
+    });
+
+    it("does not turn a step on when the spec has none, even with true on the slice", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ preview: undefined, deploy: undefined, slices: twoSlices({ preview: true, deploy: true }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "preview")).toEqual([]);
+      expect(callsOf(fake, "deploy")).toEqual([]);
+    });
+  });
+
   it("refuses a final-walk acceptance given for a sha other than the last merge", async () => {
     const { host, runId } = start(fakeBuild());
     await approveDeploy(host, runId, "shell", 1);

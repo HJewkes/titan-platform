@@ -2,7 +2,7 @@ import { fixPacket, implementerBrief, reviewerBrief, type FixFindings } from "./
 import { DEVICE_CHECK } from "./manifest.js";
 import * as S from "./schemas.js";
 import { cancelRun, commandIn, needComponents, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
-import { evidenceDirOf, reviewerNameOf } from "./spec.js";
+import { evidenceDirOf, reviewerNameOf, runsStep } from "./spec.js";
 
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
 const ReviewStep = S.AgentStepSchema(S.ReviewReportSchema);
@@ -49,7 +49,7 @@ function trackProgress(run: SliceRun, misses: Map<string, { score?: number; coun
 /** The preview sync, then once per slice the owner's check on a device, when the spec names a device step. */
 async function preview(run: SliceRun, round: number, head: string, asked: { device: boolean }): Promise<{ pass: boolean; detail: string } | undefined> {
   const spec = run.spec.preview;
-  if (!spec) return undefined;
+  if (!spec || !runsStep(run.spec, run.slice, "preview")) return undefined;
   const synced = await sliceStep(run, "bs-preview", round, commandIn(run, spec.command, { BS_HEAD: head }), S.PreviewSchema);
   if (!synced.pass || !spec.deviceStep || asked.device) return synced;
   asked.device = true;
