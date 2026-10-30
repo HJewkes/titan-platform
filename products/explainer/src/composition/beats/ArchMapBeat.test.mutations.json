@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the map fades in by opacity again",
+      "file": "products/explainer/src/composition/beats/ArchMapBeat.tsx",
+      "find": "style={{ height: MAP_H, ...fadeUp(t, 0, 16) }}",
+      "replace": "style={{ height: MAP_H, opacity: progress(t, 0) }}",
+      "kills": [
+        "an arch-map entering the map's step numbers are at full colour on the beat's first frames"
+      ]
+    }
+  ]
+}
