@@ -22,6 +22,8 @@ import { useRoundAnswers, type RoundAnswers, type ShipVerdict } from "./RoundSec
 import { useDraftBinding } from "./RoundSend.js";
 import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
 import { PrTabs, ShipTarget } from "./ShipTabs.js";
+import { useConfirmOnPhone } from "./PhoneConfirm.js";
+import { PHONE_TAP } from "./phone.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -218,10 +220,10 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
         <VStack gap={3}>
           <ShipsAfterNote manifest={state.round.manifest} question={question} />
           <HStack gap={3} wrap>
-            <Button color="success" variant={verdict === "ship" ? "solid" : "outline"} accessibilityLabel={`Ship ${pr}`} accessibilityState={{ selected: verdict === "ship" }} isDisabled={blockers.length > 0} onPress={() => state.verdicts.choose(question.id, "ship")}>
+            <Button color="success" variant={verdict === "ship" ? "solid" : "outline"} className={PHONE_TAP} accessibilityLabel={`Ship ${pr}`} accessibilityState={{ selected: verdict === "ship" }} isDisabled={blockers.length > 0} onPress={() => state.verdicts.choose(question.id, "ship")}>
               <ButtonText>Ship</ButtonText>
             </Button>
-            <Button color="warning" variant={verdict === "back" ? "solid" : "outline"} accessibilityLabel={`Send back ${pr}`} accessibilityState={{ selected: verdict === "back" }} isDisabled={sendBackOf(question) === undefined || noNote !== undefined} onPress={() => state.verdicts.choose(question.id, "back")}>
+            <Button color="warning" variant={verdict === "back" ? "solid" : "outline"} className={PHONE_TAP} accessibilityLabel={`Send back ${pr}`} accessibilityState={{ selected: verdict === "back" }} isDisabled={sendBackOf(question) === undefined || noNote !== undefined} onPress={() => state.verdicts.choose(question.id, "back")}>
               <ButtonText>Send back</ButtonText>
             </Button>
           </HStack>
@@ -291,19 +293,28 @@ function sendProblems(state: PrsState): string[] {
   ];
 }
 
+/** The confirm step's line: how many PRs the one send ships and how many it sends back. */
+function sendDetail(state: PrsState): string {
+  const verdicts = state.units.map((unit) => state.verdicts.verdicts[unit.question.id]);
+  const count = (verdict: ShipVerdict): number => verdicts.filter((each) => each === verdict).length;
+  return `Send your answers: ${count("ship")} to ship, ${count("back")} to send back?`;
+}
+
 function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnType<typeof useSubmit> }): ReactNode {
   const { available, state: sending, submit } = submitting;
   // Decisions 166 and 513: an unanswered required side question holds neither Ship nor Send back.
   const problems = sendProblems(state);
   const disabled = !available || sending.status === "sending" || problems.length > 0;
+  const { press, step } = useConfirmOnPhone([{ id: "send", confirm: "Confirm send", detail: sendDetail(state), isDisabled: disabled, run: () => void submit(sendArgs(state)) }]);
   return (
     <Card variant="outline">
       <CardContent>
         <VStack gap={3}>
           <ShipTarget target={{ kind: "general" }}><RoundGeneral value={state.side.general} onChange={state.side.setGeneral} /></ShipTarget>
           <HStack gap={3} wrap>
-            <Button isDisabled={disabled} onPress={() => void submit(sendArgs(state))}><ButtonText>Send answers</ButtonText></Button>
+            <Button className={PHONE_TAP} isDisabled={disabled} onPress={() => press("send")}><ButtonText>Send answers</ButtonText></Button>
           </HStack>
+          {step}
           {problems.length > 0 ? <Alert status="info" size="compact" message={`Before sending: ${problems.join("; ")}.`} testID="prs-send-problems" /> : null}
           <ShipNotices blockers={[]} noNote={undefined} available={available} state={sending} />
         </VStack>

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone gets the knowledge table instead of cards",
+      "file": "apps/console/src/pages/KnowledgeTable.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <KnowledgeCards records={records} /> : <KnowledgeColumns records={records} />;",
+      "replace": "return <KnowledgeColumns records={records} />;",
+      "kills": [
+        "the knowledge list on a phone stacks each note into a card with its title, kind, initiative and file instead of the table"
+      ]
+    },
+    {
+      "name": "a desktop gets knowledge cards instead of the table",
+      "file": "apps/console/src/pages/KnowledgeTable.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <KnowledgeCards records={records} /> : <KnowledgeColumns records={records} />;",
+      "replace": "return <KnowledgeCards records={records} />;",
+      "kills": [
+        "the knowledge list on a phone keeps the table on a desktop"
+      ]
+    },
+    {
+      "name": "a knowledge card's links keep only their text's height",
+      "file": "apps/console/src/pages/KnowledgeTable.tsx",
+      "find": "const TAP_TARGET = \"inline-flex min-h-11 items-center\";",
+      "replace": "const TAP_TARGET = \"\";",
+      "kills": [
+        "the knowledge list on a phone gives each card's title and initiative links a 44px tap target"
+      ]
+    },
+    {
+      "name": "the record breadcrumb's rows keep their full width",
+      "file": "apps/console/src/pages/KnowledgeRecordPage.tsx",
+      "find": "<div className=\"min-w-0 break-all [&_*]:min-w-0 [&_*]:shrink\">",
+      "replace": "<div className=\"min-w-0 break-all\">",
+      "kills": [
+        "a knowledge record on a phone lets its long ref break inside the breadcrumb instead of widening the page"
+      ]
+    }
+  ]
+}

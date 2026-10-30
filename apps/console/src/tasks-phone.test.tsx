@@ -5,7 +5,7 @@ import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
 import { listPage } from "../server/task-list.js";
-import { BELOW_MD } from "./pages/TasksPage.js";
+import { BELOW_MD } from "./pages/phone.js";
 import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(() => {

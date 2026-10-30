@@ -10,6 +10,7 @@ import { RoundSections, orderedQuestions, type RoundAnswers, type RoundSectionsP
 import { pageAt, pageMark, sectionPages, withSection, type SectionPage } from "./round-pages.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { PHONE_TAP } from "./phone.js";
 
 /**
  * A round's sections one page at a time (owner decision 513): Back, Next, a jump list and `?section=` in the URL, so
@@ -183,11 +184,11 @@ function PagerSteps({ pages, paging: { index, page, step }, end = false }: Pager
   const next = pages[index + 1];
   return (
     <HStack gap={3} align="center" wrap testID={end ? "section-pager-end" : "section-steps"}>
-      <Button size="sm" variant="outline" isDisabled={index === 0} onPress={() => step(-1)}><ButtonText>← Back</ButtonText></Button>
+      <Button size="sm" variant="outline" className={PHONE_TAP} isDisabled={index === 0} onPress={() => step(-1)}><ButtonText>← Back</ButtonText></Button>
       <Typography variant={end ? "caption" : "subtitle2"} color={end ? "secondary" : undefined} testID={end ? undefined : "section-position"}>
         {`Section ${index + 1} of ${pages.length}: ${page.title}`}
       </Typography>
-      <Button size="sm" variant={end && next ? "solid" : "outline"} isDisabled={next === undefined} onPress={() => step(1)} testID={end ? "section-next-end" : "section-next"}><ButtonText>Next →</ButtonText></Button>
+      <Button size="sm" variant={end && next ? "solid" : "outline"} className={PHONE_TAP} isDisabled={next === undefined} onPress={() => step(1)} testID={end ? "section-next-end" : "section-next"}><ButtonText>Next →</ButtonText></Button>
       {end ? null : <KeyHint />}
     </HStack>
   );
@@ -210,7 +211,7 @@ function JumpList({ pages, paging: { index, go }, open }: { pages: readonly Sect
         {pages.map((page, at) => {
           const mark = pageMark(page, open);
           return (
-            <Button key={page.id} size="sm" variant={at === index ? "solid" : "ghost"} color="secondary" onPress={() => go(at)} testID={`section-jump-${page.id}`}>
+            <Button key={page.id} size="sm" className={PHONE_TAP} variant={at === index ? "solid" : "ghost"} color="secondary" onPress={() => go(at)} testID={`section-jump-${page.id}`}>
               <ButtonText>{`${mark === "answered" ? "✓ " : ""}${at + 1}. ${page.title} · ${mark}`}</ButtonText>
             </Button>
           );
