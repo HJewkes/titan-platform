@@ -83,6 +83,8 @@ const ExitNoticeInput = z.object({
   wake: z.object({ agent: z.string().min(1), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
   /** Why a held wake's successor never started; the notice then reads no report, since no agent ran. */
   held: z.string().optional(),
+  /** A held FIX_FIRST's findings, so the seat can start a fixer or fix it without the reviewer's transcript. */
+  findings: z.string().optional(),
 });
 type ExitNoticeInput = z.infer<typeof ExitNoticeInput>;
 
@@ -131,10 +133,11 @@ export function noticeText(input: ExitNoticeInput, cause: ExitCause, report: Las
 }
 
 /** A held wake started no agent, so the seat is told why and what it can start or push by hand. */
-function heldText({ repo, pr, headSha, round, kind, wake, held }: ExitNoticeInput): string {
+function heldText({ repo, pr, headSha, round, kind, wake, held, findings }: ExitNoticeInput): string {
   return [
     `Shepherd: ${repo}#${pr} round ${round}: no fixer took the ${kind} wake at head ${headSha}.`,
     `Why: ${causeText("held", wake, held)}.`,
+    ...(findings === undefined ? [] : [`The reviewer's FIX_FIRST findings follow.\n${dataFence("review findings", findings)}`]),
     "The run waits for a new head, with no owner gate. Next: start a fixer on the PR's branch once agent-chat admits it, push a fix yourself, or close the PR to end the run.",
   ].join("\n");
 }
@@ -185,6 +188,12 @@ const SEAT_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "ci-red"
 
 type NoticeRun = GateRun & { state: { round: number } };
 
+/** Why a held wake's successor never started, and the FIX_FIRST findings it would have been handed. */
+export interface HeldNotice {
+  reason: string;
+  findings?: string;
+}
+
 /**
  * A run recorded before this step went straight to the sent-back gate. Where the record continues, only a recorded
  * notice means noticing; where it ends, a run paused on `sh-sent-back` keeps its pending gate.
@@ -201,10 +210,11 @@ function recordedWithoutNotice(run: NoticeRun): boolean {
  * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, no
  * record of the wake, or a run whose record took the gate without a notice.
  */
-export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: string): Promise<ExitNoticeResult | undefined> {
+export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: HeldNotice): Promise<ExitNoticeResult | undefined> {
   const noticed = noticedHeads.get(run.ctx) ?? noticedHeads.set(run.ctx, new Set()).get(run.ctx)!;
   if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined || recordedWithoutNotice(run)) return undefined;
-  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...(held !== undefined && { held }) }, ExitNoticeResult);
+  const heldFields = { ...(held !== undefined && { held: held.reason }), ...(held?.findings !== undefined && { findings: held.findings }) };
+  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...heldFields }, ExitNoticeResult);
   if (result.sent) noticed.add(headSha);
   return result;
 }
