@@ -1,11 +1,11 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentRunConfig, AgentRunResult } from "@titan-design/agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ShepherdSource } from "./shepherd.js";
 import { buildShipped, type ShippedBuildDeps, type ThemeAnswer } from "./shipped-build.js";
-import type { ShippedDigest } from "./shipped.js";
+import { readShipped, type ShippedDigest } from "./shipped.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
@@ -29,7 +29,7 @@ function fakeRun(answer?: ThemeAnswer, failure?: { kind: "auth_misconfigured"; r
     prompts.push(config.prompt);
     if (failure !== undefined) return { ok: false, failure };
     const output = answer ?? { themes: [{ title: "Everything", summary: "All of it", prs: numbersIn(config.prompt) }] };
-    return { ok: true, output, sessionId: "s", usage: { totalCostUsd: 0, modelUsage: {}, turns: 1, durationMs: 1 }, init: { model: "sonnet" } } as AgentRunResult<ThemeAnswer>;
+    return { ok: true, output, sessionId: "s", usage: { totalCostUsd: 0, modelUsage: {}, turns: 1, durationMs: 1 }, init: INIT };
   };
   return { run, prompts };
 }
@@ -46,6 +46,8 @@ function fakeGithub(forbiddenFrom = Number.POSITIVE_INFINITY) {
   return { github, reads };
 }
 
+const INIT = { apiKeySource: undefined, model: "sonnet", tools: [], permissionMode: undefined, claudeCodeVersion: undefined };
+
 let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-shipped-build-"));
@@ -58,7 +60,11 @@ function depsWith(rows: WatchRow[], run: ShippedBuildDeps["run"], github = fakeG
 
 const build = (deps: ShippedBuildDeps, extra: { force?: boolean; dryRun?: boolean; group?: string } = {}) =>
   buildShipped(deps, { date: DATE, dryRun: false, force: false, ...extra });
-const readWritten = async (): Promise<ShippedDigest> => JSON.parse(await readFile(path.join(dir, `${DATE}.json`), "utf8")) as ShippedDigest;
+async function readWritten(): Promise<ShippedDigest> {
+  const { digest } = await readShipped({ list: async () => [] }, { dir }, NOW, DATE);
+  if (digest === null) throw new Error("no digest written");
+  return digest;
+}
 const unsummarizedOf = (digest: ShippedDigest): number[] => digest.groups.flatMap((group) => group.unsummarized.map((pr) => pr.number)).sort((a, b) => a - b);
 
 describe("shipped build", () => {

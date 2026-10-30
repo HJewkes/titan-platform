@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentRunConfig, AgentRunResult } from "@titan-design/agent";
@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { shippedBuildArgs } from "./cli-shipped.js";
 import type { ShepherdSource } from "./shepherd.js";
 import { buildShipped, type ShippedBuildDeps, type ThemeAnswer } from "./shipped-build.js";
-import type { ShippedDigest } from "./shipped.js";
+import { readShipped, type ShippedDigest } from "./shipped.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
@@ -24,16 +24,24 @@ function fakeRun() {
   const run = async (config: AgentRunConfig<ThemeAnswer>): Promise<AgentRunResult<ThemeAnswer>> => {
     prompts.push(config.prompt);
     const prs = [...config.prompt.matchAll(/^## #(\d+)/gm)].map((match) => Number(match[1]));
-    return { ok: true, output: { themes: [{ title: "T", summary: "S", prs }] }, sessionId: "s", usage: { totalCostUsd: 0, modelUsage: {}, turns: 1, durationMs: 1 }, init: { model: "sonnet" } } as AgentRunResult<ThemeAnswer>;
+    return { ok: true, output: { themes: [{ title: "T", summary: "S", prs }] }, sessionId: "s", usage: { totalCostUsd: 0, modelUsage: {}, turns: 1, durationMs: 1 }, init: INIT };
   };
   return { run, prompts };
 }
+
+const INIT = { apiKeySource: undefined, model: "sonnet", tools: [], permissionMode: undefined, claudeCodeVersion: undefined };
 
 let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-shipped-options-"));
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
+
+async function readWritten(): Promise<ShippedDigest> {
+  const { digest } = await readShipped({ list: async () => [] }, { dir }, Date.parse("2031-03-06T07:10:00"), DATE);
+  if (digest === null) throw new Error("no digest written");
+  return digest;
+}
 
 function depsWith(rows: WatchRow[], run: ShippedBuildDeps["run"]): ShippedBuildDeps {
   const github: ShippedBuildDeps["github"] = { getSquashSource: async (_repo, number) => ({ title: `PR ${number}`, body: "x".repeat(5000), commits: [] }) };
@@ -56,7 +64,7 @@ describe("shipped build options", () => {
 
     await buildShipped(depsWith([merged(1, "alpha"), merged(2, "beta")], run), { date: DATE, group: "beta", dryRun: false, force: false });
 
-    const digest = JSON.parse(await readFile(path.join(dir, `${DATE}.json`), "utf8")) as ShippedDigest;
+    const digest = await readWritten();
     expect(prompts).toHaveLength(1);
     expect(digest.groups.map((group) => [group.initiative, group.themes.length, group.unsummarized.length])).toEqual([["alpha", 0, 1], ["beta", 1, 0]]);
   });
@@ -68,7 +76,7 @@ describe("shipped build options", () => {
     await buildShipped(depsWith(initiatives.map((name, i) => merged(i + 1, name)), run), { date: DATE, dryRun: false, force: false });
 
     expect(prompts).toHaveLength(12);
-    const digest = JSON.parse(await readFile(path.join(dir, `${DATE}.json`), "utf8")) as ShippedDigest;
+    const digest = await readWritten();
     expect(digest.groups.flatMap((group) => group.unsummarized.map((pr) => pr.number))).toEqual([13]);
   });
 
