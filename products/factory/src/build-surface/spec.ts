@@ -49,6 +49,8 @@ export const BuildSpecSchema = z.object({
     command: Argv,
     /** Where the gate command writes one `<gate>.json` per gate; `{slice}` and `{head}` are filled in. */
     evidence: z.string().min(1),
+    /** Exits 0 when the machine can run the gates; run before an infra failure's one retry, and a failure parks without it. */
+    health: Argv.optional(),
   }),
   preview: z.object({ command: Argv, deviceStep: z.string().min(1).max(280).optional() }).optional(),
   deploy: z.object({ command: Argv, approve: z.boolean().default(true) }).optional(),

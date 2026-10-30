@@ -1,3 +1,5 @@
+import type { FixTaskFields } from "../shepherd/main-red.js";
+
 /** The JSON each dispatch step carries as its prompt; the route parses it back. */
 
 export interface PlanInput {
@@ -39,6 +41,13 @@ export interface BranchInput {
 export interface GatesInput extends CommandInput {
   head: string;
   evidenceDir: string;
+}
+
+export interface FileTaskInput {
+  initiative: string;
+  /** The lookup that keeps a repeated stop on the same failure to one task. */
+  tag: string;
+  fields: FixTaskFields;
 }
 
 export interface ExtractInput {

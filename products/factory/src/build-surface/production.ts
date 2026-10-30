@@ -8,6 +8,7 @@ import type { JsonEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import { agentChatImplementerRunner, type ImplementerRunner } from "../agent-chat-implementer.js";
 import { agentChatAgents } from "../shepherd/agents.js";
+import { activeWorkFixTasks, activeWorkOrigin } from "../shepherd/cleanup-ports.js";
 import type { RosterReader } from "../shepherd/roster.js";
 import type { SpawnGate } from "../shepherd/spawn-gate.js";
 import { postRpc } from "../cli-shepherd-rpc.js";
@@ -110,6 +111,7 @@ function systemBuildPorts(given: ProductionBuildPorts): BuildSurfacePorts {
     implementer: given.implementer,
     extract: claudePrintExtract,
     shepherd: rpcShepherd(given.rpc, given.github),
+    tasks: activeWorkFixTasks({ origin: activeWorkOrigin(process.env) }),
   };
 }
 

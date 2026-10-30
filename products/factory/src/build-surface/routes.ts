@@ -63,7 +63,8 @@ async function recordedGates(ports: BuildSurfacePorts, dir: string, head: string
     const parsed = GateEvidenceSchema.safeParse(json);
     if (!parsed.success) return (problems.push(`${path}: not a gate record`), []);
     if (parsed.data.head !== head) return (problems.push(`${path}: written for head ${parsed.data.head}`), []);
-    return [{ gate: parsed.data.gate, pass: parsed.data.pass, ...(parsed.data.score !== undefined && { score: parsed.data.score }), evidence: path }];
+    const { gate, pass, score, failure } = parsed.data;
+    return [{ gate, pass, ...(score !== undefined && { score }), ...(failure && { failure }), evidence: path }];
   });
   if (records.length === 0) problems.push(`no gate evidence in ${dir}`);
   return { gates: records, problems };
@@ -107,6 +108,16 @@ async function gates(ports: BuildSurfacePorts, input: I.GatesInput, signal: Abor
   return { head: input.head, exitCode: done.status, pass: done.status === 0 && problems.length === 0 && records.every((record) => record.pass), gates: records, problems };
 }
 
+/** Never rejects: an unfiled task must not replace the stop it belongs to, so the reason comes back for the stop to name. */
+async function fileTask(ports: BuildSurfacePorts, input: I.FileTaskInput) {
+  try {
+    const id = (await ports.tasks.findByTag(input.initiative, input.tag)) ?? (await ports.tasks.add(input.initiative, input.fields));
+    return { task: `${input.initiative}/${id}`, detail: "" };
+  } catch (error) {
+    return { task: null, detail: redactForEvidence(error instanceof Error ? error.message : String(error)) };
+  }
+}
+
 async function pr(ports: BuildSurfacePorts, input: I.PrInput) {
   const found = await ports.github.findPr(input.repo, input.branch);
   if (found) return { pr: found.number, url: `https://github.com/${input.repo}/pull/${found.number}`, created: false };
@@ -128,6 +139,8 @@ export function buildSurfaceCodeRoutes(ports: BuildSurfacePorts): StepRoute[] {
     bsRoute("bs-branch", ports, (input: I.BranchInput, signal) => branch(ports, input, signal)),
     bsRoute("bs-report-check", ports, (input: I.ReportCheckInput, signal) => reportCheck(ports, input, signal)),
     bsRoute("bs-gates", ports, (input: I.GatesInput, signal) => gates(ports, input, signal)),
+    bsRoute("bs-health", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
+    bsRoute("bs-file-task", ports, (input: I.FileTaskInput) => fileTask(ports, input)),
     bsRoute("bs-preview", ports, (input: I.CommandInput, signal) => command(ports, input, signal)),
     bsRoute("bs-review-check", ports, (input: I.ValidateInput, signal) => validate(ports, input, signal)),
     bsRoute("bs-pr", ports, (input: I.PrInput) => pr(ports, input)),
