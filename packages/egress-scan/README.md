@@ -106,6 +106,27 @@ ignores `--text`, so for a merge read the message with `--no-patch --format=%B` 
 with `--diff-merges=separate --format=`, and pass the patch to `parseDiff`. Scan each commit, not
 only the range endpoints: a leak added and then removed is still in the pushed history.
 
+## Spawn-time hooks dir
+
+`@titan-design/egress-scan/hooks` writes a git hooks directory that a launcher points an agent's
+git at through the environment, so no repo's `.git/config` changes. Its `pre-push` runs
+`titan-egress-scan pre-push` with an environment of PATH alone, refuses the push when the private
+term list is missing (`MISSING_TERMS_REFUSES`), and then runs the repo's own `pre-push`. The other
+client hooks chain straight to the repo's own. A dir named by `noRewriteHooksDir` also refuses a
+delete, an update of `main` or `master`, a ref outside `refs/heads/` and `refs/tags/`, a mirror
+remote, and any update that is not a fast-forward of the remote's tip.
+
+```ts
+import { gitHooksEnv, noRewriteHooksDir, passwdHome, probeScanner, writeGitHooks } from "@titan-design/egress-scan/hooks";
+
+const dir = noRewriteHooksDir(guardDir);
+const shell = { path: "/bin/sh", shebang: "#!/bin/sh -p", scrub: "command unset SHELLOPTS 2>/dev/null\n" };
+writeGitHooks(dir, { missingTermsRefuses: true, home: passwdHome(), path: brokerPath, probe: probeScanner }, { shell, shimDirs });
+spawn(agent, { env: { ...agentEnv, ...gitHooksEnv(dir) } });
+```
+
+`shimDirs` lists the agent's own git and gh shim dirs; the hook leaves them off its PATH.
+
 ## Rules
 
 - `home-path`: `/Users/<seg>`, `/home/<seg>` and `C:\Users\<seg>`, root in any case, also
