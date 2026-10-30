@@ -19,6 +19,8 @@ const SOURCE_EXT = /\.(?:[cm]?[jt]sx?)$/;
 const GRAPH_ROOT = /^(?:packages|products|apps)\//;
 const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
+// timeout(1) exits 124 when it kills the command.
+const TIMEOUT_EXIT_STATUS = 124;
 const VITEST_HEAP_MB = 4096;
 const TYPE_INPUT = /(?:^|\/)tsconfig[^/]*\.json$/;
 const ROOT_SCRIPTS = "scripts/";
@@ -104,9 +106,14 @@ function lintTypesCommand(changed, workspace) {
   return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
 }
 
-function vitestCommand(changed, hasTimeout, spool) {
+// `vitest related` on a root config file reruns everything, which cannot fit the local cap; CI owns that run.
+const DEFERRED_LABEL = "vitest related: full suite selected, deferred to CI";
+
+function vitestCommand(changed, workspace, hasTimeout, spool) {
   const related = relatedTestArgs(changed);
   if (!related) return null;
+  // Only the files handed to vitest can make it rerun everything; a lockfile or workflow change does not.
+  if (testScope(changed.filter((path) => SOURCE_EXT.test(path)), workspace).mode === "full") return { label: DEFERRED_LABEL, deferred: true };
   const vitest = ["pnpm", "exec", "vitest", ...related];
   // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
   const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
@@ -163,7 +170,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool }) {
     pnpmRun("sidecar:finds"),
     pnpmRun("typecheck"),
     pnpmRun("lint"),
-    vitestCommand(changed, hasTimeout, spool),
+    vitestCommand(changed, workspace, hasTimeout, spool),
     pnpmRun("capabilities:check"),
     pnpmRun("metrics:check"),
     pnpmRun("docs:build"),
@@ -211,9 +218,21 @@ async function locPasses(changed) {
   }
 }
 
-async function runStep({ cmd, args, env, inProcess }, changed) {
-  if (inProcess) return locPasses(changed);
-  return spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } }).status === 0;
+/** How a finished step is reported: a kill by the vitest cap is a timeout, never a test failure. */
+export function describeOutcome(step, status) {
+  if (status === 0) return { ok: true };
+  if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
+    return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
+  }
+  return { ok: false, message: `${step.label} failed` };
+}
+
+async function runStep(step, changed) {
+  if (step.deferred) return { ok: true };
+  if (step.inProcess) return { ok: await locPasses(changed), message: `${step.label} failed` };
+  const { cmd, args, env } = step;
+  const { status } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
+  return describeOutcome(step, status);
 }
 
 async function main() {
@@ -224,8 +243,9 @@ async function main() {
   let failed = false;
   for (const step of plan) {
     console.log(`verify:changed: ${step.label}`);
-    if (await runStep(step, changed)) continue;
-    console.error(`verify:changed: ${step.label} failed`);
+    const outcome = await runStep(step, changed);
+    if (outcome.ok) continue;
+    console.error(`verify:changed: ${outcome.message}`);
     failed = true;
   }
   process.exitCode = failed ? 1 : 0;

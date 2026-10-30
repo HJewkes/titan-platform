@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
+  describeOutcome,
   locRuleFrom,
   locScope,
   locViolations,
@@ -143,6 +144,32 @@ describe("planCommands", () => {
     expect(vitest.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
     expect(vitest.cmd).toBe("timeout");
     expect(vitest.args[0]).toBe("600");
+  });
+
+  it("defers the full suite to CI when a root config file changed", () => {
+    // Mutant caught: running the full suite locally under the 600 s cap, which times out with no test failing.
+    const root = planCommands({ base: "origin/main", changed: ["vitest.config.ts"], workspace, hasTimeout: true });
+    const vitest = vitestOf(root);
+    expect(vitest).toEqual({ label: "vitest related: full suite selected, deferred to CI", deferred: true });
+  });
+
+  it.each(["pnpm-lock.yaml", "package.json", ".github/workflows/ci.yml"])(
+    "still plans a real vitest related run when %s changes beside a source file",
+    (extra) => {
+      // Mutant caught: deferring on the whole diff's scope, which skips local tests for lockfile and workflow edits.
+      const changed = ["packages/a/src/x.ts", extra];
+      const vitest = vitestOf(planCommands({ base: "origin/main", changed, workspace, hasTimeout: true }));
+      expect(vitest.deferred).toBeUndefined();
+      expect(vitest.args).toContain("packages/a/src/x.ts");
+    },
+  );
+
+  it("reports a vitest cap kill as a timeout and any other nonzero exit as a failure", () => {
+    // Mutant caught: reporting exit 124 with zero failed tests as "failed".
+    const step = vitestOf(plan);
+    expect(describeOutcome(step, 0)).toEqual({ ok: true });
+    expect(describeOutcome(step, 124).message).toMatch(/timed out after 600 s.*no test failed/);
+    expect(describeOutcome(step, 1).message).toBe(`${step.label} failed`);
   });
 
   it("still runs vitest, unbounded and labelled so, without a timeout command", () => {

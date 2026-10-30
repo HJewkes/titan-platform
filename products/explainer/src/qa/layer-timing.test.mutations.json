@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "static-window grants a custom layer the settled-speech allowance",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "if (beat.layer === \"custom\" || starts.length === 0) return undefined;",
+      "replace": "if (starts.length === 0) return undefined;",
+      "kills": [
+        "qa's timing gates on a custom layer gives a finished layer under speech no settled allowance, as qa does not"
+      ]
+    },
+    {
+      "name": "the check reports no still stretch",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "staticOver(input).over.map((run) => ({ fromS",
+      "replace": "staticOver(input).over.slice(0, 0).map((run) => ({ fromS",
+      "kills": [
+        "qa's timing gates on a custom layer names a 3.5 s still stretch after the last cue and tells the rebuild to change the picture inside it"
+      ]
+    },
+    {
+      "name": "the voice clock keeps the plan's seconds as the beat's length",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "durationS: trueDuration(packet.planned_s, speechS, DEFAULT_PADDING, packet.band === \"held\")",
+      "replace": "durationS: packet.planned_s",
+      "kills": [
+        "the voice clock the layer check plays a beat on ends a beat the voice runs short at truing's length, not the plan's"
+      ]
+    },
+    {
+      "name": "the voice clock trues a held beat like any other",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "packet.band === \"held\"",
+      "replace": "false",
+      "kills": [
+        "the voice clock the layer check plays a beat on keeps a held beat at its plan"
+      ]
+    },
+    {
+      "name": "reading-hold reports no short text",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "export const shortReads = (input: TimingInput): TextSpan[] =>\n  unspokenSpans(input).filter(",
+      "replace": "export const shortReads = (input: TimingInput): TextSpan[] =>\n  unspokenSpans(input).slice(0, 0).filter(",
+      "kills": [
+        "qa's timing gates on a custom layer flags an unspoken text that leaves before it can be read"
+      ]
+    }
+  ]
+}
