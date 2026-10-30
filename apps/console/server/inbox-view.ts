@@ -19,6 +19,7 @@ import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
+import { UNWIRED_LINEAGE, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -42,6 +43,8 @@ export interface InboxItem extends OwnerItem {
   then?: InboxAction;
   /** Every other gate on the item's PR at its live head; only a hitl item joined to a pinned live row has one. */
   gates?: GateStrip;
+  /** Where a resolve-gate item's PR head stands against its base; the round page's cached read, so a row adds no read of its own. */
+  lineage?: ShipLineage;
   evidence: string | undefined;
   /** Set on a round's one row when it asks more than one question; the round page holds them. */
   questionCount?: number;
@@ -299,6 +302,18 @@ export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[
   return markAged(oneRowPerRound(onePerPr(foldCoveredGates(order.map((item) => inboxItem(item, joins))))), now).sort(byInboxOrder);
 }
 
+/** Unwired or unread, a merge gate still carries a lineage, so its row says "lineage unknown" rather than showing nothing. */
+async function withLineage(items: InboxItem[], read: LineageReader | undefined): Promise<InboxItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      const { action } = item;
+      if (action.kind !== "resolve-gate" || action.decision !== "merge") return item;
+      const lineage = read === undefined ? UNWIRED_LINEAGE : await read({ repo: action.repo, pr: action.pr, headSha: action.headSha });
+      return { ...item, lineage };
+    }),
+  );
+}
+
 /** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
 function joinedRows(order: readonly OwnerItem[], rows: readonly WatchRow[]): WatchRow[] {
   const byRun = byRunId(rows);
@@ -336,7 +351,7 @@ async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: 
   const order = approvals.flow.order;
   const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const items = inboxItems(order, live.value, { strips: gates, liveAgents, now: now() });
+  const items = await withLineage(inboxItems(order, live.value, { strips: gates, liveAgents, now: now() }), sources.rounds.lineage);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 
