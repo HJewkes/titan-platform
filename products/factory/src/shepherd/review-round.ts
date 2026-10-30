@@ -53,9 +53,9 @@ export async function dispatchedRound(ctx: WorkflowContext, request: ReviewReque
   const fixFirsts = fixFirstCount(ctx);
   const base = proofBase(ctx, start, fixFirsts);
   const { scopedRereview } = await scopedRereviewOf(ctx, request, intent);
-  const { fixProof, fixProofUnverified, fixProofWaivedAt } = base;
+  const { fixProof, fixProofWaivedAt } = base;
   const waived = fixProofWaivedAt !== undefined && { fixProofWaivedAt };
-  const proofFields = { ...(fixProof !== undefined && { fixProof }), ...(fixProofUnverified && { fixProofUnverified }), ...waived, ...workflowCiFieldOf(proof) };
+  const proofFields = { ...(fixProof !== undefined && { fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...waived, ...workflowCiFieldOf(proof) };
   const rounds = { ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }) };
   const asked = { ...rounds, ...proofFields, ...convergenceFields(request.convergence), ...(scopedRereview && { scopedRereview }) };
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...asked }, Dispatched);
