@@ -19,6 +19,8 @@ const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
 /** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
 const FACTORY_PORT = 7410;
+/** TP-4388 decision 1: a single owner gate banners at 12 h, the same as a raised blocker. */
+export const DEFAULT_BLOCKER_HOURS = 12;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 
@@ -107,6 +109,8 @@ export interface ConsoleConfig {
   hostSurfaces?: HostSurfaceRoots;
   /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
   videoRoots?: string[];
+  /** Hours a blocker waits before the banner shows it, from `TITAN_CONSOLE_BLOCKER_HOURS`; absent in a hand-built config means 12. */
+  blockerHours?: number;
   /** What `serve` prints once at start: settings that were dropped rather than refused, so the console still starts. */
   startupWarnings?: string[];
 }
@@ -193,8 +197,9 @@ function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Pla
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers" | "blockerHours"> {
   return {
+    blockerHours: blockerHoursFrom(env.TITAN_CONSOLE_BLOCKER_HOURS),
     capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
@@ -280,6 +285,16 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   const url = URL.canParse(raw) ? new URL(raw) : null;
   if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
   return raw;
+}
+
+const MAX_BLOCKER_HOURS = 720;
+
+/** Whole hours, 1 to 30 days; a typo is refused, since a silent default would hide or flood the banner. */
+function blockerHoursFrom(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return DEFAULT_BLOCKER_HOURS;
+  const hours = Number(raw);
+  if (!Number.isInteger(hours) || hours < 1 || hours > MAX_BLOCKER_HOURS) throw new Error(`TITAN_CONSOLE_BLOCKER_HOURS must be whole hours from 1 to ${MAX_BLOCKER_HOURS}, got "${raw}"`);
+  return hours;
 }
 
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */

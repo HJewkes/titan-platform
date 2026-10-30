@@ -22,7 +22,7 @@ const watchRow = z
     phaseSince: z.string(),
     nextAction: z.string(),
     pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).passthrough().nullable(),
-    held: z.object({ reason: z.string() }).passthrough().nullable(),
+    held: z.object({ reason: z.string(), satisfiedAt: z.string().optional() }).passthrough().nullable(),
     stalled: z.object({ reason: z.string() }).passthrough().nullable(),
   })
   .passthrough();
