@@ -47,7 +47,14 @@ export const AgentStepSchema = <T extends z.ZodType>(report: T) => z.object({ ag
 
 export const PreviewSchema = z.object({ pass: z.boolean(), detail: z.string() });
 /** `green` is the gate evidence already recorded at an existing branch's head when every gate there passed. */
-export const BranchSchema = z.object({ branch: z.string(), baseSha: Sha, created: z.boolean(), green: GateRunSchema.optional() });
+export const BranchSchema = z.object({
+  branch: z.string(),
+  baseSha: Sha,
+  created: z.boolean(),
+  green: GateRunSchema.optional(),
+  /** Set when an earlier run already merged this slice: its PR landed, or the branch head is in the base. */
+  merged: z.object({ pr: z.number().int().positive(), mergeSha: Sha, head: Sha }).optional(),
+});
 export const PrSchema = z.object({ pr: z.number().int().positive(), url: z.string(), created: z.boolean() });
 export const RegisteredSchema = z.object({ runId: z.string() });
 export const LandStateSchema = z.discriminatedUnion("state", [

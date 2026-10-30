@@ -283,7 +283,7 @@ describe("the inbox page", () => {
   it("issues only reads until a row is tapped", async () => {
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved }, { inApp: true });
     await screen.findByTestId("inbox-row-gate-1");
-    expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build"]));
+    expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build", "blockers.banner"]));
   });
 
   it("shows a derived row's evidence, threshold and age with a link to the agent and no button, even on a live page", async () => {

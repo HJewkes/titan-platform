@@ -4,6 +4,7 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
+import { blockerHoursFrom, type BlockerConfig } from "./blocker-hours.js";
 import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 import type { ConfigStorePaths } from "./config-store/compare.js";
@@ -25,7 +26,7 @@ export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 /** Where the repo-review skill writes its folders, under the active-work root. */
 const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
-export interface ConsoleConfig {
+export interface ConsoleConfig extends BlockerConfig {
   /** 0 binds an ephemeral port. */
   port: number;
   /**
@@ -168,12 +169,7 @@ export function resolveConfig(
   return config;
 }
 
-function lanOptionsFrom(
-  env: NodeJS.ProcessEnv,
-  home: string,
-  stateDir: string,
-  machine: Machine,
-): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
+function lanOptionsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string, machine: Machine): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
   return {
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
@@ -193,8 +189,9 @@ function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Pla
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers" | "blockerHours"> {
   return {
+    blockerHours: blockerHoursFrom(env.TITAN_CONSOLE_BLOCKER_HOURS),
     capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),

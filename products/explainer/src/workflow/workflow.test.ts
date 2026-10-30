@@ -398,7 +398,7 @@ describe("explainer run --from", () => {
     const render = fakeRender();
     const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render, { qaEngine: fakeQa(heldOverlap()) }));
 
-    await expect(runVideo({ from: "sheets", base: failed.runId }, fakeHost(fx, fakeScriptModel(), render))).rejects.toThrow(/has no completed qa stage/);
+    await expect(runVideo({ from: "sheets", base: failed.runId }, fakeHost(fx, fakeScriptModel(), render))).rejects.toThrow(/has no completed render stage/);
   });
 });
 
@@ -459,7 +459,7 @@ describe("the render stage", () => {
     const { fx: seed, result } = await seededRun();
 
     expect(Object.keys(row(result, "render").outputs).sort()).toEqual(["mp4", "page", "render-manifest", "timeline", "vtt"]);
-    expect(row(result, "render")).toMatchObject({ checks: "1 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "render")).toMatchObject({ checks: "27 pass, 0 gate fail, 1 reported fail" });
     expect(existsSync(path.join(seed.theater, "demo.mp4"))).toBe(true);
   });
 });

@@ -16,7 +16,7 @@ import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
 import { defaultRenderWorkers } from "../render/render-video.js";
-import { timingProfile, TimingProfileSchema } from "../qa/timing-gates.js";
+import { timingProfile, TimingProfileSchema, type TimingProfile } from "../qa/timing-gates.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
@@ -29,12 +29,12 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
   gather: "g2",
   audition: "pp10",
-  script: "x26",
-  rewrite: "x13",
-  eval: "x13",
+  script: "x28",
+  rewrite: "x14",
+  eval: "x14",
   resolve: "p5c2s2f2s2d9",
   tts: "p6d",
-  render: "m10c14",
+  render: "m10c16",
   qa: "x11a",
   sheets: "x10",
 };
@@ -110,10 +110,10 @@ export const StageConfigSchema = z.object({
   video: VideoRefSchema.optional(),
   /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
   qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
-  /** The render's capture workers, its two-run and no-QA switches, the pre-capture gate profile and the style pack's CSS. */
+  /** The render's capture workers, its two-run and no-QA switches, the gate profile, the type's timing thresholds qa's gate rows read, and the style pack's CSS. */
   render: z.object({
     workers: z.number().int().positive(), twoRun: z.boolean(), noQa: z.boolean(),
-    gate: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema }), styleCss: z.string().optional(),
+    gate: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema }), timing: TimingProfileSchema.optional(), styleCss: z.string().optional(),
   }).optional(),
   /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
   builder: BuilderRefSchema.optional(),
@@ -167,17 +167,21 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
+/** The run type's timing thresholds, which qa's gate rows read in the qa stage and in render. */
+const runTiming = (settings: RunSettings): TimingProfile => timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+
 /** The gate profile and the type's pacing are read when the spec is built, so an edit to either or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
 function qaConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const { sweep = true } = z.strictObject({ sweep: z.boolean().optional() }).parse(params);
-  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  const timing = runTiming(settings);
   return { qa: { ...loadQaGate(settings.profile), sweep, timing }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
-/** Render gates on the same profile qa reads, so an edit to it re-keys render too; a host's worker count is part of the key. */
+/** Render gates on the same profile and timing qa reads, so an edit to either re-keys render too; a host's worker count is part of the key. */
 function renderConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const p = RenderParamsSchema.parse(params);
-  const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile) };
+  const timing = runTiming(settings);
+  const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile), timing };
   return { render, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 

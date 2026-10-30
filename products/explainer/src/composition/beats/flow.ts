@@ -12,7 +12,7 @@ export const RAIL_Y = MAP.nodeTop + MAP.nodeH / 2;
 /** A one-way path draws no loop-back edge, so the box ends under the row instead of reserving the spike's loop space. */
 export const MAP_H = MAP.nodeTop * 2 + MAP.nodeH;
 const HOP_S = SMALL_MOVE_S;
-const LIT_RAMP_S = 0.2;
+export const LIT_RAMP_S = 0.2;
 
 type Point = readonly [number, number];
 

@@ -1,5 +1,6 @@
 import { useBeatTime } from "@titan-design/react-ui/motion";
 import { AxisOrigin, axisShare, type AxisFrame } from "./chart-frame.js";
+import { litBox, useLit } from "./stage/emphasis.js";
 import { progressAt } from "./stage/entrance.js";
 import { fadeUp } from "./stage/video.js";
 
@@ -43,8 +44,9 @@ function barShare(t: number, start: number, value: number, axis: BarAxis): numbe
 function Bar({ row, i, t, axis, growAtS }: { row: BarRow; i: number; t: number; axis: BarAxis; growAtS: number }) {
   const start = growStart(row, growAtS, i);
   const shown = progressAt(t, start + GROW_S * 0.6, 0.3);
+  const lit = useLit()(row.id, t);
   return (
-    <li className="ex-bar-row" data-tone="neutral" data-reveal={row.id} style={fadeUp(t, start, 16)}>
+    <li className="ex-bar-row" data-tone="neutral" data-reveal={row.id} style={{ ...fadeUp(t, start, 16), ...litBox(lit) }}>
       <span className="ex-bar-label">{row.label}</span>
       <span className="ex-bar-track" data-qa-container="">
         <span className="ex-bar-fill" style={{ width: `${barShare(t, start, row.value, axis) * 100}%`, ...(row.colour === undefined ? {} : { background: row.colour }) }} />
@@ -58,7 +60,7 @@ function Bar({ row, i, t, axis, growAtS }: { row: BarRow; i: number; t: number; 
 const NO_FRAME: AxisFrame = { floor: 0, axisBreak: false };
 
 /**
- * Horizontal bars on one scale, growing top to bottom from `growAtS`; a capped row shows its cap as a marker. The scale
+ * Horizontal bars on one scale, growing top to bottom from `growAtS`, a row lit when a later cue names it; a capped row shows its cap as a marker. The scale
  * starts at the frame's floor, which the frame names when it is not zero.
  */
 export function BarChartFrame({ rows, growAtS, frame = NO_FRAME }: { rows: readonly BarRow[]; growAtS: number; frame?: AxisFrame }) {

@@ -14,8 +14,8 @@
     {
       "name": "qa never reads the render's vtt",
       "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "captions: captionReport(vttText(input),",
-      "replace": "captions: captionReport(undefined,",
+      "find": "vtt: vttText(input),",
+      "replace": "vtt: undefined,",
       "kills": [
         "qa stage captions passes every caption check on a track that matches words.json",
         "qa stage captions reports a cue late against its first word under captions-onset, as a reported check"

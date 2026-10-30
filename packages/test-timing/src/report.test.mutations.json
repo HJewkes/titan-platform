@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a 25% anomaly threshold misses a 15% suite-wide rise",
+      "file": "packages/test-timing/src/trend.ts",
+      "find": "{ window: 10, minWindow: 3, threshold: 0.12, hold: 2 }",
+      "replace": "{ window: 10, minWindow: 3, threshold: 0.25, hold: 2 }",
+      "kills": ["fork-cost regression replay flags the second slow suite run as an anomaly and no run before it"]
+    },
+    {
+      "name": "an anomaly needs no second run, so hosted noise alarms",
+      "file": "packages/test-timing/src/trend.ts",
+      "find": "{ window: 10, minWindow: 3, threshold: 0.12, hold: 2 }",
+      "replace": "{ window: 10, minWindow: 3, threshold: 0.12, hold: 1 }",
+      "kills": ["fork-cost regression replay raises no anomaly over the noisy runs alone"]
+    },
+    {
+      "name": "a sharded run missing a shard still counts as a suite run",
+      "file": "packages/test-timing/src/queries.ts",
+      "find": "    if (seen.size !== shardCount([...seen][0] ?? null)) groups.delete(id);\n",
+      "replace": "",
+      "kills": ["timingReport run selection leaves out scoped runs and a sharded run that lacks a shard"]
+    },
+    {
+      "name": "sharded and unsharded runs share a series",
+      "file": "packages/test-timing/src/queries.ts",
+      "find": "runnerClass: seriesClass(run),",
+      "replace": "runnerClass: run.runner_class,",
+      "kills": ["timingReport run selection sums the shards of one run into a single suite point, apart from unsharded runs"]
+    }
+  ]
+}

@@ -270,7 +270,7 @@ export function spokenOf(fx: Fixture, sha: string): string {
 }
 
 /** The fixture's beats run 16-18 s with no cues, so the DIRECTION timing gates would stop every run at qa; these never fire. */
-const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
+export const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
 
 export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
   const rewriter = extra.rewriter ?? fakeRewriter();
