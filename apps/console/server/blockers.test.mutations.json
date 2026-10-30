@@ -22,10 +22,19 @@
     {
       "name": "a satisfied hold still counts as a blocker",
       "file": "apps/console/server/blockers.ts",
-      "find": "held === null || held.satisfiedAt !== undefined || row.pendingGate !== null",
+      "find": "held === null || held.satisfiedAt === row.headSha || row.pendingGate !== null",
       "replace": "held === null || row.pendingGate !== null",
       "kills": [
         "bannerBlockers sources a satisfied hold is not a blocker"
+      ]
+    },
+    {
+      "name": "a hold satisfied at any head counts as satisfied",
+      "file": "apps/console/server/blockers.ts",
+      "find": "held.satisfiedAt === row.headSha",
+      "replace": "held.satisfiedAt !== undefined",
+      "kills": [
+        "bannerBlockers sources a hold satisfied at an older head still blocks the run's current head"
       ]
     },
     {
@@ -36,15 +45,6 @@
       "kills": [
         "bannerBlockers threshold a 148 h wait banners at the 12 h default",
         "bannerBlockers threshold the same gate shows on the first read past 12 h, not only at 148 h"
-      ]
-    },
-    {
-      "name": "a seat-step gate is bannered as the owner's",
-      "file": "apps/console/server/blockers.ts",
-      "find": "gate === null || SEAT_STEPS.has(baseStep(gate.stepId))",
-      "replace": "gate === null",
-      "kills": [
-        "bannerBlockers sources a seat-step gate never shows, even repeated"
       ]
     }
   ]

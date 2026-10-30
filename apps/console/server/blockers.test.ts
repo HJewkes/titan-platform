@@ -72,10 +72,16 @@ describe("bannerBlockers threshold", () => {
 
 describe("bannerBlockers sources", () => {
   it("a satisfied hold is not a blocker", () => {
-    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, ago(HOUR)), held("run-2", 8, 48 * HOUR)] });
+    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, "a1b2c3d"), held("run-2", 8, 48 * HOUR)] });
 
     expect(result.items.map((item) => item.id)).toEqual(["held:run-2"]);
     expect(result.items[0]).toMatchObject({ source: "owner-hold", link: "#/shepherd/example-org%2Frepo%238" });
+  });
+
+  it("a hold satisfied at an older head still blocks the run's current head", () => {
+    const result = banner({ rows: [held("run-1", 7, 48 * HOUR, "0ld0ead")] });
+
+    expect(result.items.map((item) => item.id)).toEqual(["held:run-1"]);
   });
 
   it("a seat-step gate never shows, even repeated", () => {

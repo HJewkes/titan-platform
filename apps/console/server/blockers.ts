@@ -91,10 +91,13 @@ function ownerGate(row: WatchRow): Unaged | undefined {
   return { id, source: "owner-gate", summary: clip(`${prOf(row)} waits on ${baseStep(gate.stepId)}`), blocks: prOf(row), asker: "shepherd", since: gate.since, link: inboxLink(id) };
 }
 
-/** A hold with a gate pending waits on the gate, which is listed on its own. */
+/**
+ * A hold with a gate pending waits on the gate, which is listed on its own. `satisfiedAt` is the head a reviewer
+ * approved, not a time: as Shepherd's `waitsOnHold` reads it, the hold is satisfied only at the run's own head.
+ */
 function ownerHold(row: WatchRow): Unaged | undefined {
   const { held } = row;
-  if (!pinnedLive(row) || held === null || held.satisfiedAt !== undefined || row.pendingGate !== null) return undefined;
+  if (!pinnedLive(row) || held === null || held.satisfiedAt === row.headSha || row.pendingGate !== null) return undefined;
   const link = `#/shepherd/${encodeURIComponent(prOf(row))}`;
   return { id: `held:${row.runId}`, source: "owner-hold", summary: clip(`${prOf(row)} is held: ${held.reason}`), blocks: prOf(row), asker: "shepherd", since: row.phaseSince, link };
 }
