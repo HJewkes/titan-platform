@@ -13,7 +13,16 @@ interface MemoryHost extends DispatchHost {
 }
 declare function memoryHost(): MemoryHost;
 
-export { AdmissionRequest, DispatchHost, type MemoryHost, memoryHost };
+interface SqliteHost extends MemoryHost {
+    close(): void;
+}
+/**
+ * The same ports as `memoryHost`, with the journal kept in a SQLite file so a restart folds the same rows.
+ * Presence, admission and holds stay in memory: they die with the process by design.
+ */
+declare function sqliteHost(dbPath: string): SqliteHost;
+
+export { AdmissionRequest, DispatchHost, type MemoryHost, type SqliteHost, memoryHost, sqliteHost };
 
 // ./dist/ports.d.ts
 /**
