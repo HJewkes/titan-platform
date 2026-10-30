@@ -11,7 +11,7 @@
       ]
     },
     {
-      "name": "a merge whose implementer has no roster row counts under the implementer's own name",
+      "name": "a merge with no roster row counts under its implementer's name",
       "file": "products/factory/src/digest/seats.ts",
       "find": "implementer && onRoster.has(implementer) ?",
       "replace": "implementer ?",
