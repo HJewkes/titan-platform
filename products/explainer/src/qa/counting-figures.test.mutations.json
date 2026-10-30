@@ -18,6 +18,15 @@
       "kills": [
         "sibling counting figures a sibling figure that settles on an unspoken number is still a finding"
       ]
+    },
+    {
+      "name": "an unchanging number is keyed by its place as a count",
+      "file": "products/explainer/src/qa/counting-figures.ts",
+      "find": "return (values.get(key)?.size ?? 0) > 1 && !shared.has(key) ? key : undefined;",
+      "replace": "return values.has(key) && !shared.has(key) ? key : undefined;",
+      "kills": [
+        "step numbers rising into place a number that moves more than a few pixels as it enters is held for its whole stay"
+      ]
     }
   ]
 }

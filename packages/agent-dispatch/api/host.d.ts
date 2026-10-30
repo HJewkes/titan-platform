@@ -1,3 +1,30 @@
+import { D as DispatchHost, A as AdmissionRequest } from '../ports.js';
+export { a as AdmissionLedger, b as AdmissionVerdict, c as AgentJournal, J as JournalRow, N as NamePresence, P as PresencePort, R as ReadmitOutcome, d as RetireHoldPort } from '../ports.js';
+
+interface MemoryHost extends DispatchHost {
+    /** Bind a live connection to a name; `agentId` omitted reads as connected but unbound. */
+    connect(name: string, agentId?: string): void;
+    disconnect(name: string): void;
+    /** Hold a tree against retire with a reason. */
+    hold(tree: string, reason: string): void;
+    release(tree: string): void;
+    /** Every `admit` call, in order. */
+    admitted(): readonly AdmissionRequest[];
+}
+declare function memoryHost(): MemoryHost;
+
+interface SqliteHost extends MemoryHost {
+    close(): void;
+}
+/**
+ * The same ports as `memoryHost`, with the journal kept in a SQLite file so a restart folds the same rows.
+ * Presence, admission and holds stay in memory: they die with the process by design.
+ */
+declare function sqliteHost(dbPath: string): SqliteHost;
+
+export { AdmissionRequest, DispatchHost, type MemoryHost, type SqliteHost, memoryHost, sqliteHost };
+
+// ./dist/ports.d.ts
 /**
  * The seams the dispatch fold reads and writes through. Each shape follows what
  * agent-chat's supervisor touches today, so a product adapter (the broker's event
@@ -61,25 +88,4 @@ interface DispatchHost {
     retireHold: RetireHoldPort;
 }
 
-interface MemoryHost extends DispatchHost {
-    /** Bind a live connection to a name; `agentId` omitted reads as connected but unbound. */
-    connect(name: string, agentId?: string): void;
-    disconnect(name: string): void;
-    /** Hold a tree against retire with a reason. */
-    hold(tree: string, reason: string): void;
-    release(tree: string): void;
-    /** Every `admit` call, in order. */
-    admitted(): readonly AdmissionRequest[];
-}
-declare function memoryHost(): MemoryHost;
-
-interface SqliteHost extends MemoryHost {
-    close(): void;
-}
-/**
- * The same ports as `memoryHost`, with the journal kept in a SQLite file so a restart folds the same rows.
- * Presence, admission and holds stay in memory: they die with the process by design.
- */
-declare function sqliteHost(dbPath: string): SqliteHost;
-
-export { type AdmissionLedger, type AdmissionRequest, type AdmissionVerdict, type AgentJournal, type DispatchHost, type JournalRow, type MemoryHost, type NamePresence, type PresencePort, type ReadmitOutcome, type RetireHoldPort, type SqliteHost, memoryHost, sqliteHost };
+export type { AdmissionRequest as A, DispatchHost as D, JournalRow as J, NamePresence as N, PresencePort as P, ReadmitOutcome as R, AdmissionLedger as a, AdmissionVerdict as b, AgentJournal as c, RetireHoldPort as d };
