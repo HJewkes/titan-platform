@@ -47,14 +47,16 @@ interface CharterPool {
   perDay: number | null;
 }
 
+const charterFront = z.object({ pools: z.record(z.string(), z.record(z.string(), z.unknown()).nullable()).optional() }).nullable();
+
 const numberOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
 async function readCharterPools(autonomyDir: string): Promise<Map<string, CharterPool>> {
   const text = await readFile(path.join(autonomyDir, "charter.md"), "utf8");
   const front = FRONT_MATTER.exec(text);
-  const data = front === null ? null : (parse(front[1]!) as { pools?: Record<string, Record<string, unknown> | null> } | null);
+  const data = charterFront.safeParse(front === null ? null : parse(front[1]!));
   const pools = new Map<string, CharterPool>();
-  for (const [name, limits] of Object.entries(data?.pools ?? {})) pools.set(name, { reserve: numberOrNull(limits?.reserve_seven_day), perDay: numberOrNull(limits?.per_day_points) });
+  for (const [name, limits] of Object.entries(data.success ? (data.data?.pools ?? {}) : {})) pools.set(name, { reserve: numberOrNull(limits?.reserve_seven_day), perDay: numberOrNull(limits?.per_day_points) });
   return pools;
 }
 
@@ -89,7 +91,7 @@ async function attempt<T>(what: string, gaps: string[], read: () => Promise<T>):
   try {
     return await read();
   } catch (error) {
-    gaps.push(failed(what, (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : error));
+    gaps.push(failed(what, error instanceof Error && "code" in error && error.code === "ENOENT" ? "missing" : error));
     return null;
   }
 }

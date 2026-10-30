@@ -54,8 +54,7 @@ const dateLabel = (at: Date): string => `${at.getFullYear()}-${pad(at.getMonth()
 
 /** Local wall-clock constructors, so a day that crosses a DST change still starts at the same local time. */
 function startOn(year: number, month: number, day: number, dayStart: string): Date {
-  const [hour, minute] = dayStart.split(":").map(Number) as [number, number];
-  return new Date(year, month, day, hour, minute);
+  return new Date(year, month, day, Number(dayStart.slice(0, 2)), Number(dayStart.slice(3, 5)));
 }
 
 /** The window holding `now`, or the one starting on `date` when given. */
