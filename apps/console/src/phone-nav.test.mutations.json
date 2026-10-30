@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone keeps the rail and gets no menu",
+      "file": "apps/console/src/App.tsx",
+      "find": "const isPhone = useMediaQuery(BELOW_MD);",
+      "replace": "const isPhone = false;",
+      "kills": [
+        "the shell nav on a phone hides the rail until the menu opens, then lists every route with the current one marked and focused"
+      ]
+    },
+    {
+      "name": "the drawer marks no route as current",
+      "file": "apps/console/src/shell/PhoneNav.tsx",
+      "find": "aria-current={isActive ? \"page\" : undefined}",
+      "replace": "aria-current={undefined}",
+      "kills": [
+        "the shell nav on a phone hides the rail until the menu opens, then lists every route with the current one marked and focused"
+      ]
+    },
+    {
+      "name": "tapping a route leaves the drawer open",
+      "file": "apps/console/src/shell/PhoneNav.tsx",
+      "find": "onClick={onNavigate}",
+      "replace": "onClick={undefined}",
+      "kills": [
+        "the shell nav on a phone closes the menu once a route is tapped and lands on it"
+      ]
+    },
+    {
+      "name": "Escape before the fade ends leaves the drawer open",
+      "file": "apps/console/src/shell/PhoneNav.tsx",
+      "find": "if (event.key === \"Escape\") close();",
+      "replace": "if (event.key === \"Escape\") return;",
+      "kills": [
+        "the shell nav on a phone closes the menu on Escape and hands focus back to the menu button"
+      ]
+    },
+    {
+      "name": "a desktop loses the rail too",
+      "file": "apps/console/src/App.tsx",
+      "find": "nav={isPhone ? false : undefined}",
+      "replace": "nav={false}",
+      "kills": [
+        "the shell nav on a phone keeps the rail and no menu button on a desktop"
+      ]
+    }
+  ]
+}
