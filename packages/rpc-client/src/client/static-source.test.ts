@@ -88,6 +88,11 @@ describe("snapshots", () => {
     expect(() => parseSnapshot(value)).toThrow(message);
   });
 
+  it("keeps a top-level key it does not know, so a newer writer's field survives", () => {
+    const parsed = parseSnapshot({ ...snapshot, producedBy: "later-writer" });
+    expect(parsed).toHaveProperty("producedBy", "later-writer");
+  });
+
   it("accepts its own output after a JSON round trip", () => {
     expect(parseSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(snapshot);
   });

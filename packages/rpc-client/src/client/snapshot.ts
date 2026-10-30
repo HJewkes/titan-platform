@@ -57,9 +57,8 @@ export function parseSnapshot(value: unknown): Snapshot {
   const { createdAt, calls } = value;
   if (typeof createdAt !== "string") throw new Error("Snapshot createdAt must be a string");
   if (!isRecord(calls) || Array.isArray(calls)) throw new Error("Snapshot calls must be an object");
-  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt, calls: parseCalls(calls) };
-  if ("dataset" in value) snapshot.dataset = value.dataset;
-  return snapshot;
+  // Unknown top-level keys are kept so a field a newer writer adds still reaches the reader.
+  return { ...value, format: SNAPSHOT_FORMAT, createdAt, calls: parseCalls(calls) };
 }
 
 function parseCalls(calls: Record<string, unknown>): Record<string, JsonEnvelope<unknown>> {
