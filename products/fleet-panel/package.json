@@ -1,0 +1,40 @@
+{
+  "name": "@titan-design/fleet-panel",
+  "version": "0.0.0",
+  "description": "Claude Code mod: a live panel of running agent-chat agents, their accounts, context and spend",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mod": "./dist/mod/register.js"
+  },
+  "bin": {
+    "titan-fleet-feed": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "plugin",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/fleet-panel"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true
+}
