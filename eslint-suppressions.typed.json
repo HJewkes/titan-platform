@@ -469,47 +469,6 @@
       "count": 1
     }
   },
-  "packages/authority/src/conditions.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/authority/src/conditions.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/authority/src/decider.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/authority/src/evaluate.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/authority/src/merge-carry.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/authority/src/merge-remerge.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/authority/src/merge-reviewer.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 9
-    }
-  },
   "packages/chat-protocol/src/agents/graph.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
