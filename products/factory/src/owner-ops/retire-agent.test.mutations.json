@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a forced retire skips the grace check",
+      "file": "products/factory/src/owner-ops/retire-agent.ts",
+      "find": "  if (wait > 0) return `Wait",
+      "replace": "  if (wait > 120_000) return `Wait",
+      "kills": [
+        "retire-agent forced refuses an agent exited 119 s ago, inside agent-chat's grace, and calls no retire"
+      ]
+    },
+    {
+      "name": "the grace is off by more than a second, so a just-past-grace agent is refused",
+      "file": "products/factory/src/owner-ops/retire-agent.ts",
+      "find": "const RECLAIM_GRACE_MS = 120_000;",
+      "replace": "const RECLAIM_GRACE_MS = 122_000;",
+      "kills": [
+        "retire-agent forced retires an agent exited 121 s ago with --force"
+      ]
+    },
+    {
+      "name": "a row without an exit time reads as exited at the epoch, so it is forced",
+      "file": "products/factory/src/owner-ops/retire-agent.ts",
+      "find": "row.exitedAt == null ? Number.NaN : Date.parse(row.exitedAt)",
+      "replace": "row.exitedAt == null ? 0 : Date.parse(row.exitedAt)",
+      "kills": [
+        "retire-agent forced refuses a row that carries no exitedAt and calls no retire",
+        "retire-agent forced refuses a row that carries a null exitedAt and calls no retire"
+      ]
+    },
+    {
+      "name": "the confirmed force never reaches agent-chat",
+      "file": "products/factory/src/owner-ops/retire-agent.ts",
+      "find": "deps.agentChat.retire(op.name, op.force)",
+      "replace": "deps.agentChat.retire(op.name, false)",
+      "kills": [
+        "retire-agent forced retires an agent exited 121 s ago with --force"
+      ]
+    },
+    {
+      "name": "the factory forces whatever the record asks, skipping every force check",
+      "file": "products/factory/src/owner-ops/retire-agent.ts",
+      "find": "(op.force ? forceStop(holder, (deps.now ?? Date.now)()) : undefined)",
+      "replace": "undefined",
+      "kills": [
+        "retire-agent forced refuses an agent exited 119 s ago, inside agent-chat's grace, and calls no retire",
+        "retire-agent forced refuses a row that carries no exitedAt and calls no retire"
+      ]
+    }
+  ]
+}

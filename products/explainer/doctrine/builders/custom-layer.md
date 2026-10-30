@@ -114,7 +114,13 @@ The packet describes a single beat and nothing about its neighbours:
 - One idea per beat. The layer makes the narration's single point visible; it does not decorate.
 - Motion explains: something enters when it is named, changes when it changes, and leaves when the
   narration is done with it. Nothing moves for its own sake.
-- Settle before the beat ends, so the cut to the next beat lands on a still frame.
+- Settle before the beat ends, so the cut to the next beat lands on a still frame, but never stand
+  still for more than 3 s before the last cue word. After it the finished frame may stand still up
+  to 6 s while the narration speaks over it, with at most 3 s of that silent, and a beat runs about
+  2 s past its last word. Past those limits, start a highlight or pulse from a cue, as
+  `useCue("ledger") + 1.5`, inside the stretch that follows it.
+  The build check runs qa's static-window, picture-change, reading-hold and label-length gates over
+  the layer's frames and refuses a stretch that breaks them, naming its seconds.
 - Prefer a few large, well-spaced shapes and words over many small ones. Text on screen echoes the
   narration's key nouns; it never repeats the sentence. The build check refuses any text that shares
   5 or more words in a row with `spoken`.

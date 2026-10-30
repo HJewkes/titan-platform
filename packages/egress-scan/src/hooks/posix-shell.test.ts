@@ -6,7 +6,7 @@ import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { gitHooksEnv, hookScripts, writeGitHooks } from "./dir.js";
 import { gitShimScript } from "./git-shim.js";
-import { HOST_PATH, NO_VERIFY, realGitOn } from "./git-shim.fixture.js";
+import { HOST_PATH, NO_VERIFY, realGitOn, installExecutable } from "./git-shim.fixture.js";
 import { ENVIRONMENT_SCRUB, hardenedShebang, hookShell, posixShell } from "./posix-shell.js";
 
 const SCRATCH = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-posix-shell-")));
@@ -88,7 +88,7 @@ describe("a chain hook counting the commands it runs from PATH", () => {
       ["git", REAL_GIT],
       ["env", realEnv],
     ] as const) {
-      fs.writeFileSync(path.join(stubs, name), `#!/bin/sh\necho ${name} >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
+      installExecutable(path.join(stubs, name), `#!/bin/sh\necho ${name} >> '${log}'\nexec '${real}' "$@"\n`);
     }
     env = { PATH: `${stubs}:/usr/bin:/bin` };
   });
@@ -134,7 +134,7 @@ describe.each(SHELLS)("the git shim written for %s", (shell) => {
     const bin = path.join(SCRATCH, `bin-${path.basename(shell)}`);
     fs.mkdirSync(bin, { recursive: true });
     const shim = path.join(bin, "git");
-    fs.writeFileSync(shim, gitShimScript(REAL_GIT, SCRATCH, [], "", shell), { mode: 0o755 });
+    installExecutable(shim, gitShimScript(REAL_GIT, SCRATCH, [], "", shell));
 
     const run = spawnSync(shim, ["push", NO_VERIFY], { cwd: SCRATCH, encoding: "utf8" });
 
@@ -154,9 +154,9 @@ describe.each(SHELLS)("a commit through the git shim on %s under a hostile SHELL
     seedRepo(repo);
     fs.writeFileSync(path.join(repo, "a.txt"), "a\n");
     execFileSync(REAL_GIT, ["add", "a.txt"], { cwd: repo, env: clean });
-    fs.writeFileSync(path.join(repo, ".git", "hooks", "pre-commit"), `${shebang}\necho ran >> '${marker}'\nexit 1\n`, { mode: 0o755 });
+    installExecutable(path.join(repo, ".git", "hooks", "pre-commit"), `${shebang}\necho ran >> '${marker}'\nexit 1\n`);
     writeGitHooks(guard, INPUTS, { shell: hookShell(shell), shimDirs: [] });
-    fs.writeFileSync(shim, gitShimScript(REAL_GIT, guard, [], "", shell), { mode: 0o755 });
+    installExecutable(shim, gitShimScript(REAL_GIT, guard, [], "", shell));
 
     const run = spawnSync(shim, ["commit", "-q", "-m", "x"], {
       cwd: repo,

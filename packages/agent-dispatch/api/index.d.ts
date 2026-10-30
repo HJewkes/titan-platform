@@ -455,6 +455,11 @@ interface AgentRow {
     predecessor?: string | null;
     /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
     retired?: boolean;
+    /**
+     * When the agent's session exited, as an ISO string; null while it has not. Absent from an agent-chat that
+     * predates it, which proves nothing about when, or whether, the agent exited.
+     */
+    exitedAt?: string | null;
 }
 /**
  * Every row the broker's log holds, retired generations included. `complete` is false when the installed agent-chat
