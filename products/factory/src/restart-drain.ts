@@ -40,9 +40,9 @@ export const NO_ANSWER_PROCEED_MS = 2 * 60_000;
 const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
 /**
  * Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days,
- * and a seat reviewer runs outside serve, so its verdict waits for the repeated read.
+ * a seat reviewer runs outside serve, so its verdict waits for the repeated read, and a merging run in sh-order-wait only polls for the PRs ahead of it, replaying that wait (TP-4567).
  */
-const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait", "sh-await-verdict", "sh-late-verdict", "sh-seat-recheck"];
+const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait", "sh-await-verdict", "sh-late-verdict", "sh-seat-recheck", "sh-order-wait"];
 const MERGE_STEP = "merge";
 /** The review spawn step; it is repeated on restart and finds by name any reviewer an earlier run spawned, so a restart before the spawn loses nothing. */
 const REVIEW_SPAWN_STEP = "sh-review";
