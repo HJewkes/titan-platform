@@ -29,7 +29,14 @@ type DegradedReason ="graph-missing" | "graph-not-migrated" | "graph-unreadable"
 export interface Degraded {
   reason: DegradedReason;
   detail: string;
+  /** For "graph-not-migrated": the migrations the graph lacks, as "<version> (<name>)". */
+  missing?: readonly string[];
+  /** For "graph-not-migrated": what the operator does about it. */
+  fix?: string;
 }
+
+/** The graph records no producer, so the fix names the tool that owns it rather than the one that wrote it. */
+const GRAPH_NOT_MIGRATED_FIX = "Upgrade active-work, then run `active miner refresh`: opening the graph read-write applies the pending migrations.";
 
 interface ModelUsage {
   model: string;
@@ -133,8 +140,11 @@ export async function readGraph<T>(graphPath: string, read: (graph: SessionGraph
   try {
     graph = openSessionGraph(graphPath, { readonly: true });
   } catch (error) {
-    const reason = error instanceof SessionGraphNotMigratedError ? "graph-not-migrated" : "graph-unreadable";
-    return { ok: false, degraded: { reason, detail: error instanceof Error ? error.message : String(error) } };
+    const detail = error instanceof Error ? error.message : String(error);
+    if (error instanceof SessionGraphNotMigratedError) {
+      return { ok: false, degraded: { reason: "graph-not-migrated", detail, missing: error.missing, fix: GRAPH_NOT_MIGRATED_FIX } };
+    }
+    return { ok: false, degraded: { reason: "graph-unreadable", detail } };
   }
   try {
     return { ok: true, value: read(graph) };

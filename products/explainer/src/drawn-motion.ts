@@ -1,11 +1,10 @@
 import { motion } from "@titan-design/react-ui/theme/tokens";
 import { SMALL_MOVE_S } from "./composition/beats/stage/video-timing.js";
-import { OUTRO_FADE_OUT_S } from "./composition/beats/stage/outro-fade.js";
 import type { FilledBeat } from "./template-fill/fill.js";
 
 /**
  * How long a drawn kind's picture keeps moving once an element lands (TP-4538): the script-time model of each
- * template's own entrance, count-up and fade, so Q-D22 counts as still only what qa's framediff would see still.
+ * template's own entrance and count-up, so Q-D22 counts as still only what qa's framediff would see still.
  * The template constants are mirrored here, each cited; `drawn-motion.test.ts` pins them to the template sources.
  * The CLI loads this under plain node, so it reads react-ui's import-free tokens, not its motion entry (TP-4561).
  */
@@ -26,7 +25,6 @@ export const OUTRO_ACTION_S = 0.9;
 // react-ui builds MOTION.duration from this token table the same way, milliseconds over 1e3.
 const SLOW_S = motion.duration.slow / 1e3;
 const NORMAL_S = motion.duration.normal / 1e3;
-const OUTRO_KINDS: ReadonlySet<string> = new Set(["outro", "button"]);
 
 const words = (text: unknown): number => (typeof text === "string" ? text.split(/\s+/).filter(Boolean).length : 0);
 
@@ -46,6 +44,3 @@ export function revealMotionS(filled: Pick<FilledBeat, "spec" | "slots">): numbe
   if (filled.spec === "outro") return SLOW_S;
   return SMALL_MOVE_S;
 }
-
-/** Seconds before the beat's end its picture moves on its own: an outro or button fades out. */
-export const closingMotionS = (filled: Pick<FilledBeat, "spec">): number => (OUTRO_KINDS.has(filled.spec) ? OUTRO_FADE_OUT_S : 0);
