@@ -2,47 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a reply with only unknown keys is rejected instead of stripped",
-      "file": "products/explainer/src/workflow/script-reply.ts",
-      "find": "if (!issues.every((issue) => issue.code === \"unrecognized_keys\" || issue.code === \"invalid_value\")) return undefined;",
-      "replace": "if (issues.length > 0) return undefined;",
+      "name": "a later run forgets its base run's digest day",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "request.gather ?? (base ? planOf(base).gather : undefined)",
+      "replace": "request.gather",
       "kills": [
-        "explainer run drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry"
+        "explainer run keys a later run's reflection to the digest day its base run gathered"
       ]
-    },
-    {
-      "name": "the repair prompt drops what a failing check found",
-      "file": "products/explainer/src/workflow/failure-list.ts",
-      "find": "return hint ? `\\n  Found: ${hint}` : \"\";",
-      "replace": "return \"\";",
-      "kills": [
-        "explainer run tells the repair what a failing check found where its row alone is opaque"
-      ]
-    },
-    {
-      "name": "the repair rounds never see the words the voice cannot say",
-      "file": "products/explainer/src/workflow/model-stages.ts",
-      "find": ", unknownWordsRow(g2p, spellScript(script))];",
-      "replace": "];",
-      "kills": [
-        "explainer run puts a word the voice cannot say into the repair round with its split, and keeps the respelled reply"
-      ]
-    },
-    {
-      "name": "the drafting model's schema keeps the owner-only fields",
-      "file": "products/explainer/src/script-schema.ts",
-      "find": "visual: ScriptVisualSchema.omit({ slots: true, tune: true })",
-      "replace": "visual: ScriptVisualSchema",
-      "kills": [
-        "explainer run never shows the drafting model the owner's slot overrides, and drops them from its reply before resolve"
-      ]
-    },
-    {
-      "name": "resolve stores its fill under the pin's name, so a later run reads it as a pin",
-      "file": "products/explainer/src/resolve-stage.ts",
-      "find": "{ \"generated-slots\": store.putText(generated, \"generated-slots\", input.from) }",
-      "replace": "{ slots: store.putText(generated, \"generated-slots\", input.from) }",
-      "kills": ["explainer run --from fills fresh at resolve after a base that went past resolve, since its stored generated slots are not a pin"]
     }
   ]
 }
