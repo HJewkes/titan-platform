@@ -132,7 +132,7 @@ export interface DigestModel {
 }
 
 /** One stalled burndown claim, as agent-chat's own digest lists it. */
-export interface StalledClaim {
+interface StalledClaim {
   taskId: string;
   agentId: string;
   phase: string;
@@ -140,7 +140,7 @@ export interface StalledClaim {
 }
 
 /** A BLOCKED or NEEDS_CONTEXT report an agent sent; `at` is epoch ms. */
-export interface StatusReport {
+interface StatusReport {
   from: string;
   at: number;
   line: string;
