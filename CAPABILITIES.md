@@ -1176,10 +1176,13 @@ You review one PR head as a resumable workflow and want its vocabulary: the port
 
 Key exports:
 
-- `types`: `DEFAULT_REVIEW_STEP_IDS`, `FAILURE_CLASSES`
+- `types`: `DEFAULT_REVIEW_STEP_IDS`
+- `plan-for-head`: `planForHead`
+- `preflight`: `preflight`
+- `preflight-read`: `preflightRead`
 - `heal`: `applyHeal`, `healOnce`
 - `fixer`: `fixerBrief`, `fixerFingerprint`, `fixerName`, `requestFixer`, `resolveFingerprint`
-- `fixer-report`: `FIXER_FIXES`, `FIXER_REPORT_END`, `readFixerReport`
+- `fixer-report`: `readFixerReport`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
 <a id="cap-session-analytics"></a>

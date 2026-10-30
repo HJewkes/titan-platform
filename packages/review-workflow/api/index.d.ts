@@ -1,6 +1,6 @@
-import { PanelVerdict, ReviewTarget, ReviewShape, ReviewRequest, PanelMember, ReviewerAgent, PrFacts, Headroom, ReviewerDispatch, ReviewerReader, ReviewClock } from '@titan-design/review-panel';
+import { PanelVerdict, ReviewTarget, ReviewShape, ReviewRequest, PanelMember, ReviewerAgent, PrFacts, Headroom, ReviewerDispatch, ReviewerReader, ReviewClock, ReviewClass, PrClass, PanelPlan, PanelPolicy, ClassRules } from '@titan-design/review-panel';
 import { LineSource } from '@titan-design/evidence';
-import { ProofReadInput } from '@titan-design/fix-proof';
+import { ProofReadInput, ProofStanding } from '@titan-design/fix-proof';
 import { PullRequest } from '@titan-design/github';
 
 /** One review of one PR head; the ports carry every read and effect, so the input names only what the caller already knows. */
@@ -113,6 +113,8 @@ interface HeadSnapshot {
     /** The head's required checks, rolled up. */
     ci: "green" | "pending" | "failing";
     facts: PrFacts;
+    /** The file list or a line count could not be read, so the head classifies as large. */
+    sizeUnread?: boolean;
 }
 interface SnapshotPort {
     read(target: ReviewTarget): Promise<HeadSnapshot>;
@@ -162,6 +164,10 @@ interface HeadroomRead extends Headroom {
 interface HeadroomPort {
     read(): Promise<HeadroomRead>;
 }
+/** Whether an agent profile is installed, so a member whose profile is not is refused before any dispatch (tp#1986). */
+interface ProfilesPort {
+    installed(profile: string): boolean;
+}
 interface ReviewWorkflowPorts {
     snapshot: SnapshotPort;
     proofReader: ProofReaderPort;
@@ -174,9 +180,32 @@ interface ReviewWorkflowPorts {
     fixer: FixerPort;
     clock: ReviewClock;
     headroom: HeadroomPort;
+    profiles: ProfilesPort;
     /** Absent means review-panel's `memberName`. */
     namer?: MemberNamer;
 }
+
+/** The PR as classification sees it; `sizeUnread` means the file list or a line count could not be read. */
+interface PlanFacts {
+    facts: PrFacts;
+    sizeUnread?: boolean;
+}
+/** The panel table and role profiles, plus the class rules that size a diff; absent rules are review-panel's defaults. */
+interface ReviewPlanPolicy {
+    panel: PanelPolicy;
+    rules?: ClassRules;
+}
+/** The profile of the adversary member a hold adds, whatever the panel table says; a `PanelMember` fits. */
+interface HoldMember {
+    profile: string;
+}
+interface HeadPlan {
+    class: ReviewClass;
+    touches: PrClass["touches"];
+    plan: PanelPlan;
+}
+/** The class, touches and panel for one head. The standing decides the tests seat, so it is never re-derived here. Pure. */
+declare function planForHead({ facts, sizeUnread }: PlanFacts, policy: ReviewPlanPolicy, standing: ProofStanding, hold?: HoldMember, headroom?: Headroom): HeadPlan;
 
 /** The heals a policy row may name; a heal never pushes to the PR. */
 type HealKind = "refresh-checkout" | "degrade-headroom" | "retarget" | "await-account";
@@ -216,53 +245,6 @@ interface RetryRule {
 type RetryPolicy = readonly RetryRule[];
 /** One row per failure class (plan TP-3916 §(b)); a hill-climbing variant replaces rows, never code. */
 declare const DEFAULT_RETRY_POLICY: RetryPolicy;
-
-type HealPorts = Pick<ReviewWorkflowPorts, "checkout" | "snapshot" | "headroom">;
-/** What a heal acts on: the head under review and, for a headroom refusal, the member the spawn gate refused. */
-interface HealSubject {
-    target: ReviewTarget;
-    member?: PanelMember;
-    /** The plan's premium-to-sonnet table; absent means review-panel's `DEFAULT_SONNET_FOR`. */
-    sonnetFor?: Record<string, string>;
-}
-/** The decision shape that asks for heals; every other decision passes through `healOnce` untouched. */
-interface HealRequest {
-    kind: "heal";
-    heals: readonly HealKind[];
-}
-type HealEffect = {
-    kind: "healed";
-    subject: HealSubject;
-} | {
-    kind: "stop";
-    outcome: ReviewOutcome;
-}
-/** The heal has nothing to act on, such as a refused member with no sonnet fallback. */
- | {
-    kind: "ineffective";
-    heal: HealKind;
-};
-/** `heals` names what was still asked for after the one pass, or the heal that could not act. */
-type HealPassResult<D> = {
-    kind: "decided";
-    decision: D;
-    subject: HealSubject;
-} | {
-    kind: "stop";
-    outcome: ReviewOutcome;
-} | {
-    kind: "fixer";
-    key: "heal-ineffective";
-    heals: readonly HealKind[];
-};
-declare function applyHeal(heal: HealKind, subject: HealSubject, ports: HealPorts): Promise<HealEffect>;
-/**
- * Runs the heals a decision asks for, each once and in order, then re-decides once. A heal that cannot act, or a
- * re-decision that still asks for a heal, goes to the fixer: a second pass would repeat a heal that already failed.
- */
-declare function healOnce<D extends {
-    kind: string;
-}>(decision: D | HealRequest, subject: HealSubject, ports: HealPorts, decide: (subject: HealSubject) => Promise<D | HealRequest>): Promise<HealPassResult<D>>;
 
 /** One hard error: the policy row's fixer key plus the class's own detail (a profile name, a shape, a step id). */
 interface FixerCase {
@@ -357,6 +339,93 @@ type Resumed = {
  */
 declare function resolveFingerprint(parking: ParkingPort, fingerprint: string, resume: (run: ParkedRun) => Promise<ReviewOutcome>): Promise<Resumed[]>;
 
+type HealPorts = Pick<ReviewWorkflowPorts, "checkout" | "snapshot" | "headroom">;
+/** What a heal acts on: the head under review and, for a headroom refusal, the member the spawn gate refused. */
+interface HealSubject {
+    target: ReviewTarget;
+    member?: PanelMember;
+    /** The plan's premium-to-sonnet table; absent means review-panel's `DEFAULT_SONNET_FOR`. */
+    sonnetFor?: Record<string, string>;
+}
+/** The decision shape that asks for heals; every other decision passes through `healOnce` untouched. */
+interface HealRequest {
+    kind: "heal";
+    heals: readonly HealKind[];
+}
+type HealEffect = {
+    kind: "healed";
+    subject: HealSubject;
+} | {
+    kind: "stop";
+    outcome: ReviewOutcome;
+}
+/** The heal has nothing to act on, such as a refused member with no sonnet fallback. */
+ | {
+    kind: "ineffective";
+    heal: HealKind;
+};
+/** `heals` names what was still asked for after the one pass, or the heal that could not act. */
+type HealPassResult<D> = {
+    kind: "decided";
+    decision: D;
+    subject: HealSubject;
+} | {
+    kind: "stop";
+    outcome: ReviewOutcome;
+} | {
+    kind: "fixer";
+    key: "heal-ineffective";
+    heals: readonly HealKind[];
+};
+declare function applyHeal(heal: HealKind, subject: HealSubject, ports: HealPorts): Promise<HealEffect>;
+/**
+ * Runs the heals a decision asks for, each once and in order, then re-decides once. A heal that cannot act, or a
+ * re-decision that still asks for a heal, goes to the fixer: a second pass would repeat a heal that already failed.
+ */
+declare function healOnce<D extends {
+    kind: string;
+}>(decision: D | HealRequest, subject: HealSubject, ports: HealPorts, decide: (subject: HealSubject) => Promise<D | HealRequest>): Promise<HealPassResult<D>>;
+
+/** Everything preflight decides on, read in one pass by `preflightRead`; recorded, so a replay decides the same way. */
+interface PreflightSnapshot {
+    target: ReviewTarget;
+    head: HeadSnapshot;
+    proof: ProofStanding;
+    /** The base the proof judged (TP-4259), kept for a later merge guard; absent when the read names none. */
+    proofBase?: string;
+    carry: CarryProbe;
+    checkout: CheckoutState;
+    headroom: HeadroomRead;
+    /** Each profile the policy could plan and whether it is installed; a profile left out reads as not installed. */
+    profiles: Readonly<Record<string, boolean>>;
+    hold?: HoldMember;
+}
+/** `heal` is the shape `healOnce` consumes; `go` carries the plan the members are dispatched from. */
+type PreflightDecision = {
+    kind: "go";
+    plan: HeadPlan;
+} | HealRequest | {
+    kind: "stop";
+    outcome: ReviewOutcome;
+} | {
+    kind: "fixer";
+    fixerCase: FixerCase;
+};
+/**
+ * The gate before any reviewer starts. Order: not open, head moved, CI not green, a NO_REPRO that ends the review, a carried
+ * merge-up, behind or dirty, then the plan and its profiles, then the heals the checkout and account need. Pure.
+ */
+declare function preflight(snapshot: PreflightSnapshot, policy: ReviewPlanPolicy): PreflightDecision;
+
+interface PreflightReadInput {
+    target: ReviewTarget;
+    policy: ReviewPlanPolicy;
+    hold?: HoldMember;
+}
+type PreflightPorts = Pick<ReviewWorkflowPorts, "snapshot" | "proofReader" | "carry" | "checkout" | "headroom" | "profiles">;
+/** The `preflight-read` step body: one pass over the ports, so `preflight` decides on a recorded snapshot and never reads. */
+declare function preflightRead({ target, policy, hold }: PreflightReadInput, ports: PreflightPorts): Promise<PreflightSnapshot>;
+
 declare const FIXER_REPORT_START = "FIXER-REPORT";
 declare const FIXER_REPORT_END = "END-FIXER-REPORT";
 /** What the fixer proposes; it applies none of them itself (propose-only, plan TP-3916 §(c) phase 1). */
@@ -387,4 +456,4 @@ type FixerReportRead = {
  */
 declare function readFixerReport(text: string, expectedFingerprint?: string): FixerReportRead;
 
-export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type MemberNamer, type ParkedRun, type ParkingPort, type ProofRead, type ProofReaderPort, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, applyHeal, fixerBrief, fixerFingerprint, fixerName, healOnce, readFixerReport, requestFixer, resolveFingerprint };
+export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadPlan, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type HoldMember, type MemberNamer, type ParkedRun, type ParkingPort, type PlanFacts, type PreflightDecision, type PreflightPorts, type PreflightReadInput, type PreflightSnapshot, type ProfilesPort, type ProofRead, type ProofReaderPort, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewPlanPolicy, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, applyHeal, fixerBrief, fixerFingerprint, fixerName, healOnce, planForHead, preflight, preflightRead, readFixerReport, requestFixer, resolveFingerprint };

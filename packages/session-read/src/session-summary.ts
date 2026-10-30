@@ -58,7 +58,7 @@ export class SessionSummaryAccumulator {
       nativeTurnCount: null, observationSpan: { firstAt: null, lastAt: null, durationMs: null },
       observedModel: null, cwd: null, gitBranch: null, cliVersion: null, tools: [],
       toolErrors: { observed: 0, unknownResults: 0 }, explicitlyEvidencedPermissionDenials: 0,
-      compactions: 0, usage: [], usageAvailability: "unreported", nativeMetadata: Object.create(null) as Record<string, unknown>, unknownKinds: [] };
+      compactions: 0, usage: [], usageAvailability: "unreported", nativeMetadata: nullPrototypeRecord(), unknownKinds: [] };
   }
 
   add(observation: NormalizedSessionObservation): void {
@@ -72,7 +72,7 @@ export class SessionSummaryAccumulator {
     if (observation.kind === "message") this.observeMessage(observation);
     if (observation.kind === "native_turn") this.turns.add(scopedConversationItemRef(observation.turn));
     if (observation.kind === "tool_call" || observation.kind === "tool_result") this.observeTool(observation);
-    if (observation.kind === "usage" && !observation.historyOrigin) this.usage.add(observation.measurement);
+    if (observation.kind === "usage") this.usage.add(observation.measurement);
     if (observation.kind === "metadata") this.observeMetadata(observation);
     if (observation.kind === "compaction") this.summary.compactions++;
     if (observation.kind === "unknown") this.unknownKinds.add(observation.nativeKind);
@@ -146,4 +146,9 @@ export async function summarizeSession(source: SessionSourceDescriptor): Promise
   const accumulator = new SessionSummaryAccumulator(source.conversation);
   for await (const observation of readSessionObservations(source)) accumulator.add(observation);
   return accumulator.result();
+}
+
+function nullPrototypeRecord(): Record<string, unknown> {
+  const record: Record<string, unknown> = Object.create(null);
+  return record;
 }
