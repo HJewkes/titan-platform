@@ -36,6 +36,15 @@
       "kills": [
         "text spans text still shown after a beat cut keeps the beat it first showed in"
       ]
+    },
+    {
+      "name": "span key drops the figure's place",
+      "file": "products/explainer/src/qa/reference-timing.ts",
+      "find": "counting.get(beat)?.(t) ?? t.text",
+      "replace": "counting.get(beat)?.(t)?.split(\"@\")[0] ?? t.text",
+      "kills": [
+        "text spans sibling figures counting up are one reading span each"
+      ]
     }
   ]
 }
