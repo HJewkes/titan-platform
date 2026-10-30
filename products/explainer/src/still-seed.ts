@@ -2,7 +2,7 @@ import { emphasisTargets } from "./beat-load.js";
 import { SMALL_MOVE_S } from "./composition/beats/stage/video-timing.js";
 import { cueWord } from "./cues.js";
 import { drawnBeats, screenTokens, type DrawnBeat } from "./drawn-beats.js";
-import { doctrine, heldBeats, plannedCues, scriptPacing } from "./lint-cadence.js";
+import { cuelessKind, doctrine, heldBeats, plannedCues, scriptPacing } from "./lint-cadence.js";
 import { stillBeats, targetWords, type StillStretch } from "./lint-still.js";
 import { plainWords, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
@@ -213,15 +213,23 @@ function pointedCues(script: ScriptV1, pacing: Pacing, moves: SeedMove[]): Scrip
 
 const longest = (stretches: readonly StillStretch[]): number => Math.max(...stretches.map(({ fromS, toS }) => toS - fromS));
 
-/** Rule 4: still cue-less claim-cards are held, the longest still first, while the held band has room (G12). */
-function heldCards(script: ScriptV1, pacing: Pacing, moves: SeedMove[]): ScriptV1 {
-  const cards = new Set(drawnBeats(script).filter(({ filled }) => filled.spec === "claim-card").map(({ filled }) => filled.id));
+/**
+ * Rule 4: still cue-less beats are held, the longest still first, while the held band has room (G12). A kind that takes
+ * no cue (a button, an outro) or a claim-card with none has no word to point on, so a hold is its one move that adds no words.
+ */
+function heldStill(script: ScriptV1, pacing: Pacing, moves: SeedMove[]): ScriptV1 {
   const room = pacing.held[1] - heldBeats(script.beats).length;
-  const still = stillBeats(script, pacing).filter(({ beat }) => cards.has(beat.id) && beat.visual.cues.length === 0);
+  const still = stillBeats(script, pacing).filter(({ beat }) => cuelessKind(beat) !== undefined);
   const held = new Set(still.sort((a, b) => longest(b.stretches) - longest(a.stretches)).slice(0, Math.max(0, room)).map(({ beat }) => beat.id));
   if (held.size === 0) return script;
   for (const beat of held) moves.push({ beat, rule: "hold" });
   return { ...script, beats: script.beats.map((beat) => (held.has(beat.id) ? { ...beat, heldS: pacing.staticMaxS } : beat)) };
+}
+
+/** Rule 4 alone, for a model's reply: the reply may drop a hold or add a still button, and the hold needs no model. */
+export function holdStillBeats(script: ScriptV1): ScriptV1 {
+  const pacing = scriptPacing(script);
+  return pacing ? heldStill(script, pacing, []) : script;
 }
 
 /** The script with Q-D22's stretches seeded by the four naming-only rules, and each move made; as it came when none applies. */
@@ -231,7 +239,7 @@ export function seedStillCues(script: ScriptV1): Seeded {
   const moves: SeedMove[] = [];
   const named = namedCues(script, moves);
   const pointed = pointedCues(named, pacing, moves);
-  return { script: heldCards(pointed, pacing, moves), moves };
+  return { script: heldStill(pointed, pacing, moves), moves };
 }
 
 const moveText = ({ beat, rule, target, atCue }: SeedMove): string =>

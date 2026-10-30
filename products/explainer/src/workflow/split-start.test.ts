@@ -26,8 +26,8 @@ const unlinkedPieces = (rows = 1): L0Check => ({ script }) => {
   return Array.from({ length: rows }, (_, i) => ({ check_id: `fake-link-${i}`, mode: "tagged" as const, severity: "error" as const, value: 0, threshold: 1, pass: !pieces, detail_beats: [] }));
 };
 
-function stageInput(): ModelStageInput & { read: (sha: string) => string } {
-  const texts = new Map<string, string>([["spine-sha", SPINE], ["facts-sha", FACTS], ["seed-sha", JSON.stringify(seed())]]);
+function stageInput(seeded: ScriptV1): ModelStageInput & { read: (sha: string) => string } {
+  const texts = new Map<string, string>([["spine-sha", SPINE], ["facts-sha", FACTS], ["seed-sha", JSON.stringify(seeded)]]);
   const store = {
     readText: (sha: string) => texts.get(sha)!,
     putText: (text: string) => {
@@ -50,8 +50,8 @@ function fakeModel(reply: ScriptV1) {
   return { prompts, runnerFor };
 }
 
-async function runSeeded(reply: ScriptV1, checks: readonly L0Check[] = [cueGapCheck, unlinkedPieces()]) {
-  const input = stageInput();
+async function runSeeded(reply: ScriptV1, checks: readonly L0Check[] = [cueGapCheck, unlinkedPieces()], seeded = seed()) {
+  const input = stageInput(seeded);
   const model = fakeModel(reply);
   const outcome = await runScriptStage(input, { model: "fake", profile: "daily-overview", runnerFor: model.runnerFor, l0Checks: checks, g2p: { tokens: () => [] } });
   const draft = ScriptSchema.parse(JSON.parse(input.read(outcome.outputs.draft!)));
@@ -132,5 +132,29 @@ describe("the split as the repair's starting script", () => {
     expect(prompts[0]).toContain("- still seed: code cued each element on a word that names it (");
     expect(prompts[0]).toContain('{"action":"V6","target":"series-1","atCue":"forty"}');
     expect(draft.beats.map((beat) => beat.visual.cues)).toEqual(seed().beats.map((beat) => beat.visual.cues));
+  });
+});
+
+// Synthetic: the closing ask speaks well past its few words on screen, so its picture stands still.
+const LONG_ASK =
+  "Read the digest tonight, then pick the next lane for tomorrow, and tell the floor lead which lane should go first so the morning shift knows where to start.";
+const LABELLED_ID = "parcel-floor-day-labelled";
+
+/** Q-D22 on the closing button only, so the fixture's other stretches stay out of the test. */
+const stillAsk: L0Check = (input) => stillStretchCheck(input).map((row) => ({ ...row, pass: !row.detail_beats.includes("ask-1"), detail_beats: row.detail_beats.filter((beat) => beat === "ask-1") }));
+/** Stands in for Q-D20 on the button's label: it fails until the model shortens it. */
+const longLabel: L0Check = ({ script }) => [{ check_id: "fake-label", mode: "tagged", severity: "error", value: 0, threshold: 1, pass: script.id === LABELLED_ID, detail_beats: [] }];
+
+// Regression (TP-4565): every reply shortened the label and dropped the hold, so each swapped Q-D20 for Q-D22.
+describe("a reply that leaves the closing button still", () => {
+  it("is held by code and kept", async () => {
+    const stillButton = dailyWith("ask-1", { plannedS: 12, spoken: LONG_ASK });
+    const reply = { ...stillButton, id: LABELLED_ID };
+
+    const { draft, prompts } = await runSeeded(reply, [stillAsk, longLabel], stillButton);
+
+    expect(prompts).toHaveLength(1);
+    expect(draft.id).toBe(LABELLED_ID);
+    expect(draft.beats.find((beat) => beat.id === "ask-1")!.heldS).toBe(3);
   });
 });

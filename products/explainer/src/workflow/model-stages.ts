@@ -25,6 +25,7 @@ import {
   type Call, type CallSpend, type Lint, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { hinted, keptOverSeed, splitStart } from "./split-start.js";
+import { holdStillBeats } from "../still-seed.js";
 import { StageFailure } from "./stage-failure.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
@@ -107,7 +108,8 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
     failing,
     prompt: (script, rows) => repairPrompt(prompt, script, hinted(hints, failureList(rows, rules, script, lint), start.hint)),
     read: (outcome) => checked(outcome, plan),
-    settle,
+    // A reply can drop the seed's hold or leave a button still, and code holds one with no model call.
+    settle: (script) => settle(holdStillBeats(script)),
   });
   const kept = keptOverSeed(repaired, draft, seedFailing);
   const detail = `${kept.before} failing error checks before repair, ${kept.after} after`;

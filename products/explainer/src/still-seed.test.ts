@@ -4,7 +4,7 @@ import { screenTokens } from "./drawn-beats.js";
 import { repairHint } from "./l0-repair-hints.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
-import { seedStillCues } from "./still-seed.js";
+import { holdStillBeats, seedStillCues } from "./still-seed.js";
 
 const cue = (target: string, atCue: string) => ({ action: "V6" as const, target, atCue });
 const cuesOf = (script: ScriptV1, id: string) => script.beats.find((beat) => beat.id === id)!.visual.cues;
@@ -15,6 +15,9 @@ const SETTLED =
 const settledList = () => dailyWith("lanes-1", { spoken: SETTLED, visual: { cues: [cue("rows-1", "matcher"), cue("rows-2", "switch")] } });
 const LONG_REFLECTION =
   "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
+// Synthetic: the closing ask speaks well past its few words on screen, so its picture stands still.
+const LONG_ASK =
+  "Read the digest tonight, then pick the next lane for tomorrow, and tell the floor lead which lane should go first so the morning shift knows where to start.";
 // The claim's words are never spoken, so no word names it and only the hold is left.
 const stillCard = (held: readonly string[], claim = "Waiting sets the pace") =>
   held.reduce((script, id) => dailyWith(id, { heldS: 3 }, script), dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION, visual: { labels: [claim] } }));
@@ -65,6 +68,36 @@ describe("the $0 still seed: naming-only cues before the repair", () => {
     expect(held.heldS).toBe(3);
     expect(unheld.heldS).toBeUndefined();
     expect(l0Row(seedStillCues(roomy).script, "Q-D22").detail_beats).not.toContain("reflection-2");
+  });
+
+  // Regression (TP-4565): a short-labelled closing button stood still, and four repair rounds never held it.
+  it("a lone still button is held by code", () => {
+    const script = dailyWith("ask-1", { plannedS: 12, spoken: LONG_ASK });
+
+    const { script: seeded, moves } = seedStillCues(script);
+
+    expect(l0Row(script, "Q-D22").detail_beats).toContain("ask-1");
+    expect(beatOf(seeded, "ask-1").heldS).toBe(3);
+    expect(moves).toContainEqual({ beat: "ask-1", rule: "hold" });
+    expect(l0Row(seeded, "Q-D22").detail_beats).not.toContain("ask-1");
+    expect(l0Row(seeded, "Q-D18").pass).toBe(true);
+  });
+
+  it("a still button is not held past the held band", () => {
+    const script = ["goals-1", "reflection-1"].reduce((held, id) => dailyWith(id, { heldS: 3 }, held), dailyWith("ask-1", { plannedS: 12, spoken: LONG_ASK }));
+
+    const seeded = holdStillBeats(script);
+
+    expect(beatOf(seeded, "ask-1").heldS).toBeUndefined();
+    expect(l0Row(seeded, "Q-D18").pass).toBe(true);
+  });
+
+  it("a reply that leaves a button still is held by code too", () => {
+    const reply = dailyWith("ask-1", { plannedS: 12, spoken: LONG_ASK });
+
+    const held = holdStillBeats(reply);
+
+    expect(beatOf(held, "ask-1").heldS).toBe(3);
   });
 
   // Regression: the uncued-item rule once cued a claim-card's claim, which lands on the first word with no cue of its own.

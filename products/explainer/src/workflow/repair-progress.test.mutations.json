@@ -4,14 +4,14 @@
     {
       "name": "a reply is kept on fewer rows only",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "&& failingBeats(after) < failingBeats(before);",
-      "replace": "&& false;",
+      "find": "&& failingBeats(after) < failingBeats(before));",
+      "replace": "&& false);",
       "kills": ["the repair keeps partial progress a reply that clears some beats of the one failing row is kept for the next round"]
     },
     {
       "name": "a new failing row is accepted with fewer beats",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "after.every((row) => known.has(row.check_id)) && ",
+      "find": "!bringsInRule(after, before) && ",
       "replace": "",
       "kills": ["the repair keeps partial progress a reply that adds a failing row is refused even with fewer beats"]
     },
@@ -32,7 +32,7 @@
     {
       "name": "each round asks from the kept script only",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "if (asksFromFewer(next.rows, base.rows)) base = next;",
+      "find": "if (asksFrom(next.rows, base.rows)) base = next;",
       "replace": "base = kept;",
       "kills": ["each round asks from the best reply so far a reply that swaps the row for one on fewer beats is the next round's draft and rows, though not kept"]
     }

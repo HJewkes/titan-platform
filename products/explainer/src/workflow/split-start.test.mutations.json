@@ -18,6 +18,15 @@
       "kills": [
         "the split as the repair's starting script a repaired split is kept only when it beats the seed"
       ]
+    },
+    {
+      "name": "a model reply is not held by code",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "settle: (script) => settle(holdStillBeats(script)),",
+      "replace": "settle,",
+      "kills": [
+        "a reply that leaves the closing button still is held by code and kept"
+      ]
     }
   ]
 }

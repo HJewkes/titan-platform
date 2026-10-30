@@ -40,8 +40,8 @@
     {
       "name": "Q-D22 hint offers a cue-less claim-card no claim cue",
       "file": "products/explainer/src/repair-hints-screen.ts",
-      "find": "with no cue: first, adding no words, ${CLAIM_CUE}or hold it with heldS`",
-      "replace": "with no cue: first, adding no words, or hold it with heldS`",
+      "find": "with no cue: first, adding no words, ${CLAIM_CUE}${hold}`",
+      "replace": "with no cue: first, adding no words, ${hold}`",
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a cue-less claim-card still past its reading hold fails unless held"
       ]

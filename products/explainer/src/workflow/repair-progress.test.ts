@@ -101,6 +101,29 @@ describe("each round asks from the best reply so far", () => {
   });
 });
 
+// Regression (TP-4565): a reply that swapped the seed's one row for another on as many beats was never asked from.
+describe("a reply that ties the base under another rule", () => {
+  it("is the next round's draft and rows, though not kept", async () => {
+    const start = markedScript("a");
+    const asked: string[][] = [];
+    const call: Call = async () => ({ ok: true, output: "" });
+
+    const repaired = await repairRounds(call, { script: start, stamps: [] }, {
+      rounds: 2,
+      failing,
+      prompt: (_script, rows) => {
+        asked.push(rows.map((row) => row.check_id));
+        return "";
+      },
+      read: () => ({ script: markedScript("c") }),
+      settle: (script) => ({ script, stamps: [] }),
+    });
+
+    expect(asked).toEqual([["row-a"], ["row-c"]]);
+    expect(repaired.script).toEqual(start);
+  });
+});
+
 describe("the repaired script over the seed", () => {
   const seed = { script: markedScript("a", "a", "a"), stamps: [] };
 

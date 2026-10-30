@@ -27,6 +27,24 @@
       "kills": [
         "the $0 still seed: naming-only cues before the repair a claim-card that stands still nowhere gets no cue"
       ]
+    },
+    {
+      "name": "only a claim-card is held, never a still button",
+      "file": "products/explainer/src/still-seed.ts",
+      "find": ".filter(({ beat }) => cuelessKind(beat) !== undefined)",
+      "replace": ".filter(({ beat }) => cuelessKind(beat) === \"claim-card\")",
+      "kills": [
+        "the $0 still seed: naming-only cues before the repair a lone still button is held by code"
+      ]
+    },
+    {
+      "name": "the hold ignores the held band's cap",
+      "file": "products/explainer/src/still-seed.ts",
+      "find": ".slice(0, Math.max(0, room))",
+      "replace": "",
+      "kills": [
+        "the $0 still seed: naming-only cues before the repair a still button is not held past the held band"
+      ]
     }
   ]
 }

@@ -4,8 +4,8 @@
     {
       "name": "a still button's hint offers new text before the hold",
       "file": "products/explainer/src/repair-hints-screen.ts",
-      "find": "which reveals nothing on a cue: first hold it with heldS, which adds no words`",
-      "replace": "which reveals nothing on a cue: hold it`",
+      "find": "${full ?? \"first hold it with heldS, which adds no words\"}",
+      "replace": "${full ?? \"hold it\"}",
       "kills": [
         "the Q-D22 hint for a still closing button leads with a hold that adds no words and names the label and frame caps on every move that adds text"
       ]
@@ -25,6 +25,25 @@
       "find": "so add the item ${WITHIN_CAPS}, or split the beat",
       "replace": "so add the item or split the beat",
       "kills": ["the Q-D22 hint for a still closing button names the caps on adding an item to a cued kind"]
+    },
+    {
+      "name": "the Q-D20 hint never names the button's hold",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": ", ...holds].join(\"; \");",
+      "replace": "].join(\"; \");",
+      "kills": [
+        "the Q-D20 hint for a closing button names the hold, so a shorter label does not leave the button still"
+      ]
+    },
+    {
+      "name": "the hint offers a hold with the held band full",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "return held.length < max ? undefined :",
+      "replace": "return true ? undefined :",
+      "kills": [
+        "the Q-D22 hint for a still closing button with the held band full leads with a line the voice does not read, not a hold",
+        "the Q-D20 hint for a closing button with the held band full, asks for words the voice does not read in place of a hold"
+      ]
     }
   ]
 }
