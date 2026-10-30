@@ -1,5 +1,6 @@
 import type { ERROR_KINDS, Finding, HeldFinding, ProbedMoment } from "@titan-design/render-qa";
 import { cueResolverFromWords } from "../cues.js";
+import { DEFAULT_PADDING, trueDuration } from "../workflow/tts-truing.js";
 import type { BuilderRef } from "./beat-worker.js";
 import { FULL_COLOUR_RULE } from "./layer-fade.js";
 import type { LayerPacket } from "./layer-packet.js";
@@ -15,7 +16,9 @@ export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
 export type LayerFrameRule = "content-fill" | "words-per-frame";
 /** A cue word whose frames do not change the picture, which Q-D22 counted as a change (TP-4596). */
 export type LayerCueRule = "still-cue";
-export type LayerTextRule = LayerHeldRule | "bad-text" | LayerNarrationRule | LayerFrameRule | LayerCueRule;
+/** qa's beat-local timing gates a layer can fail, which the build check runs over the layer's own frames. */
+export type LayerTimingRule = "picture-change" | "static-window" | "reading-hold" | "G9";
+export type LayerTextRule = LayerHeldRule | "bad-text" | LayerNarrationRule | LayerFrameRule | LayerCueRule | LayerTimingRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -40,7 +43,7 @@ export interface LayerContrast {
 export interface LayerCheckInput {
   builder: BuilderRef;
   layer: BuiltLayer;
-  packet: Pick<LayerPacket, "beat_id" | "spoken" | "cues" | "planned_s">;
+  packet: Pick<LayerPacket, "beat_id" | "spoken" | "cues" | "planned_s" | "band">;
 }
 
 /** Renders one built layer at its reveal points and returns every element that breaks a rule; empty when it passes. */
@@ -53,21 +56,32 @@ const SETTLE_S = 1;
 /** The beat's last moment, every element landed. */
 const SETTLED_BEFORE_END_S = 0.05;
 
+/** The beat as the voice is expected to play it, on one clock: its cut, its cue words and its words. */
+export interface VoicedBeat {
+  durationS: number;
+  cues: Record<string, number>;
+  words: { word: string; startS: number }[];
+}
+
 /**
- * Where each cue word falls with the narration spread evenly over the beat's planned seconds: no words are spoken
- * before tts, and a layer times its entrances from the same plan.
+ * The beat at its band's voice rate and truing's length, since tts runs after resolve: no real word time exists yet, and
+ * the stretch after a beat's last cue is what the plan's seconds misread. On a stored daily video the band rates came
+ * within 3 % of the voice and truing is the code tts itself runs, so a still stretch here lands within a few tenths of qa's.
  */
-export function plannedCues(packet: LayerCheckInput["packet"]): Record<string, number> {
-  const words = packet.spoken.split(/\s+/).filter((word) => word !== "");
-  const resolve = cueResolverFromWords({ [packet.beat_id]: words.map((word, i) => ({ word, startS: (i * packet.planned_s) / words.length })) });
+export function voicedBeat(packet: LayerCheckInput["packet"], wordsPerMinute: number): VoicedBeat {
+  const spoken = packet.spoken.split(/\s+/).filter((word) => word !== "");
+  const speechS = (spoken.length * 60) / wordsPerMinute;
+  const words = spoken.map((word, i) => ({ word, startS: DEFAULT_PADDING.leadS + (i * speechS) / spoken.length }));
+  const resolve = cueResolverFromWords({ [packet.beat_id]: words });
   const cues = packet.cues.flatMap((cue) => [cue.atCue, ...(cue.untilCue ? [cue.untilCue] : [])]);
-  return Object.fromEntries(cues.flatMap((cue) => {
+  const timed = Object.fromEntries(cues.flatMap((cue) => {
     try {
       return [[cue, resolve(packet.beat_id, cue)]];
     } catch {
       return [];
     }
   }));
+  return { durationS: trueDuration(packet.planned_s, speechS, DEFAULT_PADDING, packet.band === "held"), cues: timed, words };
 }
 
 /** The still frames the check reads, in seconds from the beat start: each reveal once it settles, then the beat's end. */
@@ -156,6 +170,12 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "still-cue":
     "change the picture on this cue word: an element already shown takes a highlight or pulse at full colour inside its own box, " +
     "never an opacity fade on text and never an outline or shadow outside the element's clip-path, which the clip cuts away",
+  "static-window":
+    "change the picture inside this still stretch: start a highlight or pulse at full colour inside an element's own box a few seconds after the last cue word before it, " +
+    "as useCue(word) + 1.5, never a bare literal second. A custom layer gets no settled-frame allowance, so a finished frame still fails",
+  "picture-change": "add a cue-driven change inside this stretch: a highlight or pulse timed from a cue word with useCue",
+  "reading-hold": "leave this text on screen until it can be read, at 13 characters a second and at least 1.5 s, or show only words the narration says while it shows",
+  G9: "cut it to at most 10 words in a headline and 3 in a label",
 };
 
 function ruleFix(row: LayerTextRow, fadedTexts: ReadonlySet<string>): string {
