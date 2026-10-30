@@ -83,12 +83,12 @@ export const qaRows = (beat: string, atS: number, findings: readonly Finding[]):
 
 /** The low-contrast and off-frame findings qa holds, as rows first seen at the finding's first sample. */
 export const heldRows = (held: readonly HeldFinding[]): LayerTextRow[] =>
-  held.flatMap(({ kind, beat, finding, ts }) => {
+  held.flatMap(({ kind, beat, finding, ts }): LayerTextRow[] => {
     const row = { beat, element: finding.el, text: finding.text ?? "", atS: ts[0] ?? 0 };
-    if (kind === "off-frame") return [{ ...row, rule: "off-frame" as const }];
+    if (kind === "off-frame") return [{ ...row, rule: "off-frame" }];
     if (kind !== "low-contrast") return [];
     const contrast = contrastOf(finding);
-    return [{ ...row, rule: "low-contrast" as const, ...(contrast ? { contrast } : {}) }];
+    return [{ ...row, rule: "low-contrast", ...(contrast ? { contrast } : {}) }];
   });
 
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */

@@ -88,7 +88,8 @@ function checkBoxes(h: Inspector, boxes: Item[]): void {
   for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) {
     if (h.related(a.el, b.el) || h.sitsOn(a, b)) continue
     const o = h.inter(h.shrink(a.r, 1), h.shrink(b.r, 1))
-    if (o && o.w * o.h >= 40) h.add('box-overlap', a.el, { text: h.textOf(a.el).slice(0, 40), other: h.textOf(b.el).slice(0, 40), otherEl: h.describe(b.el), area: Math.round(o.w * o.h), rect: h.r4(a.r) })
+    if (!o || o.w * o.h < 40) continue
+    h.add('box-overlap', a.el, { text: h.textOf(a.el).slice(0, 40), other: h.textOf(b.el).slice(0, 40), otherEl: h.describe(b.el), area: Math.round(o.w * o.h), rect: h.r4(a.r) })
   }
   for (const b of boxes) {
     if (!h.inFlight(b.el) && (b.r.left < -1 || b.r.top < -1 || b.r.right > W + 1 || b.r.bottom > H + 1)) h.add('off-frame', b.el, { text: h.textOf(b.el).slice(0, 40), rect: h.r4(b.r) })

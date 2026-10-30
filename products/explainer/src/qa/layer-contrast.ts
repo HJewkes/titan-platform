@@ -5,7 +5,7 @@ import { qaSampleMoments, type QaTimeline } from "./qa-timeline.js";
 export const qaSamplings = (timeline: QaTimeline): Moment[][] => [qaSampleMoments(timeline, false), qaSampleMoments(timeline, true)];
 
 /** qa's finding kinds the build check holds over qa's own samples, not only at the settled reveals. */
-export const SAMPLED_RULES = ["low-contrast", "off-frame"] as const;
+const SAMPLED_RULES = ["low-contrast", "off-frame"] as const;
 
 const heldKey = ({ kind, beat, finding }: HeldFinding): string => [kind, beat, finding.el, finding.text, finding.twin].join("|");
 
