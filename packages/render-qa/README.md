@@ -98,6 +98,11 @@ ancestor hides, percentages read against the box. A box clipped away whole is no
 cue behind a clip reveal is not off-frame; a partly clipped one is judged, and annotated, on its painted rect. Under a
 rotation or skew the inset's edges leave the page axes, so the layout box is kept.
 
+An `off-frame` finding whose painted rect has no area on the frame carries `parked: true`: nothing of it shows at that
+sample. `classify` drops a parked finding when the same element is not parked at a later sample of its beat (a card
+waiting for its cue, then entering). A card that stays parked to the beat's end keeps its `off-frame` finding, and a
+card partly past an edge is never parked, so it is judged as before.
+
 ## The data-qa-* protocol
 
 A page tells the inspector what its layout means with attributes on its own elements.
