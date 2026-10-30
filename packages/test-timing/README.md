@@ -16,7 +16,7 @@ storeStats(db); // { runs, files, bytes, oldestStartedAt, newestStartedAt }
 `scripts/test-timing.mjs` fills the corpus at `~/.local/share/titan-test-timing/timing.db` (or
 `$TITAN_TEST_TIMING_HOME`). `ingest-gh` downloads the timing artifacts of the newest finished `ci.yml` runs, main and
 pull request alike, and skips run attempts it already fetched; `ingest-spool` drains the local spool that
-`verify:changed` writes; `ingest-dir <dir> --gh-run <id>` ingests artifacts already downloaded; `stats` prints the
+`verify:changed` writes; `ingest-dir <dir> --gh-run <id> [--scope full]` ingests artifacts already downloaded (`--scope` says what a pre-header record never did); `stats` prints the
 store's size. `ops/systemd/test-timing-ingest.{service,timer}` run both ingests hourly on a Linux host with the
 checkout at `~/projects/titan-platform`, built, and `gh` signed in. To install (an owner step):
 
