@@ -58,7 +58,9 @@ describe("explainer run", () => {
     const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
     const host = () => fakeHost(fx!, fakeScriptModel(script), fakeRender(), { reflection });
 
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
+    const gather = { adapter: "gatherDaily" as const, type: "repo-tour", day: "2030-01-02", repos: [], transcripts: [], initiative: "acme" };
+
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts, gather }, host());
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
 
     expect([first.status, second.status], first.error).toEqual(["completed", "completed"]);

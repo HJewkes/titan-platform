@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { plainText } from "@titan-design/speech-vet";
 
 /** The chapter id the goal-walk structure gives its reflection block. */
 const REFLECTION_CHAPTER = "reflection";
@@ -31,7 +32,8 @@ interface ReflectionRun {
   /** The raw script bytes' sha, so a re-run of the same script files nothing twice. */
   scriptSha: string;
   videoId: string;
-  day: string;
+  /** The day the digest covers, not the day the run happens; absent when the run has no digest day. */
+  day: string | undefined;
   /** The run's export folder; `reflection.md` is written here. */
   outDir: string;
 }
@@ -51,7 +53,7 @@ interface Proposal {
 function reflectionProposals(script: ReflectionScript): Proposal[] {
   return script.beats
     .filter((beat) => beat.chapter === REFLECTION_CHAPTER)
-    .map((beat) => ({ beat: beat.id, text: beat.spoken, facts: beat.fact_ids }));
+    .map((beat) => ({ beat: beat.id, text: plainText(beat.spoken), facts: beat.fact_ids }));
 }
 
 function reflectionMarkdown(proposals: readonly Proposal[], day: string): string {
@@ -70,7 +72,7 @@ export function ownerInboxDir(env: NodeJS.ProcessEnv, home: string = homedir()):
   return path.join(expand(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console"), "inbox", "deposits");
 }
 
-async function fileDeposit(config: ReflectionConfig, run: ReflectionRun, markdown: string): Promise<ReflectionResult["filed"]> {
+async function fileDeposit(config: ReflectionConfig, run: ReflectionRun & { day: string }, markdown: string): Promise<ReflectionResult["filed"]> {
   const result = await writeDeposit(config.spoolDir, {
     depositId: reflectionDepositId(run.videoId, run.scriptSha),
     asker: config.asker,
@@ -83,7 +85,7 @@ async function fileDeposit(config: ReflectionConfig, run: ReflectionRun, markdow
   return result.created ? "created" : "existing";
 }
 
-function fileRetro(config: ReflectionConfig, run: ReflectionRun, markdown: string): ReflectionResult["filed"] {
+function fileRetro(config: ReflectionConfig, run: ReflectionRun & { day: string }, markdown: string): ReflectionResult["filed"] {
   const dir = config.retroDir;
   if (dir === undefined) throw new Error("retro-file mode needs a retroDir");
   mkdirSync(dir, { recursive: true });
@@ -95,17 +97,20 @@ function fileRetro(config: ReflectionConfig, run: ReflectionRun, markdown: strin
 
 /**
  * Writes `reflection.md` beside the export and lands the proposals in the self-improvement loop once. A script with no
- * reflection chapter files nothing. A filing failure is a note, never a failed export.
+ * reflection chapter files nothing, and neither does a run with no digest day: a date guessed from the clock would key
+ * the deposit to the wrong day. A filing failure is a note, never a failed export.
  */
 export async function exportReflection(config: ReflectionConfig, run: ReflectionRun): Promise<ReflectionResult> {
   const proposals = reflectionProposals(run.script);
   const file = path.join(run.outDir, "reflection.md");
   if (config.mode === "off" || proposals.length === 0) return { file, filed: "none", notes: [] };
-  const markdown = reflectionMarkdown(proposals, run.day);
+  const { day } = run;
+  if (day === undefined) return { file, filed: "none", notes: ["reflection not filed: the run has no digest day"] };
+  const markdown = reflectionMarkdown(proposals, day);
   mkdirSync(run.outDir, { recursive: true });
   writeFileSync(file, markdown);
   try {
-    const filed = config.mode === "deposit" ? await fileDeposit(config, run, markdown) : fileRetro(config, run, markdown);
+    const filed = config.mode === "deposit" ? await fileDeposit(config, { ...run, day }, markdown) : fileRetro(config, { ...run, day }, markdown);
     return { file, filed, notes: [`reflection ${filed} (${config.mode})`] };
   } catch (error) {
     return { file, filed: "none", notes: [`reflection not filed: ${error instanceof Error ? error.message : String(error)}`] };

@@ -516,6 +516,9 @@ TP-690; until then `explainer stage <name> --json` prints a stage's record with 
 (exit 1), which is what a check engine reads.
 
 **Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
+definition version is a frozen base value plus a hash of the `stage-bumps/` files that name the stage: a change to
+what a stage makes adds a bump file instead of editing a value, so parallel pull requests never race for the next
+one (`stage-bumps/README.md`; CI's `stage-version:check` refuses a lowered or reused version). The
 config is the run's settings for that stage (script model; judge and rounds; render's workers, switches, gate profile
 and style CSS) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
 does not reproduce its audio byte for byte, so a stage downstream of TTS keys on the shas TTS actually wrote. The
