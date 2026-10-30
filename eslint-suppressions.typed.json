@@ -185,36 +185,6 @@
       "count": 1
     }
   },
-  "packages/agent-dispatch/src/agents.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/exec.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/limits/check.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/limits/defaults.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/agent-dispatch/src/limits/node.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/agent-dispatch/src/limits/resolve.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/agent-lifecycle/src/sqlite-execution-ledger.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5
