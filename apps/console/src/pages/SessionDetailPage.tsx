@@ -17,6 +17,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
 import { ConversationTurns, TouchedFiles, type Timeline } from "./SessionTurns.js";
 import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type SessionRow } from "./SessionFormat.js";
 
@@ -75,7 +76,9 @@ function Degraded({ session, sessionId, message }: { session: SessionRow | null;
 function Trail({ sessionId }: { sessionId: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "sessions" })}>Sessions</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "sessions" })}>
+        Sessions
+      </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{sessionId}</BreadcrumbItem>
     </Breadcrumbs>
   );
@@ -142,7 +145,9 @@ function Records({ result, openTurn }: { result: TimelineOk; openTurn: number })
       <Tabs index={tab} onChange={setTab}>
         <TabList>
           {labels.map((label) => (
-            <Tab key={label}>{label}</Tab>
+            <Tab key={label} className={PHONE_TAP}>
+              {label}
+            </Tab>
           ))}
         </TabList>
       </Tabs>
