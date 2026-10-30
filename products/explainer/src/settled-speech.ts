@@ -11,7 +11,7 @@ export const SETTLED_SPEECH_MAX_S = 6;
 
 const EPS = 1e-9;
 
-export interface Span {
+interface Span {
   fromS: number;
   toS: number;
 }
