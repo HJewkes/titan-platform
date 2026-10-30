@@ -145,9 +145,14 @@ function observeLaunched<TResult>(
   nonempty("runnerRef", transition.runnerRef);
   nonempty("evidence", transition.evidence);
   if (current.runnerRef && current.runnerRef !== transition.runnerRef) fail("invalid_transition", "runnerRef cannot change");
-  if (!transition.surface) fail("invalid_transition", "observe_launched must carry a surface");
-  const surface = bindSurface(current.surface, transition.surface);
+  const surface = bindSurface(current.surface, requireLaunchedSurface(transition.surface));
   return next(current, transition, { runnerRef: transition.runnerRef, ...(surface ? { surface } : {}) });
+}
+
+/** The type says a launch always carries a surface; an untyped caller can still omit it. */
+function requireLaunchedSurface(surface: SurfaceIdentity | undefined): SurfaceIdentity {
+  if (!surface) fail("invalid_transition", "observe_launched must carry a surface");
+  return surface;
 }
 
 function identifyConversation<TResult>(
@@ -248,7 +253,8 @@ function validateEnvelope(transition: ExecutionTransition<unknown>): void {
   nonempty("eventId", transition.eventId);
   nonnegativeInteger("expectedRevision", transition.expectedRevision);
   validTime("occurredAt", transition.occurredAt);
-  if (transition.kind === "prepare" && transition.expectedRevision !== 0) {
+  const expectedRevision: number = transition.expectedRevision;
+  if (transition.kind === "prepare" && expectedRevision !== 0) {
     fail("revision_conflict", "prepare expects absent revision 0");
   }
 }
