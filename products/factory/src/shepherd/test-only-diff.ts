@@ -216,3 +216,13 @@ export async function sourceFreeDiff(port: GitHubPort, repo: RepoSlug, pr: numbe
   if (planned.kind === "unread" || planned.diff.kind === "source" || planned.diff.kind === "unread") return false;
   return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;
 }
+
+/**
+ * TP-4573: true when the diff at `head` changes no source, deletes no test and plans no test, as a refactor of test support does, so
+ * no proof can run on it. A flagged diff names paths only for a deleted test. It fails closed as `testOnlyDiff` does, blob probes included.
+ */
+export async function supportOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, head: string): Promise<boolean> {
+  const planned = await planDiff(port, repo, pr, head);
+  if (planned.kind === "unread" || planned.diff.kind !== "flagged" || planned.diff.paths.length > 0) return false;
+  return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;
+}
