@@ -172,11 +172,10 @@ describe("the agent-chat implementer runner", () => {
     it("retires an agent in flight once its turn passes the budget, and the failure carries the overshoot", async () => {
       const broker = fakeBroker(["none", "live", "live", "live"], [], 0, NOT_REFUSED, { meter: readings(0.1, 1.3, 1.45) });
 
-      const failure = await broker.runner.start(budgeted(1), signal).catch((error: unknown) => error);
+      const failure = broker.runner.start(budgeted(1), signal);
 
-      expect(failure).toBeInstanceOf(CodeStepFailure);
-      expect((failure as CodeStepFailure).message).toBe("bs-demo was retired: it spent $1.30 of its $1.00 budget");
-      expect((failure as CodeStepFailure).usage).toEqual({ costUsd: 1.45 });
+      await expect(failure).rejects.toBeInstanceOf(CodeStepFailure);
+      await expect(failure).rejects.toMatchObject({ message: "bs-demo was retired: it spent $1.30 of its $1.00 budget", usage: { costUsd: 1.45 } });
       expect(broker.retired).toEqual([broker.name]);
     });
 
@@ -233,9 +232,7 @@ describe("the agent-chat implementer runner", () => {
     it("keeps what a failed turn spent", async () => {
       const broker = fakeBroker(["none", "live", "exited"], [{ text: "no report", writtenAt: 1_015 }]);
 
-      const failure = await broker.runner.start(spawn(broker.name), signal).catch((error: unknown) => error);
-
-      expect((failure as CodeStepFailure).usage).toEqual(TURN_USAGE);
+      await expect(broker.runner.start(spawn(broker.name), signal)).rejects.toMatchObject({ usage: TURN_USAGE });
     });
   });
 });

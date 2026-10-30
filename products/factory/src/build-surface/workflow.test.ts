@@ -348,10 +348,7 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
       const ctx = partialFake<WorkflowContext>({ dispatch: () => Promise.reject(new StepFailedError("bs-fix:shell:1", 0, "retired", { usage: { costUsd: 0.75 } })) });
       const run = partialFake<SliceRun>({ ctx, spec: partialFake<BuildSpec>({ sliceBudgetUsd: 1 }), slice: partialFake<Slice>({ id: "shell" }), spentUsd: 0.5, costUnknown: false, halt: { reason: null } });
 
-      const failure = await sliceStep(run, "bs-fix", 1, {}, z.object({})).catch((error: unknown) => error);
-
-      expect((failure as StepFailedError).usage).toEqual({ costUsd: 1.25 });
-      expect((failure as StepFailedError).reason).toBe("retired");
+      await expect(sliceStep(run, "bs-fix", 1, {}, z.object({}))).rejects.toMatchObject({ usage: { costUsd: 1.25 }, reason: "retired" });
     });
 
     it("stops the slice on an agent step with no price, and the run reads cost_unknown", async () => {
