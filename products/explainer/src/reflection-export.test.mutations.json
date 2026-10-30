@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the exported text keeps speech markup",
+      "file": "products/explainer/src/reflection-export.ts",
+      "find": "text: plainText(beat.spoken),",
+      "replace": "text: beat.spoken,",
+      "kills": [
+        "exportReflection strips speech markup from the exported text and keeps the cited facts"
+      ]
+    }
+  ]
+}
