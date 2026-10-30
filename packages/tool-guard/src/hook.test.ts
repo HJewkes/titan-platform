@@ -480,8 +480,8 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
   }
 
   it.each([
-    ["python3", "a.py", 1024],
-    ["node", "a.js", 1024],
+    ["python3", "a.py", 512],
+    ["node", "a.js", 512],
   ])("denies a push after `sudo $a %s` running a script of paths, cost near-linear in size", async (interpreter, script, bytes) => {
     await expectNearLinear(
       (size) => ({ command: `sudo $a ${interpreter} ${script}; ${MAIN}`, files: { [script]: fill(PATHS, size) } }),
