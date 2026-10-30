@@ -14,6 +14,7 @@
   "files": [
     "dist",
     "doctrine",
+    "stage-bumps",
     "rubrics",
     "README.md"
   ],
