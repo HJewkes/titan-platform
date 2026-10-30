@@ -16,6 +16,11 @@ const COUNT_START_S = 0.2;
 const COUNT_SPRING = { stiffness: 120, damping: 18 } as const;
 /** A figure with no cue of its own lands at its index times this, counted from the beat's start. */
 const CARD_EACH_S = 0.25;
+/**
+ * The card uncovers in place, with no rise: its figure starts counting while the card still enters, and qa reads a
+ * count as one figure only while it holds one place, so a figure caught a few px short reads as a number of its own.
+ */
+const CARD_RISE_PX = 0;
 
 const places = (value: number) => (Number.isInteger(value) ? 0 : 1);
 
@@ -31,7 +36,7 @@ function statDisplay(local: number, value: number): string {
 function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }) {
   const lit = useLit()(figure.id, t);
   return (
-    <div className="beat-stat" data-reveal={figure.id} style={{ ...rise(progressAt(t, atS), 24), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
+    <div className="beat-stat" data-reveal={figure.id} style={{ ...rise(progressAt(t, atS), CARD_RISE_PX), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
       <span className="beat-stat-label">{figure.label}</span>
       <span className="beat-stat-value">
         <span className="beat-stat-figure" style={{ minWidth: `${figure.value.toFixed(places(figure.value)).length}ch` }}>{statDisplay(t - atS, figure.value)}</span>

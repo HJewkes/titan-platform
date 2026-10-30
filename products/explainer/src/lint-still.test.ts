@@ -134,7 +134,7 @@ describe("Q-D22 reads the picture qa sees: fill reveals, the settle and each kin
     expect(found[0]!.toS).toBeCloseTo(13, 0);
   });
 
-  it("an outro's fade is motion", () => {
+  it("an outro holding its line to the end stands within the still limit", () => {
     const script = dailyWith("ask-1", { plannedS: 5.5 });
 
     const row = l0Row(script, "Q-D22");
