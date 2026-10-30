@@ -1,5 +1,6 @@
-import type { ParkedRun, ParkingPort } from "@titan-design/review-workflow";
+import { FAILURE_CLASSES, type ParkedRun, type ParkingPort } from "@titan-design/review-workflow";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 /** The runs `review resolve` re-reviews; a resolve runs in a later process than the review that parked them, so they live on disk. */
 export const reviewParkingMigration = (version: number): Migration => ({
@@ -12,15 +13,19 @@ export const reviewParkingMigration = (version: number): Migration => ({
   },
 });
 
-interface Row {
-  run_json: string;
-}
-
-const runsOf = (rows: readonly Row[]): ParkedRun[] => rows.map((row) => JSON.parse(row.run_json) as ParkedRun);
+const ParkedRunSchema = z.object({
+  runId: z.string(),
+  target: z.object({ repo: z.string(), pr: z.number(), head: z.string() }),
+  fingerprint: z.string(),
+  failure: z.enum(FAILURE_CLASSES),
+});
+const RowsSchema = z.array(z.object({ run_json: z.string().transform((text): unknown => JSON.parse(text)).pipe(ParkedRunSchema) }));
+const RoundSchema = z.object({ round: z.number() }).optional();
 
 export function sqliteParking(db: Db): ParkingPort {
-  const select = (fingerprint: string): ParkedRun[] => runsOf(db.prepare("SELECT run_json FROM review_parked WHERE fingerprint = ? ORDER BY rowid").all(fingerprint) as Row[]);
-  const round = (fingerprint: string): number => (db.prepare("SELECT round FROM review_fingerprint_round WHERE fingerprint = ?").get(fingerprint) as { round: number } | undefined)?.round ?? 0;
+  const select = (fingerprint: string): ParkedRun[] =>
+    RowsSchema.parse(db.prepare("SELECT run_json FROM review_parked WHERE fingerprint = ? ORDER BY rowid").all(fingerprint)).map((row) => row.run_json);
+  const round = (fingerprint: string): number => RoundSchema.parse(db.prepare("SELECT round FROM review_fingerprint_round WHERE fingerprint = ?").get(fingerprint))?.round ?? 0;
   const release = db.transaction((fingerprint: string): ParkedRun[] => {
     const runs = select(fingerprint);
     db.prepare("DELETE FROM review_parked WHERE fingerprint = ?").run(fingerprint);

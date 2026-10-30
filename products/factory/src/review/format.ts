@@ -1,5 +1,6 @@
 import { DEFAULT_REVIEW_STEP_IDS, type ParkedRun, type Resumed, type ReviewOutcome } from "@titan-design/review-workflow";
 import type { WorkflowRun } from "@titan-design/workflow";
+import { z } from "zod";
 import { EXIT } from "../exit-codes.js";
 
 /** One member dispatch the run recorded, retries included. */
@@ -32,17 +33,15 @@ function shapeOf(stepId: string, dispatchId: string): string {
   return shape === undefined || shape === "r2" ? "correctness" : shape;
 }
 
-const recordOf = (data: unknown): Record<string, unknown> | undefined => {
-  const result = (data as { result?: unknown } | undefined)?.result;
-  return typeof result === "object" && result !== null ? (result as Record<string, unknown>) : undefined;
-};
+const DispatchStepSchema = z.object({ result: z.object({ kind: z.string(), name: z.string(), profile: z.string() }) });
 
 /** The member dispatches a run recorded, in the order the run took them. */
 export function membersOf(run: Pick<WorkflowRun, "stepResults">, dispatchId: string = DEFAULT_REVIEW_STEP_IDS.dispatch): ReviewMember[] {
   return Object.values(run.stepResults).flatMap((step) => {
-    const record = step.stepId.startsWith(`${dispatchId}:`) ? recordOf(step.data) : undefined;
-    if (record === undefined) return [];
-    return [{ shape: shapeOf(step.stepId, dispatchId), name: String(record.name), profile: String(record.profile), dispatch: String(record.kind) }];
+    const read = step.stepId.startsWith(`${dispatchId}:`) ? DispatchStepSchema.safeParse(step.data) : undefined;
+    if (!read?.success) return [];
+    const { kind, name, profile } = read.data.result;
+    return [{ shape: shapeOf(step.stepId, dispatchId), name, profile, dispatch: kind }];
   });
 }
 

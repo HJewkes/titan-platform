@@ -38,8 +38,8 @@ function configuredShepherd(env: NodeJS.ProcessEnv): ReviewPortsConfig["shepherd
   return { ...shepherd, review: shepherd.review, agentChatBin: shepherd.agentChatBin };
 }
 
-function timingOf(review: ReviewConfig) {
-  return { ...(review.sessionStartTimeoutMs !== undefined && { startDeadlineMs: review.sessionStartTimeoutMs }), ...(review.verdictTimeoutMs !== undefined && { verdictDeadlineMs: review.verdictTimeoutMs }) };
+function timingOf({ sessionStartTimeoutMs, verdictTimeoutMs }: ReviewConfig) {
+  return { ...(sessionStartTimeoutMs !== undefined && { startDeadlineMs: sessionStartTimeoutMs }), ...(verdictTimeoutMs !== undefined && { verdictDeadlineMs: verdictTimeoutMs }) };
 }
 
 /** The workflow's request: the brief carries only the checkout root, since no Shepherd run holds a kind, a proof or earlier findings. */
