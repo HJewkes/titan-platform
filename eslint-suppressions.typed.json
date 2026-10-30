@@ -1822,59 +1822,6 @@
       "count": 1
     }
   },
-  "packages/store-sqlite/src/kit.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/store-sqlite/src/migrations.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/store-sqlite/src/migrations.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/open.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/tables/cache-blob.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/store-sqlite/src/tables/edge.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/store-sqlite/src/tables/entity.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/store-sqlite/src/tables/span-fts.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/store-sqlite/src/tables/span-fts.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/store-sqlite/src/tables/watermark.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/style-analyzer/src/aggregator/aggregator.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1926,73 +1873,6 @@
   "packages/style-analyzer/src/integration/full-pipeline.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "packages/style-checker/src/generators/eslint.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/style-checker/src/generators/ruff.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/profile-diff/diff-against-profile.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/style-checker/src/profile-diff/profile-roundtrip.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/eslint-runner.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/pyright-audit.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/ruff-runner.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/suppressions.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/tool-runner.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-checker/src/runners/tool-runner.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/style-checker/src/runners/vulture-audit.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "packages/style-profile/src/exporters/editorconfig.ts": {
@@ -2228,75 +2108,6 @@
     }
   },
   "packages/tool-guard/src/shell/xargs-replace.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/authorize-trace.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/workflow/src/authorize.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/code-step.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/context.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/workflow/src/durable-harness-runner.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/workflow/src/durable-harness-runner.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/recovery.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/workflow/src/run-state-rules.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/runners.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/workflow/src/runtime.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/workflow/src/store.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/workflow/src/typed-output.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

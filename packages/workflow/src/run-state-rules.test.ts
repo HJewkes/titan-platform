@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it, vi } from "vitest";
 import { isOwnGate } from "./gate-ids.js";
 import { announceRecovery, parkForRecovery } from "./recovery.js";
@@ -7,7 +8,7 @@ import type { WorkflowEvent, WorkflowRun } from "./types.js";
 
 describe("run-state rules", () => {
   it("parks a run for recovery with the evidence as its error", () => {
-    const run = { status: "running", error: null } as unknown as WorkflowRun;
+    const run = partialFake<WorkflowRun>({ status: "running", error: null });
 
     parkForRecovery(run, "lost the runner");
 
