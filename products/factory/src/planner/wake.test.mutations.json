@@ -6,7 +6,9 @@
       "file": "products/factory/src/planner/fingerprint.ts",
       "find": "return text.replace(VOLATILE_KEY, \"\").replace(DATETIME, \"<t>\").replace(EPOCH_MS, \"<t>\").replace(AGE, \"<age>\");",
       "replace": "return text;",
-      "kills": ["titan-factory planner wake The fingerprint ignores timestamps-only churn"]
+      "kills": [
+        "titan-factory planner wake The fingerprint ignores timestamps-only churn"
+      ]
     },
     {
       "name": "every wake reads as changed",
@@ -24,21 +26,45 @@
       "file": "products/factory/src/planner/wake.ts",
       "find": "if (last.outcome === \"spawned\") for",
       "replace": "if (last.outcome === \"skipped\") for",
-      "kills": ["titan-factory planner wake the planner's own plan edits after a spawn do not run it again, but a later plan edit does"]
+      "kills": [
+        "titan-factory planner wake the planner's own plan edits after a spawn do not run it again, but a later plan edit does"
+      ]
     },
     {
       "name": "the task queue directory is read as empty",
       "file": "products/factory/src/planner/inputs.ts",
       "find": ".filter((entry) => entry.isFile() && entry.name.endsWith(suffix))",
       "replace": ".filter(() => false)",
-      "kills": ["titan-factory planner wake A changed task queue runs it"]
+      "kills": [
+        "titan-factory planner wake A changed task queue runs it"
+      ]
     },
     {
       "name": "--profile is ignored",
       "file": "products/factory/src/planner/command.ts",
       "find": "profile: opts.profile ?? config.profile",
       "replace": "profile: config.profile",
-      "kills": ["titan-factory planner wake spawns on the configured profile in the configured checkout, and --profile overrides it"]
+      "kills": [
+        "titan-factory planner wake spawns on the configured profile in the configured checkout, and --profile overrides it"
+      ]
+    },
+    {
+      "name": "the prompt line is never added",
+      "file": "products/factory/src/planner/digest.ts",
+      "find": "input.prompt !== undefined && text.trim() !== \"\"",
+      "replace": "false",
+      "kills": [
+        "titan-factory planner wake the planner review input includes owner-gate-alarm.md and its cause-fix prompt line"
+      ]
+    },
+    {
+      "name": "an absent optional file still throws or lists",
+      "file": "products/factory/src/planner/digest.ts",
+      "find": "input.digest && !(input.optional && text.trim() === \"\")",
+      "replace": "input.digest",
+      "kills": [
+        "titan-factory planner wake an absent optional alarm file adds neither a digest section nor the prompt line"
+      ]
     }
   ]
 }

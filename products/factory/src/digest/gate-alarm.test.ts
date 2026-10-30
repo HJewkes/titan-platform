@@ -3,10 +3,11 @@ import { loadConfig } from "../config.js";
 import { emptyModel } from "../test-support/digest.js";
 import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gateAlarm } from "./gate-alarm.js";
+import { alarmNote, gateAlarm } from "./gate-alarm.js";
+import { ALARM_NOTE_FILE, syncAlarmNote } from "./run.js";
 import { rankDigest } from "./rank.js";
 import { renderMarkdown } from "./render-md.js";
 
@@ -92,5 +93,32 @@ describe("digest.consoleOrigin", () => {
   it("refuses a plain http origin and accepts an https host", () => {
     expect(configWith("http://console.example.ts.net")).toThrow(/consoleOrigin/);
     expect(configWith(ORIGIN)().digest?.consoleOrigin).toBe(ORIGIN);
+  });
+});
+
+describe("the planner alarm note", () => {
+  const noteDir = () => mkdtempSync(join(tmpdir(), "gate-alarm-note-"));
+  const fired = () => alarmNote(gateAlarm(friction(98), [gate(12, 148), gate(13, 80)])!, ORIGIN);
+
+  it("a firing alarm writes owner-gate-alarm.md listing the stale gates", () => {
+    const dir = noteDir();
+
+    syncAlarmNote(dir, fired());
+
+    const text = readFileSync(join(dir, ALARM_NOTE_FILE), "utf8");
+    expect(text).toContain("approve-merge median 98h (>24h); 2 over 72h");
+    expect(text).toContain("- acme/widgets#12 148h https://console.example.ts.net/#/inbox/gate%3Arun-12%2Fapprove-merge");
+    expect(text).toContain("- acme/widgets#13 80h");
+  });
+
+  it("no alarm writes no file (or clears a stale one)", () => {
+    const dir = noteDir();
+    syncAlarmNote(dir, undefined);
+    expect(existsSync(join(dir, ALARM_NOTE_FILE))).toBe(false);
+
+    syncAlarmNote(dir, fired());
+    syncAlarmNote(dir, undefined);
+
+    expect(existsSync(join(dir, ALARM_NOTE_FILE))).toBe(false);
   });
 });

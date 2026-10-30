@@ -6,28 +6,54 @@
       "file": "products/factory/src/digest/gate-alarm.ts",
       "find": "medianHours > MEDIAN_ALARM_HOURS;",
       "replace": "medianHours >= MEDIAN_ALARM_HOURS;",
-      "kills": ["gateAlarm median 24 h exactly does not alarm, just over does"]
+      "kills": [
+        "gateAlarm median 24 h exactly does not alarm, just over does"
+      ]
     },
     {
       "name": "a gate alarms at exactly 72 h",
       "file": "products/factory/src/digest/gate-alarm.ts",
       "find": "g.ageHours > GATE_ALARM_HOURS",
       "replace": "g.ageHours >= GATE_ALARM_HOURS",
-      "kills": ["gateAlarm one gate at 72 h exactly does not alarm, just over does"]
+      "kills": [
+        "gateAlarm one gate at 72 h exactly does not alarm, just over does"
+      ]
     },
     {
       "name": "a loopback host passes the origin check",
       "file": "products/factory/src/digest/gate-alarm.ts",
       "find": "return url.protocol === \"https:\" && !loopback ? url.origin : undefined;",
       "replace": "return url.protocol === \"https:\" ? url.origin : undefined;",
-      "kills": ["digest.consoleOrigin a loopback consoleOrigin is refused"]
+      "kills": [
+        "digest.consoleOrigin a loopback consoleOrigin is refused"
+      ]
     },
     {
       "name": "the alarm line drops its links",
       "file": "products/factory/src/digest/gate-alarm.ts",
       "find": "const link = origin === undefined ? \"\" :",
       "replace": "const link = true ? \"\" :",
-      "kills": ["the alarm line a 98 h median fixture puts the alarm on the top line with links"]
+      "kills": [
+        "the alarm line a 98 h median fixture puts the alarm on the top line with links"
+      ]
+    },
+    {
+      "name": "a stale note is left when the alarm stops",
+      "file": "products/factory/src/digest/run.ts",
+      "find": "if (note === undefined) return rmSync(join(dir, ALARM_NOTE_FILE), { force: true });",
+      "replace": "if (note === undefined) return;",
+      "kills": [
+        "the planner alarm note no alarm writes no file (or clears a stale one)"
+      ]
+    },
+    {
+      "name": "the note lists no gates",
+      "file": "products/factory/src/digest/gate-alarm.ts",
+      "find": "const lines = alarm.listed.map(",
+      "replace": "const lines = [].map(",
+      "kills": [
+        "the planner alarm note a firing alarm writes owner-gate-alarm.md listing the stale gates"
+      ]
     }
   ]
 }

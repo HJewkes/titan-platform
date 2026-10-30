@@ -1,9 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { collectDigest, type DigestSources } from "./collect.js";
 import type { DigestSlot } from "./model.js";
 import type { DigestPushConfig } from "../config.js";
 import { DEFAULT_CAPS, NO_CAPS, rankDigest } from "./rank.js";
+import { alarmNote, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { renderMarkdown } from "./render-md.js";
 import { pushDigest, type PushDeps } from "./push.js";
 import type { Directories } from "./sources.js";
@@ -17,9 +18,27 @@ export interface DigestRun {
   consoleOrigin?: string;
 }
 
-export async function buildDigest({ sources, now, slot, windowMinutes, full, consoleOrigin }: DigestRun): Promise<string> {
+export interface BuiltDigest {
+  markdown: string;
+  /** The planner's copy of the gate alarm; absent when the alarm does not fire. */
+  alarmNote?: string;
+}
+
+export async function buildDigest({ sources, now, slot, windowMinutes, full, consoleOrigin }: DigestRun): Promise<BuiltDigest> {
   const model = await collectDigest({ sources, now, slot, windowMinutes });
-  return renderMarkdown(rankDigest({ ...model, ...(consoleOrigin !== undefined && { consoleOrigin }) }, full ? NO_CAPS : DEFAULT_CAPS));
+  const markdown = renderMarkdown(rankDigest({ ...model, ...(consoleOrigin !== undefined && { consoleOrigin }) }, full ? NO_CAPS : DEFAULT_CAPS));
+  const alarm = gateAlarm(model.friction, model.ownerGateAlarm ?? []);
+  const origin = consoleOrigin === undefined ? undefined : safeConsoleOrigin(consoleOrigin);
+  return { markdown, ...(alarm !== undefined && { alarmNote: alarmNote(alarm, origin) }) };
+}
+
+export const ALARM_NOTE_FILE = "owner-gate-alarm.md";
+
+/** One fixed name, so the planner's input is the latest run's alarm; a run with no alarm removes the last one rather than leave it reading as current. */
+export function syncAlarmNote(dir: string, note: string | undefined): void {
+  if (note === undefined) return rmSync(join(dir, ALARM_NOTE_FILE), { force: true });
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, ALARM_NOTE_FILE), note);
 }
 
 export interface Delivery {
