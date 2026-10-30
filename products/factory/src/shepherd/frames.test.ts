@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
+import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
 import { EventHub, silentLogger } from "@titan-design/daemon";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -149,6 +149,24 @@ describe("shepherdFrames", () => {
       ["ar-1", "autoresearch"],
       ["pr-1", "shepherd"],
     ]);
+  });
+
+  it("an autoresearch validator look's frame carries workflow autoresearch", () => {
+    const { frames, source } = started(() => AUTORESEARCH_VALIDATE_WORKFLOW);
+
+    source.onEvent({ type: "step_started", runId: "look-1", stepId: "look", iteration: 0 });
+    vi.advanceTimersByTime(250);
+
+    expect(frames[0]?.workflow).toBe("autoresearch");
+  });
+
+  it("a frame whose run is of a workflow not known to leave autoresearch alone carries none", () => {
+    const { frames, source } = started(() => "build-surface");
+
+    source.onEvent({ type: "step_started", runId: "r1", stepId: "slice", iteration: 0 });
+    vi.advanceTimersByTime(250);
+
+    expect(frames[0]).not.toHaveProperty("workflow");
   });
 
   it("a frame whose run has no known workflow carries none", () => {

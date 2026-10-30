@@ -2,25 +2,41 @@
   "v": 1,
   "mutations": [
     {
-      "name": "every run is labelled shepherd",
+      "name": "an autoresearch run is labelled shepherd",
       "file": "products/factory/src/shepherd/frames.ts",
-      "find": "name === AUTORESEARCH_WORKFLOW ? \"autoresearch\" : \"shepherd\"",
-      "replace": "\"shepherd\"",
-      "kills": ["shepherdFrames an autoresearch run's frame carries kind autoresearch"]
+      "find": "[AUTORESEARCH_WORKFLOW, \"autoresearch\"],",
+      "replace": "[AUTORESEARCH_WORKFLOW, \"shepherd\"],",
+      "kills": [
+        "shepherdFrames an autoresearch run's frame carries kind autoresearch"
+      ]
     },
     {
       "name": "frames never carry a workflow",
       "file": "products/factory/src/shepherd/frames.ts",
       "find": "...workflowField(options.workflowNameOf, runId), runId, ...(\"stepId\"",
       "replace": "runId, ...(\"stepId\"",
-      "kills": ["shepherdFrames an autoresearch run's frame carries kind autoresearch"]
+      "kills": [
+        "shepherdFrames an autoresearch run's frame carries kind autoresearch"
+      ]
     },
     {
       "name": "an unknown workflow reads as shepherd",
       "file": "products/factory/src/shepherd/frames.ts",
-      "find": "return name === undefined ? {} :",
-      "replace": "return name === undefined ? { workflow: \"shepherd\" } :",
-      "kills": ["shepherdFrames a frame whose run has no known workflow carries none"]
+      "find": "return workflow === undefined ? {} : { workflow };",
+      "replace": "return { workflow: workflow ?? \"shepherd\" };",
+      "kills": [
+        "shepherdFrames a frame whose run is of a workflow not known to leave autoresearch alone carries none",
+        "shepherdFrames a frame whose run has no known workflow carries none"
+      ]
+    },
+    {
+      "name": "a validator look is labelled shepherd",
+      "file": "products/factory/src/shepherd/frames.ts",
+      "find": "[AUTORESEARCH_VALIDATE_WORKFLOW, \"autoresearch\"],",
+      "replace": "[AUTORESEARCH_VALIDATE_WORKFLOW, \"shepherd\"],",
+      "kills": [
+        "shepherdFrames an autoresearch validator look's frame carries workflow autoresearch"
+      ]
     }
   ]
 }

@@ -1,9 +1,9 @@
 import type { EventHub } from "@titan-design/daemon";
-import { AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
+import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW } from "@titan-design/autoresearch";
 import type { Db } from "@titan-design/store-sqlite";
 import type { WorkflowEvent } from "@titan-design/workflow";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type FactoryRoutes } from "../host.js";
-import type { ShepherdServices } from "./services.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 
 export const SHEPHERD_FRAME_EVENT = "shepherd";
@@ -161,10 +161,18 @@ function kindOf(event: WorkflowEvent): ShepherdFrameKind {
   return event.type === "gate_opened" ? "gate" : "run";
 }
 
+/** Only workflows known not to feed autoresearch's reads say so; any other name, and every future one, carries no label and so refetches everything. */
+const WORKFLOW_LABELS = new Map<string, NonNullable<ShepherdFrame["workflow"]>>([
+  [AUTORESEARCH_WORKFLOW, "autoresearch"],
+  [AUTORESEARCH_VALIDATE_WORKFLOW, "autoresearch"],
+  [SHEPHERD_WORKFLOW, "shepherd"],
+]);
+
 function workflowField(workflowNameOf: ShepherdFramesOptions["workflowNameOf"], runId: string): Pick<ShepherdFrame, "workflow"> {
   try {
     const name = workflowNameOf?.(runId);
-    return name === undefined ? {} : { workflow: name === AUTORESEARCH_WORKFLOW ? "autoresearch" : "shepherd" };
+    const workflow = name === undefined ? undefined : WORKFLOW_LABELS.get(name);
+    return workflow === undefined ? {} : { workflow };
   } catch {
     return {};
   }
