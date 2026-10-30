@@ -46,7 +46,8 @@
       "replace": "    readScript: (p) => {\n      const text = wholeScript(p, rfs);\n      for (let i = 0; i < text.length; i += 8) text.indexOf(\"\\u0000\", i);\n      return text;\n    },",
       "kills": [
         "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a python3` running a script of paths, cost near-linear in size",
-        "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a node` running a script of paths, cost near-linear in size"
+        "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a node` running a script of paths, cost near-linear in size",
+        "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads"
       ]
     }
   ]
