@@ -69,8 +69,8 @@ describe("titan-squash-message", () => {
     const result = run(["--json"], JSON.stringify(input));
 
     expect(result.code).toBe(0);
-    const message = JSON.parse(result.out) as { subject: string; body: string };
-    const text = `${message.subject}\n${message.body}`;
+    const message: unknown = JSON.parse(result.out);
+    const text = JSON.stringify(message);
     expect(text).not.toMatch(/\[\s*(?:skip ci|ci skip|no ci|skip actions)\s*\]/i);
     expect(text).not.toMatch(/skip-checks:\s*true/i);
     expect(text).toContain("(skip ci)");
