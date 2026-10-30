@@ -1,0 +1,15 @@
+# Fills the test-timing corpus: ci.yml's vitest-file-timing artifacts, then the local spool (TP-4465).
+# Install steps: packages/test-timing/README.md, "Scheduled ingest".
+[Unit]
+Description=Test timing: ingest CI artifacts and the local spool into the corpus
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Each pass is idempotent: a fetched run attempt is skipped, a stored run id writes nothing.
+ExecStart=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs ingest-gh
+ExecStart=/usr/bin/node %h/projects/titan-platform/scripts/test-timing.mjs ingest-spool
+TimeoutStartSec=20min
+Nice=10
+IOSchedulingClass=idle

@@ -157,4 +157,76 @@ interface TimingStoreStats {
 /** File rows are never pruned, so the store reports its own size. */
 declare function storeStats(db: Db): TimingStoreStats;
 
-export { type IngestResult, type RawRef, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingRun, type TimingStoreOptions, type TimingStoreStats, ingestArtifact, openTimingStore, parseTimingArtifact, runnerClass, storeStats, timingArtifactReadSchema, timingArtifactSchema };
+declare const fileSafeId: (id: string) => string;
+/**
+ * Writes one record gzipped under `<home>/raw/<runner>/<yyyy-mm>/` and appends its checksum to that month's
+ * SHA256SUMS, so the corpus can always be rebuilt from raw alone and a tampered file is detectable.
+ */
+declare function archiveRaw(home: string, run: Pick<TimingRun, "id" | "runner" | "startedAt">, body: string): RawRef;
+
+/** What `gh run view --json databaseId,attempt,headSha,headBranch,event,createdAt` says about a CI run. */
+interface GhRunMeta {
+    databaseId: number;
+    attempt: number;
+    headSha: string;
+    headBranch: string | null;
+    event: string;
+    createdAt: string;
+    /** owner/repo, which `gh run view` does not return. */
+    repo: string;
+}
+/** A record from before the run header (TP-4436 S0): `{ files }` alone, with no totals or test counts. */
+declare function isLegacyArtifact(input: unknown): boolean;
+interface LegacyUpgrade {
+    shard: string | null;
+    /** The old record never said; the caller knows (a main push runs the full suite, a pull request may not). */
+    scope: "full" | "scoped";
+}
+/**
+ * Builds the v1 header a pre-header CI artifact lacks from the run's own metadata, so the hosted runs measured
+ * before S1 join the corpus. Fields the old reporter never saw (node, load, wall time) stay empty or zero.
+ */
+declare function upgradeLegacyArtifact(input: unknown, meta: GhRunMeta, { shard, scope }: LegacyUpgrade): TimingArtifact;
+
+/**
+ * Archives then stores one record. A run the store already holds is skipped before anything is written, so a
+ * repeated ingest neither duplicates rows nor appends a second checksum line.
+ */
+declare function ingestRecord(db: Db, home: string, input: unknown): IngestResult;
+interface ArtifactName {
+    attempt: number;
+    shard: string | null;
+}
+/** `vitest-file-timing-<attempt>` from a pull request's validate job, `...-shard<i>of<n>-<attempt>` from main's shards. */
+declare function parseArtifactName(name: string): ArtifactName | null;
+/**
+ * One downloaded CI artifact. A pre-header record gets its header from the run's metadata; the attempt comes from the
+ * artifact's name, because a run's artifacts include those of its earlier attempts.
+ */
+declare function ingestGhArtifact(db: Db, home: string, name: string, input: unknown, meta: GhRunMeta, legacyScope?: LegacyUpgrade["scope"]): IngestResult;
+/** True once a run attempt's artifacts were all downloaded and ingested, so a scheduled ingest skips it. */
+declare function ghRunFetched(db: Db, databaseId: number, attempt: number): boolean;
+/** Marks a run attempt done, with how many artifacts it had; zero is a real answer (a none-scope run uploads none). */
+declare function markGhRunFetched(db: Db, databaseId: number, attempt: number, artifacts: number): void;
+interface SpoolOptions {
+    spool?: string;
+    now?: number;
+    /** A record younger than this may still be being written by the reporter, so it waits for the next pass. */
+    minAgeMs?: number;
+}
+interface SpoolResult {
+    ingested: number;
+    duplicates: number;
+    waiting: number;
+    rejected: {
+        file: string;
+        reason: string;
+    }[];
+}
+/**
+ * Moves every settled spool record into the raw archive and the store. The spool copy is deleted once it is archived;
+ * an unreadable one goes to `rejected/` beside a `.reason` file, so a bad record is kept but never retried.
+ */
+declare function ingestSpool(db: Db, home: string, options?: SpoolOptions): SpoolResult;
+
+export { type ArtifactName, type GhRunMeta, type IngestResult, type LegacyUpgrade, type RawRef, type SpoolOptions, type SpoolResult, TIMING_MIGRATIONS, TIMING_SCHEMA_ID, type TimingArtifact, type TimingFile, type TimingRun, type TimingStoreOptions, type TimingStoreStats, archiveRaw, fileSafeId, ghRunFetched, ingestArtifact, ingestGhArtifact, ingestRecord, ingestSpool, isLegacyArtifact, markGhRunFetched, openTimingStore, parseArtifactName, parseTimingArtifact, runnerClass, storeStats, timingArtifactReadSchema, timingArtifactSchema, upgradeLegacyArtifact };
