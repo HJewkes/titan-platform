@@ -19,6 +19,8 @@ import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
+import { withLineage } from "./inbox-lineage.js";
+import type { ShipLineage } from "./ship-lineage.js";
 import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -42,6 +44,8 @@ export interface InboxItem extends OwnerItem {
   then?: InboxAction;
   /** Every other gate on the item's PR at its live head; only a hitl item joined to a pinned live row has one. */
   gates?: GateStrip;
+  /** Where a resolve-gate item's PR head stands against its base; the round page's cached read, so a row adds no read of its own. */
+  lineage?: ShipLineage;
   evidence: string | undefined;
   /** Set on a round's one row when it asks more than one question; the round page holds them. */
   questionCount?: number;
@@ -336,7 +340,7 @@ async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: 
   const order = approvals.flow.order;
   const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const items = inboxItems(order, live.value, { strips: gates, liveAgents, now: now() });
+  const items = await withLineage(inboxItems(order, live.value, { strips: gates, liveAgents, now: now() }), sources.rounds.lineage);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 

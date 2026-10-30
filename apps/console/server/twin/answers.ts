@@ -115,6 +115,7 @@ const INBOX_ITEMS = [
     options: [{ id: "merge", label: "merge" }, { id: "hold", label: "hold" }], recommended: { optionId: "merge", by: "relay-reviewer" },
     action: { kind: "resolve-gate", gateId: "run-12/approve-merge", runId: "run-12", stepId: "approve-merge", repo: "orbit/relay", pr: 12, headSha: HEAD, decision: "merge" },
     gates: strip("orbit/relay", 12, HEAD),
+    lineage: { known: true, provenSha: HEAD, state: "open", merged: false, mergeSha: null, headSha: HEAD, baseRef: "main", baseSha: "1".repeat(40), behind: 3 },
   }),
   inboxItem("ask-6", { sources: [{ system: "agent-chat", ref: "msg-6" }], kind: "decide", lens: "blocking-agent", summary: "Which port should the depth probe listen on?", openedAt: at(40 * MINUTE), action: { kind: "answer-chat", msgId: "msg-6" } }),
   inboxItem("round-ship", { sources: [{ system: "round", ref: "ship-tile-r1" }], kind: "review", summary: "Ship tile frames", openedAt: at(5 * HOUR), evidence: "#/rounds/ship-tile-r1", action: { kind: "open-round", roundId: "ship-tile-r1" } }),

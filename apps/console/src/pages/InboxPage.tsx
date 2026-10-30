@@ -11,6 +11,7 @@ import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, u
 import { NudgeSection } from "./InboxNudges.js";
 import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
+import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
@@ -248,6 +249,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
+          <MergeLineage item={item} />
           {item.gates !== undefined ? <GateStripView strip={item.gates} /> : null}
           <RowAction item={item} />
         </VStack>
@@ -312,9 +314,25 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
       </Button>
       {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
       {confirming ? (
-        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
+        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <ReadBackWithLineage item={item} prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
       ) : null}
     </HStack>
+  );
+}
+
+/** A merge gate always shows its lineage; one the server attached none to reads "lineage unknown", never blank. */
+function MergeLineage({ item }: { item: InboxItem }): ReactNode {
+  const { action } = item;
+  return action.kind === "resolve-gate" && action.decision === "merge" ? <ShipLineageLine lineage={item.lineage} /> : null;
+}
+
+/** The sheet repeats the row's lineage beside the read-back, since staleness is what the owner weighs before approving a merge. */
+function ReadBackWithLineage({ item, prepared }: { item: InboxItem; prepared: InboxReady }): ReactNode {
+  return (
+    <VStack gap={2}>
+      <MergeLineage item={item} />
+      <InboxReadBack prepared={prepared} />
+    </VStack>
   );
 }
 
