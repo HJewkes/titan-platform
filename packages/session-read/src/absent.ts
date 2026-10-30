@@ -4,6 +4,11 @@ export function isMissing(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
+/** The path's name is longer than the filesystem allows, so nothing can exist there. */
+export function isNameTooLong(error: unknown): boolean {
+  return errorCode(error) === "ENAMETOOLONG";
+}
+
 /**
  * A locator whose line is gone: the file was removed or truncated, or the bytes at
  * the span were rewritten so they no longer decode as UTF-8 or parse as JSON.
