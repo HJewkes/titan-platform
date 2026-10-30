@@ -1,7 +1,7 @@
 import { fixPacket, implementerBrief, reviewerBrief, type FixFindings } from "./briefs.js";
 import { DEVICE_CHECK } from "./manifest.js";
 import * as S from "./schemas.js";
-import { cancelRun, commandIn, needComponents, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
+import { cancelRun, commandIn, needComponents, oneQuestionBrief, remainingUsd, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
 import { evidenceDirOf, reviewerNameOf, runsStep } from "./spec.js";
 
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
@@ -23,7 +23,7 @@ async function checkedReport(run: SliceRun, round: number, report: S.Implementer
 }
 
 async function fix(run: SliceRun, suffix: string, head: string, findings: FixFindings): Promise<S.ImplementerReport> {
-  return (await sliceStep(run, "bs-fix", suffix, { name: run.agent, message: fixPacket(head, findings) }, ReportStep)).report;
+  return (await sliceStep(run, "bs-fix", suffix, { name: run.agent, message: fixPacket(head, findings), budgetUsd: remainingUsd(run) }, ReportStep)).report;
 }
 
 export async function runGates(run: SliceRun, suffix: string, head: string): Promise<S.GateRun> {
@@ -73,7 +73,7 @@ async function review(run: SliceRun, round: number, head: string): Promise<S.Rev
   let rejections: string[] = [];
   for (let attempt = 0; ; attempt++) {
     const brief = reviewerBrief(run.spec, run.slice, head, rejections);
-    const asked = { name: reviewerNameOf(run.spec, run.slice, round), profile: reviewer.profile, cwd: run.spec.clone, brief, task: run.slice.task ?? run.spec.task };
+    const asked = { name: reviewerNameOf(run.spec, run.slice, round), profile: reviewer.profile, cwd: run.spec.clone, brief, task: run.slice.task ?? run.spec.task, budgetUsd: remainingUsd(run) };
     const { report } = await sliceStep(run, "bs-review", `${round}:${attempt}`, asked, ReviewStep);
     const input = { ...commandIn(run, run.spec.validate.review, { BS_HEAD: head }), payload: report, builtIn: reviewProblems(report, head) };
     const verdict = await sliceStep(run, "bs-review-check", `${round}:${attempt}`, input, S.ValidationSchema);
@@ -86,7 +86,7 @@ async function review(run: SliceRun, round: number, head: string): Promise<S.Rev
 async function implement(run: SliceRun, targets: unknown): Promise<string> {
   const task = run.slice.task ?? run.spec.task;
   const brief = implementerBrief(run.spec, run.slice, targets);
-  const first = await sliceStep(run, "bs-implement", undefined, { name: run.agent, profile: run.spec.implementer.profile, cwd: run.spec.clone, brief, task }, ReportStep);
+  const first = await sliceStep(run, "bs-implement", undefined, { name: run.agent, profile: run.spec.implementer.profile, cwd: run.spec.clone, brief, task, budgetUsd: remainingUsd(run) }, ReportStep);
   return (await checkedReport(run, 0, first.report)).head;
 }
 

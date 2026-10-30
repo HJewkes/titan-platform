@@ -418,6 +418,14 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
   deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
   cleared by this tap; the read-back says when one will keep deploys held.
+- **Retire from the agent page.** An agent page offers Retire for an exited agent that agent-chat
+  spawned (`taps.prepare` and `taps.act`, keyed by `{kind: "retire-agent", name}`, behind the same
+  `TITAN_CONSOLE_INBOX_ACTIONS` switch and owner-write guard). It needs no deposit: the console
+  takes the agent id from its own roster and reads the rest back from the factory's preview, as the
+  inbox's `retire-agent` op does. A live agent and a seat get a line saying why there is no tap.
+  The record names only the `op`, so the factory treats it like any other `retire-agent` op. The
+  record and outcome files are the audit; the decision log gets nothing. There is never a forced
+  retire. The Agents roster has a "Finished, not retired" filter.
 
   A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
   "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the

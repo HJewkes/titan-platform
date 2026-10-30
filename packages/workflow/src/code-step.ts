@@ -29,6 +29,17 @@ export function codeRoute<I>(match: string, fn: (input: I, step: RoutedStepInput
 /** A record body's answer; `usage` is what a model call inside the body cost, and is kept off the stored record. */
 export type CodeRecord = object & { usage?: StepUsage };
 
+/** Thrown by a code step's body that spent money before it failed, so the failed step still reports that spend. */
+export class CodeStepFailure extends Error {
+  constructor(
+    message: string,
+    readonly usage: StepUsage,
+  ) {
+    super(message);
+    this.name = "CodeStepFailure";
+  }
+}
+
 /**
  * Like `codeRoute`, for a body that returns the whole record: `result` plus trace keys beside it, and optionally
  * `usage`, which becomes the step's usage so a model call made in code is summed like a dispatch's.
@@ -42,7 +53,8 @@ export function codeRecordRoute<I>(match: string, fn: (input: I, step: RoutedSte
       const { usage, ...record } = await fn(JSON.parse(step.prompt) as I, step);
       return { ok: true as const, output: JSON.stringify(envelope(record, step)), ...(usage ? { usage } : {}) };
     } catch (error) {
-      return { ok: false as const, error: errorText(error instanceof Error ? error.message : String(error)), retryable: false };
+      const usage = error instanceof CodeStepFailure ? { usage: error.usage } : {};
+      return { ok: false as const, error: errorText(error instanceof Error ? error.message : String(error)), retryable: false, ...usage };
     }
   };
   return { match, onRestart: "repeat", runner: { run } };

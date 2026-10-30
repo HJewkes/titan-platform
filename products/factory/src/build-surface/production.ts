@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { runAgent } from "@titan-design/agent";
 import { minimalEnv } from "@titan-design/agent-dispatch";
 import type { GitHubPort } from "@titan-design/github";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import { agentChatImplementerRunner, type ImplementerRunner } from "../agent-chat-implementer.js";
+import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { agentChatAgents } from "../shepherd/agents.js";
 import type { RosterReader } from "../shepherd/roster.js";
 import type { SpawnGate } from "../shepherd/spawn-gate.js";
@@ -125,5 +127,7 @@ interface FactoryAgentWiring {
 export function factoryBuildPorts(wiring: FactoryAgentWiring): BuildSurfacePorts {
   const { agentChatBin, agentChatConfigDir, roster, spawnGate } = wiring;
   const agents = agentChatAgents(agentChatBin, { roster, gate: spawnGate, ...(agentChatConfigDir !== undefined && { configDir: agentChatConfigDir }) });
-  return systemBuildPorts({ github: wiring.port, implementer: agentChatImplementerRunner({ agents }), rpc: loopbackRpc });
+  const inbox = ownerInboxDir(process.env);
+  const implementer = agentChatImplementerRunner({ agents, tellOwner: async (deposit) => void (await writeDeposit(inbox, deposit)) });
+  return systemBuildPorts({ github: wiring.port, implementer, rpc: loopbackRpc });
 }

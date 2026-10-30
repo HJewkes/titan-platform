@@ -22,10 +22,28 @@
     {
       "name": "a model reply is not held by code",
       "file": "products/explainer/src/workflow/model-stages.ts",
-      "find": "settle: (script) => settle(holdStillBeats(script)),",
-      "replace": "settle,",
+      "find": "settle(dropOrphanCues(holdStillBeats(script), errorRows).script)",
+      "replace": "settle(dropOrphanCues(script, errorRows).script)",
       "kills": [
         "a reply that leaves the closing button still is held by code and kept"
+      ]
+    },
+    {
+      "name": "a seed keeps its orphan cues",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "orphansDropped(planned(seed, plan), lint)",
+      "replace": "({ script: planned(seed, plan), moves: [] as string[] })",
+      "kills": [
+        "an orphan cue target is dropped from a seed by code, so a seed whose only fault it was makes no model call"
+      ]
+    },
+    {
+      "name": "a drafted reply keeps its orphan cues",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "orphanFree(wholeScript(plan), lint)",
+      "replace": "wholeScript(plan)",
+      "kills": [
+        "an orphan cue target is dropped from a drafted reply before its plan check, so it costs no plan retry"
       ]
     }
   ]

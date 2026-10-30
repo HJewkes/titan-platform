@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the held wake's message to the implementer drops the findings",
+      "file": "products/factory/src/shepherd/wake-notice.ts",
+      "find": "or tell your seat you cannot.\\n\\n${wake.payload}`;",
+      "replace": "or tell your seat you cannot.`;",
+      "kills": [
+        "messagePredecessor: a held wake's findings reach the lineage messages the held wake's findings and branch to the lineage's newest agent"
+      ]
+    }
+  ]
+}
