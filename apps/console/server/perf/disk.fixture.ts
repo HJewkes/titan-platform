@@ -11,7 +11,7 @@ import { FEEDBACK_FILE, WITHDRAWN_FILE, WITHDRAWN_SCHEMA_ID } from "../rounds.js
 import type { BrokerState } from "./broker.fixture.js";
 import { dateAt, draw, pad, WORDS, type Draw } from "./random.fixture.js";
 
-export const DISK_SIZES = { rounds: 500, deposits: 400, withdrawnDeposits: 150, answeredDeposits: 100, askers: 40 } as const;
+export const DISK_SIZES = { rounds: 500, deposits: 400, withdrawnDeposits: 150, answeredDeposits: 100, askers: 40, blockers: 8 } as const;
 
 /** review-schema refuses an option text two questions of one round share, so each question's options name it. */
 const optionsOf = (questionId: string): string[] => ["Keep", "Change", "Drop"].map((verb) => `${verb} ${questionId}`);
@@ -92,11 +92,21 @@ async function closeDeposit(spoolDir: string, id: string, index: number): Promis
   }
 }
 
+/** Open blocker deposits, dated before the real clock as the rest of the fixture is not, so `blockers.banner` lists them. */
+async function writeBlockers(spoolDir: string): Promise<void> {
+  for (let index = 0; index < DISK_SIZES.blockers; index += 1) {
+    const blocker = { since: `2001-01-0${index + 1}T00:00:00.000Z`, blocks: `example-org/repo-${pad(index, 2)}#${2000 + index} cannot merge` };
+    const { file } = await writeDeposit(spoolDir, { depositId: `perf-blocker-${index}`, asker: `seat-${pad(index, 2)}`, kind: "do", door: "two-way", summary: `Synthetic blocker ${index}`, context: "Synthetic blocker context.", keys: [`blocker:${index}`], blocker });
+    await utimes(file, dateAt(0), dateAt(0));
+  }
+}
+
 /** The first `withdrawnDeposits` are withdrawn the way `withdraw` leaves them (marker plus log line), the next `answeredDeposits` answered. */
 export async function writeSpool(seed: string, spoolDir: string): Promise<void> {
   const random = draw(`${seed}:spool`);
   await mkdir(spoolDir, { recursive: true });
   for (let index = 0; index < DISK_SIZES.deposits; index += 1) await closeDeposit(spoolDir, await writeOneDeposit(random, spoolDir, index), index);
+  await writeBlockers(spoolDir);
   await utimes(path.join(spoolDir, WITHDRAW_LOG), dateAt(0), dateAt(0));
 }
 

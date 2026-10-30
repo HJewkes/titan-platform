@@ -105,11 +105,19 @@ function autoresearchRun(random: Draw, index: number): ArRunSummary {
   };
 }
 
+/** Every other fixture time is after the real clock, so one gate is dated in its past for `blockers.banner` to list. */
+export const OLD_GATE_SINCE = "2001-01-01T00:00:00.000Z";
+
+function withOldOwnerGate(rows: WatchRow[]): WatchRow[] {
+  const first = rows.findIndex((row) => row.pendingGate !== null);
+  return rows.map((row, index) => (index === first && row.pendingGate !== null ? { ...row, pendingGate: { ...row.pendingGate, since: OLD_GATE_SINCE } } : row));
+}
+
 export function factoryState(seed: string): FactoryState {
   const random = draw(`${seed}:factory`);
   return {
     needs: Array.from({ length: FACTORY_SIZES.needs }, (_, index) => need(random, index)),
-    active: Array.from({ length: FACTORY_SIZES.activeRuns }, (_, index) => watchRow(random, index, ACTIVE_PHASES)),
+    active: withOldOwnerGate(Array.from({ length: FACTORY_SIZES.activeRuns }, (_, index) => watchRow(random, index, ACTIVE_PHASES))),
     finished: Array.from({ length: FACTORY_SIZES.finishedRuns }, (_, index) => watchRow(random, FACTORY_SIZES.activeRuns + index, FINISHED_PHASES)),
     autoresearch: Array.from({ length: FACTORY_SIZES.autoresearchRuns }, (_, index) => autoresearchRun(random, index)),
   };
