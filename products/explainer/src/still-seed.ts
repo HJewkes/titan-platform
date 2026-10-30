@@ -1,5 +1,5 @@
 import { emphasisTargets } from "./beat-load.js";
-import { SMALL_MOVE_S } from "./composition/beats/stage/video.js";
+import { SMALL_MOVE_S } from "./composition/beats/stage/video-timing.js";
 import { cueWord } from "./cues.js";
 import { drawnBeats, screenTokens, type DrawnBeat } from "./drawn-beats.js";
 import { doctrine, heldBeats, plannedCues, scriptPacing } from "./lint-cadence.js";

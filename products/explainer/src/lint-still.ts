@@ -1,5 +1,4 @@
-import { LIT_RAMP_S } from "./composition/beats/flow.js";
-import { FLOW_DWELL_S, SMALL_MOVE_S } from "./composition/beats/stage/video.js";
+import { FLOW_DWELL_S, LIT_RAMP_S, SMALL_MOVE_S } from "./composition/beats/stage/video-timing.js";
 import { drawnBeats, isSlots, screenTokens, type DrawnBeat } from "./drawn-beats.js";
 import { closingMotionS, revealMotionS } from "./drawn-motion.js";
 import { drawnTexts, isHeading, type DrawnText } from "./drawn-texts.js";
