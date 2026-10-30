@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a later run drops its base run's profile and speaks in the default voice",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "request.profile ?? request.gather?.type ?? basePlan?.profile",
+      "replace": "request.profile ?? request.gather?.type",
+      "kills": [
+        "a later run on a base run speaks in the base run's profile voice when it names no profile of its own"
+      ]
+    }
+  ]
+}
