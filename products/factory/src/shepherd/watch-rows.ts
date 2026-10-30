@@ -17,7 +17,7 @@ export function rowOf(host: FactoryHost, services: ShepherdServices, registratio
 }
 
 /** Another run's watch-row phase, as its own row reads it; undefined when the run or its registration is gone. */
-export function phaseOfRun(host: FactoryHost, services: ShepherdServices, runId: string): WatchRow["phase"] | undefined {
+function phaseOfRun(host: FactoryHost, services: ShepherdServices, runId: string): WatchRow["phase"] | undefined {
   const registration = services.store.get().byRun(runId);
   const run = host.runtime.status(runId);
   return registration && run ? rowOf(host, services, registration, run).phase : undefined;

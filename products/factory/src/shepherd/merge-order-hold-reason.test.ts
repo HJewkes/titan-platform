@@ -62,6 +62,7 @@ describe("a run parked behind the merge-order guard (TP-4137)", () => {
     const [row] = await status(ctx);
 
     expect(row?.nextAction).toBe(NAMED);
+    expect(row?.orderWait).toEqual({ behind: 101, holderPhase: "fixing", since: minutes(0), reason: NAMED });
     expect(row?.stalled?.reason).toContain(NAMED);
   });
 

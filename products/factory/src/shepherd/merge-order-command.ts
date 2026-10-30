@@ -98,7 +98,7 @@ export const orderCommand = defineCommand<OrderArgs, OrderResult, FactoryContext
 });
 
 /** The reservation a merging run waits behind: its PR, the phase its own run is in, and when it was taken (TP-4137). */
-export interface OrderHold {
+interface OrderHold {
   behind: number;
   holderPhase: Phase | null;
   since: string | null;
@@ -114,7 +114,7 @@ export interface StatusOrder {
 }
 
 /** The phase a run is in now; undefined when it is no longer registered. */
-export type PhaseOf = (runId: string) => Phase | undefined;
+type PhaseOf = (runId: string) => Phase | undefined;
 
 /** A merge past its phase limit while it waits behind a reservation names that wait, not only the minutes (TP-4133). */
 function stalledBehind(row: WatchRow, reason: string): Pick<StatusOrder, "stalled"> {
