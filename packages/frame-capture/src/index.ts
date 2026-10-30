@@ -5,6 +5,7 @@ export {
   FontLoadError,
   launch,
   openCapturePage,
+  screenshotFrame,
   settleFonts,
   withBrowser,
   withCapturePage,
