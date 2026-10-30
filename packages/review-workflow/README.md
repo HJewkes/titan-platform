@@ -17,7 +17,16 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `DEFAULT_RETRY_POLICY`: one row per failure class. Each row lists the same-head steps (retry, correct, late read, heal)
   and then a terminal: the fixer, a stop outcome, or none. No row routes to the owner.
 
-The policy is data. Nothing in this release reads it; the recipe that does arrives in a later release.
+- `preflightRead(input, ports)`: the step body that reads the PR, CI, proof standing (with the base the proof judged),
+  carry probe, checkout, headroom and installed profiles in one pass.
+- `preflight(snapshot, policy)`: pure. In order it stops on a closed or draft PR, a moved head, CI not green, a NO_REPRO
+  that ends the review, a carried merge-up, and a behind or dirty head. Then it plans the panel and sends a member whose
+  profile is not installed to the fixer, asks for `refresh-checkout` or `await-account` heals in the shape `healOnce`
+  takes, and otherwise returns `go` with the plan.
+- `planForHead(facts, policy, standing, hold?)`: the class and panel for one head. A hold adds an uncapped adversary,
+  and a standing that `needsTestsSeat` adds a blocking tests member.
+
+The retry policy is data. Nothing in this release reads it; the recipe that does arrives in a later release.
 
 ```ts
 import { DEFAULT_RETRY_POLICY } from "@titan-design/review-workflow";
