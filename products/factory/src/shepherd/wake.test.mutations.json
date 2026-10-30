@@ -46,6 +46,15 @@
       "kills": [
         "sh-wake-implementer: who is woken starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)"
       ]
+    },
+    {
+      "name": "the held wake's message to the implementer drops the findings",
+      "file": "products/factory/src/shepherd/wake-notice.ts",
+      "find": "or tell your seat you cannot.\\n\\n${wake.payload}`;",
+      "replace": "or tell your seat you cannot.`;",
+      "kills": [
+        "sh-wake-implementer: when the broker cannot act messages a held FIX_FIRST's findings to the implementer that no successor could relieve"
+      ]
     }
   ]
 }

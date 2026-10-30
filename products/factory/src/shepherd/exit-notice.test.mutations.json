@@ -37,6 +37,15 @@
       "kills": [
         "the seat notice keeps the seat when the roster cannot be read, as before liveness was checked"
       ]
+    },
+    {
+      "name": "the held seat notice drops the wake's findings",
+      "file": "products/factory/src/shepherd/exit-notice.ts",
+      "find": "...(heldPayload === undefined ? [] : [dataFence(",
+      "replace": "...(true ? [] : [dataFence(",
+      "kills": [
+        "a held send-back, whose successor agent-chat refused carries the held wake's findings to the seat, cut to the notice's cap"
+      ]
     }
   ]
 }
