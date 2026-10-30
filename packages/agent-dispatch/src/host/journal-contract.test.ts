@@ -54,6 +54,16 @@ describe.each(hosts)('%s', (_name, makeHost) => {
     expect(journal.rows()).toHaveLength(4)
   })
 
+  it('keeps append order when timestamps repeat or run backwards', () => {
+    const { journal } = makeHost()
+    journal.append(row('agent_spawned', { msgId: 'a1', ts: 9 }))
+    journal.append(row('observe_running', { ref: 'a1', ts: 2 }))
+    journal.append(row('agent_exited', { ref: 'a1', ts: 2 }))
+
+    expect(journal.rowsFor('a1').map((r) => r.kind)).toEqual(['agent_spawned', 'observe_running', 'agent_exited'])
+    expect(journal.rows().map((r) => r.kind)).toEqual(['agent_spawned', 'observe_running', 'agent_exited'])
+  })
+
   it('reads a name as none, self or other by the agent its connection is bound to', () => {
     const { presence, connect, disconnect } = makeHost()
     expect(presence.namePresence('w', 'a1')).toBe('none')
