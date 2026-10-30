@@ -4,8 +4,8 @@
     {
       "name": "a still button's hint offers new text before the hold",
       "file": "products/explainer/src/repair-hints-screen.ts",
-      "find": "which reveals nothing on a cue: first hold it with heldS, which adds no words`",
-      "replace": "which reveals nothing on a cue: hold it`",
+      "find": "${full ?? \"first hold it with heldS, which adds no words\"}",
+      "replace": "${full ?? \"hold it\"}",
       "kills": [
         "the Q-D22 hint for a still closing button leads with a hold that adds no words and names the label and frame caps on every move that adds text"
       ]
