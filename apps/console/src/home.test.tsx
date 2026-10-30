@@ -150,7 +150,7 @@ describe("the home page", () => {
   it("issues only reads", async () => {
     const called = renderHome(homeSnapshot(), { inApp: true });
     await screen.findByText("OR-7 Route beacons");
-    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "console.build"]));
+    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "console.build", "blockers.banner"]));
   });
 
   it("shows the inbox's blocking count and its newest three, each opening the inbox", async () => {

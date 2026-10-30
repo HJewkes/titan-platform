@@ -12,8 +12,8 @@
     },
     {
       "name": "qa registers no mp4-duration check",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
-      "find": "    { name: \"mp4-duration\", gate: true, reads: [\"qa\"], run: mp4DurationVerdict },\n",
+      "file": "products/explainer/src/qa/qa-gates.ts",
+      "find": "  { name: \"mp4-duration\", gate: true, reads: [\"qa\"], run: mp4DurationVerdict },\n",
       "replace": "",
       "kills": [
         "qa stage fails mp4-duration when the MP4 runs 0.034 s past its timeline",
@@ -23,8 +23,8 @@
     {
       "name": "qa runs late-fill over lead-line beats too",
       "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "{ lead: leadLineBeats(input), cropDir",
-      "replace": "{ cropDir",
+      "find": "lead: leadLineBeats(input), ",
+      "replace": "",
       "kills": [
         "qa stage late-fill on a lead-line beat passes held-errors when visual marks the beat qaLeadLine, as the spike's qa skips it"
       ]

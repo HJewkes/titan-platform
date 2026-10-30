@@ -7,10 +7,11 @@ import type { ResolvedSchema } from "../resolve-stage.js";
 import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
 import { withSlotOverrides } from "../slot-overrides.js";
 import { DERIVERS } from "./derivers.js";
+import { cueEmphases, type DrawnElements } from "./emphases.js";
 import { deriveContinuation, deriveList, stageOf } from "./derive-rows.js";
 import { lateFirstCue } from "./label-parse.js";
 import { beatScope } from "./scope.js";
-import { isDerived, type BeatScope, type Derivation, type Derived, type FillHints, type Lead, type Reveal, type Underived } from "./types.js";
+import { isDerived, type BeatScope, type Derivation, type Derived, type Emphasis, type FillHints, type Lead, type Reveal, type Underived } from "./types.js";
 
 export type ResolvedRow = z.infer<typeof ResolvedSchema>["beats"][number];
 type Resolved = Pick<z.infer<typeof ResolvedSchema>, "beats">;
@@ -35,6 +36,8 @@ export interface FilledBeat {
   generated: Record<string, unknown>;
   overridden: string[];
   reveals: Reveal[];
+  /** Later cues on elements already drawn (a revealed row, an edge, the claim), each lighting its element. */
+  emphases: Emphasis[];
   chips: { kind: string; text: string }[];
   hints: FillHints;
   tune?: Record<string, number | string | boolean>;
@@ -119,11 +122,14 @@ function fallbackFor(beat: ScriptBeat, scope: BeatScope, { own, tried, problems,
   return { reason, fallback: { spec: to.spec, derived } };
 }
 
-/** Reveals of elements the final slots still hold: an override that replaces a list drops the derived items' cues. */
-function keptReveals(spec: BeatSpec, slots: Record<string, unknown>, reveals: readonly Reveal[]): Reveal[] {
-  const present = new Set([...emphasisTargets(spec, slots), ...Object.keys(slots)]);
-  return reveals.filter((reveal) => present.has(reveal.target));
+/** The element ids the final slots hold, with the map edges among them. */
+function drawnElements(spec: BeatSpec, slots: Record<string, unknown>): DrawnElements {
+  const edges = Array.isArray(slots["edges"]) ? (slots["edges"] as DrawnElements["edges"]) : [];
+  return { present: new Set([...emphasisTargets(spec, slots), ...Object.keys(slots)]), edges };
 }
+
+/** Reveals of elements the final slots still hold: an override that replaces a list drops the derived items' cues. */
+const keptReveals = (drawn: DrawnElements, reveals: readonly Reveal[]): Reveal[] => reveals.filter((reveal) => drawn.present.has(reveal.target));
 
 interface Layers {
   generated: Record<string, unknown>;
@@ -131,7 +137,8 @@ interface Layers {
 }
 
 function filled(beat: ScriptBeat, drawn: { spec: BeatSpec; ref: BeatSlotRef }, layers: Layers, derived: Derived, fallback?: FilledBeat["fallback"]): FilledBeat {
-  const reveals = keptReveals(drawn.spec, layers.slots, derived.reveals);
+  const elements = drawnElements(drawn.spec, layers.slots);
+  const reveals = keptReveals(elements, derived.reveals);
   const late = derived.hints?.continues === undefined && lateFirstCue(beat, reveals);
   const { name } = drawn.spec.component;
   return {
@@ -142,6 +149,7 @@ function filled(beat: ScriptBeat, drawn: { spec: BeatSpec; ref: BeatSlotRef }, l
     ...layers,
     overridden: Object.keys(beat.visual.slots ?? {}),
     reveals,
+    emphases: cueEmphases(beat, elements, reveals),
     chips: beat.visual.chips.map(({ kind, text }) => ({ kind, text })),
     hints: { ...derived.hints, ...(late ? { placeholder: true as const } : {}) },
     ...(beat.visual.tune === undefined ? {} : { tune: { ...beat.visual.tune } }),

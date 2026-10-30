@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright-core'
 import type { TitanMotionApi } from './protocol.js'
 import { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 
@@ -178,15 +178,45 @@ export async function captureFrame(page: Page, t: number): Promise<Buffer> {
     await motion.ready()
     window.__virtualTime.syncAnimations()
   }, t)
-  return screenshot(page)
+  return screenshotFrame(page)
 }
 
-/** Headless Chromium occasionally answers "Unable to capture screenshot" under load; the frame is already committed. */
-async function screenshot(page: Page): Promise<Buffer> {
+const sessions = new WeakMap<Page, Promise<CDPSession>>()
+
+function cdpSession(page: Page): Promise<CDPSession> {
+  let session = sessions.get(page)
+  if (!session) {
+    session = page.context().newCDPSession(page)
+    sessions.set(page, session)
+  }
+  return session
+}
+
+const HIDE_CARET_ID = '__frame-capture-hide-caret'
+
+/** What `page.screenshot({ caret: 'hide' })` injects around each shot, left in place once instead. */
+function hideCaret(id: string): void {
+  if (document.getElementById(id)) return
+  const style = document.createElement('style')
+  style.id = id
+  style.textContent = '* { caret-color: transparent !important; }'
+  document.head.append(style)
+}
+
+/**
+ * The viewport as a PNG with the caret hidden. `optimizeForSpeed` swaps Chromium's PNG encoder for a faster zlib
+ * setting: the pixels are the same and the bytes are the same run to run, but the files are about 2.5x larger. At
+ * 1920x1080 it cut a shot from about 42 to 25 ms, which is most of a capture's time.
+ */
+export async function screenshotFrame(page: Page): Promise<Buffer> {
+  await page.evaluate(hideCaret, HIDE_CARET_ID)
+  const session = await cdpSession(page)
+  const shot = () => session.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true })
   try {
-    return await page.screenshot({ type: 'png', caret: 'hide' })
+    return Buffer.from((await shot()).data, 'base64')
   } catch (error) {
+    // Headless Chromium occasionally answers "Unable to capture screenshot" under load; the frame is already committed.
     if (!String(error).includes('Unable to capture screenshot')) throw error
-    return page.screenshot({ type: 'png', caret: 'hide' })
+    return Buffer.from((await shot()).data, 'base64')
   }
 }

@@ -136,6 +136,24 @@ describe("titan-factory planner wake", () => {
     expect(spawns()[0]!.options!.input).toMatch(/^Your inputs are pre-digested \(at most 200 tokens\) in .*factory-planner-digest\.md/);
   });
 
+  it("the planner review input includes owner-gate-alarm.md and its cause-fix prompt line", async () => {
+    fixture("owner-gate-alarm.md", "Owner gates stale: 1 over 72h\n\n- acme/widgets#12 148h\n");
+    const alarmInput = { name: "owner-gate-alarm", file: join(dir, "owner-gate-alarm.md"), digest: true, optional: true, prompt: "Propose one cause fix for the stale owner gates: why they wait, not a ping." };
+    await wake(writeConfig({}, [alarmInput]));
+    const digest = readFileSync(join(dir, "state", "titan-factory", "planner-wake", "factory-planner-digest.md"), "utf8");
+    expect(digest).toContain("## owner-gate-alarm");
+    expect(digest).toContain("acme/widgets#12 148h");
+    expect(spawns()[0]!.options!.input).toContain("Propose one cause fix for the stale owner gates");
+  });
+
+  it("an absent optional alarm file adds neither a digest section nor the prompt line", async () => {
+    const alarmInput = { name: "owner-gate-alarm", file: join(dir, "owner-gate-alarm.md"), digest: true, optional: true, prompt: "Propose one cause fix for the stale owner gates." };
+    await wake(writeConfig({}, [alarmInput]));
+    const digest = readFileSync(join(dir, "state", "titan-factory", "planner-wake", "factory-planner-digest.md"), "utf8");
+    expect(digest).not.toContain("owner-gate-alarm");
+    expect(spawns()[0]!.options!.input).not.toContain("cause fix");
+  });
+
   it("an input that cannot be read runs the planner rather than skipping it", async () => {
     const config = writeConfig();
     await wake(config);

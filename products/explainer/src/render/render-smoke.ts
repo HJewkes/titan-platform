@@ -3,6 +3,8 @@ import path from "node:path";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { QaGate } from "../qa/gate-profile.js";
+import type { QaEngine } from "../qa/qa-engine.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import { stageRecords } from "../workflow/report.js";
 import { planOf } from "../workflow/video-runs.js";
@@ -50,6 +52,9 @@ interface SmokeInput {
   artifacts: Readonly<Record<string, string>>;
   store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "putTree" | "materialise">;
   gate: QaGate;
+  /** qa's engine and the run type's timing thresholds, for the render's after-encode check. */
+  qa: QaEngine;
+  timing: TimingProfile;
   workers: number;
   /** Where each render's `qa.json` is kept, since the render stage deletes its scratch. */
   keepDir: string;
@@ -96,7 +101,7 @@ function heldRows(keepDir: string): HeldRow[] {
 
 async function renderOnce(input: SmokeInput, inputs: Record<string, string>, engine: RenderEngine): Promise<Record<string, string>> {
   const stage = { artifacts: inputs, store: input.store, from: { runId: `smoke-${input.runId}`, stage: "render" }, remainingUsd: 0 };
-  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate }, engine);
+  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing }, engine, input.qa);
   return outcome.outputs;
 }
 

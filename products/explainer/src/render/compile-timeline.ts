@@ -58,12 +58,13 @@ function plannedResolver(board: Storyboard): CueResolver {
   };
 }
 
-/** A beat's page extras with each reveal's cue resolved to beat-local seconds; nothing when the beat carries none. */
+/** A beat's page extras with each reveal's and emphasis's cue resolved to beat-local seconds; nothing when the beat carries none. */
 function pageFields(beatId: string, extras: PageExtras | undefined, resolve: CueResolver): Partial<TimelineBeat> {
   if (!extras) return {};
   const reveals = extras.reveals.map(({ target, part, atCue }) => ({ target, ...(part ? { part } : {}), atS: resolve(beatId, atCue) }));
+  const emphases = (extras.emphases ?? []).map(({ target, atCue }) => ({ target, atS: resolve(beatId, atCue) }));
   const { chips, hints, headline, chapter } = extras;
-  return { reveals, chips, hints, headline, chapter };
+  return { reveals, ...(emphases.length > 0 ? { emphases } : {}), chips, hints, headline, chapter };
 }
 
 /** Beat-local cue seconds keyed by the cue as written, ordered by time then name; none without spoken words. */

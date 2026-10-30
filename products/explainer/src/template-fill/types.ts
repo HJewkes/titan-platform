@@ -8,6 +8,12 @@ export interface Reveal {
   atCue: string;
 }
 
+/** A later spoken word that names an element already drawn: the view lights the element on it. */
+export interface Emphasis {
+  target: string;
+  atCue: string;
+}
+
 /** Page hints the spike sample builder wrote beside a beat's slots; none of them is a slot. */
 export interface FillHints {
   placeholder?: true;

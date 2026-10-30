@@ -2,9 +2,10 @@ import path from "node:path";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { loadQaGate } from "../qa/gate-profile.js";
+import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
 import { ArtifactStore } from "../workflow/artifacts.js";
 import { openState } from "../workflow/host.js";
-import { cloneFixture, dropSeeds, fakeRender, seededRun, type Fixture } from "../workflow/run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, LAX_TIMING, seededRun, type Fixture } from "../workflow/run-fakes.test-helpers.js";
 import type { FakeRenderOptions } from "./render-fakes.test-helpers.js";
 import { renderSmoke, runArtifacts, SMOKE_WORKERS } from "./render-smoke.js";
 
@@ -22,7 +23,7 @@ async function smokeOf(to: "resolve" | "tts", options: FakeRenderOptions = {}) {
   const db = openState(fx.dataDir);
   try {
     const artifacts = runArtifacts(new WorkflowRunStore(db).get(runId)!);
-    const input = { runId, artifacts, store: new ArtifactStore(fx.dataDir, db), gate: loadQaGate(undefined), workers: SMOKE_WORKERS, keepDir: path.join(fx.dataDir, "smoke") };
+    const input = { runId, artifacts, store: new ArtifactStore(fx.dataDir, db), gate: loadQaGate(undefined), qa: fakeQa(options.qa), timing: LAX_TIMING, workers: SMOKE_WORKERS, keepDir: path.join(fx.dataDir, "smoke") };
     const render = fakeRender(options);
     return { runId, render, result: await renderSmoke(input, render.engine(fx)) };
   } finally {
