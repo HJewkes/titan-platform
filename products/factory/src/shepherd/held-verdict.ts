@@ -28,7 +28,7 @@ export function heldFindings(kind: WakeRequest["kind"], payload: unknown): strin
 export const heldVerdictMarker = (head: string): string => `<!-- shepherd-held-verdict:${head} -->`;
 
 /** Names no seat, agent or refusal detail: the PR may be public, and the seat notice carries why. */
-export function heldVerdictComment(head: string, findings: string): string {
+function heldVerdictComment(head: string, findings: string): string {
   return [
     heldVerdictMarker(head),
     "",
