@@ -39,7 +39,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@titan-design/fix-proof": "workspace:^"
+    "@titan-design/fix-proof": "workspace:^",
+    "@titan-design/worktree": "workspace:^"
   },
   "devDependencies": {
     "@titan-design/test-kit": "workspace:*"

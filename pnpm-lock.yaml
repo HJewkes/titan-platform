@@ -523,6 +523,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../worktree
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
