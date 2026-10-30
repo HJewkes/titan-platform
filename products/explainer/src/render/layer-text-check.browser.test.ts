@@ -49,6 +49,13 @@ const onBar = (text: string, fill: string) => layer(`useBeatTime();
     <div id="count" style={{ fontSize: 56, color: "${text}" }}>12</div>
   </div>;`);
 
+/** A fixed 140 px panel whose 48 px label, in a 360 px chip, wraps to more lines than the panel's height holds. */
+const FIXED_PANEL = layer(`useBeatTime();
+  return <div id="shelf" style={{ position: "absolute", left: 120, right: 120, top: 80, height: 140, padding: 40, boxSizing: "border-box",
+    border: "3px solid var(--color-border-prominent)", fontSize: 48 }}>
+    <div style={{ width: 360, fontWeight: 700 }}>Twelve parcels waiting</div>
+  </div>;`);
+
 /** Shows its count when the cue word "desk" is spoken, read through useCue; the page must declare the cue. */
 const cueTimed = (shown: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
 
@@ -58,7 +65,8 @@ export default function Desk() {
   return <div id="count" style={{ position: "absolute", left: 120, right: 120, top: 80, fontSize: 96, opacity: t >= at ? 1 : 0 }}>${shown}</div>;
 }
 `;
-const CUED_PACKET = { ...PACKET, cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
+/** "desk" is spoken early, so the stage is not still empty a third of the way in, which qa holds as late-fill. */
+const CUED_PACKET = { ...PACKET, spoken: "The desk holds twelve parcels.", cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
 
 let pageDir: string;
 let check: LayerTextCheck;
@@ -99,6 +107,18 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const rows = await checkLayer(PAST_THE_BOX);
 
     expect(rows.map((row) => [row.rule, row.text])).toEqual([["under-chrome", "last scan at the desk"]]);
+  });
+
+  // catches: a build check that holds a layer to only some of qa's held kinds, so qa refuses the panel after render (TP-4606)
+  it("flags a fixed-height panel its wrapped label runs past with qa's content-overflow rule", async () => {
+    // Arrange
+    const module = FIXED_PANEL;
+
+    // Act
+    const rows = await checkLayer(module);
+
+    // Assert
+    expect(rows.map((row) => [row.rule, row.text])).toEqual([["content-overflow", "Twelve parcels waiting"]]);
   });
 
   it("draws a layer timed by useCue on the custom beat's own cue words", async () => {
