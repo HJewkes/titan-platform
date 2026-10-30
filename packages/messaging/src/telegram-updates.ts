@@ -138,9 +138,9 @@ function readButtons(
 ): ButtonRow[] | undefined {
   const rows = (markup?.inline_keyboard ?? [])
     .map((row) =>
-      row
-        .filter((button) => button.callback_data !== undefined)
-        .map((button) => ({ label: button.text, data: button.callback_data as string })),
+      row.flatMap((button) =>
+        button.callback_data === undefined ? [] : [{ label: button.text, data: button.callback_data }],
+      ),
     )
     .filter((row) => row.length > 0);
   return rows.length > 0 ? rows : undefined;

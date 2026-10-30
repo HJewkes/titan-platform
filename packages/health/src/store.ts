@@ -1,5 +1,6 @@
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
-import { healthSampleSchema, type HealthSample, type HealthSampleInput } from "./sample.js";
+import { z } from "zod";
+import { healthSampleSchema, sampleStatusSchema, type HealthSample, type HealthSampleInput } from "./sample.js";
 
 /**
  * Append-only by owner decision: every probe result is kept, with no sampling and no pruning.
@@ -68,18 +69,27 @@ export function appendSamples(db: Db, samples: readonly HealthSampleInput[]): nu
   return writeAll();
 }
 
-interface SampleRow {
-  ts: string;
-  ts_ms: number;
-  target: string;
-  kind: string;
-  status: HealthSample["status"];
-  latency_ms: number | null;
-  observed: string | null;
-  output: string | null;
-  source: string;
-  dedup_key: string | null;
-}
+const sampleRowSchema = z.object({
+  ts: z.string(),
+  ts_ms: z.number(),
+  target: z.string(),
+  kind: z.string(),
+  status: sampleStatusSchema,
+  latency_ms: z.number().nullable(),
+  observed: z.string().nullable(),
+  output: z.string().nullable(),
+  source: z.string(),
+  dedup_key: z.string().nullable(),
+});
+type SampleRow = z.infer<typeof sampleRowSchema>;
+
+const observedSchema = z.record(z.string(), z.unknown());
+
+const statsRowSchema = z.object({
+  n: z.number(),
+  oldest: z.number().nullable(),
+  newest: z.number().nullable(),
+});
 
 function toRow(sample: HealthSample): SampleRow {
   return {
@@ -104,7 +114,7 @@ function fromRow(row: SampleRow): HealthSample {
     status: row.status,
     source: row.source,
     ...(row.latency_ms === null ? {} : { latencyMs: row.latency_ms }),
-    ...(row.observed === null ? {} : { observed: JSON.parse(row.observed) as Record<string, unknown> }),
+    ...(row.observed === null ? {} : { observed: observedSchema.parse(JSON.parse(row.observed)) }),
     ...(row.output === null ? {} : { output: row.output }),
     ...(row.dedup_key === null ? {} : { dedupKey: row.dedup_key }),
   };
@@ -114,8 +124,8 @@ function fromRow(row: SampleRow): HealthSample {
 export function readSamples(db: Db, target: string, from: Date, to: Date): HealthSample[] {
   const rows = db
     .prepare("SELECT * FROM health_sample WHERE target = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms, id")
-    .all(target, from.getTime(), to.getTime()) as SampleRow[];
-  return rows.map(fromRow);
+    .all(target, from.getTime(), to.getTime());
+  return rows.map((row) => fromRow(sampleRowSchema.parse(row)));
 }
 
 export interface HealthStoreStats {
@@ -128,13 +138,11 @@ export interface HealthStoreStats {
 
 /** Growth is unbounded by design, so the store reports its own size for `titan health cost`. */
 export function storeStats(db: Db): HealthStoreStats {
-  const counts = db.prepare("SELECT COUNT(*) AS n, MIN(ts_ms) AS oldest, MAX(ts_ms) AS newest FROM health_sample").get() as {
-    n: number;
-    oldest: number | null;
-    newest: number | null;
-  };
-  const pageCount = db.pragma("page_count", { simple: true }) as number;
-  const pageSize = db.pragma("page_size", { simple: true }) as number;
+  const counts = statsRowSchema.parse(
+    db.prepare("SELECT COUNT(*) AS n, MIN(ts_ms) AS oldest, MAX(ts_ms) AS newest FROM health_sample").get(),
+  );
+  const pageCount = z.number().parse(db.pragma("page_count", { simple: true }));
+  const pageSize = z.number().parse(db.pragma("page_size", { simple: true }));
   return {
     rows: counts.n,
     bytes: pageCount * pageSize,

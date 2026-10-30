@@ -89,6 +89,24 @@ swap it writes a `titan-console` shim to `~/.local/bin`, so seats run the servin
 step, the alarm and the optional owner install commands are in [docs/self-update.md](docs/self-update.md);
 the bootstrap and units are in `deploy/`.
 
+## What shipped digest
+
+The coordinator view's "what shipped" section reads a digest that `titan-console shipped build` writes once a day
+(`--date <YYYY-MM-DD>` picks the day window; the day starts at 07:00 local). The only model call in the build runs on
+the Claude login named by `CLAUDE_CONFIG_DIR`. The agents account is the intended one.
+
+The units are `deploy/systemd/titan-console-shipped.{service,timer}`. The timer fires at 07:10 local and builds the
+window that just closed, so the service passes yesterday's date. The service ships a placeholder
+`CLAUDE_CONFIG_DIR`; put the agents account's config dir in a drop-in. They are **not installed or enabled** by
+anything in this repo; the owner installs them by hand:
+
+```sh
+mkdir -p ~/.config/systemd/user/titan-console-shipped.service.d
+cp deploy/systemd/titan-console-shipped.{service,timer} ~/.config/systemd/user/
+printf '[Service]\nEnvironment=CLAUDE_CONFIG_DIR=<agents account config dir>\n' > ~/.config/systemd/user/titan-console-shipped.service.d/20-account.conf
+systemctl --user daemon-reload && systemctl --user enable --now titan-console-shipped.timer
+```
+
 ## LAN mode
 
 With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,

@@ -1,3 +1,4 @@
+import { isRecord } from "../guards.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { CloseOutcome, LaunchHandle, LaunchPlan, Surface } from "../types.js";
@@ -32,10 +33,10 @@ async function tmux(options: SurfaceOptions, args: string[]): Promise<string> {
     });
     return stdout.trim();
   } catch (err) {
-    const failed = err as { code?: unknown; stderr?: unknown; message: string };
-    if (failed.code === "ENOENT") throw new SurfaceRefused("tmux is not installed; use surface 'headless'");
-    const said = typeof failed.stderr === "string" ? failed.stderr.trim() : "";
-    throw new Error(said === "" ? failed.message : said);
+    if (isRecord(err) && err.code === "ENOENT")
+      throw new SurfaceRefused("tmux is not installed; use surface 'headless'");
+    const said = isRecord(err) && typeof err.stderr === "string" ? err.stderr.trim() : "";
+    throw new Error(said === "" ? err instanceof Error ? err.message : String(err) : said);
   }
 }
 
@@ -112,7 +113,7 @@ async function closeTmux(handle: LaunchHandle, options: SurfaceOptions): Promise
     // A window that exited on its own is already what close wanted; only a
     // confirmed absence says so, and an unreadable server does not.
     if ((await tmuxWindowPresent(windowId, options)) !== false)
-      return { closed: false, reason: `tmux could not kill window ${windowId}: ${(err as Error).message}` };
+      return { closed: false, reason: `tmux could not kill window ${windowId}: ${err instanceof Error ? err.message : String(err)}` };
     return { closed: true };
   }
   const present = await tmuxWindowPresent(windowId, options);
