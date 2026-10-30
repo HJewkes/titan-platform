@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "static-window settles a beat at its cut, before its last reveal",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "fromS: beat.startS + Math.max(0, ...(beat.reveals ?? []))",
+      "replace": "fromS: beat.startS",
+      "kills": [
+        "static-window excuses a settled frame under speech, up to 6 s fails a 5 s still run while an element is still to be revealed"
+      ]
+    },
+    {
+      "name": "static-window counts silence as speech",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "return { settled, speech: { fromS: Math.min(...starts), toS: Math.max(...starts) } };",
+      "replace": "return { settled, speech: settled };",
+      "kills": [
+        "static-window excuses a settled frame under speech, up to 6 s fails a settled 5 s still run the voice is silent over"
+      ]
+    },
+    {
+      "name": "static-window settles a custom layer",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "if (beat.layer === \"custom\" || starts.length === 0) return undefined;",
+      "replace": "if (starts.length === 0) return undefined;",
+      "kills": [
+        "static-window excuses a settled frame under speech, up to 6 s never settles a custom layer, whose elements qa cannot see"
+      ]
+    },
+    {
+      "name": "Q-D22 settles a beat at its cut, before its last reveal",
+      "file": "products/explainer/src/lint-still.ts",
+      "find": "const lastRevealS = Math.max(0, ...moved.filter(({ lit }) => !lit).map(({ s }) => s));",
+      "replace": "const lastRevealS = 0;",
+      "kills": [
+        "Q-D22 excuses a settled frame under speech, up to 6 s, as static-window does fails a 5.2 s stretch between reveals"
+      ]
+    },
+    {
+      "name": "Q-D22 excuses no settled frame",
+      "file": "products/explainer/src/lint-still.ts",
+      "find": " && !settledSpeechExcuses({ fromS: from, toS: to }, settled, pacing.staticMaxS)",
+      "replace": "",
+      "kills": [
+        "Q-D22 excuses a settled frame under speech, up to 6 s, as static-window does passes a 5.4 s stretch after the last reveal while the voice speaks",
+        "Q-D22 excuses a settled frame under speech, up to 6 s, as static-window does holds the part of a settled stretch the voice is silent over to staticMaxS"
+      ]
+    }
+  ]
+}

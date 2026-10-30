@@ -12,6 +12,8 @@ const beatOf = (script: ScriptV1, id: string) => script.beats.find((beat) => bea
 
 const SETTLED =
   "The router lane rewrote its matcher and merged it before lunch. Later the old path stayed behind a switch, and all afternoon the matcher kept answering every scan while the night shift watched the docks.";
+/** ships-2 with its slow tail still to land after a long gap, so the script has a still stretch to seed. */
+const unsettledShips = (script?: ScriptV1) => dailyWith("ships-2", { visual: { cues: [cue("series-1", "matcher"), cue("series-3", "gone")] } }, script);
 const settledList = () => dailyWith("lanes-1", { spoken: SETTLED, visual: { cues: [cue("rows-1", "matcher"), cue("rows-2", "switch")] } });
 const LONG_REFLECTION =
   "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
@@ -31,7 +33,7 @@ function shownWords(script: ScriptV1, id: string): Set<string> {
 
 describe("the $0 still seed: naming-only cues before the repair", () => {
   it("a stat figure's cue moves to its spoken value", () => {
-    const script = dailyWith("stats-1", { visual: { cues: [cue("figures-1", "merges"), cue("figures-2", "reported"), cue("figures-3", "review")] } });
+    const script = dailyWith("stats-1", { visual: { cues: [cue("figures-1", "merges"), cue("figures-2", "reported"), cue("figures-3", "review")] } }, unsettledShips());
 
     const { script: seeded } = seedStillCues(script);
 
@@ -123,10 +125,10 @@ describe("the $0 still seed: naming-only cues before the repair", () => {
 
 describe("Q-D22's hint gives the repair what to point at", () => {
   it("each stretch names the words spoken inside it and the beat's on-screen texts", () => {
-    const script = dailyWith("ships-2", {});
+    const script = unsettledShips();
 
     const hint = repairHint(l0Row(script, "Q-D22"), script) ?? "";
 
-    expect(hint).toMatch(/ships-2 3\.6 s to 8\.3 s after "twelve" \(4\.7 s, saying "forty, and the slow tail is nearly gone\."\) with "old match", "new match", "slow tail", "40", "12", "3" on screen;/);
+    expect(hint).toMatch(/ships-2 2\.7 s to 6\.4 s after "matcher" \(3\.7 s, saying "where it took forty, and the slow tail is nearly gone\."\) with "old match", "new match", "slow tail", "40", "12", "3" on screen/);
   });
 });

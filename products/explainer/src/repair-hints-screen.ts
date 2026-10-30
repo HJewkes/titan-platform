@@ -2,6 +2,7 @@ import { CLAIM_CARD, cuelessKind, FILL_FLOOR, heldBeats, longestCueGapS, scriptP
 import { REFLECTION_CHAPTER } from "./lint-coverage.js";
 import { BEAT_SECONDS } from "./lint-flow.js";
 import { PACING_DEFAULTS } from "./qa/timing-gates.js";
+import { SETTLED_SPEECH_MAX_S } from "./settled-speech.js";
 import { bodyBeats } from "./lint-text.js";
 import { FRAME_MAX_WORDS, frameCounts } from "./lint-frame-words.js";
 import { HEADING_MAX_WORDS, LABEL_MAX_WORDS, overlongTexts, stillOpenings } from "./lint-direction.js";
@@ -127,7 +128,7 @@ function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
     const kind = cuelessKind(beat);
     return kind === undefined ? [] : [cuelessStill(script, beat, kind)];
   });
-  return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text: ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
+  return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text (once every element is shown, up to ${SETTLED_SPEECH_MAX_S} s while the voice speaks): ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
 }
 
 function heldHint(script: ScriptV1, row: Parameters<Hint>[1]): string {

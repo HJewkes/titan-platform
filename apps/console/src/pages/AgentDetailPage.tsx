@@ -22,6 +22,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
+import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
 
 type SessionsList = ConsoleCommands["sessions.list"]["result"];
@@ -59,7 +60,8 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
   return (
     <VStack gap={4}>
       <Trail name={name} />
-      {entry ? <AgentCard agent={entry} /> : <Alert status="info" message={`No agent named ${name} in the broker's roster or its last 1,000 events.`} />}
+      {entry ? <AgentCard agent={entry} /> : null}
+      {entry ? <AgentRetire agent={entry} /> : <Alert status="info" message={`No agent named ${name} in the broker's roster or its last 1,000 events.`} />}
       <RouteTabs route={route} tabs={TABS} current={tab} />
       {tab === "runs" ? <Runs name={name} /> : <MessageFeed agent={name} empty={`No messages to or from ${name} in the broker's last 1,000 events.`} />}
     </VStack>

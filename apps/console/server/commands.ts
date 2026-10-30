@@ -16,6 +16,7 @@ import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
+import { retireTapCommands } from "./retire-tap.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
@@ -69,7 +70,7 @@ export interface ConsoleSources {
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
   hostSurfaces?: HostSurfaceRoots;
-  /** Optional so test sources need not build one; absent, `inbox.prepare` and `inbox.act` answer that inbox actions are off. */
+  /** Optional so test sources need not build one; absent, `inbox.prepare`, `inbox.act`, `taps.prepare` and `taps.act` answer that inbox actions are off. */
   inboxActions?: Omit<InboxActionOptions, "decisionLog">;
   /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
   hostReports?: HostReportsSource;
@@ -120,6 +121,7 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
     ...approvalsCommands({ ...sources, factory: cache.factory }),
     ...inboxViewCommands(sources, cache),
     ...inboxActionCommands(sources, actions, cache.invalidate),
+    ...retireTapCommands({ agents, shepherd }, actions, cache.invalidate),
   };
 }
 

@@ -20,7 +20,7 @@ import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isRefName, successorBrief, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS } from "./held-wake.js";
-import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
+import { messagePredecessor, noticeSpawner, type PredecessorMessage, type SpawnerNotice } from "./wake-notice.js";
 import { retireHung, type Hung } from "./wake-hung.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { deadlineFor, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type WaitDeadlines, type Waiting } from "./wake-wait.js";
@@ -93,7 +93,7 @@ type Fallback = "resume" | "message";
  */
 export type WakeStepResult =
   | { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number }
-  | { kind: "unhandled"; reason: string; held?: { agent: string }; notice?: SpawnerNotice };
+  | { kind: "unhandled"; reason: string; held?: { agent: string }; notice?: SpawnerNotice; predecessor?: PredecessorMessage };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
@@ -352,7 +352,7 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
     const task = await wakeTask(deps, input, registration);
     if (typeof task === "string") return unhandled(task);
     const woke = await wakeAgent(deps, wiring, agents, task, signal).catch((error: unknown) => refusedWake(error, signal));
-    return tellSpawner(deps, agents, task, heldOnlyIfHolding(input.kind, woke), signal);
+    return tellSpawner(deps, agents, task, await tellHeld(agents, task, heldOnlyIfHolding(input.kind, woke), signal), signal);
   } catch (error) {
     return refusedWake(error, signal);
   }
@@ -361,6 +361,13 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
 function refusedWake(error: unknown, signal: AbortSignal): WakeStepResult {
   signal.throwIfAborted();
   return unhandled(`the wake was refused: ${failureOf(error)}`);
+}
+
+/** A held wake's seat is told by its own route; the lineage's newest agent is messaged its findings now. */
+async function tellHeld(agents: ImplementerAgents, task: WakeTask, result: WakeStepResult, signal: AbortSignal): Promise<WakeStepResult> {
+  if (result.kind !== "unhandled" || result.held === undefined) return result;
+  const predecessor = await messagePredecessor(agents, task, result.reason, signal);
+  return { ...result, predecessor };
 }
 
 /** A held wake's seat is told by its own route. */

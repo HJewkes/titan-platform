@@ -13,7 +13,7 @@
     {
       "name": "the diff classification is skipped",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === \"test-only\";",
+      "find": "if ((await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === \"test-only\") return true;",
       "replace": "return true;",
       "kills": [
         "proceedsOnNoRepro on a diff of tests and a changeset keeps a correctness registration gated once the diff also changes source"
