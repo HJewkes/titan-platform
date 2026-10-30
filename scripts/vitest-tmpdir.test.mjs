@@ -1,8 +1,11 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createRunTmpdir } from "./vitest-tmpdir.mjs";
+import { createRunTmpdir, removeOrphanRunDirs } from "./vitest-tmpdir.mjs";
+
+const MODULE = new URL("./vitest-tmpdir.mjs", import.meta.url).href;
 
 describe("per-run test tmpdir", () => {
   let base;
@@ -35,6 +38,42 @@ describe("per-run test tmpdir", () => {
 
     expect(existsSync(dir)).toBe(false);
     expect(env).toEqual({ TMPDIR: base });
+  });
+
+  it("leaves nothing behind when a killed run is followed by a clean one", () => {
+    const killed = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", `import { createRunTmpdir } from ${JSON.stringify(MODULE)}; createRunTmpdir({}, process.argv[1]); process.kill(process.pid, "SIGKILL");`, base],
+      { encoding: "utf8" },
+    );
+    expect(killed.signal).toBe("SIGKILL");
+    expect(readdirSync(base)).toHaveLength(1);
+
+    createRunTmpdir({ TMPDIR: base }, base)();
+
+    expect(readdirSync(base)).toEqual([]);
+  });
+
+  it("keeps a dir whose run is still alive", () => {
+    const live = path.join(base, `vt-titan-platform-${process.pid}-live`);
+    mkdirSync(live);
+
+    removeOrphanRunDirs(base);
+
+    expect(existsSync(live)).toBe(true);
+  });
+
+  it("removes a dead run's dir and spares names it does not own", () => {
+    const dead = path.join(base, "vt-titan-platform-4242-dead");
+    const other = path.join(base, "vt-titan-platform-legacy");
+    mkdirSync(dead);
+    mkdirSync(other);
+    writeFileSync(path.join(dead, "leak"), "x");
+
+    removeOrphanRunDirs(base, () => false);
+
+    expect(existsSync(dead)).toBe(false);
+    expect(existsSync(other)).toBe(true);
   });
 
   it("reuses the dir a sibling project already created", () => {

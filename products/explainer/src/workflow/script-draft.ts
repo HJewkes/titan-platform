@@ -6,19 +6,15 @@ import type { BeatSpec } from "../beat-schema.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { declareScriptReadings } from "../heteronym-readings.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
-import type { GatheredFact } from "../lint-claims.js";
 import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
-import { repairHint } from "../l0-repair-hints.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
-import type { RuleRegistry } from "../rules.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
-import { FILL_RULE, fillHint, TEMPLATE_FILL_ID } from "../script-fill.js";
 import { parseScript } from "../script-load.js";
 import { DraftScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
-import { spellScript } from "../rewrite-pass.js";
-import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } from "../unknown-words.js";
+import { spliceChapters, type Measured } from "./chapter-splice.js";
+import type { FailureContext } from "./failure-list.js";
 import { issueText, repairReply, replyObject } from "./script-reply.js";
 import { addUsage, NO_USAGE, type Check, type StageUsage } from "./records.js";
 
@@ -252,42 +248,13 @@ export function retimeRepaired(script: ScriptV1, earlier: readonly string[]): { 
   return { script: draft, checks: [{ name: "word-budget-retime", gate: false, pass: true, detail }], notes: all.map((move) => `word-budget re-time: ${move}`) };
 }
 
+export { failureList } from "./failure-list.js";
+
 export const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
 
 /** The L0 rows a repair answers, and what it needs to name what each found. */
-export interface Lint {
+export interface Lint extends FailureContext {
   rows: (script: ScriptV1) => L0Result[];
-  /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
-  facts?: readonly GatheredFact[];
-  /** A daily gather's coverage manifest, so the Q-E21 hint names each lane and PR left out. */
-  coverage?: CoverageManifest;
-  spine: SpineV1;
-  /** The voice's g2p, so the rounds also answer the words it has no phonemes for. */
-  g2p: Tokens;
-}
-
-interface OwnRow {
-  rule: string;
-  hint: (row: L0Result) => string;
-}
-
-/** The rows the repair rounds answer that no L0 rule owns: each one's rule and Found line. */
-const ownRows = (script: ScriptV1, lint: Pick<Lint, "g2p">): ReadonlyMap<string, OwnRow> =>
-  new Map([
-    [UNKNOWN_WORDS_ID, { rule: UNKNOWN_WORDS_RULE, hint: () => unknownWordsHint(lint.g2p, spellScript(script)) }],
-    [TEMPLATE_FILL_ID, { rule: FILL_RULE, hint: (row: L0Result) => fillHint(script, row.detail_beats) }],
-  ]);
-
-export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine" | "g2p" | "coverage">): string {
-  const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
-  const own = ownRows(script, lint);
-  const rule = (row: L0Result) => own.get(row.check_id)?.rule ?? ruleFor(row.check_id)?.rule ?? "see the rules above";
-  const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
-  const found = (row: L0Result) => {
-    const hint = own.get(row.check_id)?.hint(row) ?? repairHint(row, script, lint.facts, lint.spine, lint.coverage);
-    return hint ? `\n  Found: ${hint}` : "";
-  };
-  return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");
 }
 
 export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string, reply = "Reply with the whole corrected object.\n"): string =>
@@ -318,6 +285,8 @@ export interface Repaired {
   dropped?: string[];
   /** Every round's reply, kept or rejected, so a failed stage can store what the repair tried. */
   candidates: Candidate[];
+  /** The chapters spliced in from replies the rounds did not keep, as `ships from reply 2`. */
+  spliced: string[];
 }
 
 /** One round's reply as the stage stores it: the parsed script before its ledger stamp, else the reply's own text. */
@@ -362,15 +331,10 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
 export const asksFrom = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
   after.length !== before.length ? after.length < before.length : failingBeats(after) < failingBeats(before) || (failingBeats(after) === failingBeats(before) && bringsInRule(after, before));
 
-interface Measured {
-  stamped: Stamped;
-  rows: L0Result[];
-}
-
 /**
  * Up to `rounds` rounds. A reply is kept when it makes progress over the kept script (`makesProgress`). Each round asks
  * from the best reply so far (`asksFrom`), relinted, so its hint names that reply's own rows and never a stretch an
- * earlier round already fixed.
+ * earlier round already fixed. After the last round, the chapters of the replies not kept are spliced in where they help.
  */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
   let kept: Measured = { stamped: start, rows: loop.failing(start.script) };
@@ -379,6 +343,7 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let usage = NO_USAGE;
   let keptReply: Pick<Repaired, "stripped" | "dropped"> = {};
   const candidates: Candidate[] = [];
+  const replies: (Measured & { kind: string })[] = [];
   for (let round = 0; round < loop.rounds && kept.rows.length > 0; round++) {
     const { reply, usage: spent, candidate } = await roundReply(call, loop, base.stamped.script, base.rows, `repair-${round + 1}`);
     usage = addUsage(usage, spent);
@@ -386,10 +351,14 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
     const stamped = reply.script && loop.settle(reply.script);
     if (!stamped) continue;
     const next = { stamped, rows: loop.failing(stamped.script) };
+    replies.push({ ...next, kind: `repair-${round + 1}` });
     if (makesProgress(next.rows, kept.rows)) [kept, keptReply] = [next, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
     if (asksFrom(next.rows, base.rows)) base = next;
   }
-  return { ...kept.stamped, usage, before, after: kept.rows.length, rows: kept.rows, candidates, ...keptReply };
+  // Only into a kept reply: a start the code made (a split, a still seed) is never an answer, so no splice makes it one.
+  const answered = keptReply.stripped !== undefined;
+  const { kept: final, spliced } = answered ? spliceChapters(kept, replies, { failing: loop.failing, settle: loop.settle, better: makesProgress }) : { kept, spliced: [] };
+  return { ...final.stamped, usage, before, after: final.rows.length, rows: final.rows, candidates, spliced, ...keptReply };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */
