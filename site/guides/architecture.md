@@ -219,6 +219,7 @@ graph TD
   evals --> health
   evals --> hitl
   evals --> reviewPanel
+  evals --> reviewWorkflow
   evals --> sessionAnalytics
   evals --> sessionRead
   evals --> storeSqlite

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "count a citation without checking its lines exist",
+      "file": "products/evals/src/review-workflow/score.ts",
+      "find": "return check.ok || check.reason === \"quote-empty\" ? [path] : [];",
+      "replace": "return [path];",
+      "kills": [
+        "scoreReplay on tp#747 scores no hit when the case's path is cited past the end of the file"
+      ]
+    }
+  ]
+}
