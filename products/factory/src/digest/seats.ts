@@ -34,7 +34,7 @@ function coordinatorOf(name: string, spawners: ReadonlyMap<string, string>): str
 export function seatLines(merged: readonly WatchRow[], roster: readonly AgentSpan[], since: Date): SeatLine[] {
   const spawners = spawnersOf(roster);
   const onRoster = new Set(roster.map((row) => row.name));
-  const seatOf = (implementer: string | null): string =>
+  const seatOf = (implementer: string | null | undefined): string =>
     implementer && onRoster.has(implementer) ? coordinatorOf(implementer, spawners) : UNATTRIBUTED;
   const lines = new Map<string, SeatLine>();
   const line = (seat: string): SeatLine => lines.get(seat) ?? lines.set(seat, { seat, merges: 0, spawns: 0 }).get(seat)!;
