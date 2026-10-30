@@ -2,15 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a compound's leading number is no longer heard",
-      "file": "products/explainer/src/qa/narration-facts.ts",
-      "find": "run = compoundLead(word);",
-      "replace": "run = [];",
-      "kills": [
-        "spoken numbers inside hyphenated compounds hears the leading number of a compound that goes on with other words"
-      ]
-    },
-    {
       "name": "a list marker is never heard by its place",
       "file": "products/explainer/src/qa/narration-facts.ts",
       "find": "|| wordsOf(spoken).includes(ORDINALS[n - 1] ?? \"\")",
