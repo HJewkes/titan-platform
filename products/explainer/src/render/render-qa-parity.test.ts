@@ -25,7 +25,6 @@ beforeAll(async () => {
   voicedInputs = { script: out("rewrite").script!, resolved: out("resolve").resolved!, words: out("tts").words!, audio: out("tts").audio! };
 });
 afterAll(() => base.cleanup());
-afterEach(() => fx.cleanup());
 
 /** A fresh fixture holding a copy of the voiced run's data dir. */
 function seeded(): Fixture {
@@ -78,6 +77,8 @@ describe("render's qa gate before capture", () => {
 });
 
 describe("render's qa gate after encode", () => {
+  afterEach(() => fx.cleanup());
+
   it("render evaluates every qa gate row", async () => {
     // Arrange
     seeded();
