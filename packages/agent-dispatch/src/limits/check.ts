@@ -96,12 +96,12 @@ function unknownConfigDirs(parsed: ParsedLimits, knownConfigDirs: readonly strin
 }
 
 function clampsIn(where: string, fields: object): LimitsFinding[] {
-  return Object.entries(fields)
-    .filter(([field, value]) => field in LIMIT_BOUNDS && typeof value === "number" && clampToBounds(field, value) !== value)
-    .map(([field, value]) => ({
-      kind: "clamped",
-      message: `${where}.${field} ${value} is clamped to ${clampToBounds(field, value as number)}`,
-    }));
+  return Object.entries(fields).flatMap(([field, value]): LimitsFinding[] => {
+    if (!(field in LIMIT_BOUNDS) || typeof value !== "number") return [];
+    const bounded = clampToBounds(field, value);
+    if (bounded === value) return [];
+    return [{ kind: "clamped", message: `${where}.${field} ${value} is clamped to ${bounded}` }];
+  });
 }
 
 function clamps(parsed: ParsedLimits): LimitsFinding[] {
