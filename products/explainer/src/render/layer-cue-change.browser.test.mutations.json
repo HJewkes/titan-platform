@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the rendered layer check drops its still-cue rows",
+      "file": "products/explainer/src/render/layer-text-check.ts",
+      "find": ", ...still, ",
+      "replace": ", ",
+      "kills": [
+        "the rendered cue check on one custom layer flags a repeat cue whose outline the element's own clip-path cuts away with the still-cue rule"
+      ]
+    }
+  ]
+}

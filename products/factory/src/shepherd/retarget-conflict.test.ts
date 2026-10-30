@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { WorkflowRunStore } from "@titan-design/workflow";
@@ -12,7 +12,9 @@ import type { ShepherdPhases, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
+import { unresolvedRefs } from "./stale-base.js";
 import { shepherdStoreRef } from "./store.js";
+import { describeWake } from "./wake-brief.js";
 
 const PARENT = "agent-chat/parent";
 const PATH = "packages/demo/src/a.ts";
@@ -34,7 +36,12 @@ interface World {
   dirty: Set<string>;
   /** While on, each fixer push still conflicts, as a failed resolve would. */
   stillConflicts: { on: boolean };
+  /** Heads whose dag-check is red. */
+  red: Set<string>;
 }
+
+const DAG_CHECK_JOB = 2;
+const INVALID_REFERENCE = `Error: git worktree add --detach /tmp/baseline origin/${PARENT}: invalid reference`;
 
 const phases = (w: () => World): ShepherdPhases => ({
   review: (ctx, request) =>
@@ -58,15 +65,16 @@ function earlierReservation(host: FactoryHost, fake: FakeGitHub): void {
 }
 
 /** A child PR stacked on `PARENT` under an enabled merge order, by default behind an earlier overlapping reservation. */
-function world({ reserved = true } = {}): World {
+function world({ reserved = true, baseRef = PARENT, red = [] as string[] } = {}): World {
   const late: { w?: World } = {};
   const fake = fakeGitHub();
-  fake.addPr({ headSha: H1, baseRef: PARENT, mergeSha: fakeSha("child-merge") });
+  fake.addPr({ headSha: H1, baseRef, mergeSha: fakeSha("child-merge") });
   fake.prFiles.set(1, [{ path: PATH, status: "modified" }]);
   const dirty = new Set<string>();
+  const redHeads = new Set(red);
   fake.onGetPr = (pr) => {
-    fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
-    fake.rules.contexts = pr.baseRef === "main" ? ["validate"] : [];
+    fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", DAG_CHECK_JOB, undefined, redHeads.has(pr.headSha) ? "failure" : "success")]);
+    fake.rules.contexts = pr.baseRef === "main" ? ["validate", "dag-check"] : [];
     if (pr.number === 1 && pr.state === "open") pr.mergeableState = dirty.has(pr.headSha) ? "dirty" : "clean";
   };
   let clock = Date.parse("2026-10-30T05:00:00.000Z");
@@ -83,7 +91,7 @@ function world({ reserved = true } = {}): World {
   if (reserved) earlierReservation(host, fake);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
-  return (late.w = { fake, host, runId, wakes: [], told, dirty, stillConflicts: { on: false } });
+  return (late.w = { fake, host, runId, wakes: [], told, dirty, stillConflicts: { on: false }, red: redHeads });
 }
 
 const stepIds = (w: World): string[] => Object.keys(w.host.runtime.status(w.runId)!.stepResults);
@@ -125,5 +133,69 @@ describe("a stacked child retargeted to main after its parent squash-merged (TP-
     await vi.waitFor(() => expect(w.told.some((line) => line.includes("conflict"))).toBe(true), WAIT);
     expect(w.wakes.map((wake) => wake.payload)).toEqual([{ mergeableState: "dirty" }, { mergeableState: "dirty", freshFixer: true }]);
     expect(stepIds(w).filter((id) => id.startsWith("sh-order-"))).toEqual([]);
+  });
+});
+
+describe("a red that ran on a base the PR no longer has (TP-4605)", () => {
+  it("gives a retargeted child whose dag-check failed on an invalid reference a merge-main round, not a ci-red fix wake", async () => {
+    const w = world({ reserved: false, baseRef: "main", red: [H1] });
+    w.fake.jobLogs.set(DAG_CHECK_JOB, INVALID_REFERENCE);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), WAIT);
+
+    expect(w.wakes.map(({ kind, headSha, payload }) => ({ kind, headSha, payload }))).toEqual([{ kind: "conflict", headSha: H1, payload: { staleBase: PARENT } }]);
+  });
+
+  it("gives a child Shepherd saw retargeted a merge-main round, whatever its log says", async () => {
+    const w = world({ reserved: false });
+    w.fake.jobLogs.set(DAG_CHECK_JOB, "a failed assertion");
+
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toMatch(/^base-wait/), WAIT);
+    w.red.add(H1);
+    w.fake.pr(1).baseRef = "main";
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), WAIT);
+    expect(w.wakes.map(({ kind, payload }) => ({ kind, payload }))).toEqual([{ kind: "conflict", payload: { staleBase: PARENT } }]);
+  });
+
+  it("wakes ci-red for an invalid reference whose branch still exists", async () => {
+    const w = world({ reserved: false, baseRef: "main", red: [H1] });
+    w.fake.refs.set(PARENT, fakeSha("parent-tip"));
+    w.fake.jobLogs.set(DAG_CHECK_JOB, INVALID_REFERENCE);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), WAIT);
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+  });
+
+  it("wakes ci-red when the head the merge-main round pushed is red too", async () => {
+    const w = world({ reserved: false, baseRef: "main", red: [H1, fakeSha("fix-1")] });
+    w.fake.jobLogs.set(DAG_CHECK_JOB, INVALID_REFERENCE);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), WAIT);
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["conflict", "ci-red"]);
+  });
+
+  it("names the current and former bases and asks for a new head, even when the merge brings nothing", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, baseRef: "main" });
+
+    const { reason, payload } = await describeWake(partialFake<GitHubPort>({}), { kind: "conflict", repo: REPO, pr: 1, headSha: H1, payload: { staleBase: PARENT } }, pr);
+
+    expect(reason).toContain("git merge origin/<base>");
+    expect(reason).toContain("--allow-empty");
+    expect(reason).not.toContain("conflicts with");
+    expect(payload).toContain("main");
+    expect(payload).toContain(PARENT);
+  });
+
+  it.each([
+    ["git's own message", `fatal: invalid reference: origin/${PARENT}`, [PARENT]],
+    ["a wrapped message", INVALID_REFERENCE, [PARENT]],
+    ["an unrelated failure", `error: pathspec origin/${PARENT} did not match`, []],
+    ["no remote ref", "fatal: invalid reference: HEAD~1", []],
+  ])("reads the unresolved refs of %s", (_name, log, refs) => {
+    expect(unresolvedRefs(log)).toEqual(refs);
   });
 });

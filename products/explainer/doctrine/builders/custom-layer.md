@@ -58,6 +58,11 @@ The packet describes a single beat and nothing about its neighbours:
   union of the painted boxes on the beat's last frame.
 - No text is smaller than 40 px, the video's type floor. The page raises smaller text to 40 px, so a
   layout sized for smaller text overflows its box.
+- Never set a fixed `height` on a panel, card or chip around text that can wrap. A label wraps to a
+  second line at 40 px and over sooner than it looks, and the stack then runs past the panel's
+  bottom. Let the panel grow with its content, or shorten the label so it fits on one line. The
+  build check holds the layer to every rule qa's gate holds, content overflow, overlaps and
+  orphaned wraps among them, at qa's own samples, and refuses what qa would.
 - Never show `NaN`, `undefined`, `null` or `[object …]`. The build check refuses a layer that does.
 - Text on a filled shape uses that fill's `--color-on-…` token: `var(--color-on-brand-primary)` on
   `var(--color-brand-primary-solid)`, `var(--color-on-status-warning)` on
@@ -82,6 +87,15 @@ The packet describes a single beat and nothing about its neighbours:
   from it, as in `const at = useCue("ledger");`. Never write a cue's second as a number. The voice
   moves every cue word away from `planned_s`, so a literal second lands off its word. The build
   check refuses a layer that does not read each cue word through `useCue`, naming the cue.
+- Every cue word changes the picture. A cue on an element that is already shown changes that
+  element visibly on its word: a highlight or pulse at full colour, such as a brand tint with a
+  brand ring, drawn inside the element's own box. Never answer it with an opacity fade on text, and
+  never with an outline, shadow or glow outside a `clipPath` the element sets: the clip cuts it
+  away, so the frame does not change. The script counts every cue as a change, so a cue that
+  changes nothing leaves the picture still for longer than planned. The build check compares the
+  frame just before each cue word with the frames in the second after it, up to the next cue word,
+  on qa's 320 by 180 grey frame, and refuses a cue that never changes more than 10 pixels, naming
+  the cue.
 - Style with inline styles and the theme's CSS custom properties (`var(--…)`). Do not load fonts,
   images or stylesheets.
 - Paint only with the theme's defined colour tokens, such as `var(--color-border-prominent)`,

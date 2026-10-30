@@ -45,7 +45,8 @@ import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { conflictRound, noteRetarget, type RetargetRun } from "./retarget-conflict.js";
+import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
+import { staleBaseOf, staleBaseRoute, type StaleBaseRun } from "./stale-base.js";
 import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -65,7 +66,7 @@ import { sendBack } from "./send-back.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, RetargetRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, StaleBaseRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -115,6 +116,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, orderSteps: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ staleBases: new Set(), staleBaseReads: 0 },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
     ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
@@ -158,6 +160,8 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (outcome.kind === "ci-failed") {
     const held = await heldByFrozenMain(run, outcome, run.freezeChecks++);
     if (held !== false) return held === true ? undefined : held;
+    const staleBase = await staleBaseOf(run, outcome.headSha);
+    if (staleBase !== undefined) return (await woken(run, "conflict", outcome.headSha, { staleBase })) ? undefined : ciFailedRoute(run, outcome);
     const wake = (payload: unknown) => woken(run, "review", outcome.headSha, payload);
     const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, wake, (stepId, prompt) => packetBeforeGate(packetRunOf(run), stepId, prompt));
     if (accepted !== NOT_OFFERED) return accepted;
@@ -168,12 +172,6 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (!isConflict(run, outcome)) return outcome;
   countConflictRound(run);
   return onConflict(run, outcome.headSha);
-}
-
-function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
-  if (outcome.kind !== "stopped") return false;
-  const dirty = outcome.reason === "not-mergeable" && run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
-  return outcome.reason === "conflict" || dirty;
 }
 
 /**
@@ -349,7 +347,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps), conflictBaseRoute(deps),
+    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),

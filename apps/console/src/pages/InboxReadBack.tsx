@@ -82,7 +82,7 @@ function OpFacts({ readBack }: { readBack: OpReadBack }): ReactNode {
 }
 
 /** A retire-agent op's agent as agent-chat's roster reads it now, then the depositing agent's words. */
-function AgentFacts({ readBack, readAt }: { readBack: AgentReadBack; readAt: string }): ReactNode {
+export function AgentFacts({ readBack, readAt }: { readBack: AgentReadBack; readAt: string }): ReactNode {
   const spawnedBy = readBack.spawnedBy === null ? "" : `, spawned by ${readBack.spawnedBy}`;
   return (
     <>

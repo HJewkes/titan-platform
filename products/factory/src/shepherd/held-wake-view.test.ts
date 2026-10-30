@@ -98,7 +98,7 @@ describe("what the watch view shows after a wake no fixer took", () => {
     await waitingForHead(w.host, runId);
 
     const { record, entry, nextAction } = seen(w, runId);
-    expect(record).toEqual({ kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } });
+    expect(record).toMatchObject({ kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } });
     expect(entry).toMatchObject({ kind: "wake", outcome: "unhandled", held: REFUSAL });
     expect(nextAction).toBe(`no fixer could start (${REFUSAL}); the seat was told, waiting for a new head`);
   });

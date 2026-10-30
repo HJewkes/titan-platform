@@ -13,8 +13,11 @@ export const ImplementerReportSchema = z.object({
 });
 export type ImplementerReport = z.infer<typeof ImplementerReportSchema>;
 
-/** One `<gate>.json` the repo's gate command writes; `score` lets the fix loop see progress on a failing gate. */
-export const GateEvidenceSchema = z.looseObject({ gate: z.string().min(1), head: z.string(), pass: z.boolean(), score: z.number().optional() });
+/** Loose on purpose: a class this build does not know still parses, and `gateFailureClass` gives it the default route. */
+const GateFailureSchema = z.looseObject({ class: z.string().optional(), signature: z.string().optional() });
+
+/** One `<gate>.json` the repo's gate command writes; `score` lets the fix loop see progress on a failing gate, and `failure` routes it. */
+export const GateEvidenceSchema = z.looseObject({ gate: z.string().min(1), head: z.string(), pass: z.boolean(), score: z.number().optional(), failure: GateFailureSchema.optional() });
 export type GateEvidence = z.infer<typeof GateEvidenceSchema>;
 
 export const GateRunSchema = z.object({
@@ -22,7 +25,7 @@ export const GateRunSchema = z.object({
   /** 0 passes; 3 means a gate's sensitivity proof failed, so the gate itself is broken. */
   exitCode: z.number().int(),
   pass: z.boolean(),
-  gates: z.array(z.object({ gate: z.string(), pass: z.boolean(), score: z.number().optional(), evidence: z.string() })),
+  gates: z.array(z.object({ gate: z.string(), pass: z.boolean(), score: z.number().optional(), failure: GateFailureSchema.optional(), evidence: z.string() })),
   problems: z.array(z.string()),
 });
 export type GateRun = z.infer<typeof GateRunSchema>;
@@ -64,9 +67,12 @@ export const LandStateSchema = z.discriminatedUnion("state", [
 ]);
 export type LandState = z.infer<typeof LandStateSchema>;
 export const CommandResultSchema = z.object({ pass: z.boolean(), status: z.number().int(), detail: z.string() });
+/** `task` is the filed `<initiative>/<id>`, or null with why it could not be filed. */
+export const FiledTaskSchema = z.object({ task: z.string().nullable(), detail: z.string() });
 export const ExtractSchema = z.object({ targets: z.unknown(), costUsd: z.number().optional() });
 export const PlanSchema = z.object({ spec: z.unknown() });
 
 export const DeviceAnswer = (headSha: string) => z.object({ decision: z.enum(["pass", "fail"]), headSha: z.literal(headSha), note: z.string().optional() });
+export const InfraParkAnswer = (headSha: string) => z.object({ decision: z.enum(["retry", "stop"]), headSha: z.literal(headSha) });
 export const DeployAnswer = (headSha: string) => z.object({ decision: z.enum(["deploy", "skip"]), headSha: z.literal(headSha) });
 export const FinalWalkAnswer = (headSha: string) => z.object({ decision: z.enum(["accept", "changes"]), headSha: z.literal(headSha), notes: z.string().optional() });

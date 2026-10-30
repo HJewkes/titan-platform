@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer check holds only low-contrast and off-frame over qa's samples",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "classify(frames, { gate: LAYER_HELD_KINDS })",
+      "replace": "classify(frames, { gate: [\"low-contrast\", \"off-frame\"] })",
+      "kills": [
+        "the layer check's held rules refuses a fixed panel whose wrapped label overflows it, as qa does",
+        "the layer check and qa's gate hold the same kinds turns a held content-overflow finding into a rebuild row with a fix"
+      ]
+    },
+    {
+      "name": "the layer check never adds qa's late-fill findings",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "    addLateFill(frames, cues, durations);\n",
+      "replace": "",
+      "kills": [
+        "the layer check's held rules refuses a stage still empty past a third of the beat with a cue to come"
+      ]
+    },
+    {
+      "name": "the layer check keeps rows for low-contrast and off-frame only",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (!isHeldRule(kind)) return [];",
+      "replace": "if (kind !== \"low-contrast\" && kind !== \"off-frame\") return [];",
+      "kills": [
+        "the layer check's held rules refuses a fixed panel whose wrapped label overflows it, as qa does",
+        "the layer check and qa's gate hold the same kinds turns a held content-overflow finding into a rebuild row with a fix"
+      ]
+    },
+    {
+      "name": "the layer check holds a one-sample overflow qa lets pass",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "info.filter(({ kind }) => kind === \"low-contrast\")",
+      "replace": "info",
+      "kills": [
+        "the layer check's held rules passes an overflow seen on one sample mid-entrance, which qa does not hold either"
+      ]
+    }
+  ]
+}

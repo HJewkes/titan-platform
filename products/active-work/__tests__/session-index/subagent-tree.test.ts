@@ -13,7 +13,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type SessionGraph } from '../../src/session-index/graph.js';
 import { runRefresh } from '../../src/session-index/refresh.js';
@@ -31,11 +31,14 @@ let graph: SessionGraph;
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-subagent-'));
   root = path.join(dir, 'projects');
+  // Without this the origin resolver reads the machine's real agent-chat event log.
+  vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
   mkdirSync(path.join(root, 'demo'), { recursive: true });
   graph = openGraph(path.join(dir, 'graph.sqlite3'));
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   graph.db.close();
   rmSync(dir, { recursive: true, force: true });
 });
