@@ -17,7 +17,7 @@ export interface MemberContext {
 }
 
 /** One attempt's records: the dispatch and, once started, the await that read it. */
-export interface Seen {
+interface Seen {
   dispatch: DispatchRecord;
   awaited?: AwaitRecord;
 }
@@ -40,7 +40,7 @@ interface MemberState {
 type Taken = { seen: Seen } | { end: MemberEnd } | undefined;
 
 /** Correctness keeps the bare `<id>:<head>`, as Shepherd's single reviewer recorded it; each other member adds its shape. */
-export function memberStepId(id: string, head: string, shape: ReviewShape, attempt: 1 | 2 = 1, suffix = ""): string {
+function memberStepId(id: string, head: string, shape: ReviewShape, attempt: 1 | 2 = 1, suffix = ""): string {
   return [id, head, ...(shape === "correctness" ? [] : [shape]), ...(attempt === 2 ? ["r2"] : []), ...(suffix === "" ? [] : [suffix])].join(":");
 }
 
