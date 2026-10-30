@@ -1,6 +1,7 @@
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { sliceClock } from "../loop-slice.js";
+import { statusOrder, type StatusOrder } from "./merge-order-command.js";
 import type { RepoFreeze } from "./repo-freeze.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
@@ -13,6 +14,18 @@ export function rowOf(host: FactoryHost, services: ShepherdServices, registratio
   const row = watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
   const frozen = repoFreezeOf(services, registration.repo);
   return frozen ? { ...row, repoFrozen: frozen } : row;
+}
+
+/** Another run's watch-row phase, as its own row reads it; undefined when the run or its registration is gone. */
+export function phaseOfRun(host: FactoryHost, services: ShepherdServices, runId: string): WatchRow["phase"] | undefined {
+  const registration = services.store.get().byRun(runId);
+  const run = host.runtime.status(runId);
+  return registration && run ? rowOf(host, services, registration, run).phase : undefined;
+}
+
+/** A row with the merge-order wait its merge step read last, named with its holder (TP-4137). */
+export function withOrder(host: FactoryHost, services: ShepherdServices, row: WatchRow): WatchRow & StatusOrder {
+  return { ...row, ...statusOrder(services.mergeOrder, row, (runId) => phaseOfRun(host, services, runId)) };
 }
 
 /** A freeze store the host has not bound reads as no freeze, so the watch list still answers. */
