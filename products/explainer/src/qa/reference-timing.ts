@@ -10,8 +10,8 @@
  * Sentences break after a word ending in `.`, `?` or `!`. words.json as read keeps word starts only, so a word ends
  * where the next one starts, and a beat's last word ends at its own start.
  */
-import type { ProbedMoment } from "@titan-design/render-qa";
-import { countingElements, PLAIN_NUMBER, settle } from "./counting-figures.js";
+import type { ProbedMoment, ProbedText } from "@titan-design/render-qa";
+import { countingFigures, settle } from "./counting-figures.js";
 import type { TimingGate, TimingInput } from "./timing-gates.js";
 
 /** RW-12's margin past the last referring word. */
@@ -32,15 +32,17 @@ export interface TextSpan {
   untilS: number | null;
 }
 
-/** A number counting up in its element is one text, so it is keyed by the element alone. */
-const spanKey = (counting: ReadonlySet<string>, beat: string, t: { element: string; text: string }): string =>
-  `${t.element}\u0000${counting.has(`${beat}\u0000${t.element}`) && PLAIN_NUMBER.test(t.text.trim()) ? "#number" : t.text}`;
+type Counting = (figure: ProbedText) => string | undefined;
 
-/** The counting elements of each beat, as "beat NUL element". */
-function countingBy(probed: readonly ProbedMoment[]): Set<string> {
+/** A number counting up in place is one text, so it is keyed by its element and place; its siblings keep their own. */
+const spanKey = (counting: ReadonlyMap<string, Counting>, beat: string, t: ProbedText): string =>
+  `${t.element}\u0000${counting.get(beat)?.(t) ?? t.text}`;
+
+/** Each beat's counting-figure lookup. */
+function countingBy(probed: readonly ProbedMoment[]): Map<string, Counting> {
   const beats = new Map<string, ProbedMoment[]>();
   for (const moment of probed) beats.set(moment.beat, [...(beats.get(moment.beat) ?? []), moment]);
-  return new Set([...beats].flatMap(([beat, moments]) => [...countingElements(moments)].map((element) => `${beat}\u0000${element}`)));
+  return new Map([...beats].map(([beat, moments]) => [beat, countingFigures(moments)]));
 }
 
 /** Each text's runs of consecutive samples on screen, keyed by element and text; a counting number keeps its settled value. */
