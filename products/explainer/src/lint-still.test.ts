@@ -69,8 +69,8 @@ describe("Q-D22 planned still stretches, qa's static-window at script time", () 
 
     expect(failing.detail_beats).toContain("reflection-2");
     expect(hint).toMatch(/reflection-2 [\d.]+ s to [\d.]+ s after "What"/);
-    expect(hint).toContain('reflection-2 is a claim-card with no cue: cue its claim (target "claim") on a spoken word inside the stretch');
-    expect(hint).toContain("or hold it, show a claim the voice does not read word for word");
+    expect(hint).toContain('reflection-2 is a claim-card with no cue: first, adding no words, cue its claim (target "claim") on a spoken word inside the stretch');
+    expect(hint).toContain("or hold it with heldS; else show a claim the voice does not read word for word");
     expect(hint).not.toContain("trim its words");
     expect(passing.detail_beats).not.toContain("reflection-2");
   });

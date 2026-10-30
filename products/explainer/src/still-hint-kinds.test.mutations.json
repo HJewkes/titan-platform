@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a still button's hint offers new text before the hold",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "which reveals nothing on a cue: first hold it with heldS, which adds no words`",
+      "replace": "which reveals nothing on a cue: hold it`",
+      "kills": [
+        "the Q-D22 hint for a still closing button leads with a hold that adds no words and names the label and frame caps on every move that adds text"
+      ]
+    },
+    {
+      "name": "a still button's new line names no caps",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "(its reading time is not still time) ${WITHIN_CAPS}",
+      "replace": "(its reading time is not still time)",
+      "kills": [
+        "the Q-D22 hint for a still closing button leads with a hold that adds no words and names the label and frame caps on every move that adds text"
+      ]
+    },
+    {
+      "name": "an added item names no caps",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "so add the item ${WITHIN_CAPS}, or split the beat",
+      "replace": "so add the item or split the beat",
+      "kills": ["the Q-D22 hint for a still closing button names the caps on adding an item to a cued kind"]
+    }
+  ]
+}

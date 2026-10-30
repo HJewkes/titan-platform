@@ -352,23 +352,42 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
   return after.length === before.length && after.every((row) => known.has(row.check_id)) && failingBeats(after) < failingBeats(before);
 }
 
-/** Up to `rounds` rounds, each answering the current failing rows; a reply is kept when it makes progress (`makesProgress`). */
+/**
+ * Fewer failing rows, or as many naming fewer beats, whichever rules they are: what the next round starts from. Unlike
+ * `makesProgress` it takes a reply that swaps a row for another, which is a better place to ask from but no proof
+ * the script got better, so it never decides what the repair keeps.
+ */
+export const asksFromFewer = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
+  after.length < before.length || (after.length === before.length && failingBeats(after) < failingBeats(before));
+
+interface Measured {
+  stamped: Stamped;
+  rows: L0Result[];
+}
+
+/**
+ * Up to `rounds` rounds. A reply is kept when it makes progress over the kept script (`makesProgress`). Each round asks
+ * from the best reply so far (`asksFromFewer`), relinted, so its hint names that reply's own rows and never a stretch an
+ * earlier round already fixed.
+ */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
-  let { script, stamps } = start;
-  let failing = loop.failing(script);
-  const before = failing.length;
+  let kept: Measured = { stamped: start, rows: loop.failing(start.script) };
+  let base = kept;
+  const before = kept.rows.length;
   let usage = NO_USAGE;
-  let kept: Pick<Repaired, "stripped" | "dropped"> = {};
+  let keptReply: Pick<Repaired, "stripped" | "dropped"> = {};
   const candidates: Candidate[] = [];
-  for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
-    const { reply, usage: spent, candidate } = await roundReply(call, loop, script, failing, `repair-${round + 1}`);
+  for (let round = 0; round < loop.rounds && kept.rows.length > 0; round++) {
+    const { reply, usage: spent, candidate } = await roundReply(call, loop, base.stamped.script, base.rows, `repair-${round + 1}`);
     usage = addUsage(usage, spent);
     if (candidate) candidates.push(candidate);
-    const next = reply.script && loop.settle(reply.script);
-    const after = next ? loop.failing(next.script) : failing;
-    if (next && makesProgress(after, failing)) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
+    const stamped = reply.script && loop.settle(reply.script);
+    if (!stamped) continue;
+    const next = { stamped, rows: loop.failing(stamped.script) };
+    if (makesProgress(next.rows, kept.rows)) [kept, keptReply] = [next, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
+    if (asksFromFewer(next.rows, base.rows)) base = next;
   }
-  return { script, stamps, usage, before, after: failing.length, rows: failing, candidates, ...kept };
+  return { ...kept.stamped, usage, before, after: kept.rows.length, rows: kept.rows, candidates, ...keptReply };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */

@@ -10,6 +10,7 @@ import { drawnBeats } from "./drawn-beats.js";
 import { drawnTexts } from "./drawn-texts.js";
 import { stillBeats, type StillStretch } from "./lint-still.js";
 import { clipped, listed, namedBeats, quoted, type Hint } from "./repair-hint.js";
+import { capClauses } from "./split-piece-rules.js";
 import { beatCues, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 import { spokenWords, type SpokenWord } from "./still-seed.js";
 
@@ -91,6 +92,16 @@ const stillBeatText = (script: ScriptV1, { beat, stretches }: { beat: ScriptBeat
   return `${beat.id} ${stretches.map((stretch) => stretchText(words, stretch)).join(", ")}${onScreen(script, beat)}`;
 };
 
+// A repair once met a still closing button by lengthening its label past Q-D20 and Q-D15, so every move that adds text
+// names those caps, and a move that adds no words (a cue, a hold) comes first.
+const WITHIN_CAPS = `within ${capClauses(["Q-D20", "Q-D15"])}`;
+
+function cuelessStill(beat: ScriptBeat, kind: string): string {
+  const lead = kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: first, adding no words, ${CLAIM_CUE}or hold it with heldS` : `${beat.id} is a ${kind}, which reveals nothing on a cue: first hold it with heldS, which adds no words`;
+  const shown = kind === CLAIM_CARD ? "a claim" : "a line";
+  return `${lead}; else show ${shown} the voice does not read word for word (its reading time is not still time) ${WITHIN_CAPS}, or draw it as a list whose rows each land on a cue, under the same Q-D20 and Q-D15 caps; trimming its words would break the fill floor`;
+}
+
 // A held beat is the one place static-window allows a still frame, so the hold is offered beside the cue and the split.
 function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   const pacing = scriptPacing(script) ?? PACING_DEFAULTS;
@@ -98,12 +109,10 @@ function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   const failing = new Set(row.detail_beats);
   const found = stillBeats(script, pacing).filter(({ beat }) => failing.has(beat.id));
   const named = found.map((still) => stillBeatText(script, still));
-  const fix = "Put a cue on a spoken word inside each stretch that names an on-screen element, on an item the beat reveals there; a cue on a word no element lands on moves nothing, and a kind reveals one element per item, so add the item or split the beat";
+  const fix = `Put a cue on a spoken word inside each stretch that names an on-screen element, on an item the beat reveals there; a cue on a word no element lands on moves nothing, and a kind reveals one element per item, so add the item ${WITHIN_CAPS}, or split the beat`;
   const cueless = found.flatMap(({ beat }) => {
     const kind = cuelessKind(beat);
-    if (kind === undefined) return [];
-    const lead = kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: ${CLAIM_CUE}or` : `${beat.id} is a ${kind}, which reveals nothing on a cue:`;
-    return [`${lead} hold it, show a claim the voice does not read word for word (its reading time is not still time), or draw it as a list whose rows each land on a cue; trimming its words would break the fill floor`];
+    return kind === undefined ? [] : [cuelessStill(beat, kind)];
   });
   return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text: ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
 }
