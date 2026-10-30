@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reply is kept on fewer rows only",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "&& failingBeats(after) < failingBeats(before);",
+      "replace": "&& false;",
+      "kills": ["the repair keeps partial progress a reply that clears some beats of the one failing row is kept for the next round"]
+    },
+    {
+      "name": "a new failing row is accepted with fewer beats",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "after.every((row) => known.has(row.check_id)) && ",
+      "replace": "",
+      "kills": ["the repair keeps partial progress a reply that adds a failing row is refused even with fewer beats"]
+    },
+    {
+      "name": "the seed ignores partial progress",
+      "file": "products/explainer/src/workflow/split-start.ts",
+      "find": "|| sameRowsFewerBeats;",
+      "replace": ";",
+      "kills": ["the repaired script over the seed is kept when it answers the same row on fewer beats"]
+    }
+  ]
+}
