@@ -72,7 +72,8 @@ export const L0_CHECKS: readonly L0Check[] = [
   heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, spokenTokenCheck, headlineCheck, assertionCheck, claimsCheck, coverageCheck, reflectionCheck,
   varietyScriptCheck,
   numbersSpokenCheck, frameWordsCheck, labelEchoCheck, cueGapCheck, heldCountCheck, fillFloorCheck,
-  stillStretchCheck, headingWordsCheck, firstMotionCheck,
+  headingWordsCheck, firstMotionCheck,
+  stillStretchCheck,
 ];
 
 /** Every check's rows, less the rows of a rule scoped away from the script (`structures` or `except_profiles` in rules.yaml). */

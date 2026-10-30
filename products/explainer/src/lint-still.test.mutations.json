@@ -4,8 +4,8 @@
     {
       "name": "L0 never runs the still stretch row",
       "file": "products/explainer/src/eval-l0.ts",
-      "find": "  stillStretchCheck, headingWordsCheck,",
-      "replace": "  headingWordsCheck,",
+      "find": "  stillStretchCheck,\n",
+      "replace": "",
       "kills": [
         "Q-D22 planned still stretches, qa's static-window at script time a beat with a 5 s planned gap between revealing cues fails and names the gap"
       ]
