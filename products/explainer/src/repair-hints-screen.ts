@@ -43,7 +43,7 @@ function cuelessMove(beat: ScriptBeat, kind: string, failS: number): string {
 }
 
 // A split must not lose the hold (Q-D18) or the slowdown fact a reflection answers (Q-E22).
-function splitKeeps(beat: ScriptBeat): string {
+export function splitKeeps(beat: ScriptBeat): string {
   const held = heldBeats([beat]).length > 0 ? "keep heldS on one piece only" : undefined;
   const slow = beat.chapter === REFLECTION_CHAPTER ? "cite the slow/ fact it answers in every piece" : undefined;
   const clauses = [held, slow].filter((clause) => clause !== undefined);

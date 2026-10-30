@@ -314,17 +314,31 @@ export interface Repaired {
   /** The kept repair's dropped keys and values; absent while the start is still the script. */
   stripped?: string[];
   dropped?: string[];
+  /** Every round's reply, kept or rejected, so a failed stage can store what the repair tried. */
+  candidates: Candidate[];
+}
+
+/** One round's reply as the stage stores it: the parsed script before its ledger stamp, else the reply's own text. */
+export interface Candidate {
+  kind: string;
+  text: string;
+}
+
+function candidateOf(kind: string, outcome: StepRunOutcome, reply: Checked): Candidate | undefined {
+  if (reply.script) return { kind, text: `${JSON.stringify(reply.script, null, 2)}\n` };
+  return outcome.ok ? { kind, text: outcome.output } : undefined;
 }
 
 /** One round's reply, and when `loop.retry` allows it and the reply is rejected, one retry naming the rejection. */
-async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[], kind: string): Promise<{ reply: Checked; usage: StageUsage }> {
+async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[], kind: string): Promise<{ reply: Checked; usage: StageUsage; candidate?: Candidate }> {
   const prompt = loop.prompt(script, failing);
   const outcome = await call(prompt, kind);
   const reply = loop.read(outcome, script, failing);
   const ask = reply.script ? undefined : loop.retry?.(script, failing);
-  if (ask === undefined) return { reply, usage: stageUsage(outcome.usage) };
+  if (ask === undefined) return { reply, usage: stageUsage(outcome.usage), candidate: candidateOf(kind, outcome, reply) };
   const again = await call(retryPrompt(prompt, reply.error ?? "", ask), `${kind}-retry`);
-  return { reply: loop.read(again, script, failing), usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)) };
+  const second = loop.read(again, script, failing);
+  return { reply: second, usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)), candidate: candidateOf(kind, again, second) };
 }
 
 /** Up to `rounds` rounds, each answering the current failing rows; a reply is kept only when it fails fewer. */
@@ -334,14 +348,16 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   const before = failing.length;
   let usage = NO_USAGE;
   let kept: Pick<Repaired, "stripped" | "dropped"> = {};
+  const candidates: Candidate[] = [];
   for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
-    const { reply, usage: spent } = await roundReply(call, loop, script, failing, `repair-${round + 1}`);
+    const { reply, usage: spent, candidate } = await roundReply(call, loop, script, failing, `repair-${round + 1}`);
     usage = addUsage(usage, spent);
+    if (candidate) candidates.push(candidate);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;
     if (next && after.length < failing.length) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
   }
-  return { script, stamps, usage, before, after: failing.length, ...kept };
+  return { script, stamps, usage, before, after: failing.length, candidates, ...kept };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */
@@ -353,4 +369,6 @@ export interface Written {
   stripped: string[];
   checks: Check[];
   notes: string[];
+  /** When the repair left rows failing: each candidate it tried, and the failure list each round sent. */
+  tried?: { candidates: Candidate[]; hints: string[] };
 }
