@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a later run forgets its base run's digest day",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "request.gather ?? (base ? planOf(base).gather : undefined)",
+      "replace": "request.gather",
+      "kills": [
+        "explainer run reflection keys a later run's reflection to the digest day its base run gathered"
+      ]
+    }
+  ]
+}
