@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a live agent gets the Retire button",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "  if (agent.state !== \"exited\") return { offer: false, hint: `${agent.name} is ${agent.state}: retire a working agent at the terminal.` };\n",
+      "replace": "",
+      "kills": [
+        "the agent page's Retire tap offers a live agent no tap and says why"
+      ]
+    },
+    {
+      "name": "a seat gets the Retire button",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "  if (agent.seat !== null && agent.seat === agent.name) return { offer: false, hint: \"A seat is retired by its owner session.\" };\n",
+      "replace": "",
+      "kills": [
+        "the agent page's Retire tap offers a seat no tap and says why"
+      ]
+    },
+    {
+      "name": "a snapshot page offers the tap",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "  if (!live) return <Hint text={`This page is a snapshot: act from the live console, or run ${command} on the terminal.`} />;\n",
+      "replace": "",
+      "kills": [
+        "the agent page's Retire tap sends a snapshot page to the live console"
+      ]
+    },
+    {
+      "name": "the tap names the agent without its typed target",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "args: { target: { kind: \"retire-agent\", name } }",
+      "replace": "args: { name }",
+      "kills": [
+        "the agent page's Retire tap reads the agent back, then retires on the second tap and shows the broker's caveats"
+      ]
+    },
+    {
+      "name": "the finished filter keeps every row",
+      "file": "apps/console/src/pages/AgentsPage.tsx",
+      "find": "const shown = finished ? agents.filter((agent) => agent.state === \"exited\") : agents;",
+      "replace": "const shown = agents;",
+      "kills": [
+        "the agents roster filter keeps only finished, not retired agents when ticked"
+      ]
+    }
+  ]
+}
