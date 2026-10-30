@@ -352,19 +352,14 @@ export function makesProgress(after: readonly L0Result[], before: readonly L0Res
   return after.length === before.length && after.every((row) => known.has(row.check_id)) && failingBeats(after) < failingBeats(before);
 }
 
-const ruleIds = (rows: readonly L0Result[]): string => rows.map((row) => row.check_id).sort().join(" ");
-
 /**
- * Fewer failing rows, or as many naming fewer beats, whichever rules they are, or a tie under other rules: what the
- * next round starts from. Unlike `makesProgress` it takes a reply that swaps a row for another, which is a better place
- * to ask from (the swapped-in row is what the model has not yet been told) but no proof the script got better, so it
- * never decides what the repair keeps.
+ * Fewer failing rows, or as many naming fewer beats, whichever rules they are, or a tie that brings in a rule the base
+ * did not fail: what the next round starts from. Unlike `makesProgress` it takes a reply that swaps a row for another,
+ * which is a better place to ask from (the swapped-in row is what the model has not yet been told) but no proof the
+ * script got better, so it never decides what the repair keeps.
  */
-export function asksFrom(after: readonly L0Result[], before: readonly L0Result[]): boolean {
-  if (after.length !== before.length) return after.length < before.length;
-  const [beats, was] = [failingBeats(after), failingBeats(before)];
-  return beats < was || (beats === was && ruleIds(after) !== ruleIds(before));
-}
+export const asksFrom = (after: readonly L0Result[], before: readonly L0Result[]): boolean =>
+  after.length !== before.length ? after.length < before.length : failingBeats(after) < failingBeats(before) || (failingBeats(after) === failingBeats(before) && after.some((row) => !before.some((was) => was.check_id === row.check_id)));
 
 interface Measured {
   stamped: Stamped;
