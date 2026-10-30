@@ -38,9 +38,19 @@ export const ownerItemDepositSchema = z.strictObject({
   personal: item.personal.default(false),
   unblocks: item.unblocks.default([]),
   unblocksNow: item.unblocksNow,
+  blocker: item.blocker,
   audience: item.audience,
   expiresAt: item.expiresAt,
-}).superRefine(addAnchorIssues);
+}).superRefine(addAnchorIssues).superRefine(addBlockerIssues);
+
+function addBlockerIssues(deposit: { kind: (typeof ITEM_KINDS)[number]; blocker?: unknown }, ctx: z.RefinementCtx): void {
+  if (deposit.blocker !== undefined && DEPOSIT_LENS[deposit.kind] !== "blocking-agent") {
+    ctx.addIssue({ code: "custom", path: ["blocker"], message: "a blocker must be a decide, approve or do deposit" });
+  }
+}
+
+const BLOCKER_SKEW_MS = 5 * 60_000;
+const BLOCKER_MAX_AGE_MS = 30 * 24 * 3_600_000;
 
 export type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
 
@@ -59,16 +69,24 @@ export function depositItemId(asker: string, depositId: string): string {
   return `deposit:${digest.slice(0, 32)}`;
 }
 
+function assertBlockerSince(since: string, now: Date): void {
+  const age = now.getTime() - new Date(since).getTime();
+  if (age < -BLOCKER_SKEW_MS) throw new Error("blocker.since is in the future");
+  if (age > BLOCKER_MAX_AGE_MS) throw new Error("blocker.since is more than 30 days old");
+}
+
 /**
  * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
  * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
  */
 export function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem {
   const { depositId, ...fields } = ownerItemDepositSchema.parse(deposit);
+  if (fields.blocker !== undefined) assertBlockerSince(fields.blocker.since, now);
   const implied = fields.op === undefined ? [] : opKeys(fields.op).filter((key) => !fields.keys.includes(key));
   return {
     ...fields,
     keys: [...fields.keys, ...implied],
+    ...(fields.blocker !== undefined && { unblocksNow: fields.unblocksNow ?? fields.blocker.blocks.slice(0, 200) }),
     id: depositItemId(fields.asker, depositId),
     sources: [{ system: "deposit", ref: `${fields.asker}/${depositId}` }],
     lens: DEPOSIT_LENS[fields.kind],
