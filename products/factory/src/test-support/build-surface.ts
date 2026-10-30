@@ -55,6 +55,10 @@ interface FakeOptions {
   branches?: Record<string, string>;
   /** Gate records already in an evidence directory, keyed by the directory. */
   evidence?: Record<string, unknown[]>;
+  /** PRs by head branch, as GitHub reports them. */
+  prs?: Record<string, Partial<PullRequest>>;
+  /** Heads `git merge-base --is-ancestor` finds in the base. */
+  ancestors?: string[];
 }
 
 const allGreen: GateScript = () => ({ status: 0, records: [{ gate: "G1", pass: true }] });
@@ -62,6 +66,7 @@ const allGreen: GateScript = () => ({ status: 0, records: [{ gate: "G1", pass: t
 function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, options: FakeOptions, rounds: Map<string, number>) {
   return async (argv: readonly string[], request: { env: Record<string, string>; input?: string }): Promise<CommandRun> => {
     fake.commands.push({ argv, env: request.env, ...(request.input !== undefined && { input: request.input }) });
+    if (argv[0] === "git" && argv[1] === "merge-base") return { status: options.ancestors?.includes(argv[3] ?? "") ? 0 : 1, stdout: "", stderr: "" };
     if (argv[1] === "gates") {
       const { BS_SLICE: slice = "", BS_HEAD: head = "", BS_EVIDENCE: dir = "" } = request.env;
       const round = rounds.get(slice) ?? 0;
@@ -92,7 +97,7 @@ export function fakeBuild(options: FakeOptions = {}): FakeBuild {
     github: {
       getHeadSha: async (_repo, branch) => fake.branches.get(branch) ?? null,
       ensureBranch: async (_repo, branch, sha) => (fake.branches.set(branch, sha), { sha, done: true }),
-      findPr: async () => null,
+      findPr: async (_repo, branch) => (options.prs?.[branch] ? partialFake<PullRequest>({ headRef: branch, ...options.prs[branch] }) : null),
       openPr: async (_repo, request) => {
         const number = prs.get(request.head) ?? prs.size + 1;
         prs.set(request.head, number);

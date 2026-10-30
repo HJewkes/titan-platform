@@ -72,7 +72,8 @@ export async function runSlice(run: SliceRun): Promise<StepResult> {
   await preflight(run);
   const targets = await extractTargets(run);
   const evidenceDir = evidenceDirOf(run.spec, run.slice.id, "{head}");
-  const { green } = await sliceStep(run, "bs-branch", undefined, { repo: run.spec.repo, branch: run.branch, base: run.spec.base, evidenceDir }, S.BranchSchema);
+  const { green, merged } = await sliceStep(run, "bs-branch", undefined, { repo: run.spec.repo, branch: run.branch, base: run.spec.base, evidenceDir, cwd: run.spec.clone }, S.BranchSchema);
+  if (merged) return { ...run.last!, data: { slice: run.slice.id, ...merged, deployed: false }, usage: { costUsd: run.spentUsd } };
   const head = await buildRounds(run, targets, green);
   const opened = { repo: run.spec.repo, branch: run.branch, base: run.spec.base, title: `${run.slice.title} (${run.slice.id})`, body: prBody(run, head) };
   const { pr } = await sliceStep(run, "bs-pr", undefined, opened, S.PrSchema);

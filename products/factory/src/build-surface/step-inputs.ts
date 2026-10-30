@@ -32,6 +32,8 @@ export interface BranchInput {
   base: string;
   /** The gate evidence directory with `{head}` left in, read at an existing branch's head. */
   evidenceDir: string;
+  /** The clone `git merge-base` runs in to tell a slice already merged into the base. */
+  cwd: string;
 }
 
 export interface GatesInput extends CommandInput {
