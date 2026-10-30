@@ -30,7 +30,7 @@ interface CueGateOptions {
   lead?: ReadonlySet<string>;
   /** Where to write an annotated crop of each held error; no crops without it. */
   cropDir?: string;
-  /** Adds render-qa's 2 Hz sweep to the cue moments; off by default, so render's pre-capture gate reads cue moments only. */
+  /** Adds render-qa's 2 Hz sweep to the cue moments; off by default; the qa stage and render's gates both ask for it. */
   sweep?: boolean;
   /** Probes the DOM at every sampled moment, for the qa stage's page-measured checks. */
   probe?: boolean;

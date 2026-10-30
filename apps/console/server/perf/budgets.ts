@@ -48,6 +48,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("autoresearch.diff", { runId: "ar-000", ideaId: "idea-0" }, { maxUpstreamCalls: 1 }, NO_FAKE_ANSWER),
   row("autoresearch.run", { runId: "ar-000" }, { maxUpstreamCalls: 1 }, NO_FAKE_ANSWER),
   row("autoresearch.runs", {}, { maxBytes: 6 * KB, maxUpstreamCalls: 1 }),
+  row("blockers.banner", {}, { maxMs: 200, maxBytes: 4 * KB, maxUpstreamCalls: 1 }),
   row("config.compareTree"),
   row("config.drift"),
   row("config.hosts"),

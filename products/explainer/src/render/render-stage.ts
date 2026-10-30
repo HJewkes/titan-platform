@@ -4,6 +4,10 @@ import path from "node:path";
 import { z } from "zod";
 import type { Timeline } from "../composition/timeline.js";
 import type { QaGate } from "../qa/gate-profile.js";
+import { qaCoreReport, type QaConfig } from "../qa/qa-core.js";
+import type { QaEngine } from "../qa/qa-engine.js";
+import { leadLineBeats } from "../qa/qa-lead-lines.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import { sha256, type ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import { NO_USAGE, type Check, type StageOutcome } from "../workflow/records.js";
@@ -12,7 +16,7 @@ import { renameWordsBeats } from "./beat-ids.js";
 import { compileTimeline, writeTimeline } from "./compile-timeline.js";
 import { defaultCompositionPage, servePage, treeSha, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers, type PageLayer } from "./custom-layers.js";
-import { QaRefused } from "./qa-gate.js";
+import { QaRefused, refusalCause, type EncodedQa } from "./qa-gate.js";
 import { renderBoard } from "./render-board.js";
 import { renderVideo, RenderWordsSchema, type RenderInput, type RenderResult, type RenderWords } from "./render-video.js";
 
@@ -33,18 +37,13 @@ interface RenderConfig {
   gate: QaGate;
   /** The style pack's custom properties, served with the page. */
   styleCss?: string;
+  /** The run's video type and its timing thresholds, as the qa stage reads them, for qa's gate rows after encode. */
+  profile?: string;
+  timing?: TimingProfile;
 }
 
 interface RenderStageInput extends Omit<ModelStageInput, "store"> {
   store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "putTree" | "materialise">;
-}
-
-interface Prepared {
-  timeline: Timeline;
-  pageDir: string;
-  pageSha: string;
-  audio: { words: RenderWords; wavDir: string };
-  notes: string[];
 }
 
 const STYLE_FILE = "style-pack.css";
@@ -58,6 +57,29 @@ function need(input: RenderStageInput, name: string): string {
 }
 
 const json = (input: RenderStageInput, name: string): unknown => JSON.parse(input.store.readText(need(input, name)));
+
+/** The qa stage's config for this render: its gate profile, the run's type and timing, and the 2 Hz sweep. */
+const qaConfigFor = ({ gate, profile, timing }: RenderConfig): QaConfig => ({ ...gate, sweep: true, ...(profile ? { profile } : {}), ...(timing ? { timing } : {}) });
+
+/** qa's report core over the MP4 render just encoded, on the page it captured and the artifacts the qa stage reads. */
+function encodedQa(input: RenderStageInput, config: RenderConfig, qa: QaEngine, outDir: string): EncodedQa {
+  return (pageUrl, { mp4, vtt }) => {
+    const sources = {
+      pageUrl, mp4, timeline: JSON.parse(readFileSync(path.join(outDir, "timeline.json"), "utf8")), words: json(input, "words"), script: json(input, "script"),
+      resolved: json(input, "resolved"), vtt: readFileSync(vtt, "utf8"), lead: leadLineBeats(input), cropDir: path.join(outDir, "qa-crops"),
+      put: (name: string, text: string) => input.store.putText(text, name, input.from),
+    };
+    return qaCoreReport(sources, qa, qaConfigFor(config));
+  };
+}
+
+interface Prepared {
+  timeline: Timeline;
+  pageDir: string;
+  pageSha: string;
+  audio: { words: RenderWords; wavDir: string };
+  notes: string[];
+}
 
 /** tts names each wav by script beat; the mix reads them by storyboard beat, so each is linked under its new name. */
 function linkedWavs(input: RenderStageInput, ids: ReadonlyMap<string, string>, scratch: string): string {
@@ -100,11 +122,11 @@ async function prepare(input: RenderStageInput, config: RenderConfig, engine: Re
   return { timeline, pageDir, pageSha: treeSha(pageDir), audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
 }
 
-async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEngine, outDir: string): Promise<RenderResult> {
+async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEngine, outDir: string, encoded?: EncodedQa): Promise<RenderResult> {
   mkdirSync(outDir, { recursive: true });
   const served = await servePage(run.pageDir, writeTimeline(outDir, run.timeline));
   try {
-    const qa = { mode: config.noQa ? "skip" : "gate", gate: config.gate } as const;
+    const qa = { mode: config.noQa ? "skip" : "gate", gate: config.gate, ...(encoded ? { encoded } : {}) } as const;
     return await engine.render({ timeline: run.timeline, pageUrl: served.url, pageSha: run.pageSha, audio: run.audio, workers: config.workers, outDir, stem: STEM, qa });
   } finally {
     await served.close();
@@ -133,28 +155,32 @@ const HeldReportSchema = z.object({ errors: z.array(z.object({ kind: z.string(),
 /** One held row in short form: kind, beat, first ts, element. */
 const heldRow = ({ kind, beat, ts, el }: z.infer<typeof HeldReportSchema>["errors"][number]): string => `${kind} ${beat} @${ts[0]}s${el === undefined ? "" : ` ${el}`}`;
 
+/** A qa gate row as render reports it, named apart from render's own checks. */
+const qaCheck = (check: Check): Check => ({ ...check, name: `qa:${check.name}` });
+
 /** The scratch dir goes with the failure, so the refusal keeps `qa.json` as an artifact of the failed record and names its sha. */
 function keptRefusal(input: RenderStageInput, refusal: QaRefused): StageFailure {
   const sha = input.store.putFile(refusal.qaJson, "qa-report", input.from);
   const rows = HeldReportSchema.parse(JSON.parse(readFileSync(refusal.qaJson, "utf8"))).errors.map(heldRow);
-  const message = `qa: refusing to render ${STEM}: ${refusal.heldErrors} held errors (qa.json stored as artifact ${sha}): ${rows.join("; ")}; or render with qa mode "skip"`;
-  const failure = new StageFailure(message, NO_USAGE, 0, [], { "qa-report": sha });
+  const message = `qa: refusing to render ${STEM}: ${refusalCause(refusal.heldErrors, refusal.checks)} (qa.json stored as artifact ${sha}): ${rows.join("; ")}; or render with qa mode "skip"`;
+  const failure = new StageFailure(message, NO_USAGE, 0, refusal.checks.map(qaCheck), { "qa-report": sha });
   failure.cause = refusal;
   return failure;
 }
 
 /**
  * The `explainer.render` body (workflow plan §2.3 stage 8): script and resolved through the template fill to a
- * storyboard, compiled with the voiced words to `timeline.json`, rendered on the composition page behind the QA gate.
- * Outputs keep the names export and sheets read (`mp4`, `vtt`) beside `render-manifest`, `timeline` and the `page` tree.
+ * storyboard, compiled with the voiced words to `timeline.json`, rendered on the composition page behind the QA gate,
+ * and refused after encode when any of the qa stage's gate rows fails on qa's own report of the MP4. Outputs keep the names export and sheets read (`mp4`, `vtt`) beside `render-manifest`, `timeline` and the `page` tree.
  */
-export async function runRenderStage(input: RenderStageInput, config: RenderConfig, engine: RenderEngine): Promise<StageOutcome> {
+export async function runRenderStage(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, qa: QaEngine): Promise<StageOutcome> {
   const scratch = mkdtempSync(path.join(tmpdir(), "explainer-render-"));
   try {
     const run = await prepare(input, config, engine, scratch);
     const outDir = path.join(scratch, "out");
-    const result = await renderOnce(run, config, engine, outDir);
-    const checks = config.twoRun ? [twoRunCheck(result, await renderOnce(run, config, engine, path.join(scratch, "again")), config.workers)] : [];
+    const result = await renderOnce(run, config, engine, outDir, encodedQa(input, config, qa, outDir));
+    const twoRun = config.twoRun ? [twoRunCheck(result, await renderOnce(run, config, engine, path.join(scratch, "again")), config.workers)] : [];
+    const checks = [...(result.qaChecks ?? []).map(qaCheck), ...twoRun];
     const { frames, durationS, draft, qaGate } = result.data;
     const notes = [`${frames} frames, ${durationS} s at ${config.workers} workers${draft ? ", DRAFT" : ""}, qa ${qaGate}`, ...run.notes];
     return { outputs: stored(input, run, result, outDir), checks, notes };

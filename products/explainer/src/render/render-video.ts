@@ -5,10 +5,12 @@ import { captureFrames, mixAudio, startEncoder, type Encoder, type FramesOptions
 import type { Browser } from "playwright-core";
 import { z } from "zod";
 import { canonicalJson } from "../eval-store.js";
+import { qaGateChecks } from "../qa/qa-gates.js";
+import type { Check } from "../workflow/records.js";
 import { sha256 } from "../workflow/artifacts.js";
 import { toVtt, type CaptionWord } from "./captions.js";
 import { assertDurationAgreement } from "./duration-check.js";
-import { chromiumQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
+import { chromiumQaGate, failedQaGates, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
 import { collectRenderHost, renderManifestJson, type RenderHost, type RenderManifest } from "./render-manifest.js";
 import { silentMix } from "./silent-mix.js";
 import { chromiumStageFitScan, StageOverflow, type StageFitScan } from "./stage-fit-scan.js";
@@ -78,6 +80,8 @@ export interface RenderResult {
   vtt: string;
   manifest: string;
   data: RenderManifest;
+  /** qa's gate rows over the encoded MP4; empty when no `encoded` check ran. */
+  qaChecks?: Check[];
 }
 
 interface OutPaths {
@@ -144,6 +148,17 @@ async function gateQa(input: RenderInput, qaJson: string, deps: RenderDeps): Pro
   return { qaGate: "passed", qa: { heldErrors: 0, gateProfile: input.qa.gate.sha } };
 }
 
+/** After encode, qa's report on the MP4 goes to `qa.json` and qa's gate rows over it; a failing gate row refuses the render. */
+async function gateEncoded(input: RenderInput, paths: OutPaths): Promise<Check[]> {
+  if (input.qa?.mode !== "gate" || input.qa.encoded === undefined) return [];
+  const report = await input.qa.encoded(input.pageUrl, { mp4: paths.mp4, vtt: paths.vtt });
+  const text = `${JSON.stringify(report, null, 1)}\n`;
+  await writeFile(paths.qa, text);
+  const checks = qaGateChecks(text);
+  if (failedQaGates(checks).length > 0) throw new QaRefused(input.stem, paths.qa, report.errors.length, checks);
+  return checks;
+}
+
 interface Run {
   frames: FramesResult;
   wallS: number;
@@ -178,7 +193,7 @@ async function encodeChecked(input: RenderInput, paths: OutPaths, deps: RenderDe
  * Renders a served timeline page to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json` in
  * `outDir`. The manifest is written last, so a render that failed leaves none behind. Every beat still past its stage
  * box at the type floor throws one `StageOverflow` first; then, with `qa` in gate mode, held errors throw `QaRefused`,
- * both before any mix or frame exists.
+ * both before any mix or frame exists. With an `encoded` check, a qa gate row failing on the MP4 throws `QaRefused` too.
  */
 export async function renderVideo(input: RenderInput, deps: RenderDeps = defaultRenderDeps): Promise<RenderResult> {
   const paths = outPaths(input);
@@ -191,7 +206,8 @@ export async function renderVideo(input: RenderInput, deps: RenderDeps = default
   const frames = await encodeChecked(input, paths, deps);
   const wallS = (deps.now() - started) / 1000;
   await writeFile(paths.vtt, toVtt(input.audio ? captionWords(input.audio.words) : []));
+  const qaChecks = await gateEncoded(input, paths);
   const data = await manifestFor(input, paths, { frames, wallS, qa }, await deps.host());
   await writeFile(paths.manifest, renderManifestJson(data));
-  return { mp4: paths.mp4, vtt: paths.vtt, manifest: paths.manifest, data };
+  return { mp4: paths.mp4, vtt: paths.vtt, manifest: paths.manifest, data, qaChecks };
 }

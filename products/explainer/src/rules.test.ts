@@ -27,7 +27,7 @@ const emittedBy = (profile: string) => runL0(ScriptSchema.parse({ ...scriptWith(
 const emittedCheckIds = new Set([...emittedBy("repo-tour"), ...emittedBy("daily-overview")]);
 
 // TP-4470's script preflight rows, rolled out on daily-overview first.
-const SCRIPT_PREFLIGHT_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19", "Q-D20", "Q-D21"];
+const SCRIPT_PREFLIGHT_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19", "Q-D20", "Q-D21", "Q-D22"];
 
 const rule = (overrides: Partial<Rule> = {}): Rule => ({
   id: "Q-V1",
@@ -84,12 +84,12 @@ describe("L0 rules scoped by structure", () => {
 });
 
 describe("the shipped Q-rule registry", () => {
-  it("holds the 84 rules: 64 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
+  it("holds the 85 rules: 65 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(84);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([64, 13, 7]);
+    expect(registry.rules).toHaveLength(85);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([65, 13, 7]);
     expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15", "Q-V11"]);
   });
 

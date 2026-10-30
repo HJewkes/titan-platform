@@ -13,7 +13,7 @@
     },
     {
       "name": "qa reads no narration for the facts report",
-      "file": "products/explainer/src/qa/qa-stage.ts",
+      "file": "products/explainer/src/qa/qa-core.ts",
       "find": "narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(\" \"))",
       "replace": "narrationFactsReport(probed, () => \"\")",
       "kills": [
