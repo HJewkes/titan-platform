@@ -40,26 +40,6 @@
       "count": 1
     }
   },
-  "packages/agent-protocol/src/lifecycle-terminal.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 5
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/agent-protocol/src/trace/schema.ts": {
     "titan/max-function-lines": {
       "count": 1

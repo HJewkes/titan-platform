@@ -36,7 +36,7 @@ export function validateConversationShape(name: string, conversation: Conversati
 
 export function validateTerminal(terminal: ExecutionTerminal<unknown>): void {
   const outcomes: readonly string[] = TERMINAL_EXECUTION_PHASES;
-  if (!record(terminal) || !outcomes.includes(terminal.outcome as string)) fail("invalid_transition", "terminal.outcome is invalid");
+  if (!record(terminal) || !outcomes.includes(terminal.outcome)) fail("invalid_transition", "terminal.outcome is invalid");
   if (terminal.outcome === "succeeded") {
     if (!("result" in terminal) || terminal.result === undefined) fail("invalid_transition", "succeeded terminal must carry a result");
     return;
