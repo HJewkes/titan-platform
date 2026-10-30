@@ -35,7 +35,7 @@ interface DeployHealthInput {
 /** The deploy block of `/health` and `shepherd status`. */
 export interface DeployHealth {
   runningSha: string;
-  /** Deploys asked for at least `DEPLOY_GRACE_MS` ago and not yet landed, or origin/main's commits past the running build once `status` has read git (`originLag`); the larger wins. */
+  /** Deploys asked for (or held by the pacer) at least `DEPLOY_GRACE_MS` ago and not yet landed, or origin/main's commits past the running build once `status` has read git (`originLag`); the larger wins. */
   behind: number;
   /** Minutes since the oldest ask (or origin/main commit, once git is read) that has not landed; 0 when none is waiting. */
   behindMinutes: number;
@@ -149,6 +149,22 @@ function uncoveredAsks(entries: readonly LogEntry[], askedAt: ReadonlyMap<string
   const covered = (target: string, index: number): boolean =>
     landings.some((landing) => landing.index > index && (landing.target === target || (askedAt.get(landing.target) ?? -1) >= index));
   return entries.flatMap((entry, index) => (entry.kind === "ask" && !covered(entry.target, index) ? [entry] : []));
+}
+
+/** The target the pacer holds in deploy-wanted.json, wanted since `firstAt`. */
+export interface HeldWanted {
+  sha: string;
+  firstAt: string;
+}
+
+/**
+ * A target the pacer holds has asked as surely as a logged start line, though the pacer writes none while it waits;
+ * it joins as an ask at `firstAt`, last in the log so only the running build can cover it. A logged ask of its sha
+ * already counts it.
+ */
+export function withWanted(entries: readonly LogEntry[], wanted: HeldWanted | undefined): LogEntry[] {
+  if (wanted === undefined || entries.some((entry) => entry.kind === "ask" && entry.target === wanted.sha)) return [...entries];
+  return [...entries, { kind: "ask", at: wanted.firstAt, target: wanted.sha }];
 }
 
 /** Targets of asks still waiting once only equal shas count; the caller proves which of them the running build descends from. */
