@@ -54,7 +54,7 @@ describe("workspace layout", () => {
 
   it("scores an archived note hit from hybrid-fts-vector against the label mined from its path", async () => {
     const label = normaliseLabel(path.join(root, "archive/old/sources/notes/2026-01-01-retired.md"), root);
-    const pair: EvalPair = { arm: "spawn", id: "p", query: "q", labels: [label], provenance: {} as EvalPair["provenance"] };
+    const pair: EvalPair = { arm: "spawn", id: "p", query: "q", labels: [label], provenance: {} };
     const candidate = await hybridVector({ activeRoot: root, lexical: noLexical });
 
     const hits = await candidate.search("retired archive wiring", 1, { arm: "spawn" });

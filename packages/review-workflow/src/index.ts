@@ -19,9 +19,13 @@ export type {
   HeadSnapshot,
   ProofRead,
   ProofReaderPort,
+  ProfilesPort,
   ReviewWorkflowPorts,
   SnapshotPort,
 } from "./ports.js";
+export { planForHead, type HeadPlan, type HoldMember, type PlanFacts, type ReviewPlanPolicy } from "./plan-for-head.js";
+export { preflight, type PreflightDecision, type PreflightSnapshot } from "./preflight.js";
+export { preflightRead, type PreflightPorts, type PreflightReadInput } from "./preflight-read.js";
 export { applyHeal, healOnce, type HealEffect, type HealPassResult, type HealPorts, type HealRequest, type HealSubject } from "./heal.js";
 export {
   fixerBrief,
@@ -49,6 +53,31 @@ export {
   type FixerReportRead,
   type FixerReportRefusal,
 } from "./fixer-report.js";
+export { classifyFailure, type AwaitRecord, type ClassifiedFailure, type DispatchRecord } from "./failure.js";
+export {
+  DEFAULT_REVIEW_TIMING,
+  REVIEW_STEP_BODIES,
+  type AggregateStepInput,
+  type AwaitInput,
+  type CorrectInput,
+  type DispatchInput,
+  type ReviewBodyPorts,
+  type ReviewTiming,
+} from "./bodies.js";
+export { reviewHead, type ReviewHeadPolicy, type ReviewHost } from "./recipe.js";
+export {
+  REVIEW_WORKFLOW_NAME,
+  REVIEW_WORKFLOW_VERSION,
+  reviewOutcomeOf,
+  reviewRoutes,
+  reviewRunner,
+  reviewWorkflow,
+  type ReviewRequestInput,
+  type ReviewRunner,
+  type ReviewWorkflow,
+  type ReviewWorkflowOptions,
+} from "./definition.js";
+export { type CorrectRecord, type StepCall } from "./step-schemas.js";
 export {
   DEFAULT_RETRY_POLICY,
   type FixerKey,

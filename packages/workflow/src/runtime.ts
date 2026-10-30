@@ -304,7 +304,7 @@ export class WorkflowRuntime {
         controller.abort(error);
       }
     }, Math.max(1, Math.floor(this.leaseMs / 3)));
-    timer.unref?.();
+    timer.unref();
     return timer;
   }
 

@@ -1,7 +1,7 @@
 import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecord } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
-import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
+import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, recordedOutcome, requireAuthority, type AuthorityGate } from "./authorize.js";
 import { NO_CAPABILITIES, seedBody } from "./capabilities.js";
 import { renderGuarded } from "./guarded-render.js";
 import { briefFields } from "./gate-brief.js";
@@ -63,8 +63,10 @@ export class RunContext implements WorkflowContext {
     return this.iterations[stepId] ?? 0;
   }
 
-  dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
-    const pending = reportingStepFailure(this.deps.emit, this.runId, () => this.dispatchStep(stepId, template, options)) as Promise<StepResult<T>>;
+  // The overload carries the caller's `T`, which the schema has already enforced; the implementation sees the erased type.
+  dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;
+  dispatch(stepId: string, template: string, options: DispatchOptions<unknown> = {}): Promise<StepResult> {
+    const pending = reportingStepFailure(this.deps.emit, this.runId, () => this.dispatchStep(stepId, template, options));
     this.inFlight.add(pending);
     void pending.then(() => this.inFlight.delete(pending), () => this.inFlight.delete(pending));
     return pending;
@@ -172,9 +174,9 @@ export class RunContext implements WorkflowContext {
   }
 
   /** Under `recordCancel` a cancel is the gate's answer; a cancelled run still aborts the wait first. */
-  private async gatePayload(gateId: string, recordCancel: boolean): Promise<Record<string, unknown>> {
+  private async gatePayload(gateId: string, recordCancel: boolean): Promise<Record<string, unknown> | null> {
     try {
-      return (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
+      return (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal }));
     } catch (error) {
       if (!recordCancel || !(error instanceof GateCancelled)) throw error;
       return { signal: GATE_CANCELLED_SIGNAL, reason: error.reason };
@@ -219,7 +221,7 @@ export class RunContext implements WorkflowContext {
   private async authorizeStep(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions): Promise<AuthorizeResult> {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
-    if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
+    if (cached) return authorizeResultOf(stepId, iteration, recordedOutcome(this.bump(stepId, cached).data));
     if (this.replay.unread()) await this.replay.beforeLive("authorize", stepId);
     const gateId = gateIdFor(this.runId, key);
     this.requireResumedGate(stepId, gateId);
@@ -236,7 +238,8 @@ export class RunContext implements WorkflowContext {
     if (this.run.status === "paused") this.run.status = "running";
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: null });
-    return authorizeResultOf(stepId, iteration, this.bump(stepId, result).data as AuthorityOutcome);
+    this.bump(stepId, result);
+    return authorizeResultOf(stepId, iteration, outcome);
   }
 
   private async runWithRetry(

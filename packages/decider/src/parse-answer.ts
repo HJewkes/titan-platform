@@ -27,9 +27,10 @@ function unescape(value: string): string {
 function jsonAnswers(text: string): Map<string, string> | null {
   if (!text.trimStart().startsWith("{")) return null;
   try {
-    const parsed = JSON.parse(text) as { answers?: unknown };
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null || !("answers" in parsed)) return null;
     if (typeof parsed.answers !== "object" || parsed.answers === null) return null;
-    const entries = Object.entries(parsed.answers as Record<string, unknown>);
+    const entries = Object.entries(parsed.answers);
     return new Map(entries.map(([q, a]) => [q, String(a)]));
   } catch {
     return null;

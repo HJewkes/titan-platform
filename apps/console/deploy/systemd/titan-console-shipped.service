@@ -1,0 +1,18 @@
+# Builds the coordinator view's "what shipped" digest for the day window that just closed (TP-1717).
+# Installed by the owner; see the "What shipped digest" section of apps/console/README.md.
+[Unit]
+Description=titan-console shipped digest build
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Only the model call needs a login. Set this to the agents account's Claude config dir (a drop-in is the
+# place for the real value); the placeholder below is not a working path.
+Environment=CLAUDE_CONFIG_DIR=%h/<agents-account-config-dir>
+Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# The day starts at 07:00 local and the timer fires at 07:10, so the window that just closed is yesterday's date.
+# %% escapes the percent sign from systemd; sh then sees date +%F.
+ExecStart=/bin/sh -c 'exec titan-console shipped build --date "$(date -d yesterday +%%F)"'
+TimeoutStartSec=30min
+Nice=10
+UMask=0077

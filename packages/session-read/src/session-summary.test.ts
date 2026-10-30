@@ -21,8 +21,8 @@ function delta(id: string, input: number): Extract<UsageMeasurement, { kind: "de
   return { kind: "delta", responseId: id, model: "model", source: "native", cost: null,
     tokens: { input, output: 2, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: input + 2 } };
 }
-function snapshot(sequence: number, input: number, epoch = "epoch"): UsageMeasurement {
-  return { ...delta("ignored", input), kind: "snapshot", scope: "conversation", scopeId: "thread", epoch, sequence };
+function snapshot(sequence: number, input: number, epoch = "epoch", scope: "conversation" | "turn" = "conversation", scopeId = "thread"): UsageMeasurement {
+  return { ...delta("ignored", input), kind: "snapshot", scope, scopeId, epoch, sequence };
 }
 
 describe("storage-free usage folding", () => {
@@ -112,7 +112,7 @@ it("summarizes both formats from temporary sources without graph storage", async
 it("chooses snapshot scope independently after a reset epoch", () => {
   const usage = new SessionUsageAccumulator();
   usage.add(snapshot(2, 20));
-  usage.add({ ...snapshot(1, 5, "reset"), scope: "turn", scopeId: "second-turn" } as UsageMeasurement);
+  usage.add(snapshot(1, 5, "reset", "turn", "second-turn"));
   expect(usage.summaries().reduce((total, group) => total + (group.inputTokens ?? 0), 0)).toBe(25);
 });
 

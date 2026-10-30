@@ -160,6 +160,7 @@ graph TD
   reviewWorkflow --> fixProof
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
+  reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
@@ -258,6 +259,7 @@ graph TD
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
+  factory --> reviewWorkflow
   factory --> rpcClient
   factory --> sessionAnalytics
   factory --> sessionRead
@@ -296,6 +298,7 @@ graph TD
   codewatch --> reactApp
   codewatch --> rpcClient
   codewatch --> rpcProtocol
+  console --> agent
   console --> agentDispatch
   console --> appPaths
   console --> chatProtocol

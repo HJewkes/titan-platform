@@ -1,5 +1,6 @@
 import type { BlueBubblesConfig } from "./bluebubbles.js";
 import { apiUrl } from "./bluebubbles.js";
+import { isRecord } from "./record.js";
 import { isAbortError } from "./send-failure.js";
 
 const INFO_PATH = "/api/v1/server/info";
@@ -51,8 +52,8 @@ export async function fetchWithTimeout(
 }
 
 function readInfo(body: unknown): Liveness {
-  const data = (body as { data?: Record<string, unknown> } | null)?.data;
-  if (!data || typeof data !== "object") {
+  const data = isRecord(body) ? body.data : undefined;
+  if (!isRecord(data)) {
     return { state: "dark", reason: "bad-response" };
   }
   const version = data.server_version;

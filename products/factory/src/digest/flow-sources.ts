@@ -19,15 +19,27 @@ export function activeWorkTaskDates(options: { origin: string; fetch?: typeof fe
   };
 }
 
-const RosterRow = z.object({ profile: z.string(), presence: z.string(), spawnedAt: z.string(), exitedAt: z.string().optional() });
+const RosterRow = z.object({ name: z.string(), spawnedBy: z.string().nullish(), profile: z.string(), presence: z.string(), spawnedAt: z.string(), exitedAt: z.string().optional() });
 
-/** `agent-chat agent ls --json`. The broker prints no end time yet; a non-live row without `exitedAt` is passed on unmeasured. */
+/**
+ * `agent-chat agent ls --json --include-retired`: the broker leaves retired rows out unless asked, and retired
+ * implementers and spawners are most of a day's merged runs. A non-live row without `exitedAt` is passed on unmeasured.
+ */
 export function agentChatSpans(exec: Exec, bin: string): FlowPorts["roster"] {
   return async () => {
-    const result = await exec(bin, ["agent", "ls", "--json"], AGENT_CHAT_TIMEOUT_MS);
+    const result = await exec(bin, ["agent", "ls", "--json", "--include-retired"], AGENT_CHAT_TIMEOUT_MS);
     if (result.code !== 0) throw new Error(`exit ${result.code}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
     const rows = z.array(RosterRow).safeParse(JSON.parse(result.stdout));
     if (!rows.success) throw new Error(`unexpected JSON: ${rows.error.issues[0]?.message ?? "invalid"}`);
-    return rows.data.map((row): AgentSpan => ({ profile: row.profile, startedAt: row.spawnedAt, live: row.presence === "live", ...(row.exitedAt !== undefined && { endedAt: row.exitedAt }) }));
+    return rows.data.map(
+      (row): AgentSpan => ({
+        name: row.name,
+        profile: row.profile,
+        startedAt: row.spawnedAt,
+        live: row.presence === "live",
+        ...(row.spawnedBy != null && { spawnedBy: row.spawnedBy }),
+        ...(row.exitedAt !== undefined && { endedAt: row.exitedAt }),
+      }),
+    );
   };
 }
