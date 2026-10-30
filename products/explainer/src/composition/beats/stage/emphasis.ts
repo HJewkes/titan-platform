@@ -41,8 +41,9 @@ export function litBox(lit: number, { base = "transparent", bleedPx = 0 }: LitBo
   if (lit <= 0) return {};
   const tint = mix(base, "var(--color-brand-primary)", lit * LIT_TINT);
   const ring = mix("transparent", "var(--color-brand-primary)", lit);
-  const boxShadow = bleedPx > 0 ? `0 0 0 ${bleedPx}px ${tint}, 0 0 0 ${bleedPx + LIT_RING_PX}px ${ring}` : `inset 0 0 0 ${LIT_RING_PX}px ${ring}`;
-  return { background: tint, boxShadow, borderRadius: bleedPx > 0 ? `calc(var(--beat-radius) + ${bleedPx}px)` : "var(--beat-radius)" };
+  if (bleedPx === 0) return { background: tint, boxShadow: `inset 0 0 0 ${LIT_RING_PX}px ${ring}`, borderRadius: "var(--beat-radius)" };
+  // An outline, not a second shadow: under the translucent tint a wider shadow would show through as a thick band.
+  return { background: tint, boxShadow: `0 0 0 ${bleedPx}px ${tint}`, outline: `${LIT_RING_PX}px solid ${ring}`, outlineOffset: bleedPx, borderRadius: "var(--beat-radius)" };
 }
 
 const unlit: Lit = () => 0;
