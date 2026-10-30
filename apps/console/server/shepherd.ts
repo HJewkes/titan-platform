@@ -78,10 +78,12 @@ const opPreview = z
       .object({
         name: z.string(),
         holder: z
-          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable() })
+          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable(), exitedAt: z.string().nullable().optional() })
           .passthrough()
           .optional(),
         exited: z.boolean(),
+        /** Why a forced retire is refused now, or null once the exit is past agent-chat's grace; absent from an older factory. */
+        forceStop: z.string().nullable().optional(),
         liveRun: z.string().nullable(),
       })
       .passthrough()

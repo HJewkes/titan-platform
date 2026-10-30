@@ -120,16 +120,39 @@ function readHeldSkipped(health: Record<string, unknown> | null): BusyRun[] {
   return Array.isArray(health?.heldSkipped) ? (health.heldSkipped as BusyRun[]) : [];
 }
 
-export function describeBusy(busy: readonly BusyRun[], held: readonly BusyRun[] = []): string {
+export function describeBusy(busy: readonly BusyRun[], held: readonly BusyRun[] = [], admitted: readonly BusyRun[] = []): string {
   const lines = busy.map((run) => `  ${run.runId} ${run.step} (${run.phase})\n`);
-  return [...lines, ...held.map((run) => `  ${run.runId} ${run.step} (held, not waited for)\n`)].join("");
+  const skipped = [...held.map((run) => `  ${run.runId} ${run.step} (held, not waited for)\n`), ...admitted.map((run) => `  ${run.runId} ${run.step} (busy since the drain began, not waited for)\n`)];
+  return [...lines, ...skipped].join("");
 }
 
-/** Poll `/health` until no run is busy or the deadline passes; only a busy park-routed step refuses, and `force` overrides it. A poll with no answer is unknown, not idle. */
+/** One answered poll as the drain reads it; `health` is the raw answer, so the watch window still counts every run the restart interrupts. */
+interface PollView {
+  health: Record<string, unknown> | null;
+  busy: BusyRun[];
+  held: BusyRun[];
+  admitted: BusyRun[];
+}
+
+/**
+ * Serve keeps admitting review and merge steps while the drain waits, so waiting on every busy run let one deploy run 17 minutes (TP-4607); only runs busy at the
+ * first answer hold the restart. A park-routed step still holds it whenever it is busy, since a restart leaves its run recovery_required.
+ */
+function viewOf(health: Record<string, unknown> | null, waitedOn: ReadonlySet<string>): PollView {
+  const holds = (run: BusyRun): boolean => run.phase === "park" || waitedOn.has(run.runId);
+  const all = readBusy(health);
+  return { health, busy: all.filter(holds), held: readHeldSkipped(health), admitted: all.filter((run) => !holds(run)) };
+}
+
+/**
+ * Poll `/health` until no run busy at the first answer is still busy, or the deadline passes; only a busy park-routed step refuses, and `force` overrides it.
+ * A poll with no answer is unknown, not idle.
+ */
 export async function drainForRestart(ports: DrainPorts, report: (text: string) => void, options: DrainOptions): Promise<DrainOutcome> {
   const deadline = ports.now() + options.timeoutMs;
   const reporter = everyMinute(ports, report);
   let silentSince: number | null = null;
+  let waitedOn: ReadonlySet<string> | undefined;
   for (;;) {
     const health = await ports.health(options.port);
     if (health === null && options.wait) {
@@ -138,9 +161,11 @@ export async function drainForRestart(ports: DrainPorts, report: (text: string) 
       reporter("serve did not answer /health; still draining");
     } else {
       silentSince = null;
-      const outcome = answered(health, ports.now() >= deadline, options, report);
+      waitedOn ??= new Set(readBusy(health).map((run) => run.runId));
+      const view = viewOf(health, waitedOn);
+      const outcome = answered(view, ports.now() >= deadline, options, report);
       if (outcome) return outcome;
-      reporter(`waiting for ${readBusy(health).length} busy run(s) before restarting:\n${describeBusy(readBusy(health), readHeldSkipped(health))}`);
+      reporter(`waiting for ${view.busy.length} busy run(s) before restarting:\n${describeBusy(view.busy, view.held, view.admitted)}`);
     }
     await ports.sleep(DRAIN_POLL_MS);
   }
@@ -167,23 +192,21 @@ function silentLongEnough(ports: DrainPorts, silentSince: number, deadline: numb
 }
 
 /** The outcome for an answered poll, or for any poll when not waiting; undefined keeps draining. */
-function answered(health: Record<string, unknown> | null, pastDeadline: boolean, options: DrainOptions, report: (text: string) => void): DrainOutcome | undefined {
-  const busy = readBusy(health);
-  const held = readHeldSkipped(health);
-  if (busy.length === 0) {
-    if (held.length > 0) report(`restarting without waiting for ${held.length} held run(s):\n${describeBusy([], held)}`);
-    return { proceed: true, atRestart: health };
+function answered(view: PollView, pastDeadline: boolean, options: DrainOptions, report: (text: string) => void): DrainOutcome | undefined {
+  if (view.busy.length === 0) {
+    const skipped = view.held.length + view.admitted.length;
+    if (skipped > 0) report(`restarting without waiting for ${skipped} held or newly busy run(s):\n${describeBusy([], view.held, view.admitted)}`);
+    return { proceed: true, atRestart: view.health };
   }
-  return !options.wait || pastDeadline ? atDeadline(health, options, report) : undefined;
+  return !options.wait || pastDeadline ? atDeadline(view, options, report) : undefined;
 }
 
-function atDeadline(health: Record<string, unknown> | null, options: DrainOptions, report: (text: string) => void): DrainOutcome {
-  const busy = readBusy(health);
-  const parked = busy.filter((run) => run.phase === "park");
+function atDeadline(view: PollView, options: DrainOptions, report: (text: string) => void): DrainOutcome {
+  const parked = view.busy.filter((run) => run.phase === "park");
   const stopped = options.wait ? "the drain timed out" : "--no-drain skipped the wait";
   if (parked.length > 0 && !options.force) {
     return { proceed: false, why: `${stopped} with a park-routed step busy; a restart now leaves its run recovery_required. Wait, or rerun with --force:\n${describeBusy(parked)}` };
   }
-  report(`${stopped}; restarting with ${busy.length} busy run(s):\n${describeBusy(busy)}`);
-  return { proceed: true, atRestart: health };
+  report(`${stopped}; restarting with ${view.busy.length} busy run(s):\n${describeBusy(view.busy, view.held, view.admitted)}`);
+  return { proceed: true, atRestart: view.health };
 }

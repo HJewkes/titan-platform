@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a forced retire reads back whatever the factory's grace check says",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": "op.force && typeof readBack !== \"string\" && forceStop !== null ? forceStop : readBack",
+      "replace": "readBack",
+      "kills": [
+        "the agent page's forced retire an agent exited inside the grace offers no force retire",
+        "the agent page's forced retire a roster row without exitedAt offers no force"
+      ]
+    },
+    {
+      "name": "an older factory's missing forceStop reads as the grace having passed",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": "reported === undefined ? NO_FORCE_STOP : reported",
+      "replace": "reported ?? null",
+      "kills": [
+        "the agent page's forced retire an older factory whose preview reports no grace offers no force"
+      ]
+    },
+    {
+      "name": "the page's forced target posts a plain retire",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "agentId: entry.agentId, force: force === true }",
+      "replace": "agentId: entry.agentId, force: false }",
+      "kills": [
+        "the agent page's forced retire an agent exited past the grace offers force retire and the factory accepts it"
+      ]
+    },
+    {
+      "name": "the read-back drops the exit time, so a moved exit still confirms",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": "exitedAt: holder.exitedAt ?? null,",
+      "replace": "exitedAt: null,",
+      "kills": [
+        "the agent page's forced retire an agent exited past the grace offers force retire and the factory accepts it",
+        "the agent page's forced retire refuses CHANGED when the exit time moved between the forced prepare and act, and posts nothing"
+      ]
+    },
+    {
+      "name": "a plain prepare always offers force",
+      "file": "apps/console/server/retire-tap.ts",
+      "find": "target: tapTarget, readBack, forceStop, readAt",
+      "replace": "target: tapTarget, readBack, forceStop: null, readAt",
+      "kills": [
+        "the agent page's forced retire an agent exited inside the grace offers no force retire"
+      ]
+    }
+  ]
+}

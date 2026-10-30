@@ -166,12 +166,14 @@ function staticRuns(input: TimingInput): { from: number; frames: number }[] {
 
 /**
  * A beat's settled picture, from its last reveal (its cut, when it reveals nothing) to its end, and its speech, from its
- * first word's start to its last's. qa cannot see what a custom layer draws, so it never settles; an unvoiced beat has no speech.
+ * first word's start to its last's. qa cannot see what a custom layer draws, so its last cue stands for its last reveal
+ * (owner decision vc-6, TP-4611); an unvoiced beat has no speech.
  */
 function settledSpeech(input: TimingInput, beat: QaBeat): SettledSpeech | undefined {
   const starts = (input.words.get(beat.id)?.words ?? []).map((word) => beat.startS + word.startS);
-  if (beat.layer === "custom" || starts.length === 0) return undefined;
-  const settled = { fromS: beat.startS + Math.max(0, ...(beat.reveals ?? [])), toS: beat.startS + beat.durationS };
+  if (starts.length === 0) return undefined;
+  const reveals = beat.layer === "custom" ? beat.cues.map((cue) => cue.atS) : (beat.reveals ?? []);
+  const settled = { fromS: beat.startS + Math.max(0, ...reveals), toS: beat.startS + beat.durationS };
   return { settled, speech: { fromS: Math.min(...starts), toS: Math.max(...starts) } };
 }
 

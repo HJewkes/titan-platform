@@ -28,7 +28,7 @@ const probedAt = (t: number, texts: ProbedMoment["texts"]): ProbedMoment => ({ b
 
 describe("qa's timing gates on a custom layer", () => {
   // catches: a build check that never runs static-window, so a layer still after its last cue reaches qa (TP-4611)
-  it("names a 3.5 s still stretch after the last cue and tells the rebuild to change the picture inside it", () => {
+  it("names a 3.4 s silent stretch after the last cue and tells the rebuild to change the picture inside it", () => {
     // Arrange
     const still = input({ timeline: { beats: [layerBeat(16, [2, 6, 10, 12.5])] }, diffs: diffsWith(16, [2, 4, 6, 8, 10, 12.5]) });
 
@@ -51,21 +51,31 @@ describe("qa's timing gates on a custom layer", () => {
     expect(rows).toEqual([]);
   });
 
-  // catches: a settled-speech excusal the build check grants and qa does not, so the check passes what qa then fails
-  it("gives a finished layer under speech no settled allowance, as qa does not", () => {
+  // catches: a build check that holds a layer stricter than qa, so a frame qa excuses costs a rebuild (vc-6)
+  it("excuses a still stretch after the last cue under speech, as qa does", () => {
     // Arrange
     const spoken = new Map([[BEAT, { durationS: 16, words: [{ word: "Parcels", startS: 0.4 }, { word: "wait", startS: 14 }] }]]);
-    const drawn: QaBeat = { id: BEAT, startS: 0, durationS: 16, cues: layerBeat(16, [2, 6, 9, 12]).cues };
     const still = input({ timeline: { beats: [layerBeat(16, [2, 6, 9, 12])] }, words: spoken, diffs: diffsWith(16, [2, 4, 6, 8, 9, 12]) });
-    const template = { ...still, timeline: { beats: [drawn] } };
 
     // Act
     const rows = layerTimingRows(BEAT, still);
 
     // Assert
-    expect(staticWindow(still).pass).toBe(false);
-    expect(staticWindow(template).pass).toBe(true);
-    expect(rows.map((row) => row.rule)).toEqual(["static-window"]);
+    expect(staticWindow(still).pass).toBe(true);
+    expect(rows).toEqual([]);
+  });
+
+  // catches: a settled allowance that also reaches a layer still waiting on a cue
+  it("refuses a 4 s still stretch before the last cue even under speech", () => {
+    // Arrange
+    const spoken = new Map([[BEAT, { durationS: 16, words: [{ word: "Parcels", startS: 0.4 }, { word: "wait", startS: 15 }] }]]);
+    const waiting = input({ timeline: { beats: [layerBeat(16, [2, 4, 7, 10, 14])] }, words: spoken, diffs: diffsWith(16, [2, 4, 7, 10, 14]) });
+
+    // Act
+    const rows = layerTimingRows(BEAT, waiting);
+
+    // Assert
+    expect(rows.map(({ rule, atS }) => [rule, atS])).toEqual([["static-window", 10.1]]);
   });
 
   it("excuses a declared held beat, as qa does", () => {
