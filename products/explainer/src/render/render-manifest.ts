@@ -31,7 +31,11 @@ export const RenderManifestSchema = z.strictObject({
   renderWallS: z.number().nonnegative(),
   /** True when no narration was given: the video is a silent draft and the page shows the DRAFT stamp. */
   draft: z.boolean(),
-  /** `absent` when the caller asked for no gate, so nothing may read the manifest as QA-passed; `skipped` for `--no-qa`. */
+  /**
+   * `passed` when the pre-capture gate held no errors and, when the caller ran qa after encode (the render stage does),
+   * every qa gate row passed on the MP4; `absent` when the caller asked for no gate, so nothing may read the manifest as
+   * QA-passed; `skipped` for `--no-qa`.
+   */
   qaGate: z.enum(["absent", "passed", "skipped"]),
   /** Set only when the gate passed: the held errors it counted and the gate profile's sha. */
   qa: z.strictObject({ heldErrors: z.literal(0), gateProfile: Sha }).optional(),

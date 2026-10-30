@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "render's pre-capture gate samples the cue moments only",
+      "file": "products/explainer/src/render/qa-gate.ts",
+      "find": ", { lead: leadLines(timeline), sweep: true }",
+      "replace": ", { lead: leadLines(timeline) }",
+      "kills": [
+        "an off-frame card seen only on sweep samples between cue moments is refused by render"
+      ]
+    },
+    {
+      "name": "render keeps an MP4 whose qa gate rows fail after encode",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "if (failedQaGates(checks).length > 0) throw",
+      "replace": "if (failedQaGates(checks).length < 0) throw",
+      "kills": [
+        "refuses an MP4 that fails a qa gate row the page-only gate cannot see, naming the row",
+        "render's kept qa.json equals the qa stage's on the same inputs"
+      ]
+    },
+    {
+      "name": "render's after-encode qa samples the cue moments only",
+      "file": "products/explainer/src/render/render-stage.ts",
+      "find": "({ ...gate, sweep: true,",
+      "replace": "({ ...gate, sweep: false,",
+      "kills": [
+        "render's kept qa.json equals the qa stage's on the same inputs"
+      ]
+    },
+    {
+      "name": "render reports none of the qa gate rows it evaluated",
+      "file": "products/explainer/src/render/render-stage.ts",
+      "find": "const checks = [...(result.qaChecks ?? []).map(qaCheck), ...twoRun];",
+      "replace": "const checks = [...twoRun];",
+      "kills": [
+        "render evaluates every qa gate row"
+      ]
+    }
+  ]
+}
