@@ -4,7 +4,7 @@
     {
       "name": "a spawn-gate deferral fails the step at once",
       "file": "products/factory/src/agent-chat-implementer.ts",
-      "find": "      if (!(error instanceof SpawnDeferred)) throw error;\n",
+      "find": "      if (!(error instanceof SpawnDeferred) && accountLimitRefusal(error) === undefined) throw error;\n",
       "replace": "      throw error;\n",
       "kills": [
         "the agent-chat implementer runner waits out a spawn-gate deferral with a doubling, capped wait, then spawns and reads the report written after admission",
