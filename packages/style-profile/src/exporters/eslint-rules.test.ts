@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ESLint, type Linter } from "eslint";
+import { partialFake } from "@titan-design/test-kit";
 import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import {
@@ -37,13 +38,15 @@ function naming(convention: StyleRule["convention"], confidence = 0.9): StyleRul
 }
 
 async function lintWithRule(rule: [string, unknown], code: string): Promise<ESLint.LintResult> {
+  const rules: Linter.RulesRecord = {};
+  Reflect.set(rules, rule[0], rule[1]);
   const eslint = new ESLint({
     overrideConfigFile: true,
     overrideConfig: [{
       files: ["**/*.ts"],
       languageOptions: { parser: tsParser },
-      plugins: { "@typescript-eslint": tsPlugin as unknown as ESLint.Plugin },
-      rules: { [rule[0]]: rule[1] } as Linter.RulesRecord,
+      plugins: { "@typescript-eslint": Object.assign(partialFake<ESLint.Plugin>(), tsPlugin) },
+      rules,
     }],
   });
   const [result] = await eslint.lintText(code, { filePath: "fixture.ts" });
@@ -187,7 +190,7 @@ describe("ESLint rule builders at the info tier", () => {
 
     expect(rules).toHaveLength(5);
     for (const [, config] of rules) {
-      expect((config as unknown[])[0]).toBe("warn");
+      expect(Array.isArray(config) ? config[0] : undefined).toBe("warn");
     }
   });
 });

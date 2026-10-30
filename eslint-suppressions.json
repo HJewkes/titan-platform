@@ -501,11 +501,6 @@
       "count": 1
     }
   },
-  "packages/style-profile/src/exporters/eslint-rules.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/throughput/src/backtest-sets.ts": {
     "titan/max-line-length": {
       "count": 1

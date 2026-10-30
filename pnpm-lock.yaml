@@ -997,6 +997,9 @@ importers:
         specifier: ^4.7.8
         version: 4.7.9
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.46.0
         version: 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
