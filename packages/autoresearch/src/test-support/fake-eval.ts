@@ -17,7 +17,10 @@ type FilePolicy = Policy & {
   usd?: { eval?: number; micro?: number };
 };
 
-const readPolicy = (policyPath: string) => JSON.parse(readFileSync(policyPath, "utf8")) as FilePolicy;
+const readPolicy = (policyPath: string): FilePolicy => {
+  const parsed: unknown = JSON.parse(readFileSync(policyPath, "utf8"));
+  return parsed as FilePolicy;
+};
 
 /** The tree's applied/ dir has one marker file per mechanism; an older fixture's applied.txt lists them one per line. */
 function appliedIn(tree: string): string[] {
