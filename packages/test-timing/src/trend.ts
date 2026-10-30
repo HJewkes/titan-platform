@@ -34,13 +34,14 @@ const minMs = (points: Point[]) => Math.min(...points.map((point) => point.ms));
 
 /** Min-of-last-N against the min of the trailing window before it, whatever the size; null when too short. */
 export function trendOf(points: Point[], rule: GrowthRule = GROWTH_RULE): Growth | null {
-  if (points.length < rule.recent + rule.minBaseline) return null;
   const recent = points.slice(-rule.recent);
+  const since = recent[0];
+  if (since === undefined || points.length < rule.recent + rule.minBaseline) return null;
   const trailing = points.slice(0, -rule.recent).slice(-rule.baseline);
   const baselineMs = minMs(trailing);
   const currentMs = minMs(recent);
   const ratio = baselineMs > 0 ? currentMs / baselineMs - 1 : Number.POSITIVE_INFINITY;
-  return { baselineMs, currentMs, deltaMs: currentMs - baselineMs, ratio, since: recent[0] as Point };
+  return { baselineMs, currentMs, deltaMs: currentMs - baselineMs, ratio, since };
 }
 
 /** The trend, only when it rose by at least the threshold and the floor. */
