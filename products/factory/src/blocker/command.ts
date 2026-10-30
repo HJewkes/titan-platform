@@ -72,9 +72,7 @@ async function listAction(verbs: Verbs, opts: ListOpts, now: number): Promise<vo
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
-/** `titan-factory blocker`: any seat raises a hard blocker on the owner inbox, and clears it when it moves. */
-export function registerBlocker(program: Command, verbs: Verbs): void {
-  const blocker = program.command("blocker").description("raise, clear and list hard blockers on the owner inbox spool");
+function registerRaise(blocker: Command, verbs: Verbs): void {
   blocker
     .command("raise")
     .description("file a blocker deposit; a repeat of an open slug keeps its first since")
@@ -91,6 +89,12 @@ export function registerBlocker(program: Command, verbs: Verbs): void {
     .option("--expires <iso>", "when the blocker lapses (default never)")
     .option("--json", "print the result as JSON")
     .action((opts: RaiseOpts) => raiseAction(verbs, opts, Date.now()));
+}
+
+/** `titan-factory blocker`: any seat raises a hard blocker on the owner inbox, and clears it when it moves. */
+export function registerBlocker(program: Command, verbs: Verbs): void {
+  const blocker = program.command("blocker").description("raise, clear and list hard blockers on the owner inbox spool");
+  registerRaise(blocker, verbs);
   blocker
     .command("clear")
     .description("withdraw an open blocker, logging the actor beside the asker")

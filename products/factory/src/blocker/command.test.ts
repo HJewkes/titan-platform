@@ -1,10 +1,12 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCli, type CliIo } from "../cli.js";
 
 const SEAT = "seat-a";
+/** The spool checks blocker.since against each file mtime, so the pinned clock stays at the real start time. */
+const NOW = Date.now();
 
 function harness() {
   const inbox = mkdtempSync(join(tmpdir(), "blocker-inbox-"));
@@ -21,9 +23,11 @@ function harness() {
 }
 
 describe("titan-factory blocker", () => {
+  beforeEach(() => void vi.useFakeTimers({ toFake: ["Date"], now: NOW }));
+  afterEach(() => void vi.useRealTimers());
+
   it("raise files a blocker deposit with since and blocks", async () => {
     const { inbox, raise, deposits } = harness();
-    const before = Date.now();
 
     const first = await raise("ci-red", "--since", "6h");
     const again = await raise("ci-red");
@@ -33,10 +37,7 @@ describe("titan-factory blocker", () => {
     expect(deposits()).toHaveLength(1);
     const filed = JSON.parse(readFileSync(join(inbox, deposits()[0]!), "utf8"));
     expect(filed).toMatchObject({ asker: SEAT, kind: "do", keys: expect.arrayContaining(["blocker", `alarm:blocker:${SEAT}:ci-red`]) });
-    expect(filed.blocker.blocks).toBe("lane ci-red");
-    const sinceAgoHours = (before - Date.parse(filed.blocker.since)) / 3_600_000;
-    expect(sinceAgoHours).toBeGreaterThan(5.99);
-    expect(sinceAgoHours).toBeLessThan(6.01);
+    expect(filed.blocker).toEqual({ since: new Date(NOW - 6 * 3_600_000).toISOString(), blocks: "lane ci-red" });
   });
 
   it("a sixth open raise by one asker is refused by the cap", async () => {
