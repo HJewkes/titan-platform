@@ -154,7 +154,12 @@ export default defineConfig({
         extends: true,
         test: {
           name: "repo",
-          pool: "threads",
+          // Node forks the whole parent to start a child, so a spawn costs about 40 ms per GB of the spawner's RSS.
+          // Thread workers share the vitest process, which still holds 1-3 GB after the isolate:false projects that
+          // sort ahead of this one; these files spawn git thousands of times, and ran 3x slower there (TP-4521).
+          // Their own forks start from a small heap.
+          pool: "forks",
+          execArgv: forksHeap,
           include: REPO_TIER_INCLUDE,
         },
       },
