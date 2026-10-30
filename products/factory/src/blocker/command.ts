@@ -6,6 +6,7 @@ import type { Command } from "commander";
 import type { Verbs } from "../cli.js";
 import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { parseSinceOption } from "../digest/command.js";
+import { configuredInboxLink } from "./link.js";
 import { blockerDeposit, blockerItemId, blockerKey, MAX_OPEN_PER_ASKER, openBlockers, openDeposits, type BlockerRaise } from "./deposit.js";
 
 type RaiseOpts = Omit<BlockerRaise, "asker" | "since" | "keys" | "expiresAt"> & { as: string; since?: number; key: string[]; expires?: string; json?: boolean };
@@ -38,14 +39,21 @@ async function raiseAction(verbs: Verbs, opts: RaiseOpts, now: number): Promise<
   }
   const id = blockerItemId(opts.as, opts.slug);
   const open = await openDeposits(dir);
-  if (open.some((item) => item.id === id)) return report(verbs, opts.json, { id, outcome: "already-raised" }, `already raised ${id}`);
+  if (open.some((item) => item.id === id)) return reportRaise(verbs, opts.json, id, "already-raised");
   const mine = open.filter((item) => item.asker === opts.as).map((item) => item.id);
   if (mine.length >= MAX_OPEN_PER_ASKER) {
     return refuse(verbs, `${opts.as} already has ${MAX_OPEN_PER_ASKER} open deposits; clear or withdraw one first: ${mine.join(" ")}`);
   }
   const { created } = await writeDeposit(dir, deposit);
   if (!created) return refuse(verbs, `blocker ${opts.slug} was already cleared or answered; raise it under a new slug`);
-  report(verbs, opts.json, { id, outcome: "raised" }, `raised ${id}`);
+  await reportRaise(verbs, opts.json, id, "raised");
+}
+
+/** The id, then the console link when the console can name one, so a seat can paste it to the owner. */
+async function reportRaise(verbs: Verbs, json: boolean | undefined, id: string, outcome: "raised" | "already-raised"): Promise<void> {
+  const link = await (verbs.deps.inboxLink ?? configuredInboxLink)(verbs.io.env, id);
+  const line = `${outcome === "raised" ? "raised" : "already raised"} ${id}${link === undefined ? "" : ` ${link}`}`;
+  report(verbs, json, { id, outcome, ...(link !== undefined && { link }) }, line);
 }
 
 /** Withdraws through the spool's audit path, so `withdrawals.jsonl` names the seat that cleared it beside the asker. */
