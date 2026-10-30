@@ -27,6 +27,18 @@ describe("readPacePools", () => {
     ]);
   });
 
+  it("keeps a pool the watchdog wrote with no reading, showing it with no numbers", () => {
+    const pools = {
+      "pool-a": { sevenDay: 41, fiveHour: 9, stale: false },
+      "pool-new": { sevenDay: null, fiveHour: null, stale: true, level: "no_reading" },
+    };
+
+    expect(readPacePools(paceFile(JSON.stringify({ at: 0, pools })))).toEqual([
+      { pool: "pool-a", sevenDay: 41, fiveHour: 9, stale: false },
+      { pool: "pool-new", stale: true },
+    ]);
+  });
+
   it("throws on a file with no pools, so the digest shows a gap rather than an empty section", () => {
     expect(() => readPacePools(paceFile(JSON.stringify({ at: 0 })))).toThrow(/unexpected pace.json/);
   });
