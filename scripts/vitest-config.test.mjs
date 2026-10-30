@@ -72,6 +72,15 @@ it("keeps every file that mocks a module or stubs HOME out of the isolate:false 
   for (const file of isolating) expect(projectsRunning(file).filter((name) => SHARED_GRAPH_PROJECTS.includes(name)), file).toEqual([]);
 });
 
+// As threads these graphs held the shared vitest process at 3 GB, and Node forks all of it for every git child another
+// thread worker spawned: the spawn-heavy files ran up to 2x slower (TP-4526).
+it("runs the isolate:false projects in their own capped forks, not in the shared vitest process", () => {
+  for (const name of SHARED_GRAPH_PROJECTS) {
+    const project = config.test.projects.find((candidate) => candidate.test.name === name);
+    expect(project?.test, name).toMatchObject({ pool: "forks", isolate: false, execArgv: [expect.stringMatching(/^--max-old-space-size=/)] });
+  }
+});
+
 function projectsRunning(file) {
   const matchesAny = (globs) => (globs ?? []).some((glob) => matchesGlob(file, glob));
   return config.test.projects

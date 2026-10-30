@@ -36,7 +36,9 @@ const activeWorkNeedsProcess = [
 // With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
 // worker instead of once per file. In the probes collect fell over 80% for factory and explainer and 25-45% for console
 // (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
-// product's file imported unmocked.
+// product's file imported unmocked. They run in forks: Node forks the whole spawner to start a child, about 40 ms per
+// GB of its RSS, and as threads these graphs held the shared vitest process at 3 GB while other files spawned git
+// from it (TP-4526).
 const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
 const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
 const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
@@ -132,15 +134,15 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: "factory", pool: "threads", isolate: false, include: factoryTests, exclude: notShared },
+        test: { name: "factory", pool: "forks", execArgv: forksHeap, isolate: false, include: factoryTests, exclude: notShared },
       },
       {
         extends: true,
-        test: { name: "explainer", pool: "threads", isolate: false, include: explainerTests, exclude: notShared },
+        test: { name: "explainer", pool: "forks", execArgv: forksHeap, isolate: false, include: explainerTests, exclude: notShared },
       },
       {
         extends: true,
-        test: { name: "console", pool: "threads", isolate: false, include: consoleTests, exclude: notShared },
+        test: { name: "console", pool: "forks", execArgv: forksHeap, isolate: false, include: consoleTests, exclude: notShared },
       },
       {
         extends: true,
