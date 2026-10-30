@@ -52,10 +52,10 @@ function buildPatternsContext(profile: Profile) {
     examples: rule.examples,
   }));
 
-  const preferredPatterns = profile.structure?.preferredPatterns;
+  const preferredPatterns = profile.structure.preferredPatterns;
   let preferredList: string[] | undefined;
   if (preferredPatterns && Array.isArray(preferredPatterns.convention)) {
-    preferredList = preferredPatterns.convention as string[];
+    preferredList = preferredPatterns.convention;
   }
 
   return { patterns: patternRules, preferredPatterns: preferredList };
