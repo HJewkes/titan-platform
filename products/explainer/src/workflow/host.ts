@@ -145,8 +145,10 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
   const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
-  const gather = request.gather ?? (base ? planOf(base).gather : undefined);
-  const profile = request.profile ?? request.gather?.type;
+  const basePlan = base ? planOf(base) : undefined;
+  const gather = request.gather ?? basePlan?.gather;
+  // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
+  const profile = request.profile ?? request.gather?.type ?? basePlan?.profile;
   const settings = {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
