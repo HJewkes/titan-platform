@@ -69,7 +69,7 @@ export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string):
     isAncestor: cachedAncestry(gitAncestry(checkout)),
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
     originBehind: fetchingGitBehind(checkout),
-    deployQueued: () => readWanted(stateDir, nodeWantedStore) !== undefined,
+    deployWanted: () => readWanted(stateDir, nodeWantedStore),
     ...(notify && { notify }),
     escalate: async (deposit: OwnerItemDeposit) => void (await writeDeposit(inbox, deposit)),
     ...(shepherd.deployAlarm && { policy: shepherd.deployAlarm }),
