@@ -2,8 +2,12 @@ import type { SpanField } from "./events.js";
 
 export type Json = Record<string, unknown>;
 
+function isJson(value: unknown): value is Json {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function asObject(value: unknown): Json | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Json) : null;
+  return isJson(value) ? value : null;
 }
 
 export function str(source: Json | null, key: string): string | null {
@@ -59,10 +63,14 @@ export function stringLeaves(value: unknown, out: string[], depth = 0): void {
 
 /** Bounded semantic text projection shared by normalized indexing and locator readback. */
 export function normalizedSearchText(value: unknown): string {
-  if (Array.isArray(value) && value.every(item => {
+  const blocks: unknown[] = Array.isArray(value) ? value : [];
+  const texts: string[] = [];
+  for (const item of blocks) {
     const block = asObject(item);
-    return block && ["text", "input_text", "output_text"].includes(String(block.type)) && typeof block.text === "string";
-  })) return value.map(item => (item as { text: string }).text).join("\n").slice(0, SPAN_TEXT_CAP);
+    if (!block || !isTextBlock(block)) break;
+    texts.push(block.text);
+  }
+  if (Array.isArray(value) && texts.length === value.length) return texts.join("\n").slice(0, SPAN_TEXT_CAP);
   const leaves: string[] = [];
   stringLeaves(value, leaves);
   return leaves.join("\n").slice(0, SPAN_TEXT_CAP);

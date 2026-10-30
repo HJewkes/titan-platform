@@ -46,7 +46,7 @@ export function renderedValue(value: unknown): string {
   const object = asObject(value);
   if (object && typeof object.text === "string") return oneLine(object.text);
   try {
-    return oneLine(JSON.stringify(value) ?? "");
+    return oneLine(stringify(value) ?? "");
   } catch {
     return "[unrenderable value]";
   }
@@ -57,3 +57,6 @@ export function withNativeOrdinal(line: RecentSourceLine, record: Json): RecentS
   if (typeof ordinal !== "number" || !Number.isFinite(ordinal)) return line;
   return { ...line, evidence: { ...line.evidence, nativeOrdinal: ordinal } };
 }
+
+// JSON.stringify returns undefined for undefined, functions and symbols, which its lib signature hides.
+const stringify: (value: unknown) => string | undefined = JSON.stringify;

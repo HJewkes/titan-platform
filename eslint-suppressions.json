@@ -446,9 +446,6 @@
   "packages/session-read/src/fold.ts": {
     "titan/max-function-lines": {
       "count": 1
-    },
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "packages/session-read/src/line-reader.ts": {
@@ -458,11 +455,6 @@
   },
   "packages/session-read/src/recent-claude.ts": {
     "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "packages/session-read/src/recent-session-turns.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
