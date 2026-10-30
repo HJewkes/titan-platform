@@ -1,7 +1,7 @@
 import type { ProbedText } from "@titan-design/render-qa";
 
 /** A number alone in its element, with an optional currency sign, thousands commas, magnitude letter or percent sign. */
-export const PLAIN_NUMBER = /^[£$€]?\d[\d,]*(?:\.\d+)?\s?(?:k|K|M|bn|B|%)?$/;
+const PLAIN_NUMBER = /^[£$€]?\d[\d,]*(?:\.\d+)?\s?(?:k|K|M|bn|B|%)?$/;
 
 const SAME_PLACE_PX = 4;
 
