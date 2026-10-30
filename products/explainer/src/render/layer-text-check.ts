@@ -78,6 +78,16 @@ async function greyFrames(frames: ReadonlyMap<number, Buffer>, scratch: string):
   return grey;
 }
 
+/** The seconds the check reads on the layer's one-beat timeline. */
+function momentsOf(input: LayerCheckInput, timeline: Timeline): Moments {
+  const cues = timeline.beats[0]!.cues ?? {};
+  return {
+    reveal: revealMoments(cues, timeline.durationS),
+    samplings: layerSamplings(timelineFromArtifact(timeline)),
+    cues: cueWindows(input.packet.cues, cues, timeline.durationS),
+  };
+}
+
 async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: Moments, options: InspectOptions, scratch: string): Promise<LayerTextRow[]> {
   const beat = packet.beat_id;
   const { findings, probed, frames } = await seekAll(page, beat, moments, options);
@@ -110,13 +120,7 @@ export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerText
       try {
         const page = await engine.open(served.url, options, []);
         try {
-          const cues = timeline.beats[0]!.cues ?? {};
-          const moments = {
-            reveal: revealMoments(cues, timeline.durationS),
-            samplings: layerSamplings(timelineFromArtifact(timeline)),
-            cues: cueWindows(input.packet.cues, cues, timeline.durationS),
-          };
-          return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, moments, options, scratch);
+          return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, momentsOf(input, timeline), options, scratch);
         } finally {
           await page.close();
         }
