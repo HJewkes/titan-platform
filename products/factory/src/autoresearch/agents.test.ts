@@ -10,7 +10,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
-import { installAgentChatFake } from "../test-support/agent-chat-fake.js";
+import { installAgentChatFake, writeFakeRoster } from "../test-support/agent-chat-fake.js";
 import { loadWaitPort } from "./load-wait.js";
 import { resumeContract } from "./planner-brief.js";
 
@@ -41,7 +41,7 @@ const calls = (): { args: string[]; head?: string; brief?: string }[] =>
   existsSync(join(dir, "calls.jsonl")) ? readFileSync(join(dir, "calls.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line)) : [];
 const spawns = () => calls().filter((call) => call.args[1] === "spawn" || call.args[1] === "resume");
 const roster = (): Record<string, unknown>[] => (existsSync(join(dir, "roster.json")) ? JSON.parse(readFileSync(join(dir, "roster.json"), "utf8")) : []);
-const setRoster = (rows: Record<string, unknown>[]) => writeFileSync(join(dir, "roster.json"), JSON.stringify(rows));
+const setRoster = (rows: Record<string, unknown>[]) => writeFakeRoster(dir, rows);
 const row = (name: string, cwd: string, presence = "exited") => ({ name, agentId: name, state: presence, presence, status: "x", profile: "impl", surface: "headless", cwd, sessionId: `s-${name}`, generation: 1, transcriptPath: join(dir, `t-${name}.jsonl`) });
 
 function ports(overrides: Partial<ArAgentsOptions> = {}) {

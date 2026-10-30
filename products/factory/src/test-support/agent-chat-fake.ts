@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -29,8 +29,17 @@ if (behave.commit) { fs.writeFileSync(path.join(row.cwd, name + ".txt"), args[1]
 const head = g("rev-parse", "HEAD");
 if (behave.pending) { row.presence = "live"; row.state = "live"; }
 for (const turn of behave.turns || []) fs.appendFileSync(row.transcriptPath, turn.replace("{HEAD}", head) + "\\n");
-fs.writeFileSync(rosterPath, JSON.stringify(roster));
+// Rename, not truncate-and-write: a concurrent \`agent ls\` must see the old roster or the new one, never half of it.
+fs.writeFileSync(rosterPath + "." + process.pid, JSON.stringify(roster));
+fs.renameSync(rosterPath + "." + process.pid, rosterPath);
 `;
+
+/** Replaces the fake's roster the way the fake itself does, so a reader never sees a partial file. */
+export function writeFakeRoster(dir: string, rows: readonly unknown[]): void {
+  const staged = join(dir, `roster.json.${process.pid}`);
+  writeFileSync(staged, JSON.stringify(rows));
+  renameSync(staged, join(dir, "roster.json"));
+}
 
 /**
  * Writes the fake into `dir`, its AGENT_CHAT_HOME, with an empty `behave/` and a headless profile per name in
