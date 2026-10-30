@@ -1,4 +1,4 @@
-import { launch } from "@titan-design/frame-capture";
+import { captureFrame, launch } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
 import {
   frameDiffs,
@@ -19,10 +19,12 @@ import { RENDER_FPS } from "../render/render-video.js";
 import { ffmpegMedia, type MediaExec } from "../workflow/sheets-stage.js";
 import { flashScan, type FlashReport } from "./flash-scan.js";
 
-/** One page the qa stage inspects: seek-and-inspect, the DOM probe, crops of held errors, then close. */
+/** One page the qa stage inspects: seek-and-inspect, the DOM probe, a frame's pixels, crops of held errors, then close. */
 export interface QaPage {
   inspectAt(t: number, options: InspectOptions): Promise<FrameInspection>;
   probe(moments: readonly ProbeAt[]): Promise<ProbedMoment[]>;
+  /** The frame at `t` seconds as a PNG, seeked on the same forward-only clock. */
+  frame(t: number): Promise<Buffer>;
   /** Writes an annotated crop per held error into `dir` and sets each one's `crop`. */
   crops(errors: CroppedFinding[], dir: string, options: InspectOptions): Promise<void>;
   close(): Promise<void>;
@@ -53,6 +55,7 @@ export function chromiumQaEngine(media: Pick<MediaExec, "durationS"> = ffmpegMed
         return {
           inspectAt: (t, opts) => inspectAt(page, t, opts),
           probe: (moments) => probeMoments(page, moments),
+          frame: (t) => captureFrame(page, t),
           crops: (errors, dir, opts) => writeCrops(openIn, url, errors, dir, opts),
           close: () => (browser ? page.context().close() : openIn.close()),
         };
