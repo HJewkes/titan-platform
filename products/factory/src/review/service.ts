@@ -24,7 +24,7 @@ export interface ReviewService {
 }
 
 /** Beside the factory database, never in it: serve hydrates that one's runs, and a review run is the CLI's own. */
-export const REVIEW_DB = "review.sqlite3";
+const REVIEW_DB = "review.sqlite3";
 
 function openReviewDb(path: string): Db {
   const db = openDatabase(path);
@@ -43,7 +43,7 @@ function timingOf({ sessionStartTimeoutMs, verdictTimeoutMs }: ReviewConfig) {
 }
 
 /** The workflow's request: the brief carries only the checkout root, since no Shepherd run holds a kind, a proof or earlier findings. */
-export function serviceOver(runner: ReviewRunner, port: Pick<GitHubPort, "getPr">, checkoutRoot: string, close: () => void): ReviewService {
+function serviceOver(runner: ReviewRunner, port: Pick<GitHubPort, "getPr">, checkoutRoot: string, close: () => void): ReviewService {
   return {
     headOf: (target, head) => headOf(port, target, head),
     review: async (target) => {

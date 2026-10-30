@@ -6,7 +6,7 @@ import { exitCodeOf, formatResolved, formatReview, resolveExitCode, reviewJson, 
 import { parseTarget, type PrTarget } from "./pr-facts.js";
 import { configuredReviewService, type ReviewService } from "./service.js";
 
-export interface ReviewOpts {
+interface ReviewOpts {
   head?: string;
   json?: boolean;
   waitCi?: boolean;
@@ -20,9 +20,9 @@ export interface CiWait {
   sleep(ms: number): Promise<void>;
 }
 
-export const DEFAULT_CI_WAIT: CiWait = { pollMs: 30_000, deadlineMs: 60 * 60_000, now: Date.now, sleep: (ms) => sleep(ms) };
+const DEFAULT_CI_WAIT: CiWait = { pollMs: 30_000, deadlineMs: 60 * 60_000, now: Date.now, sleep: (ms) => sleep(ms) };
 
-export type OpenReview = (io: CliIo, factoryDb: string) => ReviewService;
+type OpenReview = (io: CliIo, factoryDb: string) => ReviewService;
 
 const at = (pr: PrTarget, head: string): ReviewTarget => ({ ...pr, head });
 
