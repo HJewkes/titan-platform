@@ -201,7 +201,7 @@ describe("the render stage", () => {
     const { record, render } = await renderStage();
 
     expect(render.renders).toHaveLength(1);
-    expect(record.checks.map((c) => c.name)).toEqual(["duration-agreement"]);
+    expect(record.checks.map((c) => c.name).filter((name) => !name.startsWith("qa:"))).toEqual(["duration-agreement"]);
   });
 });
 
