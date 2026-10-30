@@ -943,57 +943,6 @@
       "count": 2
     }
   },
-  "packages/decider/src/always-ask.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/ask-lint-cli.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/bulk-condense.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/condense.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/contract.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/notes.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/parse-answer.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/store.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/decider/src/transcripts.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/egress-scan/src/allow.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1058,42 +1007,6 @@
     }
   },
   "packages/fix-proof/src/result-line.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/health/src/metrics/conformance.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/health/src/metrics/schema.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/health/src/metrics/schema.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/health/src/probe-http.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/health/src/store.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/health/src/store.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5
     }
@@ -2540,11 +2453,6 @@
     }
   },
   "products/factory/src/digest/run.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/digest/seats.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
