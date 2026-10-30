@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRequire } from "node:module";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
@@ -9,11 +10,27 @@ import { TapSheet } from "./pages/TapSheet.js";
 
 // A loaded CI runner: React's scheduler slices, which run passive effects, land after RTL's setTimeout(0) drain.
 // React's scheduler takes setImmediate at import, so this runs before the imports.
-vi.hoisted(() => {
+// The console project shares one worker across files, so the real one goes back once this file is done.
+const realSetImmediate = vi.hoisted(() => {
+  const real = globalThis.setImmediate;
   (globalThis as Record<string, unknown>).setImmediate = (callback: () => void) => setTimeout(callback, 10);
+  return real;
 });
+afterAll(() => void (globalThis.setImmediate = realSetImmediate));
 
-afterEach(cleanup);
+interface Scheduler {
+  unstable_IdlePriority: number;
+  unstable_scheduleCallback(priority: number, callback: () => void): unknown;
+}
+// react-dom's own instance: findBy* waits with act off, so a commit there queues its passive-effect flush on this
+// scheduler, which cleanup does not cancel. Left queued, it reads `window` after this file's jsdom is gone (TP-4539).
+const scheduler = createRequire(createRequire(import.meta.url).resolve("react-dom"))("scheduler") as Scheduler;
+const drainScheduler = () => new Promise<void>((resolve) => void scheduler.unstable_scheduleCallback(scheduler.unstable_IdlePriority, resolve));
+
+afterEach(async () => {
+  cleanup();
+  await drainScheduler();
+});
 
 const CONFIRM = "c".repeat(64);
 
