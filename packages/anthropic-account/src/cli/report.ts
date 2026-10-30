@@ -44,8 +44,12 @@ export function windowNames(rateLimits: Readonly<Record<string, UsageWindow>>): 
 }
 
 export function windowsText(rateLimits: Readonly<Record<string, UsageWindow>>): string {
-  const names = windowNames(rateLimits);
-  return names.map((name) => `${name} ${percent(rateLimits[name] as UsageWindow)}`).join(", ");
+  const names = new Set(windowNames(rateLimits));
+  return Object.entries(rateLimits)
+    .filter(([name]) => names.has(name))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, window]) => `${name} ${percent(window)}`)
+    .join(", ");
 }
 
 export function exitFor(codes: readonly number[]): number {

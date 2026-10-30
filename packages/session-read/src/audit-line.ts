@@ -5,8 +5,14 @@ import { toolFamily } from "./tool-family.js";
 import { contentHash } from "./wake-cause.js";
 
 const CHANNEL_SOURCE = /<channel\s+source="([^"]+)"/;
-const QUEUE_OPERATIONS = new Set<string>(["enqueue", "dequeue", "remove", "popAll"]);
-const COMPACTION_TRIGGERS = new Set<string>(["manual", "auto"]);
+
+function queueOperation(value: string | null): QueueOperation | null {
+  return value === "enqueue" || value === "dequeue" || value === "remove" || value === "popAll" ? value : null;
+}
+
+function compactionTrigger(value: string | null): "manual" | "auto" | null {
+  return value === "manual" || value === "auto" ? value : null;
+}
 
 /** One `request` per assistant line; the store dedupes on `requestId` so a split response counts once. */
 export function emitRequest(reader: LineReader, ctx: LineContext, message: Json | null): void {
@@ -49,12 +55,11 @@ export function emitToolCalls(reader: LineReader, ctx: LineContext, content: Jso
 
 export function emitCompaction(reader: LineReader, ctx: LineContext): void {
   const meta = asObject(ctx.line.compactMetadata);
-  const trigger = str(meta, "trigger");
   reader.emit({
     ...reader.base(ctx),
     kind: "compaction",
     blockIndex: 0,
-    trigger: trigger && COMPACTION_TRIGGERS.has(trigger) ? (trigger as "manual" | "auto") : null,
+    trigger: compactionTrigger(str(meta, "trigger")),
     preTokens: numberOrNull(meta, "preTokens"),
     postTokens: numberOrNull(meta, "postTokens"),
     droppedTokens: numberOrNull(meta, "cumulativeDroppedTokens"),
@@ -64,14 +69,14 @@ export function emitCompaction(reader: LineReader, ctx: LineContext): void {
 
 /** Arrival of a message that landed while the session was busy; rollup pairs it with the delivery. */
 export function emitQueueOp(reader: LineReader, ctx: LineContext): void {
-  const operation = str(ctx.line, "operation");
-  if (!operation || !QUEUE_OPERATIONS.has(operation)) return;
+  const operation = queueOperation(str(ctx.line, "operation"));
+  if (!operation) return;
   const content = str(ctx.line, "content");
   reader.emit({
     ...reader.base(ctx),
     kind: "queue_op",
     blockIndex: 0,
-    operation: operation as QueueOperation,
+    operation,
     contentHash: content ? contentHash(content) : null,
     originServer: content ? (CHANNEL_SOURCE.exec(content)?.[1] ?? null) : null,
   });
