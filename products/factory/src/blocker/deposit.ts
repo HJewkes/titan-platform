@@ -4,7 +4,7 @@ import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 
 /** TP-4353's cap, the same one `inbox.deposit` holds a seat to: it merges or withdraws an ask before it files a sixth. */
 export const MAX_OPEN_PER_ASKER = 5;
-export const BLOCKER_KEY = "blocker";
+const BLOCKER_KEY = "blocker";
 
 export interface BlockerRaise {
   asker: string;
