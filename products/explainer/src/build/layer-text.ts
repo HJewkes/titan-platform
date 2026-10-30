@@ -172,7 +172,7 @@ const RULE_FIX: Record<LayerTextRule, string> = {
     "never an opacity fade on text and never an outline or shadow outside the element's clip-path, which the clip cuts away",
   "static-window":
     "change the picture inside this still stretch: start a highlight or pulse at full colour inside an element's own box a few seconds after the last cue word before it, " +
-    "as useCue(word) + 1.5, never a bare literal second. A custom layer gets no settled-frame allowance, so a finished frame still fails",
+    "as useCue(word) + 1.5, never a bare literal second. A frame may stand still past 3 s only after the last cue word, up to 6 s, with at most 3 s of it silent",
   "picture-change": "add a cue-driven change inside this stretch: a highlight or pulse timed from a cue word with useCue",
   "reading-hold": "leave this text on screen until it can be read, at 13 characters a second and at least 1.5 s, or show only words the narration says while it shows",
   G9: "cut it to at most 10 words in a headline and 3 in a label",

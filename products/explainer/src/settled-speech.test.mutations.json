@@ -20,12 +20,12 @@
       ]
     },
     {
-      "name": "static-window settles a custom layer",
+      "name": "static-window never settles a custom layer",
       "file": "products/explainer/src/qa/timing-gates.ts",
-      "find": "if (beat.layer === \"custom\" || starts.length === 0) return undefined;",
-      "replace": "if (starts.length === 0) return undefined;",
+      "find": "if (starts.length === 0) return undefined;",
+      "replace": "if (beat.layer === \"custom\" || starts.length === 0) return undefined;",
       "kills": [
-        "static-window excuses a settled frame under speech, up to 6 s never settles a custom layer, whose elements qa cannot see"
+        "static-window excuses a settled frame under speech, up to 6 s passes a custom layer's 5 s still run after its last cue while the voice speaks"
       ]
     },
     {
