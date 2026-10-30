@@ -52,12 +52,13 @@ describe("the sessions list on a phone", () => {
     expect(within(card).getByText("40m · 250K tokens · $3.40")).toBeTruthy();
   });
 
-  it("gives the session, agent and task links a 44px tap target", async () => {
+  it("gives the session, agent and task links a 44px tap target, and the short agent and task links 44px of width", async () => {
     onPhone();
     renderPage(SNAPSHOT, "#/sessions");
 
     const card = await screen.findByTestId(`session-card-${NEWEST}`);
-    for (const link of [within(card).getByTestId(`session-link-${NEWEST}`), within(card).getByText("orbit-builder"), within(card).getByText("OR-12")]) expect(link.className).toContain("min-h-11");
+    expect(within(card).getByTestId(`session-link-${NEWEST}`).className).toContain("max-md:min-h-11");
+    for (const link of [within(card).getByText("orbit-builder"), within(card).getByText("OR-12")]) expect(link.className).toContain("max-md:min-w-11");
   });
 
   it("adds the older page as cards on Load more", async () => {
@@ -69,11 +70,10 @@ describe("the sessions list on a phone", () => {
     expect(within(await screen.findByTestId(`session-card-${OLDEST}`)).getByText("OR-9")).toBeTruthy();
   });
 
-  it("keeps the table and its dense links on a desktop", async () => {
+  it("keeps the table on a desktop", async () => {
     renderPage(SNAPSHOT, "#/sessions");
 
     expect(await screen.findByTestId(`session-row-${NEWEST}`)).toBeTruthy();
     expect(screen.queryAllByTestId(/^session-card-/)).toEqual([]);
-    expect(screen.getByText("OR-12").className).not.toContain("min-h-11");
   });
 });

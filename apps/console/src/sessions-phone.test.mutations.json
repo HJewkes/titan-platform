@@ -4,19 +4,19 @@
     {
       "name": "a phone gets the sessions table instead of cards",
       "file": "apps/console/src/pages/SessionsPage.tsx",
-      "find": "const phone = usePhone();",
+      "find": "const phone = useMediaQuery(BELOW_MD);",
       "replace": "const phone = false;",
       "kills": [
         "the sessions list on a phone stacks each session into a card with its agent, tasks, PR and figures instead of the table"
       ]
     },
     {
-      "name": "a ref link keeps only its text's height on a phone",
+      "name": "a ref link keeps only its text's width on a phone",
       "file": "apps/console/src/pages/SessionFormat.tsx",
-      "find": "<Link color=\"primary\" className={tap} onPress={() => open(route)}>",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_ID_LINK} onPress={() => open(route)}>",
       "replace": "<Link color=\"primary\" onPress={() => open(route)}>",
       "kills": [
-        "the sessions list on a phone gives the session, agent and task links a 44px tap target"
+        "the sessions list on a phone gives the session, agent and task links a 44px tap target, and the short agent and task links 44px of width"
       ]
     },
     {
@@ -29,12 +29,12 @@
       ]
     },
     {
-      "name": "a ref link gets the phone tap target on a desktop",
-      "file": "apps/console/src/pages/phone.ts",
-      "find": "(usePhone() ? PHONE_TAP : undefined)",
-      "replace": "PHONE_TAP",
+      "name": "a desktop gets session cards instead of the table",
+      "file": "apps/console/src/pages/SessionsPage.tsx",
+      "find": "const phone = useMediaQuery(BELOW_MD);",
+      "replace": "const phone = true;",
       "kills": [
-        "the sessions list on a phone keeps the table and its dense links on a desktop"
+        "the sessions list on a phone keeps the table on a desktop"
       ]
     }
   ]

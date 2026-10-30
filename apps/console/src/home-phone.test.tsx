@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { RpcProvider } from "@titan-design/react-app";
@@ -7,12 +7,8 @@ import { successEnvelope } from "@titan-design/registry";
 import type { DataSource } from "@titan-design/rpc-client";
 import { useInvalidate } from "./data/rpc.js";
 import { NeedsYouRegion } from "./pages/HomeNeedsYou.js";
-import { BELOW_MD } from "./pages/phone.js";
 
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
+afterEach(cleanup);
 
 // Synthetic inbox answers; nothing here comes from a real inbox.
 const blocker = (id: string) => ({
@@ -44,28 +40,18 @@ function InboxRefetcher(): ReactNode {
   return null;
 }
 
-/** A phone viewport whose media-query listeners are counted, so one left behind by an unmounted hook shows. */
-function onCountedPhone(): { live: () => number } {
-  let added = 0;
-  let removed = 0;
-  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === BELOW_MD, media: query, addEventListener: () => void added++, removeEventListener: () => void removed++ }));
-  return { live: () => added - removed };
-}
-
 describe("the home inbox card on a phone", () => {
   it("gives the inbox link a 44px tap target", async () => {
-    onCountedPhone();
     render(
       <RpcProvider source={steppingSource([[blocker("1")]])}>
         <NeedsYouRegion />
       </RpcProvider>,
     );
 
-    expect((await screen.findByText("Inbox: 1 blocking")).className).toContain("min-h-11");
+    expect((await screen.findByText("Inbox: 1 blocking")).className).toContain("max-md:min-h-11");
   });
 
-  it("holds one media listener as the blocking count drops to zero and comes back", async () => {
-    const listeners = onCountedPhone();
+  it("hides the card when the blocking count drops to zero and brings it back with its tap target", async () => {
     render(
       <RpcProvider source={steppingSource([[blocker("1")], [], [blocker("2")]])}>
         <InboxRefetcher />
@@ -79,6 +65,6 @@ describe("the home inbox card on a phone", () => {
     act(() => refetchInbox());
     await screen.findByText("Merge example/repo#2");
 
-    expect(listeners.live()).toBe(1);
+    expect(screen.getByText("Inbox: 1 blocking").className).toContain("max-md:min-h-11");
   });
 });

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone press writes at once, with no confirm step",
+      "file": "apps/console/src/pages/PhoneConfirm.tsx",
+      "find": "    if (phone) setArmedId(id);\n    else action.run();",
+      "replace": "    action.run();",
+      "kills": [
+        "a Ship round on a phone asks to confirm Ship, naming the PR and head, and sends it only on Confirm",
+        "a Ship round on a phone asks to confirm Send back before it sends the note"
+      ]
+    },
+    {
+      "name": "Confirm closes the step without writing",
+      "file": "apps/console/src/pages/PhoneConfirm.tsx",
+      "find": "    setArmedId(undefined);\n    action.run();",
+      "replace": "    setArmedId(undefined);",
+      "kills": [
+        "a Ship round on a phone asks to confirm Ship, naming the PR and head, and sends it only on Confirm"
+      ]
+    },
+    {
+      "name": "Cancel writes as Confirm does",
+      "file": "apps/console/src/pages/PhoneConfirm.tsx",
+      "find": "onCancel={() => setArmedId(undefined)}",
+      "replace": "onCancel={() => confirm(armed)}",
+      "kills": [
+        "a Ship round on a phone sends nothing when the confirm step is cancelled"
+      ]
+    },
+    {
+      "name": "a desktop press arms a confirm step too",
+      "file": "apps/console/src/pages/PhoneConfirm.tsx",
+      "find": "const phone = useMediaQuery(BELOW_MD);",
+      "replace": "const phone = true;",
+      "kills": [
+        "a Ship round on a desktop sends Ship on the one press, with no confirm step"
+      ]
+    },
+    {
+      "name": "a two-PR round's Send answers writes at once on a phone",
+      "file": "apps/console/src/pages/ShipPrs.tsx",
+      "find": "onPress={() => press(\"send\")}",
+      "replace": "onPress={() => void submit(sendArgs(state))}",
+      "kills": [
+        "a Ship round on a phone asks to confirm a two-PR round's one send, counting its ships and send-backs"
+      ]
+    }
+  ]
+}

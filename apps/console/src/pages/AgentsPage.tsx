@@ -20,7 +20,8 @@ import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { AgentDetailPage } from "./AgentDetailPage.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
-import { PHONE_TAP, usePhone, usePhoneTap } from "./phone.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 
 const TABS = [
   ["roster", "Roster"],
@@ -53,11 +54,10 @@ function Roster(): ReactNode {
 function RosterBody({ roster: { agents, reconnecting } }: { roster: { agents: readonly RosterEntry[]; reconnecting: boolean } }): ReactNode {
   const [finished, setFinished] = useState(false);
   const shown = finished ? agents.filter((agent) => agent.state === "exited") : agents;
-  const tap = usePhoneTap();
   return (
     <VStack gap={3}>
       {reconnecting ? <Alert status="warning" message="The broker restarted moments ago and is still refilling presence; a missing live agent may not have exited." /> : null}
-      {agents.length === 0 ? null : <Checkbox label="Finished, not retired" className={tap} isChecked={finished} onCheckedChange={(checked: boolean) => setFinished(checked)} testID="agents-finished" />}
+      {agents.length === 0 ? null : <Checkbox label="Finished, not retired" className={PHONE_TAP} isChecked={finished} onCheckedChange={(checked: boolean) => setFinished(checked)} testID="agents-finished" />}
       {agents.length === 0 ? <NoAgents /> : <RosterRows agents={shown} />}
     </VStack>
   );
@@ -76,7 +76,7 @@ function NoAgents(): ReactNode {
 
 /** One tree, not a CSS swap of two, as on the Tasks list. */
 function RosterRows({ agents }: { agents: readonly RosterEntry[] }): ReactNode {
-  return usePhone() ? <RosterCards agents={agents} /> : <RosterTable agents={agents} />;
+  return useMediaQuery(BELOW_MD) ? <RosterCards agents={agents} /> : <RosterTable agents={agents} />;
 }
 
 function RosterCards({ agents }: { agents: readonly RosterEntry[] }): ReactNode {
@@ -95,7 +95,7 @@ function RosterCard({ agent }: { agent: RosterEntry }): ReactNode {
       <HStack gap={2} align="center" justify="between">
         <HStack gap={2} align="center" className="min-w-0">
           <Avatar size="xs" colorFromName={agent.name} alt={agent.name} />
-          <Link color="primary" className={`${PHONE_TAP} break-words`} onPress={() => open({ view: "agents", id: agent.name })}>
+          <Link color="primary" className={`${PHONE_TAP_ID_LINK} break-words`} onPress={() => open({ view: "agents", id: agent.name })}>
             {agent.name}
           </Link>
         </HStack>

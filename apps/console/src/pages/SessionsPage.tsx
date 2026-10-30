@@ -20,7 +20,8 @@ import {
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { SessionDetailPage } from "./SessionDetailPage.js";
-import { PHONE_TAP, usePhone } from "./phone.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP_ID_LINK, PHONE_TAP_LINK } from "./phone.js";
 import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type GraphDegraded, type SessionRow } from "./SessionFormat.js";
 
 const NUMBER_WIDTH = 96;
@@ -53,7 +54,7 @@ function SessionsPage({ agent }: { agent: string | undefined }): ReactNode {
 
 function SessionsBody({ agent, first }: { agent: string | undefined; first: readonly SessionRow[] }): ReactNode {
   const [cursors, setCursors] = useState<string[]>([]);
-  const phone = usePhone();
+  const phone = useMediaQuery(BELOW_MD);
   if (first.length === 0) return <NoSessions />;
   return (
     <VStack gap={3}>
@@ -143,10 +144,10 @@ function SessionCard({ row }: { row: SessionRow }): ReactNode {
   return (
     <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`session-card-${row.sessionId}`}>
       <HStack gap={2} align="center" justify="between" wrap>
-        <Link color="primary" className={PHONE_TAP} testID={`session-link-${row.sessionId}`} onPress={() => open({ view: "sessions", id: row.sessionId })}>
+        <Link color="primary" className={PHONE_TAP_LINK} testID={`session-link-${row.sessionId}`} onPress={() => open({ view: "sessions", id: row.sessionId })}>
           <DateTime value={row.startedAt} format="datetime" fallback="unknown" />
         </Link>
-        {row.agentName ? <AgentFilterLink agent={row.agentName} className={PHONE_TAP} /> : <NoneText />}
+        {row.agentName ? <AgentFilterLink agent={row.agentName} className={PHONE_TAP_ID_LINK} /> : <NoneText />}
       </HStack>
       <RefLinks refs={[...row.taskIds.map((id) => `task:${id}`), ...row.prs]} />
       <Typography variant="caption" color="secondary" className="break-words">

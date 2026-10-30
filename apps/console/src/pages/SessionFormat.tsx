@@ -3,7 +3,7 @@ import { HStack, Link, Typography } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { refToRoute } from "../refs.js";
 import { open } from "../router.js";
-import { usePhoneTap } from "./phone.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 type ListResult = ConsoleCommands["sessions.list"]["result"];
 export type SessionRow = ListResult["sessions"][number];
@@ -40,18 +40,17 @@ export function RefLinks({ refs }: { refs: readonly string[] }): ReactNode {
 function RefLink({ refText }: { refText: string }): ReactNode {
   const label = refText.slice(refText.indexOf(":") + 1);
   const target = refToRoute(refText);
-  const tap = usePhoneTap();
   if (target?.kind === "route") {
     const { route } = target;
     return (
-      <Link color="primary" className={tap} onPress={() => open(route)}>
+      <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(route)}>
         {label}
       </Link>
     );
   }
   if (target?.kind === "github") {
     return (
-      <ExternalLink url={target.url} className={tap}>
+      <ExternalLink url={target.url} className={PHONE_TAP_ID_LINK}>
         {label}
       </ExternalLink>
     );

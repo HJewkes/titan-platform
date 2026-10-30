@@ -54,6 +54,17 @@ function joinsRun(words: readonly string[], i: number, run: readonly string[]): 
   return (word === "a" || word === "an") && run.length === 0 && SCALES.has(words[i + 1] ?? "");
 }
 
+/** "one-off" is an idiom for a single occurrence, not a count; every other compound's leading number is said. */
+const IDIOM_COMPOUND = /^one-off$/;
+
+/** The leading number words of a hyphenated compound that goes on with other words: "twenty-one-cycle" gives twenty, one. */
+function compoundLead(word: string): string[] {
+  const parts = word.split("-");
+  const lead = parts.findIndex((part) => !NUMBER_WORDS.has(part));
+  if (lead <= 0 || IDIOM_COMPOUND.test(word) || parts[0] === "oh" || parts[0] === "point") return [];
+  return parts.slice(0, lead);
+}
+
 /** numberForms reads "one point four million" as 1.4 and 1000000; a decimal before a scale is one value, 1400000. */
 function runValues(run: readonly string[]): number[] {
   if (run.length === 0) return [];
@@ -78,7 +89,11 @@ export function spokenValues(spoken: string): Set<number> {
       flush();
       for (const value of valuesOf(word)) values.add(value);
     } else if (joinsRun(words, i, run)) run.push(word);
-    else flush();
+    else {
+      flush();
+      run = compoundLead(word);
+      flush();
+    }
   }
   flush();
   return values;

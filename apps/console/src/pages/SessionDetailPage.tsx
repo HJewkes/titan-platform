@@ -17,7 +17,7 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { usePhoneTap } from "./phone.js";
+import { PHONE_TAP } from "./phone.js";
 import { ConversationTurns, TouchedFiles, type Timeline } from "./SessionTurns.js";
 import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type SessionRow } from "./SessionFormat.js";
 
@@ -74,10 +74,9 @@ function Degraded({ session, sessionId, message }: { session: SessionRow | null;
 }
 
 function Trail({ sessionId }: { sessionId: string }): ReactNode {
-  const tap = usePhoneTap();
   return (
     <Breadcrumbs>
-      <BreadcrumbItem className={tap} onPress={() => open({ view: "sessions" })}>
+      <BreadcrumbItem className={PHONE_TAP} onPress={() => open({ view: "sessions" })}>
         Sessions
       </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{sessionId}</BreadcrumbItem>
@@ -141,13 +140,12 @@ function Header({ session, sessionId, timeline }: { session: SessionRow | null; 
 function Records({ result, openTurn }: { result: TimelineOk; openTurn: number }): ReactNode {
   const [tab, setTab] = useState(0);
   const labels = [`Conversation (${result.timeline.turns.length})`, `Files (${result.touchedFiles.length})`];
-  const tap = usePhoneTap();
   return (
     <VStack gap={4}>
       <Tabs index={tab} onChange={setTab}>
         <TabList>
           {labels.map((label) => (
-            <Tab key={label} className={tap}>
+            <Tab key={label} className={PHONE_TAP}>
               {label}
             </Tab>
           ))}

@@ -56,14 +56,14 @@ describe("the agents pages on a phone", () => {
     expect(screen.getAllByTestId(/^agent-card-/)).toHaveLength(2);
     for (const text of [LONG_NAME, "exited", "Build the dock index"]) expect(within(card).getByText(text)).toBeTruthy();
     expect(within(card).getByText(/Spawned by harbor-coord · \$1\.25 · last seen/)).toBeTruthy();
-    expect(within(card).getByText(LONG_NAME).className).toContain("min-h-11");
+    expect(within(card).getByText(LONG_NAME).className).toContain("max-md:min-w-11");
   });
 
   it("gives the roster tabs a 44px tap target", async () => {
     onPhone();
     renderPage(SNAPSHOT, "#/agents");
 
-    expect((await screen.findByRole("tab", { name: "Messages" })).className).toContain("min-h-11");
+    expect((await screen.findByRole("tab", { name: "Messages" })).className).toContain("max-md:min-h-11");
   });
 
   it("wraps a long agent name on the detail card instead of cutting it off", async () => {
@@ -71,8 +71,7 @@ describe("the agents pages on a phone", () => {
     renderPage(SNAPSHOT, `#/agents/${LONG_NAME}`);
 
     const name = await within(await screen.findByTestId("agent-card")).findByTestId("agent-card-name");
-    expect(name.className).not.toContain("truncate");
-    expect(name.className).toContain("break-words");
+    expect(name.className).toContain("max-md:whitespace-normal");
   });
 
   it("lists the agent's runs as cards linking to each session", async () => {
@@ -83,14 +82,13 @@ describe("the agents pages on a phone", () => {
     expect(screen.queryAllByTestId(/^run-row-/)).toEqual([]);
     expect(within(run).getByText("Dock index build")).toBeTruthy();
     expect(within(run).getByText("HB-7 · 12 turns · $0.50")).toBeTruthy();
-    expect(within(run).getByTestId("run-link-run-1").className).toContain("min-h-11");
+    expect(within(run).getByTestId("run-link-run-1").className).toContain("max-md:min-h-11");
   });
 
-  it("keeps the roster table and dense tabs on a desktop", async () => {
+  it("keeps the roster table on a desktop", async () => {
     renderPage(SNAPSHOT, "#/agents");
 
     expect(await screen.findByTestId(`agent-row-${LONG_NAME}`)).toBeTruthy();
     expect(screen.queryAllByTestId(/^agent-card-/)).toEqual([]);
-    expect(screen.getByRole("tab", { name: "Messages" }).className).not.toContain("min-h-11");
   });
 });
