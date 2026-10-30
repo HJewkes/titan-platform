@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { createRequire } from "node:module";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
@@ -18,20 +17,11 @@ const realSetImmediate = vi.hoisted(() => {
 });
 afterAll(() => void (globalThis.setImmediate = realSetImmediate));
 
-interface Scheduler {
-  unstable_IdlePriority: number;
-  unstable_scheduleCallback(priority: number, callback: () => void): unknown;
-}
-// react-dom's own instance: findBy* waits with act off, so a commit there queues its passive-effect flush on this
-// scheduler, which cleanup does not cancel. Left queued, it reads `window` after this file's jsdom is gone (TP-4539).
-function reactDomScheduler(): Scheduler {
-  const loaded: unknown = createRequire(createRequire(import.meta.url).resolve("react-dom"))("scheduler");
-  const isScheduler = (value: unknown): value is Scheduler => typeof value === "object" && value !== null && "unstable_scheduleCallback" in value;
-  if (!isScheduler(loaded)) throw new Error("react-dom's scheduler has no unstable_scheduleCallback");
-  return loaded;
-}
-const scheduler = reactDomScheduler();
-const drainScheduler = () => new Promise<void>((resolve) => void scheduler.unstable_scheduleCallback(scheduler.unstable_IdlePriority, resolve));
+// findBy* waits with act off, so a commit there queues its passive-effect flush on React's scheduler, which cleanup does
+// not cancel; left queued, it reads `window` after this file's jsdom is gone (TP-4539). The scheduler posts its work loop
+// with the setImmediate it took at import, the real one or the shim above. A wake posted through the shim now fires
+// after either, and one pass runs that lone task, so awaiting it drains the queue.
+const drainScheduler = () => new Promise<void>((resolve) => void setImmediate(resolve));
 
 afterEach(async () => {
   cleanup();
