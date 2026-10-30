@@ -1,5 +1,6 @@
 import { PanelVerdict, ReviewTarget, ReviewShape, ReviewRequest, PanelMember, ReviewerAgent, PrFacts, Headroom, ReviewerDispatch, ReviewerReader, ReviewClock } from '@titan-design/review-panel';
 import { LineSource } from '@titan-design/evidence';
+import { ProofReadInput } from '@titan-design/fix-proof';
 import { PullRequest } from '@titan-design/github';
 
 /** One review of one PR head; the ports carry every read and effect, so the input names only what the caller already knows. */
@@ -116,16 +117,8 @@ interface HeadSnapshot {
 interface SnapshotPort {
     read(target: ReviewTarget): Promise<HeadSnapshot>;
 }
-/** `line` is the raw `fix-proof/v1` line; `none` means no proof ran; `unread` means one may have and could not be read. */
-type ProofRead = {
-    kind: "line";
-    line: string;
-} | {
-    kind: "none";
-} | {
-    kind: "unread";
-    reason: string;
-};
+/** The read `proofStanding` takes, so the workflow judges a head's proof exactly as every other fix-proof reader does. */
+type ProofRead = ProofReadInput;
 interface ProofReaderPort {
     read(target: ReviewTarget): Promise<ProofRead>;
 }
