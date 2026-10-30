@@ -77,7 +77,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
 | `render-qa` | Render QA gate: in-page geometry inspection, cue moments and the persistence rule over any __titanMotion page | `frame-capture` |
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `evidence`, `fix-proof`, `session-read` |
-| [`review-workflow`](/reference/review-workflow) | PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome | `agent-dispatch`, `evidence`, `fix-proof`, `github`, `review-panel` |
+| [`review-workflow`](/reference/review-workflow) | PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome | `agent-dispatch`, `evidence`, `fix-proof`, `github`, `review-panel`, `workflow` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `review-panel`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |

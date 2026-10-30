@@ -1,15 +1,15 @@
 # review-workflow
 
-**Tier 2 · domain.** Depends on [`evidence`](/reference/evidence), [`github`](/reference/github) and
-[`review-panel`](/reference/review-panel).
+**Tier 2 · domain.** Depends on [`evidence`](/reference/evidence), [`github`](/reference/github),
+[`review-panel`](/reference/review-panel) and [`workflow`](/reference/workflow).
 
 ```sh
 npm install @titan-design/review-workflow
 ```
 
 Status: types, ports, step ids, the outcome union, the failure classes, `DEFAULT_RETRY_POLICY`, heals, the fixer,
-preflight and the recipe (`reviewHead`, `REVIEW_STEP_BODIES`). The registrable definition arrives in a later release
-(TP-3916).
+preflight, the recipe (`reviewHead`, `REVIEW_STEP_BODIES`) and the registrable definition with a standalone runner
+(`reviewWorkflow`, `reviewRunner`).
 
 ## The problem it solves
 
@@ -83,6 +83,30 @@ import { reviewHead } from "@titan-design/review-workflow";
 const outcome = await reviewHead({ call: (id, input, schema) => codeStep(ctx, id, input, schema) }, input, { plan: policy });
 // { kind: "needs-fixer", fingerprint: "parser:no_block", failure: "malformed", head }
 ```
+
+## The standalone runner
+
+`reviewWorkflow({ ports, policy, ids?, version? })` is the recipe as one `@titan-design/workflow` definition: its `run`
+binds `call` to `codeStep` and `historyNext` to the context's, and `reviewRoutes(ports, ids)` gives one inline code route
+per step body. A host registers `run` under `version` (`REVIEW_WORKFLOW_VERSION` by default) and runs it over
+`routedRunner(routes)`. The outcome is seeded into the run's params, and `reviewOutcomeOf(run)` reads it back.
+
+`reviewRunner` does exactly that over a runtime you pass the store and gates for. `start(request)` returns the run id,
+`outcome(runId)` waits for it, and `hydrate()` resumes what an earlier process left. A run stopped mid-await resumes from
+its record: the dispatch steps replay, so no member is spawned twice. A run pinned to another definition version parks as
+`recovery_required` instead of replaying. `resolve(fingerprint)` takes every run parked on a fixer fingerprint off the
+`parking` port and reviews it again as a fresh run of its original request.
+
+```ts
+import { reviewRunner } from "@titan-design/review-workflow";
+
+const runner = reviewRunner({ ports, policy: { plan }, runtime: { db, gates } });
+await runner.hydrate();
+const outcome = await runner.outcome(runner.start({ target, kind: "feature", brief }));
+// { kind: "MERGE", head, verdict }
+```
+
+Bump `REVIEW_WORKFLOW_VERSION` whenever a recorded run would replay differently.
 
 ## The retry policy
 

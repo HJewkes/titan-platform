@@ -160,6 +160,7 @@ graph TD
   reviewWorkflow --> fixProof
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
+  reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel

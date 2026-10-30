@@ -3,6 +3,7 @@ import { LineSource } from '@titan-design/evidence';
 import { ProofReadInput, ProofStanding } from '@titan-design/fix-proof';
 import { PullRequest } from '@titan-design/github';
 import { z } from 'zod';
+import { WorkflowRuntime, WorkflowFn, StepRoute, WorkflowRun, WorkflowRuntimeOptions } from '@titan-design/workflow';
 
 /** One review of one PR head; the ports carry every read and effect, so the input names only what the caller already knows. */
 interface ReviewHeadInput {
@@ -622,4 +623,44 @@ interface ReviewHost {
  */
 declare function reviewHead(host: ReviewHost, input: ReviewHeadInput, policy: ReviewHeadPolicy): Promise<ReviewOutcome>;
 
-export { type AggregateStepInput, type AwaitInput, type AwaitRecord, type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, type ClassifiedFailure, type CorrectInput, type CorrectRecord, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, DEFAULT_REVIEW_TIMING, type DispatchInput, type DispatchRecord, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadPlan, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type HoldMember, type MemberNamer, type ParkedRun, type ParkingPort, type PlanFacts, type PreflightDecision, type PreflightPorts, type PreflightReadInput, type PreflightSnapshot, type ProfilesPort, type ProofRead, type ProofReaderPort, REVIEW_STEP_BODIES, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewBodyPorts, type ReviewHeadInput, type ReviewHeadPolicy, type ReviewHost, type ReviewOutcome, type ReviewOutcomeKind, type ReviewPlanPolicy, type ReviewStepIds, type ReviewTiming, type ReviewWorkflowPorts, type SnapshotPort, type StepCall, applyHeal, classifyFailure, fixerBrief, fixerFingerprint, fixerName, healOnce, planForHead, preflight, preflightRead, readFixerReport, requestFixer, resolveFingerprint, reviewHead };
+declare const REVIEW_WORKFLOW_NAME = "review-head";
+/** Bump it whenever a recorded run would replay differently; hydrate then parks a run pinned to the old one as recovery_required. */
+declare const REVIEW_WORKFLOW_VERSION = "1";
+/** What a caller asks a review of; the run id is the workflow run's own. */
+type ReviewRequestInput = Omit<ReviewHeadInput, "runId">;
+interface ReviewWorkflowOptions {
+    ports: ReviewBodyPorts;
+    policy: ReviewHeadPolicy;
+    ids?: Partial<ReviewStepIds>;
+    /** Absent means `REVIEW_WORKFLOW_VERSION`. */
+    version?: string;
+}
+/** A definition a host registers with `register(name, run, { version })` and runs over `routedRunner(routes)`. */
+interface ReviewWorkflow {
+    name: string;
+    version: string;
+    run: WorkflowFn;
+    routes: StepRoute[];
+}
+/** One inline code route per step body, under the ids the recipe records; every body reads before it writes, so a restart repeats it. */
+declare function reviewRoutes(ports: ReviewBodyPorts, ids?: Partial<ReviewStepIds>): StepRoute[];
+/** The review as one workflow run: the recipe over code steps, its outcome seeded into the run's params. */
+declare function reviewWorkflow(options: ReviewWorkflowOptions): ReviewWorkflow;
+/** The outcome a completed run seeded; any other end is thrown, since it has none. */
+declare function reviewOutcomeOf(run: WorkflowRun): ReviewOutcome;
+interface ReviewRunner {
+    runtime: WorkflowRuntime;
+    start(input: ReviewRequestInput): string;
+    /** Waits for the run and returns its outcome; throws when it ended any way but completed. */
+    outcome(runId: string): Promise<ReviewOutcome>;
+    /** Resumes the runs a previous process left; a run pinned to another definition version parks instead. */
+    hydrate(): Promise<string[]>;
+    /** Reviews every run parked on the fingerprint again, each as a fresh run of its original request. */
+    resolve(fingerprint: string): Promise<Resumed[]>;
+}
+/** The standalone host: a runtime over the review's inline routes, with the definition registered under its version. */
+declare function reviewRunner(options: ReviewWorkflowOptions & {
+    runtime: Omit<WorkflowRuntimeOptions, "runner">;
+}): ReviewRunner;
+
+export { type AggregateStepInput, type AwaitInput, type AwaitRecord, type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, type ClassifiedFailure, type CorrectInput, type CorrectRecord, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, DEFAULT_REVIEW_TIMING, type DispatchInput, type DispatchRecord, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadPlan, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type HoldMember, type MemberNamer, type ParkedRun, type ParkingPort, type PlanFacts, type PreflightDecision, type PreflightPorts, type PreflightReadInput, type PreflightSnapshot, type ProfilesPort, type ProofRead, type ProofReaderPort, REVIEW_STEP_BODIES, REVIEW_WORKFLOW_NAME, REVIEW_WORKFLOW_VERSION, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewBodyPorts, type ReviewHeadInput, type ReviewHeadPolicy, type ReviewHost, type ReviewOutcome, type ReviewOutcomeKind, type ReviewPlanPolicy, type ReviewRequestInput, type ReviewRunner, type ReviewStepIds, type ReviewTiming, type ReviewWorkflow, type ReviewWorkflowOptions, type ReviewWorkflowPorts, type SnapshotPort, type StepCall, applyHeal, classifyFailure, fixerBrief, fixerFingerprint, fixerName, healOnce, planForHead, preflight, preflightRead, readFixerReport, requestFixer, resolveFingerprint, reviewHead, reviewOutcomeOf, reviewRoutes, reviewRunner, reviewWorkflow };

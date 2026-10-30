@@ -65,6 +65,18 @@ export {
   type ReviewTiming,
 } from "./bodies.js";
 export { reviewHead, type ReviewHeadPolicy, type ReviewHost } from "./recipe.js";
+export {
+  REVIEW_WORKFLOW_NAME,
+  REVIEW_WORKFLOW_VERSION,
+  reviewOutcomeOf,
+  reviewRoutes,
+  reviewRunner,
+  reviewWorkflow,
+  type ReviewRequestInput,
+  type ReviewRunner,
+  type ReviewWorkflow,
+  type ReviewWorkflowOptions,
+} from "./definition.js";
 export { type CorrectRecord, type StepCall } from "./step-schemas.js";
 export {
   DEFAULT_RETRY_POLICY,

@@ -835,13 +835,19 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../workflow
     devDependencies:
+      '@titan-design/hitl':
+        specifier: workspace:*
+        version: link:../hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../test-kit
-      '@titan-design/workflow':
-        specifier: workspace:*
-        version: link:../workflow
       zod:
         specifier: ^4.4.3
         version: 4.5.4
