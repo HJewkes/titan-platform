@@ -52,6 +52,25 @@ describe("a template lighting the element a cue names", () => {
     expect(styleOf(after, "rows-1")).not.toContain("box-shadow");
   });
 
+  it("an edge cue lights the hop it names when the map lists its edges out of path order", () => {
+    // Arrange
+    const stops = ["Desk", "Lanes", "Crew"];
+    const slots = BEAT_SLOTS.map.parse({
+      title: "Desk",
+      nodes: stops.map((label, i) => ({ id: `nodes-${i + 1}`, label })),
+      edges: [{ id: "edges-1", from: "nodes-2", to: "nodes-3" }, { id: "edges-2", from: "nodes-1", to: "nodes-2" }],
+    });
+    const reveal = revealFrom(stops.map((_, i) => ({ target: `nodes-${i + 1}`, atS: i * 0.5 })));
+    const map = <ArchMapKindBeat slots={slots} reveal={reveal} hints={{}} />;
+
+    // Act
+    const html = htmlAt(CUE_S + FLOW_DWELL_S / 2, [{ target: "edges-1", atS: CUE_S }], map);
+
+    // Assert
+    expect(edgeLines(html, "edges-1")).toBe(2);
+    expect(html.indexOf('data-reveal="edges-2"')).toBeLessThan(html.indexOf('data-reveal="edges-1"'));
+  });
+
   it("an arch-map edge cue lights the edge, and the other edge stays as drawn", () => {
     // Arrange
     const stops = ["Desk", "Lanes", "Crew"];

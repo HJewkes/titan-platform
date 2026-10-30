@@ -45,14 +45,22 @@ function MapSlot({ node, k, count, t, lit }: { node: MapNode; k: number; count: 
 
 const LIT_EDGE_W = 12;
 
+type MapEdge = MapSlots["edges"][number];
+
+/**
+ * The id of the edge from node `from` to node `to`, found by its ends as the fill's emphases find it: the map_state
+ * route numbers edges in the script map's order, which need not be the path's, so a slot position names the wrong hop.
+ */
+const edgeId = (edges: readonly MapEdge[], from: string, to: string): string => edges.find((edge) => edge.from === from && edge.to === to)!.id;
+
 /** Each edge draws once both its ends are named; a cue naming it lays a brand stroke under it, the arrowhead unchanged. */
-function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly string[]; t: number }) {
+function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly MapEdge[]; t: number }) {
   const lit = useLit();
   return nodes.slice(1).map((node, i) => {
     const drawAtS = Math.max(node.atS, nodes[i]!.atS) + SMALL_MOVE_S;
     const x0 = nodeLeft(i, nodes.length) + nodeWidth(nodes.length) + ARROW_INSET;
     const x1 = x0 + (MAP.gap - 2 * ARROW_INSET) * progress(t, drawAtS);
-    const id = edges[i]!;
+    const id = edgeId(edges, nodes[i]!.id, node.id);
     const shown = lit(id, t);
     if (x1 <= x0) return null;
     return (
@@ -64,7 +72,7 @@ function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly
   });
 }
 
-function ArchMapFrame({ headline, nodes, edges }: { headline: string; nodes: readonly MapNode[]; edges: readonly string[] }) {
+function ArchMapFrame({ headline, nodes, edges }: { headline: string; nodes: readonly MapNode[]; edges: readonly MapEdge[] }) {
   const { t } = useBeatTime();
   const lit = useLit();
   const flowAtS = Math.max(...nodes.map((node) => node.atS)) + FLOW_AFTER_S;
@@ -117,5 +125,5 @@ export function ArchMapKindBeat({ slots, reveal }: BeatViewProps<MapSlots>) {
   const refusal = notAPath(slots);
   if (refusal) throw new Error(`arch-map ${refusal}`);
   const nodes = slots.nodes.map((node) => ({ id: node.id, label: node.label, atS: reveal(node.id) ?? 0 }));
-  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} edges={slots.edges.map((edge) => edge.id)} />;
+  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} edges={slots.edges} />;
 }
