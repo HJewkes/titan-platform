@@ -38,10 +38,17 @@ export const COMPILER_OPTIONS: ts.CompilerOptions = {
   noUncheckedIndexedAccess: true,
 };
 
+/** Called for every node of every file; the answer depends only on the two paths, so the path math runs once each. */
+const unitCache = new Map<string, string | undefined>();
+
 /** `packages/hitl` for any file under it, src or dist, so a declaration and its built `.d.ts` share one key. */
 function unitOf(root: string, fileName: string): string | undefined {
+  const key = `${root}\0${fileName}`;
+  if (unitCache.has(key)) return unitCache.get(key);
   const parts = relative(root, fileName).split(sep);
-  return parts.length > 2 && TOPS.includes(parts[0]!) ? `${parts[0]}/${parts[1]}` : undefined;
+  const unit = parts.length > 2 && TOPS.includes(parts[0]!) ? `${parts[0]}/${parts[1]}` : undefined;
+  unitCache.set(key, unit);
+  return unit;
 }
 
 const hasName = (node: ts.Node): node is ts.Node & { readonly name?: ts.Node } => "name" in node;

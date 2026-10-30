@@ -76,6 +76,12 @@ const MIRROR_PROBE = `import type { QueueSource } from "../types.js";
 export const apply = (source: QueueSource, sender: string) => source.resolve("i", { verdict: "approve", resolutionEventId: "e", sender });
 `;
 
+/** Outside every G10 glob, so the closure finds it and `isHeld` does not: the shape of a hold gap. */
+const UNHELD_PROBE_PATH = "products/factory/src/probe-unheld/answer.ts";
+const UNHELD_PROBE = `import type { GateResolver, GateStore } from "@titan-design/hitl";
+export const answer = (gates: GateStore, r: GateResolver) => gates.resolve("g", {}, r);
+`;
+
 const probePath = (name: string): string => join(ROOT, PROBE_DIR, `${name}.ts`);
 const MIRROR_PROBE_PATH = join(ROOT, "packages/queue-mirror/src/probe/mirror-forward.ts");
 
@@ -101,6 +107,7 @@ describe("resolve-site spellings earlier reviews found (pinned, not exhaustive)"
   beforeAll(() => {
     const files = new Map(Object.entries(PROBES).map(([name, body]) => [probePath(name), PROBE_HEADER + body]));
     files.set(MIRROR_PROBE_PATH, MIRROR_PROBE);
+    files.set(join(ROOT, UNHELD_PROBE_PATH), UNHELD_PROBE);
     const roots = [...files.keys()];
     const program = sourceProgram(roots, probeHost(files));
     scanWith = (rules) => new GateResolveClosure(ROOT, rules).scan(program, roots);
@@ -124,6 +131,11 @@ describe("resolve-site spellings earlier reviews found (pinned, not exhaustive)"
 
   it("finds a queue-mirror caller that picks the sender handed to QueueSource.resolve", () => {
     expect(closure).toContain("packages/queue-mirror/src/probe/mirror-forward.ts");
+  });
+
+  it("reports an unheld resolve-site fixture outside the G10 globs", () => {
+    expect(closure).toContain(UNHELD_PROBE_PATH);
+    expect(closure.filter((path) => !isHeld(path))).toContain(UNHELD_PROBE_PATH);
   });
 
   it("leaves out a file that only reads gates", () => {
