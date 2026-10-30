@@ -92,4 +92,37 @@ declare function writeGitHooks(dir: string, inputs: ScanInputs, setup: HookSetup
 /** Not a hook name, so git never runs it; only its mtime is read. */
 declare const STAMP_FILE = "egress-scan.stamp";
 
-export { type Bake, CHAINED_HOOKS, type HookSetup, type HookShell, MISSING_TERMS_REFUSES, type PrePushPlan, STAMP_FILE, type ScanInputs, type ScanVerdict, type ScannerFacts, gitHooksEnv, hookScripts, hooksDirOf, isNoRewriteHooksDir, noRewriteHooksDir, passwdHome, prePushScript, probeScanner, termsFileFor, writeGitHooks };
+/**
+ * The interpreter a generated script names on its first line, fixed when the script is written.
+ * macOS `/bin/sh` re-execs bash, so dash saves one exec per run; no PATH or env lookup is involved.
+ */
+declare const posixShell: (probe?: (file: string) => boolean) => string;
+/**
+ * `-p` makes bash-as-sh ignore SHELLOPTS and imported functions. Dash has no such option (it rejects `-p`)
+ * and has no such import, so it needs none; any other interpreter keeps the flag.
+ */
+declare const hardenedShebang: (shell: string) => string;
+/**
+ * Bash `-p` ignores the inherited SHELLOPTS and keeps the variable read-only; dash, ash and other sh
+ * export it untouched, so a hostile `noexec` would reach a bash repo hook and silently skip it. The
+ * scrub keys on behaviour, not the interpreter's path, and not on BASH_VERSION, which the agent could
+ * set. `command` stops the readonly error from ending a bash-as-sh script.
+ */
+declare const ENVIRONMENT_SCRUB = "command unset SHELLOPTS 2>/dev/null\n";
+/** The `HookShell` the hooks writer takes, for `shell` (the probed interpreter by default). */
+declare const hookShell: (shell?: string) => HookShell;
+
+/** Resolves a bare specifier to a file URL, the way `import` would from this module. */
+type Resolve = (specifier: string) => string;
+/**
+ * The caller's own scanner dir and the node running it, so a caller whose PATH lacks the scanner
+ * still scans (CC-461). A scanner that cannot be resolved, or whose bin link points elsewhere, is
+ * left out and the hook falls back to the caller's PATH alone.
+ */
+declare function ownToolDirs(resolve?: Resolve): string[];
+/** Appends each absolute dir not already on the PATH, so a scanner the owner installed still wins. */
+declare function withOwnTools(brokerPath: string, dirs: readonly string[]): string;
+/** The caller's absolute PATH plus its own scanner and node, the owner's passwd home, and the default terms policy. */
+declare const defaultScanInputs: () => ScanInputs;
+
+export { type Bake, CHAINED_HOOKS, ENVIRONMENT_SCRUB, type HookSetup, type HookShell, MISSING_TERMS_REFUSES, type PrePushPlan, type Resolve, STAMP_FILE, type ScanInputs, type ScanVerdict, type ScannerFacts, defaultScanInputs, gitHooksEnv, hardenedShebang, hookScripts, hookShell, hooksDirOf, isNoRewriteHooksDir, noRewriteHooksDir, ownToolDirs, passwdHome, posixShell, prePushScript, probeScanner, termsFileFor, withOwnTools, writeGitHooks };
