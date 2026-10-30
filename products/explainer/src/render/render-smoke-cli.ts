@@ -11,6 +11,7 @@ import { openState } from "../workflow/host.js";
 import { planOf } from "../workflow/video-runs.js";
 import { compositionPage } from "./composition-page.js";
 import { renderVideo } from "./render-video.js";
+import { renderSpillDir } from "./render-stage.js";
 import { renderSmoke, runArtifacts, SMOKE_WORKERS, type SmokeResult } from "./render-smoke.js";
 
 // Bundled to dist/render-smoke.mjs by the render:smoke script: one level under the package root, where the doctrine
@@ -37,7 +38,7 @@ try {
   const { profile } = planOf(run);
   const timing = timingProfile(profile ? profileFor(loadProfiles(), profile) : undefined);
   const engine = { page: () => compositionPage(path.join(outDir, "page-cache")), render: renderVideo };
-  const result = await renderSmoke({ runId, artifacts, store, gate: loadQaGate(profile), qa: chromiumQaEngine(), timing, workers, keepDir: outDir }, engine);
+  const result = await renderSmoke({ runId, artifacts, store, gate: loadQaGate(profile), qa: chromiumQaEngine(), timing, workers, spillDir: renderSpillDir(dataDir), keepDir: outDir }, engine);
   written(result, store);
   if (artifacts.mp4) store.materialise(artifacts.mp4, path.join(outDir, "bridged.mp4"));
   for (const row of result.held) process.stdout.write(`held ${row.kind} ${row.beat}: ${row.reason}\n`);

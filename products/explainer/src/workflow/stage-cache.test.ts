@@ -81,6 +81,20 @@ describe("stage cache over whole runs", () => {
     expect(row(result, "qa").wallMs).toBe(0);
   });
 
+  // Mutation: runRenderBody drops spillDir; capture then spills into the stage's tmpdir scratch, which can be a tmpfs.
+  it("a run's render spills beside its data, not in the stage's tmpdir scratch", async () => {
+    fx = fixture();
+    const render = fakeRender();
+    const engine = render.engine(fx);
+    const spills: (string | undefined)[] = [];
+    const recording: RenderEngine = { ...engine, render: async (input) => (spills.push(input.spillDir), engine.render(input)) };
+    const host = fakeHost(fx, fakeScriptModel(), render, { renderEngine: recording });
+
+    await runVideo({ spine: fx.spine, facts: fx.facts }, host);
+
+    expect(spills).toEqual([path.join(host.dataDir, "render-spill")]);
+  });
+
   it("a new rewrite variant runs rewrite and every stage whose input it changed", async () => {
     fx = fixture();
     const model = fakeScriptModel();

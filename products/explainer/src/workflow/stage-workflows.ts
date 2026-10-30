@@ -21,7 +21,7 @@ import { runTtsStage, type TtsEngine } from "./tts-stage.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
-import { defaultRenderEngine, runRenderStage, type RenderEngine } from "../render/render-stage.js";
+import { defaultRenderEngine, renderSpillDir, runRenderStage, type RenderEngine } from "../render/render-stage.js";
 import type { TimingProfile } from "../qa/timing-gates.js";
 
 interface BodyDeps {
@@ -83,7 +83,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
 /** Render runs qa's gate rows after encode on the qa stage's engine, type and timing, so it refuses what qa would fail. */
 function runRenderBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.render) throw new Error("render stage spec has no render settings");
-  const settings = { ...config.render, ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
+  const settings = { ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
   return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media));
 }
 
