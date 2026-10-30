@@ -32,7 +32,7 @@ export const STAGE_VERSIONS: Record<CachedStage, string> = {
   script: "x40",
   rewrite: "x22",
   eval: "x23",
-  resolve: "p5c2s2f2s2d13",
+  resolve: "p5c2s2f2s2d14",
   tts: "p6d",
   render: "m10c18",
   qa: "x11f",

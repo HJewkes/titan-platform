@@ -14,10 +14,20 @@ const round3 = (s: number): number => Math.round(s * 1000) / 1000;
 
 const startingAt = (timeline: QaTimeline, shiftS: number): QaTimeline => ({ beats: timeline.beats.map((beat) => ({ ...beat, startS: beat.startS + shiftS })) });
 
-/** qa's own samplings of the timeline as planned, then its swept sampling with each beat started at every 2 Hz phase. */
+/**
+ * qa's merged sampling can put two samples a tenth of a second apart, as when one cue's moment lands just after the next
+ * cue word and a sweep tick follows (TP-4617). Where that happens depends on real word times, which resolve does not have,
+ * so the check also sweeps every tenth of a second: a finding qa could see on two samples, as a pulse on a cue, is held.
+ */
+export const LAYER_DENSE_SWEEP_HZ = 10;
+
+/**
+ * qa's own samplings of the timeline as planned, its swept sampling with each beat started at every 2 Hz phase, and the
+ * same sampling swept at `LAYER_DENSE_SWEEP_HZ`, which reads every cue moment and the peak of every pulse.
+ */
 export function layerSamplings(timeline: QaTimeline): Moment[][] {
   const phased = SWEEP_PHASES_S.map((shiftS) => qaSampleMoments(startingAt(timeline, shiftS), true).map((moment) => ({ ...moment, t: round3(moment.t - shiftS) })));
-  return [...qaSamplings(timeline), ...phased];
+  return [...qaSamplings(timeline), ...phased, qaSampleMoments(timeline, true, LAYER_DENSE_SWEEP_HZ)];
 }
 
 /**

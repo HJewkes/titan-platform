@@ -1,0 +1,52 @@
+{
+  "pattern": "Each panel lays an absolute tint over its own text and chip, its opacity pulsing on every cue; a cue's sample can land on the pulse's peak",
+  "qa": ["occluded", "box-overlap"],
+  "elements": ["north", "south"],
+  "packet": {
+    "beat_id": "desks",
+    "spoken": "The north desk sorted the parcels by street. Then the south desk weighed each crate, and once the van came in, the last load arrived.",
+    "cues": [
+      { "action": "V6", "target": "north", "atCue": "north" },
+      { "action": "V6", "target": "north", "atCue": "sorted" },
+      { "action": "V6", "target": "south", "atCue": "south" },
+      { "action": "V6", "target": "south", "atCue": "weighed" },
+      { "action": "V6", "target": "south", "atCue": "van" },
+      { "action": "V6", "target": "south", "atCue": "arrived" }
+    ],
+    "planned_s": 10,
+    "band": "story"
+  },
+  "module": [
+    "import { useBeatTime, useCue } from \"@titan-design/react-ui/motion\";",
+    "",
+    "const clamp = (x: number) => Math.max(0, Math.min(1, x));",
+    "",
+    "export default function Desks() {",
+    "  const { t } = useBeatTime();",
+    "  const cues = { north: useCue(\"north\"), sorted: useCue(\"sorted\"), south: useCue(\"south\"), weighed: useCue(\"weighed\"), van: useCue(\"van\"), arrived: useCue(\"arrived\") };",
+    "  const pulse = (at: number) => (t < at ? 0 : clamp(1 - (t - at)));",
+    "  const clip = (at: number) => `inset(0 ${100 - clamp((t - at) / 0.5) * 100}% 0 0)`;",
+    "  const northPulse = Math.max(pulse(cues.north), pulse(cues.sorted));",
+    "  const southPulse = Math.max(pulse(cues.south), pulse(cues.weighed), pulse(cues.van), pulse(cues.arrived));",
+    "  const panel = { position: \"relative\", flex: 1, padding: 40, borderRadius: 24, border: \"3px solid var(--color-border-prominent)\", background: \"var(--color-background-subtle)\", display: \"flex\", flexDirection: \"column\", gap: 28 } as const;",
+    "  const tint = (p: number) => ({ position: \"absolute\", inset: 0, borderRadius: 24, background: \"var(--color-brand-primary-solid)\", opacity: p * 0.2 }) as const;",
+    "  const text = { position: \"relative\", margin: 0, fontSize: 52, fontWeight: 700, color: \"var(--color-text-primary)\" } as const;",
+    "  const chip = { position: \"relative\", alignSelf: \"flex-start\", padding: \"10px 28px\", borderRadius: 999, fontSize: 44, fontWeight: 700, background: \"var(--color-brand-primary-solid)\", color: \"var(--color-on-brand-primary)\", clipPath: clip(cues.arrived) } as const;",
+    "  return (",
+    "    <div style={{ position: \"absolute\", inset: 0, display: \"flex\", gap: 40, padding: 60, alignItems: \"flex-start\", boxSizing: \"border-box\" }}>",
+    "      <div id=\"north\" style={panel}>",
+    "        <div style={tint(northPulse)} />",
+    "        <p style={text}>North desk</p>",
+    "        <p style={text}>Sorted</p>",
+    "      </div>",
+    "      <div id=\"south\" style={panel}>",
+    "        <div style={tint(southPulse)} />",
+    "        <p style={text}>South desk</p>",
+    "        <p style={text}>Weighed</p>",
+    "        <div style={chip}>Arrived</div>",
+    "      </div>",
+    "    </div>",
+    "  );",
+    "}"
+  ]
+}
