@@ -9,6 +9,17 @@
       "kills": [
         "every math write operator, spacing and side around a computed name reads a long text without a hit in linear time: spaced operators between literal names"
       ]
+    },
+    {
+      "name": "the option walk keeps its read states in a string it rescans per state",
+      "file": "packages/tool-guard/src/shell/hooked-params.ts",
+      "find": "  const seen = new Set<string>();",
+      "replace": "  let seenText = \"\";\n  const seen = { has: (key: string) => seenText.includes(`|${key}|`), add: (key: string) => void (seenText += `|${key}|`) };",
+      "kills": [
+        "an option word the walk reads both ways reads a long run of either-letters in linear time",
+        "an option word the walk reads both ways slots the operands once when many readings end options: read, whose -p ends options in zsh",
+        "an option word the walk reads both ways slots the operands once when many readings end options: stat, whose -t ends options in BSD stat"
+      ]
     }
   ]
 }
