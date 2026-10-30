@@ -60,20 +60,38 @@ export function cuelessKind(beat: ScriptBeat): string | undefined {
   return found && !found.takesCues ? found.kind : undefined;
 }
 
+export interface PlannedCue {
+  cue: string;
+  /** Seconds into the beat's speech at the voiced band rate. */
+  s: number;
+}
+
 /**
- * The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. A kind
- * that takes no cue counts none, as qa's picture-change sees no cue move it.
+ * The beat's planned speech clock: each cue at its word's time, and the end of the voiced words. A kind that takes no
+ * cue counts none, as qa's picture-change sees no cue move it.
  */
-export function longestCueGapS(beat: ScriptBeat): number | undefined {
+export function plannedCues(beat: ScriptBeat): { cues: PlannedCue[]; endS: number } | undefined {
   const found = drawn(beat);
   if (!found) return undefined;
   const { budget, takesCues } = found;
   const voiced = spellSpokenNumbers(beat);
   const index = spokenWordIndex(voiced);
   const endS = Math.min(beat.plannedS, budget.words / budget.wordsPerS);
-  const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => Math.min(endS, index(cue) / budget.wordsPerS));
-  const times = [0, ...cues, endS].sort((a, b) => a - b);
-  return Math.max(0, ...times.slice(1).map((t, i) => t - times[i]!));
+  const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => ({ cue, s: Math.min(endS, index(cue) / budget.wordsPerS) }));
+  return { cues, endS };
+}
+
+/** The stretches from the cut at 0, between the given times, to `endS`, each as its start and end. */
+export function stretches(times: readonly number[], endS: number): [number, number][] {
+  const sorted = [0, ...times, endS].sort((a, b) => a - b);
+  return sorted.slice(1).map((t, i) => [sorted[i]!, t]);
+}
+
+/** The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. */
+export function longestCueGapS(beat: ScriptBeat): number | undefined {
+  const planned = plannedCues(beat);
+  if (!planned) return undefined;
+  return Math.max(0, ...stretches(planned.cues.map((cue) => cue.s), planned.endS).map(([from, to]) => to - from));
 }
 
 const isHeld = (beat: ScriptBeat): boolean => beat.band === "held" || (beat.heldS ?? 0) > 0;

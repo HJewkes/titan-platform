@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the still stretch row",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "  stillStretchCheck, headingWordsCheck,",
+      "replace": "  headingWordsCheck,",
+      "kills": [
+        "Q-D22 planned still stretches, qa's static-window at script time a beat with a 5 s planned gap between revealing cues fails and names the gap"
+      ]
+    },
+    {
+      "name": "Q-D22 has no repair hint",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "  \"Q-D22\": stillHint,\n",
+      "replace": "",
+      "kills": [
+        "Q-D22 planned still stretches, qa's static-window at script time a failing still stretch reaches the L0 repair prompt with its hint"
+      ]
+    }
+  ]
+}

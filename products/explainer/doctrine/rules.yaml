@@ -456,6 +456,13 @@ rules:
     owner_support: none
     note: "TP-4470. qa's G7 at script time: a kind with a headline or a source chip moves at once; a headline-free kind with neither opens on an element that waits for its cue, after the voice's 0.3 s lead-in. Custom layers are not predicted."
     l0: { severity: error, status: implemented, checks: ["Q-D21"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D22
+    rule: "No planned stretch of a beat between cues that reveal an element runs past the profile's pacing.staticMaxS, unless the beat is held"
+    fields: [beats.visual.cues, beats.visual.map_state, beats.visual.labels, beats.spoken, beats.heldS, beats.band]
+    related: [static-window, Q-D17]
+    owner_support: none
+    note: "TP-4538. qa's static-window at script time. A template beat's picture changes only on a cue resolve's fill reveals an element on, so a cue no element lands on closes no stretch; a custom layer's cues all count. A stretch runs on the voiced clock from the cut, between those cues, to the last word plus the tail, and may run staticMaxS plus one small move."
+    l0: { severity: error, status: implemented, checks: ["Q-D22"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
 
   - id: Q-E1
     rule: "Every claim maps to a fact id with a correct status; atomic claims are supported"
