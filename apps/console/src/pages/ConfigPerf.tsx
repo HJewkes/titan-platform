@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Alert, Badge, BadgeText, EmptyState, HStack, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
 import { DEFAULT_LIMITS, budgetFor } from "../../server/perf/budgets.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** Plan §2: no page waits longer than this for its first data. */
 const ROUTE_BUDGET_MS = 3000;
@@ -30,8 +31,8 @@ export function PerfTab(): ReactNode {
     <VStack gap={4}>
       <Tabs index={index} onChange={setIndex}>
         <TabList>
-          <Tab>15 min</Tab>
-          <Tab>24 h</Tab>
+          <Tab className={PHONE_TAP}>15 min</Tab>
+          <Tab className={PHONE_TAP}>24 h</Tab>
         </TabList>
       </Tabs>
       {summary.status === "loading" ? (

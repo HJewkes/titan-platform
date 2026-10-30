@@ -20,6 +20,7 @@ const Figure = z
   .object({
     id: Id,
     value: z.number(),
+    prefix: Label.optional(),
     unit: Label.optional(),
     label: Label,
     delta: z.number().optional(),

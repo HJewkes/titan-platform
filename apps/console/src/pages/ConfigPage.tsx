@@ -6,6 +6,7 @@ import { open, type Route } from "../router.js";
 import { HostsSection } from "./ConfigHosts.js";
 import { PerfTab } from "./ConfigPerf.js";
 import { ConfigRowCard, DuplicateCard, type ConfigRow, type DuplicateRow } from "./ConfigRows.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Surfaces = ConsoleCommands["config.surfaces"]["result"];
 type ConfigFile = Surfaces["files"][number];
@@ -41,8 +42,8 @@ export function ConfigPage({ route }: { route: Route }): ReactNode {
     <VStack gap={4}>
       <Tabs index={perf ? 1 : 0} onChange={(index) => open({ view: "config", ...(index === 1 ? { query: "tab=perf" } : {}) })}>
         <TabList>
-          <Tab>Settings</Tab>
-          <Tab>Perf</Tab>
+          <Tab className={PHONE_TAP}>Settings</Tab>
+          <Tab className={PHONE_TAP}>Perf</Tab>
         </TabList>
       </Tabs>
       {perf ? <PerfTab /> : <ConfigSettings />}

@@ -142,17 +142,20 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   const to = request.to ?? "export";
   if (STAGES.indexOf(to) < STAGES.indexOf(from)) throw new Error(`--to ${to} comes before --from ${from}`);
   if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
-  const profile = request.profile ?? request.gather?.type;
+  const runs = new WorkflowRunStore(db);
+  const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const basePlan = base ? planOf(base) : undefined;
+  const gather = request.gather ?? basePlan?.gather;
+  // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
+  const profile = request.profile ?? request.gather?.type ?? basePlan?.profile;
   const settings = {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
-    ...(request.gather ? { gather: request.gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
+    ...(gather ? { gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
   if (from === "audition" && !profile) throw new Error("a run from audition needs --profile <type>");
-  const runs = new WorkflowRunStore(db);
-  const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
   const fromEdit = request.edit ? editPins(dataDir, request.edit, base) : {};
   const artifacts = { ...fromBase.artifacts, ...fromEdit, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };

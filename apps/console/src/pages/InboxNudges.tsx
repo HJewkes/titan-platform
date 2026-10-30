@@ -4,6 +4,8 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
+import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
+import { useConfirmOnPhone } from "./PhoneConfirm.js";
 
 type RoundNudge = ConsoleCommands["inbox.list"]["result"]["nudges"][number];
 
@@ -44,7 +46,7 @@ function NudgeCard({ nudge }: { nudge: RoundNudge }): ReactNode {
               <Pill key={each.questionId} variant="subtle" size="xs">{`${each.questionId}: ${each.answer}`}</Pill>
             ))}
           </HStack>
-          <Link color="primary" onPress={() => open({ view: "rounds", id: nudge.roundId })}>
+          <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "rounds", id: nudge.roundId })}>
             Open round
           </Link>
           {nudge.oneTap ? <RecTap nudge={nudge} /> : <Typography variant="caption" color="secondary">{`No one-tap answer: ${nudge.withoutTap ?? "unknown"}`}</Typography>}
@@ -54,25 +56,34 @@ function NudgeCard({ nudge }: { nudge: RoundNudge }): ReactNode {
   );
 }
 
-/** One tap, as the nudge promised: `rounds.answer-rec` hands the recommendations to `rounds.submit`. */
+const recLabel = (nudge: RoundNudge): string => (nudge.recommendationsHidden ? "Accept all recommendations (unseen)" : "Answer all with recommendation");
+
+/**
+ * One tap, as the nudge promised: `rounds.answer-rec` hands the recommendations to `rounds.submit`. On a phone the tap
+ * only arms a confirm step, since a thumb lands on it while scrolling.
+ */
 function RecTap({ nudge }: { nudge: RoundNudge }): ReactNode {
   const source = useAnswerSource();
   const invalidate = useInvalidate();
   const [state, setState] = useState<TapState>({ status: "idle" });
-  if (source === null) return <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>;
   const tap = async (): Promise<void> => {
+    if (source === null) return;
     setState({ status: "sending" });
     const envelope = await source.call("rounds.answer-rec", { id: nudge.roundId, manifestSha256: nudge.manifestSha256 });
     if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
     setState({ status: "sent", already: alreadySubmitted(envelope.data) });
     invalidate(["inbox.list", "rounds.get", "rounds.list"]);
   };
+  const detail = `${recLabel(nudge)} for round ${nudge.round}? This submits the round.`;
+  const { press, step } = useConfirmOnPhone([{ id: "rec", confirm: "Confirm", detail, isDisabled: state.status === "sending", run: () => void tap() }]);
+  if (source === null) return <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>;
   if (state.status === "sent") return <Alert status="success" message={state.already ? "This round was already answered." : "Answered with every recommendation."} />;
   return (
     <VStack gap={2}>
-      <Button size="sm" isDisabled={state.status === "sending"} onPress={() => void tap()} testID={`inbox-nudge-rec-${nudge.roundId}`}>
-        <ButtonText>{nudge.recommendationsHidden ? "Accept all recommendations (unseen)" : "Answer all with recommendation"}</ButtonText>
+      <Button size="sm" className={PHONE_TAP} isDisabled={state.status === "sending"} onPress={() => press("rec")} testID={`inbox-nudge-rec-${nudge.roundId}`}>
+        <ButtonText>{recLabel(nudge)}</ButtonText>
       </Button>
+      {step}
       {state.status === "failed" ? <Alert status="error" message={`Not answered: ${state.error}`} /> : null}
     </VStack>
   );

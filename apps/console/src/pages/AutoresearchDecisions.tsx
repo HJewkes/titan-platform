@@ -23,6 +23,7 @@ import { AutoresearchRoundPlanner } from "./AutoresearchRoundPlanner.js";
 import { AutoresearchRoundSettle } from "./AutoresearchRoundSettle.js";
 import { keptMove, reasonText, shortId, signed } from "./autoresearch-format.js";
 import { formatCost } from "./SessionFormat.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Decided = ArLadder & { outcome: ArOutcome };
 
@@ -43,7 +44,7 @@ export function AutoresearchDecisions({ run }: { run: ArRunView }): ReactNode {
         <Accordion allowMultiple defaultIndex={[0]}>
           {newestFirst.map((round) => (
             <AccordionItem key={round.round}>
-              <AccordionButton>{roundTitle(round)}</AccordionButton>
+              <AccordionButton className={PHONE_TAP}>{roundTitle(round)}</AccordionButton>
               <AccordionPanel>
                 <AutoresearchRoundPlanner round={round} />
                 <RoundDecisions run={run} round={round} />
