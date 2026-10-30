@@ -6,6 +6,7 @@ import type {
   SendResult,
 } from "./contract.js";
 import { BlueBubblesTransport } from "./bluebubbles.js";
+import { postedBody } from "./telegram-fakes.js";
 import type { TelegramConfig } from "./telegram.js";
 import { TelegramTransport } from "./telegram.js";
 
@@ -28,7 +29,7 @@ function recording(
     fetch: async (url, init) => {
       calls.push({
         method: String(url).split("/").pop() ?? "",
-        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        body: postedBody(init),
       });
       return respond();
     },
@@ -188,8 +189,8 @@ describe("Telegram interactions when fetch rejects", () => {
   const transport = () =>
     new TelegramTransport({ token: TOKEN, chatIdFor: () => 4242, fetch: leaky });
 
-  async function expectContained(call: Promise<unknown>): Promise<void> {
-    const result = (await call) as { ok: boolean };
+  async function expectContained(call: Promise<{ ok: boolean }>): Promise<void> {
+    const result = await call;
 
     expect(result.ok).toBe(false);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
