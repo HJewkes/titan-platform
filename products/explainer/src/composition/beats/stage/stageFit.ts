@@ -44,8 +44,8 @@ function offsetIn(el: HTMLElement, frame: HTMLElement): { x: number; y: number }
  * Every rendered element's layout box inside `frame`. A text-only element also counts its scroll size,
  * which is where a word or number wider than its card shows up.
  */
-function contentBoxes(frame: HTMLElement): Box[] {
-  const els = [...frame.querySelectorAll("*")].filter((el): el is HTMLElement => el instanceof HTMLElement && el.offsetParent !== null);
+function contentBoxes(frame: HTMLElement, scope: HTMLElement = frame): Box[] {
+  const els = [...scope.querySelectorAll("*")].filter((el): el is HTMLElement => el instanceof HTMLElement && el.offsetParent !== null);
   return els.flatMap((el) => {
     const at = offsetIn(el, frame);
     if (!at) return [];
@@ -73,9 +73,23 @@ const FIT_MIN = 0.2;
 /** Halvings between FIT_MIN and 1: the fit lands within 0.0125 of the largest scale that fits. */
 const FIT_STEPS = 6;
 
+/**
+ * How far a stat row's tiles reach past the row's own box, which is the template's content width. The frame check
+ * alone lets four tiles run out to the canvas edge, since that is as far as the frame goes.
+ */
+function rowSpill(frame: HTMLElement): Overflow[] {
+  return [...frame.querySelectorAll<HTMLElement>(".beat-stats")].flatMap((row) => {
+    const origin = offsetIn(row, frame);
+    if (!origin) return [];
+    const boxes = contentBoxes(frame, row).map((b) => ({ ...b, x: b.x - origin.x, y: b.y - origin.y }));
+    return [{ ...overflowPx(row.offsetWidth, row.offsetHeight, boxes), top: 0, bottom: 0 }];
+  });
+}
+
 function overflowAt(frame: HTMLElement, scale: number): Overflow {
   frame.style.setProperty("--beat-fit", String(scale));
-  return overflowPx(frame.clientWidth, frame.clientHeight, contentBoxes(frame));
+  const whole = overflowPx(frame.clientWidth, frame.clientHeight, contentBoxes(frame));
+  return rowSpill(frame).reduce((sum, row) => ({ ...sum, left: sum.left + row.left, right: sum.right + row.right }), whole);
 }
 
 const fits = (o: Overflow) => o.top + o.right + o.bottom + o.left === 0;

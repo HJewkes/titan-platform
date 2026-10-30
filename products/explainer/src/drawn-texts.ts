@@ -29,7 +29,7 @@ function chartTexts(s: Slots): DrawnText[] {
 }
 
 const figureTexts = (figure: Slots): DrawnText[] =>
-  [...drawnAs("span", "beat-stat-label")(text(figure["label"])), ...drawnAs("span", "beat-stat-figure")([String(figure["value"])]), ...drawnAs("span", "beat-stat-unit")(text(figure["unit"]))];
+  [...drawnAs("span", "beat-stat-label")(text(figure["label"])), ...drawnAs("span", "beat-stat-prefix")(text(figure["prefix"])), ...drawnAs("span", "beat-stat-figure")([String(figure["value"])]), ...drawnAs("span", "beat-stat-unit")(text(figure["unit"]))];
 
 /** ClaimCardBeat (TitleBeat.tsx): the claim a word to a span, its quote a quoted subtitle. */
 function claimTexts(s: Slots): DrawnText[] {

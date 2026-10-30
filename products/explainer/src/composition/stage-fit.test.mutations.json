@@ -38,6 +38,16 @@
         "the stage fit a stat label too long even at the type floor is a row naming the beat, the label, the px and a shorten hint",
         "the stage fit one stage-fit scan reports every beat past its stage box, in beat order"
       ]
+    },
+    {
+      "name": "the fit ignores how far a stat row's tiles spill",
+      "file": "products/explainer/src/composition/beats/stage/stageFit.ts",
+      "find": "return rowSpill(frame).reduce(",
+      "replace": "return [].reduce(",
+      "kills": [
+        "the stage fit three stat tiles keep the frame's side margins and draw each prefix with its number",
+        "the stage fit four stat tiles keep the frame's side margins and draw each prefix with its number"
+      ]
     }
   ]
 }

@@ -18,6 +18,15 @@
       "kills": [
         "template fill: chart beats each cued bar reveals on its own cue"
       ]
+    },
+    {
+      "name": "a flush prefix is dropped from the figure",
+      "file": "products/explainer/src/template-fill/derive-figures.ts",
+      "find": "...(found[1] ? { prefix: found[1] } : {}), ",
+      "replace": "",
+      "kills": [
+        "template fill: stat beats keeps a flush currency sign or version v with its number, not in the label"
+      ]
     }
   ]
 }
