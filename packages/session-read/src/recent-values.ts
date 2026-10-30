@@ -1,3 +1,4 @@
+import { messageOf } from "./absent.js";
 import type { Json } from "./text.js";
 import { asObject } from "./text.js";
 import type { RecentObservedValue, RecentSessionReadError } from "./recent-types.js";
@@ -55,8 +56,4 @@ export function withNativeOrdinal(line: RecentSourceLine, record: Json): RecentS
   const ordinal = record.ordinal;
   if (typeof ordinal !== "number" || !Number.isFinite(ordinal)) return line;
   return { ...line, evidence: { ...line.evidence, nativeOrdinal: ordinal } };
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
