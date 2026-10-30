@@ -4,25 +4,14 @@ import { contrastReport } from "../qa/contrast-check.js";
 import { CONTRAST } from "../qa/gate-profile.js";
 import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
 import { qaSampleMoments } from "../qa/qa-timeline.js";
-import { badTextRows, distinctRows, heldRows, layerTextHint, plannedCues, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
+import { badTextRows, distinctRows, heldRows, layerTextHint, qaRows, revealMoments, type LayerTextRow } from "./layer-text.js";
 
 // Synthetic: an invented parcel desk.
 const AT = { x: 0, y: 0, w: 10, h: 10 };
 
 describe("the moments the layer check reads", () => {
-  it("places each cue word at its share of the planned seconds and reads it once it settles, then at the end", () => {
-    const packet = { beat_id: "b1", spoken: "parcels wait at the desk", cues: [{ action: "V6" as const, target: "desk", atCue: "desk" }], planned_s: 10 };
-
-    const cues = plannedCues(packet);
-
-    expect(cues).toEqual({ desk: 8 });
-    expect(revealMoments(cues, 10)).toEqual([9, 9.95]);
-  });
-
-  it("drops a cue the narration never speaks rather than guess its time", () => {
-    const packet = { beat_id: "b1", spoken: "parcels wait", cues: [{ action: "V6" as const, target: "desk", atCue: "ledger" }], planned_s: 4 };
-
-    expect(plannedCues(packet)).toEqual({});
+  it("reads each cue word once it settles, then at the end", () => {
+    expect(revealMoments({ desk: 8 }, 10)).toEqual([9, 9.95]);
   });
 });
 

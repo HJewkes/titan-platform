@@ -21,7 +21,7 @@ vi.hoisted(() => {
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them. Each spans the frame width, so qa's content-fill gate passes.
 const BROWSER_TIMEOUT_MS = 240_000;
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
-const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk.", cues: [], planned_s: 3 };
+const PACKET = { beat_id: "b-desk", spoken: "Twelve parcels wait at the desk.", cues: [], planned_s: 3, band: "story" as const };
 
 const layer = (body: string) => `import { useBeatTime } from "@titan-design/react-ui/motion";
 
