@@ -33,6 +33,7 @@
 .beat-frame > .ex-map {
   position: relative;
   width: 1728px;
+  margin-inline: auto;
 }
 .ex-map-svg {
   position: absolute;

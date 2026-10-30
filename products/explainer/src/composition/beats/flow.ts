@@ -7,17 +7,20 @@ import { FLOW_DWELL_S, SMALL_MOVE_S } from "./stage/video.js";
  */
 
 /** Arch-map geometry on its own 1728 px wide box (90 % of the 1920 canvas). */
-export const MAP = { width: 1728, nodeW: 272, gap: 92, nodeTop: 40, nodeH: 240, loopDrop: 150 } as const;
+export const MAP = { width: 1728, maxNodeW: 480, gap: 92, nodeTop: 40, nodeH: 240 } as const;
 export const RAIL_Y = MAP.nodeTop + MAP.nodeH / 2;
-/** The spike's box height, which kept room under the row for its loop edge; a path keeps it so the layout matches. */
-export const MAP_H = MAP.nodeTop + MAP.nodeH + MAP.loopDrop + 90;
+/** A one-way path draws no loop-back edge, so the box ends under the row instead of reserving the spike's loop space. */
+export const MAP_H = MAP.nodeTop * 2 + MAP.nodeH;
 const HOP_S = SMALL_MOVE_S;
 export const LIT_RAMP_S = 0.2;
 
 type Point = readonly [number, number];
 
-export const nodeLeft = (k: number) => k * (MAP.nodeW + MAP.gap);
-const nodeCenter = (k: number) => nodeLeft(k) + MAP.nodeW / 2;
+/** Nodes share the box's width, capped so a two-node path does not stretch; a short row is centred in the box. */
+export const nodeWidth = (nodes: number) => Math.min(MAP.maxNodeW, (MAP.width - (nodes - 1) * MAP.gap) / nodes);
+const rowLeft = (nodes: number) => (MAP.width - (nodes * nodeWidth(nodes) + (nodes - 1) * MAP.gap)) / 2;
+export const nodeLeft = (k: number, nodes: number) => rowLeft(nodes) + k * (nodeWidth(nodes) + MAP.gap);
+const nodeCenter = (k: number, nodes: number) => nodeLeft(k, nodes) + nodeWidth(nodes) / 2;
 
 /** Beat-local seconds the flow token arrives at node `k`: dwell 0.8 s, then a 0.5 s hop. */
 function arrivals(flowAtS: number, nodes: number): number[] {
@@ -33,10 +36,10 @@ export function tokenAt(t: number, flowAtS: number, nodes: number): Point | null
   const times = arrivals(flowAtS, nodes);
   for (let k = 0; k < nodes - 1; k++) {
     const leave = times[k]! + FLOW_DWELL_S;
-    if (t < leave) return [nodeCenter(k), RAIL_Y];
-    if (t < leave + HOP_S) return [interpolate(t, [leave, leave + HOP_S], [nodeCenter(k), nodeCenter(k + 1)], { ease: MOTION.ease.inOut }), RAIL_Y];
+    if (t < leave) return [nodeCenter(k, nodes), RAIL_Y];
+    if (t < leave + HOP_S) return [interpolate(t, [leave, leave + HOP_S], [nodeCenter(k, nodes), nodeCenter(k + 1, nodes)], { ease: MOTION.ease.inOut }), RAIL_Y];
   }
-  return [nodeCenter(nodes - 1), RAIL_Y];
+  return [nodeCenter(nodes - 1, nodes), RAIL_Y];
 }
 
 /** 1 while the token dwells in node `k`, ramping 0.2 s each side. */

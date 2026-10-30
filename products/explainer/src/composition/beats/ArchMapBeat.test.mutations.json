@@ -9,6 +9,15 @@
       "kills": [
         "an arch-map entering the map's step numbers are at full colour on the beat's first frames"
       ]
+    },
+    {
+      "name": "nodes keep the fixed 272 px width",
+      "file": "products/explainer/src/composition/beats/flow.ts",
+      "find": "Math.min(MAP.maxNodeW, (MAP.width - (nodes - 1) * MAP.gap) / nodes)",
+      "replace": "272",
+      "kills": [
+        "an arch-map's layout a three-node path spans at least 80% of the map box and sits centred"
+      ]
     }
   ]
 }
