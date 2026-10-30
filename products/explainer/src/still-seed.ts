@@ -155,12 +155,15 @@ function retimed(view: BeatView, moves: SeedMove[]): Cue[] {
   });
 }
 
-/** Rule 2: a drawn element no script cue reveals gets a cue on the first word that names it. */
+// A `<field>-<n>` item lands on its script cue; a whole slot (claim-card's claim) lands on the first word, cued or not.
+const ITEM = /-\d+$/;
+
+/** Rule 2: a drawn item no script cue reveals gets a cue on the first word that names it. */
 function uncued(view: BeatView, cues: readonly Cue[], moves: SeedMove[]): Cue[] {
   if (!view.drawn) return [];
   const cued = new Set(cues.map((cue) => cue.target));
   return view.elements.flatMap((element) => {
-    const named = cued.has(element.target) ? undefined : view.words.find((word) => names(element, word));
+    const named = cued.has(element.target) || !ITEM.test(element.target) ? undefined : view.words.find((word) => names(element, word));
     if (!named) return [];
     moves.push({ beat: view.beat.id, rule: "uncued", target: element.target, atCue: named.cue });
     return [cueOn(element.target, named.cue)];

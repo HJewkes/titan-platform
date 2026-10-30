@@ -15,8 +15,9 @@ const SETTLED =
 const settledList = () => dailyWith("lanes-1", { spoken: SETTLED, visual: { cues: [cue("rows-1", "matcher"), cue("rows-2", "switch")] } });
 const LONG_REFLECTION =
   "What slows the floor down is the shared review queue, where every lane waits its turn, and the drafts that sit idle until another lane lands first; small lanes ship faster than one big queue, and today showed it again, so tomorrow each lane reviews its own work before noon.";
-const stillCard = (held: readonly string[]) =>
-  held.reduce((script, id) => dailyWith(id, { heldS: 3 }, script), dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION }));
+// The claim's words are never spoken, so no word names it and only the hold is left.
+const stillCard = (held: readonly string[], claim = "Waiting sets the pace") =>
+  held.reduce((script, id) => dailyWith(id, { heldS: 3 }, script), dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION, visual: { labels: [claim] } }));
 
 /** What each beat shows, in the forms a listener hears: the labels' words and their numbers spelled. */
 function shownWords(script: ScriptV1, id: string): Set<string> {
@@ -64,6 +65,15 @@ describe("the $0 still seed: naming-only cues before the repair", () => {
     expect(held.heldS).toBe(3);
     expect(unheld.heldS).toBeUndefined();
     expect(l0Row(seedStillCues(roomy).script, "Q-D22").detail_beats).not.toContain("reflection-2");
+  });
+
+  it("a claim-card whose claim the voice names is cued on that word, not held", () => {
+    const script = stillCard(["ask-1"], "Shared review queue");
+
+    const card = beatOf(seedStillCues(script).script, "reflection-2");
+
+    expect(card.visual.cues.map(({ target }) => target)).toContain("claim");
+    expect(card.heldS).toBeUndefined();
   });
 });
 

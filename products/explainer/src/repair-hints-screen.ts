@@ -1,4 +1,4 @@
-import { cuelessKind, FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats, voicedBudget } from "./lint-cadence.js";
+import { CLAIM_CARD, cuelessKind, FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats, voicedBudget } from "./lint-cadence.js";
 import { REFLECTION_CHAPTER } from "./lint-coverage.js";
 import { BEAT_SECONDS } from "./lint-flow.js";
 import { PACING_DEFAULTS } from "./qa/timing-gates.js";
@@ -33,17 +33,22 @@ const echoHint: Hint = (script, row) => {
 
 const [BEAT_FLOOR_S] = BEAT_SECONDS;
 
-// A kind with no emphasis targets takes no cue and heldS excuses no stretch, so its moves are a trim, a split or a cued kind.
+// A claim-card's one cue target is its claim, which lights on a cue past its first word; any other cue-less kind takes none.
+const CLAIM_CUE = 'cue its claim (target "claim") on a spoken word inside the stretch, past its first word, that names the claim\'s text, so the claim lights; ';
+const cuelessLead = (beat: ScriptBeat, kind: string): string =>
+  kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue, and heldS does not excuse its stretch` : `${beat.id} is a ${kind}, which takes no cue, and heldS does not excuse its stretch`;
+
+// heldS excuses no cue gap, so a cue-less kind's moves are its claim cue, a trim, a split or a cued kind.
 function cuelessMove(beat: ScriptBeat, kind: string, failS: number): string {
   const budget = voicedBudget(beat);
-  const lead = `${beat.id} is a ${kind}, which takes no cue, and heldS does not excuse its stretch`;
-  if (!budget) return `${lead}: split it into ${kind} beats of at most ${failS} s of words each, or draw it as a list whose rows each land on a cue`;
+  const lead = `${cuelessLead(beat, kind)}: ${kind === CLAIM_CARD ? CLAIM_CUE : ""}`;
+  if (!budget) return `${lead}split it into ${kind} beats of at most ${failS} s of words each, or draw it as a list whose rows each land on a cue`;
   const cap = Math.floor(failS * budget.wordsPerS + 1e-9);
   const trim = `its spoken words must fit ${failS} s, at most ${cap} words (now ${budget.words}). Trim it to ${cap} words`;
   const pieces = Math.ceil(budget.words / cap);
   const list = "or draw it as a list whose rows each land on a cue";
-  if (beat.plannedS / pieces < BEAT_FLOOR_S) return `${lead}: ${trim}, ${list}; a split would leave pieces under the ${BEAT_FLOOR_S} s beat floor`;
-  return `${lead}: ${trim}, or split it into ${pieces} ${kind} beats of at most ${cap} words each, each still ${BEAT_FLOOR_S} s or longer by plannedS${splitKeeps(beat)}, ${list}`;
+  if (beat.plannedS / pieces < BEAT_FLOOR_S) return `${lead}${trim}, ${list}; a split would leave pieces under the ${BEAT_FLOOR_S} s beat floor`;
+  return `${lead}${trim}, or split it into ${pieces} ${kind} beats of at most ${cap} words each, each still ${BEAT_FLOOR_S} s or longer by plannedS${splitKeeps(beat)}, ${list}`;
 }
 
 // A split must not lose the hold (Q-D18) or the slowdown fact a reflection answers (Q-E22).
@@ -96,7 +101,9 @@ function stillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   const fix = "Put a cue on a spoken word inside each stretch that names an on-screen element, on an item the beat reveals there; a cue on a word no element lands on moves nothing, and a kind reveals one element per item, so add the item or split the beat";
   const cueless = found.flatMap(({ beat }) => {
     const kind = cuelessKind(beat);
-    return kind === undefined ? [] : [`${beat.id} is a ${kind}, which reveals nothing on a cue: hold it, show a claim the voice does not read word for word (its reading time is not still time), or draw it as a list whose rows each land on a cue; trimming its words would break the fill floor`];
+    if (kind === undefined) return [];
+    const lead = kind === CLAIM_CARD ? `${beat.id} is a ${kind} with no cue: ${CLAIM_CUE}or` : `${beat.id} is a ${kind}, which reveals nothing on a cue:`;
+    return [`${lead} hold it, show a claim the voice does not read word for word (its reading time is not still time), or draw it as a list whose rows each land on a cue; trimming its words would break the fill floor`];
   });
   return [`beats whose picture would stand still more than ${staticMaxS} s between reveals, outside the reading time of unspoken text: ${named.join("; ")}. ${fix}, or hold the beat with heldS if its point should sit with the viewer (at most ${held[1]} held beats in all)`, ...cueless].join("; ");
 }

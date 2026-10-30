@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { dailyScript, dailyWith, l0Row } from "./daily-script.test-helpers.js";
+import { cueElement, loadBeatSpecs } from "./beat-load.js";
 import { runL0 } from "./eval-l0.js";
+import { uncuedTargets } from "./lead-beats.js";
 import { repairHint } from "./l0-repair-hints.js";
 import { pictureChange, timingProfile } from "./qa/timing-gates.js";
 import { loadRuleRegistry } from "./rules.js";
@@ -36,7 +38,7 @@ describe("Q-D17 planned cue gaps", () => {
   });
 });
 
-describe("Q-D17 on a claim-card, a kind that takes no cue", () => {
+describe("Q-D17 on a claim-card, whose one cue target is its claim", () => {
   const longClaim = (patch: Parameters<typeof dailyWith>[1] = {}) => dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION, ...patch });
 
   it("a cue-less 20 s claim-card fails Q-D17 and its hint reaches the L0 repair prompt", () => {
@@ -62,12 +64,22 @@ describe("Q-D17 on a claim-card, a kind that takes no cue", () => {
     expect(row.detail_beats).toEqual(["reflection-2"]);
   });
 
-  it("counts no cue on a claim-card, which the emphasis gate would refuse and qa would never see move", () => {
+  it("counts each cue on a claim-card's claim, which lights the claim on its word", () => {
     const script = longClaim({ visual: { cues: [cue("claim", "turn"), cue("claim", "first"), cue("claim", "big"), cue("claim", "tomorrow")] } });
+    const spec = loadBeatSpecs().get("claim-card")!;
 
     const row = l0Row(script, "Q-D17");
 
-    expect(row.detail_beats).toContain("reflection-2");
+    expect(row.detail_beats).not.toContain("reflection-2");
+    expect(cueElement(spec, { claim: "Small lanes win" }, "claim")).toBe("claim");
+  });
+
+  it("a cue-less claim-card needs no cue, so a reply with one is not refused for it", () => {
+    const script = longClaim();
+
+    const uncued = uncuedTargets(script, [], loadBeatSpecs());
+
+    expect(uncued.filter((line) => line.startsWith("reflection-2"))).toEqual([]);
   });
 
   it("the repair hint offers a move the claim-card kind can take", () => {
@@ -75,7 +87,7 @@ describe("Q-D17 on a claim-card, a kind that takes no cue", () => {
 
     const hint = repairHint(l0Row(script, "Q-D17"), script);
 
-    expect(hint).toContain("reflection-2 is a claim-card, which takes no cue, and heldS does not excuse its stretch");
+    expect(hint).toContain('reflection-2 is a claim-card with no cue, and heldS does not excuse its stretch: cue its claim (target "claim") on a spoken word inside the stretch');
     expect(hint).toMatch(/split it into [23] claim-card beats of at most \d+ words each.*, or draw it as a list whose rows each land on a cue/);
   });
 
