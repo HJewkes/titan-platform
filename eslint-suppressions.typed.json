@@ -840,21 +840,6 @@
       "count": 14
     }
   },
-  "packages/locator/src/hash.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/locator/src/json-lines.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/locator/src/transcript-table.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/matrix-bus/src/http.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

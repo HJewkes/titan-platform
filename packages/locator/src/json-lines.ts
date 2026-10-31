@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { asBuffer } from "./chunk.js";
 
 export interface RawLine {
   /** Absolute byte offset of the line's first byte within the file. */
@@ -26,7 +27,7 @@ export async function* readJsonLines(filePath: string, startOffset = 0, options:
   const decoder = options.strictUtf8 ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }) : null;
 
   for await (const chunk of createReadStream(filePath, { start: startOffset })) {
-    pending = Buffer.concat([pending, chunk as Buffer]);
+    pending = Buffer.concat([pending, asBuffer(chunk)]);
     let newlineAt = pending.indexOf(NEWLINE);
     while (newlineAt !== -1) {
       const line = pending.subarray(0, newlineAt);
