@@ -11,6 +11,16 @@
       ]
     },
     {
+      "name": "a non-mapping artifacts.yml is read as empty again",
+      "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
+      "find": "return 'not a mapping';",
+      "replace": "return { branches: [], stashes: [], worktrees: [] };",
+      "kills": [
+        "v3ToV4Worktrees unparseable artifacts.yml leaves an artifacts.yml holding a scalar byte-identical and reports it",
+        "v3ToV4Worktrees unparseable artifacts.yml leaves an artifacts.yml holding a list byte-identical and reports it"
+      ]
+    },
+    {
       "name": "the skip is not reported in the migration log",
       "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
       "find": "if (skipped) {",

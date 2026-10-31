@@ -170,21 +170,6 @@ describe('v3 -> v4 worktrees', () => {
   const ONE_WORKTREE = BASE + ['worktrees:', '  main:', '    path: ~/code/sample', ''].join('\n');
 
   it.each([
-    ['a scalar', 'just a string\n'],
-    ['a list', '- one\n- two\n'],
-  ])('treats an artifacts.yml holding %s as empty and migrates over it', async (_label, body) => {
-    const dir = await writeInitiative('sample', ONE_WORKTREE, body);
-
-    await v3ToV4Worktrees.run(activeRoot);
-
-    expect(await readArtifacts(dir)).toMatchObject({
-      branches: [],
-      worktrees: [{ path: '~/code/sample', name: 'main' }],
-    });
-    expect(await readBriefData(dir)).not.toHaveProperty('worktrees');
-  });
-
-  it.each([
     ['a null entry', 'worktrees:\n  - null\n'],
     ['an entry with no repo', 'worktrees:\n  - path: ~/code/other\n'],
   ])('aborts on %s in artifacts.yml, writing nothing', async (_label, artifacts) => {
