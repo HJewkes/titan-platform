@@ -169,6 +169,27 @@ describe("gate decisions on well-formed schemas", () => {
   });
 });
 
+describe("annotation keywords", () => {
+  it.each<[string, unknown]>([
+    ["title", "T"], ["description", "D"], ["default", 1], ["examples", [1]], ["$comment", "c"], ["deprecated", true], ["readOnly", true], ["writeOnly", true],
+    ["$id", "urn:example:a"], ["$anchor", "a"], ["format", "email"], ["contentEncoding", "base64"], ["contentMediaType", "text/plain"], ["contentSchema", {}], ["x-ui-hint", { rows: 3 }],
+  ])("reads %s as an annotation that changes no decision", (keyword, value) => {
+    const schema = { type: "object", properties: { a: { type: "string", [keyword]: value } }, required: ["a"], [keyword]: value };
+    expect(checkAgainstJsonSchema(schema, { a: "x" })).toEqual([]);
+    expect(checkAgainstJsonSchema(schema, { a: 1 })).toEqual(["$.a: expected string, received number"]);
+  });
+
+  it("does not read an annotation's value, whatever its shape", () => {
+    expect(checkAgainstJsonSchema({ type: "string", description: 7, title: null, "x-note": [] }, "x")).toEqual([]);
+  });
+
+  it("keeps a custom .meta() annotation answerable", () => {
+    const schema = z.toJSONSchema(z.object({ note: z.string().meta({ "x-widget": "textarea", title: "Note" }) }));
+    expect(checkAgainstJsonSchema(schema, { note: "x" })).toEqual([]);
+    expect(checkAgainstJsonSchema(schema, { note: 1 })).toEqual(["$.note: expected string, received number"]);
+  });
+});
+
 describe("unreadable stored schemas", () => {
   it.each<[string, unknown]>([
     ["null", null],
@@ -224,6 +245,7 @@ describe("unreadable stored schemas", () => {
     ["at the root", { typ: "string" }],
     ["inside properties", { type: "object", properties: { a: { minimun: 1 } } }],
     ["inside a union branch", { anyOf: [{ if: {} }] }],
+    ["that merely starts with x", { xor: [] }],
     ["named after an Object method", { constructor: {} }],
     ["named __proto__", JSON.parse('{"__proto__": {}}')],
   ])("refuses an unknown keyword %s", (_name, schema) => {

@@ -43,16 +43,18 @@ const SCHEMA_TYPES: ReadonlySet<unknown> = new Set<SchemaType>(["object", "array
 
 const ENFORCED = new Set(["anyOf", "oneOf", "const", "enum", "type", "properties", "required", "additionalProperties", "items", "prefixItems"]);
 
+/** The JSON Schema annotation vocabulary plus zod's value refinements. Their values are never read, so none can misread a schema. */
 const ANNOTATIONS = [
-  "$schema", "$id", "$comment", "title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly",
-  "format", "pattern", "contentEncoding", "contentMediaType", "minLength", "maxLength",
+  "$schema", "$id", "$anchor", "$comment", "title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly",
+  "format", "contentEncoding", "contentMediaType", "contentSchema", "pattern", "minLength", "maxLength",
   "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minItems", "maxItems",
 ];
 
 /**
- * Keywords zod emits that this check does not enforce, as it never has: annotations, value
- * refinements and composition all stay with the waiter's zod schema. They are listed so
- * that a gate zod built stays answerable, and subschemas among them must still parse.
+ * Keywords this check does not enforce, as it never has: annotations, value refinements and
+ * composition all stay with the waiter's zod schema. They are listed so that a gate zod built
+ * stays answerable, and subschemas among them must still parse. An `x-` key is an extension
+ * annotation by convention, and `.meta()` is how one reaches a stored schema.
  */
 const UNENFORCED = new Map<string, (value: unknown, at: string) => unknown>([
   ...ANNOTATIONS.map((keyword) => [keyword, () => undefined] as const),
@@ -69,6 +71,7 @@ function parseSchema(raw: unknown, at: string): SchemaNode {
   if (!isPlainObject(raw)) throw new Error(`${at}: expected a schema`);
   for (const [keyword, value] of Object.entries(raw)) {
     if (ENFORCED.has(keyword)) continue;
+    if (keyword.startsWith("x-")) continue;
     const parse = UNENFORCED.get(keyword);
     if (!parse) throw new Error(`${at}: unknown keyword ${keyword}`);
     parse(value, `${at}/${keyword}`);
