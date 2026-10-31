@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
-import { REGISTER_METRICS } from "./lint-register.js";
+import { WRITING_METRICS } from "./lint-writing.js";
 import { calibrateWriting, formatWritingCheck, metricsOf, parseWritingCheck, windowsOf, WRITING_BUCKETS, type WritingCheck } from "./writing-calibrate.js";
 import { loadCorpus, readPrecision, readThresholds } from "./writing-calibrate-cli.js";
 import { rowStatus, type RowMetrics, type StatusThresholds } from "./writing-status.js";
@@ -21,7 +21,7 @@ function twinCheck(): WritingCheck {
 
 describe("the shipped writing-check.json", () => {
   it("each shipped status equals rowStatus of its metrics, in every bucket", () => {
-    for (const metric of REGISTER_METRICS) {
+    for (const metric of WRITING_METRICS) {
       for (const { name } of WRITING_BUCKETS) {
         const expected = rowStatus(metricsOf(shipped.rows[metric][name], shipped.precision[metric]), thresholds);
         expect(shipped.statusDetail[metric][name], `${metric} at ${name}`).toEqual(expected);
@@ -31,13 +31,21 @@ describe("the shipped writing-check.json", () => {
   });
 
   it("no row gates at 300-599; neg-synthetic gates at 600-1199; lets drops from 600 words up", () => {
-    const at300 = REGISTER_METRICS.filter((metric) => shipped.statusByBucket[metric]["300-599"] === "gate");
+    const at300 = WRITING_METRICS.filter((metric) => shipped.statusByBucket[metric]["300-599"] === "gate");
 
     expect(at300).toEqual([]);
     expect(shipped.statusByBucket["neg-synthetic"]["600-1199"]).toBe("gate");
     expect(shipped.statusByBucket["second-person"]["300-599"]).toBe("drop");
     expect(shipped.statusByBucket.lets["300-599"]).toBe("report-only");
     expect(shipped.statusByBucket.lets["600-1199"]).toBe("drop");
+  });
+
+  it("adjacent-delta warns where it separates ai-other and is report-only where no contrast clears the line", () => {
+    expect(shipped.statusByBucket["adjacent-delta"]).toEqual({ "150-299": "report-only", "300-599": "warning", "600-1199": "warning", "1200+": "report-only", full: "warning" });
+  });
+
+  it("fits a floor-only row's 10 % band on its low side alone, so no text is flagged for being bursty", () => {
+    expect(shipped.band10pct["adjacent-delta"]).toMatchObject({ lo: 0.4861, hi: null });
   });
 
   it("a punctuation row records that its 17 held-out windows miss the n_neg gate", () => {
