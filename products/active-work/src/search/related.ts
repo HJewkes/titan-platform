@@ -194,7 +194,8 @@ async function relatedFromIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
 ): Promise<RelatedResult> {
-  const { df, maxDf } = graphTermStatistics(graph);
+  const { df, maxDfFor } = graphTermStatistics(graph);
+  const maxDf = maxDfFor(input.classes ?? RELATED_DEFAULT_CLASSES);
   const query = deriveQuery(input.text, df, { maxDf });
   if (query.terms.length === 0) {
     return degradedResult(query, { source: 'query', reason: 'empty', message: 'no query terms' });

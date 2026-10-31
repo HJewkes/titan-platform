@@ -115,8 +115,8 @@ export function graphNoteRelevance(dbPath?: string): NoteRelevance {
   return (terms) => {
     const graph = openGraph(dbPath ?? defaultGraphPath());
     try {
-      const { df, maxDf } = graphTermStatistics(graph);
-      const expression = orExpression(selectTerms(terms, df, { maxDf }));
+      const { df, maxDfFor } = graphTermStatistics(graph);
+      const expression = orExpression(selectTerms(terms, df, { maxDf: maxDfFor(['notes']) }));
       const spans = workspaceSpanReader(graph);
       return noteHits(graph, spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' }), terms);
     } finally {
