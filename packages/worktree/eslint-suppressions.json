@@ -1,4 +1,9 @@
 {
+  "packages/worktree/src/index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
   "packages/worktree/src/allocator.ts": {
     "titan/max-function-lines": {
       "count": 1
