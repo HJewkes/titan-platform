@@ -46,7 +46,7 @@ describe('archiveStaleTasks', () => {
       done_at: '2026-05-01', // ~60d before NOW
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
 
     expect(archived).toEqual(['AW-1']);
     expect(existsSync(path.join(tasksDir, 'AW-1.yml'))).toBe(false);
@@ -64,7 +64,7 @@ describe('archiveStaleTasks', () => {
       done_at: '2026-06-20', // ~11d before NOW
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
 
     expect(archived).toEqual([]);
     expect(existsSync(path.join(tasksDir, 'AW-2.yml'))).toBe(true);
@@ -90,7 +90,7 @@ describe('archiveStaleTasks', () => {
       done_at: null,
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
 
     expect(archived).toEqual([]);
     expect(existsSync(path.join(tasksDir, 'AW-3.yml'))).toBe(true);
@@ -109,7 +109,7 @@ describe('archiveStaleTasks', () => {
       done_at: '2026-01-01',
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
 
     expect(archived).toEqual(['AW-5']);
     expect(existsSync(path.join(tasksDir, 'bad.yml'))).toBe(true); // left in place
@@ -126,7 +126,7 @@ describe('archiveStaleTasks', () => {
       done_at: '2026-01-01',
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 0, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 0, now: NOW });
 
     expect(archived).toEqual([]);
     expect(existsSync(path.join(tasksDir, 'AW-6.yml'))).toBe(true);
@@ -148,14 +148,14 @@ describe('archiveStaleTasks', () => {
       done_at: '2026-06-20T13:45:00.000Z',
     });
 
-    const archived = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
+    const { archivedIds: archived } = await archiveStaleTasks(initiativeDir, { retentionDays: 30, now: NOW });
 
     expect(archived).toEqual(['AW-7', 'AW-8']);
     expect(existsSync(path.join(tasksDir, 'AW-9.yml'))).toBe(true);
   });
 
   it('returns [] when there is no tasks directory', async () => {
-    const archived = await archiveStaleTasks(path.join(base, 'nonexistent'), {
+    const { archivedIds: archived } = await archiveStaleTasks(path.join(base, 'nonexistent'), {
       retentionDays: 30,
       now: NOW,
     });
