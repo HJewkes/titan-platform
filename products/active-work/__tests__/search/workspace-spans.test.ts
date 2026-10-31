@@ -1,22 +1,23 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { graphNoteRelevance } from '../../src/bootstrap/rank-notes.js';
 import type { WorkspaceGraph } from '../../src/session-index/graph.js';
 import { searchWorkspace } from '../../src/search/index.js';
 import {
   hasLegacyWorkspaceSpans,
+  workspaceSpanReader,
   workspaceSpanTable,
 } from '../../src/search/workspace-spans.js';
 import { WORKSPACE_SPAN_SOURCE_BASE } from '../../src/workspace-index/schema.js';
-import { refreshInto, scaffold } from '../workspace-index/fixture.js';
+import { demoteToLegacy, refreshInto, scaffold } from '../workspace-index/fixture.js';
 
 /**
- * The selector that S3's cutover will flip (TP-4680). Until it is told to cut
- * over it answers the shared table; told to, it reads the workspace table only
- * once no workspace span is left in the shared one.
+ * The selector (TP-4680): a graph holding legacy workspace spans is read through
+ * `search_span`, and one holding none through `workspace_span`.
  */
 
 let dir: string;
@@ -33,67 +34,27 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   graph.db.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
-interface LegacySpan {
-  owner_ref: string;
-  field: string;
-  source_id: number;
-  byte_offset: number;
-  byte_length: number;
-  source_key: string;
-}
-
-/** What S3's backfill and flip will do, done by hand: re-index each workspace span, then drop the legacy rows. */
-function moveWorkspaceSpans(): void {
-  const rows = graph.db
-    .prepare<[number, number], LegacySpan>(
-      `SELECT s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, w.source_key
-       FROM search_span s JOIN workspace_file w ON s.source_id = w.source_id + ?
-       WHERE s.source_id >= ?`,
-    )
-    .all(WORKSPACE_SPAN_SOURCE_BASE, WORKSPACE_SPAN_SOURCE_BASE);
-  for (const row of rows) {
-    const bytes = readFileSync(path.join(root, row.source_key));
-    const text = bytes.subarray(row.byte_offset, row.byte_offset + row.byte_length).toString('utf8');
-    graph.workspaceSpans.index(
-      {
-        ownerRef: row.owner_ref,
-        field: row.field,
-        sourceId: row.source_id,
-        byteOffset: row.byte_offset,
-        byteLength: row.byte_length,
-      },
-      text,
-    );
-  }
-  graph.db.prepare('DELETE FROM search_span WHERE source_id >= ?').run(WORKSPACE_SPAN_SOURCE_BASE);
-}
-
-const hitPaths = async (options = {}) =>
-  (await searchWorkspace('Prose a search should find', { graph, activeRoot: root, ...options }))
-    .hits.map((hit) => [hit.ref, hit.path, hit.excerpt]);
+const hitPaths = async () =>
+  (await searchWorkspace('Prose a search should find', { graph, activeRoot: root })).hits.map(
+    (hit) => [hit.ref, hit.path, hit.excerpt],
+  );
 
 describe('workspaceSpanTable', () => {
-  it('answers the shared table by default even when the graph is cut over', () => {
-    moveWorkspaceSpans();
+  it('stays on the shared table while legacy workspace spans remain', () => {
+    demoteToLegacy(graph, root);
 
+    expect(hasLegacyWorkspaceSpans(graph)).toBe(true);
     expect(workspaceSpanTable(graph)).toBe(graph.spans);
   });
 
-  it('stays on the shared table while legacy workspace spans remain, even when told to cut over', () => {
-    expect(hasLegacyWorkspaceSpans(graph)).toBe(true);
-
-    expect(workspaceSpanTable(graph, { cutover: true })).toBe(graph.spans);
-  });
-
-  it('reads the workspace table once told to cut over and no legacy span remains', () => {
-    moveWorkspaceSpans();
-
+  it('reads the workspace table once no legacy span remains', () => {
     expect(hasLegacyWorkspaceSpans(graph)).toBe(false);
-    expect(workspaceSpanTable(graph, { cutover: true })).toBe(graph.workspaceSpans);
+    expect(workspaceSpanTable(graph)).toBe(graph.workspaceSpans);
   });
 
   it('probes legacy spans through the source index rather than a scan', () => {
@@ -105,25 +66,50 @@ describe('workspaceSpanTable', () => {
   });
 });
 
-describe('workspace readers after a hand-made cutover', () => {
-  it('search finds the same workspace hits in the new table only when told to', async () => {
-    const before = await hitPaths();
-    moveWorkspaceSpans();
+describe('workspaceSpanReader', () => {
+  it('keeps a query on its snapshot when the flip commits between the choice and the search', () => {
+    demoteToLegacy(graph, root);
+    const before = graph.spans.search('"Prose a search should find"');
+    const other = new Database(dbPath);
+    const search = graph.spans.search.bind(graph.spans);
+    vi.spyOn(graph.spans, 'search').mockImplementation((...args) => {
+      other.prepare('DELETE FROM search_span WHERE source_id >= ?').run(WORKSPACE_SPAN_SOURCE_BASE);
+      return search(...args);
+    });
+
+    const hits = workspaceSpanReader(graph).search('"Prose a search should find"');
+    other.close();
 
     expect(before.length).toBeGreaterThan(0);
-    expect(await hitPaths()).toEqual([]);
-    expect(await hitPaths({ workspaceSpans: { cutover: true } })).toEqual(before);
+    expect(hits).toEqual(before);
+  });
+});
+
+describe('workspace readers across a cutover', () => {
+  it('search finds the same workspace hits in either table', async () => {
+    const cutOver = await hitPaths();
+    demoteToLegacy(graph, root);
+
+    expect(cutOver.length).toBeGreaterThan(0);
+    expect(await hitPaths()).toEqual(cutOver);
   });
 
-  it('note relevance reads the new table only when told to', () => {
-    const terms = ['lesson'];
-    const before = graphNoteRelevance(dbPath)(terms).map((hit) => hit.ref);
-    moveWorkspaceSpans();
-
-    expect(before.length).toBeGreaterThan(0);
-    expect(graphNoteRelevance(dbPath)(terms)).toEqual([]);
-    expect(graphNoteRelevance(dbPath, { cutover: true })(terms).map((hit) => hit.ref)).toEqual(
-      before,
+  it('search hits only the current table', async () => {
+    demoteToLegacy(graph, root);
+    graph.workspaceSpans.index(
+      { ownerRef: 'note:alpha/decoy.md', field: 'body', sourceId: 1, byteOffset: 0, byteLength: 6 },
+      'decoywordonly',
     );
+
+    expect((await searchWorkspace('decoywordonly', { graph, activeRoot: root })).hits).toEqual([]);
+  });
+
+  it('note relevance finds the same notes in either table', () => {
+    const terms = ['lesson'];
+    const cutOver = graphNoteRelevance(dbPath)(terms).map((hit) => hit.ref);
+    demoteToLegacy(graph, root);
+
+    expect(cutOver.length).toBeGreaterThan(0);
+    expect(graphNoteRelevance(dbPath)(terms).map((hit) => hit.ref)).toEqual(cutOver);
   });
 });

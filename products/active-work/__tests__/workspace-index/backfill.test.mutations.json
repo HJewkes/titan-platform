@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pass flips even when a batch threw",
+      "file": "products/active-work/src/workspace-index/refresh.ts",
+      "find": "    applyBatch(graph, writer, batch);\n",
+      "replace": "    try { applyBatch(graph, writer, batch); } catch { continue; }\n",
+      "kills": [
+        "workspace span backfill keeps the flip back until a pass finishes and leaves search byte-identical"
+      ]
+    },
+    {
+      "name": "a backfill restarts instead of resuming",
+      "file": "products/active-work/src/workspace-index/backfill.ts",
+      "find": "          AND NOT EXISTS (SELECT 1 FROM workspace_span w WHERE w.source_id = l.source_id)`,",
+      "replace": "          `,",
+      "kills": [
+        "workspace span backfill resumes after the last committed batch and then flips"
+      ]
+    },
+    {
+      "name": "the writer drops legacy spans as it moves each file",
+      "file": "products/active-work/src/workspace-index/write.ts",
+      "find": "    this.replaceRows(record.file.path, watermarkId);\n",
+      "replace": "    this.purge(record.file.path, watermarkId);\n",
+      "kills": [
+        "workspace span backfill keeps the flip back until a pass finishes and leaves search byte-identical"
+      ]
+    },
+    {
+      "name": "a pending file is left for its watermark to decide",
+      "file": "products/active-work/src/workspace-index/refresh.ts",
+      "find": "      const current = isUnchanged(row, file) && !pending.has(spanSourceId(row.sourceId));\n",
+      "replace": "      const current = isUnchanged(row, file) && pending.size >= 0;\n",
+      "kills": [
+        "workspace span backfill flips a legacy graph with one clean pass, leaving what a fresh index holds"
+      ]
+    },
+    {
+      "name": "reset leaves the FTS rows behind",
+      "file": "products/active-work/src/workspace-index/write.ts",
+      "find": "    graph.workspaceSpans.clearIndex();\n",
+      "replace": "",
+      "kills": [
+        "workspace span reset rebuilds a damaged table from the files, through the refresh option"
+      ]
+    }
+  ]
+}

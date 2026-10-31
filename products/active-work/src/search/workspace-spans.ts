@@ -10,15 +10,8 @@ import { WORKSPACE_SPAN_SOURCE_BASE } from '../workspace-index/schema.js';
  * above the workspace base remains in `search_span`, the graph is not cut over
  * and readers stay there, so workspace search never goes dark mid-backfill.
  * The flip deletes those rows in one transaction, and readers change over on
- * its commit.
- *
- * `cutover` is off by default because nothing writes the new table yet. With it
- * off this always answers `graph.spans`, which is exactly the table every
- * reader used before. The transcripts class never asks: it reads `graph.spans`.
+ * its commit. The transcripts class never asks: it reads `graph.spans`.
  */
-export interface WorkspaceSpanOptions {
-  cutover?: boolean;
-}
 
 /** An `idx_search_span_source` range probe: one index seek, not a scan. */
 export function hasLegacyWorkspaceSpans(graph: WorkspaceGraph): boolean {
@@ -30,10 +23,18 @@ export function hasLegacyWorkspaceSpans(graph: WorkspaceGraph): boolean {
   return row !== undefined;
 }
 
-export function workspaceSpanTable(
-  graph: WorkspaceGraph,
-  options: WorkspaceSpanOptions = {},
-): SpanFtsTables {
-  if (!options.cutover) return graph.spans;
+export function workspaceSpanTable(graph: WorkspaceGraph): SpanFtsTables {
   return hasLegacyWorkspaceSpans(graph) ? graph.spans : graph.workspaceSpans;
+}
+
+/**
+ * Search whichever table is current, choosing per query.
+ *
+ * Choice and search share one read transaction, and so one WAL snapshot. Apart,
+ * a flip committing between them would leave the query on a table just emptied.
+ */
+export function workspaceSpanReader(graph: WorkspaceGraph): Pick<SpanFtsTables, 'search'> {
+  return {
+    search: (...args) => graph.db.transaction(() => workspaceSpanTable(graph).search(...args))(),
+  };
 }

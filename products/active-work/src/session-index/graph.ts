@@ -31,9 +31,9 @@ export type { SessionGraph };
  * over the workspace files. `edges` are shared with the transcript side on
  * purpose, because cross-class retrieval is a join.
  *
- * `workspaceSpans` is the workspace half's own span index (TP-4680). Until the
- * cutover nothing writes it and readers stay on `spans`; `workspaceSpanTable`
- * decides which one a query reads.
+ * `workspaceSpans` is the workspace half's own span index (TP-4680). The
+ * workspace pass writes it; `workspaceSpanTable` decides which table a query reads
+ * while an older graph still holds workspace spans in `spans`.
  */
 export interface WorkspaceGraph extends SessionGraph {
   workspaceFiles: WatermarkTable;

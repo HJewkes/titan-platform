@@ -8,7 +8,7 @@ import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-ind
 import { getActiveRoot } from '../utils/paths.js';
 import { SEARCH_CLASSES, capFor, type SearchClass } from './classes.js';
 import { resolveHits, type ResolvedHit } from './resolve.js';
-import { workspaceSpanTable, type WorkspaceSpanOptions } from './workspace-spans.js';
+import { workspaceSpanReader } from './workspace-spans.js';
 
 /**
  * Search over every initiative at once.
@@ -33,8 +33,6 @@ export interface SearchOptions {
   classes?: string[];
   /** The query is already an FTS5 expression; pass it through untouched. */
   rawExpression?: boolean;
-  /** Which span table the workspace classes read; see `workspaceSpanTable`. */
-  workspaceSpans?: WorkspaceSpanOptions;
 }
 
 export interface SearchResult {
@@ -65,8 +63,7 @@ function classRetriever(
   limit: number,
   options: SearchOptions,
 ): Retriever {
-  const table =
-    cls.name === 'transcripts' ? graph.spans : workspaceSpanTable(graph, options.workspaceSpans);
+  const table = cls.name === 'transcripts' ? graph.spans : workspaceSpanReader(graph);
   return ftsRetriever(table, {
     name: cls.name,
     scope: cls.scope,

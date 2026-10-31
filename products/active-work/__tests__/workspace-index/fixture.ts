@@ -1,7 +1,9 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { openGraph, type WorkspaceGraph } from '../../src/session-index/graph.js';
 import { refreshWorkspace } from '../../src/workspace-index/refresh.js';
+import { WORKSPACE_SPAN_SOURCE_BASE } from '../../src/workspace-index/schema.js';
+import { resetWorkspaceSpans } from '../../src/workspace-index/write.js';
 
 /**
  * A miniature active root with the properties the live one has and the naive
@@ -148,5 +150,57 @@ export async function refreshInto(
 ): Promise<WorkspaceGraph> {
   const graph = openGraph(dbPath);
   await refreshWorkspace(graph, { activeRoot: root, full });
+  return graph;
+}
+
+interface StoredSpan {
+  owner_ref: string;
+  field: string;
+  source_id: number;
+  byte_offset: number;
+  byte_length: number;
+  source_key: string;
+}
+
+/**
+ * Put a graph back the way a build before TP-4680 left it: every workspace span
+ * in `search_span`, an empty `workspace_span`, and watermarks that say each file
+ * is current. Span text comes back from the files, since the index keeps none.
+ */
+export function demoteToLegacy(graph: WorkspaceGraph, root: string): void {
+  const spans = graph.db
+    .prepare<[number], StoredSpan>(
+      `SELECT s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, w.source_key
+         FROM workspace_span s JOIN workspace_file w ON s.source_id = w.source_id + ?`,
+    )
+    .all(WORKSPACE_SPAN_SOURCE_BASE);
+  const watermarks = graph.workspaceFiles.list();
+  for (const span of spans) {
+    const bytes = readFileSync(path.join(root, span.source_key));
+    graph.spans.index(
+      {
+        ownerRef: span.owner_ref,
+        field: span.field,
+        sourceId: span.source_id,
+        byteOffset: span.byte_offset,
+        byteLength: span.byte_length,
+      },
+      bytes.subarray(span.byte_offset, span.byte_offset + span.byte_length).toString('utf8'),
+    );
+  }
+  resetWorkspaceSpans(graph);
+  for (const row of watermarks) {
+    graph.workspaceFiles.advance(row.sourceKey, {
+      lastOffset: row.lastOffset,
+      fileSize: row.fileSize,
+      fileMtime: row.fileMtime,
+    });
+  }
+}
+
+/** A pre-TP-4680 graph over the scaffold: `refreshInto`, then demoted. */
+export async function legacyGraphInto(dbPath: string, root: string): Promise<WorkspaceGraph> {
+  const graph = await refreshInto(dbPath, root);
+  demoteToLegacy(graph, root);
   return graph;
 }

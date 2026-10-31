@@ -77,7 +77,7 @@ export function spanSourceId(watermarkId: number): number {
 export class WorkspaceWriter {
   private readonly inserts: Record<WorkspaceClass, Statement>;
   private readonly deletes: Statement[];
-  private readonly deleteSpans: Statement;
+  private readonly deleteLegacySpans: Statement;
   /** Spans indexed or purged since construction; a pass reads it to know whether counts went stale. */
   spansChanged = 0;
 
@@ -88,7 +88,7 @@ export class WorkspaceWriter {
     this.deletes = CLASSES.map((cls) =>
       graph.db.prepare(`DELETE FROM "${TABLES[cls].table}" WHERE path = ?`),
     );
-    this.deleteSpans = graph.db.prepare('DELETE FROM search_span WHERE source_id = ?');
+    this.deleteLegacySpans = graph.db.prepare('DELETE FROM search_span WHERE source_id = ?');
   }
 
   /**
@@ -105,8 +105,13 @@ export class WorkspaceWriter {
    * are a claim about a file that no longer says anything.
    */
   purge(relativePath: string, watermarkId: number): void {
+    this.replaceRows(relativePath, watermarkId);
+    this.spansChanged += this.deleteLegacySpans.run(spanSourceId(watermarkId)).changes;
+  }
+
+  private replaceRows(relativePath: string, watermarkId: number): void {
     for (const statement of this.deletes) statement.run(relativePath);
-    this.spansChanged += this.deleteSpans.run(spanSourceId(watermarkId)).changes;
+    this.spansChanged += this.graph.workspaceSpans.purgeSource(spanSourceId(watermarkId));
   }
 
   /**
@@ -114,17 +119,20 @@ export class WorkspaceWriter {
    * before. Not transactional on its own — the caller batches many of these
    * into one transaction, because a WAL commit per file is the difference
    * between a pass that runs in a moment and one that does not.
+   *
+   * Legacy spans stay: until the flip they are what readers search, so dropping
+   * a file's here would hide it from search for the rest of the backfill.
    */
   apply(record: WorkspaceRecord, watermarkId: number): void {
     const spec = TABLES[record.file.class];
-    this.purge(record.file.path, watermarkId);
+    this.replaceRows(record.file.path, watermarkId);
     this.inserts[record.file.class].run(
       record.file.path,
       record.ref,
       ...spec.columns.map((column) => record.row[column] ?? null),
     );
     for (const span of record.spans) {
-      this.graph.spans.index(
+      this.graph.workspaceSpans.index(
         {
           ownerRef: record.ref,
           field: span.field,
@@ -140,16 +148,32 @@ export class WorkspaceWriter {
 }
 
 /**
+ * Empty the workspace span table and rewind every workspace watermark, so the
+ * next pass rebuilds it from the files.
+ *
+ * Row tables stay, so nothing but span search notices. Before the flip readers
+ * are on the legacy spans and do not notice either; after it, workspace search
+ * fills back in as that pass runs, batch by batch.
+ */
+export function resetWorkspaceSpans(graph: WorkspaceGraph): void {
+  graph.db.transaction(() => {
+    graph.db.exec('DELETE FROM workspace_span');
+    graph.workspaceSpans.clearIndex();
+    for (const row of graph.workspaceFiles.list()) graph.workspaceFiles.rewind(row.sourceKey);
+  })();
+}
+
+/**
  * Clear every workspace table and rewind every workspace watermark.
  *
  * The mirror of `session-graph`'s `resetIndex`, and it exists for the same
  * reason: rewinding alone is not enough, because the next pass would write a
- * second copy of everything. Edges and FTS spans live in tables the session
- * graph shares, so `resetIndex` clears those; this clears what is ours alone.
+ * second copy of everything. Edges and legacy FTS spans live in tables the
+ * session graph shares, so `resetIndex` clears those; this clears what is ours.
  */
 export function resetWorkspaceIndex(graph: WorkspaceGraph): void {
   graph.db.transaction(() => {
     for (const cls of CLASSES) graph.db.exec(`DELETE FROM "${TABLES[cls].table}"`);
-    for (const row of graph.workspaceFiles.list()) graph.workspaceFiles.rewind(row.sourceKey);
+    resetWorkspaceSpans(graph);
   })();
 }

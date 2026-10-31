@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { claudeTranscriptRoots, discoverAllTranscripts } from '@titan-design/session-read';
 import minerStatus from '../../src/commands/miner-status.js';
-import { defaultGraphPath } from '../../src/session-index/graph.js';
+import { defaultGraphPath, openGraph } from '../../src/session-index/graph.js';
 import { runRefresh } from '../../src/session-index/refresh.js';
+import { WORKSPACE_SPAN_SOURCE_BASE } from '../../src/workspace-index/schema.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../session-index/fixture.js';
 import { withEmptyActiveRoot } from '../setup/test-helpers.js';
 import { mirrorRoot, mirrorRoots } from '../fixtures/mirror-roots.js';
@@ -132,6 +133,36 @@ describe('miner status', () => {
 
       expect(minerStatus.result.parse(current).daemon?.lastMaxLoopStallMs).toBe(412);
       expect(minerStatus.result.parse(older).daemon).toMatchObject({ indexing: true });
+    });
+  });
+
+  it('sums spans across both tables and reports the workspace backfill', async () => {
+    await withEmptyActiveRoot(async () => {
+      writeCorpus({ '.claude': 1 });
+      await runRefresh({ skipPrOutcomes: true, skipWorkspace: true });
+      const graph = openGraph(defaultGraphPath());
+      const span = { field: 'body', byteOffset: 0, byteLength: 9 };
+      const transcriptSpans = graph.db.prepare('SELECT 1 FROM search_span').all().length;
+      graph.workspaceSpans.index(
+        { ...span, ownerRef: 'note:a/b.md', sourceId: WORKSPACE_SPAN_SOURCE_BASE + 1 },
+        'synthetic',
+      );
+      graph.spans.index(
+        { ...span, ownerRef: 'note:a/c.md', sourceId: WORKSPACE_SPAN_SOURCE_BASE + 2 },
+        'synthetic',
+      );
+      graph.db.close();
+
+      const result = await status();
+
+      expect(result.counts.spans).toBe(transcriptSpans + 2);
+      expect(result.workspaceBackfill).toEqual({
+        state: 'in_progress',
+        legacySpans: 1,
+        workspaceSpans: 1,
+        pendingFiles: 1,
+      });
+      expect(minerStatus.result.parse(result).workspaceBackfill.state).toBe('in_progress');
     });
   });
 
