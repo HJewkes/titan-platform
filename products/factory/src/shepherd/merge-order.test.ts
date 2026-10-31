@@ -19,6 +19,13 @@ describe("which paths two PRs overlap on", () => {
     expect(overlapping(REPO, [".changeset/a.md", "CAPABILITIES.md"], [".changeset/b.md", ".changeset/a.md", "CAPABILITIES.md"], RULE)).toEqual([]);
   });
 
+  it("never pairs two typed-lint PRs that clear different packages' baselines", () => {
+    const factory = ["products/factory/eslint-suppressions.typed.json", "products/factory/src/a.ts"];
+    const codeGraph = ["packages/code-graph/eslint-suppressions.typed.json", "packages/code-graph/src/a.ts"];
+
+    expect(overlapping(REPO, factory, codeGraph, RULE)).toEqual([]);
+  });
+
   it("counts products/explainer/CAPABILITY.md changed on both sides", () => {
     expect(overlapping(REPO, ["products/explainer/CAPABILITY.md", "src/a.ts"], ["products/explainer/CAPABILITY.md", "src/b.ts"], RULE)).toEqual(["products/explainer/CAPABILITY.md"]);
   });
