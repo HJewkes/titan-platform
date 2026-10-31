@@ -20,6 +20,7 @@ import newCommand from './commands/new.js';
 import openCommand from './commands/open.js';
 import resumeCommand from './commands/resume.js';
 import { resolveLaunchCwd } from './commands/_open-helpers.js';
+import { agentCaller } from './commands/_done-when-gate.js';
 import {
   buildClaudeArgs,
   buildResumeArgs,
@@ -60,7 +61,10 @@ interface PickerResult {
 type OpenResult = OpenSuccess | PickerResult;
 
 function launcherContext(): CommandContext {
-  return { activeRoot: getActiveRoot(), warnings: [], format: 'json', cwd: process.cwd() };
+  return { activeRoot: getActiveRoot(), warnings: [], format: 'json',
+    cwd: process.cwd(),
+    caller: agentCaller(process.env),
+  };
 }
 
 async function runOpen(
@@ -252,6 +256,7 @@ async function runResume(argv: string[]): Promise<void> {
     warnings: [],
     format: 'json',
     cwd: process.cwd(),
+    caller: agentCaller(process.env),
   };
   try {
     const parsed = resumeCommand.args.parse({ session_id: sessionId });
