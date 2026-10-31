@@ -141,6 +141,21 @@ export function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
   return { label, flake: true, cmd, prefix, targets, repeats: flakeClasses.repeats, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } };
 }
 
+/**
+ * The graph-root members a change touches. A non-entry module's importers sit in its own package, since other
+ * packages import through the manifest entries, so indexing just these members judges their exports as CI does.
+ */
+export function deadCheckDirs(changed, workspace) {
+  const touched = workspace.filter((member) => GRAPH_ROOT.test(member.dir) && changed.some((path) => path.startsWith(member.dir)));
+  return touched.map((member) => member.dir.replace(/\/$/, "")).sort();
+}
+
+function deadCheckCommand(changed, workspace, base) {
+  const dirs = deadCheckDirs(changed, workspace);
+  if (dirs.length === 0) return null;
+  return { label: "dead:check", cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base } };
+}
+
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
 
 /**
@@ -167,7 +182,8 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm changeset status", disposition: "local", label: "changeset status" },
   { job: "validate", run: "pnpm index-version:check", disposition: "local", label: "index-version:check" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
-  { job: "dag-check", run: /^pnpm (?:dag:check:graph|dead:check) /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
+  { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
+  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages (deadCheckDirs)" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
   { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
@@ -195,6 +211,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     pnpmRun("docs:build"),
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
+    deadCheckCommand(changed, workspace, base),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
 }

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "dead:check scope takes workspace members outside the graph roots",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  const touched = workspace.filter((member) => GRAPH_ROOT.test(member.dir) && changed.some((path) => path.startsWith(member.dir)));\n",
+      "replace": "  const touched = workspace.filter((member) => changed.some((path) => path.startsWith(member.dir)));\n",
+      "kills": [
+        "verify:changed dead:check step indexes only the touched graph-root packages and checks baseline growth against the base",
+        "verify:changed dead:check step is skipped when no graph-root package changed"
+      ]
+    },
+    {
+      "name": "verify:changed stops planning dead:check",
+      "file": "scripts/verify-changed.mjs",
+      "find": "    deadCheckCommand(changed, workspace, base),\n",
+      "replace": "",
+      "kills": [
+        "verify:changed dead:check step indexes only the touched graph-root packages and checks baseline growth against the base"
+      ]
+    },
+    {
+      "name": "the dead:check step skips the baseline growth check",
+      "file": "scripts/verify-changed.mjs",
+      "find": "`--paths=${dirs.join(\",\")}`], env: { BASE_REF: base } };\n",
+      "replace": "`--paths=${dirs.join(\",\")}`] };\n",
+      "kills": [
+        "verify:changed dead:check step indexes only the touched graph-root packages and checks baseline growth against the base"
+      ]
+    },
+    {
+      "name": "a scoped run reports other packages' baseline entries as fixed",
+      "file": "scripts/dead-code-check.mjs",
+      "find": "baseline: baseline.filter((id) => underPath(id, paths)) };\n",
+      "replace": "baseline };\n",
+      "kills": [
+        "a --paths dead:check run judges only the scoped packages' baseline entries, so the rest are neither carried nor fixed"
+      ]
+    },
+    {
+      "name": "a scoped run accepts --update",
+      "file": "scripts/dead-code-check.mjs",
+      "find": "  if (paths !== null && values.update === true) throw new Error(\"--paths cannot be combined with --update\");\n",
+      "replace": "",
+      "kills": [
+        "a --paths dead:check run refuses --update, which would drop the unscoped packages' baseline entries"
+      ]
+    }
+  ]
+}
