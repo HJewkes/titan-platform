@@ -1852,6 +1852,11 @@ waiting again: ci-wait:0 timed out after 2700000 ms, waiting on mergeable_state 
 A 5xx with no earlier read that answered has no head to return, so it still fails at the first
 timeout.
 
+A repo whose CI posts a commit status instead of running Actions names those contexts in
+`shepherd.repos.<repo>.statusContexts` ([factory config](/guides/factory)). Each one then waits like
+a check run: a pending or not yet posted status holds the wait, as a queued job does, and a
+failure or error status is red.
+
 GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
 never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
 ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow

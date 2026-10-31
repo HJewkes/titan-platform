@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every repo's commit statuses count as CI, configured or not",
+      "file": "products/factory/src/shepherd/status-checks.ts",
+      "find": "      if (contexts.length === 0) return port.checkRuns(repo, sha);\n      const [runs, statuses] = await Promise.all([port.checkRuns(repo, sha), port.commitStatuses(repo, sha)]);\n      return [...runs, ...statusCheckRuns(statuses, sha, contexts)];",
+      "replace": "      const [runs, statuses] = await Promise.all([port.checkRuns(repo, sha), port.commitStatuses(repo, sha)]);\n      return [...runs, ...statusCheckRuns(statuses, sha, statuses.map((status) => status.context))];",
+      "kills": [
+        "land ci-wait on a repo whose CI posts a configured commit status ignores the status on a repo with no configured contexts, which waits on Actions as before",
+        "readMainCi on a repo whose CI posts a configured commit status returns none for an unconfigured repo whose only CI is a status"
+      ]
+    }
+  ]
+}
