@@ -167,6 +167,46 @@ describe('v3 -> v4 worktrees', () => {
     expect(artifacts.worktrees.find((w) => w.name === 'spike')?.default).toBeUndefined();
   });
 
+  const ONE_WORKTREE = BASE + ['worktrees:', '  main:', '    path: ~/code/sample', ''].join('\n');
+
+  it.each([
+    ['a scalar', 'just a string\n'],
+    ['a list', '- one\n- two\n'],
+  ])('treats an artifacts.yml holding %s as empty and migrates over it', async (_label, body) => {
+    const dir = await writeInitiative('sample', ONE_WORKTREE, body);
+
+    await v3ToV4Worktrees.run(activeRoot);
+
+    expect(await readArtifacts(dir)).toMatchObject({
+      branches: [],
+      worktrees: [{ path: '~/code/sample', name: 'main' }],
+    });
+    expect(await readBriefData(dir)).not.toHaveProperty('worktrees');
+  });
+
+  it.each([
+    ['a null entry', 'worktrees:\n  - null\n'],
+    ['an entry with no repo', 'worktrees:\n  - path: ~/code/other\n'],
+  ])('aborts on %s in artifacts.yml, writing nothing', async (_label, artifacts) => {
+    const dir = await writeInitiative('sample', ONE_WORKTREE, artifacts);
+
+    await expect(v3ToV4Worktrees.run(activeRoot)).rejects.toThrow();
+
+    expect(await readFile(path.join(dir, 'artifacts.yml'), 'utf8')).toBe(artifacts);
+    expect(await readBriefData(dir)).toHaveProperty('worktrees');
+  });
+
+  it('skips brief worktrees that are not objects and still removes the key', async () => {
+    const dir = await writeInitiative(
+      'sample',
+      BASE + ['worktrees:', '  bad: just-a-string', '  empty: null', ''].join('\n'),
+    );
+
+    await v3ToV4Worktrees.run(activeRoot);
+
+    expect(await readBriefData(dir)).not.toHaveProperty('worktrees');
+  });
+
   it('is idempotent', async () => {
     const dir = await writeInitiative(
       'twice',

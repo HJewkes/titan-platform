@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import YAML from 'yaml';
-import { ArtifactsSchema, type WorktreeEntry } from '../schemas/artifacts.js';
+import { z } from 'zod';
+import { ArtifactsSchema, WorktreeEntrySchema, type WorktreeEntry } from '../schemas/artifacts.js';
 import { writeYaml } from '../utils/yaml-io.js';
 import { atomicWrite } from '../utils/fs-atomic.js';
 import { parseFrontmatter, stringifyFrontmatter } from '../utils/gray-matter-io.js';
@@ -29,10 +31,7 @@ import type { Migration } from './types.js';
  * preserved byte-for-byte.
  */
 
-interface RawBriefWorktree {
-  path?: unknown;
-  default?: unknown;
-}
+const WorktreeListSchema = z.array(WorktreeEntrySchema);
 
 /** Same-path comparison without tilde expansion surprises. */
 function normalize(value: string): string {
@@ -43,12 +42,13 @@ function normalize(value: string): string {
 }
 
 function toEntries(raw: unknown): Array<{ name: string; path: string; default: boolean }> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+  if (!isRecord(raw)) return [];
   const out: Array<{ name: string; path: string; default: boolean }> = [];
-  for (const [name, value] of Object.entries(raw as Record<string, RawBriefWorktree>)) {
-    const wtPath = value?.path;
+  for (const [name, value] of Object.entries(raw)) {
+    if (!isRecord(value)) continue;
+    const wtPath = value.path;
     if (typeof wtPath !== 'string' || wtPath.length === 0) continue;
-    out.push({ name, path: wtPath, default: value?.default === true });
+    out.push({ name, path: wtPath, default: value.default === true });
   }
   return out;
 }
@@ -89,16 +89,20 @@ async function readArtifacts(file: string): Promise<{
   stashes: unknown[];
   worktrees: WorktreeEntry[];
 }> {
+  let raw: unknown;
   try {
-    const raw = YAML.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
-    return {
-      branches: Array.isArray(raw?.branches) ? raw.branches : [],
-      stashes: Array.isArray(raw?.stashes) ? raw.stashes : [],
-      worktrees: Array.isArray(raw?.worktrees) ? (raw.worktrees as WorktreeEntry[]) : [],
-    };
+    raw = YAML.parse(await fs.readFile(file, 'utf8'));
   } catch {
     return { branches: [], stashes: [], worktrees: [] };
   }
+  if (!isRecord(raw)) return { branches: [], stashes: [], worktrees: [] };
+  return {
+    branches: Array.isArray(raw.branches) ? raw.branches : [],
+    stashes: Array.isArray(raw.stashes) ? raw.stashes : [],
+    // Outside the catch on purpose: a bad entry must abort before the write, as the
+    // final ArtifactsSchema.parse would. Reading it as empty would overwrite the list.
+    worktrees: Array.isArray(raw.worktrees) ? WorktreeListSchema.parse(raw.worktrees) : [],
+  };
 }
 
 /** Returns how many worktrees moved out of this brief. */
