@@ -39,12 +39,12 @@ describe("reviewShadow", () => {
 });
 
 describe("workflowModeOf", () => {
-  it("runs on and on:preflight as off with a logged reason, and turns only shadow on", () => {
+  it("runs on as off with a logged reason, and turns shadow and on:preflight on", () => {
     const warned: string[] = [];
     const modes = (["off", undefined, "on", "on:preflight", "shadow"] as const).map((mode) => workflowModeOf(mode, (text) => warned.push(text)));
 
-    expect(modes).toEqual([{}, {}, {}, {}, { workflow: "shadow" }]);
-    expect(warned.map((text) => text.includes("runs as off"))).toEqual([true, true]);
+    expect(modes).toEqual([{}, {}, {}, { workflow: "on:preflight" }, { workflow: "shadow" }]);
+    expect(warned.map((text) => text.includes("runs as off"))).toEqual([true]);
   });
 });
 

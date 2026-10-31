@@ -266,6 +266,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":
+    case "await-fixer":
       run.reviews.delete(headSha);
       if (route === "fresh-reviewer") run.fresh.add(headSha);
       return false;
@@ -279,7 +280,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
     case "new-cycle":
     case "await-account":
       // A head behind a moved base lands as it stands, so only a MERGE verdict may take it to the merge decision.
-      if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
+      if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || routed.outcome === "carried" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
 }

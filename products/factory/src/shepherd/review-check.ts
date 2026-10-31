@@ -36,7 +36,7 @@ interface ReviewCheck {
   summary: string;
 }
 
-type NoVerdictOutcome = Exclude<ReviewOutcome, "MERGE" | "FIX_FIRST" | "head-moved">;
+type NoVerdictOutcome = Exclude<ReviewOutcome, "MERGE" | "carried" | "FIX_FIRST" | "head-moved">;
 
 const NO_VERDICT: Record<NoVerdictOutcome, string> = {
   "no-verdict": "The reviewer gave no verdict at this head.",
@@ -45,6 +45,7 @@ const NO_VERDICT: Record<NoVerdictOutcome, string> = {
   "not-started": "No reviewer started at this head.",
   "account-exhausted": "The reviewer's account is out of usage; the review waits for it.",
   throttled: "The machine stop held while the reviewer ran; it is reviewed again now the stop has lifted.",
+  "needs-fixer": "Preflight found a hard error before any reviewer started; the review waits for its fix.",
 };
 
 const short = (sha: string): string => sha.slice(0, 12);
@@ -59,7 +60,7 @@ export function reviewCheck(input: ReviewCheckInput): ReviewCheck {
   const { outcome, head, verdictHead, carriedFrom } = input;
   const at = (conclusion: ReviewConclusion, title: string, summary: string): ReviewCheck => ({ headSha: head, conclusion, title, summary });
   if (outcome === "FIX_FIRST") return at("failure", `FIX_FIRST at ${short(head)}`, "The review asked for changes at this head.");
-  if (outcome !== "MERGE" && outcome !== "head-moved") return at("action_required", `No verdict at ${short(head)} (${outcome})`, NO_VERDICT[outcome]);
+  if (outcome !== "MERGE" && outcome !== "carried" && outcome !== "head-moved") return at("action_required", `No verdict at ${short(head)} (${outcome})`, NO_VERDICT[outcome]);
   const carried = carriedFrom !== undefined && carriedFrom === verdictHead;
   if (outcome === "head-moved" || (verdictHead !== head && !carried)) {
     const reviewed = verdictHead ? short(verdictHead) : "an unknown head";

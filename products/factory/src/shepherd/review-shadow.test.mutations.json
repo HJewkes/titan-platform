@@ -18,9 +18,9 @@
     {
       "name": "on runs as shadow instead of off",
       "file": "products/factory/src/shepherd/review-shadow.ts",
-      "find": "if (mode === \"shadow\") return { workflow: \"shadow\" };",
-      "replace": "if (mode === \"shadow\" || mode === \"on\") return { workflow: \"shadow\" };",
-      "kills": ["workflowModeOf runs on and on:preflight as off with a logged reason, and turns only shadow on"]
+      "find": "if (mode === \"shadow\" || mode === \"on:preflight\") return { workflow: mode };",
+      "replace": "if (mode === \"shadow\" || mode === \"on:preflight\" || mode === \"on\") return { workflow: \"shadow\" };",
+      "kills": ["workflowModeOf runs on as off with a logged reason, and turns shadow and on:preflight on"]
     }
   ]
 }

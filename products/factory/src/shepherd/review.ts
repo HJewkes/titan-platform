@@ -47,6 +47,7 @@ import { ciChecksAt } from "./green-checks.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 import { REVIEW_SHADOW_STEP, recordShadow, reviewShadowRoute, shadowOn } from "./review-shadow.js";
 import { dispatchedRound } from "./review-round.js";
+import { preflightOn, preflightPlan, preflightRefused, type ReviewWorkflowWiring } from "./review-preflight.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export { AWAIT_VERDICT_STEP, LATE_VERDICT_STEP, REVIEW_STEP, mergeVerdict };
@@ -89,8 +90,8 @@ export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
-/** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix. */
-type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string };
+/** `refused` is the failure class of a dispatch the broker or port refused outright, which no retry at once can fix; `fixer` is preflight's refusal. */
+type NoReview = { kind: "none"; reason: string; exhausted?: string; refused?: string; fixer?: { fingerprint: string; failure: string } };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<PanelOnPlan>) | NoReview | NotStarted;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
@@ -211,8 +212,11 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
-  /** `review.workflow: shadow`: the intent records it, and each round then records what review-workflow would have done. Absent means `off`. */
-  workflow?: "shadow";
+  /**
+   * `review.workflow`: the intent records it. Under `shadow` each round then records what review-workflow would have done; under
+   * `on:preflight` the intent refuses a head whose planned members could only be refused at dispatch. Absent means `off`.
+   */
+  workflow?: ReviewWorkflowWiring;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -256,9 +260,13 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const lineage = await lineageFor(wired.lineage, registration, roster);
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, lineage, input.fresh), () => chooseReviewer(input, registration, roster, lineage, true));
   if ("exhausted" in billed) return { kind: "none", reason: "every review account is exhausted", exhausted: billed.exhausted };
+  const plan = () => plannedPanel(deps, wired, { ...input, reviewer: billed.choice.reviewer, mode: billed.choice.mode }, roster);
+  const preflight = billed.choice.mode !== "external" && preflightOn(wired.workflow) ? await preflightPlan(plan, wired.profileInstalled) : undefined;
+  if (preflight?.kind === "none") return preflight;
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
   const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }) };
-  return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, { ...input, reviewer: intent.reviewer, mode: intent.mode }, roster)) };
+  if (billed.choice.mode === "external") return intent;
+  return { ...intent, ...(preflight === undefined ? await plan() : preflight.planned) };
 };
 
 /** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
@@ -359,7 +367,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
-  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
+  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : (preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent));
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const { dispatched, verdict } = await dispatchedRound(ctx, request, { target, proof, standing, intent });
   if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });

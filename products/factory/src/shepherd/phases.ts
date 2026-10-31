@@ -60,9 +60,10 @@ export interface ReviewRequest extends PhaseTarget {
 
 /**
  * Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, a busy broker
- * started nobody, the reviewer's Claude account is out of usage, or the reviewer went silent while the machine stop held.
+ * started nobody, the reviewer's Claude account is out of usage, the reviewer went silent while the machine stop held, or
+ * preflight found a hard error, such as a member planned onto an uninstalled profile, before any reviewer started.
  */
-export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled" | "needs-fixer";
 
 /** What a panel MERGE records beside the correctness member's verdict: each member that gave one, and whether the panel met G10. */
 export interface PanelMerge {

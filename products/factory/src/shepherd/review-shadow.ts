@@ -17,10 +17,10 @@ export const REVIEW_SHADOW_STEP = "sh-review-shadow";
 
 type ReviewWorkflowMode = "off" | "shadow" | "on" | "on:preflight";
 
-/** Only `shadow` is built (S10); `on:preflight` and `on` run as `off`, with the reason logged, until S11 and S12 ship them. */
-export function workflowModeOf(mode: ReviewWorkflowMode | undefined, warn: (text: string) => void = console.warn): { workflow?: "shadow" } {
-  if (mode === "shadow") return { workflow: "shadow" };
-  if (mode === "on" || mode === "on:preflight") warn(`shepherd: review.workflow "${mode}" is not built yet (TP-3928, TP-3929), so it runs as off`);
+/** `shadow` (S10) and `on:preflight` (S11) are built; `on` runs as `off`, with the reason logged, until S12 ships it. */
+export function workflowModeOf(mode: ReviewWorkflowMode | undefined, warn: (text: string) => void = console.warn): { workflow?: "shadow" | "on:preflight" } {
+  if (mode === "shadow" || mode === "on:preflight") return { workflow: mode };
+  if (mode === "on") warn(`shepherd: review.workflow "${mode}" is not built yet (TP-3929), so it runs as off`);
   return {};
 }
 
