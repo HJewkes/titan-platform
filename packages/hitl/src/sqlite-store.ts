@@ -348,7 +348,7 @@ function columns(record: GateRecord): unknown[] {
   return [
     record.id,
     record.prompt,
-    record.schema ? JSON.stringify(record.schema) : null,
+    toJson(record.schema),
     record.status,
     toJson(record.payload),
     record.reason ?? null,

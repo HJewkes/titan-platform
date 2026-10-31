@@ -77,7 +77,7 @@ export abstract class BaseGateStore implements GateStore {
     const facts = evidence === undefined ? undefined : snapshotEvidence(id, evidence);
     const record = this.requirePending(id);
     this.requireAuthorized(record, resolver, payload, facts);
-    if (record.schema) {
+    if (record.schema !== undefined) {
       const issues = checkAgainstJsonSchema(record.schema, payload);
       if (issues.length > 0) throw new GatePayloadInvalid(id, issues);
     }

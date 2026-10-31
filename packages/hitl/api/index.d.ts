@@ -1,6 +1,6 @@
 import { ZodType } from 'zod';
-import { G as GateRecord, a as GateQuestion, b as GateRule, c as GateStore, d as GateResolver, e as GateEvidence, B as BaseGateStore, f as GateAuthorize, g as GateAnswerAllowance, h as GateEvidencePolicy, J as JsonSchema } from './base-store.js';
-export { i as GateAborted, j as GateAdmission, k as GateAdmittedBy, l as GateAlreadyExists, m as GateAlreadySettled, n as GateAuthorization, o as GateAuthorizeInvalid, p as GateBrief, q as GateBriefInvalid, r as GateCancelled, s as GateError, t as GateEvidenceInvalid, u as GateExpired, v as GateExpiryInvalid, w as GateInput, x as GateNotFound, y as GatePayloadInvalid, z as GateQuestionOption, A as GateResolverRefused, C as GateRuleInvalid, D as GateStatus, E as GateStoreSchemaOutdated } from './base-store.js';
+import { G as GateRecord, a as GateQuestion, b as GateRule, c as GateStore, d as GateResolver, e as GateEvidence, B as BaseGateStore, f as GateAuthorize, g as GateAnswerAllowance, h as GateEvidencePolicy } from './base-store.js';
+export { i as GateAborted, j as GateAdmission, k as GateAdmittedBy, l as GateAlreadyExists, m as GateAlreadySettled, n as GateAuthorization, o as GateAuthorizeInvalid, p as GateBrief, q as GateBriefInvalid, r as GateCancelled, s as GateError, t as GateEvidenceInvalid, u as GateExpired, v as GateExpiryInvalid, w as GateInput, x as GateNotFound, y as GatePayloadInvalid, z as GateQuestionOption, A as GateResolverRefused, C as GateRuleInvalid, D as GateStatus, E as GateStoreSchemaOutdated, J as JsonSchema } from './base-store.js';
 import { AnchorPins, RevisionSource } from '@titan-design/evidence';
 import '@titan-design/authority';
 
@@ -121,10 +121,15 @@ declare function snapshotBrief(gateId: string, raw: unknown, required: boolean, 
  * without holding the original zod schema, which by definition lives in another
  * process. The waiter still re-validates with the real zod schema, so this is the
  * boundary check, not the type guarantee.
+ *
+ * A stored schema is parsed once into a `SchemaNode`, and `parseSchema` is the only
+ * reader of the raw value. Whatever it cannot read, an unknown keyword included,
+ * becomes the one refusal below, so no value can pass as an open schema by being
+ * misread. The checker walks typed nodes and has no malformed case of its own.
  */
-declare function checkAgainstJsonSchema(schema: JsonSchema, value: unknown, path?: string): string[];
+declare function checkAgainstJsonSchema(schema: unknown, value: unknown, path?: string): string[];
 
-export { BaseGateStore, DEFAULT_POLL_MS, GateAnswerAllowance, GateAuthorize, type GateBriefSnapshot, GateEvidence, GateEvidencePolicy, type GateHandle, GateQuestion, GateRecord, GateResolver, GateRule, GateStore, JsonSchema, MemoryGateStore, type MemoryGateStoreOptions, type OpenGateOptions, type WaitOptions, cancelGate, checkAgainstJsonSchema, defaultResolverRefusal, matchesAllowance, openGate, resolveGate, ruleResolverRefusal, snapshotBrief, snapshotResolver, waitForGate };
+export { BaseGateStore, DEFAULT_POLL_MS, GateAnswerAllowance, GateAuthorize, type GateBriefSnapshot, GateEvidence, GateEvidencePolicy, type GateHandle, GateQuestion, GateRecord, GateResolver, GateRule, GateStore, MemoryGateStore, type MemoryGateStoreOptions, type OpenGateOptions, type WaitOptions, cancelGate, checkAgainstJsonSchema, defaultResolverRefusal, matchesAllowance, openGate, resolveGate, ruleResolverRefusal, snapshotBrief, snapshotResolver, waitForGate };
 
 // ./dist/base-store.d.ts
 import { ResolverClass, DelegateResolverClass, ActorClass } from '@titan-design/authority';
