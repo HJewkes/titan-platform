@@ -18,7 +18,8 @@ function edge(srcId: string, dstId: string, weight: number, kind: GraphEdge["kin
 function inboundWeights(edges: GraphEdge[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const e of edges) {
-    const w = (e.attrs as { weight: number }).weight;
+    const w = e.attrs?.weight;
+    if (typeof w !== "number") throw new Error(`no weight on ${e.srcId}`);
     m.set(e.dstId, (m.get(e.dstId) ?? 0) + w);
   }
   return m;

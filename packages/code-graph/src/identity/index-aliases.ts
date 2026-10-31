@@ -24,7 +24,7 @@ const SYMBOLS_OF_FILE = `SELECT id FROM node
   WHERE snapshot_id = ? AND id >= ? AND id < ? AND kind = 'symbol'`;
 
 function symbolIdsOf(store: CodeGraphStore, snapshotId: number, fileId: string): string[] {
-  const rows = store.db.prepare(SYMBOLS_OF_FILE).all(snapshotId, `${fileId}#`, `${fileId}$`) as { id: string }[];
+  const rows = store.db.prepare<[number, string, string], { id: string }>(SYMBOLS_OF_FILE).all(snapshotId, `${fileId}#`, `${fileId}$`);
   return rows.map((r) => r.id);
 }
 

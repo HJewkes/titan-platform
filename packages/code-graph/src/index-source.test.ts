@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { InMemoryFileSystemHost, type FileSystemHost } from "ts-morph";
+import { InMemoryFileSystemHost } from "ts-morph";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { indexPaths } from "./indexer.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
@@ -58,10 +58,10 @@ function recordingSource(inner: IndexSource) {
       if (typeof value !== "function") return value;
       return (...args: unknown[]) => {
         if (typeof args[0] === "string") seen.host.push(args[0]);
-        return (value as (...a: unknown[]) => unknown).apply(target, args);
+        return Reflect.apply(value, target, args);
       };
     },
-  }) as FileSystemHost;
+  });
   const source: IndexSource = {
     listFiles: (roots, languages) => {
       seen.listed += 1;
@@ -91,8 +91,9 @@ function virtualSource(root: string): IndexSource {
     fileSystem: new Proxy(fileSystem, {
       get(target, prop) {
         const value: unknown = Reflect.get(target, prop, target);
-        if (prop !== "readFileSync" && prop !== "readFile") return typeof value === "function" ? value.bind(target) : value;
-        return (abs: string) => (strictRead(abs), (value as (a: string) => unknown).call(target, abs));
+        if (typeof value !== "function") return value;
+        if (prop !== "readFileSync" && prop !== "readFile") return value.bind(target);
+        return (abs: string) => (strictRead(abs), Reflect.apply(value, target, [abs]));
       },
     }),
   };

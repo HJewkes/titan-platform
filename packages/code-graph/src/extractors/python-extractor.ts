@@ -108,9 +108,9 @@ function importSpecifiers(root: Node): string[] {
     if (node.type === "import_statement" || node.type === "import_from_statement") {
       const name = node.childForFieldName("module_name");
       if (name) out.push(name.text);
-      else for (const child of node.namedChildren) if (child?.type === "dotted_name") out.push(child.text);
+      else for (const child of node.namedChildren) if (child.type === "dotted_name") out.push(child.text);
     }
-    for (const child of node.namedChildren) if (child) visit(child);
+    for (const child of node.namedChildren) visit(child);
   };
   visit(root);
   return out;
