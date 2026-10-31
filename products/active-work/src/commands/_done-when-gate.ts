@@ -1,3 +1,8 @@
+import { ValidationError } from '../errors.js';
+import type { CommandContext } from '../registry/index.js';
+import type { Task } from '../schemas/task.js';
+import { isDraft } from '../tasks/draft.js';
+
 export const DONE_WHEN_MIN_CHARS = 40;
 
 const fold = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -16,4 +21,14 @@ export function doneWhenProblem(title: string, doneWhen: string | undefined): st
     return `done_when is under ${DONE_WHEN_MIN_CHARS} characters: ${fix}`;
   }
   return undefined;
+}
+
+/**
+ * A draft skips the gate at add, so the gate runs when an edit makes the draft live: an agent
+ * that drops the draft tag must leave the task with a usable done_when.
+ */
+export function assertPromotable(ctx: CommandContext, before: Task, after: Task): void {
+  if (ctx.caller !== 'agent' || !isDraft(before) || isDraft(after)) return;
+  const problem = doneWhenProblem(after.title, after.done_when);
+  if (problem !== undefined) throw new ValidationError(`${after.id} cannot leave draft: ${problem}`);
 }

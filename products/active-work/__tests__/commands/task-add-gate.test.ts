@@ -148,10 +148,11 @@ describe('task.add --draft', () => {
     });
   });
 
-  it('task edit --remove-tag draft promotes a draft into the bootstrap', async () => {
+  it('task edit --remove-tag draft promotes a draft once it has a usable done_when', async () => {
     await withInitiative(async (root) => {
       const { id } = await run('task.add', { ...draft, title: 'Promoted title' }, root, 'agent');
-      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root);
+      await run('task.edit', { slug: 'gate-test', id, field: 'done_when', value: GOOD }, root, 'agent');
+      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent');
       const { prompt } = await assembleBootstrap({
         activeRoot: root,
         slug: 'gate-test',
@@ -159,6 +160,29 @@ describe('task.add --draft', () => {
         includeLiveStatus: false,
       });
       expect(prompt).toContain('Promoted title');
+    });
+  });
+
+  it('an agent removing draft from a draft with no done_when is refused and the tag stays', async () => {
+    await withInitiative(async (root) => {
+      const { id } = await run('task.add', draft, root, 'agent');
+      await expect(run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root, 'agent')).rejects.toThrow(
+        /cannot leave draft/,
+      );
+      await expect(
+        run('task.edit', { slug: 'gate-test', id, field: 'tags', value: 'x', force: true }, root, 'agent'),
+      ).rejects.toThrow(/cannot leave draft/);
+      const listed = (await run('task.list', { slug: 'gate-test' }, root)) as unknown as {
+        tasks: { tags?: string[] }[];
+      };
+      expect(listed.tasks[0]?.tags).toContain('draft');
+    });
+  });
+
+  it('a human removing draft from a draft with no done_when is allowed', async () => {
+    await withInitiative(async (root) => {
+      const { id } = await run('task.add', draft, root, 'agent');
+      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root);
     });
   });
 });
