@@ -20,7 +20,7 @@ function compileErrors(stateLiteral: string): string[] {
   };
   const source = [
     'import { RpcError } from "@titan-design/rpc-client";',
-    'import type { QueryState } from "./query-store.js";',
+    'import type { QueryState } from "./hooks/query-store.js";',
     `export const state: QueryState = ${stateLiteral};`,
   ].join("\n");
   const host = ts.createCompilerHost(options);
