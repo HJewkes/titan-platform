@@ -10,6 +10,7 @@ import { promises as fs } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { HEALTH_PATH } from "@titan-design/rpc-protocol";
+import { errnoCode, isRecord } from "./narrow.js";
 
 export interface DaemonPaths {
   pidFile: string;
@@ -74,15 +75,28 @@ export async function readPidFile(paths: DaemonPaths): Promise<PidFileContents |
   if (!Number.isFinite(pid)) return null;
 
   const metaRaw = await readIfPresent(paths.metaFile);
-  const meta: DaemonMeta = metaRaw ? (JSON.parse(metaRaw) as DaemonMeta) : { port: 0, version: "unknown", started: "" };
+  const meta: DaemonMeta = parseMeta(metaRaw);
   return { pid, meta };
+}
+
+const NO_META: DaemonMeta = { port: 0, version: "unknown", started: "" };
+
+function parseMeta(raw: string | null): DaemonMeta {
+  if (!raw) return NO_META;
+  const parsed: unknown = JSON.parse(raw);
+  if (!isRecord(parsed)) return NO_META;
+  return {
+    port: typeof parsed.port === "number" ? parsed.port : NO_META.port,
+    version: typeof parsed.version === "string" ? parsed.version : NO_META.version,
+    started: typeof parsed.started === "string" ? parsed.started : NO_META.started,
+  };
 }
 
 async function readIfPresent(file: string): Promise<string | null> {
   try {
     return await fs.readFile(file, "utf8");
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (errnoCode(err) === "ENOENT") return null;
     throw err;
   }
 }
@@ -104,7 +118,7 @@ export async function removePidFile(paths: DaemonPaths, expectedPid: number): Pr
     try {
       await fs.unlink(p);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      if (errnoCode(err) !== "ENOENT") throw err;
     }
   }
   return true;
@@ -117,7 +131,7 @@ export function isProcessAlive(pid: number): boolean {
     return true;
   } catch (err) {
     // EPERM means the process exists but we cannot signal it.
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    return errnoCode(err) === "EPERM";
   }
 }
 
@@ -183,7 +197,7 @@ export async function probeHealth(port: number, options: ProbeHealthOptions = {}
   try {
     const res = await fetch(`http://${options.host ?? "127.0.0.1"}:${port}${HEALTH_PATH}`, { signal: controller.signal });
     if (!res.ok) return null;
-    return (await res.json()) as Record<string, unknown>;
+    return await res.json();
   } catch {
     return null;
   } finally {

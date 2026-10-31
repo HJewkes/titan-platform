@@ -786,77 +786,6 @@
       "count": 1
     }
   },
-  "packages/daemon/src/auth.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/daemon.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
-  "packages/daemon/src/daemon.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/file-watch.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/file-watch.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/http.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/daemon/src/http.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/lifecycle.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/lifecycle.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/daemon/src/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/remote-listener.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/tls-files.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/token-file.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/egress-scan/src/allow.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1055,36 +984,6 @@
   "packages/retrieval/src/retrievers/vector.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "packages/rpc-client/src/client/canonical-key.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/envelope-shape.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/snapshot.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/client/static-source.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/static-parity.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "packages/session-analytics/src/bands-parity.test.ts": {

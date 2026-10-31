@@ -189,9 +189,6 @@
     }
   },
   "packages/daemon/src/daemon.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    },
     "titan/no-internal-module-mock": {
       "count": 1
     }
@@ -297,21 +294,6 @@
   "packages/review-panel/src/accept-verdict.ts": {
     "titan/max-line-length": {
       "count": 4
-    }
-  },
-  "packages/rpc-client/src/client/static-source.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/live.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/static-parity.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
     }
   },
   "packages/session-analytics/src/blocked-flow.ts": {

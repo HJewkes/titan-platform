@@ -5,8 +5,13 @@ import { EXIT, errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-
  * `undefined`, and `null` all meaning `{}` as they do in `POST /rpc/:name`.
  */
 export function wireArgs(args: unknown): unknown {
-  const text = JSON.stringify(args ?? {}) as string | undefined;
+  const text = stringify(args ?? {});
   return (text === undefined ? null : JSON.parse(text)) ?? {};
+}
+
+// JSON.stringify returns undefined for a function or symbol, which its declared type leaves out.
+function stringify(value: unknown): string | undefined {
+  return JSON.stringify(value);
 }
 
 /** `wireArgs` as an envelope: args JSON cannot carry (a BigInt, a cycle) are `EXIT.DATAERR`, like any bad args. */
@@ -33,7 +38,7 @@ function sortKeys(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   const entries = Object.keys(value)
     .sort()
-    .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])] as const);
+    .map((key) => [key, sortKeys(Reflect.get(value, key))] as const);
   // fromEntries defines own properties, so a "__proto__" key stays data instead of a prototype.
   return Object.fromEntries(entries);
 }
