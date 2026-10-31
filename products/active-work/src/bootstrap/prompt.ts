@@ -192,7 +192,7 @@ export interface BootstrapMetadata {
 }
 
 /** Milliseconds each assembly phase took; `loop_queries` counts the loop retrievals run. */
-export interface BootstrapTimings {
+interface BootstrapTimings {
   load: number;
   live_status: number;
   rank_notes: number;
