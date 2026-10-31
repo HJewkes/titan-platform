@@ -9,6 +9,15 @@
       "kills": [
         "search finds a transcript by its prompt or reply but never by a tool span a graph still holds"
       ]
+    },
+    {
+      "name": "search reads the workspace table by default",
+      "file": "products/active-work/src/search/workspace-spans.ts",
+      "find": "  if (!options.cutover) return graph.spans;",
+      "replace": "  return graph.workspaceSpans;",
+      "kills": [
+        "search ignores the workspace span table by default, so results match a graph without one"
+      ]
     }
   ]
 }

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "selector cuts over unless told not to",
+      "file": "products/active-work/src/search/workspace-spans.ts",
+      "find": "  if (!options.cutover) return graph.spans;",
+      "replace": "  if (options.cutover === false) return graph.spans;",
+      "kills": [
+        "workspaceSpanTable answers the shared table by default even when the graph is cut over"
+      ]
+    },
+    {
+      "name": "selector ignores legacy workspace spans",
+      "file": "products/active-work/src/search/workspace-spans.ts",
+      "find": "  return hasLegacyWorkspaceSpans(graph) ? graph.spans : graph.workspaceSpans;",
+      "replace": "  return graph.workspaceSpans;",
+      "kills": [
+        "workspaceSpanTable stays on the shared table while legacy workspace spans remain, even when told to cut over"
+      ]
+    },
+    {
+      "name": "search workspace classes bypass the selector",
+      "file": "products/active-work/src/search/index.ts",
+      "find": "    cls.name === 'transcripts' ? graph.spans : workspaceSpanTable(graph, options.workspaceSpans);",
+      "replace": "    cls.name === 'transcripts' ? graph.spans : graph.spans;",
+      "kills": [
+        "workspace readers after a hand-made cutover search finds the same workspace hits in the new table only when told to"
+      ]
+    },
+    {
+      "name": "note relevance bypasses the selector",
+      "file": "products/active-work/src/bootstrap/rank-notes.ts",
+      "find": "      const spans = workspaceSpanTable(graph, spanOptions);",
+      "replace": "      const spans = graph.spans;",
+      "kills": [
+        "workspace readers after a hand-made cutover note relevance reads the new table only when told to"
+      ]
+    }
+  ]
+}
