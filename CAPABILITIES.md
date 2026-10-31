@@ -1576,6 +1576,7 @@ To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
 `explainer eval calibrate` prints that report.
 `explainer eval writing-calibrate` derives `doctrine/writing-check.json` from a corpus manifest: per-row AUC, human false-positive rate and status per length bucket, numbers only.
+`explainer eval writing` scores a script against that table at the script's own length: per row its value, band, human standing, status, verdict and offending spans, exit 1 only when a gate row fails.
 For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included (plus docs-skim and lifetime-history facts when the review has them), and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 `renderCompanion` renders a repo run's companion doc (the martini-glass bowl) from those facts, one section per repo-tour block (`COMPANION_SECTIONS`), with each chapter's link into it and warnings rather than throws (`W-NO-SUMMARY`).
 `companionChapters` maps script chapters to the blocks their spine rows play, so a digest cut links into the tour's doc; the script stage writes both as `companion` and `chapter-links`.
