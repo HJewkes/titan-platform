@@ -43,7 +43,7 @@
       "find": "shepherd.list(\"finished\")",
       "replace": "shepherd.list(\"all\")",
       "kills": [
-        "coord.shipped read reports built:false with the merged list when no digest exists, and calls only Shepherd's finished list"
+        "coord.shipped read reports built:false with the merged list when no digest exists, and reads only Shepherd's own list and timeline"
       ]
     }
   ]
