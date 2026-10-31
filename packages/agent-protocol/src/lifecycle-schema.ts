@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ExecutionRecord, ExecutionTransition } from "./lifecycle.js";
 import { EXECUTION_PHASES } from "./lifecycle.js";
+import { UsageMeasurementSchema } from "./source-schema.js";
 
 // Loose objects throughout: rows written by a newer writer keep their unknown keys.
 const text = z.string();
@@ -13,33 +14,7 @@ const surface = z.looseObject({ kind: text, host: text, nativeId: text, owned: z
 const fence = z.looseObject({ supervisorId: text, generation: count });
 const lease = z.looseObject({ supervisorId: text, generation: count, leaseUntil: text });
 const correlations = z.record(z.string(), z.string());
-
-const nullableCount = count.nullable();
-const tokens = z.looseObject({
-  input: nullableCount,
-  output: nullableCount,
-  cachedInput: nullableCount,
-  cacheWriteInput: nullableCount,
-  reasoningOutput: nullableCount,
-  total: nullableCount,
-});
-const usageBase = {
-  model: text.nullable(),
-  tokens,
-  cost: z.looseObject({ usd: count, kind: z.enum(["estimate", "reported"]) }).nullable(),
-  source: text,
-};
-const usage = z.union([
-  z.looseObject({ ...usageBase, kind: z.literal("delta"), responseId: text }),
-  z.looseObject({
-    ...usageBase,
-    kind: z.literal("snapshot"),
-    scope: z.enum(["turn", "conversation"]),
-    scopeId: text,
-    epoch: text,
-    sequence: count,
-  }),
-]);
+const usage = UsageMeasurementSchema;
 
 const target = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("fresh"), namespace: text, pinnedNativeId: text.optional() }),

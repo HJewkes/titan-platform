@@ -1,6 +1,7 @@
 import { ConversationIdentity, ExecutionIdentity, UsageMeasurement } from '../index.js';
-import { S as SessionSourceDescriptor, R as ReadSessionObservationOptions, a as SessionObservationReadResult, N as NormalizedSessionObservation, b as SourceTextLocator, c as ReadSessionSourceTextOptions } from '../pricing-port.js';
-export { C as CacheWriteSplit, d as ConversationItemKind, D as DecodeRequest, e as DecodeResult, f as DecodeResume, g as DecoderCheckpoint, E as EmitNormalizedObservation, H as HarnessPriceCatalogRef, h as HarnessPricePolicyRef, i as HarnessPriceQuote, j as HarnessPricingContext, k as HarnessPricingPort, L as LocatedSourceLine, l as NormalizedCompactionObservation, m as NormalizedLineageObservation, n as NormalizedMessageObservation, o as NormalizedMetadataObservation, p as NormalizedNativeExtension, q as NormalizedNativeTurnObservation, r as NormalizedObservationBase, s as NormalizedObservationKind, t as NormalizedObservationOf, u as NormalizedTextPart, v as NormalizedToolCallObservation, w as NormalizedToolResultObservation, x as NormalizedUnknownObservation, y as NormalizedUsageObservation, O as ObservationIdentity, z as ResumeBoundary, A as ScopedConversationItemId, B as SessionFormatDecoder, F as SessionSourceProvenance, G as SourceEvidence, I as SourceLineEvidence, J as SourceSubrecordEvidence } from '../pricing-port.js';
+import { S as SessionSourceDescriptor, R as ReadSessionObservationOptions, a as SessionObservationReadResult, N as NormalizedSessionObservation, b as SourceTextLocator, c as ReadSessionSourceTextOptions } from '../source.js';
+export { C as CacheWriteSplit, d as ConversationItemKind, D as DecodeRequest, e as DecodeResult, f as DecodeResume, g as DecoderCheckpoint, E as EmitNormalizedObservation, L as LocatedSourceLine, h as NormalizedCompactionObservation, i as NormalizedLineageObservation, j as NormalizedMessageObservation, k as NormalizedMetadataObservation, l as NormalizedNativeExtension, m as NormalizedNativeTurnObservation, n as NormalizedObservationBase, o as NormalizedObservationKind, p as NormalizedObservationOf, q as NormalizedTextPart, r as NormalizedToolCallObservation, s as NormalizedToolResultObservation, t as NormalizedUnknownObservation, u as NormalizedUsageObservation, O as ObservationIdentity, v as ResumeBoundary, w as ScopedConversationItemId, x as SessionFormatDecoder, y as SessionSourceProvenance, z as SourceEvidence, A as SourceLineEvidence, B as SourceSubrecordEvidence } from '../source.js';
+export { H as HarnessPriceCatalogRef, a as HarnessPricePolicyRef, b as HarnessPriceQuote, c as HarnessPricingContext, d as HarnessPricingPort } from '../pricing-port.js';
 
 /** Corpus/account roots are bound by the adapter; cwd is only an optional lookup hint. */
 interface HarnessSourceQuery {
@@ -262,6 +263,72 @@ type HarnessRunResult<T = string, H extends string = string> = {
 export { type BoundedRunBase, type CapabilityAssessment, EXECUTION_CAPABILITIES, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, NormalizedSessionObservation, type OptionalLimitUnit, ReadSessionObservationOptions, ReadSessionSourceTextOptions, type RunTarget, SessionObservationReadResult, SessionSourceDescriptor, SourceTextLocator, type TranscriptSourceHint };
 
 // ./dist/pricing-port.d.ts
+import { UsageMeasurement } from './index.js';
+import { C as CacheWriteSplit } from './source.js';
+
+/** Versioned policy metadata, never executable code supplied by a profile. */
+interface HarnessPricePolicyRef {
+    readonly id: string;
+    readonly version: string;
+}
+/** Evidence for the dated catalog row and accounting rules selected by an adapter. */
+interface HarnessPriceCatalogRef {
+    readonly id: string;
+    readonly version: string;
+    readonly provider: string;
+    readonly model: string;
+    readonly effectiveFrom: string;
+    readonly matchingPolicy: HarnessPricePolicyRef;
+    readonly accountingPolicy: HarnessPricePolicyRef;
+}
+/** Evidence paired with the same normalized usage observation; no native fields are required. */
+interface HarnessPricingContext {
+    readonly cacheWriteSplit?: Readonly<CacheWriteSplit>;
+}
+/** Unpriced is explicit; a reported zero remains distinct from an unavailable price. */
+type HarnessPriceQuote = {
+    readonly status: "priced";
+    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
+        readonly kind: "reported";
+    };
+    readonly basis: {
+        readonly kind: "reported";
+        readonly source: string;
+    };
+} | {
+    readonly status: "priced";
+    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
+        readonly kind: "estimate";
+    };
+    /** The current normalized record source, without reconstructing its original catalog. */
+    readonly basis: {
+        readonly kind: "existing_estimate";
+        readonly source: string;
+    };
+} | {
+    readonly status: "priced";
+    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
+        readonly kind: "estimate";
+    };
+    readonly basis: {
+        readonly kind: "catalog";
+        readonly atMs: number;
+        readonly catalog: HarnessPriceCatalogRef;
+    };
+} | {
+    readonly status: "unpriced";
+    readonly reason: string;
+};
+/** Pure, bound quote service; implementations own matching and accounting, not consumers. */
+interface HarnessPricingPort<H extends string = string> {
+    readonly harness: H;
+    /** atMs is event time in epoch milliseconds. This port neither sums usage nor mutates it. */
+    quote(measurement: UsageMeasurement, atMs: number, context?: HarnessPricingContext): HarnessPriceQuote;
+}
+
+export type { HarnessPriceCatalogRef as H, HarnessPricePolicyRef as a, HarnessPriceQuote as b, HarnessPricingContext as c, HarnessPricingPort as d };
+
+// ./dist/source.d.ts
 import { ConversationIdentity, UsageMeasurement } from './index.js';
 
 /**
@@ -518,64 +585,4 @@ interface ReadSessionSourceTextOptions {
     sources?: readonly SessionSourceDescriptor[];
 }
 
-/** Versioned policy metadata, never executable code supplied by a profile. */
-interface HarnessPricePolicyRef {
-    readonly id: string;
-    readonly version: string;
-}
-/** Evidence for the dated catalog row and accounting rules selected by an adapter. */
-interface HarnessPriceCatalogRef {
-    readonly id: string;
-    readonly version: string;
-    readonly provider: string;
-    readonly model: string;
-    readonly effectiveFrom: string;
-    readonly matchingPolicy: HarnessPricePolicyRef;
-    readonly accountingPolicy: HarnessPricePolicyRef;
-}
-/** Evidence paired with the same normalized usage observation; no native fields are required. */
-interface HarnessPricingContext {
-    readonly cacheWriteSplit?: Readonly<CacheWriteSplit>;
-}
-/** Unpriced is explicit; a reported zero remains distinct from an unavailable price. */
-type HarnessPriceQuote = {
-    readonly status: "priced";
-    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
-        readonly kind: "reported";
-    };
-    readonly basis: {
-        readonly kind: "reported";
-        readonly source: string;
-    };
-} | {
-    readonly status: "priced";
-    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
-        readonly kind: "estimate";
-    };
-    /** The current normalized record source, without reconstructing its original catalog. */
-    readonly basis: {
-        readonly kind: "existing_estimate";
-        readonly source: string;
-    };
-} | {
-    readonly status: "priced";
-    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
-        readonly kind: "estimate";
-    };
-    readonly basis: {
-        readonly kind: "catalog";
-        readonly atMs: number;
-        readonly catalog: HarnessPriceCatalogRef;
-    };
-} | {
-    readonly status: "unpriced";
-    readonly reason: string;
-};
-/** Pure, bound quote service; implementations own matching and accounting, not consumers. */
-interface HarnessPricingPort<H extends string = string> {
-    readonly harness: H;
-    /** atMs is event time in epoch milliseconds. This port neither sums usage nor mutates it. */
-    quote(measurement: UsageMeasurement, atMs: number, context?: HarnessPricingContext): HarnessPriceQuote;
-}
-
-export type { ScopedConversationItemId as A, SessionFormatDecoder as B, CacheWriteSplit as C, DecodeRequest as D, EmitNormalizedObservation as E, SessionSourceProvenance as F, SourceEvidence as G, HarnessPriceCatalogRef as H, SourceLineEvidence as I, SourceSubrecordEvidence as J, LocatedSourceLine as L, NormalizedSessionObservation as N, ObservationIdentity as O, ReadSessionObservationOptions as R, SessionSourceDescriptor as S, SessionObservationReadResult as a, SourceTextLocator as b, ReadSessionSourceTextOptions as c, ConversationItemKind as d, DecodeResult as e, DecodeResume as f, DecoderCheckpoint as g, HarnessPricePolicyRef as h, HarnessPriceQuote as i, HarnessPricingContext as j, HarnessPricingPort as k, NormalizedCompactionObservation as l, NormalizedLineageObservation as m, NormalizedMessageObservation as n, NormalizedMetadataObservation as o, NormalizedNativeExtension as p, NormalizedNativeTurnObservation as q, NormalizedObservationBase as r, NormalizedObservationKind as s, NormalizedObservationOf as t, NormalizedTextPart as u, NormalizedToolCallObservation as v, NormalizedToolResultObservation as w, NormalizedUnknownObservation as x, NormalizedUsageObservation as y, ResumeBoundary as z };
+export type { SourceLineEvidence as A, SourceSubrecordEvidence as B, CacheWriteSplit as C, DecodeRequest as D, EmitNormalizedObservation as E, LocatedSourceLine as L, NormalizedSessionObservation as N, ObservationIdentity as O, ReadSessionObservationOptions as R, SessionSourceDescriptor as S, SessionObservationReadResult as a, SourceTextLocator as b, ReadSessionSourceTextOptions as c, ConversationItemKind as d, DecodeResult as e, DecodeResume as f, DecoderCheckpoint as g, NormalizedCompactionObservation as h, NormalizedLineageObservation as i, NormalizedMessageObservation as j, NormalizedMetadataObservation as k, NormalizedNativeExtension as l, NormalizedNativeTurnObservation as m, NormalizedObservationBase as n, NormalizedObservationKind as o, NormalizedObservationOf as p, NormalizedTextPart as q, NormalizedToolCallObservation as r, NormalizedToolResultObservation as s, NormalizedUnknownObservation as t, NormalizedUsageObservation as u, ResumeBoundary as v, ScopedConversationItemId as w, SessionFormatDecoder as x, SessionSourceProvenance as y, SourceEvidence as z };

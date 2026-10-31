@@ -3,10 +3,5 @@
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
-  },
-  "packages/session-graph/src/normalized-query.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
   }
 }

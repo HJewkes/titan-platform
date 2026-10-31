@@ -22,6 +22,10 @@
       "types": "./dist/lifecycle-schema.d.ts",
       "import": "./dist/lifecycle-schema.js"
     },
+    "./source-schema": {
+      "types": "./dist/source-schema.d.ts",
+      "import": "./dist/source-schema.js"
+    },
     "./harness": {
       "types": "./dist/harness/index.d.ts",
       "import": "./dist/harness/index.js"
