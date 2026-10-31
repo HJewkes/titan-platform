@@ -12,7 +12,7 @@ import {
   type CommandRegistry,
   type JsonEnvelope,
 } from "@titan-design/registry";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { resolveConfig, type ConfigOverrides, type MinerConfig } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
 import { runGraphRefresh, spawnRefresh } from "./graph-refresh.js";

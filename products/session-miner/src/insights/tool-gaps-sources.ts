@@ -4,7 +4,7 @@ import { readLocatorText } from "@titan-design/locator";
 import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { parseRows } from "../rows.js";
 
 /** A Bash tool call in the graph, located in its transcript; the graph keeps no command text. */

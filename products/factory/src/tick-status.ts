@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { errorClass } from "./shepherd/error-class.js";
 
 /** Where the burndown tick's status file was looked for, and its text when one exists there. */

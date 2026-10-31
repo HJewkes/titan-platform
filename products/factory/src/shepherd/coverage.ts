@@ -1,5 +1,5 @@
 import type { WorkflowRun } from "@titan-design/workflow";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { holdClassOf } from "./g10-release.js";
 import { checkHoldReason } from "./hold-reason.js";
 import { mergedAt } from "./stats.js";

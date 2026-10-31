@@ -1443,9 +1443,6 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
-      '@titan-design/narrow':
-        specifier: workspace:^
-        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
@@ -1458,6 +1455,9 @@ importers:
       '@titan-design/render-qa':
         specifier: workspace:^
         version: link:../../packages/render-qa
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -1567,9 +1567,6 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
-      '@titan-design/narrow':
-        specifier: workspace:^
-        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
@@ -1588,6 +1585,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1631,9 +1631,9 @@ importers:
 
   products/fleet-panel:
     dependencies:
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../../packages/narrow
+        version: link:../../packages/rpc-protocol
 
   products/retrieval-eval:
     dependencies:
@@ -1643,12 +1643,12 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
-      '@titan-design/narrow':
-        specifier: workspace:^
-        version: link:../../packages/narrow
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
@@ -1682,9 +1682,6 @@ importers:
       '@titan-design/memory':
         specifier: workspace:^
         version: link:../../packages/memory
-      '@titan-design/narrow':
-        specifier: workspace:^
-        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
@@ -1697,6 +1694,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics

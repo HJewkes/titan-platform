@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 // Node strips this file's types when scripts/f11.mjs imports it, so it carries no runtime imports. The comparators it
 // composes arrive as `engines` for the same reason: the script imports their modules, and so do the tests.
 import type { RateRecord, ratePeaks } from "../github-api/rate-sample.js";

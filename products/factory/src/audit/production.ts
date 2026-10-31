@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { runAgent } from "@titan-design/agent";
 import { parse } from "yaml";
-import { errorCode, isObjectLike } from "@titan-design/narrow";
+import { errorCode, isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { AuditAgent, AuditPorts } from "./ports.js";
 import { inventoryStore, queryStore, runReadCommand } from "./probes.js";
 import { readPath } from "../narrow.js";

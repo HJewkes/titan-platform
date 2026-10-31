@@ -3,7 +3,7 @@ import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writ
 import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";

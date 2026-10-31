@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /** Narrowing for values the type system cannot vouch for: caught errors, parsed JSON, YAML and `/health` bodies. */
 

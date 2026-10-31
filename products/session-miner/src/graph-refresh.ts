@@ -4,7 +4,7 @@ import path from "node:path";
 import { EXIT } from "@titan-design/registry";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** sysexits' EX_TEMPFAIL: another run holds the lock, so this one did nothing and the next tick retries. */
 export const EXIT_LOCKED = 75;

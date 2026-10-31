@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { MetricQuery, StoreInventory, StoreRef } from "./schemas.js";
 import { readPath } from "../narrow.js";
 

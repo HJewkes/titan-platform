@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 // Imported by scripts/f11-rate-sample.mjs under Node's type stripping, which does not map `.js` specifiers to `.ts`
 // files, so this module imports only types.
 import type { UsageWindow } from "./usage-meter.js";

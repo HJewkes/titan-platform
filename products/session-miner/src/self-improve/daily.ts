@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mapItems, type MapResult, type WorkflowContext, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { PromptFamily } from "./families.js";
 
 export const DAILY_WORKFLOW = "self-improve-daily";

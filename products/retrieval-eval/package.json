@@ -35,8 +35,8 @@
   "dependencies": {
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/embed": "workspace:^",
-    "@titan-design/narrow": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "commander": "^14.0.3"
   },

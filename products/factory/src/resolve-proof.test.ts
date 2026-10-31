@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { CLIENT_HEADER, listTools, silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { defineWorkflow } from "./definition.js";
 import { holdSinceOf } from "./hold-release-proof.js";
 import { holdDigest, itemsDigest, keyIdOf, type ProofItem } from "./presence-proof.js";

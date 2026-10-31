@@ -2,7 +2,7 @@ import os from "node:os";
 import { priceRequest } from "@titan-design/session-analytics";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedObservationOf } from "@titan-design/session-read";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { median, p90 } from "./stage-times.js";
 import { inRange, isoWeek, mergedAt, payloadOf, stepName } from "./stats.js";
 import { readPath } from "../narrow.js";

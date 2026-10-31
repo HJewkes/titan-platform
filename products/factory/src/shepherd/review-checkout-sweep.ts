@@ -1,7 +1,7 @@
 import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { reviewCheckoutRoot } from "./review-checkout.js";
 
 export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;

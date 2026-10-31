@@ -1,7 +1,7 @@
 import { userInfo } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { matchesAllowance, type GateResolver } from "@titan-design/hitl";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import type { CoordinatorEvidence } from "./coordinator-evidence.js";
 import { readCoordinatorEvidence, type EvidenceSources } from "./coordinator-evidence-read.js";

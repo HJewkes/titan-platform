@@ -1,7 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "@titan-design/daemon";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /** Kept beside the daemon pid file, so each state directory, and so each serve, counts its own starts. */
 const SERVE_STARTS_FILE = "serve-starts.json";

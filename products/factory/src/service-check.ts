@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { parsePort } from "./cli-options.js";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";

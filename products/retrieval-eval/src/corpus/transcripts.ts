@@ -2,7 +2,7 @@ import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * Raw Claude Code transcripts, read as lines rather than through the session

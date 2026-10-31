@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** Runs the helper with `input` on stdin; rejects on a non-zero exit or when the helper cannot start. */
 export type HelperRunner = (file: string, args: readonly string[], input?: Uint8Array) => Promise<string>

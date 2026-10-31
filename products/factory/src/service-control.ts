@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";

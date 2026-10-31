@@ -255,10 +255,10 @@ graph TD
   explainer --> github
   explainer --> graphLayout
   explainer --> hitl
-  explainer --> narrow
   explainer --> ownerQueue
   explainer --> pm
   explainer --> renderQa
+  explainer --> rpcProtocol
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
@@ -278,22 +278,22 @@ graph TD
   factory --> github
   factory --> health
   factory --> hitl
-  factory --> narrow
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
   factory --> reviewWorkflow
   factory --> rpcClient
+  factory --> rpcProtocol
   factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
-  fleetPanel --> narrow
+  fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
-  retrievalEval --> narrow
   retrievalEval --> retrieval
+  retrievalEval --> rpcProtocol
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg
@@ -303,11 +303,11 @@ graph TD
   sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
-  sessionMiner --> narrow
   sessionMiner --> ownerQueue
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
+  sessionMiner --> rpcProtocol
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead

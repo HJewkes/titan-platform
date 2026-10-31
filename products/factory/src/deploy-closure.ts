@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { readPath } from "./narrow.js";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";

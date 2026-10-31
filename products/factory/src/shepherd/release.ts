@@ -2,7 +2,7 @@ import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { StepDeclaration } from "../definition.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { codeRoute, step, type LandOptions } from "../workflows/land.js";

@@ -38,6 +38,6 @@
   },
   "private": true,
   "dependencies": {
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   }
 }

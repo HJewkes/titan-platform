@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { isShortQuote, wordCount } from "./presets/article/quotes.js";
 import { QUOTE_MAX_WORDS, type ArticleFact, type FigureSeries } from "./presets/article/schemas.js";
 import { PAPER_PUBLISH_CHECKS } from "./profile-checks.js";

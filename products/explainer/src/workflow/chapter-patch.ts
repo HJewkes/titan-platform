@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { L0Result } from "../eval-l0.js";
 import type { ScriptV1 } from "../script-schema.js";
 

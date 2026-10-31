@@ -1,6 +1,6 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { inRange, isoWeek } from "./stats.js";
 
 /**

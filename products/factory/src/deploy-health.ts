@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GitBehind } from "./deploy-behind.js";
 import { DEPLOY_MAX_WAIT_MS } from "./shepherd/deploy-pacer.js";
 

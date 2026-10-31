@@ -1,5 +1,5 @@
 import type { StepResult, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { stepIdMatches } from "../definition.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
 import { isCorrectionFailure } from "./correct-verdict.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorCode, isObjectLike } from "@titan-design/narrow";
+import { errorCode, isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { errorMessage, errorStatus, isOneOf, readPath } from "./narrow.js";
 
 describe("isObjectLike", () => {

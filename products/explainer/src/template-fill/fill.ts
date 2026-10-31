@@ -1,6 +1,6 @@
 import type { LineSource } from "@titan-design/evidence";
 import type { z } from "zod";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { BeatSlotError, emphasisTargets, parseBeatSlots } from "../beat-load.js";
 import type { BeatSpec } from "../beat-schema.js";
 import { isSlotRef, type BeatSlotRef } from "../beat-slots.js";

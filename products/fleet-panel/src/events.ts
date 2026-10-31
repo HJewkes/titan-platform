@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 /** One SSE frame from the broker's `/events`: `event` names it, `data` is its raw payload. */
 export interface SseFrame {

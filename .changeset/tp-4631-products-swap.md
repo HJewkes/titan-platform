@@ -6,4 +6,4 @@
 "@titan-design/session-miner": patch
 ---
 
-Use the shared narrowing helpers from `@titan-design/narrow` in place of local copies. Behaviour is unchanged.
+Use the shared narrowing helpers from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
