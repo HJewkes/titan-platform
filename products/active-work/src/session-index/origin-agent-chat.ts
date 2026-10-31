@@ -310,6 +310,26 @@ function toOrigin(
     experimentArm: text(meta.experiment_arm),
     predecessor: text(meta.predecessor),
     followupKinds: followupKinds(spawn, index),
+    ...routeColumns(meta),
+  };
+}
+
+/** The launcher writes each `route_*` key as a string; any other type is a malformed row and reads as absent. */
+function routeColumns(meta: Record<string, unknown>): Partial<ResolvedOrigin> {
+  const str = (value: unknown): string | null =>
+    typeof value === 'string' && value !== '' ? value : null;
+  return {
+    routeMode: str(meta.route_mode),
+    routeSource: str(meta.route_source),
+    routePrior: str(meta.route_prior),
+    routeReason: str(meta.route_reason),
+    routeRequested: str(meta.route_requested),
+    routeWanted: str(meta.route_wanted),
+    routeWorkflow: str(meta.route_workflow),
+    routeTable: str(meta.route_table),
+    routeFacts: str(meta.route_facts),
+    routeCandidate: str(meta.route_candidate),
+    routeCandidateWanted: str(meta.route_candidate_wanted),
   };
 }
 

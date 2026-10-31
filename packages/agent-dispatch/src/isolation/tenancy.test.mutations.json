@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tenancy compares raw paths, so a symlinked successor slips past",
+      "file": "packages/agent-dispatch/src/isolation/tenancy.ts",
+      "find": "(a) => a.agentId !== agentId && a.cwd !== \"\" && isAtOrUnder(canonicalPath(a.cwd), tree),",
+      "replace": "(a) => a.agentId !== agentId && a.cwd !== \"\" && isAtOrUnder(a.cwd, tree),",
+      "kills": [
+        "worktreeTenancy while a successor works in the predecessor's worktree refuses when the successor reached the worktree through a symlink"
+      ]
+    },
+    {
+      "name": "tenancy counts a sibling tree whose name extends this one",
+      "file": "packages/agent-dispatch/src/isolation/paths.ts",
+      "find": "real === root || real.startsWith(root + path.sep);",
+      "replace": "real === root || real.startsWith(root);",
+      "kills": [
+        "worktreeTenancy while a successor works in the predecessor's worktree does not count an agent in a sibling tree whose name extends this one"
+      ]
+    },
+    {
+      "name": "--force still refuses",
+      "file": "packages/agent-dispatch/src/isolation/tenancy.ts",
+      "find": "  if (!force)\n    return {\n      refusal:",
+      "replace": "  if (force || !force)\n    return {\n      refusal:",
+      "kills": [
+        "worktreeTenancy while a successor works in the predecessor's worktree releases it under --force, and names the tree and branch it released"
+      ]
+    },
+    {
+      "name": "adopterBlocker lets an unretired adopter's tree go",
+      "file": "packages/agent-dispatch/src/isolation/tenancy.ts",
+      "find": "  if (tenants.length === 0) return undefined;\n  return `${tenants.join(\", \")} (not retired) still works in its worktree`;",
+      "replace": "  return undefined;",
+      "kills": [
+        "adopterBlocker skips an agent whose worktree an unretired adopter still works in"
+      ]
+    },
+    {
+      "name": "park counts only live occupants",
+      "file": "packages/agent-dispatch/src/isolation/tenancy.ts",
+      "find": "  const tenants = tenantsOf(tree, agent.agentId, others);\n  if (tenants.length === 0) return undefined;",
+      "replace": "  const tenants: AgentIdentity[] = [];\n  if (tenants.length === 0) return undefined;",
+      "kills": [
+        "parkTenancyBlocker refuses a tree a finished but unretired identity works in, naming it"
+      ]
+    }
+  ]
+}

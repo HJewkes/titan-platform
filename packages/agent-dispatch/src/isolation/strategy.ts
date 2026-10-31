@@ -1,0 +1,171 @@
+import type { WorktreeRecord } from "@titan-design/worktree";
+import type { IsolationName } from "../profiles/schema.js";
+
+/**
+ * A peer an isolation strategy is allowed to reason about: an agent that is both
+ * a durable identity and currently connected (roster ∩ registry).
+ *
+ * The caller computes the intersection and hands it in, which is what keeps every
+ * strategy pure and testable without a broker. It is also the mechanism behind
+ * the claim-as-lease rule: a claim by an agent whose socket has closed is simply
+ * absent from `peers`, so it stops blocking with no reaper and no stale lock.
+ */
+export interface LivePeer {
+  agentId: string;
+  name: string;
+  cwd: string;
+  /** Paths this peer declared it would modify, from its own allocation. */
+  claims?: readonly string[];
+}
+
+/** Tree directory name to the name of whoever spawned the agent in it. */
+export type TreeHolders = () => ReadonlyMap<string, string>;
+
+export interface IsolationContext {
+  agentId: string;
+  agentName: string;
+  baseCwd: string;
+  /** For file-ownership: the paths this agent declares it will modify. */
+  declaredPaths?: string[];
+  /** Roster ∩ registry, supplied by the caller. Absent means "assume nobody". */
+  peers?: readonly LivePeer[];
+  /**
+   * A worktree the task system assigned (CC-72). When set, `worktree` isolation
+   * ADOPTS it instead of allocating: no branch is created, and release must not
+   * remove what this process did not create. Isolation is a property of the
+   * work, so the assignment outranks whatever the profile would have chosen.
+   */
+  assignedWorktree?: string;
+  /** CC-283: the record of allocating `assignedWorktree`, which re-creates it if it was removed. */
+  assignedRecord?: WorktreeRecord;
+  /** For toolset-limited: the profile's tool lists, which the context does not otherwise carry. */
+  toolset?: { allowedTools?: string[]; disallowedTools?: string[] };
+  /** Turns advisory conflicts into refusals. Wired to `--strict`. */
+  strict?: boolean;
+  /** When this agent stopped: its `agent_exited` time, else its last detach. Anchors the worktree reclaim grace window. */
+  stoppedAt?: number;
+  /**
+   * Discard a leftover branch instead of adopting it. Opt-in, and deliberately
+   * on the context rather than defaulted: allocation can destroy commits exactly
+   * as release can, so it takes the same explicit instruction.
+   */
+  forceReset?: boolean;
+  /**
+   * CC-1158: an `origin/<branch>` a new worktree branch is cut from instead of the
+   * default branch: a stacked slice starts on its parent's PR branch. Refused when
+   * it cannot be fetched, never quietly replaced by the default branch.
+   */
+  baseRef?: string;
+  /** CC-1469: who holds each worktree, read only when the pool refuses this spawn. */
+  treeHolders?: TreeHolders;
+}
+
+export interface Allocation {
+  cwd: string;
+  env?: Record<string, string>;
+  addDirs?: string[];
+  allowedTools?: string[];
+  disallowedTools?: string[];
+  /** One line for the agent's brief: "you own src/cli/**; everything else is read-only". */
+  note?: string;
+  /** Strategy-specific handle: branch, worktree path, claim id. Goes in meta. */
+  ref?: Record<string, string>;
+  /** Advisory lines for the requester, surfaced in `spawn_result.warnings`. */
+  warnings?: string[];
+}
+
+export interface ReleaseOptions {
+  /** Bypass the dirty/unmerged refusal. Explicit destruction only. */
+  force?: boolean;
+  /** CC-921: release a tree that was already parked, and keep its branch. Refused while the tree is on disk. */
+  keepBranch?: boolean;
+}
+
+export interface IsolationStrategy {
+  readonly name: IsolationName;
+  /** Pre-flight. Empty array = safe to proceed. Non-empty = reasons, shown to the requester. */
+  check(ctx: IsolationContext): Promise<string[]>;
+  allocate(ctx: IsolationContext): Promise<Allocation>;
+  /** Returns false when it refused (dirty/unmerged) rather than failed; `refusalOf(alloc)` says why. */
+  release(ctx: IsolationContext, alloc: Allocation, opts?: ReleaseOptions): Promise<boolean>;
+}
+
+const intersect = (left: string[] | undefined, right: string[]): string[] =>
+  left === undefined ? [...right] : left.filter((tool) => right.includes(tool));
+
+const union = (left: readonly string[] | undefined, right: readonly string[]): string[] => [
+  ...new Set([...(left ?? []), ...right]),
+];
+
+function mergePart(merged: Allocation, part: Allocation, baseCwd: string): void {
+  if (part.cwd !== baseCwd) merged.cwd = part.cwd;
+  if (part.env) merged.env = { ...merged.env, ...part.env };
+  if (part.addDirs) merged.addDirs = union(merged.addDirs, part.addDirs);
+  if (part.allowedTools) merged.allowedTools = intersect(merged.allowedTools, part.allowedTools);
+  if (part.disallowedTools) merged.disallowedTools = union(merged.disallowedTools, part.disallowedTools);
+  if (part.ref) merged.ref = { ...merged.ref, ...part.ref };
+  if (part.warnings) merged.warnings = [...(merged.warnings ?? []), ...part.warnings];
+}
+
+/** `cwd` comes from the last strategy that moved it; tools narrow, never widen. */
+export function mergeAllocations(baseCwd: string, parts: readonly Allocation[]): Allocation {
+  const merged: Allocation = { cwd: baseCwd };
+  for (const part of parts) mergePart(merged, part, baseCwd);
+  const notes = parts.flatMap((part) => (part.note ? [part.note] : []));
+  if (notes.length > 0) merged.note = notes.join("\n");
+  return merged;
+}
+
+type Allocated = { strategy: IsolationStrategy; alloc: Allocation };
+
+async function allocateInOrder(
+  strategies: readonly IsolationStrategy[],
+  ctx: IsolationContext,
+): Promise<Allocated[]> {
+  const done: Allocated[] = [];
+  try {
+    for (const strategy of strategies) {
+      const last = done[done.length - 1]?.alloc;
+      const alloc = await strategy.allocate(last ? { ...ctx, baseCwd: last.cwd } : ctx);
+      done.push({ strategy, alloc });
+    }
+  } catch (err) {
+    // A half-allocated agent leaks a worktree nobody will ever release, so
+    // unwind with force: these allocations are seconds old and cannot hold work.
+    for (const { strategy, alloc } of done.reverse()) {
+      await strategy.release(ctx, alloc, { force: true }).catch(() => false);
+    }
+    throw err;
+  }
+  return done;
+}
+
+/** Several strategies as one: checks gathered, allocations layered in order, releases unwound in reverse. */
+export function composite(strategies: readonly IsolationStrategy[]): IsolationStrategy {
+  return {
+    // The composite reports as the last strategy that owns a cwd, since that is
+    // the one whose ref a human has to go and clean up by hand if anything leaks.
+    name: strategies[strategies.length - 1]?.name ?? "none",
+
+    async check(ctx) {
+      const results = await Promise.all(strategies.map((s) => s.check(ctx)));
+      return results.flat();
+    },
+
+    async allocate(ctx) {
+      const done = await allocateInOrder(strategies, ctx);
+      return mergeAllocations(
+        ctx.baseCwd,
+        done.map((d) => d.alloc),
+      );
+    },
+
+    async release(ctx, alloc, opts) {
+      let released = true;
+      for (const strategy of [...strategies].reverse()) {
+        if (!(await strategy.release(ctx, alloc, opts))) released = false;
+      }
+      return released;
+    },
+  };
+}
