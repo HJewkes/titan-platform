@@ -43,6 +43,10 @@
         "value": 0.63,
         "outOfBand": false
       },
+      "adjacent-delta": {
+        "value": 0.77,
+        "outOfBand": false
+      },
       "numbers": {
         "value": 12.59,
         "outOfBand": false
@@ -106,6 +110,10 @@
           "value": 0.48,
           "outOfBand": true
         },
+        "adjacent-delta": {
+          "value": 0.57,
+          "outOfBand": false
+        },
         "numbers": {
           "value": 49.11,
           "outOfBand": true
@@ -166,6 +174,10 @@
         },
         "sentence-cv": {
           "value": 0.43,
+          "outOfBand": true
+        },
+        "adjacent-delta": {
+          "value": 0.52,
           "outOfBand": true
         },
         "numbers": {
