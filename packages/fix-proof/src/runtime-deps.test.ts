@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 // shape safety list) see only its own files, so a runtime dependency would put decision code outside them.
 describe("the package manifest", () => {
   it("has no runtime dependencies", () => {
-    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: object };
+    const manifest: unknown = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-    expect(manifest.dependencies ?? {}).toEqual({});
+    expect(manifest).not.toHaveProperty("dependencies");
   });
 });
