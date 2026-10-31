@@ -324,6 +324,9 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*

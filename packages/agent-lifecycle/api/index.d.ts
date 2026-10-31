@@ -35,6 +35,8 @@ declare class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedge
     private readonly snapshot;
     private readonly eventTable;
     private readonly now;
+    private readonly recordSchema;
+    private readonly transitionSchema;
     constructor(db: Db, options?: SqliteExecutionLedgerOptions);
     get(executionId: string): ExecutionRecord<TResult> | undefined;
     findByRequestKey(requestKey: string): ExecutionRecord<TResult> | undefined;
@@ -45,6 +47,7 @@ declare class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedge
     private validateLiveTransition;
     private save;
     private decode;
+    private parseRecord;
 }
 
 export { type ApplyExecutionTransitionResult, DEFAULT_EXECUTION_TABLE, type ExecutionLedger, SqliteExecutionLedger, type SqliteExecutionLedgerOptions, executionLedgerDdl, executionLedgerMigration };

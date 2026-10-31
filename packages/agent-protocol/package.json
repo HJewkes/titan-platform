@@ -18,6 +18,10 @@
       "types": "./dist/worker-facts.d.ts",
       "import": "./dist/worker-facts.js"
     },
+    "./lifecycle-schema": {
+      "types": "./dist/lifecycle-schema.d.ts",
+      "import": "./dist/lifecycle-schema.js"
+    },
     "./harness": {
       "types": "./dist/harness/index.d.ts",
       "import": "./dist/harness/index.js"
