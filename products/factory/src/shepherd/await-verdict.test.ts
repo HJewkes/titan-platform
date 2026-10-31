@@ -1,14 +1,14 @@
 import { USAGE_LIMIT_REASON, type AwaitVerdictInput, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { Presence } from "./presence.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const MINUTE = 60_000;
 const HEAD = "c".repeat(40);
 const DISPATCHED_AT = 1_000_000;
 const input: AwaitVerdictInput = { repo: "octo/demo", pr: 7, head: HEAD, reviewerAgentId: "reviewer-1", reviewerSessionId: "session-1", dispatchedAt: DISPATCHED_AT };
-const locator = { source: { conversation: { nativeId: "session-1" } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } } as unknown as SourceTextLocator;
+const locator = fakeLocator({ source: { conversation: { nativeId: "session-1" } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } });
 const verdictMessage = (writtenAt: number): ReviewerMessage => ({
   agentId: "reviewer-1",
   sessionId: "session-1",

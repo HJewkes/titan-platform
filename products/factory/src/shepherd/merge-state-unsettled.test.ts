@@ -2,7 +2,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
@@ -17,12 +16,15 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import { readPath } from "../narrow.js";
+import { z } from "zod";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const H2 = fakeSha("unsettled-head2");
 const MINUTE = 60_000;
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1" });
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -132,7 +134,7 @@ async function merged(w: World): Promise<void> {
 
 function settleRecords(host: FactoryHost, runId: string): { headSha: string; since: number; at: number; spent: boolean }[] {
   const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("merge-settle"));
-  return results.map((result) => (result.data as { result: { headSha: string; since: number; at: number; spent: boolean } }).result);
+  return results.map((result) => z.object({ headSha: z.string(), since: z.number(), at: z.number(), spent: z.boolean() }).parse(readPath(result.data, "result")));
 }
 
 describe("a MERGE whose evidence reads mergeable_state unknown on every read", () => {

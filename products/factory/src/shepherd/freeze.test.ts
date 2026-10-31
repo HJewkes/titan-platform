@@ -12,6 +12,9 @@ import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } f
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { repoFreezeMigration } from "./repo-freeze.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput } from "@titan-design/workflow";
 
 const RED = fakeSha("red");
 const CANCELLED_AT = "2026-10-05T00:29:38Z";
@@ -252,7 +255,7 @@ describe("the frozen-merge guard", () => {
   it("refuses the merge, never passes it, when the PR read fails", async () => {
     const r = rig();
     let merged = 0;
-    const failing = {
+    const failing = Object.assign(partialFake<GitHubPort>(), {
       ...r.port,
       getPr: async () => {
         throw new Error("github unavailable");
@@ -261,7 +264,7 @@ describe("the frozen-merge guard", () => {
         merged += 1;
         return { merged: true };
       },
-    } as unknown as GitHubPort;
+    });
     const port = holdingPort(failing, () => r.registrations);
 
     await expect(port.merge(A, 1, RED, "squash")).rejects.toThrow(/github unavailable/);
@@ -290,7 +293,7 @@ describe("the frozen-merge guard", () => {
       }),
     );
     const waiting = waitWhileHeld(
-      route as never,
+      partialFake<StepRoute>(route),
       held,
       {
         sleep: async () => control.abort(),
@@ -298,7 +301,7 @@ describe("the frozen-merge guard", () => {
       openHeadRead(r.port),
     );
 
-    const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
+    const result = await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal }));
 
     expect(result.ok).toBe(false);
     expect(ran).toBe(false);

@@ -10,6 +10,7 @@ import { factoryRoutes, factoryWorkflows } from "../workflows.js";
 import type { ShepherdServices } from "./services.js";
 import { REVERTED_STEP, markRevertedRuns, revertOf, sweepReverts, type RevertDeps } from "./reverts.js";
 import { redAfterMerge } from "./stats-quality.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const REPO = "acme/widgets";
 const HOUR = 3_600_000;
@@ -108,7 +109,7 @@ describe("markRevertedRuns", () => {
     openFactoryHost({ dbPath, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
     const { fake, close } = fixture(dbPath);
     const host = openFactoryHost({ dbPath, workflows: factoryWorkflows, routes: factoryRoutes() });
-    const services = { port: githubPort(fake.wire) } as ShepherdServices;
+    const services = partialFake<ShepherdServices>({ port: githubPort(fake.wire) });
     const now = () => T0 + 6 * HOUR;
 
     const dry = await markRevertedRuns(host, services, { dryRun: true, now });
