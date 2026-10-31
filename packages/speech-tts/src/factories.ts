@@ -1,7 +1,8 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { commandTts, type CommandOutput } from "./command-tts.js";
 import type { TtsProviderConfig } from "./config.js";
 import { fakeTts } from "./fake-tts.js";
-import { isRecord, isStringArray, isStringRecord } from "./guards.js";
+import { isStringArray, isStringRecord } from "./guards.js";
 import { httpTts, type HttpResponseMapping } from "./http-tts.js";
 import type { PhonemeAlphabet, TtsCapabilities, TtsProvider, TtsVoice } from "./types.js";
 

@@ -37,6 +37,9 @@
   "peerDependencies": {
     "zod": "^4.0.0"
   },
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:^"
+  },
   "devDependencies": {
     "zod": "^4.4.3"
   }

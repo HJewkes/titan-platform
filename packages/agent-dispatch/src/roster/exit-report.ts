@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * CC-266 and CC-255: what a headless agent was doing when it exited without the
@@ -67,9 +68,6 @@ const MAX_PATTERN = 60;
 
 type Block = Record<string, unknown>;
 
-const isRecord = (value: unknown): value is Block =>
-  typeof value === "object" && value !== null;
-
 /** Never throws: a missing, unreadable or garbled transcript reads as `unknown`. */
 export function readExitTail(
   file: string | undefined,
@@ -130,8 +128,8 @@ function scanLine(scan: Scan, line: string): void {
   } catch {
     return;
   }
-  if (!isRecord(record) || record.isSidechain === true) return;
-  const content = isRecord(record.message) ? record.message.content : undefined;
+  if (!isObjectLike(record) || record.isSidechain === true) return;
+  const content = isObjectLike(record.message) ? record.message.content : undefined;
   if (!Array.isArray(content)) return;
   for (const block of content) scanBlock(scan, block);
 }
@@ -140,7 +138,7 @@ const endsTask = (line: string, id: string): boolean =>
   line.includes(`<task-id>${id}</task-id>`) && BACKGROUND_ENDED.test(line);
 
 function scanBlock(scan: Scan, block: unknown): void {
-  if (!isRecord(block)) return;
+  if (!isObjectLike(block)) return;
   if (block.type === "tool_use") scan.lastTool = block;
   if (block.type !== "tool_result") return;
   const started = BACKGROUND_STARTED.exec(textOf(block.content));
@@ -152,7 +150,7 @@ const textOf = (content: unknown): string => {
   if (!Array.isArray(content)) return "";
   return content
     .map((part) =>
-      isRecord(part) && typeof part.text === "string" ? part.text : ""
+      isObjectLike(part) && typeof part.text === "string" ? part.text : ""
     )
     .join(" ");
 };
@@ -168,7 +166,7 @@ export function actionPattern(toolUse: Block): string {
 function rawPattern(toolUse: Block): string {
   const name = typeof toolUse.name === "string" ? toolUse.name : UNKNOWN_ACTION;
   if (name !== "Bash") return name.split("__").at(-1) || UNKNOWN_ACTION;
-  const input = isRecord(toolUse.input) ? toolUse.input : {};
+  const input = isObjectLike(toolUse.input) ? toolUse.input : {};
   if (input.run_in_background === true) return "Bash(run_in_background)";
   const command = commandPattern(
     typeof input.command === "string" ? input.command : ""

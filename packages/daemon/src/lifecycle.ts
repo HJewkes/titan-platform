@@ -10,7 +10,7 @@ import { promises as fs } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { HEALTH_PATH } from "@titan-design/rpc-protocol";
-import { errnoCode, isRecord } from "./narrow.js";
+import { errorCode, isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 export interface DaemonPaths {
   pidFile: string;
@@ -84,7 +84,7 @@ const NO_META: DaemonMeta = { port: 0, version: "unknown", started: "" };
 function parseMeta(raw: string | null): DaemonMeta {
   if (!raw) return NO_META;
   const parsed: unknown = JSON.parse(raw);
-  if (!isRecord(parsed)) return NO_META;
+  if (!isObjectLike(parsed)) return NO_META;
   return {
     port: typeof parsed.port === "number" ? parsed.port : NO_META.port,
     version: typeof parsed.version === "string" ? parsed.version : NO_META.version,
@@ -96,7 +96,7 @@ async function readIfPresent(file: string): Promise<string | null> {
   try {
     return await fs.readFile(file, "utf8");
   } catch (err) {
-    if (errnoCode(err) === "ENOENT") return null;
+    if (errorCode(err) === "ENOENT") return null;
     throw err;
   }
 }
@@ -118,7 +118,7 @@ export async function removePidFile(paths: DaemonPaths, expectedPid: number): Pr
     try {
       await fs.unlink(p);
     } catch (err) {
-      if (errnoCode(err) !== "ENOENT") throw err;
+      if (errorCode(err) !== "ENOENT") throw err;
     }
   }
   return true;
@@ -131,7 +131,7 @@ export function isProcessAlive(pid: number): boolean {
     return true;
   } catch (err) {
     // EPERM means the process exists but we cannot signal it.
-    return errnoCode(err) === "EPERM";
+    return errorCode(err) === "EPERM";
   }
 }
 

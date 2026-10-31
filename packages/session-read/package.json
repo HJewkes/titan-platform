@@ -35,8 +35,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@titan-design/locator": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
-    "@titan-design/anthropic-account": "workspace:^"
+    "@titan-design/anthropic-account": "workspace:^",
+    "@titan-design/locator": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^"
   }
 }

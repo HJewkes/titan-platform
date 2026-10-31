@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type {
   Button,
   ButtonRow,
@@ -12,7 +13,6 @@ import type {
 } from "./contract.js";
 import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
-import { isRecord } from "./record.js";
 import { describeCause } from "./send-failure.js";
 import {
   callBotApi,
@@ -119,7 +119,7 @@ function editBody(
 }
 
 function readMessageId(result: unknown): string | undefined {
-  const id = isRecord(result) ? result.message_id : undefined;
+  const id = isObjectLike(result) ? result.message_id : undefined;
   return typeof id === "number" ? String(id) : undefined;
 }
 

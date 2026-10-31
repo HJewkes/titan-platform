@@ -48,6 +48,7 @@
     "@titan-design/evidence": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "ts-morph": "^25.0.0",
     "web-tree-sitter": "^0.26.6"
