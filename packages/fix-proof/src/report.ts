@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { relativeToRoot } from "./paths.js";
 
 /** `skipped` is a test the file chose not to run (`skip`, `skipIf`, `todo`) in a file that did not fail; anything else unrun is `other`. */

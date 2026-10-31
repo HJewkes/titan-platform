@@ -359,9 +359,9 @@ importers:
 
   packages/anthropic-account:
     dependencies:
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../narrow
+        version: link:../rpc-protocol
       zod:
         specifier: ^4.0.0
         version: 4.5.4
@@ -374,9 +374,9 @@ importers:
 
   packages/authority:
     dependencies:
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../narrow
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -596,9 +596,9 @@ importers:
 
   packages/eslint-plugin:
     dependencies:
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../narrow
+        version: link:../rpc-protocol
     devDependencies:
       '@types/estree':
         specifier: ^1.0.9
@@ -611,9 +611,9 @@ importers:
 
   packages/fix-proof:
     dependencies:
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../narrow
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -718,8 +718,6 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
-
-  packages/narrow: {}
 
   packages/openai-account:
     dependencies:
@@ -860,9 +858,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
-      '@titan-design/narrow':
+      '@titan-design/rpc-protocol':
         specifier: workspace:^
-        version: link:../narrow
+        version: link:../rpc-protocol
 
   packages/review-panel:
     dependencies:

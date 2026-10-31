@@ -112,8 +112,6 @@ runs the first two end to end.
   shown and quote them exactly, and scores planted controls.
 - [`eslint-plugin`](/reference/eslint-plugin): ESLint rules for the code-quality limits,
   such as functions of at most 30 lines and TODOs that name a task.
-- [`narrow`](/reference/narrow): guards for an `unknown` from parsed JSON or a `catch`:
-  `isRecord`, `isObjectLike` and `errorCode`, with no runtime dependencies.
 - [`test-kit`](/reference/test-kit): typed test doubles, such as `partialFake<T>()` for a
   fake that sets only the fields a test reads, without a double cast.
 

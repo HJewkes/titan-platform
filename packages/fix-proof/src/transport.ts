@@ -1,5 +1,5 @@
 import { gunzipSync, gzipSync } from "node:zlib";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 /** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
 export const MAX_ENCODED_BYTES = 900_000;
