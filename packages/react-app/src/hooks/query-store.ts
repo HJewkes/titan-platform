@@ -3,13 +3,18 @@ import { RpcError, snapshotKey, type DataSource } from "@titan-design/rpc-client
 
 export type QueryStatus = "loading" | "success" | "error";
 
-export interface QueryState {
-  status: QueryStatus;
-  data: unknown;
-  error: RpcError | undefined;
+interface QueryFetchState {
   /** True while a call is in flight, including a refetch that keeps the previous data. */
   isFetching: boolean;
 }
+
+/** A failed refetch keeps the last good data beside the error. */
+export type QueryState<R = unknown> = QueryFetchState &
+  (
+    | { status: "loading"; data: undefined; error: undefined }
+    | { status: "success"; data: R; error: undefined }
+    | { status: "error"; data: R | undefined; error: RpcError }
+  );
 
 export const LOADING: QueryState = Object.freeze({ status: "loading", data: undefined, error: undefined, isFetching: true });
 
