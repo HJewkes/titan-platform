@@ -49,6 +49,71 @@ export {
   parkBlocker,
   type ParkTarget,
 } from "./park-rules.js";
+export { workBlocker } from "./work-blocker.js";
+export { heldBranches, reviewedAgentName, type HeldBranch } from "./held-branches.js";
+export {
+  connectedBlocker,
+  inScope,
+  retireFinished,
+  SCOPE_REQUIRED,
+  STALE_AFTER_MS,
+  STALE_RETIRE_CAP,
+  type FinishedHolds,
+  type FinishedRetireOutcome,
+  type FinishedRetirePort,
+  type RetirePlanEntry,
+  type RetireResult,
+  type RetireScope,
+} from "./retire-finished.js";
+export {
+  isFinishedReport,
+  NOT_FINISHED,
+  retireAtReport,
+  type ReportRetirePort,
+  type ReportRetireResult,
+} from "./retire-at-report.js";
+export {
+  isVerdictText,
+  NO_VERDICT,
+  parkImplementerAtExit,
+  parkReviewerAtReport,
+  type ImplementerParkPort,
+  type ParkAtExitResult,
+  type ReviewerParkPort,
+} from "./park-at-exit.js";
+export {
+  parsePrState,
+  prStateReader,
+  prTarget,
+  reportPr,
+  type GhOutcome,
+  type PrHead,
+  type PrState,
+  type PrStateDeps,
+  type PrStateReader,
+  type PrTarget,
+} from "./pr-state.js";
+export {
+  isWorkerProfile,
+  MERGED_RETIRE_EVERY_MS,
+  passPrReads,
+  PR_READS_PER_PASS,
+  PR_REREAD_MS,
+  retireMerged,
+  startMergedRetireSweep,
+  type MergedRetirePort,
+  type MergedRetireResult,
+  type PrRead,
+} from "./retire-merged.js";
+export {
+  REVIEWER_TREE_CHANGED,
+  reviewerDirtyText,
+  runRawGit,
+  treeChange,
+  treeFingerprint,
+  type RawGitRunner,
+  type TreeFingerprint,
+} from "./reviewer-tree-guard.js";
 export { dispatchIgnoredFiles, unsavedWork, type UnsavedWork } from "./unsaved-work.js";
 export {
   DEFAULT_REVIEWER_WORKTREE_BUDGET,

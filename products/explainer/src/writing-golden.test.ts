@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
-import { REGISTER_METRICS, type RegisterMetric } from "./lint-register.js";
+import { WRITING_METRICS, type WritingMetric } from "./lint-writing.js";
 import { migrateSpike } from "./migrate.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat, type WritingReport } from "./writing-check.js";
@@ -16,12 +16,12 @@ interface RowGolden {
 interface ScriptGolden {
   words: number;
   bucket: BucketName;
-  rows: Record<RegisterMetric, RowGolden>;
+  rows: Record<WritingMetric, RowGolden>;
 }
 interface Golden {
   clean: ScriptGolden;
   ours: Record<string, ScriptGolden>;
-  seeded: Record<SeededEdit, { row: RegisterMetric; doses: Record<string, { words: number; value: number | null; outOfBand: boolean }> }>;
+  seeded: Record<SeededEdit, { row: WritingMetric; doses: Record<string, { words: number; value: number | null; outOfBand: boolean }> }>;
 }
 
 const fixture = (path: string): string => readFileSync(new URL(`../fixtures/${path}`, import.meta.url), "utf8");
@@ -35,12 +35,12 @@ const oursBeats: Record<string, WritingBeat[]> = {
   "redesign-explainer-v4": migrateSpike(JSON.parse(fixture("spike/redesign-explainer-v4/script-full.json"))).beats,
 };
 
-const row = (report: WritingReport, metric: RegisterMetric) => report.rows.find((candidate) => candidate.metric === metric)!;
+const row = (report: WritingReport, metric: WritingMetric) => report.rows.find((candidate) => candidate.metric === metric)!;
 const round2 = (value: number | null): number | null => (value === null ? null : Math.round(value * 100) / 100);
 const judged = (status: string): boolean => status === "gate" || status === "warning";
 /** What a row's verdict must be, given only its status from the table and whether its value left the band. */
 const expectedVerdict = (status: string, outOfBand: boolean): string => (judged(status) ? (outOfBand ? "fail" : "pass") : "not-judged");
-const outOfBand = (report: WritingReport, metric: RegisterMetric): boolean => {
+const outOfBand = (report: WritingReport, metric: WritingMetric): boolean => {
   const { value, band } = row(report, metric);
   return value !== null && ((band.min !== undefined && value < band.min) || value > band.max);
 };
@@ -81,7 +81,7 @@ describe("seeded edits on the clean script", () => {
   });
 
   it("flips the verdict of a script in the gate bucket for each gate row's seed, and no other seed", () => {
-    const gateMetrics = REGISTER_METRICS.filter((metric) => table.statusByBucket[metric][golden.clean.bucket] === "gate");
+    const gateMetrics = WRITING_METRICS.filter((metric) => table.statusByBucket[metric][golden.clean.bucket] === "gate");
     expect(gateMetrics.length).toBeGreaterThan(0);
 
     for (const edit of SEEDED_EDIT_NAMES) {

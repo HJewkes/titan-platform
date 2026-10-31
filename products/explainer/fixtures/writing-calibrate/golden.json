@@ -9069,6 +9069,652 @@
      }
     }
    }
+  },
+  "adjacent-delta": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 7,
+     "n": 7,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.64567,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 12,
+     "n": 12,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.757506,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.381,
+      "lo": 0.3333,
+      "hi": 0.75,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.2778,
+      "lo": 0.0952,
+      "hi": 0.4444,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3571,
+      "lo": 0.25,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.2708,
+      "lo": 0.1,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 4,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.510109,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 6,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.609666,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.25,
+      "lo": 0,
+      "hi": 0.3333,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.1667,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.25,
+      "lo": 0,
+      "hi": 0.3333,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.1667,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 3,
+     "n": 3,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 5,
+     "n": 5,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.565518,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
   }
  },
  "status": {
@@ -9201,6 +9847,11 @@
     "n_neg 5 < 20",
     "n_pos 4 < 10"
    ]
+  },
+  "adjacent-delta": {
+   "status": "drop",
+   "why": "AUC upper bound < 0.5 on every AI group",
+   "gateMisses": []
   }
  },
  "statusByBucket": {
@@ -9301,6 +9952,13 @@
    "600-1199": "report-only",
    "1200+": "report-only",
    "full": "warning"
+  },
+  "adjacent-delta": {
+   "150-299": "drop",
+   "300-599": "drop",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "drop"
   }
  },
  "statusDetail": {
@@ -10038,6 +10696,47 @@
      "n_pos 3 < 10"
     ]
    }
+  },
+  "adjacent-delta": {
+   "150-299": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "300-599": {
+    "status": "drop",
+    "why": "AUC upper bound < 0.5 on every AI group",
+    "gateMisses": []
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "drop",
+    "why": "AUC upper bound < 0.5 on every AI group",
+    "gateMisses": []
+   }
   }
  },
  "refit5foldByChannel": {
@@ -10236,6 +10935,20 @@
     0
    ],
    "windowsPerFold": 0.8
+  },
+  "adjacent-delta": {
+   "k": 1,
+   "n": 3,
+   "point": 0.3333,
+   "wilson": [
+    0.0615,
+    0.7923
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.6
   }
  },
  "band10pct": {
@@ -10252,6 +10965,7 @@
   "lets": null,
   "phrases": null,
   "neg-synthetic": null,
-  "downtoners": null
+  "downtoners": null,
+  "adjacent-delta": null
  }
 }

@@ -147,12 +147,24 @@ describe("planRegisterEdits: over-represented phrases", () => {
     expect(directiveFor(plan(s).directives, "h1")?.phrases).toEqual(["stays", "matters"]);
   });
 
-  it("directs no beat when the phrases row is the only one failing", () => {
+  it("directs each beat that speaks a stock phrase when the phrases row is the only one failing", () => {
     const s = script([STOCK, ...choppyLines(20)]);
     const phrasesOnly = runL0(s, undefined, [registerCheck]).filter((row) => row.check_id === "register:phrases");
 
+    const { directives } = planRegisterEdits(s, phrasesOnly);
+
     expect(phrasesOnly).toMatchObject([{ pass: false }]);
-    expect(planRegisterEdits(s, phrasesOnly).directives).toEqual([]);
+    expect(directives).toEqual([{ beat: "h1", chapter: "ch1", phrases: ["stays", "matters"] }]);
+  });
+
+  it("directs no stock phrase in a script under 150 words, where the status table judges no row", () => {
+    const s = script([STOCK, ...choppyLines(3)]);
+    const failingPhrases = [{ ...runL0(s, undefined, [registerCheck]).find((row) => row.check_id === "register:phrases")!, pass: false }];
+
+    const { directives } = planRegisterEdits(s, failingPhrases);
+
+    expect(spokenText(s.beats.map((beat) => beat.spoken)).words.length).toBeLessThan(150);
+    expect(directives).toEqual([]);
   });
 
   it("names no phrase once the phrases row passes", () => {

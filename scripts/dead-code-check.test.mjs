@@ -340,7 +340,7 @@ describe("reading an existing code-graph database", () => {
   }
 
   it("parses --db alongside the other flags", () => {
-    expect(parseCliArgs(["--report-only", "--db", "/tmp/graph.db"])).toEqual({ db: "/tmp/graph.db", reportOnly: true, update: false });
+    expect(parseCliArgs(["--report-only", "--db", "/tmp/graph.db"])).toEqual({ db: "/tmp/graph.db", reportOnly: true, update: false, paths: null });
     expect(parseCliArgs([]).db).toBeNull();
   });
 

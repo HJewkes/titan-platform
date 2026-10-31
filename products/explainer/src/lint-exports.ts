@@ -10,6 +10,7 @@ export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint
 export { flowCheck } from "./lint-flow.js";
 export { CLAIMS_CHECK_ID, NOT_A_CLAIM, beatClaims, claimFindings, claimText, claimsCheck, claimsCheckWith, findingLine, type Claim, type ClaimFinding, type GatheredFact } from "./lint-claims.js";
 export { MAX_CROWDED_BEAT_SHARE, MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type Band, type RegisterMetric, type SpokenText, numberSpans, triadSpans, deviceSpans, DEVICE_METRICS, type DeviceMetric, type TextSpan } from "./lint-register.js";
+export { adjacentDelta, WRITING_BANDS, WRITING_MEASURES, WRITING_METRICS, type WritingMetric } from "./lint-writing.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { spokenDigitsHint, spokenTokenCheck, spokenTokenCheckWith, spokenTokenHint, unaliasedTokens, type SpokenToken, type SpokenTokenKind } from "./lint-spoken-tokens.js";
 export {
