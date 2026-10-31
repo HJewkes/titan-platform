@@ -845,9 +845,15 @@ exits 0 only when every one ends in `MERGE` or `carried`. Runs and parked finger
 `review.sqlite3` beside the factory database, so `serve` never picks them up.
 
 `--wait-ci` polls every 30 seconds for up to an hour. Each pass stops at preflight, so waiting
-spends no reviewer session. A repo with no readable required checks reads as pending CI.
-The standalone review reads no fix-proof, because the fix-proof gate is keyed on a Shepherd
-run, and it carries nothing across merge-ups.
+spends no reviewer session. CI comes from the base's required checks. When none can be read,
+it comes from every check run at the head: green once all have completed and none failed.
+The `CI:` line (and `ci` under `--json`) names which source was used.
+
+With no Shepherd run, the PR itself opens the fix-proof gate. A `fix/` head branch opens it,
+and so does a `fix-proof` run from GitHub Actions at the head. The review then reads that
+check's result line once, without waiting, so a `NO_REPRO` line ends the review as
+`NO_REPRO`. A `fix-proof` run still going reads as unverified. The review carries nothing
+across merge-ups.
 
 ## `digest run`
 

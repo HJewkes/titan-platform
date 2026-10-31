@@ -1,8 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { GitHubPort } from "@titan-design/github";
 import type { ReviewTarget } from "@titan-design/review-panel";
-import type { CheckoutState, HeadSnapshot, ParkingPort, ReviewBodyPorts } from "@titan-design/review-workflow";
-import { checksAt } from "../coordinator-evidence-read.js";
+import type { CheckoutState, ParkingPort, ReviewBodyPorts } from "@titan-design/review-workflow";
 import type { FactoryConfig, ReviewConfig } from "../config.js";
 import { agentChatAgents, installedHeadless } from "../shepherd/agents.js";
 import { DEFAULT_DIAGNOSIS_PROFILE } from "../shepherd/no-verdict-diagnosis.js";
@@ -13,8 +12,9 @@ import { transcriptReviewerReader } from "../shepherd/reviewer-reader.js";
 import { configuredRoles } from "../shepherd/reviewer-roles.js";
 import { DEFAULT_SPAWN_LIMITS } from "../shepherd/spawn-gate.js";
 import { boundCheckout, loadSeatBook } from "../shepherd/seats.js";
+import type { CiRead } from "./format.js";
 import { ghLineSource } from "./gh-line-source.js";
-import { readPrFacts } from "./pr-facts.js";
+import { prProofReader, snapshotReader } from "./head-reads.js";
 
 type Shepherd = NonNullable<FactoryConfig["shepherd"]>;
 
@@ -24,6 +24,8 @@ export interface ReviewPortsConfig {
   checkoutRoot: string;
   parking: ParkingPort;
   port: GitHubPort;
+  /** Hears where each snapshot's CI state came from. */
+  onCi?: (target: ReviewTarget, ci: CiRead) => void;
 }
 
 /**
@@ -53,13 +55,6 @@ function followedSource(target: ReturnType<typeof followedTarget>): ReviewBodyPo
   };
 }
 
-/** A repo without required contexts reads `unreadable`, which is held as pending: the CLI never reviews on CI it cannot read. */
-async function snapshotOf(port: GitHubPort, target: ReviewTarget): Promise<HeadSnapshot> {
-  const pr = await port.getPr(target.repo, target.pr);
-  const [facts, checks] = await Promise.all([readPrFacts(port, target, { head: target.head }), checksAt(port, target.repo, pr.baseRef, target.head)]);
-  return { pr, ci: checks.state === "unreadable" ? "pending" : checks.state, facts };
-}
-
 function checkoutState(root: string, review: ReviewConfig): () => CheckoutState {
   const read = reviewCheckoutDisk(root);
   const minBytes = review.minFreeBytes ?? DEFAULT_SPAWN_LIMITS.reviewMinFreeBytes;
@@ -86,9 +81,10 @@ export function reviewPorts(config: ReviewPortsConfig): ReviewBodyPorts {
   const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, fallbackConfigDirs: () => review.fallbackConfigDirs ?? [], cwdFor });
   const agents = agentChatAgents(agentChatBin, { configDir: review.configDir });
   const checkout = checkoutState(checkoutRoot, review);
+  const snapshot = snapshotReader(port, config.onCi);
   return {
-    snapshot: { read: async (read) => (target.set(read), snapshotOf(port, read)) },
-    proofReader: { read: async () => ({ kind: "skipped", reason: "a standalone review has no Shepherd run to read a fix-proof for" }) },
+    snapshot: { read: async (read) => (target.set(read), snapshot.read(read)) },
+    proofReader: prProofReader(port),
     carry: { probe: async () => ({ kind: "no-carry" }) },
     checkout: { state: async () => checkout(), refresh: async (at) => void (await removeReviewCheckout(checkoutRoot, at)) },
     dispatch,
