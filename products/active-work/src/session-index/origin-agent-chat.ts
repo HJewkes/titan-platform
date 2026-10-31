@@ -98,10 +98,10 @@ function readLifecycleEvents(file: string, open: OpenDatabase): LifecycleEvent[]
   try {
     const kinds = LIFECYCLE_KINDS.map(() => '?').join(', ');
     const rows = db
-      .prepare(
+      .prepare<string[], Omit<LifecycleEvent, 'meta'> & { meta: string | null }>(
         `SELECT ts, kind, actor, target, ref, meta FROM events WHERE kind IN (${kinds}) ORDER BY id`,
       )
-      .all(...LIFECYCLE_KINDS) as (Omit<LifecycleEvent, 'meta'> & { meta: string | null })[];
+      .all(...LIFECYCLE_KINDS);
     return rows.map((row) => ({ ...row, meta: parseMeta(row.meta) }));
   } finally {
     db.close();
@@ -114,13 +114,13 @@ function readFollowUps(file: string, open: OpenDatabase): FollowUp[] {
   const db = open(file, { readonly: true, fileMustExist: true });
   try {
     return db
-      .prepare(
+      .prepare<[], FollowUp>(
         `SELECT ts, target, json_extract(meta, '$.followup_kind') AS kind FROM events
          WHERE kind = 'message' AND target IS NOT NULL
            AND json_extract(meta, '$.followup_kind') IS NOT NULL
          ORDER BY id`,
       )
-      .all() as FollowUp[];
+      .all();
   } finally {
     db.close();
   }
@@ -371,12 +371,20 @@ function externalKind(event: LifecycleEvent): { kind: string; detail: string | n
   switch (event.kind) {
     case 'agent_resumed': {
       const from = text(meta.from_surface);
-      return from ? { kind: 'teleport', detail: `${from} to ${text(meta.surface) ?? '?'}` } : null;
+      return from
+        ? {
+            kind: 'teleport',
+            detail: `${from} to ${text(meta.surface) ?? '?'}`,
+          }
+        : null;
     }
     case 'agent_handoff':
       return { kind: 'handoff', detail: labelled('successor', meta.successor) };
     case 'agent_retired':
-      return { kind: 'retired', detail: meta.reaped === 'true' ? 'reaped' : null };
+      return {
+        kind: 'retired',
+        detail: meta.reaped === 'true' ? 'reaped' : null,
+      };
     case 'agent_exited':
       return { kind: 'exited', detail: labelled('code', meta.code) };
     default:
