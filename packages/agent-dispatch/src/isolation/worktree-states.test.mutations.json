@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an exited reviewer tree counts as parkable",
+      "file": "packages/agent-dispatch/src/isolation/worktree-states.ts",
+      "find": "  if (isReviewerTree(entry)) return \"reviewer-scratch\";\n",
+      "replace": "",
+      "kills": [
+        "worktree row state an exited reviewer tree is reviewer-scratch whether or not it holds work"
+      ]
+    },
+    {
+      "name": "free slots can go negative",
+      "file": "packages/agent-dispatch/src/isolation/worktree-states.ts",
+      "find": "const free = Math.max(0, budget - active - nonSeat);",
+      "replace": "const free = budget - active - nonSeat;",
+      "kills": [
+        "repo headroom line never reports negative free slots"
+      ]
+    },
+    {
+      "name": "reviewers also count as active",
+      "file": "packages/agent-dispatch/src/isolation/worktree-states.ts",
+      "find": "const active = count(\"active\") - reviewers;",
+      "replace": "const active = count(\"active\");",
+      "kills": [
+        "reviewer pool headroom (CC-1040) charges live reviewer trees to the reviewer pool, not to implementer active slots"
+      ]
+    },
+    {
+      "name": "the low-disk warning fires above the line",
+      "file": "packages/agent-dispatch/src/isolation/worktree-states.ts",
+      "find": "freeDiskBytes >= LOW_DISK_BYTES",
+      "replace": "freeDiskBytes >= 2 * LOW_DISK_BYTES",
+      "kills": [
+        "low-disk warning stays quiet at 51 GB free"
+      ]
+    },
+    {
+      "name": "an unreadable volume reads as full",
+      "file": "packages/agent-dispatch/src/isolation/worktree-states.ts",
+      "find": "  } catch {\n    return null;\n  }",
+      "replace": "  } catch {\n    return 0;\n  }",
+      "kills": [
+        "low-disk warning reads free space as unknown, and stays quiet, for a repo that no longer exists"
+      ]
+    }
+  ]
+}

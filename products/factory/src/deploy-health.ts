@@ -51,7 +51,7 @@ export interface DeployHealth {
   causes: string[];
   /** Set when git could not say whether the running build holds an ask, so the block counts it behind rather than guess. */
   unverified?: string;
-  /** When the pacer's 90-min cap deploys the target it holds (`firstAt` + max wait), ISO; set only while it holds one the running build lacks. */
+  /** When the pacer's max-wait cap (45 min by default) deploys the target it holds (`firstAt` + max wait), ISO; set only while it holds one the running build lacks. */
   capAt?: string;
 }
 

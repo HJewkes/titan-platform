@@ -257,6 +257,17 @@ export function heardForms(mention: string): string[] {
   return [...forms, ...joined];
 }
 
+const NUMBERED_TERM = /^(?:(?:task|pr)\/\S*?[#-]|(?:PR|pull request|ticket|issue)\s+#?|#|TP-)(\d+)(?:\/\S+)?$/i;
+
+/**
+ * The ways a line can say the number a term names an item by, as in a fact id ("task/TP-4103/opened") or a handle
+ * ("PR 2319"): with an id lead the speller reads it in pairs, without one as a plain number.
+ */
+export function termSpellings(term: string): string[] {
+  const digits = NUMBERED_TERM.exec(term.trim())?.[1];
+  return digits === undefined ? [] : [digits, spellPiece(digits), readId(digits, ID_STYLE)];
+}
+
 export const hasSpokenDigits =(spoken: string): boolean => /\d/.test(spoken.replace(MARKUP, ""));
 
 /** Q-V12: a spoken line holds no digit, so the voice is not left to guess how a number is read. */
