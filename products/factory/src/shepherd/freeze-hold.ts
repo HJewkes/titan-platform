@@ -29,12 +29,16 @@ export const FREEZE_HOLD_STEPS: readonly StepDeclaration[] = [
 const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
 /** The most base commits read back from the base head to find the one a red head's CI ran against. */
 const CI_BASE_WALK = 20;
+/** The most main-fixed merge-ups one run makes before it wakes the fixer, so a busy base cannot merge up a red head forever. */
+export const MAIN_FIXED_MERGE_UPS = 2;
 
 /**
  * The base the hold waits past, red on every check the PR's head fails, at the same step with the same failures; records from before base-red carry none. `stale`:
- * the head's CI ran against this base commit, and the base head has already moved past it.
+ * the head's CI ran against this base commit, and the base head has already moved past it. `mainFixed`: the later base
+ * commit that went green on every failing check, when the red was read from the base's last finished runs, past any
+ * cancelled ones at this commit.
  */
-const BaseRed = z.object({ baseRef: z.string(), baseSha: z.string(), seat: z.string().optional(), stale: z.boolean().optional() });
+const BaseRed = z.object({ baseRef: z.string(), baseSha: z.string(), seat: z.string().optional(), stale: z.boolean().optional(), mainFixed: z.string().optional() });
 type BaseRed = z.infer<typeof BaseRed>;
 const HoldResult = z.looseObject({ hold: z.boolean(), reason: z.string(), episode: z.number().nullable(), baseRef: z.string().optional(), baseRed: BaseRed.optional() });
 type Hold = z.infer<typeof HoldResult>;
@@ -64,6 +68,8 @@ interface BaseWaitInput extends PrTarget {
 type RedHead = { headSha: string; failing: FailingCheck[] };
 /** `trail` takes each head the refresh makes: the hold runs on the run's own context, which records no update. */
 type HoldRun = GateRun & { trail: CauseTrail };
+/** Main-fixed merge-ups per run; replaying the run's recorded hold steps in order rebuilds the count after a restart. */
+const mainFixedMergeUps = new WeakMap<HoldRun, number>();
 
 /**
  * True when the PR's red head only repeats a frozen main's failures, or its base head's: the hold is recorded, the run
@@ -74,11 +80,20 @@ export async function heldByFrozenMain(run: HoldRun, red: RedHead, n: number): P
   const { ctx, target } = run;
   const input: HoldInput = { ...target, headSha: red.headSha, failing: red.failing.map((check) => check.name) };
   const held = await step(ctx, `${FREEZE_HOLD_STEP}:${n}`, input, HoldResult);
-  if (held.hold && held.baseRed) return heldByRedBase(run, red, held, held.baseRed, n);
+  if (held.hold && held.baseRed) return mergeUpsSpent(run, held.baseRed) ? false : heldByRedBase(run, red, held, held.baseRed, n);
   if (!held.hold || held.episode === null) return false;
   const waited = await step(ctx, `${FREEZE_WAIT_STEP}:${n}`, { ...target, headSha: red.headSha, episode: held.episode, baseRef: held.baseRef } satisfies WaitInput, WaitResult);
   if (waited.thawed && waited.headSha === red.headSha) return (await refreshRedHead(run, red, n)) ?? true;
   return true;
+}
+
+/** True once this run has made its main-fixed merge-ups, so this one wakes the fixer instead; else counts this one. */
+function mergeUpsSpent(run: HoldRun, base: BaseRed): boolean {
+  if (base.mainFixed === undefined) return false;
+  const made = mainFixedMergeUps.get(run) ?? 0;
+  if (made >= MAIN_FIXED_MERGE_UPS) return true;
+  mainFixedMergeUps.set(run, made + 1);
+  return false;
 }
 
 /**
@@ -167,32 +182,33 @@ async function ciBaseOf(port: GitHubPort, input: HoldInput, baseSha: string): Pr
   return undefined;
 }
 
-function heldOnBase(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, reason: string): Hold {
+function baseRedHold(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold {
   const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
+  const reason = `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`;
   return { hold: true, reason, episode: null, baseRed: { ...base, ...(seat && { seat }) } };
 }
 
-const baseRedHold = (deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold =>
-  heldOnBase(deps, input, base, `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`);
-
 /**
  * A stale hold, merged up at once, when the since-moved base this head's CI ran against is red on every failing check,
- * or when none passed there and a later base commit is green on them (TP-4650). A main-fixed read that fails holds nothing.
+ * or when the base's last finished runs of them at or before it were and a later base commit is green on them
+ * (TP-4650). A main-fixed read that fails holds nothing.
  */
 async function staleBaseHold(deps: ShepherdDeps, input: HoldInput, base: { baseRef: string; baseSha: string; ciBase: string }, read: FailureReader): Promise<Hold | undefined> {
   const { baseRef, baseSha, ciBase } = base;
   const moved = `this head's CI ran against ${baseRef} at ${ciBase.slice(0, 7)}`;
   const staleRed = { baseRef, baseSha: ciBase, stale: true };
   if ((await notRedAt(deps.port, input, ciBase, read)).length === 0) return baseRedHold(deps, input, staleRed, `${moved}, red there and since moved to ${baseSha.slice(0, 7)}`);
-  const green = await mainFixedSince({ port: deps.port, repo: input.repo, baseRef, baseSha, ciBase, failing: input.failing }).catch(() => undefined);
+  const green = await mainFixedSince({ port: deps.port, repo: input.repo, headSha: input.headSha, baseRef, baseSha, ciBase, failing: input.failing, failures: read }).catch(() => undefined);
   if (green === undefined) return undefined;
-  return heldOnBase(deps, input, staleRed, `${moved}, where no failing check (${input.failing.join(", ")}) passed, and ${baseRef} went green on them at ${green.slice(0, 7)}`);
+  const why = `${moved}, where ${baseRef}'s last finished runs of the failing checks were red, and it went green on them at ${green.slice(0, 7)}`;
+  return baseRedHold(deps, input, { ...staleRed, mainFixed: green }, why);
 }
 
 /**
  * Holds a red head whose every failing check also fails at the PR's base head, or at the since-moved base its CI ran
- * against, or failed there and has since gone green on the base, so a fixer is never woken to repair the base's red. Any read that fails passes, as does a base with no
- * completed red run there (R5: path-filtered base CI) or only cancelled ones.
+ * against, or whose last finished runs there were red and has since gone green on the base, so a fixer is never woken
+ * to repair the base's red. Any read that fails passes, as does a base with no completed red run there (R5:
+ * path-filtered base CI) or only cancelled ones.
  */
 async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: string): Promise<Hold> {
   if (input.failing.length === 0) return pass(unfrozen);
