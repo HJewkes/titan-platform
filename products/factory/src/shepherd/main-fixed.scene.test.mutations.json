@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a main green past the merge ref still wakes the fixer",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "if (await greenFor(read, sha, rules)) return sha;",
+      "replace": "if (await greenFor(read, sha, rules)) return undefined;",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) merges main up with no fixer woken and no repair spent once main went green past the merge ref's base"]
+    },
+    {
+      "name": "a check that passed at the CI base still merges up",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "if (read.failing.some((name) => passes(atCiBase, name))) return undefined;",
+      "replace": "",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer as before when the failing check passed on main where the head's CI ran"]
+    },
+    {
+      "name": "a red main tip reads as green",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "return judgeMain(sha, runs, rules).findings.length === 0 && read.failing.every((name) => passes(runs, name));",
+      "replace": "return true;",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer as before while main is still red past the merge ref's base"]
+    }
+  ]
+}
