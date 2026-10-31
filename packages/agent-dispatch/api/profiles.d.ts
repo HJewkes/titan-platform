@@ -1,3 +1,28 @@
+import { A as AgentProfile } from '../schema.js';
+export { a as AGENT_ROLES, b as AgentRole, C as CACHE_TTLS, c as CONTRACT_CHOICES, d as CacheTtl, e as ContractChoice, D as DEFAULT_SURFACE_LIFETIME, E as EFFORT_LEVELS, f as EffortLevel, H as HARNESSES, g as Harness, I as ISOLATION_NAMES, h as IsolationName, P as PUSH_POLICIES, i as PushPolicy, R as RETURN_CONTRACTS, j as ReturnContract, S as SETTING_SOURCES, k as SURFACE_LIFETIMES, l as SURFACE_NAMES, m as SettingSource, n as SurfaceLifetime, o as SurfaceName, p as isCacheTtl, q as isContractChoice, r as isEffortLevel, s as isHarness, t as isIsolationName, u as isPushPolicy, v as isRole, w as isSurfaceLifetime, x as isSurfaceName } from '../schema.js';
+
+declare const HARNESS_UNSUPPORTED = "harness_unsupported";
+/** The refusal for launching this profile, before any process, worktree or slot exists; undefined when it can launch. */
+declare function harnessRefusal(profile: AgentProfile): string | undefined;
+
+/**
+ * Validate a parsed profile file, ported from agent-chat's `parseProfile` and split by field
+ * family so each check reads on its own. The checks run in agent-chat's order, so a file with
+ * several faults is refused with the same first message.
+ */
+
+type ProfileParseResult = AgentProfile | {
+    error: string;
+};
+/**
+ * Returns the profile or an explanatory error, never a partially-trusted object: a profile that
+ * half-loaded would grant whatever its defaults happened to be.
+ */
+declare function parseProfile(name: string, raw: unknown, file?: string): ProfileParseResult;
+
+export { AgentProfile, HARNESS_UNSUPPORTED, type ProfileParseResult, harnessRefusal, parseProfile };
+
+// ./dist/schema.d.ts
 /**
  * The agent profile shape and its closed value lists, ported from agent-chat's `agents/types.ts`.
  *
@@ -107,23 +132,4 @@ interface AgentProfile {
     warnings?: string[];
 }
 
-declare const HARNESS_UNSUPPORTED = "harness_unsupported";
-/** The refusal for launching this profile, before any process, worktree or slot exists; undefined when it can launch. */
-declare function harnessRefusal(profile: AgentProfile): string | undefined;
-
-/**
- * Validate a parsed profile file, ported from agent-chat's `parseProfile` and split by field
- * family so each check reads on its own. The checks run in agent-chat's order, so a file with
- * several faults is refused with the same first message.
- */
-
-type ProfileParseResult = AgentProfile | {
-    error: string;
-};
-/**
- * Returns the profile or an explanatory error, never a partially-trusted object: a profile that
- * half-loaded would grant whatever its defaults happened to be.
- */
-declare function parseProfile(name: string, raw: unknown, file?: string): ProfileParseResult;
-
-export { AGENT_ROLES, type AgentProfile, type AgentRole, CACHE_TTLS, CONTRACT_CHOICES, type CacheTtl, type ContractChoice, DEFAULT_SURFACE_LIFETIME, EFFORT_LEVELS, type EffortLevel, HARNESSES, HARNESS_UNSUPPORTED, type Harness, ISOLATION_NAMES, type IsolationName, PUSH_POLICIES, type ProfileParseResult, type PushPolicy, RETURN_CONTRACTS, type ReturnContract, SETTING_SOURCES, SURFACE_LIFETIMES, SURFACE_NAMES, type SettingSource, type SurfaceLifetime, type SurfaceName, harnessRefusal, isCacheTtl, isContractChoice, isEffortLevel, isHarness, isIsolationName, isPushPolicy, isRole, isSurfaceLifetime, isSurfaceName, parseProfile };
+export { type AgentProfile as A, CACHE_TTLS as C, DEFAULT_SURFACE_LIFETIME as D, EFFORT_LEVELS as E, HARNESSES as H, ISOLATION_NAMES as I, PUSH_POLICIES as P, RETURN_CONTRACTS as R, SETTING_SOURCES as S, AGENT_ROLES as a, type AgentRole as b, CONTRACT_CHOICES as c, type CacheTtl as d, type ContractChoice as e, type EffortLevel as f, type Harness as g, type IsolationName as h, type PushPolicy as i, type ReturnContract as j, SURFACE_LIFETIMES as k, SURFACE_NAMES as l, type SettingSource as m, type SurfaceLifetime as n, type SurfaceName as o, isCacheTtl as p, isContractChoice as q, isEffortLevel as r, isHarness as s, isIsolationName as t, isPushPolicy as u, isRole as v, isSurfaceLifetime as w, isSurfaceName as x };
