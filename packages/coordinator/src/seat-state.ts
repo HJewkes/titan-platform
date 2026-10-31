@@ -137,9 +137,7 @@ function applyEvent(state: SeatState, event: SeatEvent, index: number, options: 
 }
 
 const kindOf = (raw: unknown): string =>
-  typeof raw === "object" && raw !== null && typeof (raw as { kind?: unknown }).kind === "string"
-    ? (raw as { kind: string }).kind
-    : "";
+  typeof raw === "object" && raw !== null && "kind" in raw && typeof raw.kind === "string" ? raw.kind : "";
 
 function step(state: SeatState, raw: unknown, index: number, options: SeatFoldOptions): SeatState {
   const kind = kindOf(raw);
