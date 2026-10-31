@@ -25,7 +25,7 @@
       "find": "agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
       "replace": "agentId: \"agent-x\", sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
       "kills": [
-        "spawns one reviewer under one name and takes its verdict when the host dies after both outputs are stored"
+        "reviewPhase spawns one reviewer under one name and takes its verdict when the host dies after both outputs are stored"
       ]
     }
   ]
