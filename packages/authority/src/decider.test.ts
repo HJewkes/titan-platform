@@ -1,5 +1,6 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import type { ConditionFacts } from "./conditions.js";
+import type { ConditionFacts, QuestionFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
 import type { AuthorityRequest } from "./evaluate.js";
 import { canResolve, evaluate } from "./evaluate.js";
@@ -10,7 +11,7 @@ import { ACTION_CLASSES, ACTOR_CLASSES, DELEGATE_RESOLVER_CLASSES, QUESTION_COND
 const ANSWERABLE: ConditionFacts = { question: { ruleKind: "question", mode: "auto" } };
 
 function request(action: ActionClass, actor: ActorClass, fields: Record<string, unknown> = {}): AuthorityRequest {
-  return { action, actor: { class: actor, id: `${actor}-1` }, tainted: false, subject: {}, facts: ANSWERABLE, ...fields } as AuthorityRequest;
+  return { action, actor: { class: actor, id: `${actor}-1` }, tainted: false, subject: {}, facts: ANSWERABLE, ...fields };
 }
 
 function answer(facts: unknown, tainted: unknown = false): AuthorityRequest {
@@ -87,7 +88,7 @@ describe("answer-question by the decider", () => {
     Object.defineProperty(Object.prototype, "ruleKind", { value: "question", configurable: true });
     Object.defineProperty(Object.prototype, "mode", { value: "auto", configurable: true });
     try {
-      expect(unmetConditions([...QUESTION_CONDITION_KINDS], { question: {} as never })).toEqual([...QUESTION_CONDITION_KINDS]);
+      expect(unmetConditions([...QUESTION_CONDITION_KINDS], { question: partialFake<QuestionFacts>() })).toEqual([...QUESTION_CONDITION_KINDS]);
       expect(evaluate(DEFAULT_TABLE, answer({ question: {} }))).toMatchObject({ verdict: "deny", ruleId: "ANS-DC" });
     } finally {
       delete (Object.prototype as { ruleKind?: unknown }).ruleKind;

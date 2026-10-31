@@ -21,7 +21,8 @@ import { perRunExport } from "./shepherd/per-run-export.js";
 import { ShepherdStore } from "./shepherd/store.js";
 import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
-import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { shepherdStats, type StatsRange, type StatsRow } from "./shepherd/stats.js";
+import { formatReviewShadow, reviewShadowStats } from "./shepherd/review-shadow-stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 import { shadowsIn } from "./shepherd/train-shadow.js";
@@ -37,6 +38,7 @@ interface StatsOpts {
   json?: boolean;
   cost?: boolean;
   rereviews?: boolean;
+  reviewShadow?: boolean;
   failures?: boolean;
   slo?: boolean;
   registry?: string;
@@ -163,12 +165,18 @@ function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>,
   return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
 }
 
+function shadowReport(runs: readonly WorkflowRun[], range: StatsRange, json: boolean | undefined): string {
+  const rows = reviewShadowStats(runs, range);
+  return json ? `${JSON.stringify({ reviewShadow: rows }, null, 2)}\n` : formatReviewShadow(rows);
+}
+
 /** The review causes are their own section, after the others, so the other sections read as before. */
 function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
   const range = { from: opts.from, to: opts.to };
   const runs = shepherdRuns(db);
   const causes = reviewCauseStats(runs, range);
   if (opts.rereviews) return causesReport(causes, opts.json);
+  if (opts.reviewShadow) return shadowReport(runs, range, opts.json);
   const rows = shepherdStats(runs, range);
   const friction = ownerFriction(readAllGates(db), now, range);
   const stages = stageStats(runs, range);
@@ -226,6 +234,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--rows", "with --reviews --json: also print every review row")
     .option("--since-scoped <date>", "with --reviews: split fix rounds before and after this day, YYYY-MM-DD (UTC); default the first scoped round")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
+    .option("--review-shadow", "print only review-workflow's shadow per repo and ISO week (review.workflow: shadow): heads, shadow rounds, would-actions, heads sent to the fixer by round 2, and heads it would have stopped that then merged")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")

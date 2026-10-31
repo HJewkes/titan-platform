@@ -12,6 +12,7 @@ import type {
 } from "./contract.js";
 import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
+import { isRecord } from "./record.js";
 import { describeCause } from "./send-failure.js";
 import {
   callBotApi,
@@ -118,7 +119,7 @@ function editBody(
 }
 
 function readMessageId(result: unknown): string | undefined {
-  const id = (result as { message_id?: unknown } | null)?.message_id;
+  const id = isRecord(result) ? result.message_id : undefined;
   return typeof id === "number" ? String(id) : undefined;
 }
 

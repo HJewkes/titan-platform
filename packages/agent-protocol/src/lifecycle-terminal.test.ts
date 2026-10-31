@@ -13,6 +13,12 @@ const pane: SurfaceIdentity = { kind: "tmux", host: "local", nativeId: "%7", own
 const ended = (terminal: Partial<Extract<ExecutionTerminal<string>, { outcome: "ended" }>> = {}) =>
   ({ outcome: "ended", evidence: "pane closed without a result", ...terminal }) as ExecutionTerminal<string>;
 
+function numericSignalExit(): { code: number | null; signal: string | null } {
+  const exit = { code: 1, signal: null };
+  Reflect.set(exit, "signal", 9);
+  return exit;
+}
+
 describe("ended terminal outcome", () => {
   it("absorbs a running execution so any later transition is refused", () => {
     const record = apply(running(), event("finish", 3, T3, { fence, terminal: ended({ exit: { code: null, signal: "SIGHUP" } }) }));
@@ -24,7 +30,7 @@ describe("ended terminal outcome", () => {
   it.each([
     ["empty evidence", ended({ evidence: " " })],
     ["a fractional exit code", ended({ exit: { code: 1.5, signal: null } })],
-    ["a numeric signal", ended({ exit: { code: 1, signal: 9 as unknown as string } })],
+    ["a numeric signal", ended({ exit: numericSignalExit() })],
   ])("rejects %s", (_, terminal) => {
     expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal })), "invalid_transition");
   });
