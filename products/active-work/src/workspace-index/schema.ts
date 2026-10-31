@@ -1,4 +1,4 @@
-import { kitDdl, type Migration } from '@titan-design/store-sqlite';
+import { kitDdl, spanFtsTablesDdl, type Migration } from '@titan-design/store-sqlite';
 import { MIGRATIONS as SESSION_GRAPH_MIGRATIONS } from '@titan-design/session-graph';
 
 /**
@@ -18,6 +18,14 @@ export const WORKSPACE_KIT = {
   edge: 'edge',
   spanFts: 'search',
 } as const;
+
+/**
+ * The workspace half's own span tables, `workspace_span` and `workspace_fts`
+ * (TP-4680). Separate from `search` so a workspace query ranks 64k spans rather
+ * than every transcript's, and contentless-delete so a re-indexed file removes
+ * its old FTS rows instead of stranding them in a table this small.
+ */
+export const WORKSPACE_SPAN_TABLES = { name: 'workspace', contentlessDelete: true } as const;
 
 /**
  * Workspace spans are stored at `WORKSPACE_SPAN_SOURCE_BASE + workspace_file.source_id`.
@@ -154,6 +162,7 @@ export const WORKSPACE_TABLES = [
  */
 export const WORKSPACE_MIGRATION_VERSION = 1001;
 export const PRESERVE_MIGRATION_VERSION = 1002;
+export const WORKSPACE_SPANS_MIGRATION_VERSION = 1003;
 
 /**
  * The kit indexes `search_span` on `owner_ref` alone, and its UNIQUE index
@@ -204,9 +213,27 @@ const PRESERVE_MIGRATION: Migration = {
   up: (db) => db.exec(PRESERVE_DDL),
 };
 
+/**
+ * Empty tables only. `openGraph` runs on every CLI call, so the backfill is left
+ * to the workspace pass, which re-derives every span from its file anyway.
+ * `source_id` keeps the `WORKSPACE_SPAN_SOURCE_BASE` offset so resolving a hit
+ * reads the same whichever table it came from.
+ */
+const WORKSPACE_SPANS_MIGRATION: Migration = {
+  version: WORKSPACE_SPANS_MIGRATION_VERSION,
+  name: 'workspace span tables',
+  up: (db) => {
+    db.exec(spanFtsTablesDdl(WORKSPACE_SPAN_TABLES));
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_workspace_span_source ON workspace_span(source_id);',
+    );
+  },
+};
+
 /** The full chain the graph file is migrated to: the package's, then active-work's. */
 export const MIGRATIONS: Migration[] = [
   ...SESSION_GRAPH_MIGRATIONS,
   ...WORKSPACE_MIGRATIONS,
   PRESERVE_MIGRATION,
+  WORKSPACE_SPANS_MIGRATION,
 ];

@@ -4,6 +4,7 @@ import { defaultGraphPath, openGraph } from '../session-index/graph.js';
 import { selectTerms } from '../search/derive-query.js';
 import { graphTermStatistics } from '../search/document-frequency.js';
 import { meaningfulTerms, orExpression } from '../search/terms.js';
+import { workspaceSpanTable, type WorkspaceSpanOptions } from '../search/workspace-spans.js';
 
 /**
  * Which notes the bootstrap shows, and in what order.
@@ -109,7 +110,10 @@ export type NoteRelevance = (terms: string[]) => NoteHit[];
  * narrower question — the bootstrap wants notes, not the best of six classes —
  * and because it needs the BM25 score itself, which fusion discards.
  */
-export function graphNoteRelevance(dbPath?: string): NoteRelevance {
+export function graphNoteRelevance(
+  dbPath?: string,
+  spanOptions: WorkspaceSpanOptions = {},
+): NoteRelevance {
   return (terms) => {
     const graph = openGraph(dbPath ?? defaultGraphPath());
     try {
@@ -118,7 +122,8 @@ export function graphNoteRelevance(dbPath?: string): NoteRelevance {
       const titleOf = graph.db.prepare('SELECT title FROM note WHERE note_ref = ? LIMIT 1');
       const seen = new Set<string>();
       const hits: NoteHit[] = [];
-      for (const span of graph.spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' })) {
+      const spans = workspaceSpanTable(graph, spanOptions);
+      for (const span of spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' })) {
         if (seen.has(span.ownerRef)) continue;
         seen.add(span.ownerRef);
         const row = titleOf.get(span.ownerRef) as { title: string } | undefined;
