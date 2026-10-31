@@ -2881,30 +2881,5 @@
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
-  },
-  "products/titan/src/health/cli-cost.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/cli-health.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/cli-uptime.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/titan/src/health/sample-tick.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/targets.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
   }
 }
