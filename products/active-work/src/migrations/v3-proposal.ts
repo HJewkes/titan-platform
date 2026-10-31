@@ -1,8 +1,8 @@
-import { promises as fs } from 'node:fs';
-import { z } from 'zod';
-import { ValidationError } from '../errors.js';
-import { NextStepSchema, SessionIdSchema } from '../schemas/session.js';
-import { V3_OPEN_LOOPS_PROPOSAL } from './data/v3-open-loops-proposal.js';
+import { promises as fs } from "node:fs";
+import { z } from "zod";
+import { ValidationError } from "../errors.js";
+import { NextStepSchema, SessionIdSchema } from "../schemas/session.js";
+import { V3_OPEN_LOOPS_PROPOSAL } from "./data/v3-open-loops-proposal.js";
 
 /**
  * The data file the v2→v3 migration consumes.
@@ -19,10 +19,12 @@ import { V3_OPEN_LOOPS_PROPOSAL } from './data/v3-open-loops-proposal.js';
 // hand-authored proposal naturally reaches for spaces and slashes and the
 // resulting failure would otherwise land mid-run.
 const KEBAB_SESSION_ID = SessionIdSchema.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-  message: 'session_id must be kebab-case ([a-z0-9-], no leading/trailing dash)',
+  message:
+    "session_id must be kebab-case ([a-z0-9-], no leading/trailing dash)",
 });
 
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_INSTANT =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /**
  * A loop that is dead on arrival — the handoff recorded it, but the window it
@@ -46,7 +48,7 @@ const ProposalInitiativeSchema = z.object({
    * the staleness signal.
    */
   ended: z.string().regex(ISO_INSTANT, {
-    message: 'ended must be an ISO 8601 instant with timezone',
+    message: "ended must be an ISO 8601 instant with timezone",
   }),
   session_id: KEBAB_SESSION_ID,
   body: z.string().min(1),
@@ -64,21 +66,22 @@ export const ProposalSchema = z
     abandoned_at: z
       .string()
       .regex(ISO_INSTANT, {
-        message: 'abandoned_at must be an ISO 8601 instant with timezone',
+        message: "abandoned_at must be an ISO 8601 instant with timezone",
       })
       .optional(),
     initiatives: z.array(ProposalInitiativeSchema),
   })
   .superRefine((value, ctx) => {
     const withAbandoned = value.initiatives.filter((i) =>
-      i.next_steps.some((n) => n.abandoned !== undefined),
+      i.next_steps.some((n) => n.abandoned !== undefined)
     );
     if (withAbandoned.length === 0) return;
     if (value.abandoned_at === undefined) {
       ctx.addIssue({
-        code: 'custom',
-        path: ['abandoned_at'],
-        message: 'abandoned_at is required when any next_step is marked abandoned',
+        code: "custom",
+        path: ["abandoned_at"],
+        message:
+          "abandoned_at is required when any next_step is marked abandoned",
       });
       return;
     }
@@ -87,36 +90,38 @@ export const ProposalSchema = z
     for (const initiative of withAbandoned) {
       if (at <= new Date(initiative.ended).getTime()) {
         ctx.addIssue({
-          code: 'custom',
-          path: ['abandoned_at'],
+          code: "custom",
+          path: ["abandoned_at"],
           message:
             `abandoned_at (${value.abandoned_at}) must be strictly after ` +
             `${initiative.slug}'s ended (${initiative.ended}), or the abandonment ` +
-            'session cannot resolve the loops it opens',
+            "session cannot resolve the loops it opens",
         });
       }
     }
   });
 
-export type ProposalInitiative = z.infer<typeof ProposalSchema>['initiatives'][number];
+export type ProposalInitiative = z.infer<
+  typeof ProposalSchema
+>["initiatives"][number];
 export type ProposalNextStep = z.infer<typeof ProposalNextStepSchema>;
 export type Proposal = z.infer<typeof ProposalSchema>;
 
 /** Env var pointing at a JSON proposal, overriding the bundled default. */
-export const PROPOSAL_PATH_ENV = 'AW_V3_PROPOSAL';
+export const PROPOSAL_PATH_ENV = "AW_V3_PROPOSAL";
 
 function parseProposal(input: unknown, origin: string): Proposal {
   const result = ProposalSchema.safeParse(input);
   if (!result.success) {
     throw new ValidationError(
-      `Invalid v2→v3 migration proposal (${origin}): ${result.error.message}`,
+      `Invalid v2→v3 migration proposal (${origin}): ${result.error.message}`
     );
   }
   const seen = new Set<string>();
   for (const initiative of result.data.initiatives) {
     if (seen.has(initiative.slug)) {
       throw new ValidationError(
-        `Invalid v2→v3 migration proposal (${origin}): duplicate slug ${initiative.slug}`,
+        `Invalid v2→v3 migration proposal (${origin}): duplicate slug ${initiative.slug}`
       );
     }
     seen.add(initiative.slug);
@@ -129,27 +134,34 @@ function parseProposal(input: unknown, origin: string): Proposal {
  * the operator can stage and dry-run a revised proposal without a rebuild;
  * otherwise uses the copy bundled with this release.
  */
-export async function loadProposal(): Promise<{ proposal: Proposal; origin: string }> {
+export async function loadProposal(): Promise<{
+  proposal: Proposal;
+  origin: string;
+}> {
   const override = process.env[PROPOSAL_PATH_ENV];
   if (override !== undefined && override.length > 0) {
     let raw: string;
     try {
-      raw = await fs.readFile(override, 'utf8');
+      raw = await fs.readFile(override, "utf8");
     } catch {
-      throw new ValidationError(`${PROPOSAL_PATH_ENV} points at an unreadable file: ${override}`);
+      throw new ValidationError(
+        `${PROPOSAL_PATH_ENV} points at an unreadable file: ${override}`
+      );
     }
     let json: unknown;
     try {
       json = JSON.parse(raw);
     } catch (err) {
       throw new ValidationError(
-        `${PROPOSAL_PATH_ENV} is not valid JSON (${override}): ${(err as Error).message}`,
+        `${PROPOSAL_PATH_ENV} is not valid JSON (${override}): ${
+          (err as Error).message
+        }`
       );
     }
     return { proposal: parseProposal(json, override), origin: override };
   }
   return {
-    proposal: parseProposal(V3_OPEN_LOOPS_PROPOSAL, 'bundled'),
-    origin: 'bundled',
+    proposal: parseProposal(V3_OPEN_LOOPS_PROPOSAL, "bundled"),
+    origin: "bundled",
   };
 }

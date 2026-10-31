@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unparseable artifacts.yml is read as empty again",
+      "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
+      "find": "  } catch {\n    return null;\n  }",
+      "replace": "  } catch {\n    return { branches: [], stashes: [], worktrees: [] };\n  }",
+      "kills": [
+        "v3ToV4Worktrees unparseable artifacts.yml leaves broken YAML byte-identical and reports it"
+      ]
+    },
+    {
+      "name": "the skip is not reported in the migration log",
+      "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
+      "find": "if (skipped) moved.push(",
+      "replace": "if (skipped) void (",
+      "kills": [
+        "v3ToV4Worktrees unparseable artifacts.yml leaves broken YAML byte-identical and reports it"
+      ]
+    },
+    {
+      "name": "a skipped initiative stops the rest of the migration",
+      "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
+      "find": "if (current === null) return { moved: 0, skipped: true };",
+      "replace": "if (current === null) throw new Error('skip');",
+      "kills": [
+        "v3ToV4Worktrees unparseable artifacts.yml still migrates the other initiatives"
+      ]
+    }
+  ]
+}

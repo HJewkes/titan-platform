@@ -1,7 +1,13 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { SessionFrontmatterSchema, type SessionFrontmatter } from '../schemas/session.js';
-import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import {
+  SessionFrontmatterSchema,
+  type SessionFrontmatter,
+} from "../schemas/session.js";
+import {
+  readRawFrontmatter,
+  writeFrontmatter,
+} from "../utils/gray-matter-io.js";
 
 /**
  * Known session files that predate the schema and fail it. v3 turns
@@ -15,7 +21,7 @@ import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js
  * file already fixed by hand is left alone and a re-run is a no-op.
  */
 
-export type RepairAction = 'retrack' | 'relocate' | 'skip';
+export type RepairAction = "retrack" | "relocate" | "skip";
 
 export interface RepairPlan {
   action: RepairAction;
@@ -29,26 +35,30 @@ export interface RepairPlan {
 
 interface KnownRepair {
   file: string;
-  kind: 'retrack' | 'relocate';
+  kind: "retrack" | "relocate";
   target?: string;
   why: string;
 }
 
 export const KNOWN_REPAIRS: KnownRepair[] = [
   {
-    file: path.join('demo-site', 'sessions', '2026-05-20-1000-example-retrack.md'),
-    kind: 'retrack',
+    file: path.join(
+      "demo-site",
+      "sessions",
+      "2026-05-20-1000-example-retrack.md"
+    ),
+    kind: "retrack",
     why: "track is a branch name ('feat/example-branch'), not one of canonical|sidecar|adhoc",
   },
   {
-    file: path.join('example-app', 'sessions', 'ARCHIVED-handoff.md'),
-    kind: 'relocate',
-    target: path.join('example-app', 'sources', 'ARCHIVED-handoff.md'),
-    why: 'not a session file — a hand-archived handoff parked in sessions/',
+    file: path.join("example-app", "sessions", "ARCHIVED-handoff.md"),
+    kind: "relocate",
+    target: path.join("example-app", "sources", "ARCHIVED-handoff.md"),
+    why: "not a session file — a hand-archived handoff parked in sessions/",
   },
 ];
 
-const TRACKS = new Set(['canonical', 'sidecar', 'adhoc']);
+const TRACKS = new Set(["canonical", "sidecar", "adhoc"]);
 
 /**
  * Brief-level repairs, applied before the `task_seq` backfill so a brief that
@@ -61,12 +71,17 @@ const TRACKS = new Set(['canonical', 'sidecar', 'adhoc']);
  */
 const BRIEF_REPAIRS: Record<
   string,
-  (fm: Record<string, unknown>) => { patch: Record<string, unknown>; detail: string } | null
+  (
+    fm: Record<string, unknown>
+  ) => { patch: Record<string, unknown>; detail: string } | null
 > = {
-  'sample-lib'(fm) {
-    if (fm.state !== 'active') return null;
+  "sample-lib"(fm) {
+    if (fm.state !== "active") return null;
     return {
-      patch: { state: 'focused', ...(fm.rank === undefined ? { rank: 11 } : {}) },
+      patch: {
+        state: "focused",
+        ...(fm.rank === undefined ? { rank: 11 } : {}),
+      },
       detail: "state 'active' (not in the enum) -> 'focused', rank 11",
     };
   },
@@ -78,7 +93,7 @@ const BRIEF_REPAIRS: Record<
  */
 export function repairBriefFrontmatter(
   slug: string,
-  frontmatter: Record<string, unknown>,
+  frontmatter: Record<string, unknown>
 ): { frontmatter: Record<string, unknown>; applied: string[] } {
   const repair = BRIEF_REPAIRS[slug]?.(frontmatter);
   if (repair == null) return { frontmatter, applied: [] };
@@ -94,27 +109,41 @@ export function repairBriefFrontmatter(
  * still invalid for some *other* reason is reported and left alone rather
  * than throwing half way through the write phase.
  */
-async function planRetrack(fullPath: string, repair: KnownRepair): Promise<RepairPlan> {
+async function planRetrack(
+  fullPath: string,
+  repair: KnownRepair
+): Promise<RepairPlan> {
   let raw: { frontmatter: Record<string, unknown>; body: string };
   try {
     raw = await readRawFrontmatter(fullPath);
   } catch {
-    return { action: 'skip', file: repair.file, detail: 'unreadable; left for the operator' };
+    return {
+      action: "skip",
+      file: repair.file,
+      detail: "unreadable; left for the operator",
+    };
   }
   const track = raw.frontmatter.track;
-  if (typeof track === 'string' && TRACKS.has(track)) {
-    return { action: 'skip', file: repair.file, detail: `track already ${track}` };
+  if (typeof track === "string" && TRACKS.has(track)) {
+    return {
+      action: "skip",
+      file: repair.file,
+      detail: `track already ${track}`,
+    };
   }
-  const parsed = SessionFrontmatterSchema.safeParse({ ...raw.frontmatter, track: 'adhoc' });
+  const parsed = SessionFrontmatterSchema.safeParse({
+    ...raw.frontmatter,
+    track: "adhoc",
+  });
   if (!parsed.success) {
     return {
-      action: 'skip',
+      action: "skip",
       file: repair.file,
       detail: `still invalid after retrack; left for the operator: ${parsed.error.message}`,
     };
   }
   return {
-    action: 'retrack',
+    action: "retrack",
     file: repair.file,
     detail: `track ${JSON.stringify(track)} -> "adhoc" (${repair.why})`,
     repaired: { frontmatter: parsed.data, body: raw.body },
@@ -135,40 +164,52 @@ export async function planRepairs(activeRoot: string): Promise<RepairPlan[]> {
   for (const repair of KNOWN_REPAIRS) {
     const fullPath = path.join(activeRoot, repair.file);
     if (!(await exists(fullPath))) {
-      plans.push({ action: 'skip', file: repair.file, detail: 'already absent' });
+      plans.push({
+        action: "skip",
+        file: repair.file,
+        detail: "already absent",
+      });
       continue;
     }
-    if (repair.kind === 'retrack') {
+    if (repair.kind === "retrack") {
       plans.push(await planRetrack(fullPath, repair));
       continue;
     }
     const target = repair.target!;
     if (await exists(path.join(activeRoot, target))) {
       plans.push({
-        action: 'skip',
+        action: "skip",
         file: repair.file,
         target,
-        detail: 'target already occupied; left for the operator',
+        detail: "target already occupied; left for the operator",
       });
       continue;
     }
-    plans.push({ action: 'relocate', file: repair.file, target, detail: repair.why });
+    plans.push({
+      action: "relocate",
+      file: repair.file,
+      target,
+      detail: repair.why,
+    });
   }
   return plans;
 }
 
-export async function applyRepair(activeRoot: string, plan: RepairPlan): Promise<void> {
+export async function applyRepair(
+  activeRoot: string,
+  plan: RepairPlan
+): Promise<void> {
   const fullPath = path.join(activeRoot, plan.file);
-  if (plan.action === 'retrack' && plan.repaired !== undefined) {
+  if (plan.action === "retrack" && plan.repaired !== undefined) {
     await writeFrontmatter(
       fullPath,
       plan.repaired.frontmatter,
       plan.repaired.body,
-      SessionFrontmatterSchema,
+      SessionFrontmatterSchema
     );
     return;
   }
-  if (plan.action === 'relocate') {
+  if (plan.action === "relocate") {
     const target = path.join(activeRoot, plan.target!);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.rename(fullPath, target);

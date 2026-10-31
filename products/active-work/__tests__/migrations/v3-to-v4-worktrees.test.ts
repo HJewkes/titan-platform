@@ -172,7 +172,6 @@ describe('v3 -> v4 worktrees', () => {
   it.each([
     ['a scalar', 'just a string\n'],
     ['a list', '- one\n- two\n'],
-    ['unparseable YAML', '{ not: valid: yaml'],
   ])('treats an artifacts.yml holding %s as empty and migrates over it', async (_label, body) => {
     const dir = await writeInitiative('sample', ONE_WORKTREE, body);
 

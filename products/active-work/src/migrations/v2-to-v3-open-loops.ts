@@ -1,24 +1,37 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { ValidationError } from '../errors.js';
-import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
-import { SessionFrontmatterSchema, type SessionFrontmatter } from '../schemas/session.js';
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { ValidationError } from "../errors.js";
+import {
+  BriefFrontmatterSchema,
+  type BriefFrontmatter,
+} from "../schemas/brief.js";
+import {
+  SessionFrontmatterSchema,
+  type SessionFrontmatter,
+} from "../schemas/session.js";
 import {
   buildSessionStem,
   sessionFilePathForStem,
   writeSessionFile,
-} from '../sessions/session-file.js';
-import { withFileLock } from '../utils/fs-atomic.js';
-import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
-import { loadProposal, type Proposal, type ProposalInitiative } from './v3-proposal.js';
+} from "../sessions/session-file.js";
+import { withFileLock } from "../utils/fs-atomic.js";
+import {
+  readRawFrontmatter,
+  writeFrontmatter,
+} from "../utils/gray-matter-io.js";
+import {
+  loadProposal,
+  type Proposal,
+  type ProposalInitiative,
+} from "./v3-proposal.js";
 import {
   KNOWN_REPAIRS,
   applyRepair,
   planRepairs,
   repairBriefFrontmatter,
   type RepairPlan,
-} from './v3-repairs.js';
-import type { Migration } from './types.js';
+} from "./v3-repairs.js";
+import type { Migration } from "./types.js";
 
 /**
  * v2 → v3 (AW-38): retire `handoff.md` in favour of the session open-loops
@@ -71,13 +84,16 @@ import type { Migration } from './types.js';
  * hanging", and the migration is not entitled to make the second claim.
  */
 
-const HANDOFF_FILE = 'handoff.md';
-const HANDOFF_ARCHIVE = path.join('sources', 'handoff-archive.md');
+const HANDOFF_FILE = "handoff.md";
+const HANDOFF_ARCHIVE = path.join("sources", "handoff-archive.md");
 
 /** Distinguishes the back-dated opening session from the later closing one. */
-export type SessionKind = 'open' | 'abandon';
+export type SessionKind = "open" | "abandon";
 
-export type HandoffDisposition = 'archive-and-remove' | 'archive-exists' | 'absent';
+export type HandoffDisposition =
+  | "archive-and-remove"
+  | "archive-exists"
+  | "absent";
 
 export interface SessionPlan {
   kind: SessionKind;
@@ -133,8 +149,8 @@ async function listInitiativeSlugs(activeRoot: string): Promise<string[]> {
   }
   const slugs: string[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-    if (await pathExists(path.join(activeRoot, entry.name, 'brief.md'))) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    if (await pathExists(path.join(activeRoot, entry.name, "brief.md"))) {
       slugs.push(entry.name);
     }
   }
@@ -147,11 +163,14 @@ async function listInitiativeSlugs(activeRoot: string): Promise<string[]> {
  * currently lowers its allocation floor; seeding the high-water mark from
  * both directories closes that hole at the same instant as the reuse window.
  */
-async function maxOnDiskTaskNumber(initiativeDir: string, prefix: string): Promise<number> {
+async function maxOnDiskTaskNumber(
+  initiativeDir: string,
+  prefix: string
+): Promise<number> {
   const re = new RegExp(`^${prefix}-(\\d+)\\.yml$`);
-  const tasksDir = path.join(initiativeDir, 'tasks');
+  const tasksDir = path.join(initiativeDir, "tasks");
   let max = 0;
-  for (const dir of [tasksDir, path.join(tasksDir, 'archive')]) {
+  for (const dir of [tasksDir, path.join(tasksDir, "archive")]) {
     let names: string[];
     try {
       names = await fs.readdir(dir);
@@ -168,11 +187,11 @@ async function maxOnDiskTaskNumber(initiativeDir: string, prefix: string): Promi
 
 async function nextTaskSeq(
   initiativeDir: string,
-  frontmatter: Record<string, unknown>,
+  frontmatter: Record<string, unknown>
 ): Promise<number | null> {
   if (frontmatter.task_seq !== undefined) return null;
   const prefix = frontmatter.task_prefix;
-  if (typeof prefix !== 'string' || prefix.length === 0) return null;
+  if (typeof prefix !== "string" || prefix.length === 0) return null;
   const max = await maxOnDiskTaskNumber(initiativeDir, prefix);
   return max > 0 ? max : null;
 }
@@ -187,9 +206,9 @@ async function nextTaskSeq(
  */
 async function planBrief(
   initiativeDir: string,
-  slug: string,
+  slug: string
 ): Promise<{ write: BriefWrite | null; blocked?: string }> {
-  const raw = await readRawFrontmatter(path.join(initiativeDir, 'brief.md'));
+  const raw = await readRawFrontmatter(path.join(initiativeDir, "brief.md"));
   const repaired = repairBriefFrontmatter(slug, raw.frontmatter);
   const taskSeq = await nextTaskSeq(initiativeDir, repaired.frontmatter);
   if (taskSeq === null && repaired.applied.length === 0) return { write: null };
@@ -202,62 +221,76 @@ async function planBrief(
   // malformed brief must not block the other sixteen initiatives.
   const parsed = BriefFrontmatterSchema.safeParse(merged);
   if (!parsed.success) {
-    return { write: null, blocked: `brief.md is invalid: ${parsed.error.message}` };
+    return {
+      write: null,
+      blocked: `brief.md is invalid: ${parsed.error.message}`,
+    };
   }
   return {
-    write: { frontmatter: parsed.data, body: raw.body, taskSeq, repairs: repaired.applied },
+    write: {
+      frontmatter: parsed.data,
+      body: raw.body,
+      taskSeq,
+      repairs: repaired.applied,
+    },
   };
 }
 
 async function planHandoff(initiativeDir: string): Promise<HandoffDisposition> {
-  if (!(await pathExists(path.join(initiativeDir, HANDOFF_FILE)))) return 'absent';
+  if (!(await pathExists(path.join(initiativeDir, HANDOFF_FILE))))
+    return "absent";
   // An archive already sitting next to a live handoff means a previous run
   // stopped mid-initiative, or the operator has begun the manual split. Either
   // way the archive is not ours to overwrite, and deleting the handoff without
   // archiving it would destroy the only copy.
-  if (await pathExists(path.join(initiativeDir, HANDOFF_ARCHIVE))) return 'archive-exists';
-  return 'archive-and-remove';
+  if (await pathExists(path.join(initiativeDir, HANDOFF_ARCHIVE)))
+    return "archive-exists";
+  return "archive-and-remove";
 }
 
-function buildOpenSession(entry: ProposalInitiative): Omit<SessionPlan, 'path' | 'exists'> {
+function buildOpenSession(
+  entry: ProposalInitiative
+): Omit<SessionPlan, "path" | "exists"> {
   const frontmatter = SessionFrontmatterSchema.parse({
     session_id: entry.session_id,
     // A synthetic session is an instant, not an interval: it stands for a
     // state read off the handoff, so `started === ended`.
     started: entry.ended,
     ended: entry.ended,
-    track: 'sidecar',
+    track: "sidecar",
     // `abandoned` is proposal-only bookkeeping and must not reach the file.
-    next_steps: entry.next_steps.map(({ abandoned: _abandoned, ...step }) => step),
+    next_steps: entry.next_steps.map(
+      ({ abandoned: _abandoned, ...step }) => step
+    ),
     resolves: [],
   });
   const stem = buildSessionStem(entry.ended, entry.session_id);
-  return { kind: 'open', stem, frontmatter, body: buildOpenBody(entry, stem) };
+  return { kind: "open", stem, frontmatter, body: buildOpenBody(entry, stem) };
 }
 
 function buildAbandonSession(
   entry: ProposalInitiative,
   openStem: string,
-  abandonedAt: string,
-): Omit<SessionPlan, 'path' | 'exists'> {
+  abandonedAt: string
+): Omit<SessionPlan, "path" | "exists"> {
   const sessionId = `${entry.session_id}-abandonment`;
   const frontmatter = SessionFrontmatterSchema.parse({
     session_id: sessionId,
     started: abandonedAt,
     ended: abandonedAt,
-    track: 'sidecar',
+    track: "sidecar",
     next_steps: [],
     resolves: entry.next_steps
       .filter((step) => step.abandoned !== undefined)
       .map((step) => ({
         ref: `${openStem}#${step.id}`,
-        outcome: 'abandoned' as const,
+        outcome: "abandoned" as const,
         note: step.abandoned!.note,
       })),
   });
   const stem = buildSessionStem(abandonedAt, sessionId);
   return {
-    kind: 'abandon',
+    kind: "abandon",
     stem,
     frontmatter,
     body: buildAbandonBody(entry, openStem, stem),
@@ -272,39 +305,46 @@ const PERMANENCE_NOTE = (stem: string): string =>
 function buildOpenBody(entry: ProposalInitiative, stem: string): string {
   return [
     entry.body.trimEnd(),
-    '',
-    '---',
-    '',
+    "",
+    "---",
+    "",
     `_Synthetic session written by the v2→v3 open-loops migration from this` +
       ` initiative's \`handoff.md\` (archived at \`sources/handoff-archive.md\`)._`,
     PERMANENCE_NOTE(stem),
-    '',
-  ].join('\n');
+    "",
+  ].join("\n");
 }
 
-function buildAbandonBody(entry: ProposalInitiative, openStem: string, stem: string): string {
+function buildAbandonBody(
+  entry: ProposalInitiative,
+  openStem: string,
+  stem: string
+): string {
   const dead = entry.next_steps.filter((s) => s.abandoned !== undefined);
   return [
-    '# Abandoned on arrival',
-    '',
+    "# Abandoned on arrival",
+    "",
     `The v2→v3 open-loops migration opened ${entry.slug}'s loops in \`${openStem}\`,`,
-    'back-dated to its real last-touch. The items below were already dead when that',
-    'handoff was written — the window each depended on had closed — so this session',
-    'closes them immediately rather than leaving loops in the ledger that their own',
-    'text tells a future session not to chase.',
-    '',
-    ...dead.flatMap((step) => [`- \`${openStem}#${step.id}\` — ${step.abandoned!.note}`, '']),
-    '---',
-    '',
+    "back-dated to its real last-touch. The items below were already dead when that",
+    "handoff was written — the window each depended on had closed — so this session",
+    "closes them immediately rather than leaving loops in the ledger that their own",
+    "text tells a future session not to chase.",
+    "",
+    ...dead.flatMap((step) => [
+      `- \`${openStem}#${step.id}\` — ${step.abandoned!.note}`,
+      "",
+    ]),
+    "---",
+    "",
     PERMANENCE_NOTE(stem),
-    '',
-  ].join('\n');
+    "",
+  ].join("\n");
 }
 
 async function locateSessions(
   activeRoot: string,
   slug: string,
-  drafts: Array<Omit<SessionPlan, 'path' | 'exists'>>,
+  drafts: Array<Omit<SessionPlan, "path" | "exists">>
 ): Promise<SessionPlan[]> {
   const located: SessionPlan[] = [];
   for (const draft of drafts) {
@@ -316,8 +356,8 @@ async function locateSessions(
 
 function draftSessions(
   entry: ProposalInitiative,
-  abandonedAt: string | undefined,
-): Array<Omit<SessionPlan, 'path' | 'exists'>> {
+  abandonedAt: string | undefined
+): Array<Omit<SessionPlan, "path" | "exists">> {
   const open = buildOpenSession(entry);
   const hasAbandoned = entry.next_steps.some((s) => s.abandoned !== undefined);
   if (!hasAbandoned) return [open];
@@ -325,7 +365,7 @@ function draftSessions(
   // constructing a Proposal by hand cannot skip the ordering guarantee.
   if (abandonedAt === undefined) {
     throw new ValidationError(
-      `${entry.slug} marks a next_step abandoned but the proposal has no abandoned_at`,
+      `${entry.slug} marks a next_step abandoned but the proposal has no abandoned_at`
     );
   }
   return [open, buildAbandonSession(entry, open.stem, abandonedAt)];
@@ -335,7 +375,7 @@ async function planInitiative(
   activeRoot: string,
   slug: string,
   entry: ProposalInitiative | undefined,
-  abandonedAt: string | undefined,
+  abandonedAt: string | undefined
 ): Promise<InitiativePlan> {
   const initiativeDir = path.join(activeRoot, slug);
   const brief = await planBrief(initiativeDir, slug);
@@ -346,21 +386,32 @@ async function planInitiative(
     handoff: await planHandoff(initiativeDir),
   };
   if (entry === undefined) {
-    return { ...base, sessions: [], uncoveredReason: 'no entry in the migration proposal' };
+    return {
+      ...base,
+      sessions: [],
+      uncoveredReason: "no entry in the migration proposal",
+    };
   }
   return {
     ...base,
-    sessions: await locateSessions(activeRoot, slug, draftSessions(entry, abandonedAt)),
+    sessions: await locateSessions(
+      activeRoot,
+      slug,
+      draftSessions(entry, abandonedAt)
+    ),
   };
 }
 
 function assertProposalSlugsExist(proposal: Proposal, known: string[]): void {
   const set = new Set(known);
-  const missing = proposal.initiatives.filter((i) => !set.has(i.slug)).map((i) => i.slug);
+  const missing = proposal.initiatives
+    .filter((i) => !set.has(i.slug))
+    .map((i) => i.slug);
   if (missing.length > 0) {
     throw new ValidationError(
-      `v2→v3 migration proposal names initiatives that do not exist: ${missing.join(', ')}. ` +
-        'Supply a proposal for this root through $AW_V3_PROPOSAL.',
+      `v2→v3 migration proposal names initiatives that do not exist: ${missing.join(
+        ", "
+      )}. ` + "Supply a proposal for this root through $AW_V3_PROPOSAL."
     );
   }
 }
@@ -378,10 +429,19 @@ export async function planV2ToV3(activeRoot: string): Promise<MigrationPlan> {
   const initiatives: InitiativePlan[] = [];
   for (const slug of slugs) {
     initiatives.push(
-      await planInitiative(activeRoot, slug, byslug.get(slug), proposal.abandoned_at),
+      await planInitiative(
+        activeRoot,
+        slug,
+        byslug.get(slug),
+        proposal.abandoned_at
+      )
     );
   }
-  return { proposalOrigin: origin, initiatives, repairs: await planRepairs(activeRoot) };
+  return {
+    proposalOrigin: origin,
+    initiatives,
+    repairs: await planRepairs(activeRoot),
+  };
 }
 
 async function archiveHandoff(initiativeDir: string): Promise<void> {
@@ -395,7 +455,7 @@ async function archiveHandoff(initiativeDir: string): Promise<void> {
 async function writePlannedSession(
   activeRoot: string,
   slug: string,
-  session: SessionPlan,
+  session: SessionPlan
 ): Promise<void> {
   const fm = session.frontmatter;
   await writeSessionFile({
@@ -411,9 +471,12 @@ async function writePlannedSession(
   });
 }
 
-async function applyInitiative(activeRoot: string, plan: InitiativePlan): Promise<void> {
+async function applyInitiative(
+  activeRoot: string,
+  plan: InitiativePlan
+): Promise<void> {
   const initiativeDir = path.join(activeRoot, plan.slug);
-  await withFileLock(path.join(initiativeDir, '.lock'), async () => {
+  await withFileLock(path.join(initiativeDir, ".lock"), async () => {
     // Ordered: the opening session must exist before the one that resolves it.
     for (const session of plan.sessions) {
       if (session.exists) continue;
@@ -421,20 +484,23 @@ async function applyInitiative(activeRoot: string, plan: InitiativePlan): Promis
     }
     if (plan.brief !== null) {
       await writeFrontmatter(
-        path.join(initiativeDir, 'brief.md'),
+        path.join(initiativeDir, "brief.md"),
         plan.brief.frontmatter,
         plan.brief.body,
-        BriefFrontmatterSchema,
+        BriefFrontmatterSchema
       );
     }
-    if (plan.handoff === 'archive-and-remove') {
+    if (plan.handoff === "archive-and-remove") {
       await archiveHandoff(initiativeDir);
     }
   });
 }
 
 /** Phase two. Writes only what phase one already validated. */
-export async function applyV2ToV3(activeRoot: string, plan: MigrationPlan): Promise<void> {
+export async function applyV2ToV3(
+  activeRoot: string,
+  plan: MigrationPlan
+): Promise<void> {
   for (const initiative of plan.initiatives) {
     await applyInitiative(activeRoot, initiative);
   }
@@ -446,7 +512,7 @@ export async function applyV2ToV3(activeRoot: string, plan: MigrationPlan): Prom
 export const v2ToV3OpenLoops: Migration = {
   from: 2,
   to: 3,
-  description: 'Retire handoff.md into synthetic back-dated open-loop sessions',
+  description: "Retire handoff.md into synthetic back-dated open-loop sessions",
   async run(activeRoot: string): Promise<void> {
     const plan = await planV2ToV3(activeRoot);
     await applyV2ToV3(activeRoot, plan);
