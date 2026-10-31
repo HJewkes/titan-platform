@@ -86,6 +86,12 @@ describe("planRegisterEdits: sentence shape", () => {
       }
     });
 
+    it("holds the sentence count on a beat over the limit, so the planned mean stays over its floor", () => {
+      const { projected } = planRegisterEdits(choppy, runL0(choppy, undefined, [registerCheck]), { cap: MAX_VETTED_SENTENCE_WORDS });
+
+      expect(projected!.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
+    });
+
     it("keeps the headroom under the plain cap, as without --speech-vet", () => {
       const longest = longestPlanned(script(choppyLines(24)), MAX_SENTENCE_WORDS);
 

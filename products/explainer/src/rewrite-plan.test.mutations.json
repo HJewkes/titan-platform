@@ -9,6 +9,33 @@
       "kills": [
         "planRegisterEdits: over-represented phrases names no phrase once the phrases row passes"
       ]
+    },
+    {
+      "name": "the plan may reach the vetted cap less its headroom",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "const MAX_PLANNED_WORDS = 24;",
+      "replace": "const MAX_PLANNED_WORDS = 32;",
+      "kills": [
+        "planRegisterEdits: sentence shape longest planned sentence stays at 24 words under the vetted cap on a 24-beat script"
+      ]
+    },
+    {
+      "name": "a beat over the limit gains a sentence instead of moving its words",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "if (count > 1 && longest <= headroom) return trimLong(lengths, MAX_PLANNED_WORDS);",
+      "replace": "if (count < 0) return trimLong(lengths, MAX_PLANNED_WORDS);",
+      "kills": [
+        "planRegisterEdits: sentence shape longest planned sentence holds the sentence count on a beat over the limit, so the planned mean stays over its floor"
+      ]
+    },
+    {
+      "name": "words cut from a long sentence are dropped from the plan",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "(i === lastShort ? n + overflow : Math.min(n, longest))",
+      "replace": "(i === lastShort ? n : Math.min(n, longest))",
+      "kills": [
+        "planRegisterEdits: sentence shape longest planned sentence plans every word of each beat of a 24-beat script under the vetted cap"
+      ]
     }
   ]
 }
