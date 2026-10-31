@@ -139,8 +139,9 @@ describe('OrderedSink', () => {
   test('a worker failure releases a worker stalled on the sink and close removes the spill', async () => {
     const { sink } = gatedSink()
     const ordered = new OrderedSink(RANGES, sink, parent)
-    const [head, chunk1] = RANGES.map((range) => sweep(ordered, range))
-    await chunk1
+    const [head, ...spilling] = RANGES.map((range) => sweep(ordered, range))
+    // Every spilling sweep finishes before the abort, so none is left in flight to reject unhandled.
+    await Promise.all(spilling)
 
     ordered.abort(new Error('page crashed'))
     await assert.rejects(Promise.resolve(head), /^Error: page crashed$/)
