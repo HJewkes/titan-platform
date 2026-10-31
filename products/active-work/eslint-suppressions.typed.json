@@ -121,9 +121,6 @@
     }
   },
   "products/active-work/src/commands/miner-status.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -211,11 +208,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/decider/extract.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/decider/human-only.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -228,9 +220,6 @@
   },
   "products/active-work/src/decider/queue-source.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
@@ -346,14 +335,9 @@
       "count": 6
     }
   },
-  "products/active-work/src/search/document-frequency.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/search/resolve.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
+      "count": 1
     }
   },
   "products/active-work/src/server/host-lease.ts": {
@@ -384,27 +368,22 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
-    }
-  },
-  "products/active-work/src/session-index/migration-repair.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
   "products/active-work/src/session-index/origin-agent-chat.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 3
     }
   },
   "products/active-work/src/session-index/pr-outcomes.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/session-index/preserve.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 2
     }
   },
   "products/active-work/src/session-index/refresh.ts": {
@@ -567,16 +546,6 @@
       "count": 3
     }
   },
-  "products/active-work/src/workspace-index/doctor.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/workspace-index/edges.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/active-work/src/workspace-index/inventory-summary.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -587,7 +556,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "products/active-work/src/workspace-index/write.ts": {

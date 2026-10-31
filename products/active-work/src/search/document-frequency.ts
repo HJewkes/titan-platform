@@ -35,14 +35,14 @@ export function clearDocumentFrequency(dbName: string): void {
  */
 export function countMatches(graph: WorkspaceGraph, expression: string, cap: number): number {
   const row = graph.db
-    .prepare(
+    .prepare<[string, number], { n: number }>(
       `SELECT count(*) AS n FROM (
         SELECT ${SPAN_FTS}.rowid FROM ${SPAN_FTS}
         JOIN search_span ON search_span.span_id = ${SPAN_FTS}.rowid
         WHERE ${SPAN_FTS} MATCH ? LIMIT ?)`,
     )
-    .get(expression, cap) as { n: number };
-  return row.n;
+    .get(expression, cap);
+  return row?.n ?? 0;
 }
 
 function countSpans(graph: WorkspaceGraph, term: string): number {

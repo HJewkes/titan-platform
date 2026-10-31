@@ -41,15 +41,18 @@ function askTranscripts(graphPath: string): () => Promise<TranscriptFile[]> {
     const graph = openGraphReadOnly(graphPath);
     try {
       const found = graph
-        .prepare(
+        .prepare<[], { sourceKey: string }>(
           `SELECT DISTINCT t.source_key AS sourceKey
              FROM tool_call c
              JOIN transcript t ON t.source_id = c.transcript_id
             WHERE c.name = 'AskUserQuestion'
             ORDER BY t.source_key`,
         )
-        .all() as { sourceKey: string }[];
-      const files = found.map((f) => ({ path: toAbsolutePath(f.sourceKey), namespace: 'default' }));
+        .all();
+      const files = found.map((f) => ({
+        path: toAbsolutePath(f.sourceKey),
+        namespace: 'default',
+      }));
       return Promise.resolve(files);
     } finally {
       graph.close();

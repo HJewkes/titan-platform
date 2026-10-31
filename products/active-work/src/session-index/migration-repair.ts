@@ -45,8 +45,10 @@ export function repairMigrationBand(db: Database.Database): number[] {
  */
 function renumber(db: Database.Database, name: string, version: number): boolean {
   const legacy = db
-    .prepare('SELECT applied_at FROM _migration WHERE name = ? AND version < ? ORDER BY version')
-    .all(name, BAND_FLOOR) as { applied_at: string }[];
+    .prepare<[string, number], { applied_at: string }>(
+      'SELECT applied_at FROM _migration WHERE name = ? AND version < ? ORDER BY version',
+    )
+    .all(name, BAND_FLOOR);
   if (legacy.length === 0) return false;
 
   db.prepare('DELETE FROM _migration WHERE name = ? AND version < ?').run(name, BAND_FLOOR);

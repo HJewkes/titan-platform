@@ -129,13 +129,15 @@ const REF_TABLES: Record<string, RefTarget[]> = {
 
 function tableNames(db: Db): string[] {
   const rows = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-    .all() as { name: string }[];
+    .prepare<[], { name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+    )
+    .all();
   return rows.map((row) => row.name).filter((name) => !SKIP_TABLES.test(name));
 }
 
 function columnNames(db: Db, table: string): string[] {
-  const rows = db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[];
+  const rows = db.prepare<[], { name: string }>(`PRAGMA table_info("${table}")`).all();
   return rows.map((row) => row.name);
 }
 
@@ -148,10 +150,10 @@ function scanTable(db: Db, table: string): ColumnLiveness[] {
   const columns = columnNames(db, table);
   if (columns.length === 0) return [];
   const selects = columns.map((column, index) => `COUNT("${column}") AS c${index}`).join(', ');
-  const row = db.prepare(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`).get() as Record<
-    string,
-    number
-  >;
+  const row = db
+    .prepare<[], Record<string, number>>(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`)
+    .get();
+  if (!row) return [];
   return columns.map((column, index) => ({
     table,
     column,
@@ -170,12 +172,12 @@ const WORKSPACE_RELATIONS = ['holds', 'mentions', 'shares_tag'];
 
 function relationLiveness(db: Db): RelationLiveness[] {
   const observed = new Map(
-    (
-      db.prepare('SELECT relation, COUNT(*) AS n FROM edge GROUP BY relation').all() as {
-        relation: string;
-        n: number;
-      }[]
-    ).map((row) => [row.relation, row.n]),
+    db
+      .prepare<[], { relation: string; n: number }>(
+        'SELECT relation, COUNT(*) AS n FROM edge GROUP BY relation',
+      )
+      .all()
+      .map((row) => [row.relation, row.n]),
   );
   const declared = [...(Object.values(RELATIONS) as string[]), ...WORKSPACE_RELATIONS];
   const report: RelationLiveness[] = declared.map((relation) => ({
@@ -191,31 +193,31 @@ function relationLiveness(db: Db): RelationLiveness[] {
 
 function refNamespaces(db: Db): RefNamespaceLiveness[] {
   const rows = db
-    .prepare(
+    .prepare<[], { namespace: string; n: number }>(
       `SELECT namespace, COUNT(*) AS n FROM (
          SELECT substr(source_ref, 1, instr(source_ref, ':') - 1) AS namespace FROM edge
          UNION ALL
          SELECT substr(target_ref, 1, instr(target_ref, ':') - 1) FROM edge
        ) WHERE namespace <> '' GROUP BY namespace ORDER BY namespace`,
     )
-    .all() as { namespace: string; n: number }[];
+    .all();
   const present = existingTables(db);
 
   return rows.map(({ namespace, n }) => {
     // session-graph drops the normalized tables when empty.
     const targets = REF_TABLES[namespace]?.filter((target) => present.has(target.table)) ?? [];
     if (targets.length === 0) return { namespace, edges: n, dangling: null };
-    const { c } = db.prepare(danglingSql(namespace, targets)).get({ prefix: `${namespace}:%` }) as {
-      c: number;
-    };
-    return { namespace, edges: n, dangling: c };
+    const found = db
+      .prepare<{ prefix: string }, { c: number }>(danglingSql(namespace, targets))
+      .get({ prefix: `${namespace}:%` });
+    return { namespace, edges: n, dangling: found?.c ?? 0 };
   });
 }
 
 function existingTables(db: Db): Set<string> {
-  const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
-    name: string;
-  }[];
+  const rows = db
+    .prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all();
   return new Set(rows.map((row) => row.name));
 }
 
@@ -239,9 +241,9 @@ function danglingSql(namespace: string, targets: RefTarget[]): string {
  * is what it meant when this check was written, and why it was written.
  */
 function staleTranscripts(db: Db): number {
-  const rows = db.prepare("SELECT source_key FROM transcript WHERE status = 'ok'").all() as {
-    source_key: string;
-  }[];
+  const rows = db
+    .prepare<[], { source_key: string }>("SELECT source_key FROM transcript WHERE status = 'ok'")
+    .all();
   return rows.filter((row) => !existsSync(toAbsolutePath(row.source_key))).length;
 }
 
@@ -260,6 +262,7 @@ export function runLiveness(db: Db): LivenessReport {
     relations: relationLiveness(db),
     refNamespaces: refNamespaces(db),
     staleTranscripts: staleTranscripts(db),
-    transcripts: (db.prepare('SELECT COUNT(*) AS n FROM transcript').get() as { n: number }).n,
+    transcripts:
+      db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM transcript').get()?.n ?? 0,
   };
 }
