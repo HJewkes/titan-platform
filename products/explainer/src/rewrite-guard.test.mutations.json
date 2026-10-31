@@ -38,6 +38,16 @@
         "guardBeat number-vague rejects hundreds standing in for a number cut from the line",
         "guardBeat number-vague rejects various standing in for a number cut from the line"
       ]
+    },
+    {
+      "name": "the guard lets a rewrite keep one end of a number range",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...rangeRejections(before.spoken, after),\n",
+      "replace": "",
+      "kills": [
+        "guardBeat with a number range in the line rejects a rewrite that keeps one end of the range and drops the other",
+        "guardBeat with a number range in the line rejects a digit range that loses its lower bound"
+      ]
     }
   ]
 }

@@ -83,6 +83,30 @@ describe("planRegisterEdits: numbers and triads", () => {
     expect(directiveFor(plan(s).directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
   });
 
+  it("directs no collapse of a list whose items the screen cues on, and still directs one with a single cued item", () => {
+    const cuedOn = (...atCues: string[]) => ({ visual: { assertion: "The desk checks three things", job: "numbers", cues: atCues.map((atCue) => ({ action: "V11", target: `card:${atCue}`, atCue })) } });
+    const s = tour([
+      ["h1", "ch1", "WHAT", LIST, cuedOn("scan", "row", "label")],
+      ["w4", "ch2", "WHAT", LIST, cuedOn("row")],
+      ["c1", "ch3", "WHAT", LIST],
+      ...script([...MORE_CROWDED, ...choppyLines(15)]).beats.map((beat, i): BeatSpec => [`m${i}`, beat.chapter, "WHAT", beat.spoken]),
+    ]);
+
+    const { directives } = plan(s);
+
+    expect(failing(s)).toContain("register:triads");
+    expect(directiveFor(directives, "h1")?.triads).toBeUndefined();
+    expect(directiveFor(directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+    expect(directiveFor(directives, "c1")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("names a number range as one mention, so the directive never offers to cut one end", () => {
+    const RANGE = "Merge-ups move thirty to thirty-five percent of heads on 2 queues.";
+    const s = script([RANGE, ...MORE_CROWDED, ...choppyLines(15)]);
+
+    expect(directiveFor(plan(s).directives, "h1")?.numbers).toEqual(["thirty to thirty-five percent", "2"]);
+  });
+
   it("leaves a beat that speaks one number alone", () => {
     const s = script(["The desk held 12 parcels overnight.", CROWDED, ...MORE_CROWDED, ...choppyLines(14)]);
 

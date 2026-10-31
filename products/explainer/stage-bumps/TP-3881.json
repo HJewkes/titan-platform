@@ -1,0 +1,1 @@
+{ "stages": ["rewrite"], "why": "The rewrite plans no collapse of a cued list, names a list's cued item and a range as one number, and refuses a split range" }
