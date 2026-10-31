@@ -53,6 +53,10 @@
     "./gates": {
       "types": "./dist/gates/index.d.ts",
       "import": "./dist/gates/index.js"
+    },
+    "./isolation": {
+      "types": "./dist/isolation/index.d.ts",
+      "import": "./dist/isolation/index.js"
     }
   },
   "files": [
@@ -85,6 +89,7 @@
   "dependencies": {
     "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
+    "@titan-design/worktree": "workspace:^",
     "yaml": "^2.9.1"
   },
   "devDependencies": {

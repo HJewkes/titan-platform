@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "the distance to band ignores the phrases row",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "[...REWRITE_TARGET_ROWS, \"register:phrases\"];",
+      "replace": "[...REWRITE_TARGET_ROWS];",
+      "kills": [
+        "chapterRefusal with the shipped protections keeps a chapter that only cuts a stock phrase while the phrases row fails"
+      ]
+    },
+    {
       "name": "Q-V11 warns on a report-only or dropped row",
       "file": "products/explainer/src/lint-register.ts",
       "find": "s.words.length >= MIN_REGISTER_WORDS && !reportedOnly.has(metric);",

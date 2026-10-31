@@ -14,6 +14,7 @@ export default defineConfig({
     "host/index": "src/host/index.ts",
     "roster/index": "src/roster/index.ts",
     "gates/index": "src/gates/index.ts",
+    "isolation/index": "src/isolation/index.ts",
   },
   format: ["esm"],
   dts: true,

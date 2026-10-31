@@ -12,6 +12,7 @@ import { OUTCOME_STEPS } from "./outcome.js";
 import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { CONFLICT_BASE_STEPS } from "./conflict-base.js";
 import { STALE_BASE_STEPS } from "./stale-base.js";
+import { MERGE_MAIN_STEPS } from "./merge-main.js";
 import { MERGE_ORDER_STEPS } from "./merge-order-steps.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
 import { FIX_PR_STALL_STEPS } from "./fix-pr-stall.js";
@@ -48,6 +49,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...CONFLICT_CHECK_STEPS,
   ...CONFLICT_BASE_STEPS,
   ...STALE_BASE_STEPS,
+  ...MERGE_MAIN_STEPS,
   ...MERGE_ORDER_STEPS,
   ...FREEZE_HOLD_STEPS,
   ...FIX_PR_STALL_STEPS,

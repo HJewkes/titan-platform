@@ -320,6 +320,9 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../worktree
       yaml:
         specifier: ^2.9.1
         version: 2.9.1

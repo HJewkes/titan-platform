@@ -28,7 +28,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 
 const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "range-split", "number-vague", "device-added",
-  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
+  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,

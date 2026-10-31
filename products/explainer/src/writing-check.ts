@@ -50,7 +50,8 @@ interface WritingSpan {
 export interface HumanStanding {
   flaggedShare: number;
   windows: number;
-  percentile: { edge: number; above: boolean } | null;
+  /** Share of held-out human windows at or below this value, in percent; null when the script has no value. */
+  percentile: number | null;
 }
 
 type RowVerdict = "fail" | "pass" | "unmeasured" | "not-judged";
@@ -113,12 +114,20 @@ function offendingSpans(metric: WritingMetric, beats: readonly WritingBeat[]): W
   return beats.flatMap((beat) => runsIn(metric, beat.spoken).map((run) => ({ beat: beat.id, text: bare(run) }))).slice(0, MAX_SPANS);
 }
 
+/** Reads a value back through the quantile curve. Tied quantiles resolve upward: a 0 on a row most humans score 0 on is not p0. */
+function percentileOf(value: number, grid: readonly number[], quantiles: readonly number[]): number {
+  const below = quantiles.findLastIndex((quantile) => quantile <= value);
+  if (below === -1) return 0;
+  const [q, nextQ, at, next] = [grid[below] ?? 1, grid[below + 1], quantiles[below] ?? value, quantiles[below + 1]];
+  if (nextQ === undefined || next === undefined) return 100;
+  return Math.round(100 * (q + ((nextQ - q) * (value - at)) / (next - at)));
+}
+
 function humanStanding(metric: WritingMetric, value: number | null, check: WritingCheck, bucket: BucketName): HumanStanding | null {
   const { point, n } = check.rows[metric][bucket].fpr_heldout;
-  if (point === null) return null;
-  const band = WRITING_BANDS[metric];
-  const capped = band.min === undefined && value !== null;
-  return { flaggedShare: point, windows: n, percentile: capped ? { edge: Math.round(100 * (1 - point)), above: value > band.max } : null };
+  const { values } = check.humanQuantiles[metric][bucket];
+  if (point === null || values === null) return null;
+  return { flaggedShare: point, windows: n, percentile: value === null ? null : percentileOf(value, check.meta.quantileGrid, values) };
 }
 
 function rowVerdict(status: WritingStatus, value: number | null, band: Band): RowVerdict {

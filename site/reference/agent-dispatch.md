@@ -234,6 +234,48 @@ const decision = routeSpawn({
 `readSpawnFacts` never throws. An unknown id, or one that is not a plain file name, gives
 empty facts with source `none`, and the router keeps the requested profile.
 
+## Isolation
+
+The `./isolation` subpath holds the isolation strategies a spawn picks from its profile and
+the rules that keep a retire or a park from pulling a worktree out from under another agent.
+The host builds the worktree strategy, because it reads host budgets, and hands it in:
+
+```ts
+import {
+  createIsolationRegistry,
+  refusalsIn,
+  worktreeTenancy,
+} from "@titan-design/agent-dispatch/isolation";
+
+const registry = createIsolationRegistry({ worktree: hostWorktreeStrategy });
+const strategy = registry.resolve(["toolset-limited", "worktree"]);
+const reasons = await strategy.check(ctx);
+if (refusalsIn(reasons).length > 0) throw new Error(reasons.join("; "));
+const allocation = await strategy.allocate(ctx);
+
+const verdict = worktreeTenancy(
+  { agentId: "a1", name: "scout", isolation: "worktree", ref: allocation.ref },
+  notRetiredRoster,
+  false,
+);
+// { refusal: "scout allocated the worktree ..., and heir (not retired) is working in it. ..." }
+```
+
+- `none`, `toolset-limited` and `file-ownership` are pure. `check` lines carrying
+  `WARNING_PREFIX` are advisory; `refusalsIn` keeps the rest.
+- `worktreeTenancy`, `adopterBlocker` and `parkTenancyBlocker` are the one CC-141 rule for the
+  single retire, the bulk retire and the park. Paths are compared after `canonicalPath`, so a
+  symlinked cwd still counts.
+- `allocatedWorktree`, `parkBlocker`, `parkable` and `liveBlocker` are the park rules over
+  journal rows and roster identities.
+- `createWorktreeStrategy` is the strategy the host hands in. It takes `budget` and
+  `reviewerBudget` readers, called on every spawn, and keeps implementer and reviewer trees
+  in separate pools.
+- `unsavedWork` and `dispatchIgnoredFiles` are the one ignored-file policy for release and
+  park. It lets go of everything `@titan-design/worktree` does, and also of a few more build
+  outputs, an index-only `.codewatch/graph.db` and paths a committed `.agent-chat/generated`
+  lists. Any failed read refuses.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are

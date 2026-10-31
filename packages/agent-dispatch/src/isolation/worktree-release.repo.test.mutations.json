@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "release judges files by the package's narrower list",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "  return { ...safety, dirty: unsaved !== undefined, checked: [dirty, ...rest] };",
+      "replace": "  return { ...safety, checked: [dirty, ...rest] };",
+      "kills": ["worktree release fails closed releases a built tree whose only ignored files are tsbuildinfo"]
+    },
+    {
+      "name": "the grace window is skipped",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "  if (stoppedAt !== undefined && Date.now() - stoppedAt < RECLAIM_GRACE_MS)\n",
+      "replace": "  if (stoppedAt === -1)\n",
+      "kills": ["worktree release holds a just-exited agent inside the grace window even when clean"]
+    },
+    {
+      "name": "a removal git refused is reported as released",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "  if (removed === null && existsSync(worktree)) return `git would not remove ${worktree}`;\n",
+      "replace": "",
+      "kills": ["worktree release fails closed reports a refused removal of a clean tree as not released, and keeps the branch"]
+    },
+    {
+      "name": "a stale refusal survives a later release",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "      clearRefusal(allocation);\n",
+      "replace": "",
+      "kills": ["worktree release holds a just-exited agent inside the grace window even when clean"]
+    },
+    {
+      "name": "a release stops accepting a merged PR as proof",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "inspectForRelease(gitRoot, worktree, branch, base, \"git-or-merged-pr-tip\", ghTimeoutMs)",
+      "replace": "inspectForRelease(gitRoot, worktree, branch, base, \"git\", ghTimeoutMs)",
+      "kills": ["worktree release after the work landed when gh reports the PR releases a squash-merged branch when gh reports the PR merged at its exact tip"]
+    }
+  ]
+}

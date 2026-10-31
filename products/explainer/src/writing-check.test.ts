@@ -58,17 +58,6 @@ describe("scoreWriting", () => {
     expect(row(longer, "triads").status).toBe("drop");
   });
 
-  it("gives a capped row the side of its band edge and a two-sided row its flag rate", () => {
-    const table = tableWith({ phrases: "warning" });
-    table.rows.phrases["150-299"].fpr_heldout = { ...table.rows.phrases["150-299"].fpr_heldout, point: 0.07, n: 100 };
-    table.rows.numbers["150-299"].fpr_heldout = { ...table.rows.numbers["150-299"].fpr_heldout, point: 0.6, n: 100 };
-
-    const report = scoreWriting(beatsOf(cleanLines(14)), table);
-
-    expect(row(report, "phrases").human).toMatchObject({ percentile: { edge: 93, above: false } });
-    expect(row(report, "numbers").human).toMatchObject({ flaggedShare: 0.6, percentile: null });
-  });
-
   it("does not fail a gate row the text cannot carry, and counts it as unmeasured", () => {
     const unpunctuated = Array.from({ length: 200 }, (_, i) => `word${i}`).join(" ");
 
@@ -97,6 +86,40 @@ describe("scoreWriting", () => {
     const report = scoreWriting(beatsOf(cleanLines(14)), tableWith({}));
 
     expect(report.rows.map((candidate) => candidate.metric).sort()).toEqual([...WRITING_METRICS].sort());
+  });
+});
+
+describe("human standing", () => {
+  const LINEAR = Array.from({ length: 21 }, (_, i) => i);
+  const standing = (curve: number[], lines: readonly string[] = cleanLines(14)) => {
+    const table = tableWith({});
+    table.humanQuantiles["neg-synthetic"]["150-299"] = { n: 40, clusters: 9, values: curve };
+    return row(scoreWriting(beatsOf(lines), table), "neg-synthetic");
+  };
+
+  it("reads a value back through the quantile curve", () => {
+    const { value, human } = standing(LINEAR, [...cleanLines(13), "The loader stops here with no file on disk."]);
+
+    expect(human?.percentile).toBe(Math.round(5 * (value ?? 0)));
+  });
+
+  it("gives a two-sided row a percentile too, and keeps its band's flag rate beside it", () => {
+    const table = tableWith({});
+    table.rows.numbers["150-299"].fpr_heldout = { ...table.rows.numbers["150-299"].fpr_heldout, point: 0.6, n: 100 };
+    table.humanQuantiles.numbers["150-299"] = { n: 100, clusters: 9, values: LINEAR.map((n) => n - 100) };
+
+    expect(row(scoreWriting(beatsOf(cleanLines(14)), table), "numbers").human).toEqual({ flaggedShare: 0.6, windows: 100, percentile: 100 });
+  });
+
+  it("puts a value above every human window at p100 and one below them all at p0", () => {
+    expect(standing(LINEAR.map((n) => n - 100)).human?.percentile).toBe(100);
+    expect(standing(LINEAR.map((n) => n + 1)).human?.percentile).toBe(0);
+  });
+
+  it("gives a 0 on a row most humans score 0 on the share of humans at 0, not p0", () => {
+    const mostlyZero = [...Array.from({ length: 18 }, () => 0), 1, 2, 3];
+
+    expect(standing(mostlyZero).human?.percentile).toBe(85);
   });
 });
 
@@ -158,6 +181,13 @@ describe("explainer eval writing", () => {
     expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 12 report-only; exit 1");
     expect(output()).toMatch(/lets\s+dropped$/m);
     expect(output()).toMatch(/adjacent-delta\s+0\.\d\d\s+0\.55-3\s/);
+  });
+
+  it("prints a percentile, with its n only when under 20 held-out windows stand behind it", async () => {
+    await runEvalCli(["eval", "writing", write("clean.txt", cleanLines(14).join("\n")), "--format", "text", "--table", tableFile({})]);
+
+    expect(output()).toMatch(/^\s*\S*\s*triads\s+\S+\s+\S+\s+p\d+ n=15\s/m);
+    expect(output()).toMatch(/^\s*\S*\s*phrases\s+\S+\s+\S+\s+p\d+\s+report/m);
   });
 
   it("reads a script/v1 file by default", async () => {
