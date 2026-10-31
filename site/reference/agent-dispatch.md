@@ -241,6 +241,13 @@ const verdict = worktreeTenancy(
   symlinked cwd still counts.
 - `allocatedWorktree`, `parkBlocker`, `parkable` and `liveBlocker` are the park rules over
   journal rows and roster identities.
+- `createWorktreeStrategy` is the strategy the host hands in. It takes `budget` and
+  `reviewerBudget` readers, called on every spawn, and keeps implementer and reviewer trees
+  in separate pools.
+- `unsavedWork` and `dispatchIgnoredFiles` are the one ignored-file policy for release and
+  park. It lets go of everything `@titan-design/worktree` does, and also of a few more build
+  outputs, an index-only `.codewatch/graph.db` and paths a committed `.agent-chat/generated`
+  lists. Any failed read refuses.
 
 ## What it deliberately does not do
 
