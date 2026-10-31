@@ -13,7 +13,7 @@ interface FailureRow {
 /** Cancelled runs carry a cancel reason, not a failure. */
 const FAILED: ReadonlySet<WorkflowRun["status"]> = new Set(["failed", "recovery_required"]);
 
-const emptyClasses = (): Record<FailureClass, number> => Object.fromEntries(FAILURE_CLASSES.map((cls) => [cls, 0])) as Record<FailureClass, number>;
+const emptyClasses = (): Record<FailureClass, number> => ({ "ci-timeout": 0, "gh-api-5xx": 0, "land-rules": 0, "update-branch": 0, other: 0 });
 
 /** Per repo and ISO week: failed runs counted by failure class; legacy rows without a prefix are classified by their text. */
 export function failureStats(runs: readonly WorkflowRun[], range: Parameters<typeof inRange>[1] = {}): FailureRow[] {

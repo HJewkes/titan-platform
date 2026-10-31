@@ -90,30 +90,7 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/coverage.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/error-class.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/events.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/events.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/evidence-comment.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 4
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -131,11 +108,6 @@
   "products/factory/src/shepherd/failure-class.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "products/factory/src/shepherd/failure-class.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/factory/src/shepherd/freeze-policy.test.ts": {
@@ -158,25 +130,7 @@
       "count": 9
     }
   },
-  "products/factory/src/shepherd/g10-release.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/gone-elsewhere.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/head-moved.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/head-moved.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
     }
@@ -196,11 +150,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/last-read-head.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/ledger-replay.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -209,11 +158,6 @@
   "products/factory/src/shepherd/merge-facts.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 15
-    }
-  },
-  "products/factory/src/shepherd/merge-facts.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
     }
   },
   "products/factory/src/shepherd/merge-state-unsettled.test.ts": {
@@ -247,16 +191,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/override-stats.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/owner-friction-read.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/park.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -267,14 +201,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/policy.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/post-merge.test.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
@@ -282,11 +208,6 @@
   },
   "products/factory/src/shepherd/pr.test.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/presence.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
@@ -305,11 +226,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/release.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/restart-replay.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -326,16 +242,6 @@
     }
   },
   "products/factory/src/shepherd/review-cause.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/review-cause.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/review-checkout-sweep.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -368,29 +274,14 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/route-table.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/seat-fix-first.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
-  "products/factory/src/shepherd/seats.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/slo-queries.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "products/factory/src/shepherd/slo.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
     }
   },
   "products/factory/src/shepherd/spawn-gate.test.ts": {
@@ -408,29 +299,9 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/stats-cost.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/factory/src/shepherd/stats-failures.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/stats.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/store.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/store.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "products/factory/src/shepherd/structural-pass.test.ts": {
@@ -451,11 +322,6 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/task-ref.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/train.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -463,7 +329,7 @@
   },
   "products/factory/src/shepherd/train.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/shepherd/view.test.ts": {

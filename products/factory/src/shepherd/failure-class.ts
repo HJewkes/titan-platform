@@ -1,4 +1,5 @@
 import type { WorkflowFn } from "@titan-design/workflow";
+import { isOneOf } from "../narrow.js";
 
 export const FAILURE_CLASSES = ["ci-timeout", "gh-api-5xx", "land-rules", "update-branch", "other"] as const;
 /** The closed set a failed Shepherd run's `error` is filed under, as its `[<class>] ` prefix. */
@@ -15,7 +16,7 @@ const GH_SERVER_SIDE = /HTTP 5\d\d|error connecting|unexpected end of JSON input
 /** The class of an error text, read from its prefix when present; unprefixed legacy text is classified the same way the prefix was chosen. */
 export function failureClassOf(error: string): FailureClass {
   const prefixed = PREFIX.exec(error)?.[1];
-  if (prefixed !== undefined) return prefixed as FailureClass;
+  if (prefixed !== undefined && isOneOf(FAILURE_CLASSES, prefixed)) return prefixed;
   if (CI_TIMEOUT.test(error)) return "ci-timeout";
   if (LAND_RULES.test(error)) return "land-rules";
   const ghTail = GH_API_FAILED.exec(error)?.[1];
