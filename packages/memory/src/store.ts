@@ -110,7 +110,7 @@ export class PlaybookStore {
 
   /** Live bullets only, unless `includeRetired`; ordered by id for determinism. */
   list({ includeRetired = false }: { includeRetired?: boolean } = {}): Bullet[] {
-    const all = this.entities.listByKind(BULLET_KIND).map(toBullet);
+    const all = this.entities.listByKind(BULLET_KIND).flatMap((row) => toBullet(row) ?? []);
     return includeRetired ? all : all.filter((b) => b.state !== "retired");
   }
 
@@ -206,8 +206,11 @@ function materialize(input: NewBullet, at: string): Bullet {
   };
 }
 
-function toBullet(row: EntityRow): Bullet {
-  const { content, ...rest } = bulletAttrs.parse(row.attrs ?? {});
+/** A row whose attrs fail the schema reads as absent, so one bad row cannot take down a whole list. */
+function toBullet(row: EntityRow): Bullet | undefined {
+  const parsed = bulletAttrs.safeParse(row.attrs ?? {});
+  if (!parsed.success) return undefined;
+  const { content, ...rest } = parsed.data;
   return { id: row.ref.slice("memory:".length), content, category: row.name ?? "general", ...rest };
 }
 
