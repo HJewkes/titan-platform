@@ -22,6 +22,7 @@ import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
 import { readCommand } from "./owner-guard.js";
+import { roundFrameDeltaCommands } from "./round-frame-delta.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
@@ -180,6 +181,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
+    ...roundFrameDeltaCommands(rounds),
     ...roundsRevealCommands(rounds),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
     ...shepherdCommands(shepherd),

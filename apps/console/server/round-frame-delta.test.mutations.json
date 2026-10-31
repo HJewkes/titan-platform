@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a packet whose after matches main is measured anyway",
+      "file": "apps/console/server/round-frame-delta.ts",
+      "find": "  if (base.sha256 === head.sha256) return { status: \"unchanged\" };\n",
+      "replace": "",
+      "kills": [
+        "rounds.frameDelta measures a changed frame compares a CI packet's after image, not its montage, so an after that matches main gives no delta"
+      ]
+    },
+    {
+      "name": "the cache key ignores the head sha256",
+      "file": "apps/console/server/round-frame-delta.ts",
+      "find": "JSON.stringify([id, key, base.sha256, head.sha256])",
+      "replace": "JSON.stringify([id, key, base.sha256])",
+      "kills": [
+        "rounds.frameDelta measures a changed frame reuses the measure for the same base and head, and measures afresh when the head changes"
+      ]
+    },
+    {
+      "name": "the cache never hits",
+      "file": "apps/console/server/round-frame-delta.ts",
+      "find": "    if (hit !== undefined) {",
+      "replace": "    if (hit === null) {",
+      "kills": [
+        "rounds.frameDelta measures a changed frame reuses the measure for the same base and head, and measures afresh when the head changes"
+      ]
+    },
+    {
+      "name": "a frame listed without a base is measured anyway",
+      "file": "apps/console/server/round-frame-delta.ts",
+      "find": "if (entry?.files.base === undefined || headFile === undefined) throw",
+      "replace": "if (headFile === undefined) throw",
+      "kills": [
+        "rounds.frameDelta refuses what rounds.frame refuses refuses a frame the round lists with a head but no base"
+      ]
+    }
+  ]
+}
