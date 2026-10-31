@@ -986,36 +986,6 @@
       "count": 2
     }
   },
-  "packages/rpc-client/src/client/canonical-key.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/envelope-shape.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/snapshot.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/client/static-source.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/static-parity.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/session-analytics/src/bands-parity.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

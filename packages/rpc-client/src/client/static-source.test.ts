@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { EXIT, successEnvelope } from "@titan-design/rpc-protocol";
+import { EXIT, successEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
+import { partialFake } from "@titan-design/test-kit";
 import { snapshotKey } from "./canonical-key.js";
 import type { LiveStatus } from "./data-source.js";
+import { isRecord } from "./envelope-shape.js";
 import { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot, type Snapshot, type SnapshotResolver } from "./snapshot.js";
 import { staticSource } from "./static-source.js";
 
@@ -34,7 +36,7 @@ describe("staticSource", () => {
   it("hands out a fresh copy per call, so a caller cannot edit the snapshot", async () => {
     const source = staticSource({ snapshot });
     const first = await source.call("n.get", { f: { a: 1, b: 2 } });
-    if (first.ok) (first.data as { n: number }).n = 99;
+    if (first.ok && isRecord(first.data)) first.data.n = 99;
     expect(await source.call("n.get", { f: { a: 1, b: 2 } })).toEqual({ ok: true, data: { n: 1 } });
   });
 
@@ -86,20 +88,25 @@ describe("snapshots", () => {
     expect(() => parseSnapshot(value)).toThrow(message);
   });
 
+  it("keeps a top-level key it does not know, so a newer writer's field survives", () => {
+    const parsed = parseSnapshot({ ...snapshot, producedBy: "later-writer" });
+    expect(parsed).toHaveProperty("producedBy", "later-writer");
+  });
+
   it("accepts its own output after a JSON round trip", () => {
     expect(parseSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(snapshot);
   });
 });
 
 describe("staticSource with a misbehaving resolver", () => {
-  it.each([
+  it.each<[string, SnapshotResolver, string]>([
     ["throws", () => {
       throw new Error("index missing");
     }, "Snapshot resolver failed for n.other: index missing"],
     ["rejects", async () => Promise.reject(new Error("decode failed")), "Snapshot resolver failed for n.other: decode failed"],
-    ["returns undefined", () => undefined, "Snapshot resolver returned no envelope for n.other"],
+    ["returns a non-envelope", () => partialFake<JsonEnvelope<unknown>>(), "Snapshot resolver returned no envelope for n.other"],
   ])("answers a SOFTWARE envelope when the resolver %s", async (_label, resolve, error) => {
-    const source = staticSource({ snapshot, resolve: resolve as unknown as SnapshotResolver });
+    const source = staticSource({ snapshot, resolve });
     expect(await source.call("n.other", {})).toEqual({ ok: false, error, code: EXIT.SOFTWARE });
   });
 });
