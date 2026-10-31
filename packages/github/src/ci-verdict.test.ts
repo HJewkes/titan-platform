@@ -271,3 +271,19 @@ describe("loadRequiredContexts", () => {
     expect(ciVerdict({ rules: loaded, runs: [done("build", "failure")], statuses: [] })).toEqual({ verdict: "red", reasons: ["build=failure"] });
   });
 });
+
+describe("ciVerdict over a job left at in_progress after it concluded", () => {
+  const stuck = (name: string, conclusion: string): CheckRun => ({ ...cr(name, "in_progress", conclusion), completedAt: "2026-01-01T00:05:00Z" });
+
+  it("reads a required context green on a success conclusion with a completion time", () => {
+    expect(ciVerdict({ rules: rules("validate"), runs: [stuck("validate", "success")], statuses: [] })).toEqual({ verdict: "green", reasons: [] });
+  });
+
+  it("reads a failure conclusion with a completion time as red, not pending", () => {
+    expect(ciVerdict({ rules: rules("validate"), runs: [stuck("validate", "failure")], statuses: [] }).verdict).toBe("red");
+  });
+
+  it("keeps a run with a conclusion but no completion time pending", () => {
+    expect(ciVerdict({ rules: NO_RULES, runs: [cr("build", "in_progress", "success")], statuses: [] }).verdict).toBe("pending");
+  });
+});

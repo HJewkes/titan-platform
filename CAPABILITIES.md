@@ -670,7 +670,7 @@ Key exports:
 - `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isPassing`, `isPassingConclusion`
+- `checks`: `isConcluded`, `isPassing`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>

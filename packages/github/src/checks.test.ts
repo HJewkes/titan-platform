@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
+import { isConcluded, isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
 import { successRun } from "./fake.js";
 
 describe("latestPerName", () => {
@@ -76,7 +76,7 @@ describe("latestPerName", () => {
 
 describe("isPassing", () => {
   it("a run still in progress is not passing even if it reports success", () => {
-    expect(isPassing({ ...successRun("validate", 1), status: "in_progress" })).toBe(false);
+    expect(isPassing({ ...successRun("validate", 1), status: "in_progress", completedAt: null })).toBe(false);
   });
 
   it("a cancelled run is not passing", () => {
@@ -86,7 +86,7 @@ describe("isPassing", () => {
 
 describe("isPassing and isSucceeded fail closed", () => {
   const completed = (conclusion: string | null) => ({ ...successRun("validate", 1), conclusion });
-  const running = (status: string) => ({ ...successRun("validate", 1), status });
+  const running = (status: string) => ({ ...successRun("validate", 1), status, completedAt: null });
 
   it.each(["queued", "in_progress", "waiting", "bogus"])("a run with status %s is neither passing nor succeeded", (status) => {
     expect([isPassing(running(status)), isSucceeded(running(status))]).toEqual([false, false]);
@@ -108,5 +108,15 @@ describe("isPassing and isSucceeded fail closed", () => {
     const conclusions = ["success", "neutral", "skipped", "failure", "cancelled", "stale", "bogus", null];
 
     expect(conclusions.filter(isPassingConclusion)).toEqual(["success", "neutral", "skipped"]);
+  });
+});
+
+describe("isConcluded", () => {
+  it("reads in_progress with a conclusion and a completion time as concluded", () => {
+    expect(isConcluded({ ...successRun("validate", 1), status: "in_progress" })).toBe(true);
+  });
+
+  it("reads in_progress with a conclusion but no completion time as running", () => {
+    expect(isConcluded({ ...successRun("validate", 1), status: "in_progress", completedAt: null })).toBe(false);
   });
 });

@@ -109,13 +109,13 @@ describe("mergeReadiness", () => {
   });
 
   it("holds an optional run that reports success before it has completed", () => {
-    const runs = [successRun("check", 1), { ...successRun("lint", 2), status: "in_progress" }];
+    const runs = [successRun("check", 1), { ...successRun("lint", 2), status: "in_progress", completedAt: null }];
 
     expect(mergeReadiness(input({ runs })).blockers).toMatchObject([{ reason: "check-pending", detail: expect.stringContaining("lint is in_progress") }]);
   });
 
   it("holds a required context whose run reports success before it has completed", () => {
-    const runs = [{ ...successRun("check", 1), status: "in_progress" }];
+    const runs = [{ ...successRun("check", 1), status: "in_progress", completedAt: null }];
 
     expect(mergeReadiness(input({ runs })).blockers.map((blocker) => blocker.reason)).toEqual(["check-pending"]);
   });
