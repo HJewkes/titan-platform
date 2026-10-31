@@ -1,8 +1,9 @@
 import { EdgeTable, EntityTable, quoteIdent, refKind, type Db, type EntityRow } from "@titan-design/store-sqlite";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { BLOCKED_KIND, BULLET_KIND, DEFAULT_MEMORY_TABLES, SUPERSEDES, type MemoryTables } from "./schema.js";
 import { DEFAULT_HALF_LIFE_DAYS } from "./scoring.js";
-import type { Bullet, FeedbackEvent, FeedbackType, NewBullet } from "./types.js";
+import { BULLET_KINDS, BULLET_SCOPES, BULLET_SOURCES, BULLET_STATES, BULLET_TYPES, MATURITIES, type Bullet, type FeedbackEvent, type FeedbackType, type NewBullet } from "./types.js";
 
 export const bulletRef = refKind("memory");
 const blockedRef = refKind("memory-blocked");
@@ -33,7 +34,28 @@ interface RawFeedbackRow {
   reason: string | null;
 }
 
-type Attrs = Omit<Bullet, "id" | "content" | "category">;
+// Loose so attrs written by a newer version keep their extra keys on read.
+const bulletAttrs = z.looseObject({
+  content: z.string(),
+  tags: z.array(z.string()),
+  scope: z.enum(BULLET_SCOPES),
+  type: z.enum(BULLET_TYPES),
+  kind: z.enum(BULLET_KINDS),
+  isNegative: z.boolean(),
+  source: z.enum(BULLET_SOURCES),
+  state: z.enum(BULLET_STATES),
+  maturity: z.enum(MATURITIES),
+  pinned: z.boolean(),
+  pinnedReason: z.string().nullable(),
+  replacedBy: z.string().nullable(),
+  deprecatedAt: z.string().nullable(),
+  deprecationReason: z.string().nullable(),
+  halfLifeDays: z.number(),
+  sourceSessions: z.array(z.object({ sessionRef: z.string(), byteOffset: z.number().optional() })),
+  reasoning: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 
 export class BulletNotFound extends Error {
   constructor(id: string) {
@@ -64,8 +86,8 @@ export class PlaybookStore {
     this.edges = new EdgeTable(db, { name: this.tables.edge });
     const f = quoteIdent(this.tables.feedback);
     this.insertFeedback = db.prepare(`INSERT INTO ${f} (bullet_ref, type, at, session_ref, reason) VALUES (?, ?, ?, ?, ?)`);
-    this.feedbackByBullet = db.prepare(`SELECT * FROM ${f} WHERE bullet_ref = ? ORDER BY at, id`);
-    this.allFeedback = db.prepare(`SELECT * FROM ${f} ORDER BY at, id`);
+    this.feedbackByBullet = db.prepare<[string], RawFeedbackRow>(`SELECT * FROM ${f} WHERE bullet_ref = ? ORDER BY at, id`);
+    this.allFeedback = db.prepare<[], RawFeedbackRow>(`SELECT * FROM ${f} ORDER BY at, id`);
   }
 
   add(input: NewBullet): Bullet {
@@ -119,13 +141,13 @@ export class PlaybookStore {
   }
 
   feedbackFor(id: string): FeedbackEvent[] {
-    return (this.feedbackByBullet.all(bulletRef(id)) as RawFeedbackRow[]).map(toEvent);
+    return this.feedbackByBullet.all(bulletRef(id)).map(toEvent);
   }
 
   /** Every event grouped by bullet id, one query, for scoring the whole playbook. */
   feedbackByBulletId(): Map<string, FeedbackEvent[]> {
     const grouped = new Map<string, FeedbackEvent[]>();
-    for (const event of (this.allFeedback.all() as RawFeedbackRow[]).map(toEvent)) {
+    for (const event of this.allFeedback.all().map(toEvent)) {
       const list = grouped.get(event.bulletId) ?? [];
       list.push(event);
       grouped.set(event.bulletId, list);
@@ -185,8 +207,7 @@ function materialize(input: NewBullet, at: string): Bullet {
 }
 
 function toBullet(row: EntityRow): Bullet {
-  const attrs = (row.attrs ?? {}) as Attrs & { content: string };
-  const { content, ...rest } = attrs;
+  const { content, ...rest } = bulletAttrs.parse(row.attrs ?? {});
   return { id: row.ref.slice("memory:".length), content, category: row.name ?? "general", ...rest };
 }
 
