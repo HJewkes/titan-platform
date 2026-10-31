@@ -11,6 +11,8 @@ const RESAMPLES = 2000;
 const RATE_RESAMPLES = 1000;
 const FOLDS = 5;
 const MAX_WINDOWS_PER_TEXT = 4;
+/** Every 5th percentile, so `eval writing` can place a value among human windows without the windows themselves. */
+const QUANTILE_GRID: readonly number[] = Array.from({ length: 21 }, (_, i) => i / 20);
 
 /** Scripts are scored in their own length bucket; `full` is whole texts of any scorable length. */
 export const WRITING_BUCKETS = [
@@ -277,6 +279,13 @@ function band10(windows: readonly Window[], metric: WritingMetric) {
   };
 }
 
+/** Where held-out human windows sit on this row at this length; `n` counts windows, as in every other cell. */
+function humanQuantiles(windows: readonly Window[], metric: WritingMetric, bucket: BucketName) {
+  const items = measured(windows.filter((w) => w.bucket === bucket && isHeldOutHuman(w.doc)), metric);
+  const sorted = ascending(items.map((item) => item.value));
+  return { n: items.length, clusters: distinct(items.map((item) => item.doc.cluster)), values: sorted.length === 0 ? null : QUANTILE_GRID.map((q) => round(quantile(sorted, q), 4)) };
+}
+
 function tally(windows: readonly Window[]): Record<string, number> {
   const counts = new Map<string, number>();
   for (const { bucket, doc } of windows) counts.set(`${bucket}|${doc.label}`, (counts.get(`${bucket}|${doc.label}`) ?? 0) + 1);
@@ -318,7 +327,7 @@ export const parseWritingCheck = (raw: string): WritingCheck => WritingCheckSche
 function metaOf(input: WritingCheckInput, windows: readonly Window[]) {
   return {
     sourceFile: "products/explainer/src/lint-register.ts", sourceSha: input.sourceSha, manifestSha256: input.manifestSha256,
-    seed: SEED, foldSeed: SEED, resamples: RESAMPLES, primaryBucket: PRIMARY_BUCKET, thresholds: input.thresholds,
+    seed: SEED, foldSeed: SEED, resamples: RESAMPLES, primaryBucket: PRIMARY_BUCKET, thresholds: input.thresholds, quantileGrid: QUANTILE_GRID,
     buckets: WRITING_BUCKETS.map(({ name, lo, hi, mid }) => ({ name, lo, hi: Number.isFinite(hi) ? hi : null, mid: Number.isFinite(mid) ? mid : null })),
     docs: input.docs.length, windowsByBucketLabel: tally(windows),
     countsNote: "n, nPos and nNeg count windows, which are not independent samples; clusters, clustersPos and clustersNeg count what the bootstrap resamples.",
@@ -341,6 +350,7 @@ export function calibrateWriting(input: WritingCheckInput) {
     statusDetail: perMetric((metric) => perBucket((bucket) => decide(metric, bucket))),
     refit5foldByChannel: perMetric((metric) => foldRefit(windows, metric)),
     band10pct: perMetric((metric) => band10(windows, metric)),
+    humanQuantiles: perMetric((metric) => perBucket((bucket) => humanQuantiles(windows, metric, bucket))),
     precision,
   };
 }
