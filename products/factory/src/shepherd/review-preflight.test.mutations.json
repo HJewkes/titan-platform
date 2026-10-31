@@ -2,14 +2,14 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a needs-fixer round on a clean head is reviewed again under a fresh name, so it counts a failed round",
+      "name": "a clean-head needs-fixer round is re-reviewed under a new name, failing a round",
       "file": "products/factory/src/shepherd/route-table.ts",
       "find": "\"needs-fixer\": \"await-fixer\", carried: \"merge\" };",
       "replace": "\"needs-fixer\": \"fresh-reviewer\", carried: \"merge\" };",
       "kills": ["review.workflow on:preflight in Shepherd's review round routes the needs-fixer round to await-fixer and counts no failed round"]
     },
     {
-      "name": "on:preflight never runs the preflight, so the intent's refusal names no fingerprint",
+      "name": "on:preflight skips the preflight, so the refusal names no fingerprint",
       "file": "products/factory/src/shepherd/review.ts",
       "find": "preflightOn(wired.workflow) ? await preflightPlan(",
       "replace": "false ? await preflightPlan(",
