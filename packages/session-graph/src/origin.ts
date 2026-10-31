@@ -2,6 +2,7 @@ import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
 import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 import { ORIGIN_ROUTE_COLUMNS } from "./origin-route-schema.js";
+import { parseStringList } from "./stored-json.js";
 
 /**
  * Who started a session and why, as a launcher such as agent-chat recorded it.
@@ -153,7 +154,7 @@ const PROJECT_SUBAGENTS = `
     agent_type = excluded.agent_type, label = excluded.label, started_at = COALESCE(excluded.started_at, started_at)`;
 
 export function sessionsNeedingOrigin(graph: SessionGraph): string[] {
-  return (graph.db.prepare(SESSIONS_NEEDING_ORIGIN).all() as { session_id: string }[]).map((r) => r.session_id);
+  return graph.db.prepare<[], { session_id: string }>(SESSIONS_NEEDING_ORIGIN).all().map((r) => r.session_id);
 }
 
 /**
@@ -223,9 +224,8 @@ function taskLinkColumns(o: ResolvedOrigin): { taskIds: string | null; taskSourc
 }
 
 function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void {
-  const spawned = graph.db.prepare("SELECT session_id, parent_session_id, spawned_at, resolved_at FROM session_origin WHERE parent_session_id IS NOT NULL").all() as {
-    session_id: string; parent_session_id: string; spawned_at: string | null; resolved_at: string;
-  }[];
+  const spawned = graph.db.prepare<[], { session_id: string; parent_session_id: string; spawned_at: string | null; resolved_at: string }>(
+    "SELECT session_id, parent_session_id, spawned_at, resolved_at FROM session_origin WHERE parent_session_id IS NOT NULL").all();
   graph.db.transaction(() => {
     graph.db.prepare(PROJECT_SUBAGENTS).run();
     for (const o of spawned) {
@@ -238,6 +238,7 @@ function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void 
 /** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
 const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
 const LOWEST_CONFIDENCE = 0.6;
+const CONFIDENCE_BY_SOURCE: ReadonlyMap<string, number> = new Map(Object.entries(LINK_CONFIDENCE));
 
 interface TaskLinkRow { session_id: string; task_ids: string | null; task_source: string | null; spawned_at: string | null; resolved_at: string }
 
@@ -249,14 +250,14 @@ interface TaskLinkRow { session_id: string; task_ids: string | null; task_source
  */
 function projectTaskLinks(graph: SessionGraph, resolved: readonly string[]): void {
   const insertTask = graph.db.prepare("INSERT OR IGNORE INTO task (task_ref, task_id) VALUES (?, ?)");
-  const select = graph.db.prepare("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin WHERE session_id = ?");
+  const select = graph.db.prepare<[string], TaskLinkRow>("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin WHERE session_id = ?");
   for (const sessionId of resolved) {
-    const o = select.get(sessionId) as TaskLinkRow | undefined;
+    const o = select.get(sessionId);
     if (!o) continue;
-    const taskIds: string[] = o.task_ids ? (JSON.parse(o.task_ids) as string[]) : [];
+    const taskIds: string[] = o.task_ids ? parseStringList(o.task_ids) : [];
     const source = sessionRef(o.session_id);
     const attrs = { via: "origin", source: o.task_source };
-    const confidence = LINK_CONFIDENCE[o.task_source as keyof typeof LINK_CONFIDENCE] ?? LOWEST_CONFIDENCE;
+    const confidence = CONFIDENCE_BY_SOURCE.get(o.task_source ?? "") ?? LOWEST_CONFIDENCE;
     for (const taskId of taskIds) {
       insertTask.run(taskRef(taskId), taskId);
       graph.edges.assert({ sourceRef: source, relation: RELATIONS.RAN, targetRef: taskRef(taskId), tValid: o.spawned_at ?? o.resolved_at, attrs, confidence });

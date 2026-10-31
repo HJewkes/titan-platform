@@ -5,13 +5,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { DigestSlot } from "./model.js";
 import { pushDigest } from "./push.js";
 import { deliverDigest } from "./run.js";
+import { readPath } from "../narrow.js";
+import { z } from "zod";
 
 const SLOT: DigestSlot = { date: "2026-03-10", hour: "12" };
 const URL_ = "https://ntfy.example/test-topic";
 const MARKDOWN = "# Digest\n\n2 need you, 1 merged, 0 stuck\n\nextra line\n\n## Needs you\n1. ask";
 
 const reply = (status: number): Response => new Response("", { status });
-const headersOf = (call: unknown[]): Record<string, string> => (call[1] as { headers: Record<string, string> }).headers;
+const headersOf = (call: unknown[]): Record<string, string> => z.record(z.string(), z.string()).parse(readPath(call[1], "headers"));
 
 describe("pushDigest", () => {
   it("attaches the markdown with a filename, a dated title and the headline lines as the message", async () => {

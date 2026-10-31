@@ -1,3 +1,4 @@
+import { isRecord } from "./narrow.js";
 import type {
   FileFingerprint,
   GraphEdge,
@@ -56,6 +57,12 @@ export interface FingerprintDbRow {
   structural_hash: string | null;
 }
 
+/** Every writer stores an object; anything else reads as no attrs, and the object's keys all survive. */
+function parseAttrs(json: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(json);
+  return isRecord(value) ? value : {};
+}
+
 export function rowToSnapshot(row: SnapshotDbRow): SnapshotRow {
   return {
     id: row.id,
@@ -63,7 +70,7 @@ export function rowToSnapshot(row: SnapshotDbRow): SnapshotRow {
     commitHash: row.commit_hash,
     takenAt: row.taken_at,
     indexVersion: row.index_version,
-    attrs: JSON.parse(row.attrs) as Record<string, unknown>,
+    attrs: parseAttrs(row.attrs),
   };
 }
 
@@ -75,7 +82,7 @@ export function rowToNode(row: NodeDbRow): GraphNode {
     parentId: row.parent_id ?? undefined,
     language: row.language ?? undefined,
     role: (row.role ?? undefined) as GraphNode["role"],
-    attrs: JSON.parse(row.attrs) as Record<string, unknown>,
+    attrs: parseAttrs(row.attrs),
   };
 }
 
@@ -84,7 +91,7 @@ export function rowToEdge(row: EdgeDbRow): GraphEdge {
     srcId: row.src_id,
     dstId: row.dst_id,
     kind: row.kind as GraphEdge["kind"],
-    attrs: JSON.parse(row.attrs) as Record<string, unknown>,
+    attrs: parseAttrs(row.attrs),
   };
 }
 

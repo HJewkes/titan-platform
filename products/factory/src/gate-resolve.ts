@@ -10,6 +10,7 @@ import { EXIT } from "./exit-codes.js";
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { mintPresenceRecord } from "./gate-resolve-presence.js";
 import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
+import { isRecord } from "./narrow.js";
 
 interface ResolveIo {
   stdout: (text: string) => void;
@@ -149,7 +150,7 @@ export function presenceReason(gateId: string, payload: Record<string, unknown>)
 export function parsePayload(json: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(json);
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+    return isRecord(value) && !Array.isArray(value) ? value : undefined;
   } catch {
     return undefined;
   }

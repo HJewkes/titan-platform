@@ -137,7 +137,7 @@ function docstringSpan(docstring: Node): Span {
 /** `{/* … *\/}` in JSX: removing only the comment would leave an empty `{}` behind. */
 function jsxCommentExpressions(root: Node): Node[] {
   return descendantsOfType(root, "jsx_expression").filter(
-    (n) => n.namedChildCount > 0 && n.namedChildren.every((c) => c?.type === "comment"),
+    (n) => n.namedChildCount > 0 && n.namedChildren.every((c) => c.type === "comment"),
   );
 }
 
@@ -166,7 +166,7 @@ function sharesEndRow(docstring: Node): boolean {
 
 /** `pythonDocstring` reads a `block`; a module's docstring is the same leading string statement on the root. */
 function moduleDocstring(root: Node): Node | null {
-  const first = root.namedChildren.find((c) => c !== null && c.type !== "comment");
+  const first = root.namedChildren.find((c) => c.type !== "comment");
   if (first?.type !== "expression_statement" || first.namedChildCount !== 1) return null;
   return first.namedChildren[0]?.type === "string" ? first : null;
 }
@@ -233,13 +233,13 @@ function isTagEdge(before: string, after: string): boolean {
 }
 
 function leadingImportBlock(root: Node, language: MinifyLanguage): ImportBlock | null {
-  const children = root.namedChildren.filter((c): c is Node => c !== null);
+  const children = root.namedChildren;
   const docstring = language === "python" ? moduleDocstring(root) : null;
   let i = 0;
-  while (i < children.length && isPreamble(children[i] as Node, docstring)) i++;
+  while (i < children.length && isPreamble(children[i]!, docstring)) i++;
   const imports: Node[] = [];
   for (; i < children.length; i++) {
-    const child = children[i] as Node;
+    const child = children[i]!;
     if (child.type === "comment") continue;
     if (!IMPORT_TYPES[language].has(child.type)) break;
     imports.push(child);

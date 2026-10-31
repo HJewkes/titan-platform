@@ -50,7 +50,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
   program.hook("preAction", () => {
     try {
-      resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+      resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       io.stderr(`error: ${message}\n`);
@@ -85,8 +85,9 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
   }
   sub.action(async (...handlerArgs: unknown[]) => {
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
-    const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;
-    const root = program.opts() as RootOptions & { json?: boolean };
+    const rawOpts = handlerArgs[cmd.cli?.positional?.length ?? 0];
+    const opts = isRecord(rawOpts) ? rawOpts : {};
+    const root = program.opts<RootOptions & { json?: boolean }>();
     const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli" });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
@@ -96,6 +97,10 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
       ctx.close();
     }
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 interface RootOptions {
@@ -124,7 +129,7 @@ function emit(io: CliIo, envelope: JsonEnvelope<unknown>, format: "human" | "jso
 }
 
 function attachLongRunning(program: Command, io: CliIo): void {
-  const config = () => resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+  const config = () => resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
   program
     .command("serve")
     .description("Run the daemon: /rpc, /mcp, /events on loopback")
@@ -140,7 +145,7 @@ function attachGraphRefresh(program: Command, io: CliIo, onExit: (code: number) 
     .argument("<refresh...>", "the owner's refresh command, after --")
     .option("--lock <file>", "lock file (default <state>/graph-refresh.lock)")
     .action(async (argv: string[], opts: { lock?: string }) => {
-      const root = program.opts() as RootOptions;
+      const root = program.opts<RootOptions>();
       // An unset variable in a unit's `--graph "${VAR}"` arrives empty, which would otherwise check the miner's own index.
       if (root.graph === "") {
         io.stderr("error: --graph is empty\n");

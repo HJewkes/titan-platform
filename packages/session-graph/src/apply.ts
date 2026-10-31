@@ -107,11 +107,11 @@ const UPSERT_ECHO = `
  * than in memory, so a chunked read keeps exactly the facts a whole-file read keeps.
  */
 function applyFacts(db: Db, transcriptId: number, facts: TranscriptDelta["facts"]): void {
-  const next = db.prepare("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId) as { next: number };
+  const next = db.prepare<[number], { next: number }>("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId);
   const insert = db.prepare(INSERT_FACT);
   const readEcho = db.prepare<[number, string, string], { value: string }>(READ_ECHO);
   const upsertEcho = db.prepare(UPSERT_ECHO);
-  let seq = next.next;
+  let seq = next?.next ?? 0;
   for (const f of facts) {
     if (f.state) {
       const stored = readEcho.get(transcriptId, f.sessionId, f.state.key);
@@ -165,11 +165,14 @@ const ASSET_UPSERTS = {
           repo = COALESCE(repo, excluded.repo), url = COALESCE(url, excluded.url)`,
 } as const;
 
+const ASSET_KINDS = ["prs", "branches", "files", "tasks", "prMerges", "prCreates"] as const satisfies readonly (keyof typeof ASSET_UPSERTS)[];
+
 function applyAssets(db: Db, delta: TranscriptDelta): void {
-  for (const [kind, sql] of Object.entries(ASSET_UPSERTS) as [keyof typeof ASSET_UPSERTS, string][]) {
+  for (const kind of ASSET_KINDS) {
+    const sql = ASSET_UPSERTS[kind];
     const statement = db.prepare(sql);
     const bind = namedBinder(sql);
-    for (const row of delta[kind] as unknown as Record<string, unknown>[]) statement.run(bind(row));
+    for (const row of delta[kind]) statement.run(bind({ ...row }));
   }
 }
 
@@ -222,11 +225,11 @@ function chatVerdictKeys(verdicts: readonly ChatVerdict[]): string[] {
  * row is inserted. Done here so a chunk boundary mid-run cannot add a phase.
  */
 function applyPhases(db: Db, transcriptId: number, delta: TranscriptDelta): void {
-  const current = db.prepare("SELECT phase_id, to_mode FROM permission_phase WHERE session_id = ? AND trigger = ? AND t_invalid IS NULL ORDER BY phase_id DESC LIMIT 1");
+  const current = db.prepare<[string, string], { phase_id: number; to_mode: string }>("SELECT phase_id, to_mode FROM permission_phase WHERE session_id = ? AND trigger = ? AND t_invalid IS NULL ORDER BY phase_id DESC LIMIT 1");
   const close = db.prepare("UPDATE permission_phase SET t_invalid = ? WHERE phase_id = ?");
   const insert = db.prepare("INSERT INTO permission_phase (session_id, from_mode, to_mode, trigger, t_valid, fact_id) VALUES (?, ?, ?, ?, ?, ?)");
   for (const phase of delta.phases) {
-    const open = current.get(phase.sessionId, phase.trigger) as { phase_id: number; to_mode: string } | undefined;
+    const open = current.get(phase.sessionId, phase.trigger);
     if (open?.to_mode === phase.toMode) continue;
     if (open) close.run(phase.ts, open.phase_id);
     insert.run(phase.sessionId, open?.to_mode ?? null, phase.toMode, phase.trigger, phase.ts, factIdFor(db, transcriptId, phase.byteOffset));
@@ -285,6 +288,6 @@ function assertTranscriptEdge(graph: SessionGraph, edge: EdgeInput): void {
 }
 
 function factIdFor(db: Db, transcriptId: number, byteOffset: number): number | null {
-  const row = db.prepare("SELECT fact_id FROM fact WHERE transcript_id = ? AND byte_offset = ?").get(transcriptId, byteOffset) as { fact_id: number } | undefined;
+  const row = db.prepare<[number, number], { fact_id: number }>("SELECT fact_id FROM fact WHERE transcript_id = ? AND byte_offset = ?").get(transcriptId, byteOffset);
   return row?.fact_id ?? null;
 }

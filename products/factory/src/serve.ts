@@ -57,6 +57,7 @@ import { digestPacer } from "./shepherd/seat-digest-pace.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
+import { readPath } from "./narrow.js";
 
 export type { FactoryContext } from "./registry.js";
 export { factoryHealth } from "./serve-health.js";
@@ -69,7 +70,7 @@ const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
 /** With no reader the reconciler runs as a polling deployment at the default interval, as the absent config block means. */
 const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
-const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
+const FACTORY_VERSION = String(readPath(createRequire(import.meta.url)("../package.json"), "version"));
 
 export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */

@@ -48,7 +48,7 @@ export function parseSeatJournal(text: string, seat: string, date: string, utcOf
 
 function journalTime(date: string, stamp: RegExpExecArray, utcOffsetMin: number): string {
   const [year, month, day] = date.split("-").map(Number);
-  const local = Date.UTC(year!, month! - 1, day!, Number(stamp[1]), Number(stamp[2]), Number(stamp[3] ?? 0));
+  const local = Date.UTC(year!, month! - 1, day, Number(stamp[1]), Number(stamp[2]), Number(stamp[3] ?? 0));
   return new Date(local - utcOffsetMin * 60_000).toISOString();
 }
 

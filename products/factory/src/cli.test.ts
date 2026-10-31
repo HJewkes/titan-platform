@@ -15,6 +15,8 @@ import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+import { partialFake } from "@titan-design/test-kit";
+import { portOf } from "./test-support/fakes.js";
 
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -63,7 +65,7 @@ async function serve(dbPath: string, deps: ReturnType<typeof landDeps>): Promise
 async function deadPort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const port = portOf(probe);
   await new Promise((resolve) => probe.close(resolve));
   return port;
 }
@@ -198,7 +200,7 @@ describe("the serve verb's config deprecations", () => {
 
 describe("gates in the resume report", () => {
   const record = { id: "run-1/approve-merge", prompt: "Merge PR #1 in octo/demo at head abc?", schema: undefined, status: "pending", createdAt: "2026-10-06T00:00:00.000Z" };
-  const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: gate as never }] });
+  const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: partialFake(gate) }] });
 
   it("gates lists summary, evidence and the recommended option; a pre-migration gate falls back to its prompt", () => {
     const briefed = {

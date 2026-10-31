@@ -27,6 +27,7 @@ import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import type { ReviewSlots } from "./shepherd/review-slots.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
+import { errorMessage } from "./narrow.js";
 
 interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;
@@ -207,7 +208,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   try {
     args = await argsOf();
   } catch (err) {
-    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    verbs.io.stderr(`error: ${errorMessage(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
@@ -232,7 +233,7 @@ async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
-const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+const exitOf = (code: unknown): number => (typeof code === "number" && Number.isInteger(code) && code > 0 ? code : EXIT.FAILURE);
 
 /** What `status` prints after its rows, from serve's `/health`; each block is null when serve answered without it. */
 interface StatusTail {

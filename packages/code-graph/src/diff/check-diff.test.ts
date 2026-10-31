@@ -39,7 +39,7 @@ describe("diffCheckResults", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   it("classifies a new violation that didn't exist before", async () => {

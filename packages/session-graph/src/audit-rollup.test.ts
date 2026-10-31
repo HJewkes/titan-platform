@@ -64,8 +64,8 @@ function writeTranscript(name: string, lines: unknown[]): DiscoveredTranscript {
   return { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null, account: null };
 }
 
-const all = (sql: string, ...params: unknown[]) => graph.db.prepare(sql).all(...params) as Record<string, unknown>[];
-const request = (requestId: string) => graph.db.prepare("SELECT * FROM request WHERE request_id = ?").get(requestId) as Record<string, unknown>;
+const all = (sql: string, ...params: unknown[]) => graph.db.prepare<unknown[], Record<string, unknown>>(sql).all(...params);
+const request = (requestId: string) => graph.db.prepare<[string], Record<string, unknown>>("SELECT * FROM request WHERE request_id = ?").get(requestId);
 const lineOffset = (index: number, lines: unknown[] = LINES) => Buffer.byteLength(render(lines.slice(0, index)));
 
 async function indexMain(): Promise<void> {
@@ -175,19 +175,19 @@ describe("audit rollup", () => {
   });
 });
 
-async function rollupAfterFullRebuild(): Promise<Record<string, unknown[]>> {
+async function rollupAfterFullRebuild(): Promise<Record<string, Record<string, unknown>[]>> {
   const transcript = writeTranscript("whole", LINES);
   await refreshCorpus(graph, [transcript]);
   resetIndex(graph);
   await refreshCorpus(graph, [transcript], { full: true });
   const columns = rollupColumns();
   // A convergence check over empty columns proves nothing.
-  expect(columns.request!.every((row) => (row as { wake_cause: unknown }).wake_cause !== null)).toBe(true);
-  expect(columns.inbound!.some((row) => (row as { queued_ms: unknown }).queued_ms !== null)).toBe(true);
+  expect(columns.request!.every((row) => row.wake_cause !== null)).toBe(true);
+  expect(columns.inbound!.some((row) => row.queued_ms !== null)).toBe(true);
   return columns;
 }
 
-function rollupColumns(): Record<string, unknown[]> {
+function rollupColumns(): Record<string, Record<string, unknown>[]> {
   return {
     request: all(`SELECT request_id, byte_offset, seq_in_session, gap_ms, ctx_delta, wake_cause, wake_delivery, wake_detail,
       wake_tool_family, wake_mcp_server, wake_offset FROM request ORDER BY request_id`),

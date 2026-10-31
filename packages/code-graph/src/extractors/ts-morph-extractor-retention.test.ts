@@ -22,7 +22,7 @@ function inMemorySource(): IndexSource {
 }
 
 function loadedFiles(extractor: TsMorphGraphExtractor): number {
-  return (extractor as unknown as { project: Project }).project.getSourceFiles().length;
+  return extractor["project"]?.getSourceFiles().length ?? 0;
 }
 
 describe("TsMorphGraphExtractor source file retention", () => {

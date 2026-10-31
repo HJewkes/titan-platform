@@ -11,6 +11,7 @@ import { H1, REPO, answerPendingGate, gateId, gateOpened } from "../test-support
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
 import { NO_COMMAND, TAIL_CHARS, execChore, type ChoreExec, type ChoreOptions } from "./post-merge.js";
 import { OWNER } from "../test-support/resolver.js";
+import { z } from "zod";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
@@ -63,6 +64,8 @@ async function landToEnd(postMerge: PostMergeConfig | undefined, chore: Chore): 
   await host.runtime.wait(runId);
   return { host, runId, fake };
 }
+
+const ChoreRecord = z.object({ result: z.object({ exitCode: z.number(), stdoutTail: z.string(), stderrTail: z.string() }) });
 
 function postMergeRecord(host: FactoryHost, runId: string): unknown {
   return Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "post-merge")?.data;
@@ -128,7 +131,7 @@ describe("post-merge step", () => {
     const chore = fakeChore({ exitCode: 3, stdout: `${"x".repeat(TAIL_CHARS)}done`, stderr: `push failed: ${token}` });
 
     const { host, runId } = await landToEnd({ argv: ["chore"] }, chore);
-    const record = postMergeRecord(host, runId) as { result: { exitCode: number; stdoutTail: string; stderrTail: string } };
+    const record = ChoreRecord.parse(postMergeRecord(host, runId));
 
     expect(host.runtime.status(runId)?.status).toBe("completed");
     expect(record.result.exitCode).toBe(3);
@@ -141,7 +144,7 @@ describe("post-merge step", () => {
     const chore = fakeChore({ stdout: `ghp_${"Q".repeat(36)}${"y".repeat(TAIL_CHARS - 20)}` });
 
     const { host, runId } = await landToEnd({ argv: ["chore"] }, chore);
-    const record = postMergeRecord(host, runId) as { result: { stdoutTail: string } };
+    const record = ChoreRecord.parse(postMergeRecord(host, runId));
 
     expect(record.result.stdoutTail).not.toContain("Q");
     expect(record.result.stdoutTail.startsWith("[redacted]")).toBe(true);
@@ -178,9 +181,9 @@ describe("post-merge step", () => {
 });
 
 async function approveUntil(host: FactoryHost, runId: string, fake: FakeGitHub, hung: Promise<void>): Promise<void> {
-  let stopped = false;
-  void hung.then(() => (stopped = true));
-  while (!stopped) {
+  const state = { stopped: false };
+  void hung.then(() => (state.stopped = true));
+  while (!state.stopped) {
     answerPendingGate(host, runId, fake);
     await new Promise((resolve) => setTimeout(resolve, 5));
   }

@@ -48,7 +48,7 @@ function insertFixture(store: CodeGraphStore, ref = "wd"): number {
   };
   for (const [dir, names] of Object.entries(clusters)) {
     store.insertNodes(snap, names.map((name) => ({ id: `${dir}/${name}`, kind: "file" as const, name })));
-    const [a, b, c] = names.map((n) => `${dir}/${n}`) as [string, string, string];
+    const [a = "", b = "", c = ""] = names.map((n) => `${dir}/${n}`);
     store.insertEdges(snap, [
       { srcId: a, dstId: b, kind: "imports" },
       { srcId: b, dstId: c, kind: "imports" },

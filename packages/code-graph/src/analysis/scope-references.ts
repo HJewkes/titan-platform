@@ -19,7 +19,7 @@ export function walkReferences(root: Node, visit: (ref: Node, shadowed: Readonly
     const names = node === root ? [] : scopeBindings(node);
     const inner = names.length === 0 ? shadowed : new Set([...shadowed, ...names]);
     for (const child of node.namedChildren) {
-      if (child) walk(child, inner);
+      walk(child, inner);
     }
   };
   walk(root, new Set());
@@ -36,7 +36,7 @@ function scopeBindings(node: Node): string[] {
       declaredIn(node.namedChildren, names);
       break;
     case "switch_body":
-      declaredIn(node.namedChildren.flatMap((clause) => clause?.namedChildren ?? []), names);
+      declaredIn(node.namedChildren.flatMap((clause) => clause.namedChildren), names);
       break;
     case "for_statement":
       declaredIn([node.childForFieldName("initializer")], names);
@@ -70,7 +70,7 @@ function declaredNames(stmt: Node, out: string[]): void {
   }
   if (!DECLARATIONS.has(stmt.type)) return;
   const targets = stmt.namedChildren.map((decl) =>
-    decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null,
+    decl.type === "variable_declarator" ? decl.childForFieldName("name") : null,
   );
   for (const target of targets) {
     if (target) patternNames(target, out);
@@ -96,5 +96,5 @@ function bindingChildren(node: Node): Node[] {
   if (node.type === "pair_pattern") return field("value");
   if (WITH_DEFAULT.has(node.type)) return field("left");
   if (!ELEMENT_LISTS.has(node.type)) return [];
-  return node.namedChildren.filter((child): child is Node => child !== null);
+  return node.namedChildren;
 }

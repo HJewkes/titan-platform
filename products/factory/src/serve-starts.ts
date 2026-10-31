@@ -1,6 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "@titan-design/daemon";
+import { isRecord } from "./narrow.js";
 
 /** Kept beside the daemon pid file, so each state directory, and so each serve, counts its own starts. */
 const SERVE_STARTS_FILE = "serve-starts.json";
@@ -24,13 +25,15 @@ export interface ServeStart {
 
 const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
 
-const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const isCount = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isStartsFile = (value: unknown): value is StartsFile =>
+  isRecord(value) && isCount(value.starts) && isCount(value.uncleanStarts) && isCount(value.startsOnDay) && typeof value.day === "string";
 
 function readStarts(path: string): StartsFile | undefined {
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<StartsFile>;
-    const valid = isCount(parsed.starts) && isCount(parsed.uncleanStarts) && isCount(parsed.startsOnDay) && typeof parsed.day === "string";
-    return valid ? (parsed as StartsFile) : undefined;
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return isStartsFile(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

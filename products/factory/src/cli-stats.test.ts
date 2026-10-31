@@ -10,6 +10,7 @@ import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import { ShepherdStore } from "./shepherd/store.js";
 import { openFactoryHost } from "./host.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
+import { z } from "zod";
 
 function capture(): { out: string[]; err: string[]; io: Parameters<typeof runCli>[1] } {
   const out: string[] = [];
@@ -298,7 +299,7 @@ describe("shepherd stats verb", () => {
         const code = await runCli(["--db", ledgerWithOneMerge(dir), "shepherd", "stats", "--slo", "--json"], io);
 
         expect(code).toBe(0);
-        const results = JSON.parse(out.join("")).slo as { id: string; status: string }[];
+        const results = z.array(z.object({ id: z.string(), status: z.string() })).parse(JSON.parse(out.join("")).slo);
         expect(results.map((r) => r.id)).toContain("shepherd.flow.merge_verdict_to_merged");
         expect(results.filter((r) => r.status === "error")).toEqual([]);
       } finally {

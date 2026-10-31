@@ -18,7 +18,7 @@ describe("deadline", () => {
   it.each([undefined, Number.NaN, Number.POSITIVE_INFINITY])("refuses a timeout of %s instead of expiring at once", (timeoutMs) => {
     const { timing } = fakeClock();
 
-    expect(() => deadline({ ...timing, timeoutMs: timeoutMs as number })).toThrow(RangeError);
+    expect(() => deadline(Object.assign({ ...timing, timeoutMs: 0 }, { timeoutMs }))).toThrow(RangeError);
   });
 
   it("expires at the timeout when no sleep overran", async () => {

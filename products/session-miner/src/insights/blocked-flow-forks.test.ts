@@ -1,10 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BlockedFlowReport } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { seedEventsDb } from "./fixture.js";
+import { blockedFlow } from "./questions.js";
 
 const DENIED = "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Merge Without Review]. Continue.";
 
@@ -37,6 +38,6 @@ describe("insights blocked-flow over a forked transcript directory", () => {
     const code = await runCli(["--state", path.join(dir, "state"), "--corpus", path.join(dir, "corpus"), ...args], io);
 
     expect(code).toBe(0);
-    expect((JSON.parse(stdout) as { data: { answer: BlockedFlowReport } }).data.answer.denials).toMatchObject({ total: 1, rows: [{ action: "merge", count: 1 }] });
+    expect(z.object({ data: z.object({ answer: blockedFlow.schema }) }).parse(JSON.parse(stdout)).data.answer.denials).toMatchObject({ total: 1, rows: [{ action: "merge", count: 1 }] });
   });
 });

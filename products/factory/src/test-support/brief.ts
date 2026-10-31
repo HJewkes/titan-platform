@@ -1,13 +1,14 @@
 import type { GateRecord } from "@titan-design/hitl";
 import { expect } from "vitest";
+import { readPath } from "../narrow.js";
 
 /** The least brief a requireBrief host accepts, for tests whose gate is not about the brief. */
 export const TEST_BRIEF = { summary: "A test gate waits for an answer.", evidenceRef: "$ git status" };
 
 /** The ids a gate's stored answer schema accepts for `decision`. */
 function schemaDecisions(gate: GateRecord): unknown {
-  const properties = gate.schema?.properties as Record<string, { enum?: unknown; const?: unknown }> | undefined;
-  return properties?.decision?.enum ?? [properties?.decision?.const];
+  const decision = readPath(gate.schema, "properties", "decision");
+  return readPath(decision, "enum") ?? [readPath(decision, "const")];
 }
 
 /** What every gate site owes the owner: a summary naming the head, a link or command, and a menu that matches the schema. */

@@ -3,6 +3,8 @@ import os from "node:os";
 import { readLocatorText } from "@titan-design/locator";
 import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
+import { errnoCode, parseRows } from "../rows.js";
 
 /** A Bash tool call in the graph, located in its transcript; the graph keeps no command text. */
 export interface BashCall {
@@ -33,7 +35,7 @@ export interface TimedBashCall extends BashCall {
 }
 
 export function readBashCalls(db: Db, window: { since?: string; until?: string }): TimedBashCall[] {
-  return db.prepare(BASH_CALLS).all({ since: window.since ?? null, until: window.until ?? null }) as TimedBashCall[];
+  return parseRows(timedBashCall, db.prepare(BASH_CALLS).all({ since: window.since ?? null, until: window.until ?? null }));
 }
 
 const READ_CONCURRENCY = 32;
@@ -50,29 +52,42 @@ export async function readCommands<Call extends BashCall>(calls: readonly Call[]
 }
 
 export function readAgentNames(db: Db): Map<string, string> {
-  const rows = db.prepare("SELECT session_id AS sessionId, agent_name AS agentName FROM session_origin WHERE agent_name IS NOT NULL").all() as { sessionId: string; agentName: string }[];
+  const rows = parseRows(agentNameRow, db.prepare("SELECT session_id AS sessionId, agent_name AS agentName FROM session_origin WHERE agent_name IS NOT NULL").all());
   return new Map(rows.map((r) => [r.sessionId, r.agentName]));
 }
 
 /** Characters of the tool result that reached the model's context for one call. */
 export function outputCharsReader(db: Db): (call: Pick<BashCall, "sessionId" | "toolUseId">) => number {
   const sum = db.prepare("SELECT COALESCE(SUM(chars), 0) AS chars FROM context_block WHERE session_id = ? AND source = 'tool_result' AND tool_use_id = ?");
-  return (call) => (sum.get(call.sessionId, call.toolUseId) as { chars: number }).chars;
+  return (call) => charsRow.parse(sum.get(call.sessionId, call.toolUseId)).chars;
 }
 
-interface ToolUseBlock {
-  type?: unknown;
-  id?: unknown;
-  input?: { command?: unknown };
+const charsRow = z.object({ chars: z.number() });
+const agentNameRow = z.object({ sessionId: z.string(), agentName: z.string() });
+const timedBashCall = z.object({
+  sessionId: z.string(),
+  toolUseId: z.string(),
+  ts: z.string(),
+  path: z.string(),
+  byteOffset: z.number(),
+  byteLength: z.number().nullable(),
+  heads: z.string().nullable(),
+});
+const transcriptLine = z.object({ message: z.object({ content: z.unknown() }).optional() });
+const toolUseBlock = z.object({ type: z.literal("tool_use"), id: z.string(), input: z.object({ command: z.unknown() }).optional() });
+
+function toolUseMatching(candidate: unknown, toolUseId: string): z.output<typeof toolUseBlock>[] {
+  const parsed = toolUseBlock.safeParse(candidate);
+  return parsed.success && parsed.data.id === toolUseId ? [parsed.data] : [];
 }
 
 /** The `command` input of the call's `tool_use` block, or null when the line is gone, moved or not that call. */
 export async function readBashCommand(call: BashCall, home: string = os.homedir()): Promise<string | null> {
   if (call.byteLength === null) return null;
   try {
-    const line = JSON.parse(await readLocatorText(expandHome(call.path, home), [0, call.byteOffset, call.byteLength])) as { message?: { content?: unknown } };
+    const line = transcriptLine.parse(JSON.parse(await readLocatorText(expandHome(call.path, home), [0, call.byteOffset, call.byteLength])));
     const content = line.message?.content;
-    const block = Array.isArray(content) ? (content as ToolUseBlock[]).find((b) => b?.type === "tool_use" && b.id === call.toolUseId) : undefined;
+    const block = Array.isArray(content) ? content.flatMap((b) => toolUseMatching(b, call.toolUseId))[0] : undefined;
     return typeof block?.input?.command === "string" ? block.input.command : null;
   } catch {
     return null;
@@ -88,7 +103,7 @@ export function runHelp(argv: readonly string[]): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(program, [...rest, "--help"], { timeout: HELP_TIMEOUT_MS, maxBuffer: 1 << 20 }, (error, stdout, stderr) => {
       const text = `${stdout}${stderr}`;
-      resolve((error as NodeJS.ErrnoException | null)?.code === "ENOENT" || text.trim() === "" ? null : text);
+      resolve(errnoCode(error) === "ENOENT" || text.trim() === "" ? null : text);
     });
   });
 }

@@ -4,6 +4,7 @@ import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";
 import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
 import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
+import { isRecord } from "./narrow.js";
 
 export interface CommandResult {
   code: number;
@@ -317,8 +318,8 @@ function healthSummary(health: Record<string, unknown>, port: number): string {
 }
 
 function buildSummary(build: unknown): string | undefined {
-  if (typeof build !== "object" || build === null) return undefined;
-  const { sha, behindMain } = build as Record<string, unknown>;
+  if (!isRecord(build)) return undefined;
+  const { sha, behindMain } = build;
   if (typeof sha !== "string") return undefined;
   const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;
   return `build ${sha.slice(0, 12)}${sha.endsWith(DIRTY_SUFFIX) ? DIRTY_SUFFIX : ""}, ${behind}`;

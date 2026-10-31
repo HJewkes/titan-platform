@@ -6,6 +6,7 @@ import { runAgent } from "@titan-design/agent";
 import { parse } from "yaml";
 import type { AuditAgent, AuditPorts } from "./ports.js";
 import { inventoryStore, queryStore, runReadCommand } from "./probes.js";
+import { errnoCode, isRecord, readPath } from "../narrow.js";
 
 const run = promisify(execFile);
 /** A backstop against a runaway call, not a budget: spend is watched, not capped tight. */
@@ -22,8 +23,8 @@ export function claudePrintAgent(cwd: string): AuditAgent {
 
 async function areaIds(checkout: string): Promise<string[]> {
   const { stdout } = await run(process.execPath, [join(checkout, "scripts", "areas.mjs")], { cwd: checkout });
-  const parsed = parse(stdout) as { area?: { id: string }[] };
-  return (parsed.area ?? []).map((area) => area.id);
+  const areas = readPath(parse(stdout), "area");
+  return Array.isArray(areas) ? areas.filter(isRecord).map((area) => area.id).filter((id) => typeof id === "string") : [];
 }
 
 /** The registry entry W2 keeps at `metrics/<area>.yml`; none yet is the first audit. */
@@ -31,7 +32,7 @@ async function priorEntry(checkout: string, system: string): Promise<unknown> {
   try {
     return parse(await readFile(join(checkout, "metrics", `${system}.yml`), "utf8")) as unknown;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (errnoCode(error) === "ENOENT") return null;
     throw error;
   }
 }

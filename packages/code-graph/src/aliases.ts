@@ -29,7 +29,7 @@ const METRIC_ALIASES: ReadonlyMap<string, string> = new Map([
   ["lcom4", "lcom4_max"],
 ]);
 
-const ROLE_ALIASES: ReadonlyMap<string, string> = new Map([
+const ROLE_ALIASES: ReadonlyMap<string, NodeRole> = new Map<string, NodeRole>([
   ["tests", "test"],
   ["spec", "test"],
   ["specs", "test"],
@@ -49,10 +49,10 @@ const EDGE_KIND_ALIASES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** Canonical name for a deprecated alias, or `undefined` if `name` is not aliased. */
-export function deprecatedTarget(
-  map: ReadonlyMap<string, string>,
+export function deprecatedTarget<T extends string>(
+  map: ReadonlyMap<string, T>,
   name: string,
-): string | undefined {
+): T | undefined {
   return map.get(name);
 }
 
@@ -75,5 +75,5 @@ export function metricAliasTarget(name: string): string | undefined {
 
 /** Canonical role for a deprecated alias, or `undefined`. */
 export function roleAliasTarget(name: string): NodeRole | undefined {
-  return deprecatedTarget(ROLE_ALIASES, name) as NodeRole | undefined;
+  return deprecatedTarget(ROLE_ALIASES, name);
 }

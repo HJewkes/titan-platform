@@ -5,6 +5,7 @@ import { nowIso } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { DRAIN_TABLES, requireMinerTables } from "../miner-tables.js";
+import { parseRow, parseRows } from "../rows.js";
 
 /** Error blobs are partitioned as one tool type until tool names are threaded through facts. */
 const PARTITION = "tool_result";
@@ -18,16 +19,17 @@ export interface DrainSummary {
   unreadable: number;
 }
 
-interface ErrorFact {
-  fact_id: number;
-  transcript_id: number;
-  byte_offset: number;
-  byte_length: number;
-  session_id: string;
-  ts: string;
-  path: string;
-  source_hash: string;
-}
+const errorFactRow = z.object({
+  fact_id: z.number(),
+  transcript_id: z.number(),
+  byte_offset: z.number(),
+  byte_length: z.number(),
+  session_id: z.string(),
+  ts: z.string(),
+  path: z.string(),
+  source_hash: z.string(),
+});
+type ErrorFact = z.output<typeof errorFactRow>;
 
 const DrainArgs = z.object({ limit: z.number().int().positive().optional().describe("Cluster at most this many new error blobs") });
 
@@ -60,14 +62,14 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
       if (result.isNewTemplate) summary.newTemplates += 1;
     }
     saveClusterer(graph, clusterer);
-    summary.templates = (graph.db.prepare("SELECT count(*) AS n FROM template").get() as { n: number }).n;
+    summary.templates = countRow.parse(graph.db.prepare("SELECT count(*) AS n FROM template").get()).n;
     return summary;
   },
 });
 
 /** Error facts not yet clustered, joined to their transcript path. */
 function pendingErrorFacts(graph: SessionGraph, limit?: number): ErrorFact[] {
-  const claude = graph.db.prepare(`${CLAUDE_ERROR_FACTS} ORDER BY f.ts LIMIT ?`).all(limit ?? -1) as ErrorFact[];
+  const claude = parseRows(errorFactRow, graph.db.prepare(`${CLAUDE_ERROR_FACTS} ORDER BY f.ts LIMIT ?`).all(limit ?? -1));
   const handled = graph.db.prepare(`SELECT 1 FROM occurrence WHERE transcript_id = ? AND byte_offset = ?
     UNION ALL SELECT 1 FROM drain_screened WHERE transcript_id = ? AND byte_offset = ? AND source_hash = ?`);
   const normalized = normalizedErrorFacts(graph)
@@ -99,8 +101,12 @@ function recordOccurrence(graph: SessionGraph, fact: ErrorFact, templateId: stri
     .run(templateId, fact.transcript_id, fact.byte_offset, fact.byte_length, fact.session_id, fact.ts, Object.keys(params).length ? JSON.stringify(params) : null);
 }
 
+const countRow = z.object({ n: z.number() });
+const snapshotRow = z.object({ snapshot: z.string() });
+const templateRow = z.object({ template_id: z.string(), masked_signature: z.string(), occurrence_count: z.number(), created_at: z.string() });
+
 function loadClusterer(graph: SessionGraph): Clusterer {
-  const row = graph.db.prepare("SELECT snapshot FROM clusterer_snapshot WHERE id = 1").get() as { snapshot: string } | undefined;
+  const row = parseRow(snapshotRow, graph.db.prepare("SELECT snapshot FROM clusterer_snapshot WHERE id = 1").get());
   return row ? Clusterer.fromSnapshot(JSON.parse(row.snapshot) as ClustererSnapshot) : new Clusterer();
 }
 
@@ -125,7 +131,7 @@ export const drainTemplates = defineCommand<{ limit: number }, TemplateRow[], Mi
   cli: { options: { limit: { long: "--limit", short: "-n", description: "max templates" } } },
   async run(args, ctx) {
     requireMinerTables(ctx, "drain.templates", ["template"]);
-    const rows = ctx.graph().db.prepare("SELECT template_id, masked_signature, occurrence_count, created_at FROM template ORDER BY occurrence_count DESC, created_at LIMIT ?").all(args.limit) as Record<string, unknown>[];
-    return rows.map((r) => ({ templateId: r.template_id as string, maskedSignature: r.masked_signature as string, occurrenceCount: r.occurrence_count as number, createdAt: r.created_at as string }));
+    const rows = parseRows(templateRow, ctx.graph().db.prepare("SELECT template_id, masked_signature, occurrence_count, created_at FROM template ORDER BY occurrence_count DESC, created_at LIMIT ?").all(args.limit));
+    return rows.map((r) => ({ templateId: r.template_id, maskedSignature: r.masked_signature, occurrenceCount: r.occurrence_count, createdAt: r.created_at }));
   },
 });

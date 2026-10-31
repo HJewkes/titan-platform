@@ -7,6 +7,7 @@ import type { ReviewOutcome } from "./route-table.js";
 import { ReviewCauseSchema, type ReviewCause, type ReviewCauseKind } from "./review-schemas.js";
 import { inRange, isoWeek } from "./stats.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
+import { isRecord } from "../narrow.js";
 
 export type { ReviewCause } from "./review-schemas.js";
 
@@ -47,7 +48,7 @@ export interface CauseFacts {
   carry?: CarryProbe;
 }
 
-const record = (result: unknown): Record<string, unknown> => (typeof result === "object" && result !== null ? (result as Record<string, unknown>) : {});
+const record = (result: unknown): Record<string, unknown> => (isRecord(result) ? result : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const nullableText = (value: unknown): string | null => text(value) ?? null;
 
@@ -148,7 +149,7 @@ export function tapped(ctx: WorkflowContext, tap: (stepId: string, result: unkno
     get: (target, key) => {
       if (key === "dispatch") return dispatch;
       const value: unknown = Reflect.get(target, key, target);
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      return typeof value === "function" ? value.bind(target) : value;
     },
   });
 }

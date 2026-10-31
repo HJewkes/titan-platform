@@ -1,119 +1,15 @@
 {
-  "products/session-miner/src/cli.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/session-miner/src/commands/drain.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 9
+      "count": 1
     }
   },
   "products/session-miner/src/commands/playbook.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/session-miner/src/commands/search.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/session-miner/src/commands/sessions.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 24
-    }
-  },
-  "products/session-miner/src/commands/status.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/session-miner/src/graph-refresh.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/graph-refresh.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "products/session-miner/src/insights/blocked-flow-forks.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/insights/blocked-flow-sources.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/insights/blocked-flow.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/session-miner/src/insights/define.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/insights/insights.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 7
-    }
-  },
-  "products/session-miner/src/insights/liveness.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/session-miner/src/insights/tool-gaps-sources.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
     }
   },
   "products/session-miner/src/miner.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/session-miner/src/normalized-readonly.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/playbook/diary.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 10
-    }
-  },
-  "products/session-miner/src/registry.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/registry.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/serve.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/session-miner/src/shared-graph.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

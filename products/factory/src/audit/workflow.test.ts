@@ -33,7 +33,7 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
   it("reproduces the hand audit's counts within 10 percent", async () => {
     const { run, report } = await audit(fakeAuditPorts());
 
-    expect(run?.status).toBe("completed");
+    expect(run.status).toBe("completed");
     const answerable = (kind: string) => report!.questions.filter((question) => question.answerable === kind).length;
     const actual = { ...report!.counts, yes: answerable("yes"), partly: answerable("partly"), no: answerable("no"), reports: report!.reports.length };
     const expected = { ...HAND_AUDIT_COUNTS, ...HAND_AUDIT_COUNTS.questions };
@@ -93,7 +93,7 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
     const ports = fakeAuditPorts();
     const { run } = await audit(ports, "discard");
 
-    expect(run?.status).toBe("completed");
+    expect(run.status).toBe("completed");
     expect(ports.written.size).toBe(0);
   });
 

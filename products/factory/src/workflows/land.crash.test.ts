@@ -37,9 +37,9 @@ function hangAfterEffect(routes: readonly StepRoute[], stepId: string, entered: 
 
 /** The crashed host still needs its gate answered to reach the later steps; stop once it has hung. */
 async function approveUntil(host: FactoryHost, runId: string, fake: FakeGitHub, hung: Promise<void>): Promise<void> {
-  let stopped = false;
-  void hung.then(() => (stopped = true));
-  while (!stopped) {
+  const state = { stopped: false };
+  void hung.then(() => (state.stopped = true));
+  while (!state.stopped) {
     answerPendingGate(host, runId, fake);
     await new Promise((resolve) => setTimeout(resolve, 5));
   }

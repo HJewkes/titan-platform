@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isRecord } from "../narrow.js";
 import type { CodeGraphStore } from "../store.js";
 import type { Finding } from "./findings.js";
 
@@ -116,6 +117,30 @@ interface VerdictDbRow {
   attrs: string;
 }
 
+const FINDING_STRINGS = ["id", "path", "signal", "tool"] as const;
+const FINDING_OPTIONAL_NUMBERS = ["lineStart", "lineEnd", "value", "baseline", "threshold"] as const;
+const FINDING_OPTIONAL_STRINGS = ["symbol", "evidence"] as const;
+
+function isFinding(value: unknown): value is Finding {
+  if (!isRecord(value)) return false;
+  return (
+    (value.severity === "error" || value.severity === "warning") &&
+    FINDING_STRINGS.every((field) => typeof value[field] === "string") &&
+    FINDING_OPTIONAL_NUMBERS.every((field) => value[field] === undefined || typeof value[field] === "number") &&
+    FINDING_OPTIONAL_STRINGS.every((field) => value[field] === undefined || typeof value[field] === "string")
+  );
+}
+
+function isCitation(value: unknown): value is VerdictCitation {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.lineStart === "number" &&
+    typeof value.lineEnd === "number" &&
+    typeof value.quote === "string"
+  );
+}
+
 /** Insert or replace findings by key within one snapshot. */
 export function saveFindings(store: CodeGraphStore, snapshotId: number, findings: readonly StoredFinding[]): void {
   const insert = store.db.prepare(
@@ -142,14 +167,17 @@ export function saveFindings(store: CodeGraphStore, snapshotId: number, findings
   })();
 }
 
+/** A row whose attrs is not a `Finding` is skipped: `saveFindings` never writes one. */
 export function listFindings(store: CodeGraphStore, snapshotId: number): StoredFinding[] {
   const rows = store.db
-    .prepare("SELECT key, excerpt_hash, attrs FROM finding WHERE snapshot_id = ? ORDER BY key")
-    .all(snapshotId) as FindingDbRow[];
-  return rows.map((row) => {
-    const stored: StoredFinding = { key: row.key, finding: JSON.parse(row.attrs) as Finding };
+    .prepare<[number], FindingDbRow>("SELECT key, excerpt_hash, attrs FROM finding WHERE snapshot_id = ? ORDER BY key")
+    .all(snapshotId);
+  return rows.flatMap((row) => {
+    const finding: unknown = JSON.parse(row.attrs);
+    if (!isFinding(finding)) return [];
+    const stored: StoredFinding = { key: row.key, finding };
     if (row.excerpt_hash !== null) stored.excerptHash = row.excerpt_hash;
-    return stored;
+    return [stored];
   });
 }
 
@@ -185,19 +213,19 @@ function verdictParams(snapshotId: number, v: StoredVerdict): Record<string, unk
 }
 
 export function listVerdicts(store: CodeGraphStore, snapshotId: number): StoredVerdict[] {
-  const rows = store.db
-    .prepare("SELECT * FROM verdict WHERE snapshot_id = ? ORDER BY key")
-    .all(snapshotId) as VerdictDbRow[];
+  const rows = store.db.prepare<[number], VerdictDbRow>("SELECT * FROM verdict WHERE snapshot_id = ? ORDER BY key").all(snapshotId);
   return rows.map(rowToVerdict);
 }
 
 function rowToVerdict(row: VerdictDbRow): StoredVerdict {
-  const attrs = JSON.parse(row.attrs) as { citations: VerdictCitation[]; dropped: string[] };
+  const attrs: unknown = JSON.parse(row.attrs);
+  const citations = isRecord(attrs) && Array.isArray(attrs.citations) ? attrs.citations.filter(isCitation) : [];
+  const dropped = isRecord(attrs) && Array.isArray(attrs.dropped) ? attrs.dropped.filter((d) => typeof d === "string") : [];
   const verdict: StoredVerdict = {
     key: row.key,
     verdict: row.verdict,
     rationale: row.rationale,
-    citations: attrs.citations,
+    citations,
     excerptHash: row.excerpt_hash,
   };
   if (row.model !== null) verdict.model = row.model;
@@ -205,7 +233,7 @@ function rowToVerdict(row: VerdictDbRow): StoredVerdict {
   if (row.run_id !== null) verdict.runId = row.run_id;
   if (row.provenance !== null) verdict.provenance = row.provenance;
   if (row.control_run !== null) verdict.controlRun = row.control_run;
-  if (attrs.dropped.length > 0) verdict.dropped = attrs.dropped;
+  if (dropped.length > 0) verdict.dropped = dropped;
   if (row.carried_from !== null) verdict.carriedFrom = row.carried_from;
   return verdict;
 }

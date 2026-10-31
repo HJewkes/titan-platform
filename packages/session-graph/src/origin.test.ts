@@ -47,7 +47,7 @@ const WORKER_ORIGIN: OriginResolution = {
 };
 const answer = (resolution: OriginResolution): OriginResolver => () => resolution;
 
-const rows = (sql: string) => graph.db.prepare(sql).all() as Record<string, unknown>[];
+const rows = (sql: string) => graph.db.prepare<[], Record<string, unknown>>(sql).all();
 const originRows = () => rows("SELECT session_id, origin_system, agent_id, agent_name, parent_session_id, profile, depth, origin_kind, brief_chars FROM session_origin");
 const subagentRows = () => rows("SELECT agent_ref, session_id, child_session_id, agent_type, label, started_at, ended_at FROM subagent");
 const spawnedSessions = () => graph.edges.from("session:parent").filter((e) => e.relation === "spawned").map((e) => e.targetRef);
@@ -73,7 +73,7 @@ describe("migration 5", () => {
     db.close();
   }
   const schemaOf = (db: SessionGraph["db"]) => db.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY name").all();
-  const migrationRows = (db: SessionGraph["db"]) => db.prepare("SELECT version, name, applied_at FROM _migration ORDER BY version").all() as { version: number; name: string }[];
+  const migrationRows = (db: SessionGraph["db"]) => db.prepare<[], { version: number; name: string }>("SELECT version, name, applied_at FROM _migration ORDER BY version").all();
 
   it("applies on the live version 4 shape and a second open changes nothing", () => {
     const file = path.join(dir, "graph.sqlite3");

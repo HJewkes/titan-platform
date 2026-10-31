@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
+import { errnoCode } from "./narrow.js";
 
 /**
  * Generated-code detection. Generated files (codegen output, e.g. an OpenAPI
@@ -47,7 +48,7 @@ export function loadGeneratedPatterns(
     const content = source.readFile(path.join(rootDir, ".gitattributes"));
     return parseGeneratedPatterns(content);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (errnoCode(err) === "ENOENT") return [];
     throw err;
   }
 }

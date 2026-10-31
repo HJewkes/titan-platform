@@ -50,7 +50,7 @@ function collectClasses(file: ParsedFile): Node[] {
   const visit = (node: Node): void => {
     if (isClass(node)) out.push(node);
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(file.tree.rootNode);
@@ -80,7 +80,7 @@ function collectTsMethods(classNode: Node): MethodInfo[] {
   if (!body) return [];
   const out: MethodInfo[] = [];
   for (const child of body.namedChildren) {
-    if (!child || child.type !== "method_definition") continue;
+    if (child.type !== "method_definition") continue;
     if (hasStaticModifier(child)) continue;
     const name = methodName(child);
     if (!name || name === "constructor") continue;
@@ -94,7 +94,7 @@ function collectPythonMethods(classNode: Node): MethodInfo[] {
   if (!body) return [];
   const out: MethodInfo[] = [];
   for (const child of body.namedChildren) {
-    const fn = child ? pythonMethodNode(child) : null;
+    const fn = pythonMethodNode(child);
     if (!fn) continue;
     const name = fn.childForFieldName("name")?.text;
     if (!name || name === "__init__") continue;
@@ -119,7 +119,7 @@ function methodName(methodNode: Node): string | null {
 
 function hasStaticModifier(methodNode: Node): boolean {
   for (const child of methodNode.children) {
-    if (child?.type === "static") return true;
+    if (child.type === "static") return true;
   }
   return false;
 }
@@ -127,7 +127,7 @@ function hasStaticModifier(methodNode: Node): boolean {
 function isPythonStaticOrClassMethod(decorated: Node): boolean {
   return decorated.namedChildren.some(
     (c) =>
-      c?.type === "decorator" &&
+      c.type === "decorator" &&
       (c.text === "@staticmethod" || c.text === "@classmethod"),
   );
 }
@@ -137,7 +137,7 @@ function thisRefs(methodNode: Node, selfKeyword: string): Set<string> {
   const visit = (n: Node): void => {
     collectThisRef(n, selfKeyword, out);
     for (const child of n.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(methodNode);

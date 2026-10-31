@@ -31,6 +31,13 @@ function isInternalSpecifier(specifier: string, internalPrefixes: readonly strin
   return /^[./#]/.test(specifier) || internalPrefixes.some((prefix) => specifier.startsWith(prefix));
 }
 
+// The schema guarantees `internalPrefixes` is an array of strings when present.
+function configuredPrefixes(option: unknown): readonly string[] {
+  if (typeof option !== "object" || option === null || !("internalPrefixes" in option)) return DEFAULT_INTERNAL_PREFIXES;
+  const { internalPrefixes } = option;
+  return Array.isArray(internalPrefixes) ? internalPrefixes.filter((p) => typeof p === "string") : DEFAULT_INTERNAL_PREFIXES;
+}
+
 export const noInternalModuleMock: Rule.RuleModule = {
   meta: {
     type: "problem",
@@ -48,8 +55,7 @@ export const noInternalModuleMock: Rule.RuleModule = {
     },
   },
   create(context) {
-    const options = (context.options[0] ?? {}) as { internalPrefixes?: string[] };
-    const internalPrefixes = options.internalPrefixes ?? DEFAULT_INTERNAL_PREFIXES;
+    const internalPrefixes = configuredPrefixes(context.options[0]);
     return {
       CallExpression(node) {
         const call = moduleMockCall(node);

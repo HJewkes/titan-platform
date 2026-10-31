@@ -74,11 +74,11 @@ interface StoredMetric {
 
 function storedMetrics(store: CodeGraphStore, snapshotId: number): StoredMetric[] {
   return store.db
-    .prepare(
+    .prepare<[number], StoredMetric>(
       `SELECT DISTINCT m.name AS name, m.unit AS unit, n.kind AS kind FROM metric m
        JOIN node n ON n.snapshot_id = m.snapshot_id AND n.id = m.node_id WHERE m.snapshot_id = ?`,
     )
-    .all(snapshotId) as StoredMetric[];
+    .all(snapshotId);
 }
 
 function catalogueNameOf(stored: string): string | undefined {
@@ -120,7 +120,7 @@ describe("metric catalogue completeness", () => {
       if (!d) return [];
       const problems: string[] = [];
       if (m.unit !== d.unit) problems.push(`${m.name}: stored unit ${m.unit}, descriptor says ${d.unit}`);
-      if (!d.appliesTo.includes(m.kind as never)) problems.push(`${m.name}: written on a ${m.kind} node`);
+      if (!d.appliesTo.some((kind) => kind === m.kind)) problems.push(`${m.name}: written on a ${m.kind} node`);
       return problems;
     });
     expect(mismatches, mismatches.join("\n")).toEqual([]);

@@ -57,7 +57,7 @@ async function readConfig(port: BundleGit, sha: string): Promise<string | null> 
 }
 
 /** The same plan Shepherd's fix-proof check derives, so a hidden test is exactly a test the accepted diff added or changed. */
-async function planHiddenTests(port: BundleGit, baseSha: string, mergeSha: string): Promise<FixProofPlan> {
+export async function planHiddenTests(port: BundleGit, baseSha: string, mergeSha: string): Promise<FixProofPlan> {
   const nameStatus = (await port.git(["diff", "-M", "--name-status", baseSha, mergeSha])).toString("utf8");
   const planned = planFixProof({ nameStatus, baseConfig: await readConfig(port, baseSha), headConfig: await readConfig(port, mergeSha) });
   if (!planned.ok) throw new Error(`fix-proof plan for ${baseSha}..${mergeSha}: ${planned.error}`);

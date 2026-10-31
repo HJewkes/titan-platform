@@ -15,6 +15,7 @@ import { pacePath, readPacePools } from "./pace.js";
 import { buildDigest, deliverDigest, syncAlarmNote } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
 import { digestDirectories, execProcess, fileSources, queuesDirOf, type Exec } from "./sources.js";
+import { errorMessage } from "../narrow.js";
 
 /** Runs one factory registry command, on titan-factory serve or in process. */
 export type FactoryCall = (name: string, args: object) => Promise<JsonEnvelope<unknown>>;
@@ -52,7 +53,7 @@ export function parseSinceOption(value: string): number {
   try {
     return parseSince(value);
   } catch (error) {
-    throw new InvalidArgumentError((error as Error).message);
+    throw new InvalidArgumentError(errorMessage(error));
   }
 }
 

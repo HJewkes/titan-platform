@@ -23,7 +23,7 @@ export function jsxDepthOf(root: Node, opensFunction: (node: Node) => boolean): 
     const own = rendersElement(node) ? depth + 1 : depth;
     if (own > max) max = own;
     for (const child of node.namedChildren) {
-      if (child && !opensFunction(child)) visit(child, own);
+      if (!opensFunction(child)) visit(child, own);
     }
   };
   visit(root, 0);

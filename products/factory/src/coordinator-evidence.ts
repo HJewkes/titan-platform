@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
+import { readPath } from "./narrow.js";
 
 /**
  * Owner decision 2026-10-07 (TP-1904), "mechanical only": a coordinator may resolve three gate classes without the
@@ -153,7 +154,7 @@ export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema"
 }
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
-  const head = (schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;
+  const head = readPath(schema, "properties", "headSha", "const");
   return typeof head === "string" ? head : undefined;
 }
 
@@ -253,9 +254,11 @@ function requiredGreen(checks: Of<"approve-merge">["checks"], head: string): boo
   return checks.required.every((name) => checks.runs.some((run) => run.name === name && run.headSha === head && run.conclusion === "success"));
 }
 
+const mainDecisions: Readonly<Record<string, string | undefined>> = MAIN_GATES;
+
 function mainGreenAdmits(gate: GateRecord, payload: unknown, evidence: Of<"main-green">): boolean {
   const main = mainGate(gate);
-  if (!main || !isDeepStrictEqual(payload, { decision: MAIN_GATES[stepOf(gate.id) as keyof typeof MAIN_GATES], mergeSha: main.mergeSha })) return false;
+  if (!main || !isDeepStrictEqual(payload, { decision: mainDecisions[stepOf(gate.id)], mergeSha: main.mergeSha })) return false;
   if (evidence.repo !== main.repo || evidence.pr !== main.pr || evidence.mergeSha !== main.mergeSha || evidence.mergeBaseSha !== main.mergeSha) return false;
   return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && isPassingConclusion(run.conclusion));
 }

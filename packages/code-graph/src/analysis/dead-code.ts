@@ -82,7 +82,7 @@ function countUnreachable(root: Node): number {
   const visit = (node: Node): void => {
     if (node.type === "statement_block") count += unreachableInBlock(node);
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(root);
@@ -93,7 +93,6 @@ function unreachableInBlock(block: Node): number {
   let seenTerminal = false;
   let count = 0;
   for (const child of block.namedChildren) {
-    if (!child) continue;
     if (
       seenTerminal &&
       child.type !== "comment" &&
@@ -132,7 +131,7 @@ function countUnusedBindings(root: Node): { locals: number; params: number } {
       params += r.params;
     }
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(root);
@@ -181,7 +180,7 @@ function ownParamNames(fn: Node): (string | null)[] {
   if (!params) return [];
   const out: (string | null)[] = [];
   for (const p of params.namedChildren) {
-    if (!p || !PARAM_TYPES.has(p.type)) continue;
+    if (!PARAM_TYPES.has(p.type)) continue;
     const first = p.namedChild(0);
     out.push(first?.type === "identifier" ? first.text : null);
   }
@@ -204,7 +203,7 @@ function ownLocalNames(fn: Node): string[] {
       if (name?.type === "identifier") out.push(name.text);
     }
     for (const child of node.namedChildren) {
-      if (child) walk(child);
+      walk(child);
     }
   };
   walk(body);
@@ -226,7 +225,7 @@ function collectBindingDecls(
     if (PARAM_TYPES.has(node.type)) mark(node.namedChild(0));
     else if (node.type === "variable_declarator") mark(node.childForFieldName("name"));
     for (const child of node.namedChildren) {
-      if (child) walk(child);
+      walk(child);
     }
   };
   walk(fn);
@@ -247,7 +246,7 @@ function countReferences(
       out.set(node.text, (out.get(node.text) ?? 0) + 1);
     }
     for (const child of node.namedChildren) {
-      if (child) walk(child);
+      walk(child);
     }
   };
   walk(fn);

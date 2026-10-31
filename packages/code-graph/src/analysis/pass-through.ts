@@ -41,7 +41,7 @@ function parameterShapes(fn: Node): string[] | null {
   if (!list) return null;
   const shapes: string[] = [];
   for (const p of list.namedChildren) {
-    if (!p || p.type === "comment" || PY_SEPARATORS.has(p.type)) continue;
+    if (p.type === "comment" || PY_SEPARATORS.has(p.type)) continue;
     const shape = parameterShape(p);
     if (shape === null) return null;
     shapes.push(shape);
@@ -76,7 +76,7 @@ function argumentShapes(call: Node): string[] | null {
   if (!list || (list.type !== "argument_list" && list.type !== "arguments")) return null;
   const shapes: string[] = [];
   for (const a of list.namedChildren) {
-    if (!a || a.type === "comment") continue;
+    if (a.type === "comment") continue;
     const shape = argumentShape(a);
     if (shape === null) return null;
     shapes.push(shape);

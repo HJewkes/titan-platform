@@ -1,5 +1,7 @@
 import type { SessionGraph } from "@titan-design/session-graph";
 import { RELATIONS, sessionRef } from "@titan-design/session-read";
+import { z } from "zod";
+import { parseRow, parseRows } from "../rows.js";
 
 /**
  * The Generator stage, and it never calls a model. Everything below is read
@@ -42,11 +44,23 @@ export interface SessionDiary {
   byteOffset: number | undefined;
 }
 
+const sessionRow = z.object({
+  ai_title: z.string().nullish(),
+  started_at: z.string().nullish(),
+  git_branch: z.string().nullish(),
+  turn_count: z.number().nullish(),
+  commit_count: z.number().nullish(),
+});
+const firstOffsetRow = z.object({ offset: z.number().nullable() });
+const taskRow = z.object({ status: z.string().nullable(), title: z.string().nullable() });
+const prRow = z.object({ state: z.string().nullable(), merged_at: z.string().nullable(), title: z.string().nullable() });
+const errorSignatureRow = z.object({ templateId: z.string(), partition: z.string(), signature: z.string(), count: z.number(), byteOffset: z.number() });
+
 const MAX_FILES = 40;
 const MAX_ERRORS = 12;
 
 export function buildDiary(graph: SessionGraph, sessionId: string): SessionDiary | undefined {
-  const row = graph.db.prepare("SELECT * FROM session WHERE session_id = ?").get(sessionId) as Record<string, unknown> | undefined;
+  const row = parseRow(sessionRow, graph.db.prepare("SELECT * FROM session WHERE session_id = ?").get(sessionId));
   if (!row) return undefined;
   const ref = sessionRef(sessionId);
   const edges = graph.edges.from(ref);
@@ -56,11 +70,11 @@ export function buildDiary(graph: SessionGraph, sessionId: string): SessionDiary
   const errors = errorSignatures(graph, sessionId);
   return {
     sessionRef: ref,
-    title: (row.ai_title as string | null) ?? null,
-    startedAt: (row.started_at as string | null) ?? null,
-    branch: (row.git_branch as string | null) ?? null,
-    turnCount: (row.turn_count as number) ?? 0,
-    commitCount: (row.commit_count as number) ?? 0,
+    title: row.ai_title ?? null,
+    startedAt: row.started_at ?? null,
+    branch: row.git_branch ?? null,
+    turnCount: row.turn_count ?? 0,
+    commitCount: row.commit_count ?? 0,
     filesTouched: targets(RELATIONS.TOUCHED).slice(0, MAX_FILES),
     tasks,
     prs,
@@ -72,14 +86,14 @@ export function buildDiary(graph: SessionGraph, sessionId: string): SessionDiary
 }
 
 function firstByteOffset(graph: SessionGraph, sessionId: string): number | undefined {
-  const row = graph.db.prepare("SELECT MIN(byte_offset) AS offset FROM fact WHERE session_id = ?").get(sessionId) as { offset: number | null } | undefined;
+  const row = parseRow(firstOffsetRow, graph.db.prepare("SELECT MIN(byte_offset) AS offset FROM fact WHERE session_id = ?").get(sessionId));
   return row?.offset ?? undefined;
 }
 
 function lookupTasks(graph: SessionGraph, refs: string[]): SessionDiary["tasks"] {
   const get = graph.db.prepare("SELECT task_ref, status, title FROM task WHERE task_ref = ?");
   return refs.map((ref) => {
-    const row = get.get(ref) as { status: string | null; title: string | null } | undefined;
+    const row = parseRow(taskRow, get.get(ref));
     return { ref, status: row?.status ?? null, title: row?.title ?? null };
   });
 }
@@ -87,13 +101,13 @@ function lookupTasks(graph: SessionGraph, refs: string[]): SessionDiary["tasks"]
 function lookupPrs(graph: SessionGraph, refs: string[]): SessionDiary["prs"] {
   const get = graph.db.prepare("SELECT state, merged_at, title FROM pr WHERE pr_ref = ?");
   return refs.map((ref) => {
-    const row = get.get(ref) as { state: string | null; merged_at: string | null; title: string | null } | undefined;
+    const row = parseRow(prRow, get.get(ref));
     return { ref, state: row?.state ?? null, mergedAt: row?.merged_at ?? null, title: row?.title ?? null };
   });
 }
 
 function errorSignatures(graph: SessionGraph, sessionId: string): ErrorSignature[] {
-  const rows = graph.db
+  return parseRows(errorSignatureRow, graph.db
     .prepare(
       `SELECT o.template_id AS templateId, t.partition, t.masked_signature AS signature,
               COUNT(*) AS count, MIN(o.byte_offset) AS byteOffset
@@ -103,8 +117,7 @@ function errorSignatures(graph: SessionGraph, sessionId: string): ErrorSignature
         ORDER BY count DESC, templateId
         LIMIT ?`,
     )
-    .all(sessionId, MAX_ERRORS) as ErrorSignature[];
-  return rows;
+    .all(sessionId, MAX_ERRORS));
 }
 
 /**

@@ -1,6 +1,5 @@
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
@@ -20,6 +19,7 @@ import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "
 import { landPrWorkflow } from "./workflows/land-pr.js";
 import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 import { OWNER } from "./test-support/resolver.js";
+import { portOf } from "./test-support/fakes.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
@@ -422,7 +422,7 @@ async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { port: (server.address() as AddressInfo).port, calls };
+  return { port: portOf(server), calls };
 }
 
 /** A fake `agent-chat` whose roster holds `impl-a`, exited, until `agent retire` removes it. */
