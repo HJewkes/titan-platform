@@ -114,3 +114,20 @@ export {
   type RawGitRunner,
   type TreeFingerprint,
 } from "./reviewer-tree-guard.js";
+export { dispatchIgnoredFiles, unsavedWork, type UnsavedWork } from "./unsaved-work.js";
+export {
+  DEFAULT_REVIEWER_WORKTREE_BUDGET,
+  heldBy,
+  treeHoldersOf,
+  WorktreeBudgetExhaustedError,
+  type PoolBudgets,
+  type PoolUse,
+  type WorktreePool,
+} from "./worktree-pool.js";
+export {
+  createWorktreeStrategy,
+  inspectForRelease,
+  reattachWorktree,
+  recreateWorktree,
+  type WorktreeStrategyOptions,
+} from "./worktree.js";

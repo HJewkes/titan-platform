@@ -1,4 +1,4 @@
-import { WorktreeRecord, GitRunner } from '@titan-design/worktree';
+import { WorktreeRecord, GitRunner, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety } from '@titan-design/worktree';
 import { h as IsolationName } from '../schema.js';
 import { A as AgentIdentity } from '../types.js';
 import { J as JournalRow, N as NamePresence } from '../ports.js';
@@ -553,7 +553,75 @@ declare function treeFingerprint(cwd: string, git?: RawGitRunner): Promise<TreeF
 declare function treeChange(before: TreeFingerprint, after: TreeFingerprint): string[];
 declare function reviewerDirtyText(name: string, cwd: string, paths: readonly string[]): string;
 
-export { type Allocation, type FileOwnershipManifest, type FileOwnershipSummary, type FinishedHolds, type FinishedRetireOutcome, type FinishedRetirePort, type GhOutcome, type HeldBranch, type HeldTree, type ImplementerParkPort, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, MERGED_RETIRE_EVERY_MS, type MergedRetirePort, type MergedRetireResult, NOT_FINISHED, NO_VERDICT, type OwnershipConflict, type OwnershipRule, PR_READS_PER_PASS, PR_REREAD_MS, type ParkAtExitResult, type ParkTarget, type PrHead, type PrRead, type PrState, type PrStateDeps, type PrStateReader, type PrTarget, REVIEWER_TREE_CHANGED, type RawGitRunner, type ReleaseOptions, type ReportRetirePort, type ReportRetireResult, type RetirePlanEntry, type RetireResult, type RetireScope, type ReviewerParkPort, SCOPE_REQUIRED, STALE_AFTER_MS, STALE_RETIRE_CAP, type TenancyVerdict, type TreeFingerprint, type TreeHolder, type TreeHolders, WARNING_PREFIX, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, connectedBlocker, createIsolationRegistry, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, heldBranches, inScope, isAtOrUnder, isFinishedReport, isReviewerSpawn, isReviewerTreeName, isVerdictText, isWarning, isWorkerProfile, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkImplementerAtExit, parkReviewerAtReport, parkTenancyBlocker, parkable, parsePrState, passPrReads, prStateReader, prTarget, recordRefusal, refusalOf, refusalsIn, reportPr, retireAtReport, retireFinished, retireMerged, reviewedAgentName, reviewerDirtyText, runRawGit, startMergedRetireSweep, tenantsOf, toolsetStrategy, treeChange, treeFingerprint, warn, workBlocker, worktreeTenancy };
+/** `changes` is plain uncommitted or untracked work; `other` is a failed read or an ignored file kept. */
+interface UnsavedWork {
+    kind: "changes" | "other";
+    detail: string;
+}
+/** `-uall` so `status.showUntrackedFiles=no` cannot hide an untracked file the removal would take. */
+declare function unsavedWork(worktree: string, action: string): Promise<UnsavedWork | undefined>;
+/** The same policy for the package's park, which observes status and ignored files itself and asks only what to keep. */
+declare const dispatchIgnoredFiles: ParkIgnoredFilesPolicy;
+
+/** CC-1040: Shepherd's reviewer cap, so a full reviewer round never waits on implementer slots. */
+declare const DEFAULT_REVIEWER_WORKTREE_BUDGET = 8;
+type WorktreePool = "implementer" | "reviewer";
+/**
+ * CC-1469: a refused coordinator needs to know whether its own trees or another seat's fill the
+ * pool. Each tree is charged to its agent's direct spawner, largest holder first.
+ */
+declare function heldBy(trees: readonly string[], holders: ReadonlyMap<string, string>): string;
+/** Newest identity first, so a reused name charges its tree to the latest spawner. */
+declare function treeHoldersOf(agents: readonly {
+    name: string;
+    spawnedBy: string;
+}[]): ReadonlyMap<string, string>;
+declare class WorktreeBudgetExhaustedError extends Error {
+    readonly allocated: number;
+    readonly budget: number;
+    readonly pool: WorktreePool;
+    constructor(allocated: number, budget: number, pool?: WorktreePool, holdings?: string);
+}
+/** Budget readers, called on every spawn so a host's config edit applies to the next one. */
+interface PoolBudgets {
+    budget?: () => number;
+    reviewerBudget?: () => number;
+}
+interface PoolUse {
+    pool: WorktreePool;
+    allocated: number;
+    budget: number;
+    /** Directory names of the pool's trees. */
+    trees: string[];
+}
+
+interface WorktreeStrategyOptions extends PoolBudgets {
+    /** Relative to the git root. */
+    basePath?: string;
+    /** Bound on fetching origin's default branch before cutting a new one. */
+    fetchTimeoutMs?: number;
+    /** Bound on each `gh pr view` a release makes; a `gh` that outlives it supplies no landing proof. */
+    ghTimeoutMs?: number;
+    /** Bound on one `git worktree add`; the add is killed and the repo's queue moves on when it passes. */
+    addTimeoutMs?: number;
+    /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
+    runWorktreeAdd?: WorktreeAddRunner;
+    /** Runs the repository's declared setup step; tests inject one so no real install runs. */
+    runSetup?: SetupRunner;
+    /** CC-1469: read only when a pool refuses, to say who holds its trees. */
+    treeHolders?: TreeHolders;
+}
+declare function reattachWorktree(record: WorktreeRecord, opts?: WorktreeStrategyOptions, requireBranch?: boolean): Promise<Allocation>;
+declare function recreateWorktree(record: WorktreeRecord, opts?: WorktreeStrategyOptions): Promise<Allocation>;
+/**
+ * Is it safe to destroy this worktree and its branch? Commits are judged by the package; the
+ * tree's files by dispatch's own ignored-file policy, the one park uses, since the package's
+ * list misses build outputs such as `*.tsbuildinfo` and would hold every built tree.
+ */
+declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof, ghTimeoutMs?: number): Promise<WorktreeReleaseSafety>;
+declare function createWorktreeStrategy(opts?: WorktreeStrategyOptions): IsolationStrategy;
+
+export { type Allocation, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type FinishedHolds, type FinishedRetireOutcome, type FinishedRetirePort, type GhOutcome, type HeldBranch, type HeldTree, type ImplementerParkPort, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, MERGED_RETIRE_EVERY_MS, type MergedRetirePort, type MergedRetireResult, NOT_FINISHED, NO_VERDICT, type OwnershipConflict, type OwnershipRule, PR_READS_PER_PASS, PR_REREAD_MS, type ParkAtExitResult, type ParkTarget, type PoolBudgets, type PoolUse, type PrHead, type PrRead, type PrState, type PrStateDeps, type PrStateReader, type PrTarget, REVIEWER_TREE_CHANGED, type RawGitRunner, type ReleaseOptions, type ReportRetirePort, type ReportRetireResult, type RetirePlanEntry, type RetireResult, type RetireScope, type ReviewerParkPort, SCOPE_REQUIRED, STALE_AFTER_MS, STALE_RETIRE_CAP, type TenancyVerdict, type TreeFingerprint, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeStrategyOptions, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, connectedBlocker, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, heldBranches, heldBy, inScope, inspectForRelease, isAtOrUnder, isFinishedReport, isReviewerSpawn, isReviewerTreeName, isVerdictText, isWarning, isWorkerProfile, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkImplementerAtExit, parkReviewerAtReport, parkTenancyBlocker, parkable, parsePrState, passPrReads, prStateReader, prTarget, reattachWorktree, recordRefusal, recreateWorktree, refusalOf, refusalsIn, reportPr, retireAtReport, retireFinished, retireMerged, reviewedAgentName, reviewerDirtyText, runRawGit, startMergedRetireSweep, tenantsOf, toolsetStrategy, treeChange, treeFingerprint, treeHoldersOf, unsavedWork, warn, workBlocker, worktreeTenancy };
 
 // ./dist/ports.d.ts
 /**

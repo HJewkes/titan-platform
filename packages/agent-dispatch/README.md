@@ -162,6 +162,14 @@ or a park from removing a tree another agent works in.
   park rules over journal rows.
 - `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
   `isReviewerTreeName` classify reviewers by name.
+- `createWorktreeStrategy({ budget, reviewerBudget, treeHolders })` is the worktree strategy
+  over `@titan-design/worktree`. Budgets are readers, called on every spawn; implementer and
+  reviewer trees draw on separate pools (`DEFAULT_REVIEWER_WORKTREE_BUDGET` is 8), and a
+  refusal says who holds them. `reattachWorktree` and `recreateWorktree` bring a removed tree back.
+- `unsavedWork(tree, action)` and `dispatchIgnoredFiles` are the one ignored-file policy for
+  release and park. `inspectForRelease` applies it over the package's commit checks, and it
+  lets go of everything the package does, plus a few more build outputs, an index-only
+  `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
 - `workBlocker(target, git?)` reports uncommitted or unpushed work in a tree, or in its
   branch when the tree is gone. `heldBranches` lists every branch whose open PR holds an
   agent, and `reviewedAgentName` maps a reviewer's name to the agent it reviews.
