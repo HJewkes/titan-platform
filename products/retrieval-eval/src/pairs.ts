@@ -7,6 +7,8 @@
  * invisible here. Every number downstream inherits that bias; see REPORT.md.
  */
 
+import { z } from "zod";
+
 export type Arm = "spawn" | "bootstrap";
 
 /**
@@ -74,11 +76,60 @@ export function scopePair(pair: EvalPair, scope: LabelScope): EvalPair | undefin
   return labels.length === 0 ? undefined : { ...pair, labels };
 }
 
+const LabelSchema: z.ZodType<Label> = z.looseObject({
+  absolute: z.string(),
+  relative: z.string().optional(),
+  ref: z.string().optional(),
+});
+
+const ProvenanceSchema: z.ZodType<Provenance> = z.looseObject({
+  queryTranscript: z.string().optional(),
+  labelTranscript: z.string().optional(),
+  sessionFile: z.string().optional(),
+  linkedBy: z.enum(["brief-text", "brief-text+timestamp", "session-id", "harness-id"]).optional(),
+  timestamp: z.string().optional(),
+  initiative: z.string().optional(),
+});
+
+/** Loose, so a pair file written by a newer miner keeps its extra keys through a parse. */
+const EvalPairSchema: z.ZodType<EvalPair> = z.looseObject({
+  arm: z.enum(["spawn", "bootstrap"]),
+  id: z.string(),
+  query: z.string(),
+  labels: z.array(LabelSchema),
+  provenance: ProvenanceSchema,
+});
+
+function parsePairLine(line: string): EvalPair | undefined {
+  try {
+    const parsed = EvalPairSchema.safeParse(JSON.parse(line));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A pair file on disk may be damaged, so a bad line is skipped rather than
+ * thrown on. Skipping shrinks the denominator of every score that follows,
+ * which is why the log names how many lines went and which ones. A file with
+ * no valid line at all is refused, because an eval over zero pairs would pass
+ * vacuously.
+ */
 export function parsePairs(jsonl: string): EvalPair[] {
-  return jsonl
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as EvalPair);
+  const pairs: EvalPair[] = [];
+  const badLines: number[] = [];
+  for (const [index, line] of jsonl.split("\n").entries()) {
+    if (line.trim().length === 0) continue;
+    const pair = parsePairLine(line);
+    if (pair) pairs.push(pair);
+    else badLines.push(index + 1);
+  }
+  if (badLines.length === 0) return pairs;
+  const skipped = `skipped ${badLines.length} of ${pairs.length + badLines.length} pair lines (bad lines: ${badLines.join(", ")})`;
+  if (pairs.length === 0) throw new Error(`parsePairs: no valid pairs: ${skipped}`);
+  console.error(`parsePairs: ${skipped}`);
+  return pairs;
 }
 
 export function formatPairs(pairs: EvalPair[]): string {
