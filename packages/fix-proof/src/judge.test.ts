@@ -2,9 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnExec, type Exec } from "./exec.js";
-import { judge, type JudgeReports } from "./judge.js";
+import { classifyDecoded, judge, type JudgeReports } from "./judge.js";
 import { GIT_SAFETY } from "./context.js";
 import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
+import type { FixProofPlan } from "./plan.js";
 import { provedByMutants } from "./result-line.js";
 import { encodeError, encodeMutantsReport, encodeReport } from "./transport.js";
 
@@ -52,6 +53,32 @@ async function verdictFor(reports: JudgeReports, exec?: Exec) {
   const { repo, head } = fixPr();
   return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports, ...(exec ? { exec } : {}) }));
 }
+
+describe("classifyDecoded", () => {
+  it("classifyDecoded keeps every test past the 4 KB line cap", () => {
+    const names = Array.from({ length: 200 }, (_, index) => `adds number ${index} with a long descriptive name to pad the report`);
+    const run = (status: "passed" | "failed") =>
+      encodeReport({
+        testResults: [
+          {
+            name: "src/math.test.ts",
+            status,
+            assertionResults: names.map((fullName) => ({ fullName, status, failureMessages: status === "failed" ? ["expected 3, got -1"] : [] })),
+          },
+        ],
+      });
+
+    const classification = classifyDecoded(
+      { tests: ["src/math.test.ts"] } as FixProofPlan,
+      { base: run("failed"), baseRerun: run("failed"), head: run("passed") },
+    );
+
+    expect(classification.verdict).toBe("reproduced");
+    expect(classification.tests).toHaveLength(200);
+    expect(classification.tests.every((test) => test.class === "reproduces")).toBe(true);
+    expect(JSON.stringify(classification).length).toBeGreaterThan(4096);
+  });
+});
 
 describe("judge", () => {
   it("judge runs no command but git", async () => {
