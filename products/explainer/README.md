@@ -687,6 +687,17 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
+`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>]`
+scores a script at $0 against `doctrine/writing-check.json`, reading each row's status at the script's own length
+bucket. `--format text` takes one beat per line. Rows print by dimension with value, band, human standing, status,
+verdict and up to 3 offending spans. The table holds flag rates, not quantiles, so a capped row's standing is the side
+of its band edge (`>p91` means above the edge, which 91 % of held-out human windows sit at or under), and a two-sided
+row prints the share of human windows its band flags. The human reference is speech transcripts, not written scripts,
+and the header says so. Under 150 words every row is reported only. Exit 0, 1 when a gate row fails, 2 on bad usage.
+Warning and report-only rows never change the exit code, and dropped rows print no value. It writes nothing unless
+`--bench` is given; then it freezes the script and appends one `writing:<row>` structure row per metric and a
+`writing-check` run record, with the table's sha in the `rules_sha` column.
+
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
 §8 chapter order and §9 list shapes. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger.

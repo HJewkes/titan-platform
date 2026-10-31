@@ -20,7 +20,7 @@ export const WRITING_BUCKETS = [
   { name: "full", lo: 150, hi: Infinity, mid: Infinity },
 ] as const;
 type Bucket = (typeof WRITING_BUCKETS)[number];
-type BucketName = Bucket["name"];
+export type BucketName = Bucket["name"];
 const PRIMARY_BUCKET: BucketName = "300-599";
 
 type AiGroup = "ours-new" | "ai-other" | "ours" | "ours-new-native";
