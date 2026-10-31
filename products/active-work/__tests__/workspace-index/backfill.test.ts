@@ -133,11 +133,13 @@ describe('workspace span backfill', () => {
     addNotes();
     await legacyGraph();
     const before = await search();
+    const legacyRows = spanRows('search_span');
 
     await interruptedBackfill();
 
     expect(hasLegacyWorkspaceSpans(graph)).toBe(true);
     expect(count('workspace_span')).toBeGreaterThan(0);
+    expect(spanRows('search_span')).toEqual(legacyRows);
     expect(await search()).toBe(before);
   });
 
@@ -152,6 +154,7 @@ describe('workspace span backfill', () => {
     expect(remaining).toBeGreaterThan(0);
     expect(summary.indexed).toBe(remaining);
     expect(summary.unchanged).toBe(summary.files - remaining);
+    expect(summary.unchanged).toBeGreaterThan(0);
     expect(hasLegacyWorkspaceSpans(graph)).toBe(false);
     expect(await search()).toContain('source:beta/design.md');
   });
