@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "notes-fts never reads the workspace table",
+      "file": "products/retrieval-eval/src/candidates/notes-fts.ts",
+      "find": "flipped ? { name: \"workspace\", contentlessDelete: true } : { name: \"search\" }",
+      "replace": "{ name: \"search\" }",
+      "kills": [
+        "notesFts across the workspace span cutover finds a note in the workspace table once the graph has flipped"
+      ]
+    },
+    {
+      "name": "notes-fts ignores unfinished backfill",
+      "file": "products/retrieval-eval/src/candidates/notes-fts.ts",
+      "find": "    !hasRows(db, \"SELECT 1 FROM search_span WHERE source_id >= ? LIMIT 1\", WORKSPACE_SOURCE_BASE);",
+      "replace": "    true;",
+      "kills": [
+        "notesFts across the workspace span cutover stays on the shared table while a backfill has copied only some notes"
+      ]
+    },
+    {
+      "name": "notes-fts skips the table-exists probe",
+      "file": "products/retrieval-eval/src/candidates/notes-fts.ts",
+      "find": "    hasTable(db, \"workspace_span\") &&\n    hasTable(db, \"workspace_fts\") &&\n    hasRows(db, \"SELECT 1 FROM workspace_span LIMIT 1\") &&",
+      "replace": "    hasRows(db, \"SELECT 1 FROM workspace_span LIMIT 1\") &&",
+      "kills": [
+        "notesFts across the workspace span cutover finds a note in the shared table on a graph that has no workspace table"
+      ]
+    }
+  ]
+}
