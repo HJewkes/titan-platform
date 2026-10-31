@@ -116,7 +116,7 @@ function corpusSpans(graph: WorkspaceGraph): number {
   return counts.spans;
 }
 
-export interface TermStatistics {
+interface TermStatistics {
   df: DocumentFrequency;
   /** The most spans a query term may match on this graph. */
   maxDf: number;

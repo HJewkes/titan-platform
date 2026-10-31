@@ -50,20 +50,20 @@ function candidates(text: string): { terms: string[]; ids: string[] } {
  * corpus took them to 1.5 s (TP-1960). Those common words carry almost no bm25
  * weight anyway, which is why dropping them leaves the ranking nearly intact.
  */
-export const DF_CAP_FRACTION = 0.01;
+const DF_CAP_FRACTION = 0.01;
 
 /** Below this many spans per term nothing is slow, so a small graph keeps every term. */
 export const DF_CAP_FLOOR = 2000;
 
 /** Fewer terms than this and a query is too narrow to rank; the rarest are kept over the cap. */
-export const MIN_TERMS = 3;
+const MIN_TERMS = 3;
 
 /** The most spans a query term may match, for a corpus of `spans` spans. */
 export function documentFrequencyCap(spans: number): number {
   return Math.max(DF_CAP_FLOOR, Math.floor(spans * DF_CAP_FRACTION));
 }
 
-export interface TermSelection {
+interface TermSelection {
   /** Most terms to keep. */
   limit?: number;
   /** Drop terms matching more spans than this, unless fewer than `MIN_TERMS` would remain. */
