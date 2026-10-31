@@ -1,4 +1,4 @@
-import { measurementAuditSchema, type MeasurementAudit } from "@titan-design/health/metrics";
+import { measurementAuditSchema } from "@titan-design/health/metrics";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { AUDIT_INPUT, BROKEN_QUERY, HAND_AUDIT_COUNTS, fakeAuditPorts, type FakeAuditPorts } from "../test-support/audit.js";
@@ -24,7 +24,7 @@ async function audit(ports: FakeAuditPorts, decision = "publish", input: AuditIn
   await gateOpened(host, gateId(runId, "audit-review"));
   host.runtime.signal(runId, "audit-review", { decision }, OWNER);
   const run = await host.runtime.wait(runId);
-  return { run, report: ports.written.size > 0 ? (JSON.parse([...ports.written.values()][0]!) as MeasurementAudit) : undefined };
+  return { run, report: ports.written.size > 0 ? measurementAuditSchema.parse(JSON.parse([...ports.written.values()][0]!)) : undefined };
 }
 
 const within10 = (actual: number, expected: number) => Math.abs(actual - expected) <= 0.1 * expected;
