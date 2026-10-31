@@ -1,5 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubPort } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -63,6 +63,14 @@ async function runToMerge(w: World): Promise<string> {
 }
 
 const stepIds = (w: World, runId: string): string[] => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+const ENDED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
+
+/** Returns once the run has ended or opened its main-frozen gate, so a gate that should not open fails fast instead of hanging. */
+async function endedOrAsked(w: World, runId: string): Promise<void> {
+  const asked = () => w.host.gates.get(gateId(runId, "main-frozen")) !== undefined;
+  await vi.waitFor(() => expect(asked() || ENDED.has(w.host.runtime.status(runId)!.status)).toBe(true));
+}
+
 const pendingFrozenGates = (w: World) => w.host.pendingGates().filter(({ gate }) => gate.id.endsWith("/main-frozen"));
 
 describe("a merged run whose repo another run froze and something else thawed", () => {
@@ -70,7 +78,7 @@ describe("a merged run whose repo another run froze and something else thawed", 
     const w = frozenElsewhereWorld({ thawDuringUnfreeze: true });
     const runId = await runToMerge(w);
 
-    await w.host.runtime.wait(runId);
+    await endedOrAsked(w, runId);
 
     expect(w.host.gates.get(gateId(runId, "main-frozen"))).toBeUndefined();
     expect(pendingFrozenGates(w)).toEqual([]);
