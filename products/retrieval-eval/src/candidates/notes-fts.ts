@@ -1,4 +1,4 @@
-import { SpanFtsTables, openDatabase, type Db } from "@titan-design/store-sqlite";
+import { SpanFtsTables, hasTable, openDatabase, type Db } from "@titan-design/store-sqlite";
 import type { ScoredHit } from "../metrics.js";
 import { terms } from "../query/variants.js";
 import { noteAliases, type Candidate } from "./candidate.js";
@@ -30,15 +30,42 @@ export function openReadOnly(graphPath: string): Db {
   return openDatabase(graphPath, { readonly: true });
 }
 
+/**
+ * Workspace spans sit at or above this `source_id` in `search_span` before the
+ * TP-4680 cutover. Mirrors active-work's constant; no product depends on
+ * another's source, so the value is repeated and this test pins the behaviour.
+ */
+const WORKSPACE_SOURCE_BASE = 1_000_000_000;
+
+function hasRows(db: Db, sql: string, ...params: unknown[]): boolean {
+  return db.prepare(sql).get(...params) !== undefined;
+}
+
+/**
+ * Where the notes live right now.
+ *
+ * After the cutover they are in `workspace_span` and `search_span` holds only
+ * transcripts, so reading `search` alone returns nothing, silently. While legacy
+ * workspace spans remain in `search_span` the backfill is unfinished and the new
+ * table is partial, so the shared table is still the complete one.
+ */
+function noteSpans(db: Db): SpanFtsTables {
+  const flipped =
+    hasTable(db, "workspace_span") &&
+    hasTable(db, "workspace_fts") &&
+    hasRows(db, "SELECT 1 FROM workspace_span LIMIT 1") &&
+    !hasRows(db, "SELECT 1 FROM search_span WHERE source_id >= ? LIMIT 1", WORKSPACE_SOURCE_BASE);
+  return new SpanFtsTables(db, flipped ? { name: "workspace", contentlessDelete: true } : { name: "search" });
+}
+
 export function notesFts(options: NotesFtsOptions): Candidate {
   const db = openReadOnly(options.graphPath);
-  const spans = new SpanFtsTables(db, { name: "search" });
   return {
     name: "notes-fts",
     async search(query, limit) {
       const expression = matchExpression(query);
       if (expression.length === 0) return [];
-      return rankOwners(spans, expression, limit, options.activeRoot);
+      return rankOwners(noteSpans(db), expression, limit, options.activeRoot);
     },
     close() {
       db.close();
