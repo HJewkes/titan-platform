@@ -18,6 +18,15 @@
       "kills": [
         "sh-review a review spawn the gate deferred when serve restarts (TP-4474) is not waited on by the drain, and the repeated step after the restart admits and spawns its reviewer once"
       ]
+    },
+    {
+      "name": "the dispatched result carries a fixed agent id",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
+      "replace": "agentId: \"agent-x\", sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
+      "kills": [
+        "spawns one reviewer under one name and takes its verdict when the host dies after both outputs are stored"
+      ]
     }
   ]
 }
