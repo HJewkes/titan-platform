@@ -33,7 +33,9 @@ const CARDS = [
   { coordinator: "kiln-session-7", seat: null, agentsRun: 2, liveNow: 0, costUsd: null, prsMerged: [], tasks: [{ id: "OR-18" }] },
 ];
 
-const SHIPPED_PRS = [pr("orbit/relay", 12, "OR-12"), pr("orbit/relay", 14, "OR-15"), pr("orbit/docs", 31, "OR-20")];
+const BACKOFF_PR = pr("orbit/relay", 12, "OR-12");
+const CEILING_PR = pr("orbit/relay", 14, "OR-15");
+const DOCS_PR = pr("orbit/docs", 31, "OR-20");
 
 const DIGEST = {
   v: 1 as const, date: DATE, builtAt: "2031-03-06T07:10:00.000Z", prSetHash: "synthetic-hash",
@@ -41,9 +43,9 @@ const DIGEST = {
     {
       initiative: "orbit-relay",
       themes: [
-        { title: "Retries back off", summary: "The relay now retries a failed send with a capped exponential backoff, and the ceiling is documented.", prs: [SHIPPED_PRS[0], SHIPPED_PRS[1]] },
+        { title: "Retries back off", summary: "The relay now retries a failed send with a capped exponential backoff, and the ceiling is documented.", prs: [BACKOFF_PR, CEILING_PR] },
       ],
-      unsummarized: [SHIPPED_PRS[2]],
+      unsummarized: [DOCS_PR],
     },
   ],
 };
@@ -51,5 +53,5 @@ const DIGEST = {
 export const COORDINATOR_ANSWERS: readonly TwinCall[] = [
   answer("coord.pools", {}, { date: DATE, from: FROM, to: TO, accounts: ACCOUNTS, gaps: [] }),
   answer("coord.cards", {}, { date: DATE, cards: CARDS, unattributed: [pr("orbit/docs", 31, "OR-20")], gaps: [] }),
-  answer("coord.shipped", {}, { date: DATE, built: true, stale: false, digest: DIGEST, merged: SHIPPED_PRS }),
+  answer("coord.shipped", {}, { date: DATE, built: true, stale: false, digest: DIGEST, merged: [BACKOFF_PR, CEILING_PR, DOCS_PR] }),
 ];
