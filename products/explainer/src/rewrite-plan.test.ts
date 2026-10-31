@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runL0 } from "./eval-l0.js";
 import { REGISTER_BANDS, registerCheck, spokenText } from "./lint-register.js";
-import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
+import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import { MAX_REWRITE_ROUNDS, planRegisterEdits, type BeatDirective } from "./rewrite-plan.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
@@ -48,14 +48,49 @@ describe("planRegisterEdits: sentence shape", () => {
   });
 
   it("plans a shape that lands the script inside both sentence bands, under the vetted cap", () => {
-    const { directives, projected } = plan(choppy);
-    const after = shapeAfter(choppy, directives);
+    // Beats wordy enough for three sentences or more: a two-sentence beat under the 24-word plan cannot reach the CV floor.
+    const spread = script(Array.from({ length: 24 }, (_, i) => Array.from({ length: 6 + (i % 7) }, (_, j) => CHOPPY[(i + j) % CHOPPY.length]).join(" ")));
+
+    const { directives, projected } = plan(spread);
+    const after = shapeAfter(spread, directives);
 
     expect(after.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
     expect(after.cv).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-cv"].min!);
     expect(after.cv).toBeLessThanOrEqual(REGISTER_BANDS["sentence-cv"].max);
     expect(Math.max(...directives.flatMap((d) => d.shape ?? []))).toBeLessThanOrEqual(MAX_VETTED_SENTENCE_WORDS);
     expect(projected).toEqual(after);
+  });
+
+  describe("longest planned sentence", () => {
+    const longestPlanned = (s: ScriptV1, cap: number): number => {
+      const { directives } = planRegisterEdits(s, runL0(s, undefined, [registerCheck]), { cap });
+      return Math.max(...directives.flatMap((d) => d.shape ?? []));
+    };
+
+    it.each([6, 9, 12, 18, 24, 36])("stays at 24 words under the vetted cap on a %i-beat script", (beats) => {
+      const wordy = script(choppyLines(beats));
+
+      const longest = longestPlanned(wordy, MAX_VETTED_SENTENCE_WORDS);
+
+      expect(longest).toBeLessThanOrEqual(24);
+    });
+
+    it.each([9, 12, 24, 36])("plans every word of each beat of a %i-beat script under the vetted cap", (beats) => {
+      const wordy = script(choppyLines(beats));
+
+      const { directives } = planRegisterEdits(wordy, runL0(wordy, undefined, [registerCheck]), { cap: MAX_VETTED_SENTENCE_WORDS });
+
+      for (const directive of directives.filter((d) => d.shape)) {
+        const beat = wordy.beats.find((b) => b.id === directive.beat)!;
+        expect(directive.shape!.reduce((sum, n) => sum + n, 0)).toBe(spokenText([beat.spoken]).words.length);
+      }
+    });
+
+    it("keeps the headroom under the plain cap, as without --speech-vet", () => {
+      const longest = longestPlanned(script(choppyLines(24)), MAX_SENTENCE_WORDS);
+
+      expect(longest).toBeLessThanOrEqual(MAX_SENTENCE_WORDS - 4);
+    });
   });
 
   it("plans no shape for a script already inside both sentence bands", () => {
