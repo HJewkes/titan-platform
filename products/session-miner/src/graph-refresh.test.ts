@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runCli } from "./cli.js";
-import { checkGraph, EXIT_LOCKED, runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
+import { checkGraph, EXIT_LOCKED, runGraphRefresh, spawnRefresh, tryLock } from "./graph-refresh.js";
 
 const transcript = (sessionId: string) =>
   [
@@ -118,6 +118,13 @@ describe("graph-refresh", () => {
     expect(code).toBe(64);
     expect(err).toContain("--graph is empty");
     expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it("treats a truncated lock file as no holder and takes the lock over", () => {
+    mkdirSync(state, { recursive: true });
+    writeFileSync(lockPath, '{"pid": 12');
+
+    expect(tryLock(lockPath)).toBe("acquired");
   });
 
   it("reports a file that is not a database as corrupt", async () => {
