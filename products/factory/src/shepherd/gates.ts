@@ -7,6 +7,7 @@ import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
 import { waiveProof } from "./proof-waiver.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
+import { mainFixedSpent } from "./main-fixed.js";
 
 export interface PrTarget {
   repo: RepoSlug;
@@ -56,11 +57,13 @@ function resolvedAt(lastCi: CiRead | undefined, headSha: string): boolean {
 /**
  * Waits, with no gate, for the PR to show any other head; undefined lands the next round. After a red, `untilGreen`
  * also ends the wait once that head's required checks all pass on a rerun or a late run, so the next round reviews it,
- * and `failing` ends it once the base turns out to own that red, so the next round's hold merges the head up.
+ * and `failing` ends it once the base turns out to own that red, so the next round's hold merges the head up; a run
+ * that has spent its main-fixed merge-ups carries that into the wait, whose hook then holds as the next round would.
  */
 export async function awaitNewHead(run: GateRun, headSha: string, untilGreen = false, failing: readonly { name: string }[] = []): Promise<undefined> {
   const names = failing.map((check) => check.name);
-  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha, ...(untilGreen && { untilGreen }), ...(names.length > 0 && { failing: names }) }, AwaitHeadResult);
+  const red = names.length > 0 && { failing: names, ...(mainFixedSpent(run) && { mainFixedSpent: true }) };
+  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha, ...(untilGreen && { untilGreen }), ...red }, AwaitHeadResult);
   return undefined;
 }
 

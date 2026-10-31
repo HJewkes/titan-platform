@@ -22,7 +22,8 @@ export function inheritedRedCheck(deps: ShepherdDeps, freezes: (() => FreezeStor
       const at = deps.now();
       if (last?.baseSha === baseSha && at - last.at < INHERITED_IDLE_MS) return false;
       last = { baseSha, at };
-      const hold = await decideHoldOrPass(deps, freezes, { repo: target.repo, pr: target.pr, headSha: target.headSha, failing: target.failing ?? [] });
+      const red = { headSha: target.headSha, failing: target.failing ?? [], ...(target.mainFixedSpent === true && { mainFixedSpent: true }) };
+      const hold = await decideHoldOrPass(deps, freezes, { repo: target.repo, pr: target.pr, ...red });
       return hold.hold;
     };
   };
