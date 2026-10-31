@@ -680,7 +680,7 @@ function renderInitClosing(slug: string, briefPath: string): string {
   return [
     `This is an init session. Start by asking the user what this initiative is and why it exists, then replace the placeholder body of ${briefPath} (below its frontmatter) with a \`Why\` section and what done looks like. Change frontmatter only through \`active-work set ${slug} <field> <value>\`, for example \`ship_target\` or \`owner\` if the user gives them.`,
     `Ask whether a worktree, repo or project directory already exists for this work. In practice it often will not, since this is usually run from a fresh terminal at the start of new work. If one does, register it with \`active-work worktree set ${slug} <path>\`, and record a branch worth tracking with \`active-work artifact add-branch ${slug} --repo <repo> --name <branch>\`.`,
-    `If the user has documents or notes that belong with the initiative, file them with \`active-work source add ${slug} <file>\`. File the first tasks with \`active-work task add ${slug} --title <title>\`.`,
+    `If the user has documents or notes that belong with the initiative, file them with \`active-work source add ${slug} <file>\`. File the first tasks with \`active-work task add ${slug} --title <title> --done-when <what done looks like, 40+ chars>\`.`,
     `Close out with \`active-work wrap ${slug}\`; the default \`canonical\` track is correct for a first session.`,
   ].join(' ');
 }
