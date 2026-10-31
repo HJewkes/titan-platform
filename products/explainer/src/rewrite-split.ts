@@ -1,4 +1,5 @@
 import { sentencesOf, wordsOf } from "./lint-text.js";
+import { overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 
 /** Whether the beat guard refuses a new sentence for its length. */
 type Overlong = (sentence: string) => boolean;
@@ -54,7 +55,8 @@ const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").t
  * model overshoots the planned length, mostly once numbers are spelled out, and a split keeps every word it chose
  * where a refusal throws the whole beat away. A sentence the original already said is left alone, as the guard does.
  */
-export function splitOverlong(before: string, spoken: string, overlong: Overlong): string {
+export function splitOverlong(before: string, spoken: string, speechClean: SpeechVerdict | undefined): string {
+  const overlong: Overlong = (sentence) => overlongSentence(sentence, speechClean);
   const inherited = new Set(sentencesOf(before).map(norm));
   return sentencesOf(spoken).reduce(
     (line, sentence) => (inherited.has(norm(sentence)) ? line : line.replace(sentence, () => splitSentence(sentence, overlong))),

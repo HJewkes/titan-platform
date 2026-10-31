@@ -3,9 +3,9 @@
   "mutations": [
     {
       "name": "the rewrite hands the guard the overlong reply unsplit",
-      "file": "products/explainer/src/rewrite-pass.ts",
-      "find": "const spoken = splitOverlong(beat.spoken, declared, (sentence) => overlongSentence(sentence, deps.speechClean));",
-      "replace": "const spoken = declared;",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "export { splitOverlong } from \"./rewrite-split.js\";",
+      "replace": "export const splitOverlong = (_before: string, spoken: string, _clean?: unknown): string => spoken;",
       "kills": [
         "rewriteScript on the workflow path, with no speech verdict keeps a beat whose rewrite overshoots the cap, split at a clause joint, instead of refusing it"
       ]
