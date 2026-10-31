@@ -20,12 +20,20 @@
       ]
     },
     {
-      "name": "the dispatched result carries a fixed agent id",
+      "name": "the dispatch never adopts a reviewer a lost run already started",
       "file": "products/factory/src/shepherd/review.ts",
-      "find": "agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
-      "replace": "agentId: \"agent-x\", sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode",
+      "find": "const asked = roster.some(",
+      "replace": "const asked = false && roster.some(",
       "kills": [
-        "reviewPhase spawns one reviewer under one name and takes its verdict when the host dies after both outputs are stored"
+        "sh-review adopts the reviewer a lost run of the step spawned, and spawns no second one (attempt 0)",
+        "sh-review adopts the reviewer a lost run of the step spawned, and spawns no second one (attempt 1)",
+        "sh-review keeps the intent's time when the step repeats after the reviewer spoke, so those first words still count",
+        "sh-review answers none at once and spawns nobody when two agents already hold the intent's name",
+        "sh-review does not resume the standing reviewer a second time when the step repeats, and adopts it by its agent id",
+        "sh-review on a repeat, resumes the exited standing reviewer whose session wrote after the intent and has exited again only when it has not resumed since",
+        "sh-review on a repeat, resumes the exited standing reviewer whose session wrote at the very moment of the intent and has exited again only when it has not resumed since",
+        "reviewPhase spawns one reviewer under one name and takes its verdict when the host dies after the spawn and before its step output is stored",
+        "reviewPhase resumes the standing reviewer once and takes its verdict when the host dies after the resume and before its step output is stored"
       ]
     }
   ]

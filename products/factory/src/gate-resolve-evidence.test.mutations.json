@@ -43,6 +43,7 @@
       "find": "run.rule === \"authority/MRG-AU\" && ",
       "replace": "",
       "kills": [
+        "coordinator resolve of an approve-merge gate on fresh evidence falls back on a visual-path gate",
         "coordinator resolve of an approve-merge gate on fresh evidence falls back on an authority gate under a rule other than MRG-AU"
       ]
     }
