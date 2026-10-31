@@ -84,3 +84,4 @@ export { FAILURE_FIXTURES, SEED_CASES } from "./review-workflow/cases.js";
 export { replayCase, replaySuite, type ReplayResult, type ReplayVariant, type ReplayWorld } from "./review-workflow/replay.js";
 export type { ReplayExpected, ReplayInput } from "./review-workflow/scenario.js";
 export { scoreReplay, type ReplayScore } from "./review-workflow/score.js";
+export { compare, reviewScorecard, type AcceptTrack, type Comparison, type ReviewScorecard, type ScorecardCase } from "./review-workflow/scorecard.js";
