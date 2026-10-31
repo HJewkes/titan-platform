@@ -245,9 +245,7 @@ export function writeWanted(stateDir: string, store: WantedStore, wanted: Deploy
   store.rename(tmp, path);
 }
 
-function clearWanted(stateDir: string, store: WantedStore): void {
-  store.remove(wantedPath(stateDir));
-}
+const clearWanted = (stateDir: string, store: WantedStore): void => store.remove(wantedPath(stateDir));
 
 interface PacerDeps {
   stateDir: string;
@@ -332,9 +330,8 @@ export interface DeployPacerOptions {
   /** Reads main CI before each tick; required, so a pacer wired with no reader never deploys an unchecked sha. */
   green: GreenProbe;
   store?: WantedStore;
-  /** How long a wanted deploy may be held while steady merges keep re-arming the quiet window; defaults to `DEPLOY_MAX_WAIT_MS`. */
+  /** The longest steady merges may hold a wanted deploy; defaults to `DEPLOY_MAX_WAIT_MS`. */
   maxWaitMs?: number;
-  /** How often the sweep runs; defaults to `PACER_SWEEP_MS`. */
   sweepMs?: number;
   /** The seat queue files whose Morning `DEPLOY HOLD:` items set and clear the manual hold each tick; absent leaves the hold to `service pause`. */
   morningQueuesDir?: string;
