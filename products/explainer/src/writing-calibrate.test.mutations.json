@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the quantile position is off by one",
+      "file": "products/explainer/src/writing-calibrate.ts",
+      "find": "const position = (sorted.length - 1) * q;",
+      "replace": "const position = sorted.length * q;",
+      "kills": [
+        "held-out human quantiles interpolates five hand-counted windows at positions 4q, never reading the train text"
+      ]
+    },
+    {
+      "name": "the human curve also reads train windows",
+      "file": "products/explainer/src/writing-calibrate.ts",
+      "find": "w.bucket === bucket && isHeldOutHuman(w.doc)), metric);\n  const sorted",
+      "replace": "w.bucket === bucket && isHuman(w.doc)), metric);\n  const sorted",
+      "kills": [
+        "held-out human quantiles interpolates five hand-counted windows at positions 4q, never reading the train text"
+      ]
+    }
+  ]
+}
