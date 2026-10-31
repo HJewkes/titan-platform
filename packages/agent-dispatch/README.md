@@ -139,6 +139,29 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
+- `limitsReport(plan, ledger, clock)` projects a planner's dry-run result (a structural
+  `LimitsPlanInput`), the claim ledger and a Shepherd read onto the v1 `/limits` report;
+  `limitsReportSchema` validates it. It reads no config, so its counts match the tick's.
+
+## Isolation (`./isolation`)
+
+The isolation strategies a spawn picks from its profile, and the rules that keep a retire
+or a park from removing a tree another agent works in.
+
+- `createIsolationRegistry({ worktree })` gives `getStrategy(name)` and `resolve(names)`.
+  The host builds the worktree strategy, since it reads host budgets; `resolve` layers
+  several names through `composite`, which narrows tools, keeps the last moved cwd and
+  force-releases earlier members when a later allocation throws.
+- `noneStrategy`, `toolsetStrategy` and `fileOwnershipStrategy` are pure. A `check` line
+  carrying `WARNING_PREFIX` is advisory; `refusalsIn` keeps the refusals. `refusalOf(alloc)`
+  says why a `release` returned false.
+- `worktreeTenancy(holder, roster, force)`, `adopterBlocker` and `parkTenancyBlocker` are the
+  CC-141 rule for retire, bulk retire and park: any other identity that is not retired and
+  works at or under the tree blocks. `--force` turns the retire refusal into a warning.
+- `allocatedWorktree(rows, agentId)`, `parkBlocker`, `parkable` and `liveBlocker` are the
+  park rules over journal rows.
+- `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
+  `isReviewerTreeName` classify reviewers by name.
 
 ## Routing (`./routing`, `./routing/node`)
 

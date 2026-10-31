@@ -1,83 +1,6 @@
 import { J as JournalRow, c as AgentJournal } from '../ports.js';
-
-/** The identity shapes the roster folds into. Mirrors agent-chat's protocol so a product adapter needs no translation. */
-declare const AGENT_LIFECYCLES: readonly ["spawning", "live", "detached", "exited", "retired"];
-type AgentLifecycle = (typeof AGENT_LIFECYCLES)[number];
-declare const AGENT_ORIGINS: readonly ["spawned", "adopted"];
-type AgentOrigin = (typeof AGENT_ORIGINS)[number];
-declare const LAUNCHERS: readonly ["seat-watchdog", "shepherd"];
-type Launcher = (typeof LAUNCHERS)[number];
-declare const launcherOf: (value: unknown) => Launcher | undefined;
-/** The principal that stands for a person at the keyboard. */
-declare const HUMAN = "human";
-interface AgentExit {
-    code: number | null;
-    summary: string;
-    costUsd?: number;
-    failedToStart?: boolean;
-    inferred?: boolean;
-}
-/** A durable agent identity: who it is, never whether it is plugged in. */
-interface AgentIdentity {
-    agentId: string;
-    name: string;
-    profile: string;
-    state: AgentLifecycle;
-    origin: AgentOrigin;
-    spawnedBy: string;
-    launchedBy?: Launcher;
-    spawnedAt: number;
-    /** Read off the spawn row on demand; not enumerable, so a serialised roster leaves it out. */
-    brief: string;
-    cwd: string;
-    isolation: string;
-    surface: string;
-    sessionId: string;
-    configDir?: string;
-    configDirUnset?: boolean;
-    host?: string;
-    provisionalName?: true;
-    repo?: string;
-    branch?: string;
-    base?: {
-        sha: string;
-        ref: string;
-    };
-    task?: string;
-    workRole?: string;
-    workRoleInferred?: true;
-    lastEventAt: number;
-    exitedAt?: number;
-    detachedAt?: number;
-    generation: number;
-    teleportFrom?: string;
-    /** `null` when the spawn row records none; absent when the row cannot say. */
-    predecessor?: string | null;
-    exit?: AgentExit;
-}
-/** What an agent-list page asks the roster to cut. */
-interface RosterView {
-    spawner?: string;
-    prefix?: string;
-    includeFinished?: boolean;
-    includeRetired?: boolean;
-    limit?: number;
-}
-/** How many rows each cut dropped, so a reader knows the page is not the whole roster. */
-interface RosterHidden {
-    finished: number;
-    retired: number;
-    overLimit: number;
-}
-/** A message read back from the log, as a report to carry into a successor's brief. */
-interface QueueItem {
-    msgId: string;
-    kind: string;
-    from: string;
-    text: string;
-    at: number;
-    meta: Record<string, string>;
-}
+import { A as AgentIdentity, R as RosterView, a as RosterHidden, Q as QueueItem } from '../types.js';
+export { b as AGENT_LIFECYCLES, c as AGENT_ORIGINS, d as AgentExit, e as AgentLifecycle, f as AgentOrigin, H as HUMAN, L as LAUNCHERS, g as Launcher, l as launcherOf } from '../types.js';
 
 /**
  * Fold one agent's rows, oldest first, into its identity.
@@ -491,7 +414,7 @@ declare function spawnProvenance(allocation: ProvenanceAllocation, req: Assignme
  */
 declare function successorProvenance(predecessor: AgentIdentity | undefined): Record<string, string>;
 
-export { AGENT_LIFECYCLES, AGENT_ORIGINS, type AgentExit, type AgentIdentity, type AgentLifecycle, AgentLog, type AgentOrigin, type AssignmentRequest, BACKGROUNDED_BRIEF, EXIT_TAIL_BYTES, type ExitTail, type ExperimentArm, type GitRunner, HUMAN, LAUNCHERS, type Launcher, NO_TOOL_CALL, type PredecessorFacts, type PredecessorResult, type PredecessorSource, type PresenceInput, type ProvenanceAllocation, type QueueItem, RESUMED_BRIEF, ROSTER_STATUSES, type ReattachTree, type RosterEntry, type RosterFilter, type RosterHidden, type RosterStatus, type RosterView, SURFACED_NOTICE, type SurfacePlacement, type SwitchOutcome, type TranscriptVerdict, UNKNOWN_ACTION, UNREPORTED_EXIT, WORK_ROLES, WORK_ROLE_CHOICES, type WorkRole, actionPattern, assignmentMeta, assignmentRefusal, callerName, checkBackgroundable, checkSurfaceable, crossingBriefPaths, describeResume, exitTailOf, filterRoster, foldAgent, githubRepoOf, groupByAgent, identityBlocker, inferWorkRole, isExperimentArm, isWorkRole, launchedByBroker, launcherOf, missingAgent, newestByName, pairPresence, placementFor, predecessorFacts, predecessorSection, readExitTail, resolvePredecessor, resumeBlocker, spawnProvenance, stoppedAt, successorProvenance, unreportedExitText, verdictLine, viewRoster, worktreeProvenance };
+export { AgentIdentity, AgentLog, type AssignmentRequest, BACKGROUNDED_BRIEF, EXIT_TAIL_BYTES, type ExitTail, type ExperimentArm, type GitRunner, NO_TOOL_CALL, type PredecessorFacts, type PredecessorResult, type PredecessorSource, type PresenceInput, type ProvenanceAllocation, QueueItem, RESUMED_BRIEF, ROSTER_STATUSES, type ReattachTree, type RosterEntry, type RosterFilter, RosterHidden, type RosterStatus, RosterView, SURFACED_NOTICE, type SurfacePlacement, type SwitchOutcome, type TranscriptVerdict, UNKNOWN_ACTION, UNREPORTED_EXIT, WORK_ROLES, WORK_ROLE_CHOICES, type WorkRole, actionPattern, assignmentMeta, assignmentRefusal, callerName, checkBackgroundable, checkSurfaceable, crossingBriefPaths, describeResume, exitTailOf, filterRoster, foldAgent, githubRepoOf, groupByAgent, identityBlocker, inferWorkRole, isExperimentArm, isWorkRole, launchedByBroker, missingAgent, newestByName, pairPresence, placementFor, predecessorFacts, predecessorSection, readExitTail, resolvePredecessor, resumeBlocker, spawnProvenance, stoppedAt, successorProvenance, unreportedExitText, verdictLine, viewRoster, worktreeProvenance };
 
 // ./dist/ports.d.ts
 /**
@@ -558,3 +481,85 @@ interface DispatchHost {
 }
 
 export type { AdmissionRequest as A, DispatchHost as D, JournalRow as J, NamePresence as N, PresencePort as P, ReadmitOutcome as R, AdmissionLedger as a, AdmissionVerdict as b, AgentJournal as c, RetireHoldPort as d };
+
+// ./dist/types.d.ts
+/** The identity shapes the roster folds into. Mirrors agent-chat's protocol so a product adapter needs no translation. */
+declare const AGENT_LIFECYCLES: readonly ["spawning", "live", "detached", "exited", "retired"];
+type AgentLifecycle = (typeof AGENT_LIFECYCLES)[number];
+declare const AGENT_ORIGINS: readonly ["spawned", "adopted"];
+type AgentOrigin = (typeof AGENT_ORIGINS)[number];
+declare const LAUNCHERS: readonly ["seat-watchdog", "shepherd"];
+type Launcher = (typeof LAUNCHERS)[number];
+declare const launcherOf: (value: unknown) => Launcher | undefined;
+/** The principal that stands for a person at the keyboard. */
+declare const HUMAN = "human";
+interface AgentExit {
+    code: number | null;
+    summary: string;
+    costUsd?: number;
+    failedToStart?: boolean;
+    inferred?: boolean;
+}
+/** A durable agent identity: who it is, never whether it is plugged in. */
+interface AgentIdentity {
+    agentId: string;
+    name: string;
+    profile: string;
+    state: AgentLifecycle;
+    origin: AgentOrigin;
+    spawnedBy: string;
+    launchedBy?: Launcher;
+    spawnedAt: number;
+    /** Read off the spawn row on demand; not enumerable, so a serialised roster leaves it out. */
+    brief: string;
+    cwd: string;
+    isolation: string;
+    surface: string;
+    sessionId: string;
+    configDir?: string;
+    configDirUnset?: boolean;
+    host?: string;
+    provisionalName?: true;
+    repo?: string;
+    branch?: string;
+    base?: {
+        sha: string;
+        ref: string;
+    };
+    task?: string;
+    workRole?: string;
+    workRoleInferred?: true;
+    lastEventAt: number;
+    exitedAt?: number;
+    detachedAt?: number;
+    generation: number;
+    teleportFrom?: string;
+    /** `null` when the spawn row records none; absent when the row cannot say. */
+    predecessor?: string | null;
+    exit?: AgentExit;
+}
+/** What an agent-list page asks the roster to cut. */
+interface RosterView {
+    spawner?: string;
+    prefix?: string;
+    includeFinished?: boolean;
+    includeRetired?: boolean;
+    limit?: number;
+}
+/** How many rows each cut dropped, so a reader knows the page is not the whole roster. */
+interface RosterHidden {
+    finished: number;
+    retired: number;
+    overLimit: number;
+}
+/** A message read back from the log, as a report to carry into a successor's brief. */
+interface QueueItem {
+    msgId: string;
+    kind: string;
+    from: string;
+    text: string;
+    at: number;
+    meta: Record<string, string>;
+}
+
+export { type AgentIdentity as A, HUMAN as H, LAUNCHERS as L, type QueueItem as Q, type RosterView as R, type RosterHidden as a, AGENT_LIFECYCLES as b, AGENT_ORIGINS as c, type AgentExit as d, type AgentLifecycle as e, type AgentOrigin as f, type Launcher as g, launcherOf as l };

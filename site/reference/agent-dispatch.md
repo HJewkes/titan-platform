@@ -133,6 +133,33 @@ the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or m
   resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
   `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
 
+### The `/limits` report (v1)
+
+`limitsReport(plan, ledger, clock)` is a pure projection. A product adapter maps its
+planner's dry-run result, pool gate, broker capacity and Shepherd read onto a structural
+`LimitsPlanInput`; the report never reads config, so no count can drift from what the tick
+saw. `limitsReportSchema` (zod) validates the result:
+
+```ts
+{ v: 1, at, shepherd, seats: { [seat]: {
+  binding,        // { kind: "lever", refusal, lever, value, reading, headroom, ... } or { kind: "supply", ready, mix }
+  roles,          // per role: cap, used, live, spawning, hand, ledger, handReserve, ledgerOnly[]
+  pools,          // per pool: fiveHour / sevenDay { value, ageMinutes }, band, pace, reserve
+  refusals,       // per kind: { count, blockers[] } (top five PRs for file-overlap and open-pr)
+  planBlocked,    // { depBlocked, dead: { [class]: n } }
+  supply,         // ready, waiting, seeded, readyAgeMinutes { p50, p90 }, outOfScope
+  worktrees,      // repos { active, perRepoPerSeat }, ceiling, budget
+  contradictions, // items[] with dispositions; undisposed is null, never 0, until stamped
+} } }
+```
+
+- Refusal counts follow the tick row: each refused unit once, under its first refusal.
+- A unit "held in the burndown claim ledger" is bookkeeping: it counts under
+  `supply.seeded`, never as a `claimed` refusal.
+- `shepherd` is `{ runs, held, reviews: { inFlight, maxConcurrent } }`, `{ error }` when the
+  read failed, or null when the caller made none.
+- v1 only gains optional fields; a renamed or removed field is v2.
+
 ## Routing
 
 The `./routing` subpath holds the workflow table that picks an implementer profile from a
@@ -206,6 +233,41 @@ const decision = routeSpawn({
 
 `readSpawnFacts` never throws. An unknown id, or one that is not a plain file name, gives
 empty facts with source `none`, and the router keeps the requested profile.
+
+## Isolation
+
+The `./isolation` subpath holds the isolation strategies a spawn picks from its profile and
+the rules that keep a retire or a park from pulling a worktree out from under another agent.
+The host builds the worktree strategy, because it reads host budgets, and hands it in:
+
+```ts
+import {
+  createIsolationRegistry,
+  refusalsIn,
+  worktreeTenancy,
+} from "@titan-design/agent-dispatch/isolation";
+
+const registry = createIsolationRegistry({ worktree: hostWorktreeStrategy });
+const strategy = registry.resolve(["toolset-limited", "worktree"]);
+const reasons = await strategy.check(ctx);
+if (refusalsIn(reasons).length > 0) throw new Error(reasons.join("; "));
+const allocation = await strategy.allocate(ctx);
+
+const verdict = worktreeTenancy(
+  { agentId: "a1", name: "scout", isolation: "worktree", ref: allocation.ref },
+  notRetiredRoster,
+  false,
+);
+// { refusal: "scout allocated the worktree ..., and heir (not retired) is working in it. ..." }
+```
+
+- `none`, `toolset-limited` and `file-ownership` are pure. `check` lines carrying
+  `WARNING_PREFIX` are advisory; `refusalsIn` keeps the rest.
+- `worktreeTenancy`, `adopterBlocker` and `parkTenancyBlocker` are the one CC-141 rule for the
+  single retire, the bulk retire and the park. Paths are compared after `canonicalPath`, so a
+  symlinked cwd still counts.
+- `allocatedWorktree`, `parkBlocker`, `parkable` and `liveBlocker` are the park rules over
+  journal rows and roster identities.
 
 ## What it deliberately does not do
 

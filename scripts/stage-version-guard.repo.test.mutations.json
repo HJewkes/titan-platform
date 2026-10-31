@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "bumps are read from the base tip instead of the merge base",
+      "file": "scripts/stage-version-guard.mjs",
+      "find": "baseBumps: readBumps(mergeBase),",
+      "replace": "baseBumps: readBumps(baseRef),",
+      "kills": [
+        "passes a branch cut before a new bump landed on the base"
+      ]
+    },
+    {
+      "name": "a deleted bump is no longer reported",
+      "file": "scripts/stage-version-guard.mjs",
+      "find": "if (!(id in headBumps)) problems.push(",
+      "replace": "if (false) problems.push(",
+      "kills": [
+        "fails a PR that deletes a merged bump"
+      ]
+    }
+  ]
+}

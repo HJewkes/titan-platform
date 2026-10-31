@@ -3,6 +3,7 @@
  * groups them by initiative and task, so the applier touches each task once.
  * A bad line becomes a failure entry; it never stops the rest of the plan.
  */
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import { TaskSchema } from '../schemas/task.js';
 import { validateSlug } from '../utils/slug.js';
 
@@ -90,13 +91,13 @@ function checkTarget(slug: string, id: string): void {
 }
 
 function parseLine(text: string, index: number, unknownKeys: Set<string>): PlanEntry {
-  let record: Record<string, unknown>;
+  let record: unknown;
   try {
-    record = JSON.parse(text) as Record<string, unknown>;
+    record = JSON.parse(text);
   } catch (err) {
     return { index, slug: '', id: '', ops: [], error: `Invalid JSON: ${(err as Error).message}` };
   }
-  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+  if (!isRecord(record)) {
     return { index, slug: '', id: '', ops: [], error: 'Plan line must be a JSON object' };
   }
   const slug = stringField(record, 'slug');

@@ -12,7 +12,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as clackPrompts from '@clack/prompts';
-import { errorCode } from '@titan-design/rpc-protocol/narrow';
+import { errorCode, isObjectLike } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
 import { ensureSchemaVersion } from '../schemas/state.js';
 import { getActiveRoot, getStateRoot, getConfigRoot } from '../utils/paths.js';
@@ -482,9 +482,11 @@ const AGENT_CHAT_HOOK_COMMANDS: Record<'on_spawn' | 'on_complete', string> = {
   on_complete: 'active-work hooks agent-chat-complete',
 };
 
-interface AgentChatHooksConfig {
-  on_spawn?: string[];
-  on_complete?: string[];
+/** Throws on a value that is no list, so the step fails rather than rewriting another tool's file. */
+function registeredHooks(value: unknown): unknown[] {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  throw new TypeError(`Expected a list of hook commands, found ${typeof value}`);
 }
 
 /**
@@ -523,11 +525,11 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
   }
 
   try {
-    let config: AgentChatHooksConfig = {};
+    let config: Record<string, unknown> = {};
     try {
       const raw = await fs.readFile(hooksPath, 'utf8');
       const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null) config = parsed as AgentChatHooksConfig;
+      if (isObjectLike(parsed)) config = parsed;
     } catch (err) {
       if (errorCode(err) !== 'ENOENT') {
         return {
@@ -541,7 +543,7 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
     let changed = false;
     for (const event of ['on_spawn', 'on_complete'] as const) {
       const command = AGENT_CHAT_HOOK_COMMANDS[event];
-      const existing = config[event] ?? [];
+      const existing = registeredHooks(config[event]);
       if (!existing.includes(command)) {
         config[event] = [...existing, command];
         changed = true;
