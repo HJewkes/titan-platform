@@ -68,6 +68,20 @@ describe("screenVerdict", () => {
     expect(screenVerdict([classified([passing]), classified([loadError]), classified([passing])])).toBe("flaky");
   });
 
+  it("a file of declined tests in one run and a load error in another is flaky", () => {
+    const declined = fileReport("passed", [test_("x", "todo")]);
+
+    expect(screenVerdict([classified([declined]), classified([loadError]), classified([declined])])).toBe("flaky");
+  });
+
+  it("the same tests reported in another order are not flaky", () => {
+    const base = fileReport("failed", [test_("x", "failed", WRONG_ANSWER), test_("x2", "failed", WRONG_ANSWER)]);
+    const forward = fileReport("passed", [test_("x", "passed"), test_("x2", "passed")]);
+    const backward = fileReport("passed", [test_("x2", "passed"), test_("x", "passed")]);
+
+    expect(screenVerdict([classified([forward], [base]), classified([backward], [base]), classified([forward], [base])])).toBe("keep");
+  });
+
   it("a test head skips in only one run is flaky", () => {
     const skipped = fileReport("passed", [test_("x", "skipped")]);
 

@@ -24,7 +24,7 @@ export interface ScreenOptions {
 // With no files the run has no report to read: an error marker from execSide, or a report that did not decode.
 const hasNoReport = (run: Classification): boolean => run.verdict === "error" && run.files.length === 0;
 
-// Multisets, since vitest allows duplicate test names. A head file state counts too: a load error in one run must not read as that run's tests going missing.
+// Sorted multisets: vitest allows duplicate names and may shuffle. File states count, since a load error and a file of declined tests both list no tests.
 function shapeOf(run: Classification): string {
   const tests = run.tests.map((test) => JSON.stringify([test.file, test.name, test.class])).sort();
   const files = run.files.map((file) => JSON.stringify([file.file, file.head])).sort();
