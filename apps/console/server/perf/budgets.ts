@@ -63,6 +63,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("inbox.list", {}, { maxMs: 4200, maxBytes: 150 * KB, maxUpstreamCalls: 5, maxUpstreamCallsWarm: 3 }),
   row("inbox.prepare", { itemId: `round:${ROUND}/q1` }, { maxUpstreamCalls: 0 }, "the fixture leaves inbox actions off"),
   row("rounds.frame", { id: ROUND, key: "frame-0" }, { maxUpstreamCalls: 0 }, NO_MEDIA),
+  row("rounds.frameDelta", { id: ROUND, key: "frame-0" }, { maxUpstreamCalls: 0 }, NO_MEDIA),
   row("rounds.frames", { id: ROUND }, { maxBytes: 1 * KB, maxUpstreamCalls: 0 }),
   row("rounds.frameTargets", { id: ROUND, key: "frame-0" }, { maxUpstreamCalls: 0 }, NO_MEDIA),
   row("rounds.get", { id: ROUND }, { maxBytes: 1 * KB, maxUpstreamCalls: 0 }),

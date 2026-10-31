@@ -12,6 +12,7 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import os from 'node:os';
 import { CLIENT_HEADER } from '@titan-design/daemon';
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import { ConfigError } from './errors.js';
 import { getActiveRoot } from './utils/paths.js';
 import { isProcessAlive, probeHealth, readPidFile, resolveDaemonPort } from './server/lifecycle.js';
@@ -151,18 +152,28 @@ const MCP_SERVER_NAMES = ['@hjewkes/active-work', 'active-work'];
 
 interface McpServerEntry {
   type?: string;
-  headers?: Record<string, string>;
+  headers?: Record<string, unknown>;
+}
+
+// Any truthy value under a server name counts as a registration, however malformed.
+function toMcpServerEntry(value: unknown): McpServerEntry {
+  if (!isRecord(value)) return {};
+  return {
+    ...(typeof value.type === 'string' ? { type: value.type } : {}),
+    ...(isRecord(value.headers) ? { headers: value.headers } : {}),
+  };
 }
 
 async function readMcpRegistrations(fs: typeof fsp, homeDir: string): Promise<McpServerEntry[]> {
   const configPath = nodePath.join(homeDir, '.claude.json');
   try {
     const raw = await fs.readFile(configPath, 'utf8');
-    const parsed = JSON.parse(raw) as {
-      mcpServers?: Record<string, McpServerEntry | undefined>;
-    };
-    const servers = parsed.mcpServers ?? {};
-    return MCP_SERVER_NAMES.flatMap((name) => (servers[name] ? [servers[name]] : []));
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || !isRecord(parsed.mcpServers)) return [];
+    const servers = parsed.mcpServers;
+    return MCP_SERVER_NAMES.flatMap((name) =>
+      servers[name] ? [toMcpServerEntry(servers[name])] : [],
+    );
   } catch {
     return [];
   }

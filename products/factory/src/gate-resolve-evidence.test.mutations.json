@@ -6,28 +6,46 @@
       "file": "products/factory/src/coordinator-evidence.ts",
       "find": ", [MAIN_CI_TIMEOUT]: \"acknowledged\" } as const;",
       "replace": " } as const;",
-      "kills": ["coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) acknowledges once a later main commit containing the merge is green on every required context, storing that read"]
+      "kills": [
+        "coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) acknowledges once a later main commit containing the merge is green on every required context, storing that read"
+      ]
     },
     {
       "name": "a main-ci-timeout ack reads a base with no required contexts as green",
       "file": "products/factory/src/coordinator-evidence-read.ts",
       "find": "{ required: stepOf(gate.id) === MAIN_CI_TIMEOUT }",
       "replace": "{ required: false }",
-      "kills": ["coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back when the base requires no context, though main-red would take every Actions run there"]
+      "kills": [
+        "coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back when the base requires no context, though main-red would take every Actions run there"
+      ]
     },
     {
       "name": "every main gate ack demands required contexts",
       "file": "products/factory/src/coordinator-evidence-read.ts",
       "find": "{ required: stepOf(gate.id) === MAIN_CI_TIMEOUT }",
       "replace": "{ required: true }",
-      "kills": ["coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back when the base requires no context, though main-red would take every Actions run there"]
+      "kills": [
+        "coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back when the base requires no context, though main-red would take every Actions run there"
+      ]
     },
     {
       "name": "the main-green policy admits a payload naming another merge",
       "file": "products/factory/src/coordinator-evidence.ts",
       "find": "mainDecisions[stepOf(gate.id)], mergeSha: main.mergeSha })) return false;",
       "replace": "mainDecisions[stepOf(gate.id)], mergeSha: (payload as { mergeSha?: unknown }).mergeSha })) return false;",
-      "kills": ["coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back on an acknowledgement naming another merge"]
+      "kills": [
+        "coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back on an acknowledgement naming another merge"
+      ]
+    },
+    {
+      "name": "the coordinator ack accepts an approve-merge gate under any rule",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "run.rule === \"authority/MRG-AU\" && ",
+      "replace": "",
+      "kills": [
+        "coordinator resolve of an approve-merge gate on fresh evidence falls back on a visual-path gate",
+        "coordinator resolve of an approve-merge gate on fresh evidence falls back on an authority gate under a rule other than MRG-AU"
+      ]
     }
   ]
 }

@@ -18,6 +18,15 @@
       "kills": [
         "renderRewritePrompt tells a refused beat in plain words why its last version was not used"
       ]
+    },
+    {
+      "name": "a collapsing list no longer names the cue word it must keep",
+      "file": "products/explainer/src/rewrite-prompt.ts",
+      "find": "          ...cuedItemLines(triads, beat),\n",
+      "replace": "",
+      "kills": [
+        "renderRewritePrompt names the cue word a collapsing list holds as the item that stays in the line"
+      ]
     }
   ]
 }

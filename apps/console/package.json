@@ -29,6 +29,7 @@
     "@titan-design/github": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
+    "@titan-design/png-delta": "workspace:^",
     "@titan-design/react-app": "workspace:*",
     "@titan-design/react-ui": "^0.23.1",
     "@titan-design/registry": "workspace:^",

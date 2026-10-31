@@ -10,6 +10,8 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
+import { errorCode } from '@titan-design/rpc-protocol/narrow';
+import { errorText, toError } from './errors.js';
 import { linuxDaemonPath } from './supervision-shared.js';
 import type { SetupDeps, StepPaths, StepResult } from './steps.js';
 
@@ -139,7 +141,7 @@ function runOnce(
     } catch (err) {
       if (settled) return;
       settled = true;
-      resolve({ code: null, stderr, spawnError: err as Error });
+      resolve({ code: null, stderr, spawnError: toError(err) });
     }
   });
 }
@@ -197,7 +199,7 @@ export async function stepInstallSupervision(
     try {
       existing = await fs.readFile(unitPath, 'utf8');
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      if (errorCode(err) !== 'ENOENT') throw err;
     }
     const unchanged = existing === desired;
     if (!unchanged) {
@@ -274,7 +276,7 @@ export async function stepInstallSupervision(
     return {
       ok: false,
       name: STEP_SUPERVISION,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -299,7 +301,7 @@ export async function uninstallSupervision(deps: SetupDeps = {}): Promise<StepRe
     try {
       await fs.stat(unitPath);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') present = false;
+      if (errorCode(err) === 'ENOENT') present = false;
       else throw err;
     }
     if (!present) {
@@ -342,7 +344,7 @@ export async function uninstallSupervision(deps: SetupDeps = {}): Promise<StepRe
     return {
       ok: false,
       name: STEP_SUPERVISION,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }

@@ -34,6 +34,7 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    pngDelta["png-delta"]
     reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
@@ -219,6 +220,7 @@ graph TD
   activeWork --> pm
   activeWork --> registry
   activeWork --> retrieval
+  activeWork --> rpcProtocol
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead
@@ -278,6 +280,7 @@ graph TD
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pngDelta
   factory --> registry
   factory --> reviewPanel
   factory --> reviewWorkflow
@@ -334,6 +337,7 @@ graph TD
   console --> github
   console --> ownerQueue
   console --> pm
+  console --> pngDelta
   console --> reactApp
   console --> registry
   console --> rpcClient
@@ -349,7 +353,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

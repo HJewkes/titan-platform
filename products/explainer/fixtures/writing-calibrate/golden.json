@@ -1,0 +1,10257 @@
+{
+ "thresholds": {
+  "dropAucUpper": 0.5,
+  "dropFpr": 0.4,
+  "gateAucLower": 0.75,
+  "gateFprUpper": 0.15,
+  "gateFprPoint": 0.1,
+  "gatePrecision": 0.8,
+  "gateMinNeg": 20,
+  "gateMinPos": 10,
+  "warnAucLower": 0.6,
+  "warnFprPoint": 0.2
+ },
+ "windowsByBucketLabel": {
+  "150-299|ai-other": 4,
+  "150-299|human": 14,
+  "150-299|ours-new": 6,
+  "300-599|ai-other": 3,
+  "300-599|human": 7,
+  "300-599|ours-new": 4,
+  "600-1199|ai-other": 1,
+  "600-1199|human": 2,
+  "600-1199|ours-new": 1,
+  "full|ai-other": 3,
+  "full|human": 6,
+  "full|ours-new": 3
+ },
+ "rows": {
+  "numbers": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 6,
+     "n": 9,
+     "clusters": 3,
+     "point": 0.666667,
+     "wilson": [
+      0.354202,
+      0.879416
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0.5,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 11,
+     "n": 14,
+     "clusters": 5,
+     "point": 0.785714,
+     "wilson": [
+      0.524108,
+      0.924286
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.9815,
+      "lo": 0.9231,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.9583,
+      "lo": 0.8,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.7778,
+      "lo": 0.5,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.7143,
+      "lo": 0.5455,
+      "hi": 0.8235,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 5,
+     "n": 5,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.565518,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 7,
+     "n": 7,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.64567,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.9,
+      "lo": 0.5,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.9286,
+      "lo": 0.7,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 4,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.510109,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 6,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.609666,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.875,
+      "lo": 0.5,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.9167,
+      "lo": 0.7,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "second-person": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 8,
+     "n": 9,
+     "clusters": 3,
+     "point": 0.888889,
+     "wilson": [
+      0.565,
+      0.980109
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0.5,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 13,
+     "n": 14,
+     "clusters": 5,
+     "point": 0.928571,
+     "wilson": [
+      0.685313,
+      0.987278
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 5,
+     "clusters": 3,
+     "point": 0.8,
+     "wilson": [
+      0.375535,
+      0.963776
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0.3333,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 7,
+     "clusters": 5,
+     "point": 0.857143,
+     "wilson": [
+      0.486872,
+      0.97432
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 3,
+     "n": 4,
+     "clusters": 3,
+     "point": 0.75,
+     "wilson": [
+      0.300642,
+      0.954413
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 5,
+     "n": 6,
+     "clusters": 5,
+     "point": 0.833333,
+     "wilson": [
+      0.436497,
+      0.969947
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "we": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 9,
+     "n": 9,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.700855,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 14,
+     "n": 14,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.784689,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3333,
+      "lo": 0.1667,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.2857,
+      "lo": 0.1538,
+      "hi": 0.556,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3333,
+      "lo": 0.1667,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.2857,
+      "lo": 0.1429,
+      "hi": 0.5556,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 5,
+     "n": 5,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.565518,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 7,
+     "n": 7,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.64567,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.2143,
+      "lo": 0,
+      "hi": 0.3571,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.2143,
+      "lo": 0,
+      "hi": 0.3571,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 4,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.510109,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 6,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.609666,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "sentence-mean": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 7,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 12,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.242494
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 3,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 5,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
+  },
+  "sentence-cv": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 7,
+     "n": 7,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.64567,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 12,
+     "n": 12,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.757506,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.4762,
+      "lo": 0.3333,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.4167,
+      "lo": 0.1852,
+      "hi": 0.625,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.3333,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.3958,
+      "lo": 0.1875,
+      "hi": 0.6,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 4,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.510109,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 6,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.609666,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.25,
+      "lo": 0,
+      "hi": 0.3333,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.1667,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.3333,
+      "lo": 0,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.2778,
+      "lo": 0,
+      "hi": 0.75,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 3,
+     "n": 3,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ],
+     "texts": 3,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 5,
+     "n": 5,
+     "clusters": 4,
+     "point": 1,
+     "wilson": [
+      0.565518,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.4444,
+      "lo": 0,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.2667,
+      "lo": 0,
+      "hi": 0.6,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0,
+      "lo": 0,
+      "hi": 0,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
+  },
+  "contractions": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 9,
+     "n": 9,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.700855,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 2,
+     "n": 2,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 14,
+     "n": 14,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.784689,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1111,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1111,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 5,
+     "n": 5,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.565518,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 7,
+     "n": 7,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.64567,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 4,
+     "clusters": 3,
+     "point": 1,
+     "wilson": [
+      0.510109,
+      1
+     ],
+     "texts": 4,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 6,
+     "clusters": 5,
+     "point": 1,
+     "wilson": [
+      0.609666,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "triads": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 7,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 12,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.242494
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 6,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.390334
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 2,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.65762
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 3,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 5,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
+  },
+  "colon-reveals": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 7,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 12,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.242494
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 6,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.390334
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 2,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.65762
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 3,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 5,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
+  },
+  "not-x-tails": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 7,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 12,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.242494
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 12,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 3,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ],
+     "texts": 3,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 5,
+     "clusters": 4,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 3,
+      "clustersPos": 2,
+      "clustersNeg": 2
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 4
+     }
+    }
+   }
+  },
+  "semicolons": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 9,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.299145
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 14,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.215311
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 6,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.390334
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 5,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 7,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 2,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.65762
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "lets": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 6,
+     "n": 9,
+     "clusters": 3,
+     "point": 0.666667,
+     "wilson": [
+      0.354202,
+      0.879416
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 2,
+     "clusters": 1,
+     "point": 0.5,
+     "wilson": [
+      0.094531,
+      0.905469
+     ]
+    },
+    "fpr_auto": {
+     "k": 3,
+     "n": 3,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.438503,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 10,
+     "n": 14,
+     "clusters": 5,
+     "point": 0.714286,
+     "wilson": [
+      0.453509,
+      0.882786
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 6,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.390334
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1667,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.1429,
+      "lo": 0.0249,
+      "hi": 0.4286,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1667,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.1429,
+      "lo": 0.0227,
+      "hi": 0.4286,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 4,
+     "n": 5,
+     "clusters": 3,
+     "point": 0.8,
+     "wilson": [
+      0.375535,
+      0.963776
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 6,
+     "n": 7,
+     "clusters": 5,
+     "point": 0.857143,
+     "wilson": [
+      0.486872,
+      0.97432
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.1,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0714,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 2,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.65762
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ],
+     "texts": 1,
+     "clusterCI": [
+      1,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 2,
+     "n": 2,
+     "clusters": 2,
+     "point": 1,
+     "wilson": [
+      0.34238,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 3,
+     "n": 4,
+     "clusters": 3,
+     "point": 0.75,
+     "wilson": [
+      0.300642,
+      0.954413
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      1
+     ]
+    },
+    "fpr_creator": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 1,
+     "n": 1,
+     "clusters": 1,
+     "point": 1,
+     "wilson": [
+      0.206549,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 5,
+     "n": 6,
+     "clusters": 5,
+     "point": 0.833333,
+     "wilson": [
+      0.436497,
+      0.969947
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.125,
+      "lo": 0,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.0833,
+      "lo": 0,
+      "hi": 0.3,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "phrases": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 9,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.299145
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 14,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.215311
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 5,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 7,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "neg-synthetic": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 9,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.299145
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 14,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.215311
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 5,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 7,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  },
+  "downtoners": {
+   "150-299": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 9,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.299145
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 2,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 3,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.561497
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 14,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.215311
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 6,
+      "n": 6,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.609666,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 6,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 4,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.489891
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 9,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 4,
+      "nNeg": 14,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "300-599": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 5,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.434482
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 7,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.35433
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 4,
+      "n": 4,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.510109,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 4,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 5,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 7,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 2,
+      "n": 2,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.34238,
+       1
+      ]
+     },
+     "texts": 2,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "600-1199": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ],
+     "texts": 1,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 2,
+     "clusters": 2,
+     "point": 0,
+     "wilson": [
+      0,
+      0.65762
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 1,
+      "clusters": 1,
+      "point": 0,
+      "wilson": [
+       0,
+       0.793451
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 1,
+      "n": 1,
+      "clusters": 1,
+      "point": 1,
+      "wilson": [
+       0.206549,
+       1
+      ]
+     },
+     "texts": 1,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "1200+": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ],
+     "texts": 0,
+     "clusterCI": null
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 0,
+     "clusters": 0,
+     "point": null,
+     "wilson": [
+      0,
+      1
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    }
+   },
+   "full": {
+    "fpr_heldout": {
+     "k": 0,
+     "n": 4,
+     "clusters": 3,
+     "point": 0,
+     "wilson": [
+      0,
+      0.489891
+     ],
+     "texts": 4,
+     "clusterCI": [
+      0,
+      0
+     ]
+    },
+    "fpr_creator": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_auto": {
+     "k": 0,
+     "n": 1,
+     "clusters": 1,
+     "point": 0,
+     "wilson": [
+      0,
+      0.793451
+     ]
+    },
+    "fpr_all_human": {
+     "k": 0,
+     "n": 6,
+     "clusters": 5,
+     "point": 0,
+     "wilson": [
+      0,
+      0.390334
+     ]
+    },
+    "ours-new": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ai-other": {
+     "tpr": {
+      "k": 0,
+      "n": 3,
+      "clusters": 2,
+      "point": 0,
+      "wilson": [
+       0,
+       0.561497
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 0.5,
+      "lo": 0.5,
+      "hi": 0.5,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    },
+    "ours": {
+     "tpr": {
+      "k": 0,
+      "n": 0,
+      "clusters": 0,
+      "point": null,
+      "wilson": [
+       0,
+       1
+      ]
+     },
+     "texts": 0,
+     "auc_heldout": null,
+     "auc_all_human": null
+    },
+    "ours-new-native": {
+     "tpr": {
+      "k": 3,
+      "n": 3,
+      "clusters": 2,
+      "point": 1,
+      "wilson": [
+       0.438503,
+       1
+      ]
+     },
+     "texts": 3,
+     "auc_heldout": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 4,
+      "clustersPos": 2,
+      "clustersNeg": 3
+     },
+     "auc_all_human": {
+      "auc": 1,
+      "lo": 1,
+      "hi": 1,
+      "nPos": 3,
+      "nNeg": 6,
+      "clustersPos": 2,
+      "clustersNeg": 5
+     }
+    }
+   }
+  }
+ },
+ "status": {
+  "numbers": {
+   "status": "report-only",
+   "why": "no rule above applies",
+   "gateMisses": [
+    "FPR upper 1.00 > 0.15",
+    "FPR point 1.00 > 0.10",
+    "span precision not labelled",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "second-person": {
+   "status": "report-only",
+   "why": "no rule above applies",
+   "gateMisses": [
+    "FPR upper 0.96 > 0.15",
+    "FPR point 0.80 > 0.10",
+    "span precision not labelled",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "we": {
+   "status": "drop",
+   "why": "FPR > 0.40 and every AUC CI includes 0.5",
+   "gateMisses": []
+  },
+  "sentence-mean": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "FPR upper 0.49 > 0.15",
+    "span precision not labelled",
+    "n_neg 4 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "sentence-cv": {
+   "status": "report-only",
+   "why": "no rule above applies",
+   "gateMisses": [
+    "AUC lower vs ours-new 0.00 < 0.75",
+    "FPR upper 1.00 > 0.15",
+    "FPR point 1.00 > 0.10",
+    "span precision not labelled",
+    "n_neg 4 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "contractions": {
+   "status": "drop",
+   "why": "FPR > 0.40 and every AUC CI includes 0.5",
+   "gateMisses": []
+  },
+  "triads": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "AUC lower vs ours-new 0.50 < 0.75",
+    "FPR upper 0.49 > 0.15",
+    "span precision not labelled",
+    "n_neg 4 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "colon-reveals": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "AUC lower vs ours-new 0.50 < 0.75",
+    "FPR upper 0.49 > 0.15",
+    "span precision not labelled",
+    "n_neg 4 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "not-x-tails": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "FPR upper 0.49 > 0.15",
+    "span precision not labelled",
+    "n_neg 4 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "semicolons": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "AUC lower vs ours-new 0.50 < 0.75",
+    "FPR upper 0.43 > 0.15",
+    "span precision not labelled",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "lets": {
+   "status": "drop",
+   "why": "FPR > 0.40 and every AUC CI includes 0.5",
+   "gateMisses": []
+  },
+  "phrases": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "FPR upper 0.43 > 0.15",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "neg-synthetic": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "FPR upper 0.43 > 0.15",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  },
+  "downtoners": {
+   "status": "warning",
+   "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+   "gateMisses": [
+    "FPR upper 0.43 > 0.15",
+    "span precision 9/20 < 0.8",
+    "n_neg 5 < 20",
+    "n_pos 4 < 10"
+   ]
+  }
+ },
+ "statusByBucket": {
+  "numbers": {
+   "150-299": "report-only",
+   "300-599": "report-only",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "report-only"
+  },
+  "second-person": {
+   "150-299": "report-only",
+   "300-599": "report-only",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "report-only"
+  },
+  "we": {
+   "150-299": "drop",
+   "300-599": "drop",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "drop"
+  },
+  "sentence-mean": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "sentence-cv": {
+   "150-299": "drop",
+   "300-599": "report-only",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "report-only"
+  },
+  "contractions": {
+   "150-299": "drop",
+   "300-599": "drop",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "drop"
+  },
+  "triads": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "colon-reveals": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "not-x-tails": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "semicolons": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "lets": {
+   "150-299": "drop",
+   "300-599": "drop",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "drop"
+  },
+  "phrases": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "neg-synthetic": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  },
+  "downtoners": {
+   "150-299": "warning",
+   "300-599": "warning",
+   "600-1199": "report-only",
+   "1200+": "report-only",
+   "full": "warning"
+  }
+ },
+ "statusDetail": {
+  "numbers": {
+   "150-299": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 0.88 > 0.15",
+     "FPR point 0.67 > 0.10",
+     "span precision not labelled",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "second-person": {
+   "150-299": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 0.98 > 0.15",
+     "FPR point 0.89 > 0.10",
+     "span precision not labelled",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 0.96 > 0.15",
+     "FPR point 0.80 > 0.10",
+     "span precision not labelled",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "FPR upper 0.95 > 0.15",
+     "FPR point 0.75 > 0.10",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "we": {
+   "150-299": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "300-599": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   }
+  },
+  "sentence-mean": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.35 > 0.15",
+     "span precision not labelled",
+     "n_neg 7 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.49 > 0.15",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.56 > 0.15",
+     "span precision not labelled",
+     "n_neg 3 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "sentence-cv": {
+   "150-299": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "300-599": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.00 < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.00 < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 3 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "contractions": {
+   "150-299": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "300-599": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   }
+  },
+  "triads": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.35 > 0.15",
+     "span precision not labelled",
+     "n_neg 7 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.49 > 0.15",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.56 > 0.15",
+     "span precision not labelled",
+     "n_neg 3 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "colon-reveals": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.35 > 0.15",
+     "span precision not labelled",
+     "n_neg 7 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.49 > 0.15",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.56 > 0.15",
+     "span precision not labelled",
+     "n_neg 3 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "not-x-tails": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.35 > 0.15",
+     "span precision not labelled",
+     "n_neg 7 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.49 > 0.15",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.56 > 0.15",
+     "span precision not labelled",
+     "n_neg 3 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "semicolons": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.30 > 0.15",
+     "span precision not labelled",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.43 > 0.15",
+     "span precision not labelled",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "AUC lower vs ours-new 0.50 < 0.75",
+     "FPR upper 0.49 > 0.15",
+     "span precision not labelled",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "lets": {
+   "150-299": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "300-599": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 1.00 > 0.15",
+     "FPR point 1.00 > 0.10",
+     "span precision not labelled",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision not labelled",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "drop",
+    "why": "FPR > 0.40 and every AUC CI includes 0.5",
+    "gateMisses": []
+   }
+  },
+  "phrases": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.30 > 0.15",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.43 > 0.15",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.49 > 0.15",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "neg-synthetic": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.30 > 0.15",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.43 > 0.15",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.49 > 0.15",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  },
+  "downtoners": {
+   "150-299": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.30 > 0.15",
+     "span precision 9/20 < 0.8",
+     "n_neg 9 < 20",
+     "n_pos 6 < 10"
+    ]
+   },
+   "300-599": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.43 > 0.15",
+     "span precision 9/20 < 0.8",
+     "n_neg 5 < 20",
+     "n_pos 4 < 10"
+    ]
+   },
+   "600-1199": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper 0.79 > 0.15",
+     "span precision 9/20 < 0.8",
+     "n_neg 1 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "1200+": {
+    "status": "report-only",
+    "why": "no rule above applies",
+    "gateMisses": [
+     "AUC lower vs ours-new n/a < 0.75",
+     "FPR upper n/a > 0.15",
+     "FPR point n/a > 0.10",
+     "span precision 9/20 < 0.8",
+     "n_neg 0 < 20",
+     "n_pos 0 < 10"
+    ]
+   },
+   "full": {
+    "status": "warning",
+    "why": "AUC lower bound >= 0.60 on ours-new or ai-other and FPR point <= 0.20",
+    "gateMisses": [
+     "FPR upper 0.49 > 0.15",
+     "span precision 9/20 < 0.8",
+     "n_neg 4 < 20",
+     "n_pos 3 < 10"
+    ]
+   }
+  }
+ },
+ "refit5foldByChannel": {
+  "numbers": {
+   "k": 2,
+   "n": 4,
+   "point": 0.5,
+   "wilson": [
+    0.15,
+    0.85
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.8
+  },
+  "second-person": {
+   "k": 1,
+   "n": 4,
+   "point": 0.25,
+   "wilson": [
+    0.0456,
+    0.6994
+   ],
+   "clusterCI": [
+    0,
+    0.75
+   ],
+   "windowsPerFold": 0.8
+  },
+  "we": {
+   "k": 2,
+   "n": 4,
+   "point": 0.5,
+   "wilson": [
+    0.15,
+    0.85
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.8
+  },
+  "sentence-mean": {
+   "k": 2,
+   "n": 3,
+   "point": 0.6667,
+   "wilson": [
+    0.2077,
+    0.9385
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.6
+  },
+  "sentence-cv": {
+   "k": 1,
+   "n": 3,
+   "point": 0.3333,
+   "wilson": [
+    0.0615,
+    0.7923
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.6
+  },
+  "contractions": {
+   "k": 2,
+   "n": 4,
+   "point": 0.5,
+   "wilson": [
+    0.15,
+    0.85
+   ],
+   "clusterCI": [
+    0,
+    1
+   ],
+   "windowsPerFold": 0.8
+  },
+  "triads": {
+   "k": 0,
+   "n": 3,
+   "point": 0,
+   "wilson": [
+    0,
+    0.5615
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.6
+  },
+  "colon-reveals": {
+   "k": 0,
+   "n": 3,
+   "point": 0,
+   "wilson": [
+    0,
+    0.5615
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.6
+  },
+  "not-x-tails": {
+   "k": 0,
+   "n": 3,
+   "point": 0,
+   "wilson": [
+    0,
+    0.5615
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.6
+  },
+  "semicolons": {
+   "k": 0,
+   "n": 4,
+   "point": 0,
+   "wilson": [
+    0,
+    0.4899
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.8
+  },
+  "lets": {
+   "k": 0,
+   "n": 4,
+   "point": 0,
+   "wilson": [
+    0,
+    0.4899
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.8
+  },
+  "phrases": {
+   "k": 0,
+   "n": 4,
+   "point": 0,
+   "wilson": [
+    0,
+    0.4899
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.8
+  },
+  "neg-synthetic": {
+   "k": 0,
+   "n": 4,
+   "point": 0,
+   "wilson": [
+    0,
+    0.4899
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.8
+  },
+  "downtoners": {
+   "k": 0,
+   "n": 4,
+   "point": 0,
+   "wilson": [
+    0,
+    0.4899
+   ],
+   "clusterCI": [
+    0,
+    0
+   ],
+   "windowsPerFold": 0.8
+  }
+ },
+ "band10pct": {
+  "numbers": null,
+  "second-person": null,
+  "we": null,
+  "sentence-mean": null,
+  "sentence-cv": null,
+  "contractions": null,
+  "triads": null,
+  "colon-reveals": null,
+  "not-x-tails": null,
+  "semicolons": null,
+  "lets": null,
+  "phrases": null,
+  "neg-synthetic": null,
+  "downtoners": null
+ }
+}

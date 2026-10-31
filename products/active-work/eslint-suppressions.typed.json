@@ -20,7 +20,7 @@
       "count": 3
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/bootstrap/rank-notes.ts": {
@@ -49,14 +49,11 @@
     }
   },
   "products/active-work/src/commands/_task-apply-plan.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 4
     }
   },
   "products/active-work/src/commands/_task-apply-run.ts": {
@@ -75,19 +72,6 @@
   "products/active-work/src/commands/artifact-add-branch.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
-    }
-  },
-  "products/active-work/src/commands/artifact-status.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/commands/category-init.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/active-work/src/commands/context-graph.ts": {
@@ -147,7 +131,7 @@
   },
   "products/active-work/src/commands/sessions-browser.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 2
     }
   },
   "products/active-work/src/commands/set.ts": {
@@ -213,11 +197,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/decider/ledger.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/decider/queue-source.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -239,11 +218,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/discover/github.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/active-work/src/discover/run-command.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
@@ -256,7 +230,7 @@
   },
   "products/active-work/src/doctor.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/drain/blob-extract.ts": {
@@ -301,7 +275,7 @@
   },
   "products/active-work/src/migrations/v1-to-v2-artifacts.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/active-work/src/migrations/v2-to-v3-open-loops.ts": {
@@ -317,14 +291,6 @@
   "products/active-work/src/migrations/v3-repairs.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
-    }
-  },
-  "products/active-work/src/migrations/v3-to-v4-worktrees.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "products/active-work/src/program.ts": {
@@ -373,22 +339,12 @@
   },
   "products/active-work/src/session-index/origin-agent-chat.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/active-work/src/session-index/pr-outcomes.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/session-index/preserve.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
     }
   },
   "products/active-work/src/session-index/refresh.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/active-work/src/session-index/scheduler.ts": {
@@ -422,9 +378,6 @@
   "products/active-work/src/sessions/loop-pr-state.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 4
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/active-work/src/sessions/open-loops.ts": {
@@ -456,11 +409,8 @@
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 4
     },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 19
+      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
@@ -469,9 +419,6 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {
@@ -480,19 +427,11 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/active-work/src/setup/supervision.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
-    }
-  },
-  "products/active-work/src/utils/artifact-hash.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
     }
   },
   "products/active-work/src/utils/coerce-dates.ts": {
@@ -547,14 +486,6 @@
     }
   },
   "products/active-work/src/workspace-index/inventory-summary.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/workspace-index/refresh.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

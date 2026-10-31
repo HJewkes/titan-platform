@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import { runL0 } from "./eval-l0.js";
 import { REGISTER_BANDS, registerCheck, spokenText } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import { MAX_REWRITE_ROUNDS, planRegisterEdits, type BeatDirective } from "./rewrite-plan.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 // Short, number-free, list-free sentences about an invented parcel desk: the raw stuff of a choppy script.
 const CHOPPY = [
@@ -48,8 +52,11 @@ describe("planRegisterEdits: sentence shape", () => {
   });
 
   it("plans a shape that lands the script inside both sentence bands, under the vetted cap", () => {
-    const { directives, projected } = plan(choppy);
-    const after = shapeAfter(choppy, directives);
+    // Beats wordy enough for three sentences or more: a two-sentence beat under the 24-word plan cannot reach the CV floor.
+    const spread = script(Array.from({ length: 24 }, (_, i) => Array.from({ length: 6 + (i % 7) }, (_, j) => CHOPPY[(i + j) % CHOPPY.length]).join(" ")));
+
+    const { directives, projected } = plan(spread);
+    const after = shapeAfter(spread, directives);
 
     expect(after.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
     expect(after.cv).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-cv"].min!);
@@ -81,6 +88,45 @@ describe("planRegisterEdits: numbers and triads", () => {
     expect(crowded?.numbers).toEqual(["12", "3", "two"]);
     expect(crowded?.triads).toEqual(["held 12 parcels, sent 3 back and lost two."]);
     expect(directiveFor(plan(s).directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("directs no collapse of a list whose items the screen cues on, and still directs one with a single cued item", () => {
+    const cuedOn = (...atCues: string[]) => ({ visual: { assertion: "The desk checks three things", job: "numbers", cues: atCues.map((atCue) => ({ action: "V11", target: `card:${atCue}`, atCue })) } });
+    const s = tour([
+      ["h1", "ch1", "WHAT", LIST, cuedOn("scan", "row", "label")],
+      ["w4", "ch2", "WHAT", LIST, cuedOn("row")],
+      ["c1", "ch3", "WHAT", LIST],
+      ...script([...MORE_CROWDED, ...choppyLines(15)]).beats.map((beat, i): BeatSpec => [`m${i}`, beat.chapter, "WHAT", beat.spoken]),
+    ]);
+
+    const { directives } = plan(s);
+
+    expect(failing(s)).toContain("register:triads");
+    expect(directiveFor(directives, "h1")?.triads).toBeUndefined();
+    expect(directiveFor(directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+    expect(directiveFor(directives, "c1")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("names a number range as one mention, so the directive never offers to cut one end", () => {
+    const RANGE = "Merge-ups move thirty to thirty-five percent of heads on 2 queues.";
+    const s = script([RANGE, ...MORE_CROWDED, ...choppyLines(15)]);
+
+    expect(directiveFor(plan(s).directives, "h1")?.numbers).toEqual(["thirty to thirty-five percent", "2"]);
+  });
+
+  it("offers only the uncued number of a beat that cues on one of its numbers", () => {
+    const cued = { visual: { assertion: "The desk held parcels", job: "numbers", cues: [{ action: "V11", target: "card:12", atCue: "12" }] } };
+    const s = tour([
+      ["h1", "ch1", "WHAT", CROWDED, cued],
+      ["w4", "ch2", "WHAT", CROWDED],
+      ["c1", "ch3", "WHAT", CROWDED],
+      ...script([...MORE_CROWDED, ...choppyLines(15)]).beats.map((beat, i): BeatSpec => [`m${i}`, beat.chapter, "WHAT", beat.spoken]),
+    ]);
+
+    const { directives } = plan(s);
+
+    expect(directiveFor(directives, "h1")?.numbers).toEqual(["3", "two"]);
+    expect(directiveFor(directives, "w4")?.numbers).toEqual(["12", "3", "two"]);
   });
 
   it("leaves a beat that speaks one number alone", () => {

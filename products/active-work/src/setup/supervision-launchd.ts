@@ -10,6 +10,8 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
+import { errorCode } from '@titan-design/rpc-protocol/narrow';
+import { errorText, toError } from './errors.js';
 import { daemonPath } from './supervision-shared.js';
 import { STEP_SUPERVISION } from './supervision-systemd.js';
 import type { SetupDeps, StepPaths, StepResult } from './steps.js';
@@ -142,7 +144,7 @@ function runOnce(
     } catch (err) {
       if (settled) return;
       settled = true;
-      resolve({ code: null, stderr, spawnError: err as Error });
+      resolve({ code: null, stderr, spawnError: toError(err) });
     }
   });
 }
@@ -195,7 +197,7 @@ export async function installLaunchAgent(
     try {
       existing = await fs.readFile(plistPath, 'utf8');
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      if (errorCode(err) !== 'ENOENT') throw err;
     }
     const unchanged = existing === desired;
     if (unchanged && (await isAgentLoaded(deps))) {
@@ -248,7 +250,7 @@ export async function installLaunchAgent(
     return {
       ok: false,
       name: STEP_SUPERVISION,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -273,7 +275,7 @@ export async function uninstallLaunchAgent(deps: SetupDeps = {}): Promise<StepRe
     try {
       await fs.stat(plistPath);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') present = false;
+      if (errorCode(err) === 'ENOENT') present = false;
       else throw err;
     }
     if (!present) {
@@ -305,7 +307,7 @@ export async function uninstallLaunchAgent(deps: SetupDeps = {}): Promise<StepRe
     return {
       ok: false,
       name: STEP_SUPERVISION,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }

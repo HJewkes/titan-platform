@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "antialiased pixels count as changed",
+      "file": "packages/png-delta/src/delta.ts",
+      "find": "includeAA: false",
+      "replace": "includeAA: true",
+      "kills": ["snapshotShare does not count an antialiased edge whose shade shifts"]
+    },
+    {
+      "name": "the share divides by the whole image, not the content box",
+      "file": "packages/png-delta/src/delta.ts",
+      "find": "const area = box ? box.width * box.height : before.width * before.height;",
+      "replace": "const area = before.width * before.height;",
+      "kills": [
+        "snapshotShare divides by the content box, so one changed pixel of a 10×10 square in a 100×100 frame is 0.01",
+        "pixelDelta draws the moved pixels and gives their count and share"
+      ]
+    },
+    {
+      "name": "a size change reads as no change",
+      "file": "packages/png-delta/src/delta.ts",
+      "find": "before.height !== after.height) return 1;",
+      "replace": "before.height !== after.height) return 0;",
+      "kills": ["snapshotShare gives 1 when the dimensions differ"]
+    },
+    {
+      "name": "the pixel tolerance option is ignored",
+      "file": "packages/png-delta/src/delta.ts",
+      "find": "threshold: opts.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE,",
+      "replace": "threshold: DEFAULT_PIXEL_TOLERANCE,",
+      "kills": ["snapshotShare counts a change the default pixel tolerance would let pass when the tolerance is tighter"]
+    },
+    {
+      "name": "the delta draws nothing for its changed pixels",
+      "file": "packages/png-delta/src/delta.ts",
+      "find": "pixelmatch(before.rgba, after.rgba, rgba,",
+      "replace": "pixelmatch(before.rgba, after.rgba, null,",
+      "kills": ["pixelDelta draws the moved pixels and gives their count and share"]
+    }
+  ]
+}

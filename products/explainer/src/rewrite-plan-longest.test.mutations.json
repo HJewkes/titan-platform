@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the plan may reach the vetted cap less its headroom",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "const MAX_PLANNED_WORDS = 24;",
+      "replace": "const MAX_PLANNED_WORDS = 32;",
+      "kills": [
+        "planRegisterEdits: longest planned sentence stays at 24 words under the vetted cap on a 24-beat script"
+      ]
+    },
+    {
+      "name": "a beat over the limit gains a sentence instead of moving its words",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "if (count > 1 && longest <= headroom) {",
+      "replace": "if (count < 0) {",
+      "kills": [
+        "planRegisterEdits: longest planned sentence holds the sentence count on a beat over the limit, so the planned mean stays over its floor"
+      ]
+    },
+    {
+      "name": "a trimmed beat keeps its count though the overflow passes the limit",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;",
+      "replace": "return trimmed;",
+      "kills": [
+        "planRegisterEdits: longest planned sentence stays at 24 words when wordy beats speak 48 sentences each"
+      ]
+    },
+    {
+      "name": "words cut from a long sentence are dropped from the plan",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "(i === lastShort ? n + overflow : Math.min(n, longest))",
+      "replace": "(i === lastShort ? n : Math.min(n, longest))",
+      "kills": [
+        "planRegisterEdits: longest planned sentence plans every word of each beat of a 24-beat script under the vetted cap"
+      ]
+    }
+  ]
+}

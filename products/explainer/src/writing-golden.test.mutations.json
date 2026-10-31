@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "phrase matcher loses its leading word boundary",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "(?<![A-Za-z0-9'’])(?:${phrases.map(words).join(\"|\")})",
+      "replace": "(?:${phrases.map(words).join(\"|\")})",
+      "kills": [
+        "the clean synthetic script passes every gate and warning row and reports the golden values"
+      ]
+    }
+  ]
+}
