@@ -31,6 +31,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`png-delta`](#cap-png-delta) | 0 | You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -419,6 +420,22 @@ You must accept an action only when the owner signed a statement for it with an 
 Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
+
+<a id="cap-png-delta"></a>
+
+### `png-delta`
+
+Tier 0, private, `packages/png-delta`. Bounded PNG decode, pixelmatch share and delta image, and a small RGBA PNG encoder for untrusted screenshot pairs
+
+**Use this when:**
+
+You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). For capturing frames of a page use `frame-capture`; for per-frame change counts across an MP4 use `render-qa`.
+
+Key exports:
+
+- `png-bounded`: `decodePngBounded`, `overPixels`, `Decoded`
+- `png-encode`: `encodePng`
+- `delta`: `DEFAULT_PIXEL_TOLERANCE`, `contentBox`, `pixelDelta`, `snapshotShare`, `ContentBox`, `PixelDelta`, `SnapshotShareOptions`
 
 <a id="cap-review-burden"></a>
 
