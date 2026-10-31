@@ -75,7 +75,15 @@ function openNeighbours(hits: RelatedHit[], slug: string, existing: Task[]): Tas
     .slice(0, RELATED_TASK_LIMIT);
 }
 
-/** Advisory and after the write: the task is already filed, so nothing here may throw. */
+/**
+ * Advisory and after the write: the task is already filed, so nothing here may throw.
+ *
+ * Agents only, because the read costs a median 0.7 to 0.8 s per add on a
+ * full-size graph, over the 300 ms a human or /rpc caller would be asked to pay.
+ *
+ * The search runs synchronously on SQLite, so the deadline cuts a read that
+ * yields and cannot stop one mid-query.
+ */
 export async function warnRelatedTasks(
   ctx: CommandContext,
   slug: string,
@@ -83,6 +91,7 @@ export async function warnRelatedTasks(
   existing: Task[],
   deps: RelatedTaskDeps = {},
 ): Promise<void> {
+  if (ctx.caller !== 'agent') return;
   const { related = gatedRelated, deadlineMs = RELATED_DEADLINE_MS } = deps;
   try {
     const result = await withinDeadline(related(relatedInput(ctx, slug, task)), deadlineMs);

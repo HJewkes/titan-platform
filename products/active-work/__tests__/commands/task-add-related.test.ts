@@ -38,7 +38,7 @@ const returning = (hits: RelatedHit[], degraded: RelatedResult['degraded'] = [])
   vi.fn(async () => ({ hits, degraded, query: QUERY }));
 
 function context(): CommandContext {
-  return { activeRoot: '/nonexistent', warnings: [], format: 'json' };
+  return { activeRoot: '/nonexistent', warnings: [], format: 'json', caller: 'agent' };
 }
 
 async function warningsFor(related: RelatedPort, existing: Task[]): Promise<string[]> {
@@ -102,6 +102,16 @@ describe('warnRelatedTasks', () => {
     expect(related).toHaveBeenCalledWith(expect.objectContaining({ exclude: ['task:RT-99'] }));
   });
 
+  it('a caller that is not an agent pays for no read and sees no list', async () => {
+    const related = returning([hit('RT-1')]);
+    const ctx: CommandContext = { ...context(), caller: undefined };
+
+    await warnRelatedTasks(ctx, SLUG, task('RT-99'), [task('RT-1')], { related });
+
+    expect(related).not.toHaveBeenCalled();
+    expect(ctx.warnings).toEqual([]);
+  });
+
   it('a degraded read prints nothing, even with hits', async () => {
     const degraded = [{ source: 'tasks', reason: 'error', message: 'partial' }];
 
@@ -157,7 +167,7 @@ async function withIndexedNeighbours(
     await run(setup, 'task.done', { slug: SLUG, id: closed.id });
     const graph = await refreshInto(path.join(root, '.miner', 'graph.sqlite3'), root);
     graph.db.close();
-    await fn({ ...setup, warnings: [] }, { open: open.id, closed: closed.id });
+    await fn({ ...setup, warnings: [], caller: 'agent' }, { open: open.id, closed: closed.id });
   });
 }
 
@@ -193,7 +203,12 @@ describe('task.add related list', () => {
 
   it('files with no warning when the root has no index', async () => {
     await withEmptyActiveRoot(async (root) => {
-      const ctx: CommandContext = { activeRoot: root, warnings: [], format: 'json' };
+      const ctx: CommandContext = {
+        activeRoot: root,
+        warnings: [],
+        format: 'json',
+        caller: 'agent',
+      };
       await run(ctx, 'new', { slug: SLUG, title: 'Related' });
 
       const filed = await fileExporterTask(ctx, 'Build the parquet exporter');
