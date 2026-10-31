@@ -12,7 +12,7 @@ export interface ErrorDescription {
 /** Read a thrown value's message and numeric `code`, falling back to EXIT.GENERIC. */
 export function describeError(err: unknown): ErrorDescription {
   if (err instanceof Error) {
-    const code = (err as { code?: unknown }).code;
+    const code = "code" in err ? err.code : undefined;
     return { message: err.message, code: typeof code === "number" ? code : EXIT.GENERIC };
   }
   return { message: String(err), code: EXIT.GENERIC };

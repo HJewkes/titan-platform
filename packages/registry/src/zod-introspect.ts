@@ -1,4 +1,4 @@
-import { ZodArray, ZodDefault, ZodNullable, ZodObject, ZodOptional, type ZodType } from "zod";
+import { ZodArray, ZodDefault, ZodNullable, ZodObject, ZodOptional, ZodType } from "zod";
 
 /** The zod 4 `def.type` discriminator of a schema, e.g. "string", "array", "enum". */
 export type SchemaKind = string;
@@ -12,7 +12,7 @@ function isWrapper(schema: ZodType): schema is Wrapper {
 /** Peel optional / nullable / default wrappers down to the schema that carries the kind. */
 export function unwrapSchema(schema: ZodType): ZodType {
   let current = schema;
-  while (isWrapper(current)) current = current.unwrap() as ZodType;
+  while (isWrapper(current)) current = current.unwrap();
   return current;
 }
 
@@ -32,7 +32,9 @@ export function fieldSchema(args: ZodType, name: string): ZodType | undefined {
 export function arrayElementKind(schema: ZodType | undefined): SchemaKind | undefined {
   if (!schema) return undefined;
   const unwrapped = unwrapSchema(schema);
-  return unwrapped instanceof ZodArray ? schemaKind(unwrapped.def.element as ZodType) : undefined;
+  if (!(unwrapped instanceof ZodArray)) return undefined;
+  const element: unknown = unwrapped.def.element;
+  return element instanceof ZodType ? schemaKind(element) : undefined;
 }
 
 /** True when the field may be omitted from input: `.optional()` or `.default()`. */
