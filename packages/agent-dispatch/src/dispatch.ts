@@ -101,9 +101,16 @@ const BROKER_DOWN_LINES = [
   /^broker restarting: .* was NOT sent; retry it within \d+ s\.$/m,
   // A bare connect failure on the socket, for a CLI that surfaces the errno.
   /^(?:Error: )?connect (?:ECONNREFUSED|ENOENT) \S*\.sock$/m,
+  // The probe under AGENT_CHAT_NO_AUTOSTART=1, which every call here sets; `agent ls` and the other
+  // legacy verbs exit 1 on it, so only their port and ask verbs carry BROKER_UNAVAILABLE_EXIT.
+  /^broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one$/m,
 ];
 
+/** agent-chat's EX_UNAVAILABLE, which its port verbs, `ask` and `answers` exit with when no broker listens or it predates the verbs. */
+export const BROKER_UNAVAILABLE_EXIT = 69;
+
 export function isBrokerUnavailable(result: SafeExecResult): boolean {
+  if (result.status === BROKER_UNAVAILABLE_EXIT) return true;
   return (
     result.status !== 0 &&
     BROKER_DOWN_LINES.some((pattern) => pattern.test(result.stderr))

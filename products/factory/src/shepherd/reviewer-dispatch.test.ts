@@ -30,6 +30,8 @@ const target: ReviewTarget = { repo: "octo/demo", pr: 7, head: "a".repeat(40) };
 // The exact line agent-chat's client prints once its reconnect ladder runs out.
 const BROKER_DOWN_LINE = "could not reach or start the agent-chat broker";
 const BROKER_DOWN = `echo '${BROKER_DOWN_LINE}' >&2\nexit 1\n`;
+// What agent-chat prints when AGENT_CHAT_NO_AUTOSTART=1 finds no broker listening, as at a boot race.
+const NO_AUTOSTART_LINE = "broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one";
 
 let dir: string;
 let home: string;
@@ -223,6 +225,12 @@ describe("agentChatReviewerDispatch roster", () => {
 
     expect(error).toBeInstanceOf(ReviewerBrokerDown);
     expect((error as Error).message).toContain(BROKER_DOWN_LINE);
+  });
+
+  it("reports the no-autostart probe's refusal of agent ls as broker-down, not a refused dispatch (TP-4641)", async () => {
+    const error = await failure(dispatchOver(`echo '${NO_AUTOSTART_LINE}' >&2\nexit 1\n`).roster());
+
+    expect(error).toBeInstanceOf(ReviewerBrokerDown);
   });
 
   it("keeps a failed roster read that is not a broker outage a plain failure", async () => {

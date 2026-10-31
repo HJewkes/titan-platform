@@ -863,12 +863,12 @@ describe("sh-review", () => {
     return dispatch;
   }
 
-  it("sh-review-intent waits while the broker is down, then names the reviewer and stamps the time after the wait", async () => {
+  it("sh-review-intent waits while the broker is down, doubling each wait, then names the reviewer and stamps the time after the wait", async () => {
     const steps = reviewSteps(rosterDownFor(fakeDispatch(), 2));
 
     const { result } = await steps.intent();
 
-    expect(result).toEqual({ kind: "intent", ...spawnIntent, at: START + 20 });
+    expect(result).toEqual({ kind: "intent", ...spawnIntent, at: START + 10 + 20 });
     expect(steps.clock.sleeps).toBe(2);
   });
 

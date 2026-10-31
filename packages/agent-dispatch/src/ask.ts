@@ -11,11 +11,9 @@
 import { z } from "zod";
 
 import { refusal, runAgentChatAsync } from "./agents.js";
-import { BrokerUnavailableError, DispatchError } from "./dispatch.js";
+import { BROKER_UNAVAILABLE_EXIT, BrokerUnavailableError, DispatchError } from "./dispatch.js";
 import type { SafeExecResult } from "./exec.js";
 
-/** agent-chat's `ask` and `answers` exit this when no broker listens or it predates the verbs. */
-export const BROKER_UNAVAILABLE_EXIT = 69;
 /** agent-chat's `ask` and `answers` exit this on a usage error, apart from a refusal (1). */
 export const USAGE_EXIT = 2;
 
