@@ -12,7 +12,8 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { readYaml } from '../utils/yaml-io.js';
-import { TaskSchema } from '../schemas/task.js';
+import { TaskSchema, type Task } from '../schemas/task.js';
+import type { LoadedTasks, MalformedTask } from './prompt.js';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -23,48 +24,69 @@ export interface ArchiveStaleTasksOptions {
   now: Date;
 }
 
+export interface ArchiveStaleTasksResult extends LoadedTasks {
+  /** Ids moved to `tasks/archive/` (sorted). */
+  archivedIds: string[];
+}
+
 /**
- * Move stale done tasks into `tasks/archive/`. Returns the archived task ids
- * (sorted). A non-positive `retentionDays` disables archiving.
+ * Move stale done tasks into `tasks/archive/`. A non-positive `retentionDays`
+ * disables archiving. Every task file is parsed exactly once; the returned
+ * `tasks` and `malformed` are what remains in `tasks/` afterwards, so the
+ * bootstrap does not have to read the directory again.
  */
 export async function archiveStaleTasks(
   initiativeDir: string,
   opts: ArchiveStaleTasksOptions,
-): Promise<string[]> {
-  if (!(opts.retentionDays > 0)) return [];
+): Promise<ArchiveStaleTasksResult> {
   const tasksDir = path.join(initiativeDir, 'tasks');
   let entries: string[];
   try {
     entries = await fsp.readdir(tasksDir);
   } catch {
-    return [];
+    return { archivedIds: [], tasks: [], malformed: [] };
   }
   const ymlFiles = entries.filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'));
   const cutoffMs = opts.now.getTime() - opts.retentionDays * MS_PER_DAY;
-  const archiveDir = path.join(tasksDir, 'archive');
+  const archiveEnabled = opts.retentionDays > 0;
   const archived: string[] = [];
+  const tasks: Task[] = [];
+  const malformed: MalformedTask[] = [];
 
   for (const filename of ymlFiles) {
     const fullPath = path.join(tasksDir, filename);
-    let doneAt: string | null;
-    let id: string;
+    let task: Task;
     try {
-      const task = await readYaml(fullPath, TaskSchema);
-      if (task.status !== 'done' || !task.done_at) continue;
-      doneAt = task.done_at;
-      id = task.id;
-    } catch {
-      continue; // malformed / unreadable — leave it in place
+      task = await readYaml(fullPath, TaskSchema);
+    } catch (err) {
+      malformed.push({ file: filename, reason: err instanceof Error ? err.message : String(err) });
+      continue;
     }
-    const doneMs = new Date(doneAt).getTime();
-    if (Number.isNaN(doneMs) || doneMs > cutoffMs) continue;
-    try {
-      await fsp.mkdir(archiveDir, { recursive: true });
-      await fsp.rename(fullPath, path.join(archiveDir, filename));
-      archived.push(id);
-    } catch {
-      // best-effort: skip files we can't move
+    if (archiveEnabled && (await archiveIfStale(task, fullPath, tasksDir, filename, cutoffMs))) {
+      archived.push(task.id);
+    } else {
+      tasks.push(task);
     }
   }
-  return archived.sort();
+  return { archivedIds: archived.sort(), tasks, malformed };
+}
+
+async function archiveIfStale(
+  task: Task,
+  fullPath: string,
+  tasksDir: string,
+  filename: string,
+  cutoffMs: number,
+): Promise<boolean> {
+  if (task.status !== 'done' || !task.done_at) return false;
+  const doneMs = new Date(task.done_at).getTime();
+  if (Number.isNaN(doneMs) || doneMs > cutoffMs) return false;
+  try {
+    const archiveDir = path.join(tasksDir, 'archive');
+    await fsp.mkdir(archiveDir, { recursive: true });
+    await fsp.rename(fullPath, path.join(archiveDir, filename));
+    return true;
+  } catch {
+    return false; // best-effort: skip files we can't move
+  }
 }
