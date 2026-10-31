@@ -1,0 +1,69 @@
+{
+  "id": "clean-parcel-desk",
+  "beats": [
+    {
+      "id": "b01",
+      "spoken": "Picture a small warehouse on a Monday morning. A truck pulls up, and a worker at the dock door starts scanning the parcels in turn, each scan sending a short message to a server that has one job. It writes the parcel into a ledger."
+    },
+    {
+      "id": "b02",
+      "spoken": "The ledger came first because everything else depends on it. If the ledger is wrong, the drivers get the wrong route, and the customers get the wrong date for a delivery they have waited on all week. So the first week went into making a single table boring and dependable."
+    },
+    {
+      "id": "b03",
+      "spoken": "Here's what a scan looks like when it arrives. It carries a parcel code and a dock number. The server checks the code against the manifest for the day, which is a list the office prints before the first truck shows up. Is the code on the manifest? Then the server accepts the scan."
+    },
+    {
+      "id": "b04",
+      "spoken": "What if the code isn't on the manifest? The server doesn't throw the scan away. It parks the scan in a holding list and flags it for a person to read, much as a clerk would walk over to the shelf and look at the label by hand."
+    },
+    {
+      "id": "b05",
+      "spoken": "One clever fix tempted us. The server guessed which parcel the worker meant whenever the code had a typo. It worked about nine times in ten. The tenth time, it sent a crate of lamps to a bakery. The guess came out that same afternoon."
+    },
+    {
+      "id": "b06",
+      "spoken": "A plain rule is easier to trust. A scan either matches the manifest or it goes to the holding list, and you never have to ask what the server decided. There's one path for each outcome."
+    },
+    {
+      "id": "b07",
+      "spoken": "Now think about the drivers. Each driver carries a handheld that asks the ledger for the next stop. The handheld keeps no copy of the route. It asks again every few minutes, so a change at the dock reaches the van quickly, even when the van is across town."
+    },
+    {
+      "id": "b08",
+      "spoken": "That choice cost us some speed, since every handheld makes a request that a cached copy could have answered. We measured the extra load on a busy day, and the server handled it with room to spare. We kept the design because it was simple."
+    },
+    {
+      "id": "b09",
+      "spoken": "Let's look at two scans arriving at the same moment. The ledger takes them one at a time, in the order the server received them. Both name the same parcel? The second one is marked as a duplicate."
+    },
+    {
+      "id": "b10",
+      "spoken": "Duplicates are common at the dock, and workers scan a label twice when the first beep is hard to hear, and we used to count those as errors, which left the error report full of noise. Now a duplicate is a normal event with its own line in the log."
+    },
+    {
+      "id": "b11",
+      "spoken": "The log is the part we check every morning. It lists each scan and each decision in plain sentences, and it flags anything odd. When something looks wrong, we read the log from the top. Most mysteries end within a few lines."
+    },
+    {
+      "id": "b12",
+      "spoken": "Last month a whole pallet went missing from the log. The scans were there, but the dock number was blank, because a new handheld had shipped with the setting turned off. The fix took one minute. The lesson stuck with us."
+    },
+    {
+      "id": "b13",
+      "spoken": "The lesson was to make the server say when a field is empty. It now writes a clear warning whenever a dock number is blank. Every clerk will know how to read that warning before the first truck leaves, so the problem gets fixed at the source."
+    },
+    {
+      "id": "b14",
+      "spoken": "Add the log early. You'll want it on the first strange day, and ours came late. That cost a long week of guessing, with the whole team reading old messages and arguing about what the server might have done. A good log turns a guess into a short read."
+    },
+    {
+      "id": "b15",
+      "spoken": "That's the whole desk. Scans come in. The server checks them against the manifest, the ledger keeps the answer, the drivers ask for it, and the clerks read the log, so the parcels end up where they belong."
+    },
+    {
+      "id": "b16",
+      "spoken": "That's the whole desk. Scans come in, the server checks them against the manifest, and the ledger keeps the answer. The drivers ask for it, the clerks read the log, and the parcels end up where they belong."
+    }
+  ]
+}
