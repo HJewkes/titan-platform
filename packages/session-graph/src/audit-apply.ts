@@ -58,19 +58,19 @@ const INSERTS = {
     ON CONFLICT DO NOTHING`,
 } as const;
 
+const INSERT_LISTS = ["toolCalls", "inbound", "contextBlocks", "compactions", "queueOps", "signals", "costStates"] as const satisfies readonly (keyof typeof INSERTS)[];
+
 /** Write one delta's audit events. Runs inside `applyDelta`'s transaction, so it opens none of its own. */
 export function applyAudit(db: Db, transcriptId: number, delta: TranscriptDelta): void {
   run(db, UPSERT_REQUEST, transcriptId, delta.requests);
-  for (const [list, sql] of Object.entries(INSERTS) as [keyof typeof INSERTS, string][]) {
-    run(db, sql, transcriptId, delta[list]);
-  }
+  for (const list of INSERT_LISTS) run(db, INSERTS[list], transcriptId, delta[list]);
 }
 
 function run(db: Db, sql: string, transcriptId: number, events: readonly object[]): void {
   if (events.length === 0) return;
   const statement = db.prepare(sql);
   const bind = namedBinder(sql);
-  for (const event of events) statement.run(bind({ ...(event as Row), transcriptId }));
+  for (const event of events) statement.run(bind({ ...event, transcriptId }));
 }
 
 /** better-sqlite3 rejects unused named parameters and cannot bind booleans. */

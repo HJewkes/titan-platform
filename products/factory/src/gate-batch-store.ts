@@ -1,4 +1,5 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { readPath } from "./narrow.js";
 
 const GATE_BATCH_DDL = `
   CREATE TABLE gate_batch (
@@ -83,7 +84,7 @@ interface BatchRow {
   applied_at: string;
 }
 
-const isNonceConflict = (error: unknown): boolean => /UNIQUE constraint failed: gate_batch\.nonce/.test(String((error as Error | undefined)?.message));
+const isNonceConflict = (error: unknown): boolean => /UNIQUE constraint failed: gate_batch\.nonce/.test(String(readPath(error, "message")));
 
 /** Applied proofs in the factory database; the tables come from `gateBatchMigration`. */
 export class GateBatchStore {
@@ -118,9 +119,9 @@ export class GateBatchStore {
   }
 
   get(batchId: string): BatchRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM gate_batch WHERE id = ?").get(batchId) as BatchRow | undefined;
+    const row = this.db.prepare<[string], BatchRow>("SELECT * FROM gate_batch WHERE id = ?").get(batchId);
     if (!row) return undefined;
-    const items = this.db.prepare("SELECT * FROM gate_batch_item WHERE batch_id = ? ORDER BY seq").all(batchId) as ItemRow[];
+    const items = this.db.prepare<[string], ItemRow>("SELECT * FROM gate_batch_item WHERE batch_id = ? ORDER BY seq").all(batchId);
     return { ...proofOf(row), appliedAt: row.applied_at, items: items.map(itemOf) };
   }
 

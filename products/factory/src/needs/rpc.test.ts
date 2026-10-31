@@ -11,6 +11,7 @@ import { decisionTask } from "../test-support/owner-queue-10-05.js";
 import { decisionTaskItem } from "./active-work-source.js";
 import { runNeeds } from "./command.js";
 import type { NeedsSources } from "./rpc.js";
+import { z } from "zod";
 
 const dirs: string[] = [];
 const servers: FactoryServer[] = [];
@@ -48,10 +49,10 @@ async function rpc<T>(server: FactoryServer, name: string, args: object = {}): P
   return envelope.data;
 }
 
-async function cliJson(sources?: readonly QueueSource[]): Promise<OwnerItem[]> {
+async function cliJson(sources?: readonly QueueSource[]) {
   const out: string[] = [];
   await runNeeds({ stdout: (text) => void out.push(text), stderr: () => undefined }, sources ?? (await sources10_05()), { json: true });
-  return JSON.parse(out.join("")) as OwnerItem[];
+  return z.array(z.looseObject({ kind: z.string(), lens: z.string().optional() })).parse(JSON.parse(out.join("")));
 }
 
 const fixed10_05: NeedsSources = () => sources10_05();

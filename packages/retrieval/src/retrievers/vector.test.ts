@@ -2,13 +2,19 @@ import { OllamaEmbedder, type Embedder } from "@titan-design/embed";
 import { describe, expect, it } from "vitest";
 import { BruteForceVectorIndex, vectorRetriever } from "./vector.js";
 
+function requestInputs(body: unknown): string[] {
+  const parsed: unknown = JSON.parse(String(body));
+  if (typeof parsed !== "object" || parsed === null || !("input" in parsed) || !Array.isArray(parsed.input)) return [];
+  return parsed.input.filter((item): item is string => typeof item === "string");
+}
+
 function recordingOllama(): { embedder: OllamaEmbedder; inputs: string[][] } {
   const inputs: string[][] = [];
-  const fetchImpl = (async (_url: string, init: RequestInit) => {
-    const { input } = JSON.parse(String(init.body)) as { input: string[] };
+  const fetchImpl = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const input = requestInputs(init?.body);
     inputs.push(input);
     return new Response(JSON.stringify({ embeddings: input.map(() => [1, 0]) }), { status: 200 });
-  }) as typeof fetch;
+  };
   return { embedder: new OllamaEmbedder({ dimensions: 2, fetch: fetchImpl }), inputs };
 }
 

@@ -135,7 +135,7 @@ export function parseTeleportEvents(lines: Iterable<string>): TeleportEvent[] {
 function parseJson(line: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON.parse(line);
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+    return typeof value === "object" && value !== null ? Object.fromEntries(Object.entries(value)) : null;
   } catch {
     return null;
   }

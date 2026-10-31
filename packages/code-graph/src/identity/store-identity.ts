@@ -23,7 +23,7 @@ export interface PriorSnapshotOptions {
 
 // The store's listSnapshots caps at a limit; lineage needs every snapshot.
 function allSnapshots(store: CodeGraphStore): SnapshotRow[] {
-  return (store.db.prepare("SELECT * FROM snapshot ORDER BY id").all() as SnapshotDbRow[]).map(rowToSnapshot);
+  return store.db.prepare<[], SnapshotDbRow>("SELECT * FROM snapshot ORDER BY id").all().map(rowToSnapshot);
 }
 
 /** The alias-base tree over every snapshot in the store. */

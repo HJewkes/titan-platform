@@ -7,6 +7,7 @@ import { auditStepId, MEASUREMENT_AUDIT_STEPS } from "./manifest.js";
 import { buildReport, classifyAll, type AuditedMetric } from "./report.js";
 import { reviewBrief } from "./review.js";
 import * as S from "./schemas.js";
+import { readPath } from "../narrow.js";
 
 export const AUDIT_WORKFLOW = "measurement-audit";
 const INPUT_VAR = "AUDIT_STEP_INPUT";
@@ -45,7 +46,7 @@ async function understand(ctx: WorkflowContext, input: unknown) {
 async function baseline(ctx: WorkflowContext, metrics: readonly MetricSpec[], stores: readonly S.StoreRef[]): Promise<Map<string, S.Baseline>> {
   const run = (metric: MetricSpec) => dispatch(ctx, `${auditStepId("baseline")}:${metric.id}`, { query: metric.query, store: stores.find((store) => store.id === metric.query?.store) }, S.BaselineSchema);
   const mapped = await mapItems(ctx, auditStepId("baseline"), metrics, (metric) => run(metric), { key: (metric) => metric.id, concurrency: BASELINE_CONCURRENCY });
-  const baselines = new Map(mapped.results.map(({ key, result }) => [key, (result.data as { result: S.Baseline }).result]));
+  const baselines = new Map(mapped.results.map(({ key, result }) => [key, S.BaselineSchema.parse(readPath(result.data, "result"))]));
   for (const { key, error } of mapped.failed) baselines.set(key, { value: null, n: 0, error });
   return baselines;
 }

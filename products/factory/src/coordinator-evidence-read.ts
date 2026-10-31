@@ -104,8 +104,9 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   const runs = await port.checkRuns(repo, head);
   if (headCheckFindings({ headSha: head, contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length > 0) return undefined;
   const required = contexts.map((name) => runs.find((run) => run.name === name && run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID && run.conclusion === "success"));
-  if (required.some((run) => run === undefined)) return undefined;
-  return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
+  const found = required.filter((run) => run !== undefined);
+  if (found.length !== required.length) return undefined;
+  return { base, required: contexts, runs: found.map(runFact) };
 }
 
 type ChecksState = "green" | "failing" | "pending" | "unreadable";

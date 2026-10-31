@@ -22,6 +22,7 @@ import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type Facto
 import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
+import { isRecord } from "./narrow.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const dirs: string[] = [];
@@ -35,11 +36,6 @@ function dbFile(): string {
   const dir = mkdtempSync(join(tmpdir(), "factory-serve-"));
   dirs.push(dir);
   return join(dir, "state", "factory.sqlite3");
-}
-
-async function healthOf(server: FactoryServer): Promise<unknown> {
-  const response = await fetch(`http://127.0.0.1:${server.port}/health`);
-  return response.json();
 }
 
 async function serve(dbPath: string, scenario: LandScenario, overrides: Partial<FactoryServerOptions> = {}): Promise<FactoryServer> {
@@ -57,6 +53,12 @@ async function serve(dbPath: string, scenario: LandScenario, overrides: Partial<
   cleanups.push(() => server.close());
   return server;
 }
+
+const healthOf = async (server: FactoryServer): Promise<Record<string, unknown>> => {
+  const body: unknown = await (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
+  if (!isRecord(body)) throw new Error("/health answered no object");
+  return body;
+};
 
 describe("titan-factory serve", () => {
   it("a run started on one server completes on the next server once the first closes", async () => {
@@ -113,7 +115,7 @@ describe("titan-factory serve", () => {
     const runId = server.host.runtime.start("land-test");
     await gateOpened(server.host, gateId(runId, "approve-merge"));
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health).toMatchObject({ ok: true, runs: { paused: 1, completed: 0 }, pendingGates: 1, busy: [] });
   });
@@ -127,7 +129,7 @@ describe("titan-factory serve", () => {
     const runId = server.host.runtime.start("chore");
     await reached;
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health.busy).toEqual([{ runId, step: "chore", phase: "park" }]);
   });
@@ -135,10 +137,10 @@ describe("titan-factory serve", () => {
   it("health reports the snapshot tick and that it slowed under a low rate limit", async () => {
     const scenario = landScenario();
     const pacing = { tickMs: () => 300_000, status: () => ({ tickMs: 300_000, slowed: true, remaining: 900 }) };
-    Object.assign(scenario.routes, { shepherd: { pacing } as never });
+    Object.assign(scenario.routes, { shepherd: { pacing } });
     const server = await serve(dbFile(), scenario);
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health.snapshotTick).toEqual({ tickMs: 300_000, slowed: true, remaining: 900 });
   });
@@ -146,7 +148,7 @@ describe("titan-factory serve", () => {
   it("health carries the github probe result", async () => {
     const server = await serve(dbFile(), landScenario(), { github: { status: () => "gh: HTTP 401", refresh: async () => undefined } });
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health.github).toBe("gh: HTTP 401");
   });
@@ -155,7 +157,7 @@ describe("titan-factory serve", () => {
     const build = { sha: "abc123", behindMain: { status: () => 4, refresh: async () => undefined } };
     const server = await serve(dbFile(), landScenario(), { build });
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health.build).toEqual({ sha: "abc123", behindMain: 4 });
   });
@@ -250,15 +252,13 @@ describe("titan-factory serve", () => {
   it("health reports an unknown build when none was baked in", async () => {
     const server = await serve(dbFile(), landScenario());
 
-    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+    const health = await healthOf(server);
 
     expect(health.build).toEqual({ sha: "unknown", behindMain: "unknown" });
   });
 });
 
 describe("titan-factory serve start record", () => {
-  const healthOf = async (server: FactoryServer): Promise<Record<string, unknown>> => (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
-
   it("health reports when serve started, its uptime and the start counts beside the fields it had", async () => {
     let clock = Date.parse("2026-10-08T21:00:00.000Z");
     const server = await serve(dbFile(), landScenario(), { now: () => clock });

@@ -174,13 +174,12 @@ function applyDeprecate(ctx: Ctx, delta: Extract<ParsedDelta,{ type: "deprecate"
 }
 
 function applyMerge(ctx: Ctx, delta: Extract<ParsedDelta,{ type: "merge" }>): void {
-  const olds = delta.bulletIds.map((id) => ctx.store.get(id));
-  const first = olds[0];
-  if (!first || olds.some((b) => b === undefined)) {
+  const present = delta.bulletIds.flatMap((id) => ctx.store.get(id) ?? []);
+  const first = present[0];
+  if (!first || present.length !== delta.bulletIds.length) {
     ctx.report.skipped.push({ delta, reason: "unknown bullet" });
     return;
   }
-  const present = olds as Bullet[];
   const next = ctx.store.add({
     ...inherit(first),
     content: delta.content,

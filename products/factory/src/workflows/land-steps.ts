@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TRACE_DATA_KEYS, traceRef } from "../evidence.js";
 import { policyTraceGate, type GateDecision } from "../gate-policy.js";
 import { OrphanedCheckRecord } from "./land-orphan.js";
+import { errorStatus, readPath } from "../narrow.js";
 
 /*
  * One schema per land code step. Each names only the fields its branch reads and lets the rest of the
@@ -40,11 +41,13 @@ export const BackoffResult = z.looseObject({ waitMs: z.number(), retry: z.number
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 
+const wireMessage = (error: unknown): string => String(readPath(error, "message") ?? "");
+
 /** GitHub's HTTP 405 for a merge that raced another PR into the base; the wire may carry the status only in the message. */
 export function baseMovedOrThrow(error: unknown): { done: false; skipped: "base-moved"; mergeSha: string } {
-  const { status, message } = error as { status?: number; message?: string };
-  const is405 = status === 405 || /\(HTTP 405\)|HTTP 405:/.test(message ?? "");
-  if (is405 && /base branch was modified/i.test(message ?? "")) return { done: false, skipped: "base-moved", mergeSha: "" };
+  const message = wireMessage(error);
+  const is405 = errorStatus(error) === 405 || /\(HTTP 405\)|HTTP 405:/.test(message);
+  if (is405 && /base branch was modified/i.test(message)) return { done: false, skipped: "base-moved", mergeSha: "" };
   throw error;
 }
 
@@ -54,8 +57,7 @@ export const MergePolicyResult = z.looseObject({ outcome: z.enum(["gate", "allow
 
 /** Only GitHub's own 422 for an unmergeable base becomes a result; every other failure keeps failing the step. */
 export function conflictOrThrow(error: unknown): "conflict" {
-  const { status, message } = error as { status?: number; message?: string };
-  if (status === 422 && /merge conflict between base and head/i.test(message ?? "")) return "conflict";
+  if (errorStatus(error) === 422 && /merge conflict between base and head/i.test(wireMessage(error))) return "conflict";
   throw error;
 }
 

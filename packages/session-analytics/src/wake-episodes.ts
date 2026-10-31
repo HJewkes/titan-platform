@@ -5,6 +5,8 @@ import { ACTION_CLASSES, type ActionClass } from "./turn-action.js";
 
 export const WAKE_FROM_KINDS = ["seat", "agent", "broadcast", "broker", "none"] as const;
 export type WakeFromKind = (typeof WAKE_FROM_KINDS)[number];
+const wakeFromKindSchema = z.enum(WAKE_FROM_KINDS);
+const pairKeySchema = z.tuple([z.string(), wakeFromKindSchema, z.string()]);
 
 /** Report roles whose wakes are cut into episodes: a human coordinator and a spawned coordinator seat. */
 export const DEFAULT_EPISODE_ROLES: readonly string[] = ["coordinator", "worker:coordinator"];
@@ -163,7 +165,7 @@ function causeBuckets(episodes: readonly WakeEpisode[]): WakeCauseEpisodes[] {
         midLoopEpisodes: members.filter((episode) => episode.midLoop).length,
         requestsPerEpisode: cost.requests / cost.episodes,
         costPerEpisode: cost.costUsd / cost.episodes,
-        byFrom: [...groupBy(members, (episode) => episode.fromKind)].map(([kind, part]) => ({ key: kind as WakeFromKind, ...costOf(part) })).sort(byCostThenKey),
+        byFrom: [...groupBy(members, (episode) => episode.fromKind)].map(([kind, part]) => ({ key: wakeFromKindSchema.parse(kind), ...costOf(part) })).sort(byCostThenKey),
       };
     })
     .sort(byCostThenKey);
@@ -173,7 +175,7 @@ function pairBuckets(episodes: readonly WakeEpisode[]): WakePair[] {
   const sent = episodes.filter((episode) => episode.fromKind !== "none");
   return [...groupBy(sent, (episode) => JSON.stringify([episode.from, episode.fromKind, episode.to]))]
     .map(([key, members]) => {
-      const [from, fromKind, to] = JSON.parse(key) as [string, WakeFromKind, string];
+      const [from, fromKind, to] = pairKeySchema.parse(JSON.parse(key));
       return { from, fromKind, to, ...costOf(members) };
     })
     .sort((a, b) => b.costUsd - a.costUsd || a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.fromKind.localeCompare(b.fromKind));

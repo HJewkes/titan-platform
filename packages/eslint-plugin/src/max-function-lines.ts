@@ -33,6 +33,12 @@ export function countNonBlankLines(lines: readonly string[], start: number, end:
   return count;
 }
 
+// The schema guarantees `max` is an integer when present.
+function configuredMax(option: unknown): number {
+  if (typeof option !== "object" || option === null || !("max" in option)) return DEFAULT_MAX_LINES;
+  return typeof option.max === "number" ? option.max : DEFAULT_MAX_LINES;
+}
+
 export const maxFunctionLines: Rule.RuleModule = {
   meta: {
     type: "suggestion",
@@ -50,8 +56,7 @@ export const maxFunctionLines: Rule.RuleModule = {
     },
   },
   create(context) {
-    const options = (context.options[0] ?? {}) as { max?: number };
-    const max = options.max ?? DEFAULT_MAX_LINES;
+    const max = configuredMax(context.options[0]);
     const lines = context.sourceCode.lines;
     function check(node: FunctionNode): void {
       if (!node.loc) return;

@@ -4,6 +4,7 @@ import { createMinerContext, type MinerContext } from "./context.js";
 import type { MinerConfig } from "./config.js";
 import { MINER_VERSION, TOOL_PREFIX, createMinerRegistry } from "./registry.js";
 import { status } from "./commands/status.js";
+import { countRow } from "./rows.js";
 
 export interface ServeOptions {
   port?: number;
@@ -31,7 +32,7 @@ export function serveOptions(config: MinerConfig, options: ServeOptions = {}): S
 function summarize(ctx: MinerContext): Record<string, unknown> {
   try {
     const graph = ctx.graph();
-    const sessions = (graph.db.prepare("SELECT count(*) AS n FROM session").get() as { n: number }).n + countNormalizedSessions(graph);
+    const sessions = countRow.parse(graph.db.prepare("SELECT count(*) AS n FROM session").get()).n + countNormalizedSessions(graph);
     return { sessions, ftsOrphanRatio: graph.spans.orphanRatio() };
   } catch (err) {
     return { indexError: err instanceof Error ? err.message : String(err) };

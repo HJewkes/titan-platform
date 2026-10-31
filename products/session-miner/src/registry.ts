@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { createRegistry, type CommandRegistry } from "@titan-design/registry";
+import { z } from "zod";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
 import { memoryReport, memoryScan } from "./commands/memory.js";
 import { playbookAdd, playbookRecall, playbookReflect, playbookStatus } from "./commands/playbook.js";
@@ -16,7 +17,7 @@ import type { MinerContext } from "./context.js";
 import { insightCommand } from "./insights/define.js";
 import { AGENT_CHAT_QUESTIONS, GUARDRAIL_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "./insights/questions.js";
 
-export const MINER_VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+export const MINER_VERSION = z.object({ version: z.string() }).parse(createRequire(import.meta.url)("../package.json")).version;
 export const TOOL_PREFIX = "miner__";
 
 /** Every command the miner exposes, on every surface. Serve/mcp are wired by the CLI, not registered. */

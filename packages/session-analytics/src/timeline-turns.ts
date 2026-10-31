@@ -149,9 +149,8 @@ function outcomeOf(isError: boolean | null): TimelineToolOutcome {
 
 function firstString(input: unknown, keys: readonly string[]): string | null {
   if (typeof input !== "object" || input === null) return null;
-  const record = input as Record<string, unknown>;
   for (const key of keys) {
-    const value = record[key];
+    const value: unknown = Reflect.get(input, key);
     if (typeof value === "string" && value.length > 0) return value;
   }
   return null;

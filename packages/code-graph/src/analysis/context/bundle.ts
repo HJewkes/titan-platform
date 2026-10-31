@@ -123,7 +123,7 @@ function rankEdges(edges: BundleEdge[], ctx: RelevanceCtx | null): BundleEdge[] 
   });
   return annotated.sort(
     (a, b) =>
-      (b.relevance ?? 0) - (a.relevance ?? 0) ||
+      b.relevance - a.relevance ||
       b.weight - a.weight ||
       a.from.localeCompare(b.from) ||
       a.to.localeCompare(b.to),

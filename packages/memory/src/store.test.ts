@@ -1,4 +1,4 @@
-import { EdgeTable, openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { EdgeTable, EntityTable, openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMaturity, scorePlaybook, staleBullets } from "./playbook.js";
 import { DEFAULT_MEMORY_TABLES, memoryMigration } from "./schema.js";
@@ -21,6 +21,21 @@ describe("PlaybookStore", () => {
   });
 
   afterEach(() => db.close());
+
+  it("skips a row with corrupt attrs and still lists the good bullets", () => {
+    const first = store.add({ content: "Run the linter before committing" });
+    const second = store.add({ content: "Pin dependency versions" });
+    new EntityTable(db, { name: DEFAULT_MEMORY_TABLES.entity }).upsert({
+      ref: bulletRef("b-corrupt"),
+      kind: "bullet",
+      name: "general",
+      attrs: { content: 42 },
+      tValid: T0.toISOString(),
+    });
+
+    expect(store.list().map((b) => b.id).sort()).toEqual([first.id, second.id].sort());
+    expect(store.get("b-corrupt")).toBeUndefined();
+  });
 
   it("adds a bullet with defaults and reads it back", () => {
     const bullet = store.add({ content: "Run the linter before committing", tags: ["git"] });

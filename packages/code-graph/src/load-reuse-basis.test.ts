@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { loadReuseBasis } from "./incremental.js";
 import type { CodeGraphStore } from "./store.js";
@@ -22,7 +23,7 @@ function snapshot(id: number, indexVersion: string): SnapshotRow {
 }
 
 function stubStore(fx: Fixture, calls: string[] = []): CodeGraphStore {
-  return {
+  return partialFake<CodeGraphStore>({
     listSnapshots: () => fx.snapshots,
     listFingerprints: (id: number) => {
       calls.push(`fingerprints:${id}`);
@@ -40,7 +41,7 @@ function stubStore(fx: Fixture, calls: string[] = []): CodeGraphStore {
       calls.push(`metrics:${id}`);
       return fx.metrics ?? [];
     },
-  } as unknown as CodeGraphStore;
+  });
 }
 
 const FILE_A: GraphNode = { id: "a.ts", kind: "file", name: "a.ts" };

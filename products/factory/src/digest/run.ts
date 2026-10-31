@@ -8,6 +8,7 @@ import { alarmNote, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { renderMarkdown } from "./render-md.js";
 import { pushDigest, type PushDeps } from "./push.js";
 import type { Directories } from "./sources.js";
+import { errorMessage } from "../narrow.js";
 
 export interface DigestRun {
   sources: DigestSources;
@@ -60,7 +61,7 @@ export async function deliverDigest(markdown: string, slot: DigestSlot, dirs: Di
     try {
       written.push(write(dir));
     } catch (error) {
-      warnings.push(`copy to ${dir} failed: ${(error as Error).message}`);
+      warnings.push(`copy to ${dir} failed: ${errorMessage(error)}`);
     }
   }
   const pushWarning = push ? await pushDigest(markdown, slot, push, pushDeps) : undefined;

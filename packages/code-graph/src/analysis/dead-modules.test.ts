@@ -4,16 +4,16 @@ import { UNIMPORTED_ROLES } from "../unimported-roles.js";
 import { buildReportContext } from "./graph-report-sections.js";
 import { topDeadModules } from "./dead-modules.js";
 
-const file = (id: string, role?: string): GraphNode => ({
+const file = (id: string, role?: NodeRole): GraphNode => ({
   id,
   kind: "file",
   name: id,
-  ...(role ? { role: role as GraphNode["role"] } : {}),
+  ...(role ? { role } : {}),
 });
-const edge = (srcId: string, dstId: string, kind: string): GraphEdge => ({
+const edge = (srcId: string, dstId: string, kind: GraphEdge["kind"]): GraphEdge => ({
   srcId,
   dstId,
-  kind: kind as GraphEdge["kind"],
+  kind,
 });
 const loc = (nodeId: string, value: number): GraphMetric => ({
   nodeId,

@@ -68,6 +68,10 @@ export function externalToFinding(input: ExternalDiagnostic): Finding {
   });
 }
 
+const OPTIONAL_FIELDS = ["lineStart", "lineEnd", "symbol", "value", "baseline", "threshold", "evidence"] as const;
+
 function withoutUndefined(finding: Finding): Finding {
-  return Object.fromEntries(Object.entries(finding).filter(([, v]) => v !== undefined)) as Finding;
+  const out = { ...finding };
+  for (const field of OPTIONAL_FIELDS) if (out[field] === undefined) delete out[field];
+  return out;
 }

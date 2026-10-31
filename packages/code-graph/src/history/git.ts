@@ -82,7 +82,7 @@ export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffe
     });
     return { ok: true, out };
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
+    const code = errorField(error, "code");
     const detail = failureDetail(error);
     if (code === "ENOENT") return { ok: false, reason: "not-git", detail };
     if (code === "ENOBUFS")
@@ -95,9 +95,13 @@ export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffe
   }
 }
 
+function errorField(error: unknown, field: string): unknown {
+  return typeof error === "object" && error !== null ? Reflect.get(error, field) : undefined;
+}
+
 /** git's own stderr when it said something, since the thrown message only echoes the command line. */
 function failureDetail(error: unknown): string {
-  const stderr = (error as { stderr?: unknown }).stderr;
+  const stderr = errorField(error, "stderr");
   const text = typeof stderr === "string" ? stderr.trim() : "";
   if (text) return text;
   return error instanceof Error ? error.message : String(error);

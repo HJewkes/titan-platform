@@ -37,7 +37,7 @@ export function structuralSignature(file: ParsedFile): string {
     if (node.type === "comment") return;
     parts.push(node.type);
     if (node.childCount === 0) parts.push(node.text);
-    for (const child of node.children) if (child) visit(child);
+    for (const child of node.children) visit(child);
   };
   visit(file.tree.rootNode);
   return hashContent(parts.join(""));

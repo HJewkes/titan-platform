@@ -12,7 +12,7 @@ function capture() {
 const broker = (response: Response | Error): BrokerEndpoint => ({
   baseUrl: () => "http://127.0.0.1:7600",
   token: () => "test-token-not-real",
-  fetch: (async () => (response instanceof Error ? Promise.reject(response) : response)) as typeof fetch,
+  fetch: async () => (response instanceof Error ? Promise.reject(response) : response),
 });
 
 describe("queueCounts", () => {

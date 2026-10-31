@@ -29,7 +29,10 @@ const DEFAULT_DAMPING = 0.85;
 const DEFAULT_TOLERANCE = 1e-6;
 const DEFAULT_MAX_ITERS = 100;
 
-const DEFAULT_EDGE_WEIGHTS: Record<EdgeKind, number> = {
+/** Keyed by string because a stored edge kind can fall outside `EdgeKind`; such an edge weighs 1. */
+type EdgeWeights = Readonly<Record<string, number | undefined>>;
+
+const DEFAULT_EDGE_WEIGHTS: EdgeWeights = {
   imports: 1.0,
   "re-exports": 0.5,
   calls: 1.5,
@@ -89,7 +92,7 @@ function buildIdIndex(nodes: readonly GraphNode[]): Map<string, number> {
 function buildAdjacency(
   idx: ReadonlyMap<string, number>,
   edges: readonly GraphEdge[],
-  weights: Record<EdgeKind, number>,
+  weights: EdgeWeights,
   n: number,
 ): Adjacency {
   const outNeighbors: Array<Array<{ to: number; w: number }>> = Array.from(

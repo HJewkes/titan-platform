@@ -96,7 +96,7 @@ function findMethodOwner(className: string, attr: string, ctx: PyCallContext, se
   seen.add(className);
   if (ctx.declarations.get(`${className}.${attr}`)?.type === "function_definition") return className;
   for (const base of cls.childForFieldName("superclasses")?.namedChildren ?? []) {
-    if (base?.type !== "identifier" || !ctx.declarations.has(base.text)) return null;
+    if (base.type !== "identifier" || !ctx.declarations.has(base.text)) return null;
     const owner = findMethodOwner(base.text, attr, ctx, seen);
     if (owner) return owner;
   }
@@ -108,7 +108,7 @@ function parameterNames(def: Node | undefined): string[] {
   if (def?.type !== "function_definition") return [];
   const out: string[] = [];
   for (const param of def.childForFieldName("parameters")?.namedChildren ?? []) {
-    const id = param?.type === "identifier" ? param : param?.descendantsOfType("identifier")[0];
+    const id = param.type === "identifier" ? param : param.descendantsOfType("identifier")[0];
     if (id) out.push(id.text);
   }
   return out;
@@ -118,12 +118,12 @@ function parameterNames(def: Node | undefined): string[] {
 function fromImports(root: Node, resolve: ResolveModule): PyCallContext["imports"] {
   const out: PyCallContext["imports"] = new Map();
   for (const stmt of root.descendantsOfType("import_from_statement")) {
-    const moduleName = stmt?.childForFieldName("module_name")?.text;
+    const moduleName = stmt.childForFieldName("module_name")?.text;
     const moduleFile = moduleName ? resolve(moduleName) : null;
-    if (!stmt || !moduleFile) continue;
+    if (!moduleFile) continue;
     for (const imported of stmt.childrenForFieldName("name")) {
-      const alias = imported?.type === "aliased_import" ? imported.childForFieldName("alias")?.text : undefined;
-      const name = imported?.type === "aliased_import" ? imported.childForFieldName("name")?.text : imported?.text;
+      const alias = imported.type === "aliased_import" ? imported.childForFieldName("alias")?.text : undefined;
+      const name = imported.type === "aliased_import" ? imported.childForFieldName("name")?.text : imported.text;
       if (name && !name.includes(".")) out.set(alias ?? name, { fileId: moduleFile, name });
     }
   }
@@ -135,7 +135,7 @@ const LITERAL_TYPES = new Set(["integer", "float", "true", "false", "none"]);
 /** The source text of a literal argument; an f-string or a concatenation is not one. */
 function literalText(arg: Node): string | null {
   if (LITERAL_TYPES.has(arg.type)) return arg.text;
-  if (arg.type === "string") return arg.namedChildren.some((c) => c?.type === "interpolation") ? null : arg.text;
+  if (arg.type === "string") return arg.namedChildren.some((c) => c.type === "interpolation") ? null : arg.text;
   if (arg.type === "unary_operator" && arg.text.startsWith("-")) {
     const operand = arg.childForFieldName("argument");
     return operand && (operand.type === "integer" || operand.type === "float") ? arg.text : null;
@@ -146,7 +146,7 @@ function literalText(arg: Node): string | null {
 function pythonCallSite(argumentList: Node): CallSite {
   const site: CallSite = { args: [] };
   for (const arg of argumentList.namedChildren) {
-    if (!arg || arg.type === "comment") continue;
+    if (arg.type === "comment") continue;
     if (arg.type === "list_splat") site.spreadFrom ??= site.args.length;
     else if (arg.type === "dictionary_splat") site.kwSplat = true;
     else if (arg.type === "keyword_argument") addKeyword(site, arg);

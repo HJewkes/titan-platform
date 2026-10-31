@@ -247,7 +247,6 @@ function nestingDepthOf(node: Node, language: string, depth: number): number {
     language === "python" ? PY_NESTING_TYPES : TS_NESTING_TYPES;
   let maxDepth = depth;
   for (const child of node.namedChildren) {
-    if (!child) continue;
     const next = nestingTypes.has(child.type) && !isElseIf(node, child) ? depth + 1 : depth;
     const childMax = nestingDepthOf(child, language, next);
     if (childMax > maxDepth) maxDepth = childMax;
@@ -269,7 +268,7 @@ function cyclomaticOf(body: Node, language: string): number {
       complexity++;
     }
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(body);

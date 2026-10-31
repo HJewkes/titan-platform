@@ -158,7 +158,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
 /** `shepherd hold` for the hold subcommand: every command name below the program. */
 function verbPath(command: Command): string {
   const names: string[] = [];
-  for (let at: Command | null = command; at?.parent; at = at.parent) names.unshift(at.name());
+  for (let at = command; at.parent; at = at.parent) names.unshift(at.name());
   return names.join(" ");
 }
 
