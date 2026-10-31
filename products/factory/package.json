@@ -49,7 +49,6 @@
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
-    "@titan-design/review-workflow": "workspace:^",
     "@titan-design/review-schema": "^0.1.0",
     "@titan-design/review-workflow": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
