@@ -46,6 +46,7 @@
     "@titan-design/github": "workspace:^",
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/narrow": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",

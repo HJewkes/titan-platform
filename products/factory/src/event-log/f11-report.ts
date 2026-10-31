@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/narrow";
 // Node strips this file's types when scripts/f11.mjs imports it, so it carries no runtime imports. The comparators it
 // composes arrive as `engines` for the same reason: the script imports their modules, and so do the tests.
 import type { RateRecord, ratePeaks } from "../github-api/rate-sample.js";
@@ -82,10 +83,6 @@ function stampOf(text: string): string | undefined {
   return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isDuplicateBy(by: unknown): by is DuplicateLine["by"] {
   return DUPLICATE_BY.includes(by);
 }
@@ -93,7 +90,7 @@ function isDuplicateBy(by: unknown): by is DuplicateLine["by"] {
 function fieldsOf(json: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(json);
-    return isRecord(parsed) ? parsed : {};
+    return isObjectLike(parsed) ? parsed : {};
   } catch {
     return {};
   }

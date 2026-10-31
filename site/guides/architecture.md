@@ -258,6 +258,7 @@ graph TD
   explainer --> github
   explainer --> graphLayout
   explainer --> hitl
+  explainer --> narrow
   explainer --> ownerQueue
   explainer --> pm
   explainer --> renderQa
@@ -280,6 +281,7 @@ graph TD
   factory --> github
   factory --> health
   factory --> hitl
+  factory --> narrow
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
@@ -290,8 +292,10 @@ graph TD
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> narrow
   retrievalEval --> appPaths
   retrievalEval --> embed
+  retrievalEval --> narrow
   retrievalEval --> retrieval
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
@@ -302,6 +306,7 @@ graph TD
   sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> narrow
   sessionMiner --> ownerQueue
   sessionMiner --> pm
   sessionMiner --> registry
@@ -404,7 +409,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

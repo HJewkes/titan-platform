@@ -1451,6 +1451,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
@@ -1572,6 +1575,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
@@ -1631,7 +1637,11 @@ importers:
         specifier: 7.0.0
         version: 7.0.0
 
-  products/fleet-panel: {}
+  products/fleet-panel:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../../packages/narrow
 
   products/retrieval-eval:
     dependencies:
@@ -1641,6 +1651,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../../packages/narrow
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
@@ -1677,6 +1690,9 @@ importers:
       '@titan-design/memory':
         specifier: workspace:^
         version: link:../../packages/memory
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../../packages/narrow
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue

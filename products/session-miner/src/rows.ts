@@ -17,10 +17,3 @@ export function parseRow<S extends z.ZodType>(
 }
 
 export const countRow = z.object({ n: z.number() });
-
-/** The `code` of a Node system error, read without assuming the thrown value is one. */
-export function errnoCode(err: unknown): unknown {
-  return typeof err === "object" && err !== null && "code" in err
-    ? err.code
-    : undefined;
-}
