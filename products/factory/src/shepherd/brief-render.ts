@@ -4,13 +4,13 @@ import { buildOwnerSection, type OwnerSectionInput } from "./owner-section.js";
 import { pairVisuals } from "./visuals-manifest.js";
 
 export const BRIEF_FORMATS = ["md", "round-section"] as const;
-export type BriefFormat = (typeof BRIEF_FORMATS)[number];
+type BriefFormat = (typeof BRIEF_FORMATS)[number];
 
 type Built = ReturnType<typeof buildOwnerSection>;
 
 export type BriefOutput = { format: "md"; markdown: string } | { format: "round-section"; section: Built["section"]; question: Built["question"] };
 
-export interface BriefTask {
+interface BriefTask {
   title: string;
   done_when: string;
 }
@@ -48,7 +48,7 @@ async function visualsOf(facts: BriefFacts, images: string | undefined): Promise
   return facts.ui && images !== undefined ? pairVisuals(images, facts.pr, facts.head) : undefined;
 }
 
-export async function sectionInput(facts: BriefFacts, options: { images?: string }, ports: RenderPorts): Promise<OwnerSectionInput> {
+async function sectionInput(facts: BriefFacts, options: { images?: string }, ports: RenderPorts): Promise<OwnerSectionInput> {
   const summary = [summaryOf(facts.body), await taskLine(facts.task, ports.readTask)].filter((part) => part !== undefined).join("\n\n");
   const visuals = await visualsOf(facts, options.images);
   return {

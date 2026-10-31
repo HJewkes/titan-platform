@@ -8,7 +8,7 @@ import { z } from "zod";
 
 const Shot = z.object({ story: z.string().min(1), width: z.string().min(1), before: z.string().min(1).optional(), after: z.string().min(1).optional() });
 
-export const PrVisualManifestSchema = z.object({
+const PrVisualManifestSchema = z.object({
   v: z.literal(1),
   repo: z.string(),
   pr: z.number().int(),
@@ -22,14 +22,14 @@ export const PrVisualManifestSchema = z.object({
 
 type PrVisualManifest = z.infer<typeof PrVisualManifestSchema>;
 
-export interface VisualPair {
+interface VisualPair {
   story: string;
   width: string;
   before: string;
   after: string;
 }
 
-export type PairedVisuals = { pairs: VisualPair[]; base: string } | { none: string };
+type PairedVisuals = { pairs: VisualPair[]; base: string } | { none: string };
 
 function paired(manifest: PrVisualManifest, dir: string): PairedVisuals {
   const pairs = manifest.shots.flatMap(({ story, width, before, after }) => (before && after ? [{ story, width, before: join(dir, before), after: join(dir, after) }] : []));

@@ -30,7 +30,7 @@ const BODY = "## Summary\nCounts sprockets in one place.\n\n## Test plan\nRan th
 interface World extends ShepherdFixture {
   host: FactoryHost;
   runId: string;
-  brief: (args: object) => Promise<{ ok: boolean; data?: BriefOutput; error?: string; code?: number }>;
+  brief: (args: object) => Promise<{ ok: boolean; data?: BriefOutput; error?: string }>;
 }
 
 /** An owner-gated run parked on its approve-merge gate, over a fake GitHub with one PR and two passing checks. */
@@ -46,7 +46,11 @@ async function parked(policy?: object): Promise<World> {
   if (!registered.ok) throw new Error(registered.error);
   const { runId } = registered.data;
   await gateOpened(host, gateId(runId, "approve-merge"));
-  return { ...fixture, host, runId, brief: (args) => call<BriefOutput>("shepherd.brief", { repo: REPO, pr: 1, ...args }) as never };
+  const brief: World["brief"] = async (args) => {
+    const envelope = await call<BriefOutput>("shepherd.brief", { repo: REPO, pr: 1, ...args });
+    return envelope.ok ? { ok: true, data: envelope.data } : { ok: false, error: envelope.error };
+  };
+  return { ...fixture, host, runId, brief };
 }
 
 /** The run's status read with a recorded MERGE verdict step, as the await-verdict step stores it. */
@@ -57,7 +61,7 @@ function withVerdict(w: World, head: string): void {
     if (!run || id !== w.runId) return run;
     const result = { kind: "verdict", verdict: "MERGE", head, reviewer: { agentId: "rv-demo" }, ownerBrief: OWNER_BRIEF };
     const step = { stepId: `sh-await-verdict:${head}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-02T00:00:00.000Z", data: { result } };
-    return { ...run, stepResults: { ...run.stepResults, [step.stepId]: step } } as typeof run;
+    return { ...run, stepResults: { ...run.stepResults, [step.stepId]: step } };
   });
 }
 
