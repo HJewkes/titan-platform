@@ -145,7 +145,7 @@ class Session<T> {
     if (c.mcpServers) options.mcpServers = c.mcpServers;
     if (c.hooks) options.hooks = c.hooks;
     if (c.outputSchema) {
-      options.outputFormat = { type: "json_schema", schema: toJSONSchema(c.outputSchema) as Record<string, unknown> };
+      options.outputFormat = { type: "json_schema", schema: toJSONSchema(c.outputSchema) };
     }
     return options;
   }
@@ -153,10 +153,12 @@ class Session<T> {
   private absorb(message: SDKMessage): void {
     if ("session_id" in message && typeof message.session_id === "string") this.sessionId = message.session_id;
     if (message.type === "system" && message.subtype === "init") {
+      // The CLI has been seen to omit `tools` on init, whatever the SDK type says.
+      const declared: { tools?: string[] } = message;
       this.init = {
         apiKeySource: message.apiKeySource,
         model: message.model,
-        tools: message.tools ?? [],
+        tools: declared.tools ?? [],
         permissionMode: message.permissionMode,
         claudeCodeVersion: message.claude_code_version,
       };
@@ -187,7 +189,7 @@ class Session<T> {
     this.watchdog = setTimeout(() => {
       this.end({ kind: "inactivity_timeout", timeoutMs: this.inactivityMs });
     }, this.inactivityMs);
-    this.watchdog.unref?.();
+    this.watchdog.unref();
   }
 
   private settle(durationMs: number): AgentRunResult<T> {

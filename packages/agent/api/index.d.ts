@@ -419,7 +419,7 @@ declare function classifyResult(result: SDKResultMessage, options?: ClassifyOpti
  * `total_cost_usd` zeroed while the per-model breakdown survives.
  */
 declare function usageFromResult(result: SDKResultMessage | undefined, durationMs: number): AgentUsage;
-declare function sumModelCost(modelUsage: Record<string, ModelUsage>): number;
+declare function sumModelCost(modelUsage: Record<string, Partial<Pick<ModelUsage, "costUSD">>>): number;
 
 /**
  * The only module in this package that reads `process.env`. A stray

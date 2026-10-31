@@ -132,7 +132,7 @@ export class ShepherdStore implements HoldLookup {
 
   /** Every registration, oldest first. */
   all(): Registration[] {
-    const rows = this.db.prepare("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all() as Row[];
+    const rows = this.db.prepare<[], Row>("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all();
     return rows.map(registrationOf);
   }
 
@@ -346,7 +346,7 @@ export class ShepherdStore implements HoldLookup {
 
   /** Every author recorded for the run, earliest first, ties broken by agent id. */
   authorsOf(runId: string): Author[] {
-    const rows = this.db.prepare("SELECT * FROM shepherd_lineage WHERE run_id = ? ORDER BY at, agent_id").all(runId) as AuthorRow[];
+    const rows = this.db.prepare<[string], AuthorRow>("SELECT * FROM shepherd_lineage WHERE run_id = ? ORDER BY at, agent_id").all(runId);
     return rows.map((row) => ({ runId: row.run_id, agentId: row.agent_id, name: row.name, role: row.role, predecessor: row.predecessor, at: row.at }));
   }
 
@@ -377,7 +377,7 @@ export class ShepherdStore implements HoldLookup {
   }
 
   private one(where: string, ...args: unknown[]): Registration | undefined {
-    const row = this.db.prepare(`SELECT * FROM shepherd_registration WHERE ${where}`).get(...args) as Row | undefined;
+    const row = this.db.prepare<unknown[], Row>(`SELECT * FROM shepherd_registration WHERE ${where}`).get(...args);
     return row && registrationOf(row);
   }
 
