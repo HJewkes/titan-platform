@@ -263,9 +263,9 @@ Key exports:
 - `registry`: `DrainTreeRegistry`
 - `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
-- `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
+- `masks`: `applyMasks`
 - `template-id`: `templateId`
-- `clusterer`: `Clusterer`
+- `clusterer`: `Clusterer`, `parseClustererSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/cluster)
 
 <a id="cap-code-parser"></a>

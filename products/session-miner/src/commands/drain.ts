@@ -1,4 +1,4 @@
-import { Clusterer, hasErrorSignal, type ClustererSnapshot } from "@titan-design/cluster";
+import { Clusterer, hasErrorSignal, parseClustererSnapshot } from "@titan-design/cluster";
 import { defineCommand } from "@titan-design/registry";
 import { normalizedErrorFacts, readIndexedText, type NormalizedErrorFact, type SessionGraph } from "@titan-design/session-graph";
 import { nowIso } from "@titan-design/store-sqlite";
@@ -107,7 +107,7 @@ const templateRow = z.object({ template_id: z.string(), masked_signature: z.stri
 
 function loadClusterer(graph: SessionGraph): Clusterer {
   const row = parseRow(snapshotRow, graph.db.prepare("SELECT snapshot FROM clusterer_snapshot WHERE id = 1").get());
-  return row ? Clusterer.fromSnapshot(JSON.parse(row.snapshot) as ClustererSnapshot) : new Clusterer();
+  return row ? Clusterer.fromSnapshot(parseClustererSnapshot(JSON.parse(row.snapshot))) : new Clusterer();
 }
 
 function saveClusterer(graph: SessionGraph, clusterer: Clusterer): void {

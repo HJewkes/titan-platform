@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { DEFAULT_ANCHOR_CONFIGS, type AnchorConfigs } from "./anchors.js";
 import type { DrainTreeOptions, DrainTreeSnapshot } from "./drain/tree.js";
 import { DEFAULT_MASK_CONFIGS, applyMasks, type MaskConfigs } from "./masks.js";
@@ -41,6 +42,28 @@ export interface PartitionSnapshot extends DrainTreeSnapshot {
 export interface ClustererSnapshot {
   version: 1;
   partitions: PartitionSnapshot[];
+}
+
+const PartitionSnapshotSchema = z.looseObject({
+  partition: z.string(),
+  nextClusterId: z.number(),
+  clusters: z.array(z.looseObject({ clusterId: z.number(), tokens: z.array(z.string()), size: z.number() })),
+  templateIds: z.array(z.tuple([z.number(), z.string()])),
+});
+
+const ClustererSnapshotSchema: z.ZodType<ClustererSnapshot> = z.looseObject({
+  version: z.literal(1),
+  partitions: z.array(PartitionSnapshotSchema),
+});
+
+/**
+ * Narrow a stored value to a snapshot, or throw. Template ids are founder-order,
+ * so a caller must not answer this throw with a fresh `Clusterer`: that rebinds them.
+ */
+export function parseClustererSnapshot(value: unknown): ClustererSnapshot {
+  const parsed = ClustererSnapshotSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`invalid clusterer snapshot: ${z.prettifyError(parsed.error)}`);
+  return parsed.data;
 }
 
 function tokenize(signatureLine: string): string[] {
