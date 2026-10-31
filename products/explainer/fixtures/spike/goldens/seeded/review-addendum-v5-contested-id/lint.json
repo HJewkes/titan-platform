@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-contested-id",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "a4-2-queue",
+   "check": "contested",
+   "severity": "error",
+   "message": "'BR:95' names no v5 review item"
+  }
+ ]
+}

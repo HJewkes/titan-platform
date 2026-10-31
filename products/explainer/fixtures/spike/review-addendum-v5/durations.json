@@ -1,0 +1,96 @@
+{
+  "beats": [
+    {
+      "id": "a1-1-why",
+      "durationS": 14.933333333333334
+    },
+    {
+      "id": "a1-2-pin",
+      "durationS": 11.866666666666667
+    },
+    {
+      "id": "a1-3-verdict",
+      "durationS": 10.0
+    },
+    {
+      "id": "a2-1-orphan",
+      "durationS": 21.466666666666665
+    },
+    {
+      "id": "a2-1f-orphan-fix",
+      "durationS": 11.7
+    },
+    {
+      "id": "a2-2-patchid",
+      "durationS": 14.166666666666666
+    },
+    {
+      "id": "a2-2f-patchid-fix",
+      "durationS": 7.366666666666666
+    },
+    {
+      "id": "a2-3-revert",
+      "durationS": 14.3
+    },
+    {
+      "id": "a2-3f-revert-fix",
+      "durationS": 7.366666666666666
+    },
+    {
+      "id": "a2-4-path",
+      "durationS": 14.6
+    },
+    {
+      "id": "a2-4f-path-fix",
+      "durationS": 8.4
+    },
+    {
+      "id": "a3-1-merge",
+      "durationS": 19.966666666666665
+    },
+    {
+      "id": "a3-2-dedupe",
+      "durationS": 15.0
+    },
+    {
+      "id": "a3-3-milestones",
+      "durationS": 11.666666666666666
+    },
+    {
+      "id": "a3-4-observed",
+      "durationS": 15.466666666666667
+    },
+    {
+      "id": "a4-1-fact",
+      "durationS": 15.8
+    },
+    {
+      "id": "a4-2-queue",
+      "durationS": 11.9
+    },
+    {
+      "id": "a4-3-ingress",
+      "durationS": 9.1
+    },
+    {
+      "id": "a4-4-hashes",
+      "durationS": 15.3
+    },
+    {
+      "id": "a4-5-built",
+      "durationS": 11.5
+    },
+    {
+      "id": "a5-1-design",
+      "durationS": 14.266666666666667
+    },
+    {
+      "id": "a5-2-accounts",
+      "durationS": 9.966666666666667
+    },
+    {
+      "id": "a5-3-next",
+      "durationS": 10.0
+    }
+  ]
+}

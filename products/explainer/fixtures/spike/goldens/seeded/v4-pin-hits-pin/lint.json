@@ -1,0 +1,14 @@
+{
+ "script": "v4-pin-hits-pin",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r8-3-review",
+   "check": "map",
+   "severity": "error",
+   "message": "pin 'review pool' hits 'alarms for the rest'"
+  }
+ ]
+}

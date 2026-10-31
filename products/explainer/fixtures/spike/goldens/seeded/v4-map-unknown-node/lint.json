@@ -1,0 +1,14 @@
+{
+ "script": "v4-map-unknown-node",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r4-2-start",
+   "check": "map",
+   "severity": "error",
+   "message": "unknown new node ledgr"
+  }
+ ]
+}

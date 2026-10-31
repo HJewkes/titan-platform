@@ -1,0 +1,14 @@
+{
+ "script": "v4-origin-unknown",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r1-7-promise",
+   "check": "origin",
+   "severity": "error",
+   "message": "'v3' is not v2 or v4"
+  }
+ ]
+}

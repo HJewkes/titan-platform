@@ -1,0 +1,14 @@
+{
+ "script": "v4-budget-stat-label",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r1-2-stake",
+   "check": "S7",
+   "severity": "error",
+   "message": "statLabel 'claimed by agents' is 17 chars, cap 12"
+  }
+ ]
+}

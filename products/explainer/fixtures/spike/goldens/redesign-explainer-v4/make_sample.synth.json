@@ -1,0 +1,394 @@
+{
+ "title": "What the factory redesign keeps, removes and adds (v4)",
+ "voice": {
+  "provider": "kokoro",
+  "model": "Kokoro-82M",
+  "voice": "af_heart",
+  "lang": "a"
+ },
+ "repo": {
+  "name": "titan factory",
+  "pin": "0ef3430 / a1b8cdeb",
+  "license": "internal"
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "n": 1,
+   "title": "Today · Where does one task live?",
+   "question": "Where does one task's state live today?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch2",
+   "n": 2,
+   "title": "Jobs · What must a factory do?",
+   "question": "What must any factory do, and keep true?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch3",
+   "n": 3,
+   "title": "Model · What replaces the parts?",
+   "question": "What are the new model's parts?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch3b",
+   "n": 4,
+   "title": "Recipe · How does a recipe run?",
+   "question": "How does a recipe run, crash and recover?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch4",
+   "n": 5,
+   "title": "One task · How does it reach main?",
+   "question": "How does one task travel from plan to main?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch5",
+   "n": 6,
+   "title": "Side by side · What changes?",
+   "question": "What does each old mechanism become?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch6",
+   "n": 7,
+   "title": "Moves · Where does each role go?",
+   "question": "Where does each role's work go?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch7",
+   "n": 8,
+   "title": "Removed · Why is that safe?",
+   "question": "What is removed, and what keeps it safe?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch8",
+   "n": 9,
+   "title": "Added · What must be built?",
+   "question": "What must be built first?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch9",
+   "n": 10,
+   "title": "Ladder · In what order?",
+   "question": "In what order does it ship?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch10",
+   "n": 11,
+   "title": "Your calls · What is open?",
+   "question": "Which calls are the owner's?",
+   "plannedS": 0,
+   "station": null
+  }
+ ],
+ "beats": [
+  {
+   "id": "r1-7-promise",
+   "chapter": "ch1",
+   "kind": "hook",
+   "band": "hook",
+   "plannedS": 5,
+   "spoken": "The redesign keeps, removes and adds parts, and leaves eleven calls to you."
+  },
+  {
+   "id": "r3-1-nouns",
+   "chapter": "ch3",
+   "kind": "hook",
+   "band": "diagram",
+   "plannedS": 7,
+   "spoken": "Seven nouns carry the new model. Item, fact and step; wait and claim; event, pool and service."
+  },
+  {
+   "id": "r3-2-sentence",
+   "chapter": "ch3",
+   "kind": "step-rail",
+   "band": "diagram",
+   "plannedS": 11,
+   "spoken": "One sentence explains it. A recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script."
+  },
+  {
+   "id": "r3-4-runner",
+   "chapter": "ch3",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 10,
+   "spoken": "One runner and its marker table replace the tick and Shepherd. It re-runs a recipe on every event; its only clock, the reconciler, polls GitHub."
+  },
+  {
+   "id": "r3-7-simple",
+   "chapter": "ch3",
+   "kind": "list",
+   "band": "diagram",
+   "plannedS": 8,
+   "spoken": "Pool policy details, risk table rows and stacking are left out; each is data, so the shape holds."
+  },
+  {
+   "id": "r3b-1-run",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 13,
+   "spoken": "A recipe is a plain script; here are five of its steps. Each step runs, writes a marker for its fact, and returns. A landed run averages fifty-one and a half steps."
+  },
+  {
+   "id": "r3b-2-crash",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Halfway through the fifth step, the process crashes. No program counter is stored, and nothing was mid-sleep."
+  },
+  {
+   "id": "r3b-3-replay",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Recovery re-runs the script from the top. Four markers match, so it fast-forwards and runs the fifth step."
+  },
+  {
+   "id": "r3b-4-today",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 12,
+   "spoken": "Today's engine keys each result by step name and call count. When a deploy re-keyed one step, its old results went unread, and five parked runs failed to replay."
+  },
+  {
+   "id": "r3b-5-insert",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Keyed by fact, an inserted step has no marker, so it runs, and the old markers still match."
+  },
+  {
+   "id": "r3b-6-upstream",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Change an upstream step, and the markers that read it go stale. The next entry re-runs only those."
+  },
+  {
+   "id": "r3b-7-claim",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 10,
+   "spoken": "A claim is a marker too. If the plan changes after the grant, the grant goes stale and releases its token before anything re-runs."
+  },
+  {
+   "id": "r4-2-start",
+   "chapter": "ch4",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 9,
+   "spoken": "The recipe claims an implementer and returns. The pool picks which claim to grant, not the item, and the broker spawns the agent."
+  },
+  {
+   "id": "r4-3-open",
+   "chapter": "ch4",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 10,
+   "spoken": "Its push opens a pull request. The runner records the head, and the facts it still needs appear as chips. Path globs can raise its class."
+  },
+  {
+   "id": "r4-4-prove",
+   "chapter": "ch4",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 9,
+   "spoken": "CI goes green and the proof reproduces. The verdict is a claim on the reviewer pool, and a short-lived reviewer returns merge."
+  },
+  {
+   "id": "r4-6-fix",
+   "chapter": "ch4",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 8,
+   "spoken": "A red fact wakes the implementer at once. Its push moves the head and resets every head-pinned chip."
+  },
+  {
+   "id": "r4-9-queue",
+   "chapter": "ch4",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 11,
+   "spoken": "With every chip green, the merge queue tests main plus ready heads as one candidate. It writes an intent marker, lands main at that tree, then writes the result."
+  },
+  {
+   "id": "r6-4-steps",
+   "chapter": "ch6",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 6,
+   "spoken": "Shepherd's steps become registered steps, burndown becomes a recipe, and agent-chat becomes a runtime."
+  },
+  {
+   "id": "r7-4-notices",
+   "chapter": "ch7",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Notices go: almost no park refusal was acted on. The file lock goes after F12, and no coordinator stays in the loop."
+  },
+  {
+   "id": "r7-4b-score",
+   "chapter": "ch7",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 7,
+   "spoken": "The weighted score goes. Two pool rules replace it: finish before start, then tier and readiness age."
+  },
+  {
+   "id": "r7-4c-replay",
+   "chapter": "ch7",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Replay keyed by step name and call count goes. Markers are keyed by fact instead; a run-wide counter key is what parked five runs."
+  },
+  {
+   "id": "r7-6-risk23",
+   "chapter": "ch7",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 8,
+   "spoken": "Second, big gains wait on follow-ups; F7 must price the seat's hand catches. Third, two orchestrators remain until rung eight."
+  },
+  {
+   "id": "r8-1-core",
+   "chapter": "ch8",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 9,
+   "spoken": "Eighteen additions build it, in twelve groups. First the core: the marker table, the step registry and the runner, then waits and events."
+  },
+  {
+   "id": "r8-2-claims",
+   "chapter": "ch8",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 10,
+   "spoken": "Claims and pools gate every spawn. An outbox guards each land and deploy, against the bug behind two deploy rollbacks. A reconciler reads GitHub."
+  },
+  {
+   "id": "r8-3-review",
+   "chapter": "ch8",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 11,
+   "spoken": "Plans gain a contract and the risk table. A review pool and the merge queue prove and land the work. Packets, a triager and alarms handle the rest."
+  },
+  {
+   "id": "r8-4-tools",
+   "chapter": "ch8",
+   "kind": "station-map",
+   "band": "diagram",
+   "plannedS": 6,
+   "spoken": "Last come why, the restart pacer, evals and invariant tests, and your expedite entry."
+  },
+  {
+   "id": "r10-1-calls",
+   "chapter": "ch10",
+   "kind": "hook",
+   "band": "takeaways",
+   "plannedS": 5,
+   "spoken": "Eleven calls are yours, none technical, each with a default."
+  },
+  {
+   "id": "r10-6-q7-q9",
+   "chapter": "ch10",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 10,
+   "spoken": "Seven: a blind sitting on real packets. Eight: a daily line, not alarms. Nine: a shadow run before a reversible cutover. The defaults: schedule, daily line, accept."
+  },
+  {
+   "id": "r10-6b-q10-q11",
+   "chapter": "ch10",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Ten: two pool rules replace the weighted score, tried in shadow first. Eleven: four researchers study the pattern first. Both defaults are yes."
+  },
+  {
+   "id": "r10-7b-research",
+   "chapter": "ch10",
+   "kind": "list",
+   "band": "takeaways",
+   "plannedS": 8,
+   "spoken": "Research comes first: durable engines, build-system memoization, waits and claims, and an audit of our own engine, one researcher each."
+  },
+  {
+   "id": "r10-8-measures",
+   "chapter": "ch10",
+   "kind": "scorecard",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Measures: how fast why answers, how many asks are superseded, how many reviews end with no verdict. Latency has no target until F1."
+  },
+  {
+   "id": "r10-9-close",
+   "chapter": "ch10",
+   "kind": "station-map",
+   "band": "hook",
+   "plannedS": 11,
+   "spoken": "In this design, a recipe is a script, each step leaves a marker, and recovery is a re-run from the top. Every wait names its reason. The open calls are yours."
+  },
+  {
+   "id": "r3-2-sentence@fallback",
+   "chapter": "ch3",
+   "kind": "step-rail",
+   "band": "diagram",
+   "plannedS": 11,
+   "spoken": "One sentence explains it. A recipe is a script, each step leaves a memoized marker, a wait or claim is a return, and an event re-enters the script."
+  },
+  {
+   "id": "r3b-5-insert@fallback",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Keyed by fact, an inserted step has no marker, so it runs, and the old markers still match. Inserts ahead of a landing are still under review."
+  },
+  {
+   "id": "r3b-6-upstream@fallback",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 8,
+   "spoken": "Change an upstream step, and the design marks the markers that read it stale; the next entry re-runs them. How far a change reaches is under review."
+  },
+  {
+   "id": "r3b-7-claim@fallback",
+   "chapter": "ch3b",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 10,
+   "spoken": "A claim is a marker too. If what it read changes, the design releases the grant's token before anything re-runs. When grants are checked is under review."
+  }
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "script": "v4-pin-chips-band",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r4-10-main",
+   "check": "map",
+   "severity": "error",
+   "message": "pin 'closes' reaches the chips band"
+  }
+ ]
+}

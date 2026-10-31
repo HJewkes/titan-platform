@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-budget-chip",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "a5-1-design",
+   "check": "S7",
+   "severity": "error",
+   "message": "chip 'pipeline-redesign-v5-2026-10-14-owner-amendments-folded.md:648-649 +2' is 69 chars, cap 63"
+  }
+ ]
+}

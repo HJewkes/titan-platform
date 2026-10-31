@@ -1,0 +1,333 @@
+{
+ "about": "TP-3745 seeded-mutation variants. Each seed is the smallest edit to a frozen fixture script that trips one RF lint family; `edits` are JSON pointers into the base fixture set to `value` (an index one past the end appends). `check` is the issue check the seed must produce.",
+ "seeds": {
+  "v4-bands-stake-late": {
+   "base": "redesign-explainer-v4",
+   "family": "bands",
+   "check": "Q-W1",
+   "seed": "The hook beat planned at 112 s instead of 6 s, so the first STAKE beat starts after 15 % of the planned total",
+   "edits": [
+    {
+     "path": "/beats/0/plannedS",
+     "value": 112
+    }
+   ]
+  },
+  "review-addendum-v5-bands-stake-late": {
+   "base": "review-addendum-v5",
+   "family": "bands",
+   "check": "Q-W1",
+   "seed": "The first beat planned at 32 s instead of 13 s, so the STAKE beat starts after 15 % of the planned total",
+   "edits": [
+    {
+     "path": "/beats/0/plannedS",
+     "value": 32
+    }
+   ]
+  },
+  "v4-sentence-long": {
+   "base": "redesign-explainer-v4",
+   "family": "bands",
+   "check": "Q-V9",
+   "seed": "Two sentences of a v4 beat joined into one of 29 words",
+   "edits": [
+    {
+     "path": "/beats/12/spoken",
+     "value": "One sentence explains it: a recipe is a script, a step is memoized at its head, a wait or claim is a return, and an event re-enters the script."
+    }
+   ]
+  },
+  "v4-banned-simply": {
+   "base": "redesign-explainer-v4",
+   "family": "banned phrases",
+   "check": "Q-V1/V4/V7",
+   "seed": "\"simply\" inserted into a v4 beat's narration",
+   "edits": [
+    {
+     "path": "/beats/6/spoken",
+     "value": "The redesign simply keeps, removes and adds parts, and leaves eleven calls to you."
+    }
+   ]
+  },
+  "v4-numbers-forty": {
+   "base": "redesign-explainer-v4",
+   "family": "numbers",
+   "check": "numbers",
+   "seed": "\"forty\" (not on the fact list, over the structure cap) inserted into a v4 beat's narration",
+   "edits": [
+    {
+     "path": "/beats/6/spoken",
+     "value": "The redesign keeps, removes and adds forty parts, and leaves eleven calls to you."
+    }
+   ]
+  },
+  "v4-outro-long": {
+   "base": "redesign-explainer-v4",
+   "family": "outro",
+   "check": "Q-F11",
+   "seed": "The 8-word cap on the outro: two words added; the beat is v2, so the reused-narration check also fires",
+   "edits": [
+    {
+     "path": "/beats/74/spoken",
+     "value": "Find the wake, and you find the wait it hides."
+    }
+   ]
+  },
+  "review-addendum-v5-outro-long": {
+   "base": "review-addendum-v5",
+   "family": "outro",
+   "check": "Q-F11",
+   "seed": "The addendum's 25-word cap on the closing beat: four words added",
+   "edits": [
+    {
+     "path": "/beats/22/spoken",
+     "value": "Version six is being written to answer both reviews, and another adversary round follows. Until you decide, each fix is only a proposal, not a change."
+    }
+   ]
+  },
+  "review-addendum-v5-rule3": {
+   "base": "review-addendum-v5",
+   "family": "rules 3/5",
+   "check": "rule3",
+   "seed": "Two cards appended to a 3-card HookBeat, so it lists 5 items against rule 3's cap of 4",
+   "edits": [
+    {
+     "path": "/beats/21/visual/cues/3",
+     "value": {
+      "action": "V11",
+      "target": "card:GitHub queue",
+      "atCue": "queue"
+     }
+    },
+    {
+     "path": "/beats/21/visual/cues/4",
+     "value": {
+      "action": "V11",
+      "target": "card:outside account",
+      "atCue": "account"
+     }
+    }
+   ]
+  },
+  "review-addendum-v5-rule5": {
+   "base": "review-addendum-v5",
+   "family": "rules 3/5",
+   "check": "rule5",
+   "seed": "A third card on the 2-card HookBeat before the 3-card one, so two dense lists sit side by side",
+   "edits": [
+    {
+     "path": "/beats/20/visual/cues/2",
+     "value": {
+      "action": "V11",
+      "target": "card:safe but costly",
+      "atCue": "costly"
+     }
+    }
+   ]
+  },
+  "v4-chip-rows": {
+   "base": "redesign-explainer-v4",
+   "family": "chip rows",
+   "check": "chips",
+   "seed": "An eighth distinct chip on chapter 4's item, against the panel's 7 rows",
+   "edits": [
+    {
+     "path": "/beats/33/visual/map_state/item/chips/1",
+     "value": {
+      "text": "merged:main@h",
+      "state": "met",
+      "atCue": "ruleset"
+     }
+    }
+   ]
+  },
+  "v4-pin-hits-pin": {
+   "base": "redesign-explainer-v4",
+   "family": "map/pin/edge-label",
+   "check": "map",
+   "seed": "One pin's text lengthened to the 19-char pin cap, so it overlaps the pin beside it",
+   "edits": [
+    {
+     "path": "/beats/57/visual/map_state/pins/3/text",
+     "value": "alarms for the rest"
+    }
+   ]
+  },
+  "v4-pin-chips-band": {
+   "base": "redesign-explainer-v4",
+   "family": "map/pin/edge-label",
+   "check": "map",
+   "seed": "A third pin stacked on a bottom-row node, so it reaches the chips band",
+   "edits": [
+    {
+     "path": "/beats/35/visual/map_state/pins/2",
+     "value": {
+      "anchor": "main",
+      "text": "closes",
+      "atCue": "closes"
+     }
+    }
+   ]
+  },
+  "v4-pin-hits-edge-label": {
+   "base": "redesign-explainer-v4",
+   "family": "map/pin/edge-label",
+   "check": "map",
+   "seed": "A pin moved from the owner node to the broker, under the drawn spawn and events edge labels",
+   "edits": [
+    {
+     "path": "/beats/16/visual/map_state/pins/0/anchor",
+     "value": "broker"
+    }
+   ]
+  },
+  "v4-map-unknown-node": {
+   "base": "redesign-explainer-v4",
+   "family": "map/pin/edge-label",
+   "check": "map",
+   "seed": "A pin anchored on a node id the map does not have",
+   "edits": [
+    {
+     "path": "/beats/27/visual/map_state/pins/0/anchor",
+     "value": "ledgr"
+    }
+   ]
+  },
+  "v4-recipe-unknown-step": {
+   "base": "redesign-explainer-v4",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "recipe",
+   "seed": "A RecipeRunBeat crash cue naming a step the recipe does not have",
+   "edits": [
+    {
+     "path": "/beats/19/visual/cues/1/target",
+     "value": "crash:prof"
+    }
+   ]
+  },
+  "review-addendum-v5-recipe-edit": {
+   "base": "review-addendum-v5",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "recipe",
+   "seed": "The addendum's `edit` cue verb with its `|` separator dropped",
+   "edits": [
+    {
+     "path": "/beats/5/visual/cues/1/target",
+     "value": "edit:perm  permissions: write-all"
+    }
+   ]
+  },
+  "v4-contested-fallback-cue": {
+   "base": "redesign-explainer-v4",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "contested",
+   "seed": "A contested fallback that no longer carries the beat's cue word \"recipe\"",
+   "edits": [
+    {
+     "path": "/beats/12/contested/fallback",
+     "value": "One sentence explains it. A plan is a script, each step leaves a memoized marker, a wait or claim is a return, and an event re-enters the script."
+    }
+   ]
+  },
+  "review-addendum-v5-contested-id": {
+   "base": "review-addendum-v5",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "contested",
+   "seed": "A contested id that names only the brief's line, no v5 review item",
+   "edits": [
+    {
+     "path": "/beats/16/contested/id",
+     "value": "BR:95"
+    }
+   ]
+  },
+  "review-addendum-v5-edge-table": {
+   "base": "review-addendum-v5",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "S7",
+   "seed": "An eighth edge row in chapter 4's carried ScorecardTable, against the cap of 7",
+   "edits": [
+    {
+     "path": "/beats/19/visual/cues/2",
+     "value": {
+      "action": "V11",
+      "target": "edge:schedulers|buy|Kubernetes",
+      "atCue": "Kubernetes"
+     }
+    }
+   ]
+  },
+  "v4-origin-unknown": {
+   "base": "redesign-explainer-v4",
+   "family": "recipe/contested/edge-table/origin",
+   "check": "origin",
+   "seed": "A beat's origin set to a narration version that does not exist",
+   "edits": [
+    {
+     "path": "/beats/6/origin",
+     "value": "v3"
+    }
+   ]
+  },
+  "v4-budget-stat-label": {
+   "base": "redesign-explainer-v4",
+   "family": "budgets",
+   "check": "S7",
+   "seed": "A StatBeat label lengthened past the 12-char statLabel slot",
+   "edits": [
+    {
+     "path": "/beats/1/visual/cues/0/target",
+     "value": "stat:143 claimed by agents"
+    }
+   ]
+  },
+  "v4-budget-hook-card": {
+   "base": "redesign-explainer-v4",
+   "family": "budgets",
+   "check": "hook",
+   "seed": "A HookBeat card past the 12-char cap a 4-column row gives",
+   "edits": [
+    {
+     "path": "/beats/6/visual/cues/3/target",
+     "value": "card:11 calls to make"
+    }
+   ]
+  },
+  "v4-budget-rail-step": {
+   "base": "redesign-explainer-v4",
+   "family": "budgets",
+   "check": "rail",
+   "seed": "A StepRail chip past its 12-char cap",
+   "edits": [
+    {
+     "path": "/beats/12/visual/cues/1/target",
+     "value": "rail:an event re-enters"
+    }
+   ]
+  },
+  "v4-budget-table-cell": {
+   "base": "redesign-explainer-v4",
+   "family": "budgets",
+   "check": "S7",
+   "seed": "A ScorecardTable job cell past the 19-char cap for renderers budgets.json does not cover",
+   "edits": [
+    {
+     "path": "/beats/7/visual/cues/5/target",
+     "value": "job:ask the owner, rarely"
+    }
+   ]
+  },
+  "review-addendum-v5-budget-chip": {
+   "base": "review-addendum-v5",
+   "family": "budgets",
+   "check": "S7",
+   "seed": "The first source of a multi-source chip renamed so the displayed chip line (first ref plus \"+2\") passes the 63-char chip slot",
+   "edits": [
+    {
+     "path": "/beats/20/visual/chips/0/text",
+     "value": "pipeline-redesign-v5-2026-10-14-owner-amendments-folded.md:648-649; adversarial-review-v5-vc-2026-10-14.md:43-48; adversarial-review-v5-opus-2026-10-14.md:132-140"
+    }
+   ]
+  }
+ }
+}

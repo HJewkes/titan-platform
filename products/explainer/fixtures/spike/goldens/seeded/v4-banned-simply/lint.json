@@ -1,0 +1,14 @@
+{
+ "script": "v4-banned-simply",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r1-7-promise",
+   "check": "Q-V1/V4/V7",
+   "severity": "error",
+   "message": "banned pattern '\\\\bsimply\\\\b' in: The redesign simply keeps, removes and adds parts, and leave"
+  }
+ ]
+}

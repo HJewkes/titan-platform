@@ -1,0 +1,14 @@
+{
+ "script": "v4-bands-stake-late",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": null,
+   "check": "Q-W1",
+   "severity": "error",
+   "message": "stake after 15%"
+  }
+ ]
+}

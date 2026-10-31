@@ -1,0 +1,6 @@
+{
+ "script": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 0,
+ "issues": []
+}
