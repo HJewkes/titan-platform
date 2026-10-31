@@ -1,41 +1,24 @@
 import type { CommandContext } from '../registry/index.js';
 import type { Task } from '../schemas/task.js';
-import {
-  relatedContext,
-  type RelatedHit,
-  type RelatedInput,
-  type RelatedResult,
-} from '../search/related.js';
-import { readerGate } from '../session-index/reader-gate.js';
+import type { RelatedHit, RelatedInput, RelatedResult } from '../search/related.js';
+import { scanTasks, type TaskScanSeams } from '../search/task-neighbours.js';
 import { taskRef } from '../workspace-index/refs.js';
 import { warn } from './_categories.js';
 
 const RELATED_TASK_LIMIT = 3;
-export const RELATED_DEADLINE_MS = 1000;
 
-// Most hits are done or belong to another initiative, because the initiative is
-// a ranking boost and not a filter, so the three that survive sit further down.
+// Well under the add's 1 s bound, because the deadline is added to the write.
+export const RELATED_DEADLINE_MS = 250;
+
+// A port may return done or foreign hits: `openNeighbours` decides, not the source.
 const RELATED_OVERFETCH = 30;
 
 export type RelatedPort = (input: RelatedInput) => Promise<RelatedResult>;
 
 interface RelatedTaskDeps {
   related?: RelatedPort;
+  scan?: TaskScanSeams;
   deadlineMs?: number;
-}
-
-/**
- * No freshness wait: a task add must not stall on the indexer, and a task filed
- * since the last pass is simply not listed. The gate only keeps a daemon refresh
- * pass from spending this read's deadline.
- */
-async function gatedRelated(input: RelatedInput): Promise<RelatedResult> {
-  const release = readerGate.enter();
-  try {
-    return await relatedContext(input);
-  } finally {
-    release();
-  }
 }
 
 async function withinDeadline<T>(read: Promise<T>, ms: number): Promise<T | undefined> {
@@ -50,16 +33,12 @@ async function withinDeadline<T>(read: Promise<T>, ms: number): Promise<T | unde
   }
 }
 
-function relatedInput(ctx: CommandContext, slug: string, task: Task): RelatedInput {
+function relatedInput(slug: string, task: Task): RelatedInput {
   return {
     text: [task.title, task.done_when].filter(Boolean).join('\n'),
     initiative: slug,
-    classes: ['tasks'],
     limit: RELATED_OVERFETCH,
-    // Excerpts are never shown here, and a budget would cut before the filter runs.
-    budget: Number.POSITIVE_INFINITY,
     exclude: [taskRef(task.id)],
-    activeRoot: ctx.activeRoot,
   };
 }
 
@@ -78,11 +57,11 @@ function openNeighbours(hits: RelatedHit[], slug: string, existing: Task[]): Tas
 /**
  * Advisory and after the write: the task is already filed, so nothing here may throw.
  *
- * Agents only, because the read costs a median 0.7 to 0.8 s per add on a
- * full-size graph, over the 300 ms a human or /rpc caller would be asked to pay.
+ * Agents only: humans and /rpc callers never asked for the list.
  *
- * The search runs synchronously on SQLite, so the deadline cuts a read that
- * yields and cannot stop one mid-query.
+ * The default scan is synchronous and checks its deadline per task, so it holds
+ * the daemon's thread for milliseconds and can never outlast the deadline by more
+ * than one task. The timer covers a port that yields instead.
  */
 export async function warnRelatedTasks(
   ctx: CommandContext,
@@ -92,9 +71,13 @@ export async function warnRelatedTasks(
   deps: RelatedTaskDeps = {},
 ): Promise<void> {
   if (ctx.caller !== 'agent') return;
-  const { related = gatedRelated, deadlineMs = RELATED_DEADLINE_MS } = deps;
+  const { deadlineMs = RELATED_DEADLINE_MS, scan } = deps;
+  const open = existing.filter((candidate) => candidate.status === 'open');
+  const scanOpen: RelatedPort = (input) =>
+    Promise.resolve(scanTasks(input, open, { deadlineMs, ...scan }));
+  const { related = scanOpen } = deps;
   try {
-    const result = await withinDeadline(related(relatedInput(ctx, slug, task)), deadlineMs);
+    const result = await withinDeadline(related(relatedInput(slug, task)), deadlineMs);
     if (result === undefined || result.degraded.length > 0) return;
     for (const neighbour of openNeighbours(result.hits, slug, existing)) {
       warn(ctx, `related open task: ${neighbour.id} ${neighbour.title}`);
