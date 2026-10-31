@@ -31,7 +31,7 @@ export function overrideStatusTable(next: StatusTable | undefined): void {
 }
 
 /** The length bucket a script of this many spoken words is scored in; undefined under the shortest bucket. */
-export function scriptBucket(words: number): string | undefined {
+function scriptBucket(words: number): string | undefined {
   const buckets = statusTable().meta.buckets.filter((bucket) => bucket.name !== POOLED_BUCKET);
   return buckets.find((bucket) => words >= bucket.lo && (bucket.hi === null || words <= bucket.hi))?.name;
 }
@@ -40,7 +40,7 @@ export function scriptBucket(words: number): string | undefined {
  * Each row's status in `doctrine/writing-check.json` at a script's own bucket; empty under the shortest bucket, where
  * no row is judged. Keys are register metric names, as the table writes them.
  */
-export function rowStatusesAt(words: number): ReadonlyMap<string, WritingStatus> {
+function rowStatusesAt(words: number): ReadonlyMap<string, WritingStatus> {
   const bucket = scriptBucket(words);
   if (bucket === undefined) return new Map();
   return new Map(Object.entries(statusTable().statusByBucket).flatMap(([row, byBucket]) => {

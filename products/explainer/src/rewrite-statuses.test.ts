@@ -4,13 +4,13 @@ import { runL0 } from "./eval-l0.js";
 import { registerCheck, spokenText } from "./lint-register.js";
 import { chapterRefusal, protectedRows } from "./rewrite-pass.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+import { parseWritingCheck } from "./writing-calibrate.js";
+import type { WritingStatus } from "./writing-status.js";
 
 // These tests read the shipped doctrine/writing-check.json: what the rewrite and Q-V11 do with each row's status.
-const SHIPPED = JSON.parse(readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8")) as {
-  statusByBucket: Record<string, Record<string, string>>;
-};
-const rowsWithStatus = (bucket: string, statuses: readonly string[]): string[] =>
-  Object.entries(SHIPPED.statusByBucket).filter(([, byBucket]) => statuses.includes(byBucket[bucket] ?? "")).map(([row]) => row);
+const SHIPPED = parseWritingCheck(readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8"));
+const rowsWithStatus = (bucket: "300-599", statuses: readonly WritingStatus[]): string[] =>
+  Object.entries(SHIPPED.statusByBucket).filter(([, byBucket]) => statuses.includes(byBucket[bucket])).map(([row]) => row);
 
 const THESIS_IDS = ["h1", "w4", "c1"];
 const beats = (...spoken: string[]): BeatSpec[] => spoken.map((line, i) => [THESIS_IDS[i] ?? `b${i}`, "ch1", "WHAT", line]);
@@ -42,7 +42,7 @@ describe("Q-V11 rows follow the status table at the script's own length", () => 
 
     const row = lint(script(...spoken), [registerCheck]).get("register:neg-synthetic");
 
-    expect(SHIPPED.statusByBucket["neg-synthetic"]?.["150-299"]).toBe("report-only");
+    expect(SHIPPED.statusByBucket["neg-synthetic"]["150-299"]).toBe("report-only");
     expect(row?.value).toBeGreaterThan(2.5);
     expect(row?.pass).toBe(true);
   });
