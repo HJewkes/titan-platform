@@ -14,7 +14,9 @@ import {
 import { writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { ValidationError } from '../errors.js';
 import { assertKnownDeliverables } from './_deliverables.js';
+import { doneWhenProblem } from './_done-when-gate.js';
 import {
   assertCategories,
   CATEGORY_OPTIONS,
@@ -130,6 +132,10 @@ export default defineCommand<Args, TaskOrLine>({
     },
   },
   async run(args, ctx) {
+    if (ctx.caller === 'agent') {
+      const problem = doneWhenProblem(args.title, args.done_when);
+      if (problem !== undefined) throw new ValidationError(problem);
+    }
     // Touch activeRoot so it's resolved before locking.
     const activeRoot = getActiveRoot();
     if (args.deliverable !== undefined) await assertKnownDeliverables(activeRoot, args.deliverable);
