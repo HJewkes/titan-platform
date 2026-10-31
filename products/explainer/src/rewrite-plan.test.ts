@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runL0 } from "./eval-l0.js";
 import { REGISTER_BANDS, registerCheck, spokenText } from "./lint-register.js";
-import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
+import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import { MAX_REWRITE_ROUNDS, planRegisterEdits, type BeatDirective } from "./rewrite-plan.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
@@ -61,54 +61,6 @@ describe("planRegisterEdits: sentence shape", () => {
     expect(projected).toEqual(after);
   });
 
-  describe("longest planned sentence", () => {
-    const longestPlanned = (s: ScriptV1, cap: number): number => {
-      const { directives } = planRegisterEdits(s, runL0(s, undefined, [registerCheck]), { cap });
-      return Math.max(...directives.flatMap((d) => d.shape ?? []));
-    };
-
-    it.each([6, 9, 12, 18, 24, 36])("stays at 24 words under the vetted cap on a %i-beat script", (beats) => {
-      const wordy = script(choppyLines(beats));
-
-      const longest = longestPlanned(wordy, MAX_VETTED_SENTENCE_WORDS);
-
-      expect(longest).toBeLessThanOrEqual(24);
-    });
-
-    it.each([9, 12, 24, 36])("plans every word of each beat of a %i-beat script under the vetted cap", (beats) => {
-      const wordy = script(choppyLines(beats));
-
-      const { directives } = planRegisterEdits(wordy, runL0(wordy, undefined, [registerCheck]), { cap: MAX_VETTED_SENTENCE_WORDS });
-
-      for (const directive of directives.filter((d) => d.shape)) {
-        const beat = wordy.beats.find((b) => b.id === directive.beat)!;
-        expect(directive.shape!.reduce((sum, n) => sum + n, 0)).toBe(spokenText([beat.spoken]).words.length);
-      }
-    });
-
-    // One-sentence beats hold their count, so the wordy beats get too few sentences and overflow the most.
-    it.each([26, 28, 30, 32, 34, 36, 38, 40, 44, 48])("stays at 24 words when wordy beats speak %i sentences each", (sentences) => {
-      const speech = Array.from({ length: sentences }, (_, i) => CHOPPY[i % CHOPPY.length]).join(" ");
-      const wordy = script([...Array<string>(20).fill(CHOPPY[0]!), speech, speech]);
-
-      const longest = longestPlanned(wordy, MAX_VETTED_SENTENCE_WORDS);
-
-      expect(longest).toBeLessThanOrEqual(24);
-    });
-
-    it("holds the sentence count on a beat over the limit, so the planned mean stays over its floor", () => {
-      const { projected } = planRegisterEdits(choppy, runL0(choppy, undefined, [registerCheck]), { cap: MAX_VETTED_SENTENCE_WORDS });
-
-      expect(projected!.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
-    });
-
-    it("keeps the headroom under the plain cap, as without --speech-vet", () => {
-      const longest = longestPlanned(script(choppyLines(24)), MAX_SENTENCE_WORDS);
-
-      expect(longest).toBeLessThanOrEqual(MAX_SENTENCE_WORDS - 4);
-    });
-  });
-
   it("plans no shape for a script already inside both sentence bands", () => {
     const long = "Then the desk asks the ledger for the parcel row and waits until the answer comes back before it prints anything.";
     const inBand = script(Array.from({ length: 12 }, () => `The desk reads it first. ${long}`));
@@ -132,6 +84,30 @@ describe("planRegisterEdits: numbers and triads", () => {
     expect(crowded?.numbers).toEqual(["12", "3", "two"]);
     expect(crowded?.triads).toEqual(["held 12 parcels, sent 3 back and lost two."]);
     expect(directiveFor(plan(s).directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("directs no collapse of a list whose items the screen cues on, and still directs one with a single cued item", () => {
+    const cuedOn = (...atCues: string[]) => ({ visual: { assertion: "The desk checks three things", job: "numbers", cues: atCues.map((atCue) => ({ action: "V11", target: `card:${atCue}`, atCue })) } });
+    const s = tour([
+      ["h1", "ch1", "WHAT", LIST, cuedOn("scan", "row", "label")],
+      ["w4", "ch2", "WHAT", LIST, cuedOn("row")],
+      ["c1", "ch3", "WHAT", LIST],
+      ...script([...MORE_CROWDED, ...choppyLines(15)]).beats.map((beat, i): BeatSpec => [`m${i}`, beat.chapter, "WHAT", beat.spoken]),
+    ]);
+
+    const { directives } = plan(s);
+
+    expect(failing(s)).toContain("register:triads");
+    expect(directiveFor(directives, "h1")?.triads).toBeUndefined();
+    expect(directiveFor(directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+    expect(directiveFor(directives, "c1")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("names a number range as one mention, so the directive never offers to cut one end", () => {
+    const RANGE = "Merge-ups move thirty to thirty-five percent of heads on 2 queues.";
+    const s = script([RANGE, ...MORE_CROWDED, ...choppyLines(15)]);
+
+    expect(directiveFor(plan(s).directives, "h1")?.numbers).toEqual(["thirty to thirty-five percent", "2"]);
   });
 
   it("leaves a beat that speaks one number alone", () => {

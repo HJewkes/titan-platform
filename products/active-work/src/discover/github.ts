@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { DiscoveryHit, DiscoverySourceError } from './types.js';
 import { runCommand, type RunCommand } from './run-command.js';
 
@@ -9,13 +10,15 @@ import { runCommand, type RunCommand } from './run-command.js';
  * captured per-repo and never thrown.
  */
 
-interface GhPullRequest {
-  number: number;
-  title: string;
-  isDraft: boolean;
-  headRefName: string;
-  updatedAt: string;
-}
+const GhPullRequestSchema = z.looseObject({
+  number: z.number(),
+  title: z.string(),
+  isDraft: z.boolean(),
+  headRefName: z.string(),
+  updatedAt: z.string(),
+});
+
+type GhPullRequest = z.infer<typeof GhPullRequestSchema>;
 
 export interface DiscoverGitHubResult {
   hits: DiscoveryHit[];
@@ -53,21 +56,10 @@ export async function discoverGitHub(
         });
         continue;
       }
-      const parsed = JSON.parse(result.stdout) as GhPullRequest[];
-      for (const pr of parsed) {
-        hits.push({
-          source: sourceId,
-          ref: pr.headRefName,
-          detail: `${pr.isDraft ? '[draft] ' : ''}#${pr.number} ${pr.title}`,
-          metadata: {
-            repo,
-            number: pr.number,
-            title: pr.title,
-            isDraft: pr.isDraft,
-            headRefName: pr.headRefName,
-            updatedAt: pr.updatedAt,
-          },
-        });
+      const { prs, skipped } = parsePullRequests(result.stdout);
+      hits.push(...prs.map((pr) => toHit(sourceId, repo, pr)));
+      if (skipped > 0) {
+        errors.push({ source: sourceId, error: `skipped ${skipped} malformed PR entries` });
       }
     } catch (err) {
       errors.push({
@@ -78,4 +70,30 @@ export async function discoverGitHub(
   }
 
   return { hits, errors };
+}
+
+/** Throws when stdout is not a JSON array; a bad element is counted, not thrown. */
+function parsePullRequests(stdout: string): { prs: GhPullRequest[]; skipped: number } {
+  const parsed = z.array(z.unknown()).parse(JSON.parse(stdout));
+  const prs = parsed.flatMap((element) => {
+    const pr = GhPullRequestSchema.safeParse(element);
+    return pr.success ? [pr.data] : [];
+  });
+  return { prs, skipped: parsed.length - prs.length };
+}
+
+function toHit(source: string, repo: string, pr: GhPullRequest): DiscoveryHit {
+  return {
+    source,
+    ref: pr.headRefName,
+    detail: `${pr.isDraft ? '[draft] ' : ''}#${pr.number} ${pr.title}`,
+    metadata: {
+      repo,
+      number: pr.number,
+      title: pr.title,
+      isDraft: pr.isDraft,
+      headRefName: pr.headRefName,
+      updatedAt: pr.updatedAt,
+    },
+  };
 }
