@@ -26,7 +26,7 @@ const HITS_TOTAL = 6;
 const CHARS_TOTAL = 1200;
 
 /** Launch waits on these queries, so a slow index costs a bounded delay, not an unbounded one. */
-export const LOOP_RETRIEVAL_BUDGET_MS = 1500;
+const LOOP_RETRIEVAL_BUDGET_MS = 1500;
 
 export interface LoopHit extends RelatedHit {
   /** 1-based within this loop's lines. */
