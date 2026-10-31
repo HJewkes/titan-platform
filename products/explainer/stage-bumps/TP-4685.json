@@ -1,0 +1,1 @@
+{ "stages": ["rewrite"], "why": "The rewrite splits a new sentence over the cap at a clause joint before the guard, instead of refusing the beat" }

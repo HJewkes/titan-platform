@@ -111,6 +111,7 @@ graph TD
   agent --> rpcProtocol
   agentDispatch --> rpcProtocol
   agentDispatch --> storeSqlite
+  agentDispatch --> worktree
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
   agentSurface --> rpcProtocol

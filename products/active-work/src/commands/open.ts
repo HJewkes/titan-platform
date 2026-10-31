@@ -229,7 +229,7 @@ async function bootstrapInitiative(
   // not the brief's default worktree.
   const cwdHint = opts.cwdHintOverride ?? (await resolveCwdHint(activeRoot, slug));
   const archiveStart = clock();
-  const archivedTaskIds = await archiveStaleTasks(path.join(activeRoot, slug), {
+  const { archivedIds: archivedTaskIds, tasks, malformed } = await archiveStaleTasks(path.join(activeRoot, slug), {
     retentionDays: ARCHIVE_DONE_AFTER_DAYS,
     now: new Date(),
   });
@@ -242,6 +242,7 @@ async function bootstrapInitiative(
     slug,
     includeLiveStatus: !opts.offline,
     archivedTaskIds,
+    loadedTasks: { tasks, malformed },
     adhoc: opts.adhoc,
     init: opts.init,
     ...(about !== undefined ? { about } : {}),

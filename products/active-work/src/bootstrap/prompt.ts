@@ -123,6 +123,11 @@ export interface BootstrapInput {
    */
   archivedTaskIds?: string[];
   /**
+   * Tasks the caller already parsed (minus any it archived). When supplied the
+   * task directory is not read again.
+   */
+  loadedTasks?: LoadedTasks;
+  /**
    * When `true`, frame the session as ad-hoc work related to the workstream
    * rather than a continuation of its handoff / top task. The same context is
    * rendered, but the opening and closing directives tell the session to treat
@@ -1358,6 +1363,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     includeLiveStatus = true,
     liveStatusFetcher,
     archivedTaskIds,
+    loadedTasks: preloadedTasks,
     adhoc = false,
     init = false,
     detectSiblings = true,
@@ -1377,7 +1383,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
 
   const [loaded, loadedTasks, loadedArtifacts, notes] = await Promise.all([
     loadSessionsNewestFirst(initiativeDir),
-    loadTasks(initiativeDir),
+    preloadedTasks ?? loadTasks(initiativeDir),
     loadArtifacts(initiativeDir),
     loadNotesFromDir(initiativeDir),
   ]);
