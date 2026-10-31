@@ -1,4 +1,3 @@
-import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { expandBraces } from "./glob.js";
 
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */
@@ -49,6 +48,10 @@ export interface FixProofConfig {
 export type ConfigResult = { ok: true; config: FixProofConfig } | { ok: false; error: string };
 
 const KEYS = new Set(["tests", "carry", "runtime", "command", "build"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function isGlobList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((glob) => typeof glob === "string" && glob !== "");

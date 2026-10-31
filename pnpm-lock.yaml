@@ -373,10 +373,6 @@ importers:
         version: 3.0.0
 
   packages/authority:
-    dependencies:
-      '@titan-design/rpc-protocol':
-        specifier: workspace:^
-        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -607,10 +603,6 @@ importers:
   packages/evidence: {}
 
   packages/fix-proof:
-    dependencies:
-      '@titan-design/rpc-protocol':
-        specifier: workspace:^
-        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*

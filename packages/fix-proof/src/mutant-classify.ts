@@ -1,4 +1,3 @@
-import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { isNewApiFailure } from "./classify.js";
 import type { Mutation } from "./mutation.js";
 import { readVitestReport, type FileRun, type TestRun } from "./report.js";
@@ -68,6 +67,10 @@ export function testFileOfSpec(spec: string, files: readonly string[], isTest: (
 
 // The sides write repo-relative paths; rooting them at "/" lets the report reader's path check read them as they are.
 const REPORT_ROOT = "/";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /** The selected files of a vitest report whose paths are repo-relative, as the sides write it; empty when it does not read. */
 export function filesOfReport(report: unknown, selected: ReadonlySet<string>): Map<string, FileRun> {
