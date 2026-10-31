@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a carried path reads as source, so a baseline prune makes a test-only diff a source diff",
+      "name": "a carried path, such as a lint baseline, reads as source",
       "file": "packages/fix-proof/src/plan.ts",
       "find": "return sorter.isTest(path) || sorter.isCarry(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
       "replace": "return sorter.isTest(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
