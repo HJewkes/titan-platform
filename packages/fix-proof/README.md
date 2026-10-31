@@ -74,7 +74,9 @@ the `fix-proof` bin does the git and vitest work.
   before either side runs, and the base reports are read before the head side starts, so head code
   cannot plant config, filters or objects in the caller's repo or the judge's. The head side still
   runs as the caller's uid and could reach the judge's snapshot on purpose. `execSide()`,
-  `judge()` and `run()` are the same as functions.
+  `judge()` and `run()` are the same as functions. `execSide({ side: "head", headRuns: 3 })` installs and
+  builds once, then runs vitest up to 5 times and writes `head.report`, `head-2.report`, ...;
+  `classifyDecoded(plan, reports)` classifies one decoded report set without the judge's result line.
 
 Every subcommand takes `[--repo <dir>] [--budget-ms <n>]`, always exits 0 and turns any
 failure into an `error` result line. In CI each side is its own job and the judge, the only job
