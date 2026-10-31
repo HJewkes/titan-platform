@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pending gate's rule and reason are dropped from the section",
+      "file": "products/factory/src/shepherd/brief-render.ts",
+      "find": "    gate: facts.gate,",
+      "replace": "    gate: { rule: { table: \"shepherd-seat\", rowId: \"implementer\" }, reason: \"\", head: facts.head },",
+      "kills": [
+        "prints the owner section as markdown with the pending gate's rule, the verdict's owner brief, the task and CI"
+      ]
+    },
+    {
+      "name": "the latest verdict and its owner brief are not passed to the section",
+      "file": "products/factory/src/shepherd/brief-render.ts",
+      "find": "    ...(facts.verdict && { verdict: facts.verdict }),",
+      "replace": "",
+      "kills": [
+        "prints the owner section as markdown with the pending gate's rule, the verdict's owner brief, the task and CI"
+      ]
+    },
+    {
+      "name": "a same-head FIX_FIRST no longer outranks a later MERGE",
+      "file": "products/factory/src/shepherd/brief-inputs.ts",
+      "find": "  if (fixFirstAt(run, prHead)) {",
+      "replace": "  if (false) {",
+      "kills": [
+        "recommends changes when a panel member gave FIX_FIRST at the head beside a later MERGE"
+      ]
+    },
+    {
+      "name": "CI reads green without every required context",
+      "file": "products/factory/src/shepherd/brief-inputs.ts",
+      "find": "  return state === \"green\" ? \"green\" : \"pending\";",
+      "replace": "  return \"green\";",
+      "kills": [
+        "reads CI as pending, not green, when a required check has no run at the head"
+      ]
+    }
+  ]
+}

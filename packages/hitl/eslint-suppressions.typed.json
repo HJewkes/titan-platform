@@ -14,16 +14,6 @@
       "count": 1
     }
   },
-  "packages/hitl/src/json-schema.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/hitl/src/json-schema.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
   "packages/hitl/src/resolver-policy.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

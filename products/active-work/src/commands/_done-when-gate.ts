@@ -9,7 +9,7 @@ export function agentCaller(env: NodeJS.ProcessEnv): 'agent' | undefined {
 
 /** Why a done_when is unusable, or undefined when it can be filed. */
 export function doneWhenProblem(title: string, doneWhen: string | undefined): string | undefined {
-  const fix = `pass --done-when with a checkable outcome of at least ${DONE_WHEN_MIN_CHARS} characters`;
+  const fix = `pass --done-when with a checkable outcome of at least ${DONE_WHEN_MIN_CHARS} characters, or --draft to file it without one`;
   if (doneWhen === undefined || doneWhen.trim() === '') return `done_when is missing: ${fix}`;
   if (fold(doneWhen) === fold(title)) return `done_when repeats the title: ${fix}`;
   if (doneWhen.trim().length < DONE_WHEN_MIN_CHARS) {

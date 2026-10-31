@@ -2,7 +2,9 @@ import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as fixProof from "@titan-design/fix-proof";
 import { runCli, unitRootOf } from "./cli.js";
+import * as exclusion from "./private/exclusion.js";
 import { FIXTURE_ROOT } from "./test-fixtures.js";
 
 function captureStdout(): () => string {
@@ -94,6 +96,49 @@ describe("titan-evals", () => {
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/inside a git work tree/);
     expect(existsSync(insideRepo)).toBe(false);
+  });
+
+  it("an out dir inside a work tree exits 1", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    writeFileSync(join(scratch, "corpus.jsonl"), "");
+    const insideRepo = join(FIXTURE_ROOT, "..", "implement-task-private-out");
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
+
+    const code = await runCli(["implement-task", "export", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch, "--out", insideRepo]);
+
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/inside a git work tree/);
+    expect(existsSync(insideRepo)).toBe(false);
+  });
+
+  it("dry run calls no execSide", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    writeFileSync(join(scratch, "corpus.jsonl"), "");
+    const execSide = vi.spyOn(fixProof, "execSide");
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
+
+    const code = await runCli(["implement-task", "export", "--dry-run", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch]);
+
+    expect(code).toBe(0);
+    expect(execSide).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toMatch(/dryRun/);
+  });
+
+  it("selftest failure aborts before any write", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    writeFileSync(join(scratch, "corpus.jsonl"), "");
+    const out = join(scratch, "out");
+    vi.spyOn(exclusion, "selfTest").mockReturnValue({ ok: false } as ReturnType<typeof exclusion.selfTest>);
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
+
+    const code = await runCli(["implement-task", "export", "--selftest", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch, "--out", out]);
+
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/self-test failed/);
+    expect(existsSync(out)).toBe(false);
   });
 
   it("exits 1 and marks the spec stale when a prompt file was edited", async () => {

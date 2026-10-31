@@ -156,6 +156,22 @@ describe.each([
     expect(store.get("g1")?.status).toBe("pending");
   });
 
+  it.each(["false", "0", "null", '""'])("refuses every payload for a stored schema of %s rather than reading it as no schema", (stored) => {
+    store.create({ id: "g1", prompt: "ship it?", schema: JSON.parse(stored) });
+    expect(() => store.resolve("g1", { approved: true }, OWNER)).toThrow(GatePayloadInvalid);
+    expect(store.get("g1")?.status).toBe("pending");
+  });
+
+  it("refuses every payload for a stored schema it cannot read", () => {
+    store.create({ id: "g1", prompt: "ship it?", schema: { ...APPROVAL_SCHEMA, requires: ["approved"] } });
+    expect(() => store.resolve("g1", { approved: true }, OWNER)).toThrow(/schema is unreadable/);
+  });
+
+  it("still takes any payload on a gate with no schema", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(store.resolve("g1", { anything: true }, OWNER).status).toBe("resolved");
+  });
+
   it("accepts a payload that matches the stored schema", () => {
     store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
     expect(store.resolve("g1", { approved: false, note: "not yet" }, OWNER).status).toBe("resolved");

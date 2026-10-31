@@ -1,8 +1,26 @@
 import { ReactNode } from 'react';
-import { DataSource, CommandName, RpcError, LiveStatus, SnapshotResolver, Snapshot } from '@titan-design/rpc-client';
+import { RpcError, DataSource, CommandName, LiveStatus, SnapshotResolver, Snapshot } from '@titan-design/rpc-client';
 import { CommandMap, SseMessage } from '@titan-design/rpc-protocol';
 
 type QueryStatus = "loading" | "success" | "error";
+interface QueryFetchState {
+    /** True while a call is in flight, including a refetch that keeps the previous data. */
+    isFetching: boolean;
+}
+/** A failed refetch keeps the last good data beside the error. */
+type QueryState<R = unknown> = QueryFetchState & ({
+    status: "loading";
+    data: undefined;
+    error: undefined;
+} | {
+    status: "success";
+    data: R;
+    error: undefined;
+} | {
+    status: "error";
+    data: R | undefined;
+    error: RpcError;
+});
 /** What `onSettle` learns about one call. It carries the command name only, never its arguments or result. */
 interface QuerySettled {
     command: string;
@@ -25,25 +43,9 @@ interface RpcProviderProps {
 /** Holds the query cache and the shared event stream for everything below it. */
 declare function RpcProvider({ source, gcMs, onSettle, children }: RpcProviderProps): ReactNode;
 
-interface QueryControls {
-    /** True while a call is in flight, including a refetch that keeps the previous data. */
-    isFetching: boolean;
+type QueryResult<R> = QueryState<R> & {
     refetch(): void;
-}
-/** A failed refetch keeps the last good data beside the error. */
-type QueryResult<R> = QueryControls & ({
-    status: "loading";
-    data: undefined;
-    error: undefined;
-} | {
-    status: "success";
-    data: R;
-    error: undefined;
-} | {
-    status: "error";
-    data: R | undefined;
-    error: RpcError;
-});
+};
 /** Args may be left out only when the command accepts an empty object. */
 type QueryArgs<A> = Record<string, never> extends A ? [args?: A] : [args: A];
 interface InvalidateOnOptions<M extends CommandMap> {

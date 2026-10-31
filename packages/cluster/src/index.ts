@@ -12,4 +12,4 @@ export type { MaskConfigs, MaskResult, MaskRule } from "./masks.js";
 export { DEFAULT_MASK_CONFIGS, applyMasks } from "./masks.js";
 export { templateId } from "./template-id.js";
 export type { ClusterInput, ClusterResult, ClustererOptions, ClustererSnapshot, PartitionSnapshot } from "./clusterer.js";
-export { Clusterer } from "./clusterer.js";
+export { Clusterer, parseClustererSnapshot } from "./clusterer.js";

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DataSource } from "@titan-design/rpc-client";
+import { RpcError, type DataSource } from "@titan-design/rpc-client";
 import { createQueryStore } from "./query-store.js";
 
 const KEY = '["note.get",{"id":"n1"}]';
@@ -70,5 +70,61 @@ describe("createQueryStore gcMs", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(store.state(KEY).status).toBe("loading");
+  });
+});
+
+describe("createQueryStore error state", () => {
+  const sourceOf = (call: DataSource["call"]): DataSource => ({ call, subscribe: () => ({ close() {} }) });
+
+  it("a failed refetch keeps the last good data beside the error", async () => {
+    const answers = [{ ok: true as const, data: "good" }, { ok: false as const, error: "boom", code: 1 }];
+    const store = createQueryStore(sourceOf(async () => answers.shift()!));
+
+    store.watch("note.get", { id: "n1" }, () => {});
+    await vi.waitFor(() => expect(store.state(KEY).status).toBe("success"));
+    store.refetch(KEY);
+    await vi.waitFor(() => expect(store.state(KEY).status).toBe("error"));
+
+    const state = store.state(KEY);
+    expect(state).toMatchObject({ data: "good", isFetching: false });
+    expect(state.error).toBeInstanceOf(RpcError);
+    expect(state.error?.message).toContain("boom");
+  });
+
+  it("a first call that fails holds an error object and no data", async () => {
+    const store = createQueryStore(sourceOf(async () => ({ ok: false, error: "boom", code: 1 })));
+
+    store.watch("note.get", { id: "n1" }, () => {});
+    await vi.waitFor(() => expect(store.state(KEY).status).toBe("error"));
+
+    expect(store.state(KEY).data).toBeUndefined();
+    expect(store.state(KEY).error).toBeInstanceOf(RpcError);
+  });
+
+  it("a source that rejects outside the abort contract settles with an error object", async () => {
+    const store = createQueryStore(sourceOf(() => Promise.reject(new Error("wire down"))));
+
+    store.watch("note.get", { id: "n1" }, () => {});
+    await vi.waitFor(() => expect(store.state(KEY).status).toBe("error"));
+
+    expect(store.state(KEY).error?.message).toContain("wire down");
+  });
+
+  it("a refetch in flight behind an error keeps the error object until it settles", async () => {
+    let release: () => void = () => {};
+    const call = vi
+      .fn<DataSource["call"]>()
+      .mockResolvedValueOnce({ ok: false, error: "boom", code: 1 })
+      .mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve({ ok: true, data: "fresh" }))));
+    const store = createQueryStore(sourceOf(call));
+
+    store.watch("note.get", { id: "n1" }, () => {});
+    await vi.waitFor(() => expect(store.state(KEY).status).toBe("error"));
+    store.refetch(KEY);
+
+    expect(store.state(KEY)).toMatchObject({ status: "error", isFetching: true });
+    expect(store.state(KEY).error).toBeInstanceOf(RpcError);
+    release();
+    await vi.waitFor(() => expect(store.state(KEY)).toMatchObject({ status: "success", data: "fresh", error: undefined }));
   });
 });
