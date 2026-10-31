@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { query, type Query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ConversationIdentity, ExecutionIdentity } from "@titan-design/agent-protocol";
-import { EXECUTION_CAPABILITIES, type ClaudeCodeRunRequest, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunProgress, type HarnessRunResult } from "./harness-contracts.js";
+import { type ClaudeCodeRunRequest, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunFailure, type HarnessRunProgress, type HarnessRunResult } from "./harness-contracts.js";
+import { capabilityRecord } from "./capability-record.js";
 import { preflightHarnessRun } from "./preflight.js";
 import { runAgent, type AgentRunDeps } from "./run.js";
 import { claudeFailure, claudeUsage } from "./claude-code-result.js";
@@ -32,9 +33,9 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Harn
 }
 
 export function claudeCodeCapabilities(): HarnessCapabilityDescriptor<"claude-code"> {
-  const capabilities = Object.fromEntries(EXECUTION_CAPABILITIES.map(capability => [capability, {
+  const capabilities = capabilityRecord(() => ({
     status: "unsupported", reason: "not exposed by this bounded Claude SDK adapter",
-  }])) as HarnessCapabilityDescriptor<"claude-code">["capabilities"];
+  }));
   for (const capability of ["fresh_run", "resume", "structured_output", "external_cancellation", "token_reporting"] as const) {
     capabilities[capability] = { status: "supported", evidence: "bounded wrapper around the existing runAgent SDK query" };
   }
@@ -75,7 +76,7 @@ class ClaudeInvocation<T> {
         };
       });
       this.timer = setTimeout(() => this.stop({ kind: "wall_time_exceeded", reason: "Claude query exceeded local wall deadline", wallTimeMs: this.request.wallTimeMs }), this.request.wallTimeMs);
-      this.timer.unref?.();
+      this.timer.unref();
       this.request.signal?.addEventListener("abort", this.onAbort, { once: true });
       if (this.request.signal?.aborted) this.onAbort();
       this.emit({ kind: "execution_started", execution: this.execution });
@@ -143,7 +144,7 @@ class ClaudeInvocation<T> {
   }
 
   private emit(progress: ProgressBody<HarnessRunProgress>): void {
-    this.request.onProgress?.({ ...progress, harness: "claude-code", atMs: (this.options.deps?.now ?? Date.now)() } as HarnessRunProgress);
+    this.request.onProgress?.({ ...progress, harness: "claude-code", atMs: (this.options.deps?.now ?? Date.now)() });
   }
 
   private close(): void {

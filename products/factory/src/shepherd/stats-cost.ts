@@ -4,6 +4,7 @@ import { claudeSourceFromPath, readSessionObservations, type NormalizedObservati
 import type { WorkflowRun } from "@titan-design/workflow";
 import { median, p90 } from "./stage-times.js";
 import { inRange, isoWeek, mergedAt, payloadOf, stepName } from "./stats.js";
+import { errnoCode, readPath } from "../narrow.js";
 
 /** Disjoint token counts: `input` excludes cache reads and writes. */
 interface CostTokens {
@@ -102,11 +103,11 @@ function openedRound(name: string, result: Record<string, unknown>, runStart: nu
 /** Only a verdict names its transcript; the dispatch knows the session but not where it is written. */
 function locatorOf(result: Record<string, unknown>): Partial<Pick<Round, "session" | "path">> {
   if (result.kind !== "verdict") return {};
-  const locator = result.locator as { source?: { path?: unknown; conversation?: { nativeId?: unknown } } } | undefined;
-  const nativeId = locator?.source?.conversation?.nativeId;
-  const reviewer = (result.reviewer as { sessionId?: unknown } | undefined)?.sessionId;
+  const nativeId = readPath(result, "locator", "source", "conversation", "nativeId");
+  const reviewer = readPath(result, "reviewer", "sessionId");
+  const path = readPath(result, "locator", "source", "path");
   const session = typeof nativeId === "string" ? nativeId : typeof reviewer === "string" ? reviewer : undefined;
-  return { ...(session !== undefined && { session }), ...(typeof locator?.source?.path === "string" && { path: locator.source.path }) };
+  return { ...(session !== undefined && { session }), ...(typeof path === "string" && { path }) };
 }
 
 /** Steps are stored in the order they were recorded, so a resolving step belongs to the latest round opened before it, and the last one ends it. */
@@ -286,7 +287,7 @@ export function claudeTranscripts(namespace = os.hostname()): TranscriptPort {
           if (request) requests.set(request.responseId, { ...request, at: requests.get(request.responseId)?.at ?? request.at });
         }
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: false, reason: "missing transcript" };
+        if (errnoCode(error) === "ENOENT") return { ok: false, reason: "missing transcript" };
         return { ok: false, reason: `parse error: ${error instanceof Error ? error.message : String(error)}` };
       }
       return { ok: true, requests: [...requests.values()] };

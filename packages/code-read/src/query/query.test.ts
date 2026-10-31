@@ -71,7 +71,7 @@ describe("api.describe", () => {
 
   it("describes catalogued metrics sorted by name, with engine provenance, and serves unknown ones without judgement", () => {
     const envelope = createQueryResolver(memorySource(SNAPSHOTS))("api.describe", {});
-    const metrics = envelope.ok ? (envelope.data as { metrics: unknown[] }).metrics : [];
+    const metrics = envelope.ok ? CONTRACT["api.describe"].result.parse(envelope.data).metrics : [];
 
     expect(metrics).toEqual([
       expect.objectContaining({ name: "loc", rollup: "sum", provenance: { kind: "measured", source: "code-graph@0.14.0/source-metrics" } }),
