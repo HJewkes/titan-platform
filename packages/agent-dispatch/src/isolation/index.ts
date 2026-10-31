@@ -131,3 +131,48 @@ export {
   recreateWorktree,
   type WorktreeStrategyOptions,
 } from "./worktree.js";
+export {
+  mergedPrReader,
+  parseMergedPrs,
+  readMergedPrs,
+  type MergedPr,
+  type MergedPrGh,
+  type MergedPrGhOutcome,
+  type MergedPrReader,
+} from "./merged-pr.js";
+export {
+  lsofCwds,
+  lsofCwdsWith,
+  parkWorktree,
+  type CwdLister,
+  type CwdProcess,
+  type LsofRunner,
+  type ParkTreeResult,
+} from "./park-tree.js";
+export {
+  agentWorktreesIn,
+  porcelain,
+  reclaim,
+  sweepWorktrees,
+  type GitLister,
+  type HeldAllocation,
+  type HeldAllocationStore,
+  type ReclaimOptions,
+  type SweepOptions,
+  type SweepStatus,
+  type SweptWorktree,
+} from "./sweep.js";
+export {
+  formatRows,
+  LOW_DISK_BYTES,
+  lowDiskWarning,
+  nonSeatRow,
+  repoHeadroom,
+  repoSummary,
+  rowState,
+  stateRow,
+  volumeFreeBytes,
+  type RepoHeadroom,
+  type StateRow,
+  type WorktreeState,
+} from "./worktree-states.js";

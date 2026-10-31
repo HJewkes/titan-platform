@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failed gh reads as no PRs",
+      "file": "packages/agent-dispatch/src/isolation/merged-pr.ts",
+      "find": "    if (exitCode !== 0) throw new Error(`gh pr list exited ${exitCode}`);\n",
+      "replace": "",
+      "kills": [
+        "asking gh for the merged PRs on a branch rejects when gh exits non-zero, so park refuses rather than reading no PRs"
+      ]
+    },
+    {
+      "name": "a repo with no origin still asks gh",
+      "file": "packages/agent-dispatch/src/isolation/merged-pr.ts",
+      "find": "    if ((await runGit([\"remote\", \"get-url\", \"origin\"], gitRoot)) === null) return [];\n",
+      "replace": "",
+      "kills": [
+        "asking gh for the merged PRs on a branch asks nothing of a repo with no origin, which has nowhere to hold a PR"
+      ]
+    },
+    {
+      "name": "a non-array answer is not called out",
+      "file": "packages/agent-dispatch/src/isolation/merged-pr.ts",
+      "find": "  if (!Array.isArray(prs)) throw new Error(\"gh pr list did not answer a JSON array\");\n  return prs.map(parseMergedPr);",
+      "replace": "  return (prs as unknown[]).map(parseMergedPr);",
+      "kills": [
+        "reading gh's merged PRs for a head branch (CC-1064) throws on an answer that is not a JSON array"
+      ]
+    },
+    {
+      "name": "a PR with no head commit is trusted",
+      "file": "packages/agent-dispatch/src/isolation/merged-pr.ts",
+      "find": "if (typeof number !== \"number\" || typeof headRefOid !== \"string\")",
+      "replace": "if (typeof number !== \"number\")",
+      "kills": [
+        "reading gh's merged PRs for a head branch (CC-1064) throws on a PR without a head commit rather than trusting it"
+      ]
+    }
+  ]
+}

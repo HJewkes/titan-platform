@@ -275,6 +275,14 @@ const verdict = worktreeTenancy(
   park. It lets go of everything `@titan-design/worktree` does, and also of a few more build
   outputs, an index-only `.codewatch/graph.db` and paths a committed `.agent-chat/generated`
   lists. Any failed read refuses.
+- `parkWorktree` removes a finished agent's tree and keeps its branch, under the same policy.
+  Pass `lsofCwds` for an agent whose process may have outlived the broker, and a merged-PR
+  reader for a squash merge whose head branch origin deleted. `readMergedPrs` runs `gh` under
+  `minimalEnv`; a host whose `gh` needs a token or a shim builds a reader with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every tree the host's `HeldAllocationStore`
+  or a named root holds, and `reclaim(entry, { store, strategy })` re-checks the work before it
+  removes one, so a stale report destroys nothing. `rowState`, `repoHeadroom` and `repoSummary`
+  turn a sweep into the words a seat counts in.
 
 ## What it deliberately does not do
 

@@ -196,6 +196,41 @@ or a park from removing a tree another agent works in.
 - `treeFingerprint` and `treeChange` detect a reviewer that wrote to the tree it reviewed;
   `reviewerDirtyText` words the notice to its spawner.
 
+## Isolation (`./isolation`)
+
+The isolation strategies a spawn picks from its profile, and the rules that keep a retire
+or a park from removing a tree another agent works in.
+
+- `createIsolationRegistry({ worktree })` gives `getStrategy(name)` and `resolve(names)`.
+  The host builds the worktree strategy, since it reads host budgets; `resolve` layers
+  several names through `composite`, which narrows tools, keeps the last moved cwd and
+  force-releases earlier members when a later allocation throws.
+- `noneStrategy`, `toolsetStrategy` and `fileOwnershipStrategy` are pure. A `check` line
+  carrying `WARNING_PREFIX` is advisory; `refusalsIn` keeps the refusals. `refusalOf(alloc)`
+  says why a `release` returned false.
+- `worktreeTenancy(holder, roster, force)`, `adopterBlocker` and `parkTenancyBlocker` are the
+  CC-141 rule for retire, bulk retire and park: any other identity that is not retired and
+  works at or under the tree blocks. `--force` turns the retire refusal into a warning.
+- `allocatedWorktree(rows, agentId)`, `parkBlocker`, `parkable` and `liveBlocker` are the
+  park rules over journal rows.
+- `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
+  `isReviewerTreeName` classify reviewers by name.
+- `createWorktreeStrategy({ budget, reviewerBudget, treeHolders })` is the worktree strategy
+  over `@titan-design/worktree`. Budgets are readers, called on every spawn; implementer and
+  reviewer trees draw on separate pools (`DEFAULT_REVIEWER_WORKTREE_BUDGET` is 8), and a
+  refusal says who holds them. `reattachWorktree` and `recreateWorktree` bring a removed tree back.
+- `unsavedWork(tree, action)` and `dispatchIgnoredFiles` are the one ignored-file policy for
+  release and park. `inspectForRelease` applies it over the package's commit checks, and it
+  lets go of everything the package does, plus a few more build outputs, an index-only
+  `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `parkWorktree(target, recheck, listCwds?, mergedPr?)` removes a tree and keeps its branch.
+  `lsofCwds` finds a process still in the tree; `readMergedPrs` backs a squash merge whose head
+  branch origin deleted. It runs `gh` under `minimalEnv`, so a host whose `gh` needs a token or
+  a shim builds its own with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every held tree, and `reclaim(entry, { store, strategy })`
+  re-checks the work before removing one. `HeldAllocationStore` is the host's record of allocations.
+- `rowState`, `repoHeadroom` and `repoSummary` turn a sweep into the state words a seat counts.
+
 ## Routing (`./routing`, `./routing/node`)
 
 The workflow table (`shape-v1`) that maps a task's facts to a prior and an implementer
