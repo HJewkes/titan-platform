@@ -2,7 +2,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryGateStore } from "./memory-store.js";
 import { SqliteGateStore, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
 import { GateEvidenceInvalid, GateResolverRefused, GateStoreSchemaOutdated, type GateEvidencePolicy, type GateResolver, type GateStore } from "./types.js";
@@ -81,7 +81,7 @@ describe.each([
     const throwing = pending(() => {
       throw new Error("bug");
     });
-    const truthy = pending((() => "yes") as unknown as GateEvidencePolicy);
+    const truthy = pending(vi.fn().mockReturnValue("yes"));
 
     expect(() => throwing.resolve("run-1/approve-merge", {}, COORDINATOR, EVIDENCE)).toThrow(GateResolverRefused);
     expect(() => truthy.resolve("run-1/approve-merge", {}, COORDINATOR, EVIDENCE)).toThrow(GateResolverRefused);
@@ -102,7 +102,8 @@ describe.each([
   it("refuses evidence that is not a JSON object before reading the gate", () => {
     const store = pending();
 
-    expect(() => store.resolve("run-1/approve-merge", {}, COORDINATOR, ["merged"] as unknown as Record<string, unknown>)).toThrow(GateEvidenceInvalid);
+    const arrayEvidence = ["merged"];
+    expect(() => Reflect.apply(store.resolve, store, ["run-1/approve-merge", {}, COORDINATOR, arrayEvidence])).toThrow(GateEvidenceInvalid);
     expect(() => store.resolve("run-1/approve-merge", {}, COORDINATOR, { big: "x".repeat(20_000) })).toThrow(GateEvidenceInvalid);
   });
 
