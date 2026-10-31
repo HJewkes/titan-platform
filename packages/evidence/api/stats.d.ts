@@ -21,6 +21,29 @@ declare function betaBinomialInterval(successes: number, trials: number, options
     prior?: BetaPrior;
 }): Interval;
 
+interface AucIntervalOptions {
+    /** One cluster key per score, for each group. Scores sharing a key are resampled together. */
+    clusters?: {
+        pos: readonly string[];
+        neg: readonly string[];
+    };
+    /** Number of resamples; defaults to 10000. */
+    resamples?: number;
+    /** Seed for `seededRandom`; defaults to 0, so an unseeded call is still reproducible. */
+    seed?: string | number;
+    confidence?: number;
+}
+/**
+ * The probability a random positive score outranks a random negative one (Mann-Whitney U over n*m).
+ * A tied pair counts one half.
+ */
+declare function rocAuc(pos: readonly number[], neg: readonly number[]): number;
+/**
+ * A percentile bootstrap interval for `rocAuc`. The two groups are resampled separately (stratified),
+ * and by cluster when keys are given, so correlated texts are not counted as independent.
+ */
+declare function aucInterval(pos: readonly number[], neg: readonly number[], options?: AucIntervalOptions): Interval;
+
 interface BootstrapOptions {
     confidence?: number;
     /** Number of resamples; defaults to 10000. */
@@ -75,4 +98,4 @@ interface DetectableEffectOptions {
  */
 declare function minimumDetectableEffect(options: DetectableEffectOptions): number;
 
-export { type BetaPrior, type BootstrapOptions, type DetectableEffectOptions, type Interval, type McNemarMethod, type McNemarResult, betaBinomialInterval, bootstrapCI, mcnemar, minimumDetectableEffect, pairedBootstrap, wilson };
+export { type AucIntervalOptions, type BetaPrior, type BootstrapOptions, type DetectableEffectOptions, type Interval, type McNemarMethod, type McNemarResult, aucInterval, betaBinomialInterval, bootstrapCI, mcnemar, minimumDetectableEffect, pairedBootstrap, rocAuc, wilson };

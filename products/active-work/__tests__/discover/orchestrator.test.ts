@@ -214,6 +214,35 @@ describe('discoverGitHub (with injected runCommand)', () => {
     expect(result.hits[0]?.detail).toContain('#42');
   });
 
+  it('skips a malformed PR entry with one error line and keeps the good ones', async () => {
+    const good = {
+      number: 7,
+      title: 'Fix thing',
+      isDraft: true,
+      headRefName: 'fix/thing',
+      updatedAt: '2026-05-11T12:00:00Z',
+      mergeable: 'UNKNOWN',
+    };
+    const fakeRun = vi.fn(async () => ({
+      code: 0,
+      stdout: JSON.stringify([good, { number: 'eight', title: 'Bad' }, null]),
+      stderr: '',
+    }));
+    const result = await discoverGitHub(['owner/repo'], fakeRun);
+    expect(result.hits.map((hit) => hit.ref)).toEqual(['fix/thing']);
+    expect(result.errors).toEqual([
+      { source: 'gh:owner/repo', error: 'skipped 2 malformed PR entries' },
+    ]);
+  });
+
+  it('records a per-repo error when gh output is not an array', async () => {
+    const fakeRun = vi.fn(async () => ({ code: 0, stdout: '{"message":"x"}', stderr: '' }));
+    const result = await discoverGitHub(['owner/repo'], fakeRun);
+    expect(result.hits).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.source).toBe('gh:owner/repo');
+  });
+
   it('records per-repo errors when gh exits non-zero', async () => {
     const fakeRun = vi.fn(async () => ({
       code: 1,

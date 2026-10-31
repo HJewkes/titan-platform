@@ -3,38 +3,38 @@
   "mutations": [
     {
       "name": "a second IHDR is not refused",
-      "file": "products/factory/src/shepherd/png-bounded.ts",
+      "file": "packages/png-delta/src/png-bounded.ts",
       "find": "  if (type === \"IHDR\") return refuse(\"second IHDR\");\n",
       "replace": "",
       "kills": ["decodePngBounded refuses adversarial snapshots within its memory bound refuses a second IHDR that turns on interlace ahead of a 200 MiB IDAT"]
     },
     {
       "name": "the inflate carries no output limit",
-      "file": "products/factory/src/shepherd/png-bounded.ts",
+      "file": "packages/png-delta/src/png-bounded.ts",
       "find": "zlib.inflateSync(Buffer.concat(idat), { maxOutputLength: expected })",
       "replace": "zlib.inflateSync(Buffer.concat(idat))",
       "kills": ["decodePngBounded refuses adversarial snapshots within its memory bound refuses an honest 1×1 header whose IDAT inflates to 200 MiB inside the zlib call"]
     },
     {
       "name": "an image of exactly maxPixels is refused",
-      "file": "products/factory/src/shepherd/png-bounded.ts",
+      "file": "packages/png-delta/src/png-bounded.ts",
       "find": "header.width * header.height > limits.maxPixels",
       "replace": "header.width * header.height >= limits.maxPixels",
       "kills": ["decodePngBounded decodes what Playwright writes decodes an image of exactly maxPixels"]
     },
     {
       "name": "an interlaced image is accepted",
-      "file": "products/factory/src/shepherd/png-bounded.ts",
+      "file": "packages/png-delta/src/png-bounded.ts",
       "find": "  if (header.interlace !== 0) return false;\n",
       "replace": "",
       "kills": ["decodePngBounded refuses adversarial snapshots within its memory bound refuses interlace 1 as an unsupported format"]
     },
     {
       "name": "the share measure imports pngjs again",
-      "file": "products/factory/src/shepherd/visual-delta.ts",
+      "file": "packages/png-delta/src/delta.ts",
       "find": "import pixelmatch from \"pixelmatch\";\n",
       "replace": "import pixelmatch from \"pixelmatch\";\nimport \"pngjs\";\n",
-      "kills": ["factory runtime code never imports pngjs, so untrusted snapshots only reach the bounded decoder"]
+      "kills": ["png-delta runtime code never imports pngjs, so untrusted snapshots only reach the bounded decoder"]
     }
   ]
 }

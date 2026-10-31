@@ -27,7 +27,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 });
 
 const EVERY_REFUSAL: RefusalRule[] = [
-  "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "number-vague", "device-added",
+  "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "range-split", "number-vague", "device-added",
   "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
@@ -83,6 +83,15 @@ describe("renderRewritePrompt", () => {
 
     expect(prompt).toContain('- Lists of three: "the scan, the row and the label.". Put every item in labels_added, one each');
     expect(prompt).not.toMatch(/the one that matters/i);
+  });
+
+  it("names the cue word a collapsing list holds as the item that stays in the line", () => {
+    const cuedList: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", triads: ["the desk, the row and the label."] }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, cuedList);
+
+    expect(prompt).toContain('- The screen cues on "desk": the list item that holds each one is the item you keep in the line.');
+    expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain("- The screen cues on");
   });
 
   it("asks a beat to say its stock phrases in plain words, naming each", () => {

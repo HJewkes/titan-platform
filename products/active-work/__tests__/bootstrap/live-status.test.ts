@@ -121,6 +121,28 @@ describe('defaultLiveStatusFetcher', () => {
     expect(statuses.map((s) => s.pr?.number)).toEqual([1003, 7]);
   });
 
+  it('skips malformed bulk-list entries with one stderr line and still answers the rest', async () => {
+    stubGit();
+    const malformed = [null, { headRefName: 'feat/bad', statusCheckRollup: 'not-a-list' }];
+    const gh: string[][] = [];
+    setGhRunner((_bin, args) => {
+      gh.push(args);
+      const stdout = JSON.stringify([...malformed, pr('feat/a', 11)]);
+      return Promise.resolve({ code: 0, stdout, stderr: '' });
+    });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const statuses = await defaultLiveStatusFetcher([
+      branch(REPO_A, 'feat/a'),
+      branch(REPO_A, 'feat/bad'),
+    ]);
+
+    expect(statuses.map((s) => s.pr?.number ?? null)).toEqual([11, null]);
+    expect(gh).toHaveLength(1);
+    expect(stderr).toHaveBeenCalledWith('bootstrap: skipped 2 malformed gh pr list entries\n');
+    stderr.mockRestore();
+  });
+
   it('renders the same PR from the bulk list as from the per-branch query', async () => {
     stubGit();
     const rollup = [{ conclusion: 'SUCCESS' }, { conclusion: 'FAILURE' }, { state: 'PENDING' }];

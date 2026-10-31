@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resetIndex } from '@titan-design/session-graph';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from '../../src/session-index/graph.js';
 import {
@@ -138,6 +138,26 @@ describe('preserved rows', () => {
     ]);
     expect(forgetPreserved(graph, 'session', PRUNED.session_id)).toBe(true);
     expect(listPreserved(graph)).toEqual([]);
+  });
+
+  it('skips a stored row whose JSON is malformed and still replays the rest', () => {
+    insertPruned();
+    graph.db
+      .prepare(
+        `INSERT INTO preserved_row (table_name, identity, row_key, payload, origin, mode)
+         VALUES ('session', '{not json', 'broken-a', '{}', 'synthetic', 'insert'),
+                ('session', '["session_id"]', 'broken-b', '{"turn_count":[1]}', 'synthetic', 'insert')`,
+      )
+      .run();
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    resetIndex(graph);
+
+    const summary = replayPreserved(graph);
+
+    expect(summary).toEqual({ restored: 1, merged: 0, skipped: 0 });
+    expect(listPreserved(graph).map((row) => row.key)).toEqual([PRUNED.session_id]);
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('session/broken-a: malformed JSON'));
+    stderr.mockRestore();
   });
 
   it('declares a session whose transcript is gone, so --full stops destroying it', async () => {

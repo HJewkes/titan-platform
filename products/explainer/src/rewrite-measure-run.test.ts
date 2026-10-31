@@ -2,12 +2,16 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli } from "./rewrite-cli.js";
 import { choppy, cuedChoppy, fakeRewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { MeasureSummary } from "./rewrite-measure.js";
 import type { RewriteResult } from "./rewrite-pass.js";
 import type { ScriptV1 } from "./script-schema.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 type MeasureFile = MeasureSummary & { spend: { total_usd: number }; stopped?: string };
 

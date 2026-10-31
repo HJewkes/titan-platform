@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import type { JudgeHarness } from "./eval-harness.js";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { registerCheck } from "./lint-register.js";
@@ -8,6 +9,9 @@ import { REWRITE_TARGET_ROWS } from "./rewrite-plan.js";
 import { hasSpokenDigits, spellSpokenNumbers } from "./spoken-numbers.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { BEATS, cuedChoppy, compliant, fakeRewriter, promptBeatIds, REWRITES, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 const isRoundTwo = (prompt: string): boolean => prompt.includes("Change only what the lines above name");
 
@@ -320,33 +324,34 @@ describe("chapterRefusal", () => {
   ];
   const after = (changes: L0Result[]): L0Result[] => before.map((r) => changes.find((c) => c.check_id === r.check_id) ?? r);
   const closer = row("register:sentence-mean", 10, 12.51, false);
+  const guarded = new Set(["register:contractions"]);
 
   it("keeps a chapter that comes closer to band without turning a row red", () => {
-    expect(chapterRefusal(before, after([closer]))).toBeUndefined();
+    expect(chapterRefusal(before, after([closer]), guarded)).toBeUndefined();
   });
 
   it("names the target row a chapter turns red, even when the distance falls", () => {
     const flipped = after([row("register:sentence-mean", 12, 12.51, false), row("register:numbers", 26, 25.62, false)]);
     expect(bandDistance(flipped)).toBeLessThan(bandDistance(before));
-    expect(chapterRefusal(before, flipped)).toEqual({ why: "more target rows fail", rows: ["register:numbers"] });
+    expect(chapterRefusal(before, flipped, guarded)).toEqual({ why: "more target rows fail", rows: ["register:numbers"] });
   });
 
   it("refuses a chapter whose distance to band does not fall", () => {
-    expect(chapterRefusal(before, before)).toEqual({ why: "the distance to band did not fall" });
+    expect(chapterRefusal(before, before, guarded)).toEqual({ why: "the distance to band did not fall" });
   });
 
   it("names the error row a chapter turns red", () => {
-    expect(chapterRefusal(before, after([closer, row("Q-V7", 1, 0, false, "error")]))).toEqual({ why: "more error rows fail", rows: ["Q-V7"] });
+    expect(chapterRefusal(before, after([closer, row("Q-V7", 1, 0, false, "error")]), guarded)).toEqual({ why: "more error rows fail", rows: ["Q-V7"] });
   });
 
   it("names a protected row that was green and turns red", () => {
-    expect(chapterRefusal(before, after([closer, row("register:contractions", 9, 10.79, false)]))).toEqual({ why: "a protected row turned red", rows: ["register:contractions"] });
+    expect(chapterRefusal(before, after([closer, row("register:contractions", 9, 10.79, false)]), guarded)).toEqual({ why: "a protected row turned red", rows: ["register:contractions"] });
   });
 
   it("lets a protected row that was already red stay red", () => {
     const red = row("register:contractions", 4, 10.79, false);
     const redBefore = before.map((r) => (r.check_id === red.check_id ? red : r));
-    expect(chapterRefusal(redBefore, redBefore.map((r) => (r.check_id === closer.check_id ? closer : r)))).toBeUndefined();
+    expect(chapterRefusal(redBefore, redBefore.map((r) => (r.check_id === closer.check_id ? closer : r)), guarded)).toBeUndefined();
   });
 });
 
@@ -396,7 +401,7 @@ describe("rewriteScript keeps or reverts each chapter", () => {
 
     const { script: out } = await rewrite(script, fakeRewriter(flipsMean), { rounds: 1 });
 
-    expect(chapterRefusal(runL0(script), together)?.why).toBe("more target rows fail");
+    expect(chapterRefusal(runL0(script), together, new Set())?.why).toBe("more target rows fail");
     expect(spokenOf(out, "c2")).toBe(BEATS.c2![1].after);
   });
 
