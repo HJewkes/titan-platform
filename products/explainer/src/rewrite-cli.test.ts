@@ -124,16 +124,18 @@ describe("explainer rewrite --speech-vet", () => {
     expect(readReport().rounds[0]!.rewritten).toContain("h1");
   });
 
-  it("rejects that sentence when speech-vet does not accept it", async () => {
+  it("splits that sentence at a clause joint when speech-vet does not accept it", async () => {
     const vet = fakeVet("rejected");
 
-    const { err } = await run(write("in.json", cuedChoppy()), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
+    const { err } = await run(write("in.json", cuedChoppy({ h1: { plannedS: 13 } })), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
       harness: () => fakeRewriter(longH1).harness,
       speechVet: vet.speechVet,
     });
 
-    const rejected = readReport().rounds[0]!.rejected.find((beat) => beat.beat === "h1");
-    expect(rejected?.rejections.map((r) => r.rule)).toContain("sentence-cap");
+    expect(readReport().rounds[0]!.rewritten).toContain("h1");
+    expect(ScriptSchema.parse(readJson("out.json")).beats.find((beat) => beat.id === "h1")!.spoken).toBe(
+      "When a courier asks for a label, the desk refuses ghost labels. So it looks for the parcel row and waits for the ledger before it prints anything at all.",
+    );
     expect(err).toContain("speech-vet: vetted 1 sentence(s) of 26-32 words: 1 rejected");
   });
 

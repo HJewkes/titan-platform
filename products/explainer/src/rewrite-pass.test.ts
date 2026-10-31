@@ -260,7 +260,8 @@ describe("rewriteScript rounds", () => {
   });
 
   it("tells round 2 why round 1 refused a beat, and says nothing to a beat round 1 accepted", async () => {
-    const LONG_H3 = "It checks the scan and the row before the label, so nothing is skipped and the courier never sees a guess and the check is always fast.";
+    // No comma joint to split it at, so the guard still refuses it.
+    const LONG_H3 = "It checks the scan and the row before the label so that nothing is skipped and the courier never sees a guess and the check is always fast.";
     const refusesH3KeepsC2: Rewriter = (id, prompt) => {
       if (isRoundTwo(prompt)) return compliant(id, prompt);
       if (id === "h3") return { id, spoken: LONG_H3, labels_added: [] };

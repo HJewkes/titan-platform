@@ -2,10 +2,11 @@ import { z } from "zod";
 import { L0_CHECKS, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { wordsOf } from "./lint-text.js";
-import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
+import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { guardBeat, rewrittenBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
 import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
+import { splitOverlong } from "./rewrite-split.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
 import { draftFillRefusals, TEMPLATE_FILL_ID } from "./script-fill.js";
@@ -192,7 +193,8 @@ function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: Re
   const labelsAdded = reply.labels_added.map((label) => label.trim()).filter(Boolean);
   // Spelled and declared before the guard so its cap, the speech-vet and L0 all judge the words the voice will read,
   // and a reply that drops a `[w](=reading)` its context decides is not reverted for Q-V10.
-  const spoken = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);
+  const declared = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);
+  const spoken = splitOverlong(beat.spoken, declared, (sentence) => overlongSentence(sentence, deps.speechClean));
   if (spoken === beat.spoken && labelsAdded.length === 0) return beat;
   const options: BeatGuardOptions = { ...(deps.guard ? { guard: deps.guard } : {}), ...(deps.speechClean ? { speechClean: deps.speechClean } : {}) };
   const rejections = guardBeat(beat, { spoken, labelsAdded }, options);
@@ -354,7 +356,8 @@ function checkRounds(rounds: number): number {
  * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A chapter is kept
  * only when, on top of the chapters kept before it, it fails no more target rows, comes closer to band, fails no more
  * error rows and turns no protected row red; a beat that gains an error row or goes over its word cap is reverted, and a failed call leaves its
- * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
+ * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted,
+ * and a candidate's new sentence over the cap is split at a clause joint before it is vetted.
  */
 export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promise<RewriteResult> {
   const rounds = checkRounds(deps.rounds ?? MAX_REWRITE_ROUNDS);
