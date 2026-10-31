@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 const TRANSFORMERS_PEER = "@huggingface/transformers";
 

@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 const SECRET_BYTES = 32;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;

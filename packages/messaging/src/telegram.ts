@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type {
   Button,
   ButtonRow,

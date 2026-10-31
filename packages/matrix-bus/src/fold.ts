@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { ItemKind } from "./item.js";
 import type { MatrixEvent } from "./types.js";
 

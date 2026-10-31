@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { PackageJsonChange } from "./config.js";
 
 type Manifest = Record<string, unknown>;

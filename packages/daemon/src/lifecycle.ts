@@ -10,7 +10,7 @@ import { promises as fs } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { HEALTH_PATH } from "@titan-design/rpc-protocol";
-import { errorCode, isObjectLike } from "@titan-design/narrow";
+import { errorCode, isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 export interface DaemonPaths {
   pidFile: string;

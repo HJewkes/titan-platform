@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 export interface ToolUse {
   name: string;

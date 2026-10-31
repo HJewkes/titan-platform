@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { SendError } from "./contract.js";
 import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 

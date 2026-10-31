@@ -7,7 +7,7 @@
 import { X509Certificate, createPrivateKey } from "node:crypto";
 import fs from "node:fs";
 import type { Server as HttpsServer, ServerOptions as HttpsServerOptions } from "node:https";
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import type { Logger } from "./logger.js";
 
 export interface RemoteTlsOptions {

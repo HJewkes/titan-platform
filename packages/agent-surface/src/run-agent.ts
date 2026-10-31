@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { clearOutputTail, tailKeeper, writeOutputTail } from "./launch-output.js";
 import { NO_PANE_SOURCES, paneEscapes, type PaneSources } from "./pane-identity.js";
 import { SURFACE_NAMES, type LaunchPlan, type SurfaceName } from "./types.js";

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { isStringArray } from "./guards.js";
 
 /** One provider entry. `kind` picks the registry factory; the factory validates the rest. */

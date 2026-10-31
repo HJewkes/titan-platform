@@ -83,7 +83,7 @@
     "zod": "^4.0.0"
   },
   "dependencies": {
-    "@titan-design/narrow": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "yaml": "^2.9.1"
   },

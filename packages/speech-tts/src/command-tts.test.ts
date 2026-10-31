@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { commandTts, type CommandTtsOptions } from "./command-tts.js";
 import { runTtsConformance } from "./conformance.js";
 import { TtsFailedError, TtsTimeoutError, TtsUnavailableError } from "./errors.js";

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loadTtsProfile, resolveTtsConfig } from "./config.js";
 import { runTtsConformance } from "./conformance.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";

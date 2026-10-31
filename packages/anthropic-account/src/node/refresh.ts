@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
 import {

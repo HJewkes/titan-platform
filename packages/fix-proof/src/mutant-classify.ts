@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { isNewApiFailure } from "./classify.js";
 import type { Mutation } from "./mutation.js";
 import { readVitestReport, type FileRun, type TestRun } from "./report.js";

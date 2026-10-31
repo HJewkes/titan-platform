@@ -1,5 +1,5 @@
 import type { JsonEnvelope } from "@titan-design/rpc-protocol";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { snapshotKey, wireArgs } from "./canonical-key.js";
 import type { DataSource } from "./data-source.js";
 import { isEnvelope } from "./envelope-shape.js";

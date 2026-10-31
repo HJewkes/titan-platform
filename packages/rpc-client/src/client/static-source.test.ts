@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EXIT, successEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
 import { partialFake } from "@titan-design/test-kit";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { snapshotKey } from "./canonical-key.js";
 import type { LiveStatus } from "./data-source.js";
 import { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot, type Snapshot, type SnapshotResolver } from "./snapshot.js";

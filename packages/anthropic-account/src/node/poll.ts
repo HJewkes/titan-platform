@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { z } from "zod";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";

@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { expandBraces } from "./glob.js";
 
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */

@@ -42,7 +42,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "devDependencies": {
     "@titan-design/test-kit": "workspace:*"

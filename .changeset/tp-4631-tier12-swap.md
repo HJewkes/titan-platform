@@ -18,4 +18,4 @@
 "@titan-design/workflow": patch
 ---
 
-Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/narrow` in place of local copies. Behaviour is unchanged.
+Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.

@@ -2,7 +2,7 @@
 // `Tokenizer._tokenize_affixes` (tokenizer.pyx:164-210), over the English tokenizer data dumped from
 // en_core_web_sm 3.8.0. spaCy is MIT-licensed; see NOTICE.
 import { readFileSync } from "node:fs";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import {
   PATTERN_NAMES,
   PY_SPACE_CLASS,

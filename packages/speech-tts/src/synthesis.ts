@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { TtsFailedError } from "./errors.js";
 import { errorMessage, isStringArray } from "./guards.js";
 import type { Audio, Synthesis, TtsCapabilities, WordTiming } from "./types.js";

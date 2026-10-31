@@ -1,4 +1,4 @@
-import { errorCode } from "@titan-design/narrow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** The path is gone, or one of its parent components is now a file. Every other I/O error is real. */
 export function isMissing(error: unknown): boolean {

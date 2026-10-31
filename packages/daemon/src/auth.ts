@@ -21,7 +21,7 @@ import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto"
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { isOwnAddress } from "./bind-guard.js";
 import { trackTokenFile } from "./token-file.js";
 

@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { BlueBubblesConfig } from "./bluebubbles.js";
 import { apiUrl } from "./bluebubbles.js";
 import { isAbortError } from "./send-failure.js";

@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { CHANGESET_GLOB, isHarnessPath, MUTATION_SPEC_GLOB, type FixProofConfig } from "./config.js";
 import { compileGlobs } from "./glob.js";
 import { normalizeRelative } from "./paths.js";

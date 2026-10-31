@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { FixProofConfig } from "./config.js";
 import { call, GIT_SAFETY, messageOf, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";

@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@titan-design/agent-dispatch": "workspace:^",
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

@@ -3,7 +3,7 @@
 # titan-platform
 
 A multi-agent software factory, and the shared packages it is built from. The repo holds
-<!-- generated:package-count start -->63<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
+<!-- generated:package-count start -->62<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
 composed thinly on top of them. Shared concerns that grew independently in brain, active-work,
 codewatch, and the session-miner get extracted here one package at a time, and each old repo
 keeps running on the published packages until its capability is rebuilt here.
