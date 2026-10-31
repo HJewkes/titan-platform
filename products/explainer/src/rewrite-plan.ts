@@ -53,7 +53,7 @@ export interface RegisterEditPlan {
 export interface PlanOptions {
   /** 1 or 2; a CLI passes its parsed `--rounds` value through, so any other number throws. */
   round?: number;
-  /** The longest sentence the guard accepts; a planned long sentence stays under it. */
+  /** The longest sentence the guard accepts; a planned long sentence stays under it, and at 24 words or fewer. */
   cap?: number;
   /** The beats the previous round refused, with the rules that refused them (TP-3817 S20). */
   refused?: ReadonlyMap<string, readonly RefusalRule[]>;
@@ -64,6 +64,8 @@ type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual">;
 const SHORT_WORDS = 5;
 // The model overshoots a planned length, so a long sentence is planned this far under the cap.
 const LONG_HEADROOM = 4;
+// The vet refuses most 26-32 word sentences, so the vetted cap is the guard's tolerance and never a planning target.
+const MAX_PLANNED_WORDS = 24;
 // A beat whose sorted sentence lengths each sit this close to the plan is left alone.
 const SHAPE_TOLERANCE = 3;
 // The plan aims inside the band, not at its edge, so a rewrite that drifts still lands in it.
@@ -98,10 +100,24 @@ function splitWords(words: number, n: number, shortShare: number): number[] {
   return [...Array<number>(shorts).fill(SHORT_WORDS), ...long].sort((a, b) => a - b);
 }
 
+/** Cuts each long sentence to `longest` and hands the cut words to the last short one, so the other shorts keep the spread. */
+function trimLong(lengths: readonly number[], longest: number): number[] {
+  const overflow = lengths.reduce((sum, n) => sum + Math.max(0, n - longest), 0);
+  const lastShort = lengths.lastIndexOf(SHORT_WORDS);
+  return lengths.map((n, i) => (i === lastShort ? n + overflow : Math.min(n, longest))).sort((a, b) => a - b);
+}
+
 function beatShape(words: number, n: number, shortShare: number, cap: number): number[] {
+  const headroom = cap - LONG_HEADROOM;
   for (let count = n; ; count++) {
     const lengths = splitWords(words, count, shortShare);
-    if (Math.max(...lengths) <= cap - LONG_HEADROOM || count * SHORT_WORDS >= words) return lengths;
+    const longest = Math.max(...lengths);
+    if (longest <= Math.min(headroom, MAX_PLANNED_WORDS) || count * SHORT_WORDS >= words) return lengths;
+    // Adding a sentence here would pull the script's mean under its floor, so the count holds and the words move.
+    if (count > 1 && longest <= headroom) {
+      const trimmed = trimLong(lengths, MAX_PLANNED_WORDS);
+      if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;
+    }
   }
 }
 
