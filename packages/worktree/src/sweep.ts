@@ -3,7 +3,7 @@ import { gitChildEnv } from "./git.js";
 import { parseWorktreeList } from "./layout.js";
 import { createWorktreeAllocator } from "./allocator.js";
 import { branchPrefixOf, RECLAIM_GRACE_MS } from "./options.js";
-import { inspectForRelease, type WorktreeReleaseSafety } from "./release-safety.js";
+import { inspectForRelease, type IgnoredFilesPolicy, type WorktreeReleaseSafety } from "./release-safety.js";
 
 /**
  * Find the worktrees an allocator is holding, and say which ones nobody is using.
@@ -72,6 +72,8 @@ export interface SweepOptions {
   now?: () => number;
   /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
   formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
+  /** Extra ignored paths that do not make a tree hold work; the built-in regenerable list always applies. */
+  ignoredFiles?: IgnoredFilesPolicy;
 }
 
 export const porcelain: GitLister = async (gitRoot) =>
@@ -119,7 +121,8 @@ async function classify(
   owner: SweepOwner | undefined,
   base: string,
   now: number,
-  formatSafetyDetail: SweepOptions["formatSafetyDetail"]
+  formatSafetyDetail: SweepOptions["formatSafetyDetail"],
+  ignoredFiles: IgnoredFilesPolicy | undefined
 ): Promise<SweptWorktree> {
   const agent = owner && {
     agentId: owner.agentId,
@@ -131,7 +134,7 @@ async function classify(
   const byOwner = classifyByOwner(owner, now);
   if (byOwner) return { ...withAgent, ...byOwner };
 
-  const safety = await inspectForRelease(found.gitRoot, found.worktree, found.branch, base);
+  const safety = await inspectForRelease(found.gitRoot, found.worktree, found.branch, base, "git", undefined, ignoredFiles);
   if (!safety.dirty && !safety.unmerged) return { ...withAgent, status: "reclaimable", detail: idleDetail(owner) };
   const unsaved = safety.checked.find((check) => check.name === "dirty" && !check.ok)?.detail;
   const detail = [unsaved, safety.unmerged && "commits that exist nowhere else"]
@@ -162,7 +165,8 @@ export async function sweepWorktrees(options: SweepOptions = {}): Promise<SweptW
           options.ownerOf?.(found),
           held.get(branch)?.base ?? "HEAD",
           now,
-          options.formatSafetyDetail
+          options.formatSafetyDetail,
+          options.ignoredFiles
         )
       );
     }
