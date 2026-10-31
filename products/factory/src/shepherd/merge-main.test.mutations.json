@@ -4,7 +4,7 @@
     {
       "name": "land never asks the hook before the decision",
       "file": "products/factory/src/workflows/land.ts",
-      "find": "  if (await mergesBaseFirst(ctx, input, { headSha: ci.headSha, base }, options)) return mergeBase(ctx, input, ci, state);",
+      "find": "  if (await mergesBaseFirst(ctx, options.mergeBaseFirst, input.update, { headSha: ci.headSha, base })) return mergeBase(ctx, input, ci, state);",
       "replace": "",
       "kills": [
         "Shepherd merges main itself when a green PR's guard files are older than main's merges main into the head before deciding, and decides only the merged head"

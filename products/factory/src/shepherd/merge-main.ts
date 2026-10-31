@@ -1,8 +1,9 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
-import { codeRoute, step, type MergeBaseAsk } from "../workflows/land.js";
+import { codeRoute, step } from "../workflows/land.js";
+import type { MergeBaseFirst } from "../workflows/land-merge-base.js";
 import { judgeMain, readMainRules } from "./main-verdict.js";
 import type { ShepherdDeps } from "./phases.js";
 
@@ -82,7 +83,7 @@ export function mergeMainRoute(deps: Pick<ShepherdDeps, "port" | "now">): StepRo
  * since the PR's merge base; at a gate, whether MRG-AU lacks only a green run that main's newer green tip would bring. Either
  * way Shepherd merges main itself instead of waking a worker to push that merge. A record from before this step skips it.
  */
-export function mergeMainFirst(repo: RepoSlug): (ctx: WorkflowContext, at: MergeBaseAsk) => Promise<boolean> {
+export function mergeMainFirst(repo: RepoSlug): MergeBaseFirst {
   let reads = 0;
   return async (ctx, at) => {
     const next = ctx.historyNext();
