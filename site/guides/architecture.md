@@ -108,9 +108,12 @@ graph TD
 
   agent --> agentLifecycle
   agent --> agentProtocol
+  agent --> narrow
+  agentDispatch --> narrow
   agentDispatch --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  agentSurface --> narrow
   anthropicAccount --> narrow
   authority --> narrow
   autoresearch --> fixProof
@@ -120,12 +123,15 @@ graph TD
   codeGraph --> embed
   codeGraph --> evidence
   codeGraph --> fixProof
+  codeGraph --> narrow
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
   codeRead --> registry
   codeRead --> rpcProtocol
   coordinator --> agentDispatch
+  coordinator --> narrow
+  daemon --> narrow
   daemon --> registry
   daemon --> rpcProtocol
   decider --> locator
@@ -138,17 +144,21 @@ graph TD
   eslintPlugin --> narrow
   fixProof --> narrow
   graphLayout --> codeGraph
+  health --> narrow
   health --> storeSqlite
   hitl --> authority
   hitl --> evidence
   hitl --> storeSqlite
+  matrixBus --> narrow
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  messaging --> narrow
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
+  queueMirror --> narrow
   queueMirror --> storeSqlite
   reactApp --> rpcClient
   reactApp --> rpcProtocol
@@ -167,8 +177,10 @@ graph TD
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
   reviewWorkflow --> workflow
+  rpcClient --> narrow
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
+  sessionAnalytics --> narrow
   sessionAnalytics --> reviewPanel
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
@@ -180,7 +192,11 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  sessionRead --> narrow
+  speechG2p --> narrow
+  speechStt --> narrow
   speechTts --> appPaths
+  speechTts --> narrow
   speechVet --> speechG2p
   speechVet --> speechStt
   speechVet --> speechTts
@@ -196,6 +212,7 @@ graph TD
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
+  workflow --> narrow
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
@@ -331,7 +348,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `locator`, `narrow`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `locator`, `narrow`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
