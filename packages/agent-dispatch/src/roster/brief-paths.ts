@@ -1,28 +1,6 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
-const realOf = (dir: string): string | undefined => {
-  try {
-    return fs.realpathSync(dir);
-  } catch {
-    return undefined;
-  }
-};
-
-/** realpath of the deepest ancestor that exists, with the missing tail rejoined, so a not-yet-written path still compares canonically. */
-function canonicalPath(dir: string): string {
-  const resolved = path.resolve(dir);
-  const real = realOf(resolved);
-  if (real !== undefined) return real;
-  const parent = path.dirname(resolved);
-  return parent === resolved
-    ? resolved
-    : path.join(canonicalPath(parent), path.basename(resolved));
-}
-
-const isAtOrUnder = (real: string, root: string): boolean =>
-  real === root || real.startsWith(root + path.sep);
+import { canonicalPath, isAtOrUnder } from "../isolation/paths.js";
 
 const PATH_TOKEN =
   /^(?:~\/|\.{1,2}\/|\/)?(?:[\w.@+-]+\/)*[\w@+-][\w.@+-]*\.[A-Za-z0-9]{1,8}$/;

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the registry ignores the host's worktree strategy",
+      "file": "packages/agent-dispatch/src/isolation/registry.ts",
+      "find": "    worktree: options.worktree,",
+      "replace": "    worktree: noneStrategy,",
+      "kills": [
+        "registry and composition resolves each name to its own strategy"
+      ]
+    },
+    {
+      "name": "the composite widens tools instead of narrowing",
+      "file": "packages/agent-dispatch/src/isolation/strategy.ts",
+      "find": "left === undefined ? [...right] : left.filter((tool) => right.includes(tool));",
+      "replace": "[...new Set([...(left ?? []), ...right])];",
+      "kills": [
+        "registry and composition layers a toolset over a worktree: narrowed tools, worktree cwd"
+      ]
+    },
+    {
+      "name": "the composite keeps the base cwd",
+      "file": "packages/agent-dispatch/src/isolation/strategy.ts",
+      "find": "  if (part.cwd !== baseCwd) merged.cwd = part.cwd;\n",
+      "replace": "",
+      "kills": [
+        "registry and composition layers a toolset over a worktree: narrowed tools, worktree cwd"
+      ]
+    },
+    {
+      "name": "a member refusing release still reports released",
+      "file": "packages/agent-dispatch/src/isolation/strategy.ts",
+      "find": "if (!(await strategy.release(ctx, alloc, opts))) released = false;",
+      "replace": "await strategy.release(ctx, alloc, opts);",
+      "kills": [
+        "registry and composition propagates a member strategy refusing to release"
+      ]
+    },
+    {
+      "name": "a failed composite allocation leaks earlier members",
+      "file": "packages/agent-dispatch/src/isolation/strategy.ts",
+      "find": "      await strategy.release(ctx, alloc, { force: true }).catch(() => false);\n",
+      "replace": "",
+      "kills": [
+        "registry and composition force-releases what it already allocated when a later member fails"
+      ]
+    }
+  ]
+}
