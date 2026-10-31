@@ -412,7 +412,7 @@ describe("rewriteScript keeps or reverts each chapter", () => {
     const { script: out, report } = await rewrite(nearBand(), fake);
 
     const roundTwo = fake.prompts.filter(isRoundTwo);
-    expect(roundTwo.map(promptBeatIds)).toEqual([["k1"]]);
+    expect(roundTwo.map(promptBeatIds)).toEqual([["k1"], ["c2"]]);
     expect(roundTwo[0]).toContain(NEAR_BAND.k1);
     expect(report.rounds[1]!.chapters).toEqual([{ chapter: "ch3", kept: true }]);
     expect(spokenOf(out, "k1")).toBe(BEATS.k1![1].after);
