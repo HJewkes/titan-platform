@@ -11,7 +11,7 @@ const TIMEOUT_MS = 45 * MIN;
 const T0 = 1_800_000_000_000;
 const HEAD = fakeSha("resumed-ci-head");
 
-const Outcome = z.object({ ok: z.boolean(), error: z.string().optional() });
+const Outcome = z.object({ ok: z.boolean(), error: z.string().optional(), output: z.string().optional() });
 const queued = (name: string, id: number): CheckRun => ({ ...successRun(name, id), status: "queued", conclusion: null });
 
 /** ci-wait over checks that never settle, re-dispatched after a restart when `firstStartedAt` is given. */
@@ -26,7 +26,8 @@ async function ciWait(runs: CheckRun[], firstStartedAt?: number) {
   const restart = firstStartedAt === undefined ? {} : { firstStartedAt: new Date(firstStartedAt).toISOString(), restarts: 1 };
   const step: RoutedStepInput = { runId: "r", workflowName: "w", stepId: "ci-wait", iteration: 0, prompt: JSON.stringify({ repo: REPO, pr: 1, contexts: ["validate"], strict: false }), signal: new AbortController().signal, attempt: firstStartedAt === undefined ? 0 : 1, requestKey: "k", ...restart };
   const outcome = Outcome.parse(await route.runner.run(step));
-  return { ...outcome, elapsed: clock.now - T0 };
+  const result = outcome.output ? z.object({ result: z.object({ verdict: z.string() }) }).parse(JSON.parse(outcome.output)).result : undefined;
+  return { ...outcome, result, elapsed: clock.now - T0 };
 }
 
 describe("ci-wait re-dispatched after a restart", () => {
@@ -51,5 +52,23 @@ describe("ci-wait re-dispatched after a restart", () => {
 
     expect(out.error).toContain("timed out");
     expect(out.elapsed).toBeGreaterThanOrEqual(TIMEOUT_MS);
+  });
+});
+
+describe("ci-wait re-dispatched after the head's checks already concluded", () => {
+  const RESTARTED_AFTER = 2 * 60 * MIN;
+
+  it("finishes green within one poll when every required check already passed", async () => {
+    const out = await ciWait([successRun("validate", 1)], T0 - RESTARTED_AFTER);
+
+    expect(out.result?.verdict).toBe("green");
+    expect(out.elapsed).toBeLessThanOrEqual(POLL_MS);
+  });
+
+  it("finishes red within one poll when a required check already failed", async () => {
+    const out = await ciWait([successRun("validate", 1, undefined, "failure")], T0 - RESTARTED_AFTER);
+
+    expect(out.result?.verdict).toBe("red");
+    expect(out.elapsed).toBeLessThanOrEqual(POLL_MS);
   });
 });
