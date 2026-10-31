@@ -1,4 +1,4 @@
-import { WorktreeRecord } from '@titan-design/worktree';
+import { WorktreeRecord, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety } from '@titan-design/worktree';
 import { h as IsolationName } from '../schema.js';
 import { A as AgentIdentity } from '../types.js';
 import { J as JournalRow } from '../ports.js';
@@ -253,7 +253,75 @@ declare const parkable: (target: ParkTarget | undefined) => target is ParkTarget
 /** `tracked` means this broker still watches the agent's process, which a detached agent can have. */
 declare function liveBlocker(agent: AgentIdentity, tracked: boolean): string | undefined;
 
-export { type Allocation, type FileOwnershipManifest, type FileOwnershipSummary, type HeldTree, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, type OwnershipConflict, type OwnershipRule, type ParkTarget, type ReleaseOptions, type TenancyVerdict, type TreeHolder, type TreeHolders, WARNING_PREFIX, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, createIsolationRegistry, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, isAtOrUnder, isReviewerSpawn, isReviewerTreeName, isWarning, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkTenancyBlocker, parkable, recordRefusal, refusalOf, refusalsIn, tenantsOf, toolsetStrategy, warn, worktreeTenancy };
+/** `changes` is plain uncommitted or untracked work; `other` is a failed read or an ignored file kept. */
+interface UnsavedWork {
+    kind: "changes" | "other";
+    detail: string;
+}
+/** `-uall` so `status.showUntrackedFiles=no` cannot hide an untracked file the removal would take. */
+declare function unsavedWork(worktree: string, action: string): Promise<UnsavedWork | undefined>;
+/** The same policy for the package's park, which observes status and ignored files itself and asks only what to keep. */
+declare const dispatchIgnoredFiles: ParkIgnoredFilesPolicy;
+
+/** CC-1040: Shepherd's reviewer cap, so a full reviewer round never waits on implementer slots. */
+declare const DEFAULT_REVIEWER_WORKTREE_BUDGET = 8;
+type WorktreePool = "implementer" | "reviewer";
+/**
+ * CC-1469: a refused coordinator needs to know whether its own trees or another seat's fill the
+ * pool. Each tree is charged to its agent's direct spawner, largest holder first.
+ */
+declare function heldBy(trees: readonly string[], holders: ReadonlyMap<string, string>): string;
+/** Newest identity first, so a reused name charges its tree to the latest spawner. */
+declare function treeHoldersOf(agents: readonly {
+    name: string;
+    spawnedBy: string;
+}[]): ReadonlyMap<string, string>;
+declare class WorktreeBudgetExhaustedError extends Error {
+    readonly allocated: number;
+    readonly budget: number;
+    readonly pool: WorktreePool;
+    constructor(allocated: number, budget: number, pool?: WorktreePool, holdings?: string);
+}
+/** Budget readers, called on every spawn so a host's config edit applies to the next one. */
+interface PoolBudgets {
+    budget?: () => number;
+    reviewerBudget?: () => number;
+}
+interface PoolUse {
+    pool: WorktreePool;
+    allocated: number;
+    budget: number;
+    /** Directory names of the pool's trees. */
+    trees: string[];
+}
+
+interface WorktreeStrategyOptions extends PoolBudgets {
+    /** Relative to the git root. */
+    basePath?: string;
+    /** Bound on fetching origin's default branch before cutting a new one. */
+    fetchTimeoutMs?: number;
+    /** Bound on each `gh pr view` a release makes; a `gh` that outlives it supplies no landing proof. */
+    ghTimeoutMs?: number;
+    /** Bound on one `git worktree add`; the add is killed and the repo's queue moves on when it passes. */
+    addTimeoutMs?: number;
+    /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
+    runWorktreeAdd?: WorktreeAddRunner;
+    /** Runs the repository's declared setup step; tests inject one so no real install runs. */
+    runSetup?: SetupRunner;
+    /** CC-1469: read only when a pool refuses, to say who holds its trees. */
+    treeHolders?: TreeHolders;
+}
+declare function reattachWorktree(record: WorktreeRecord, opts?: WorktreeStrategyOptions, requireBranch?: boolean): Promise<Allocation>;
+declare function recreateWorktree(record: WorktreeRecord, opts?: WorktreeStrategyOptions): Promise<Allocation>;
+/**
+ * Is it safe to destroy this worktree and its branch? Commits are judged by the package; the
+ * tree's files by dispatch's own ignored-file policy, the one park uses, since the package's
+ * list misses build outputs such as `*.tsbuildinfo` and would hold every built tree.
+ */
+declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof, ghTimeoutMs?: number): Promise<WorktreeReleaseSafety>;
+declare function createWorktreeStrategy(opts?: WorktreeStrategyOptions): IsolationStrategy;
+
+export { type Allocation, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type HeldTree, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, type OwnershipConflict, type OwnershipRule, type ParkTarget, type PoolBudgets, type PoolUse, type ReleaseOptions, type TenancyVerdict, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeStrategyOptions, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, heldBy, inspectForRelease, isAtOrUnder, isReviewerSpawn, isReviewerTreeName, isWarning, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkTenancyBlocker, parkable, reattachWorktree, recordRefusal, recreateWorktree, refusalOf, refusalsIn, tenantsOf, toolsetStrategy, treeHoldersOf, unsavedWork, warn, worktreeTenancy };
 
 // ./dist/ports.d.ts
 /**

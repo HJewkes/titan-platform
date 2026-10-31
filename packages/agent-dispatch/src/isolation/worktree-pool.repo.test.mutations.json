@@ -20,7 +20,7 @@
       "file": "packages/agent-dispatch/src/isolation/worktree-pool.ts",
       "find": "    .filter((name) => poolOf(name) === pool);",
       "replace": "    .filter(() => true);",
-      "kills": ["reviewer worktree pool (CC-1040) implementer trees do not consume reviewer slots"]
+      "kills": ["reviewer worktree pool (CC-1040) eight reviewer trees leave the implementer budget free, the default reviewer cap"]
     },
     {
       "name": "the reviewer pool reads the implementer budget",
