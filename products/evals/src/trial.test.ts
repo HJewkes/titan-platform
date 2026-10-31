@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { scorecardKeyHash, variantHash } from "./hash.js";
-import { parseSpec, parseTrialRecord } from "./spec/index.js";
-import type { Scorecard, UnitSpec, VariantSpec } from "./spec/index.js";
-import { readFixture } from "./test-fixtures.js";
+import { parseTrialRecord } from "./spec/index.js";
+import type { VariantSpec } from "./spec/index.js";
+import { scorecardSchema } from "./spec/scorecard.js";
+import { llmStep, readScorecard, readUnit, readVariant } from "./test-fixtures.js";
 import { scorecardKeysFor, startTrial } from "./trial.js";
 import type { ChampionOf } from "./trial.js";
 
-const unit = parseSpec(readFixture("unit.json")) as UnitSpec;
-const singlePass = parseSpec(readFixture("variants/single-pass.json")) as VariantSpec;
-const scorecard = parseSpec(readFixture("scorecard.json")) as Scorecard;
+const unit = readUnit();
+const singlePass = readVariant();
+const scorecard = readScorecard();
 const { suite, judges, env } = scorecard.keys;
 const CASE = scorecard.perCase[0]!.case;
 const STARTED_AT = "2026-10-01T00:00:00Z";
@@ -16,7 +17,7 @@ const STARTED_AT = "2026-10-01T00:00:00Z";
 const FIXTURE_KEY_HASH = "5baae949f13c1190ef1d60136817f95197e6c3d0e29c27c3f7126bafc37c210f";
 
 function withModel(variant: VariantSpec, model: string): VariantSpec {
-  const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+  const step = llmStep(variant);
   return { ...variant, id: model, steps: { summarize: { ...step, model } } };
 }
 
@@ -100,9 +101,9 @@ describe("records written before champions were recorded", () => {
   });
 
   it("loads a scorecard with no champions in its key, which keeps its old key hash", () => {
-    const old = readFixture<Scorecard>("scorecard.json");
+    const old = readScorecard();
 
     expect(old.keys).not.toHaveProperty("champions");
-    expect(scorecardKeyHash((parseSpec(old, "loose") as Scorecard).keys)).toBe(FIXTURE_KEY_HASH);
+    expect(scorecardKeyHash(scorecardSchema("loose").parse(old).keys)).toBe(FIXTURE_KEY_HASH);
   });
 });
