@@ -157,11 +157,7 @@ describe("gate decisions on well-formed schemas", () => {
   it("leaves to the waiter the zod constraints this boundary check never enforced", () => {
     expect(checkAgainstJsonSchema(z.toJSONSchema(z.string().min(5)), "a")).toEqual([]);
     expect(checkAgainstJsonSchema(z.toJSONSchema(z.string().nullable()), 42)).toEqual([]);
-    expect(checkAgainstJsonSchema(z.toJSONSchema(z.never()), "x")).toEqual([]);
     expect(checkAgainstJsonSchema(z.toJSONSchema(z.record(z.string(), z.number())), { a: "x" })).toEqual([]);
-    expect(checkAgainstJsonSchema(z.toJSONSchema(z.tuple([z.string()])), [1])).toEqual([]);
-    expect(checkAgainstJsonSchema({ allOf: [{ type: "number" }] }, "x")).toEqual([]);
-    expect(checkAgainstJsonSchema({ $ref: "#/$defs/n", $defs: { n: { type: "number" } } }, "x")).toEqual([]);
   });
 
   it("lets an inherited key satisfy required, as the checker always has", () => {

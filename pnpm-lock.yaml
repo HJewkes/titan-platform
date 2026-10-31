@@ -1265,6 +1265,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
