@@ -1,4 +1,4 @@
-import { isRecord } from "./narrow.js";
+import { isRecord } from "@titan-design/rpc-protocol/narrow"
 import type {
   FileFingerprint,
   GraphEdge,

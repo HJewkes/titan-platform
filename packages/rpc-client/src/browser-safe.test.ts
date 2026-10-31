@@ -16,7 +16,7 @@ const sources = [
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 const ALLOWED = (specifier: string): boolean =>
-  specifier === "@titan-design/rpc-protocol" || specifier.startsWith("./client/") || /^\.\/[\w-]+\.js$/.test(specifier);
+  specifier === "@titan-design/rpc-protocol" || specifier === "@titan-design/rpc-protocol/narrow" || specifier.startsWith("./client/") || /^\.\/[\w-]+\.js$/.test(specifier);
 
 describe("browser safety", () => {
   it("finds the runtime sources to check", () => {

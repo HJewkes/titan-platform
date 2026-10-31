@@ -45,6 +45,7 @@
   "dependencies": {
     "@titan-design/hitl": "workspace:^",
     "@titan-design/matrix-bus": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
   },
   "devDependencies": {

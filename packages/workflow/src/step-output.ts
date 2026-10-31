@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { StepOutputFailureKind } from "./types.js";
 
 export const DEFAULT_MAX_STEP_DATA_BYTES = 65_536;
@@ -37,6 +38,3 @@ function withTraceKeys(raw: unknown, data: Record<string, unknown>): Record<stri
   return carried.length === 0 ? data : { ...data, ...Object.fromEntries(carried) };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

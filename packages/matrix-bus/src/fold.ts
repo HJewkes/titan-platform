@@ -1,4 +1,4 @@
-import { isRecord } from "./record.js";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { ItemKind } from "./item.js";
 import type { MatrixEvent } from "./types.js";
 
@@ -37,11 +37,11 @@ const EMOJI_MODIFIERS = /\uFE0E|\uFE0F|\p{Emoji_Modifier}/gu;
 
 function relatesTo(content: Record<string, unknown>): Record<string, unknown> {
   const rel = content["m.relates_to"];
-  return isRecord(rel) ? rel : {};
+  return isObjectLike(rel) ? rel : {};
 }
 
 function stringField(value: unknown, key: string): string | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isObjectLike(value)) return undefined;
   const field = value[key];
   return typeof field === "string" ? field : undefined;
 }

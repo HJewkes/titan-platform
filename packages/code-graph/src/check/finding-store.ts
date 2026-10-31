@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isRecord } from "../narrow.js";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { CodeGraphStore } from "../store.js";
 import type { Finding } from "./findings.js";
 

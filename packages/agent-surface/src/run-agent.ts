@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { clearOutputTail, tailKeeper, writeOutputTail } from "./launch-output.js";
 import { NO_PANE_SOURCES, paneEscapes, type PaneSources } from "./pane-identity.js";
-import { isRecord } from "./guards.js";
 import { SURFACE_NAMES, type LaunchPlan, type SurfaceName } from "./types.js";
 
 /**
@@ -61,7 +61,7 @@ const wrongType = (file: string, fields: string): Error =>
   new Error(`launch plan at ${file} has an ${fields} of the wrong type`);
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
-  isRecord(value) && !Array.isArray(value) && Object.values(value).every(item => typeof item === "string");
+  isObjectLike(value) && !Array.isArray(value) && Object.values(value).every(item => typeof item === "string");
 
 const isSurfaceName = (value: unknown): value is SurfaceName => SURFACE_NAMES.some(name => name === value);
 
@@ -70,7 +70,7 @@ export function readLaunchPlan(file: string): LaunchPlan {
   if (!fs.existsSync(file)) throw new Error(`no launch plan at ${file}`);
   const plan: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
   if (
-    !isRecord(plan) ||
+    !isObjectLike(plan) ||
     typeof plan.agentId !== "string" ||
     typeof plan.bin !== "string" ||
     !isStringArray(plan.args) ||

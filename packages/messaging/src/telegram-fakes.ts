@@ -1,4 +1,4 @@
-import { isRecord } from "./record.js";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { TelegramCallback, TelegramTextUpdate } from "./telegram-updates.js";
 
 /**
@@ -74,6 +74,6 @@ export function fakeCallbackUpdate(fields: Partial<TelegramCallback> = {}): unkn
 /** The JSON body a transport posted, for a test to inspect. */
 export function postedBody(init: RequestInit | undefined): Record<string, unknown> {
   const body: unknown = JSON.parse(String(init?.body));
-  if (!isRecord(body)) throw new Error("posted body is not a JSON object");
+  if (!isObjectLike(body)) throw new Error("posted body is not a JSON object");
   return body;
 }

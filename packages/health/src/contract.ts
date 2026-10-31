@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 /** health/v1 follows draft-inadarei-api-health-check, an open format, so other readers can consume it unchanged. */
 export const HEALTH_STATUSES = ["pass", "warn", "fail"] as const;
@@ -133,6 +134,3 @@ export function parseHealthReport(payload: unknown): HealthReportRead {
   return { ok: true, report: { ...read.data, status }, ignored: issues.map((issue) => issue.path.join(".")) };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

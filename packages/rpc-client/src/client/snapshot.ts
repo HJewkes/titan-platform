@@ -1,7 +1,8 @@
 import type { JsonEnvelope } from "@titan-design/rpc-protocol";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { snapshotKey, wireArgs } from "./canonical-key.js";
 import type { DataSource } from "./data-source.js";
-import { isEnvelope, isRecord } from "./envelope-shape.js";
+import { isEnvelope } from "./envelope-shape.js";
 
 export const SNAPSHOT_FORMAT = "titan-snapshot@1";
 
@@ -50,13 +51,13 @@ export async function buildSnapshot(source: Pick<DataSource, "call">, plan: Snap
 
 /** Checks a parsed file is a `titan-snapshot@1`; throws naming the first thing wrong. */
 export function parseSnapshot(value: unknown): Snapshot {
-  if (!isRecord(value)) throw new Error("Snapshot must be a JSON object");
+  if (!isObjectLike(value)) throw new Error("Snapshot must be a JSON object");
   if (value.format !== SNAPSHOT_FORMAT) {
     throw new Error(`Unsupported snapshot format ${JSON.stringify(value.format)}; expected ${SNAPSHOT_FORMAT}`);
   }
   const { createdAt, calls } = value;
   if (typeof createdAt !== "string") throw new Error("Snapshot createdAt must be a string");
-  if (!isRecord(calls) || Array.isArray(calls)) throw new Error("Snapshot calls must be an object");
+  if (!isObjectLike(calls) || Array.isArray(calls)) throw new Error("Snapshot calls must be an object");
   // Unknown top-level keys are kept so a field a newer writer adds still reaches the reader.
   return { ...value, format: SNAPSHOT_FORMAT, createdAt, calls: parseCalls(calls) };
 }
