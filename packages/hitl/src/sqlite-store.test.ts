@@ -187,8 +187,7 @@ describe("an old writer against a migrated table", () => {
   it("refuses the new store's own anonymous resolve before the statement reaches the trigger", () => {
     const db = migratedWithLegacyRows();
     const store = new SqliteGateStore(db, { migrate: false });
-    const anonymous = undefined as unknown as GateResolver;
-    expect(() => store.resolve("p1", "yes", anonymous)).toThrow(
+    expect(() => Reflect.apply(store.resolve, store, ["p1", "yes", undefined])).toThrow(
       expect.objectContaining({ name: "GateResolverRefused", gateId: "p1", reason: "a resolver is required" }),
     );
     expect(store.get("p1")).toMatchObject({ status: "pending", resolvedBy: undefined });
