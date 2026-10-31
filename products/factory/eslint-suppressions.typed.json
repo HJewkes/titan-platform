@@ -1,9 +1,4 @@
 {
-  "products/factory/src/audit/workflow.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/cli-shepherd-rpc.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -15,11 +10,6 @@
     }
   },
   "products/factory/src/gate-brief.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/gate-resolve-evidence.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -61,7 +51,7 @@
   },
   "products/factory/src/shepherd/review.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/factory/src/shepherd/round-merge.test.ts": {

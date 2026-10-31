@@ -22,6 +22,7 @@ import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
 import { readCommand } from "./owner-guard.js";
+import { roundFrameDeltaCommands } from "./round-frame-delta.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
@@ -157,6 +158,16 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
   ];
 }
 
+/** A round's own reads: the round, its frames and their deltas, and its revealed recommendations. */
+function roundReads(rounds: RoundsSource) {
+  return {
+    ...roundsCommands(rounds),
+    ...roundFramesCommands(rounds),
+    ...roundFrameDeltaCommands(rounds),
+    ...roundsRevealCommands(rounds),
+  };
+}
+
 /** The coordinator view's reads, each served only when its source is wired. */
 function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource) {
   return {
@@ -178,9 +189,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...graphCommands({ activeWork, sessions }),
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
-    ...roundsCommands(rounds),
-    ...roundFramesCommands(rounds),
-    ...roundsRevealCommands(rounds),
+    ...roundReads(rounds),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
     ...shepherdCommands(shepherd),
     ...blockersCommands({ spoolDir: inbox.dir, shepherd, ...(blockerHours !== undefined && { thresholdHours: blockerHours }) }, invalidation),

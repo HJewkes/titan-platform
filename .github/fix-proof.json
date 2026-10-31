@@ -12,7 +12,8 @@
     "**/testdata/**",
     "**/*.test-helpers.ts",
     "**/*.fixture.ts",
-    "products/active-work/__tests__/**"
+    "products/active-work/__tests__/**",
+    "**/eslint-suppressions*.json"
   ],
   "runtime": [
     "packages/agent-protocol/fixtures/**",

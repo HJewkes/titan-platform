@@ -1,3 +1,5 @@
+export type { AucIntervalOptions } from "./auc.js";
+export { aucInterval, rocAuc } from "./auc.js";
 export type { BetaPrior, Interval } from "./intervals.js";
 export { betaBinomialInterval, wilson } from "./intervals.js";
 export type { BootstrapOptions } from "./bootstrap.js";

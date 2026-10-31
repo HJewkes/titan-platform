@@ -12,6 +12,8 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as clackPrompts from '@clack/prompts';
+import { errorCode } from '@titan-design/rpc-protocol/narrow';
+import { errorText, toError } from './errors.js';
 import { ensureSchemaVersion } from '../schemas/state.js';
 import { getActiveRoot, getStateRoot, getConfigRoot } from '../utils/paths.js';
 import { STEP_SUPERVISION } from './supervision-systemd.js';
@@ -175,7 +177,7 @@ async function ensureDir(fs: typeof fsp, dir: string): Promise<{ created: boolea
     if (stat.isDirectory()) return { created: false };
     throw new Error(`${dir} exists but is not a directory`);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errorCode(err);
     if (code !== 'ENOENT') throw err;
   }
   await fs.mkdir(dir, { recursive: true });
@@ -204,7 +206,7 @@ export async function stepCreateActiveRoot(deps: SetupDeps = {}): Promise<StepRe
     return {
       ok: false,
       name: STEP_CREATE_ACTIVE,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -226,7 +228,7 @@ export async function stepWriteSchemaVersion(deps: SetupDeps = {}): Promise<Step
     return {
       ok: false,
       name: STEP_SCHEMA,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -253,7 +255,7 @@ export async function stepWriteConfigStub(deps: SetupDeps = {}): Promise<StepRes
       await fs.stat(configPath);
       exists = true;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      if (errorCode(err) !== 'ENOENT') throw err;
     }
     if (exists && !update) {
       return {
@@ -274,7 +276,7 @@ export async function stepWriteConfigStub(deps: SetupDeps = {}): Promise<StepRes
     return {
       ok: false,
       name: STEP_CONFIG,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -284,7 +286,7 @@ async function pathExists(fs: typeof fsp, p: string): Promise<boolean> {
     await fs.stat(p);
     return true;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    if (errorCode(err) === 'ENOENT') return false;
     throw err;
   }
 }
@@ -347,7 +349,7 @@ export async function stepInstallSkill(deps: SetupDeps = {}): Promise<StepResult
     return {
       ok: false,
       name: STEP_SKILL,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -380,7 +382,7 @@ export async function stepInstallCommand(deps: SetupDeps = {}): Promise<StepResu
     return {
       ok: false,
       name: STEP_COMMAND,
-      error: (err as Error).message,
+      error: errorText(err),
     };
   }
 }
@@ -412,7 +414,7 @@ function runOnce(
     } catch (err) {
       if (settled) return;
       settled = true;
-      resolve({ code: null, stderr, spawnError: err as Error });
+      resolve({ code: null, stderr, spawnError: toError(err) });
     }
   });
 }
@@ -437,7 +439,7 @@ export async function stepRegisterMcp(deps: SetupDeps = {}): Promise<StepResult>
     'serve',
     '--stdio',
   ]);
-  if (result.spawnError && (result.spawnError as NodeJS.ErrnoException).code === 'ENOENT') {
+  if (result.spawnError && errorCode(result.spawnError) === 'ENOENT') {
     return {
       ok: true,
       name: STEP_MCP,
@@ -509,7 +511,7 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
   try {
     await fs.stat(agentChatHome);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (errorCode(err) === 'ENOENT') {
       return {
         ok: true,
         name: STEP_AGENT_CHAT_HOOKS,
@@ -517,7 +519,7 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
         message: `agent-chat not found at ${agentChatHome} — skipped`,
       };
     }
-    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: (err as Error).message };
+    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: errorText(err) };
   }
 
   try {
@@ -527,11 +529,11 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed === 'object' && parsed !== null) config = parsed as AgentChatHooksConfig;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (errorCode(err) !== 'ENOENT') {
         return {
           ok: false,
           name: STEP_AGENT_CHAT_HOOKS,
-          error: `${hooksPath} exists but is not valid JSON: ${(err as Error).message}`,
+          error: `${hooksPath} exists but is not valid JSON: ${errorText(err)}`,
         };
       }
     }
@@ -563,7 +565,7 @@ export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<
       message: `Registered on_spawn/on_complete hooks in ${hooksPath}`,
     };
   } catch (err) {
-    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: (err as Error).message };
+    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: errorText(err) };
   }
 }
 
@@ -675,7 +677,7 @@ export async function stepStartDaemon(deps: SetupDeps = {}): Promise<StepResult>
       ok: true,
       name: STEP_DAEMON,
       done: false,
-      message: `Daemon launch skipped: ${(err as Error).message}`,
+      message: `Daemon launch skipped: ${errorText(err)}`,
     };
   }
 }
@@ -800,7 +802,7 @@ export async function uninstallSkill(deps: SetupDeps = {}): Promise<StepResult> 
       message: `Removed skill from ${target}`,
     };
   } catch (err) {
-    return { ok: false, name: STEP_SKILL, error: (err as Error).message };
+    return { ok: false, name: STEP_SKILL, error: errorText(err) };
   }
 }
 
@@ -824,7 +826,7 @@ export async function uninstallCommand(deps: SetupDeps = {}): Promise<StepResult
       message: `Removed /aw-prompt command from ${target}`,
     };
   } catch (err) {
-    return { ok: false, name: STEP_COMMAND, error: (err as Error).message };
+    return { ok: false, name: STEP_COMMAND, error: errorText(err) };
   }
 }
 
@@ -855,7 +857,7 @@ export async function uninstallMcp(deps: SetupDeps = {}): Promise<StepResult> {
     '--user',
     '@hjewkes/active-work',
   ]);
-  if (result.spawnError && (result.spawnError as NodeJS.ErrnoException).code === 'ENOENT') {
+  if (result.spawnError && errorCode(result.spawnError) === 'ENOENT') {
     return {
       ok: true,
       name: STEP_MCP,

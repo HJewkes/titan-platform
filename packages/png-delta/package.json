@@ -1,0 +1,42 @@
+{
+  "name": "@titan-design/png-delta",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bounded PNG decode, pixelmatch share and delta image, and a small RGBA PNG encoder for untrusted screenshot pairs",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "packages/png-delta"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pixelmatch": "8.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "6.0.5",
+    "pngjs": "7.0.0"
+  }
+}

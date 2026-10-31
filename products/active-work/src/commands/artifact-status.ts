@@ -11,6 +11,7 @@ import {
   resolveLocalRepoPath,
   resolveOrgRepo,
 } from '../utils/git-gh.js';
+import { parseGhPrList, type GhPrListEntry } from '../utils/gh-pr-wire.js';
 import { readWorktreeState } from '../utils/git-worktrees.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 
@@ -168,16 +169,9 @@ async function fetchPrInfo(orgRepo: string, name: string): Promise<PrInfo | null
       '1',
     ]);
     if (res.code !== 0) return null;
-    const parsed = JSON.parse(res.stdout) as Array<{
-      number?: number;
-      state?: string;
-      title?: string;
-      url?: string;
-      statusCheckRollup?: Array<{ conclusion?: string; state?: string }>;
-    }>;
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    const first = parsed[0]!;
+    const first = parseGhPrList(res.stdout)?.entries[0];
     if (
+      !first ||
       typeof first.number !== 'number' ||
       typeof first.state !== 'string' ||
       typeof first.title !== 'string' ||
@@ -199,7 +193,7 @@ async function fetchPrInfo(orgRepo: string, name: string): Promise<PrInfo | null
 }
 
 function summarizeChecks(
-  rollup: Array<{ conclusion?: string; state?: string }>,
+  rollup: NonNullable<GhPrListEntry['statusCheckRollup']>,
 ): string | undefined {
   if (rollup.length === 0) return undefined;
   let pass = 0;

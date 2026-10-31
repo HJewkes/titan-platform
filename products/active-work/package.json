@@ -71,6 +71,7 @@
     "@titan-design/memory": "workspace:^",
     "@titan-design/pm": "workspace:^",
     "@titan-design/registry": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-graph": "workspace:^",

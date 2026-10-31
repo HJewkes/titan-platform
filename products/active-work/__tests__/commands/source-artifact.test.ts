@@ -335,27 +335,63 @@ describe('artifact.status', () => {
     resetRunners();
   });
 
+  const gitRunner: CommandRunner = async (_bin, args) => {
+    if (args.includes('rev-parse') && args.includes('--verify')) {
+      return { code: 0, stdout: 'deadbeef\n', stderr: '' };
+    }
+    if (args.includes('log')) {
+      return { code: 0, stdout: '2026-05-12T10:00:00+00:00\n', stderr: '' };
+    }
+    if (args.includes('rev-list')) {
+      return { code: 0, stdout: '1\t4\n', stderr: '' };
+    }
+    if (args.includes('remote') && args.includes('get-url')) {
+      return {
+        code: 0,
+        stdout: 'git@github.com:HJewkes/sample.git\n',
+        stderr: '',
+      };
+    }
+    return { code: 1, stdout: '', stderr: 'unhandled' };
+  };
+
+  const ghAnswering = (entries: unknown[]): CommandRunner => async () => ({
+    code: 0,
+    stdout: JSON.stringify(entries),
+    stderr: '',
+  });
+
+  it('counts a check with a null conclusion by its state', async () => {
+    await withTempActiveRoot(async () => {
+      setGitRunner(gitRunner);
+      setGhRunner(
+        ghAnswering([
+          {
+            number: 18,
+            state: 'OPEN',
+            title: 'Pending PR',
+            url: 'https://github.com/HJewkes/sample/pull/18',
+            statusCheckRollup: [{ conclusion: 'SUCCESS' }, { conclusion: null, state: 'PENDING' }],
+          },
+        ]),
+      );
+      const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
+      expect(res.branches[0]!.pr).toMatchObject({ number: 18, checks: 'pending (1/2)' });
+    });
+  });
+
+  it('reports no PR when the gh entry is malformed', async () => {
+    await withTempActiveRoot(async () => {
+      setGitRunner(gitRunner);
+      setGhRunner(ghAnswering([{ number: 19, title: 'Odd', statusCheckRollup: 'not-a-list' }]));
+      const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
+      expect(res.branches[0]!.present).toBe(true);
+      expect(res.branches[0]!.pr).toBeNull();
+    });
+  });
+
   it('reports present + ahead/behind + PR for live branches', async () => {
     await withTempActiveRoot(async () => {
-      const gitRunner: CommandRunner = async (_bin, args) => {
-        if (args.includes('rev-parse') && args.includes('--verify')) {
-          return { code: 0, stdout: 'deadbeef\n', stderr: '' };
-        }
-        if (args.includes('log')) {
-          return { code: 0, stdout: '2026-05-12T10:00:00+00:00\n', stderr: '' };
-        }
-        if (args.includes('rev-list')) {
-          return { code: 0, stdout: '1\t4\n', stderr: '' };
-        }
-        if (args.includes('remote') && args.includes('get-url')) {
-          return {
-            code: 0,
-            stdout: 'git@github.com:HJewkes/sample.git\n',
-            stderr: '',
-          };
-        }
-        return { code: 1, stdout: '', stderr: 'unhandled' };
-      };
       const ghRunner: CommandRunner = async () => ({
         code: 0,
         stdout: JSON.stringify([

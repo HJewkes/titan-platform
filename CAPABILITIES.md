@@ -31,6 +31,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`png-delta`](#cap-png-delta) | 0 | You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -419,6 +420,22 @@ You must accept an action only when the owner signed a statement for it with an 
 Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
+
+<a id="cap-png-delta"></a>
+
+### `png-delta`
+
+Tier 0, private, `packages/png-delta`. Bounded PNG decode, pixelmatch share and delta image, and a small RGBA PNG encoder for untrusted screenshot pairs
+
+**Use this when:**
+
+You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). For capturing frames of a page use `frame-capture`; for per-frame change counts across an MP4 use `render-qa`.
+
+Key exports:
+
+- `png-bounded`: `decodePngBounded`, `overPixels`, `Decoded`
+- `png-encode`: `encodePng`
+- `delta`: `DEFAULT_PIXEL_TOLERANCE`, `contentBox`, `pixelDelta`, `snapshotShare`, `ContentBox`, `PixelDelta`, `SnapshotShareOptions`
 
 <a id="cap-review-burden"></a>
 
@@ -1558,6 +1575,7 @@ it voids any verdict without a verbatim quote, plants a name-only canary beat pe
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
 `explainer eval calibrate` prints that report.
+`explainer eval writing-calibrate` derives `doctrine/writing-check.json` from a corpus manifest: per-row AUC, human false-positive rate and status per length bucket, numbers only.
 For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included (plus docs-skim and lifetime-history facts when the review has them), and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 `renderCompanion` renders a repo run's companion doc (the martini-glass bowl) from those facts, one section per repo-tour block (`COMPANION_SECTIONS`), with each chapter's link into it and warnings rather than throws (`W-NO-SUMMARY`).
 `companionChapters` maps script chapters to the blocks their spine rows play, so a digest cut links into the tour's doc; the script stage writes both as `companion` and `chapter-links`.

@@ -43,6 +43,14 @@ interface Scenario {
   thenStuck?: boolean;
 }
 
+const RunScenario = z.looseObject({
+  gate: z.enum(["merge", "sent-back", "ci-failed", "main-red", "main-frozen", "main-ci-timeout"]),
+  rule: z.string().optional(),
+  reason: z.string().optional(),
+  verdict: z.string().optional(),
+  stamped: z.boolean().optional(),
+  thenStuck: z.boolean().optional(),
+});
 const Verdict = z.looseObject({ kind: z.string(), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
 const Decision = z.looseObject({ outcome: z.string(), headSha: z.string(), rule: z.looseObject({ table: z.string(), rowId: z.string() }) });
 
@@ -61,7 +69,7 @@ const shepherdPr = defineWorkflow({
     { id: "stuck-behind", kind: "assisted" },
   ],
   run: async (ctx) => {
-    const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
+    const scenario = RunScenario.parse(JSON.parse(ctx.param("scenario")!));
     if (scenario.gate === "main-red") return void (await ctx.assisted("main-red", `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. Acknowledge.`, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "Main CI is red", detail: "failed: validate" }) }));
     if (scenario.gate === "main-ci-timeout") {
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is not red, but unread: no completed main run containing it. Acknowledge.`;
