@@ -4,25 +4,36 @@ import { describe, expect, it } from "vitest";
 import { caseHash } from "./hash.js";
 import { scoreMeasurementAudit } from "./measurement-audit.js";
 import type { AuditGold } from "./measurement-audit.js";
-import { parseSpec } from "./spec/index.js";
-import type { EvalCase, SuiteSpec, UnitSpec } from "./spec/index.js";
+import { z } from "zod";
+import { EvalCaseSchema, SuiteSpecSchema, UnitSpecSchema } from "./spec/index.js";
 
-type Report = { metrics: { id: string; title: string }[]; gaps: { rank: number; metric: string[]; slice: { title: string } }[] } & Record<string, unknown>;
+// Loose objects keep the report's other members, so a test that spreads a sample still hands the scorer the whole report.
+const reportSchema = z.looseObject({
+  metrics: z.array(z.looseObject({ id: z.string(), title: z.string() })),
+  gaps: z.array(z.looseObject({ rank: z.number(), metric: z.array(z.string()), slice: z.looseObject({ title: z.string() }) })),
+});
+type Report = z.infer<typeof reportSchema>;
+
+const auditGoldSchema = z.object({
+  metrics: z.array(z.object({ id: z.string(), name: z.string(), aliases: z.array(z.string()).optional(), definition: z.string(), keyWords: z.array(z.string()) })),
+  gaps: z.array(z.object({ id: z.string(), title: z.string(), keyMetrics: z.array(z.string()) })),
+});
 
 const ROOT = fileURLToPath(new URL("../fixtures/measurement-audit/", import.meta.url));
-const read = <T>(relative: string): T => JSON.parse(readFileSync(`${ROOT}${relative}`, "utf8")) as T;
-const goldCase = parseSpec(read("cases/shepherd.json")) as EvalCase;
-const gold = goldCase.expected as AuditGold;
+const read = (relative: string): unknown => JSON.parse(readFileSync(`${ROOT}${relative}`, "utf8"));
+const readReport = (relative: string): Report => reportSchema.parse(read(relative));
+const goldCase = EvalCaseSchema.parse(read("cases/shepherd.json"));
+const gold: AuditGold = auditGoldSchema.parse(goldCase.expected);
 const run = { costUsd: 1.8 };
 
 function withMetricsAndSlices(metrics: Report["metrics"], slices: string[][]): Report {
-  const base = read<Report>("samples/perfect.json");
+  const base = readReport("samples/perfect.json");
   const template = base.metrics[0];
   return {
     ...base,
     metrics: metrics.map((metric) => ({ ...template, ...metric })),
     gaps: slices.map((metric, index) => ({ ...base.gaps[0], rank: index + 1, metric, slice: { ...base.gaps[0]?.slice, title: `slice ${index + 1}` } })),
-  } as Report;
+  };
 }
 
 const goldNamed = (ids: string[]): Report["metrics"] =>
@@ -36,8 +47,8 @@ describe("the measurement-audit gold case", () => {
   });
 
   it("is listed by the suite and its unit declares gap F1 as the objective", () => {
-    const suite = parseSpec(read("suite.json")) as SuiteSpec;
-    const unit = parseSpec(read("unit.json")) as UnitSpec;
+    const suite = SuiteSpecSchema.parse(read("suite.json"));
+    const unit = UnitSpecSchema.parse(read("unit.json"));
 
     expect(suite.cases).toEqual([caseHash(goldCase)]);
     expect(unit.objective.primary).toEqual({ name: "gap-f1", direction: "maximize" });
@@ -47,7 +58,7 @@ describe("the measurement-audit gold case", () => {
 
 describe("scoreMeasurementAudit", () => {
   it("parses a real-shaped v1 report and scores one with reworded metric names at full marks", () => {
-    const report = read<Report>("samples/perfect.json");
+    const report = readReport("samples/perfect.json");
     const goldNames = new Set(gold.metrics.flatMap((metric) => [metric.name, ...(metric.aliases ?? [])].map((name) => name.toLowerCase())));
 
     expect(report.metrics.filter((metric) => goldNames.has(metric.title.toLowerCase()))).toEqual([]);
