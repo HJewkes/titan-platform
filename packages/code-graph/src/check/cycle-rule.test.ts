@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { openCodeGraph } from "../store.js";
 import type { GraphEdge, GraphNode, IdAlias, NodeRole } from "../types.js";
@@ -126,7 +127,7 @@ describe("no-import-cycles", () => {
     const findingId = (edges: GraphEdge[]): string[] => {
       const store: RuleStore = { listNodes: () => filesOf(edges), listEdges: () => edges, listMetrics: () => [] };
       const violations = snapshotViolations(store, 1, [RULE]);
-      return toFindings({ violations } as CheckResult).map((f) => f.id);
+      return toFindings(partialFake<CheckResult>({ violations })).map((f) => f.id);
     };
     const pair = [imports("a.ts", "b.ts"), imports("b.ts", "a.ts")];
 

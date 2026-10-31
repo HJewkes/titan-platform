@@ -145,7 +145,7 @@ function resolveEdge(ctx: ResolveContext, e: GraphEdge): GraphEdge[] {
   const resolved: GraphEdge[] = [];
   for (const [real, frac] of resolveToRealFiles(ctx, e.dstId, new Set())) {
     if (real === e.srcId) continue; // a barrel that circles back to the importer
-    resolved.push({ ...e, dstId: real, attrs: { ...(e.attrs as object), weight: w * frac } });
+    resolved.push({ ...e, dstId: real, attrs: { ...e.attrs, weight: w * frac } });
   }
   return resolved;
 }

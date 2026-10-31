@@ -37,10 +37,9 @@ export function addWeightedEdge(
   typeOnly = false,
 ): void {
   const key = JSON.stringify([kind, dstId]);
-  const existing = agg.get(key);
-  if (existing) {
-    const attrs = existing.attrs as { weight: number; typeOnly?: true };
-    attrs.weight += weight;
+  const attrs = agg.get(key)?.attrs;
+  if (attrs) {
+    attrs.weight = (typeof attrs.weight === "number" ? attrs.weight : 0) + weight;
     if (!typeOnly) delete attrs.typeOnly;
     return;
   }

@@ -17,6 +17,7 @@ import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
+import { errnoCode } from "./narrow.js";
 import { predatesQualifiedSymbols, qualifiedSymbolAliases } from "./symbol-aliases.js";
 import type { GraphMetric, IdAlias } from "./types.js";
 
@@ -80,7 +81,7 @@ function canonicalizePath(p: string): string {
   try {
     return realpathSync(p);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return p;
+    if (errnoCode(err) === "ENOENT") return p;
     throw err;
   }
 }

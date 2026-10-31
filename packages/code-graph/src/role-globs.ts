@@ -18,15 +18,16 @@ export function parseRoleGlobs(
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label}: expected an object mapping roles to glob arrays`);
   }
+  const isKnown = (role: string): role is NodeRole => knownRoles.some((known) => known === role);
   const out: RoleGlobs = {};
   for (const [role, globs] of Object.entries(value)) {
-    if (!knownRoles.includes(role as NodeRole)) {
+    if (!isKnown(role)) {
       throw new Error(`${label}: unknown role "${role}"`);
     }
     if (!Array.isArray(globs) || !globs.every((g) => typeof g === "string")) {
       throw new Error(`${label}: "${role}" must be an array of glob strings`);
     }
-    out[role as NodeRole] = globs;
+    out[role] = globs;
   }
   return out;
 }

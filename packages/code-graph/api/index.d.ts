@@ -1593,6 +1593,7 @@ declare function findingKey(input: FindingKeyInput, ordinal?: number): string;
 declare function keyFindings(inputs: readonly FindingKeyInput[]): StoredFinding[];
 /** Insert or replace findings by key within one snapshot. */
 declare function saveFindings(store: CodeGraphStore, snapshotId: number, findings: readonly StoredFinding[]): void;
+/** A row whose attrs is not a `Finding` is skipped: `saveFindings` never writes one. */
 declare function listFindings(store: CodeGraphStore, snapshotId: number): StoredFinding[];
 /** Insert or replace verdicts by key within one snapshot. */
 declare function saveVerdicts(store: CodeGraphStore, snapshotId: number, verdicts: readonly StoredVerdict[]): void;

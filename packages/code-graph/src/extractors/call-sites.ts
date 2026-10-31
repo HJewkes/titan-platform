@@ -1,3 +1,4 @@
+import { isRecord } from "../narrow.js";
 import type { GraphEdge } from "../types.js";
 
 /**
@@ -23,12 +24,7 @@ export interface ParamShape {
   positional: number;
 }
 
-/** Attrs a `calls` edge carries: every site where the caller calls the callee. */
-export interface CallEdgeAttrs {
-  sites: CallSite[];
-}
-
-/** One `calls` edge per caller and callee pair, with every call site appended to it. */
+/** One `calls` edge per caller and callee pair, with `sites` listing every call site. */
 export function addCallSite(
   agg: Map<string, GraphEdge>,
   srcId: string,
@@ -36,9 +32,19 @@ export function addCallSite(
   site: CallSite,
 ): void {
   const key = JSON.stringify([srcId, dstId]);
-  const existing = agg.get(key);
-  if (existing) (existing.attrs as unknown as CallEdgeAttrs).sites.push(site);
+  const sites = agg.get(key)?.attrs?.sites;
+  if (Array.isArray(sites)) sites.push(site);
   else agg.set(key, { srcId, dstId, kind: "calls", attrs: { sites: [site] } });
+}
+
+function isCallSite(value: unknown): value is CallSite {
+  return isRecord(value) && Array.isArray(value.args);
+}
+
+/** Read the sites back off a `calls` edge's attrs, which may come from a stored snapshot; [] when it has none. */
+export function readCallSites(attrs: Record<string, unknown> | undefined): CallSite[] {
+  const sites = attrs?.sites;
+  return Array.isArray(sites) ? sites.filter(isCallSite) : [];
 }
 
 /** Symbol-node attrs for a shape; `positionalParams` is written only when some parameter is keyword-only. */
@@ -54,5 +60,5 @@ export function readParamShape(attrs: Record<string, unknown> | undefined): Para
   const params = attrs?.params;
   if (!Array.isArray(params)) return undefined;
   const positional = typeof attrs?.positionalParams === "number" ? attrs.positionalParams : params.length;
-  return { params: params as string[], positional };
+  return { params: params.filter((p): p is string => typeof p === "string"), positional };
 }

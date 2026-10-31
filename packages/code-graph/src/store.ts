@@ -165,17 +165,15 @@ export class CodeGraphStore {
   }
 
   getSnapshot(id: number): SnapshotRow | null {
-    const row = this.statements.getSnapshot.get(id) as SnapshotDbRow | undefined;
+    const row = this.statements.getSnapshot.get(id);
     return row ? rowToSnapshot(row) : null;
   }
 
   listSnapshots(opts: { ref?: string; limit?: number } = {}): SnapshotRow[] {
     const limit = opts.limit ?? 50;
-    const rows = (
-      opts.ref
-        ? this.statements.listSnapshotsByRef.all(opts.ref, limit)
-        : this.statements.listSnapshots.all(limit)
-    ) as SnapshotDbRow[];
+    const rows = opts.ref
+      ? this.statements.listSnapshotsByRef.all(opts.ref, limit)
+      : this.statements.listSnapshots.all(limit);
     return rows.map(rowToSnapshot);
   }
 
@@ -184,7 +182,7 @@ export class CodeGraphStore {
   }
 
   getNode(snapshotId: number, id: string): GraphNode | null {
-    const row = this.statements.getNode.get(snapshotId, id) as NodeDbRow | undefined;
+    const row = this.statements.getNode.get(snapshotId, id);
     return row ? rowToNode(row) : null;
   }
 
@@ -194,18 +192,18 @@ export class CodeGraphStore {
    * `includeSymbols` for the symbol layer (the reuse basis needs it).
    */
   listNodes(snapshotId: number, opts?: { includeSymbols?: boolean }): GraphNode[] {
-    const nodes = (this.statements.listNodes.all(snapshotId) as NodeDbRow[]).map(rowToNode);
+    const nodes = this.statements.listNodes.all(snapshotId).map(rowToNode);
     return opts?.includeSymbols ? nodes : nodes.filter((n) => n.kind !== "symbol");
   }
 
   /** See {@link listNodes}: `references` and `calls` edges are the symbol layer, excluded by default. */
   listEdges(snapshotId: number, opts?: { includeReferences?: boolean }): GraphEdge[] {
-    const edges = (this.statements.listEdges.all(snapshotId) as EdgeDbRow[]).map(rowToEdge);
+    const edges = this.statements.listEdges.all(snapshotId).map(rowToEdge);
     return opts?.includeReferences ? edges : edges.filter(isStructuralLayer);
   }
 
   listMetrics(snapshotId: number): GraphMetric[] {
-    return (this.statements.listMetrics.all(snapshotId) as MetricDbRow[]).map(rowToMetric);
+    return this.statements.listMetrics.all(snapshotId).map(rowToMetric);
   }
 
   /** Every metric on one node, from the primary key instead of a whole-snapshot read. */
@@ -235,11 +233,11 @@ export class CodeGraphStore {
   }
 
   listAliases(snapshotId: number): IdAlias[] {
-    return (this.statements.listAliases.all(snapshotId) as AliasDbRow[]).map(rowToAlias);
+    return this.statements.listAliases.all(snapshotId).map(rowToAlias);
   }
 
   listFingerprints(snapshotId: number): FileFingerprint[] {
-    return (this.statements.listFingerprints.all(snapshotId) as FingerprintDbRow[]).map(rowToFingerprint);
+    return this.statements.listFingerprints.all(snapshotId).map(rowToFingerprint);
   }
 
   /** Drop whole snapshots. The domain tables carry no foreign key, so each is cleared by hand. */
@@ -259,8 +257,8 @@ export class CodeGraphStore {
   countRowsByTable(tables: readonly string[]): Record<string, number> {
     const out: Record<string, number> = {};
     for (const table of tables) {
-      const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${quoteIdent(table)}`).get() as { n: number };
-      out[table] = row.n;
+      const row = this.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM ${quoteIdent(table)}`).get();
+      out[table] = row?.n ?? 0;
     }
     return out;
   }
@@ -296,17 +294,17 @@ function prepareStatements(db: Db) {
       `INSERT OR REPLACE INTO file_fingerprint (snapshot_id, file_id, content_hash, structural_hash)
        VALUES (@snapshotId, @fileId, @contentHash, @structuralHash)`,
     ),
-    getSnapshot: db.prepare("SELECT * FROM snapshot WHERE id = ?"),
-    listSnapshots: db.prepare("SELECT * FROM snapshot ORDER BY taken_at DESC, id DESC LIMIT ?"),
-    listSnapshotsByRef: db.prepare(
+    getSnapshot: db.prepare<[number], SnapshotDbRow>("SELECT * FROM snapshot WHERE id = ?"),
+    listSnapshots: db.prepare<[number], SnapshotDbRow>("SELECT * FROM snapshot ORDER BY taken_at DESC, id DESC LIMIT ?"),
+    listSnapshotsByRef: db.prepare<[string, number], SnapshotDbRow>(
       "SELECT * FROM snapshot WHERE ref = ? ORDER BY taken_at DESC, id DESC LIMIT ?",
     ),
-    getNode: db.prepare(`SELECT ${NODE_COLS} FROM node WHERE snapshot_id = ? AND id = ?`),
-    listNodes: db.prepare(`SELECT ${NODE_COLS} FROM node WHERE snapshot_id = ?`),
-    listEdges: db.prepare("SELECT src_id, dst_id, kind, attrs FROM edge WHERE snapshot_id = ?"),
-    listMetrics: db.prepare("SELECT node_id, name, value, unit FROM metric WHERE snapshot_id = ?"),
-    listAliases: db.prepare("SELECT old_id, new_id, reason FROM id_alias WHERE snapshot_id = ?"),
-    listFingerprints: db.prepare(
+    getNode: db.prepare<[number, string], NodeDbRow>(`SELECT ${NODE_COLS} FROM node WHERE snapshot_id = ? AND id = ?`),
+    listNodes: db.prepare<[number], NodeDbRow>(`SELECT ${NODE_COLS} FROM node WHERE snapshot_id = ?`),
+    listEdges: db.prepare<[number], EdgeDbRow>("SELECT src_id, dst_id, kind, attrs FROM edge WHERE snapshot_id = ?"),
+    listMetrics: db.prepare<[number], MetricDbRow>("SELECT node_id, name, value, unit FROM metric WHERE snapshot_id = ?"),
+    listAliases: db.prepare<[number], AliasDbRow>("SELECT old_id, new_id, reason FROM id_alias WHERE snapshot_id = ?"),
+    listFingerprints: db.prepare<[number], FingerprintDbRow>(
       "SELECT file_id, content_hash, structural_hash FROM file_fingerprint WHERE snapshot_id = ?",
     ),
     deleteMetricsByName: db.prepare("DELETE FROM metric WHERE snapshot_id = ? AND name = ?"),

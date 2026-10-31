@@ -97,8 +97,8 @@ describe("targeted statement plans", () => {
 
   it.each(Object.entries(params))("%s searches an index and never scans a table", (name, args) => {
     const { store } = seededStore();
-    const sql = prepareTargetedStatements(store.db)[name as keyof TargetedStatements].source;
-    const plan = store.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args) as { detail: string }[];
+    const [, statement] = Object.entries(prepareTargetedStatements(store.db)).find(([key]) => key === name)!;
+    const plan = store.db.prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${statement.source}`).all(...args);
     const detail = plan.map((r) => r.detail);
     expect(detail.some((d) => d.startsWith("SEARCH"))).toBe(true);
     expect(detail.filter((d) => d.startsWith("SCAN"))).toEqual([]);
