@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the caller patterns are ignored",
+      "file": "packages/worktree/src/unsaved-work.ts",
+      "find": "!isDisposable(entry, extra)",
+      "replace": "true",
+      "kills": [
+        "ignored-file policy on release inspection lets an ignored file through when a caller pattern names it",
+        "ignored-file policy on release inspection matches a glob pattern across directories",
+        "ignored-file policy on the sweep holds the work by default and reclaims it when the policy covers the ignored files"
+      ]
+    },
+    {
+      "name": "every ignored file counts as disposable",
+      "file": "packages/worktree/src/unsaved-work.ts",
+      "find": "!isDisposable(entry, extra)",
+      "replace": "false",
+      "kills": [
+        "ignored-file policy on release inspection refuses an ignored file outside the built-in list when no policy is given",
+        "ignored-file policy on release inspection still refuses an ignored file the caller patterns do not match",
+        "ignored-file policy on the sweep keeps holding when the policy covers only some ignored files"
+      ]
+    },
+    {
+      "name": "a pattern matches as a bare prefix",
+      "file": "packages/worktree/src/unsaved-work.ts",
+      "find": "return new RegExp(`^${body}(/.*)?$`);",
+      "replace": "return new RegExp(`^${body}`);",
+      "kills": [
+        "ignored-file policy on release inspection does not let a pattern match a longer sibling name"
+      ]
+    },
+    {
+      "name": "collapsed directories are not expanded",
+      "file": "packages/worktree/src/unsaved-work.ts",
+      "find": "if (!entry.endsWith(\"/\")) {",
+      "replace": "if (true) {",
+      "kills": [
+        "ignored-file policy on release inspection lets an ignored file through when a caller pattern names it"
+      ]
+    },
+    {
+      "name": "the sweep drops the policy",
+      "file": "packages/worktree/src/sweep.ts",
+      "find": "base, \"git\", undefined, ignoredFiles);",
+      "replace": "base);",
+      "kills": [
+        "ignored-file policy on the sweep holds the work by default and reclaims it when the policy covers the ignored files"
+      ]
+    }
+  ]
+}

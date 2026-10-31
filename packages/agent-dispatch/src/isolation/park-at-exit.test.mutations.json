@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "implementer park takes a reviewer",
+      "file": "packages/agent-dispatch/src/isolation/park-at-exit.ts",
+      "find": "(agent) => !isReviewerSpawn(agent.profile, agent.name),",
+      "replace": "() => true,",
+      "kills": ["parkImplementerAtExit passes over a reviewer"]
+    },
+    {
+      "name": "park ignores autoPark being off",
+      "file": "packages/agent-dispatch/src/isolation/park-at-exit.ts",
+      "find": " || !port.enabled()",
+      "replace": "",
+      "kills": ["parkImplementerAtExit does nothing while autoPark is off"]
+    },
+    {
+      "name": "park ignores a burndown claim",
+      "file": "packages/agent-dispatch/src/isolation/park-at-exit.ts",
+      "find": "if (held !== undefined)\n        return { action: \"kept\", name: agent.name, reason: held };",
+      "replace": "",
+      "kills": ["parkImplementerAtExit keeps a tree a burndown claim still reads"]
+    },
+    {
+      "name": "reviewer parks without a verdict",
+      "file": "packages/agent-dispatch/src/isolation/park-at-exit.ts",
+      "find": "if (!hasVerdict(port, agent))",
+      "replace": "if (false)",
+      "kills": ["parkReviewerAtReport keeps a tree when no Verdict was reported"]
+    },
+    {
+      "name": "reviewer ignores the final assistant text",
+      "file": "packages/agent-dispatch/src/isolation/park-at-exit.ts",
+      "find": "[port.lastReport(agent), port.finalText(agent)]",
+      "replace": "[port.lastReport(agent)]",
+      "kills": ["parkReviewerAtReport parks a reviewer whose Verdict follows a lead-in paragraph in its final text"]
+    }
+  ]
+}

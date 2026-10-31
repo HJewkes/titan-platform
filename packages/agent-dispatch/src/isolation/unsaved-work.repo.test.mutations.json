@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a directory named like a build output counts as one",
+      "file": "packages/agent-dispatch/src/isolation/unsaved-work.ts",
+      "find": "  const name = entry.endsWith(\"/\") ? undefined : segments.at(-1);",
+      "replace": "  const name = segments.at(-1);",
+      "kills": ["files the policy keeps does not take a directory named like a build output for one"]
+    },
+    {
+      "name": "an unknown table with rows no longer keeps the index",
+      "file": "packages/agent-dispatch/src/isolation/unsaved-work.ts",
+      "find": "    return tables.every((table) => REBUILT_GRAPH_TABLES.includes(table) || !hasRows(open, table));",
+      "replace": "    return true;",
+      "kills": ["a codewatch index (CC-1163) keeps a graph db with rows in verdict"]
+    },
+    {
+      "name": "any sqlite file passes as a graph index",
+      "file": "packages/agent-dispatch/src/isolation/unsaved-work.ts",
+      "find": "    if (!tables.includes(\"snapshot\")) return false;\n",
+      "replace": "",
+      "kills": ["a codewatch index (CC-1163) keeps a sqlite file that is no code-graph db"]
+    },
+    {
+      "name": "the declaration is read from the working tree, not HEAD",
+      "file": "packages/agent-dispatch/src/isolation/unsaved-work.ts",
+      "find": "execFileSync(\"git\", [\"show\", `HEAD:${GENERATED_DECLARATION}`], {",
+      "replace": "execFileSync(\"cat\", [GENERATED_DECLARATION], {",
+      "kills": ["a declared generated file (CC-1582) waives nothing from an uncommitted declaration"]
+    },
+    {
+      "name": "the park policy waives every ignored file",
+      "file": "packages/agent-dispatch/src/isolation/unsaved-work.ts",
+      "find": "  protectedEntries: ({ worktree, entries }) => protectedIgnored(worktree, entries),",
+      "replace": "  protectedEntries: () => [],",
+      "kills": ["a codewatch index (CC-1163) through park, paid rows at the proof boundary keeps a row written during the park, and the tree"]
+    }
+  ]
+}

@@ -456,7 +456,7 @@ describe("shepherd view stalls", () => {
     });
 
     it("gives every declared Shepherd step id an explicit phase, never the ci fallback", () => {
-      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "ci-orphan-rerun", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-base-wait", "sh-head-origin"].includes(id));
+      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "ci-orphan-rerun", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-base-wait", "sh-head-origin", "sh-merge-main"].includes(id));
 
       expect(unmapped).toEqual([]);
     });
