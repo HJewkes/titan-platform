@@ -133,6 +133,33 @@ the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or m
   resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
   `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
 
+### The `/limits` report (v1)
+
+`limitsReport(plan, ledger, clock)` is a pure projection. A product adapter maps its
+planner's dry-run result, pool gate, broker capacity and Shepherd read onto a structural
+`LimitsPlanInput`; the report never reads config, so no count can drift from what the tick
+saw. `limitsReportSchema` (zod) validates the result:
+
+```ts
+{ v: 1, at, shepherd, seats: { [seat]: {
+  binding,        // { kind: "lever", refusal, lever, value, reading, headroom, ... } or { kind: "supply", ready, mix }
+  roles,          // per role: cap, used, live, spawning, hand, ledger, handReserve, ledgerOnly[]
+  pools,          // per pool: fiveHour / sevenDay { value, ageMinutes }, band, pace, reserve
+  refusals,       // per kind: { count, blockers[] } (top five PRs for file-overlap and open-pr)
+  planBlocked,    // { depBlocked, dead: { [class]: n } }
+  supply,         // ready, waiting, seeded, readyAgeMinutes { p50, p90 }, outOfScope
+  worktrees,      // repos { active, perRepoPerSeat }, ceiling, budget
+  contradictions, // items[] with dispositions; undisposed is null, never 0, until stamped
+} } }
+```
+
+- Refusal counts follow the tick row: each refused unit once, under its first refusal.
+- A unit "held in the burndown claim ledger" is bookkeeping: it counts under
+  `supply.seeded`, never as a `claimed` refusal.
+- `shepherd` is `{ runs, held, reviews: { inFlight, maxConcurrent } }`, `{ error }` when the
+  read failed, or null when the caller made none.
+- v1 only gains optional fields; a renamed or removed field is v2.
+
 ## Routing
 
 The `./routing` subpath holds the workflow table that picks an implementer profile from a
