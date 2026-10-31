@@ -14,6 +14,7 @@ import {
 import { writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { DRAFT_TAG } from '../tasks/draft.js';
 import { ValidationError } from '../errors.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { doneWhenProblem } from './_done-when-gate.js';
@@ -48,6 +49,7 @@ const ArgsSchema = z.object({
   cos: z.string().min(1).optional(),
   area: z.string().min(1).optional(),
   due: DueArg,
+  draft: z.boolean().optional(),
   quiet: QuietArg,
 });
 
@@ -90,7 +92,7 @@ function newTask(args: Args, id: string, priority: number): Task {
     cos: args.cos,
     area: args.area,
     due: args.due,
-    tags: args.tags,
+    tags: args.draft ? [...new Set([...(args.tags ?? []), DRAFT_TAG])] : args.tags,
     notes: args.notes,
     created: nowIso(),
     updated: today(),
@@ -128,12 +130,16 @@ export default defineCommand<Args, TaskOrLine>({
         long: '--deliverable',
         description: 'Comma-separated deliverable ids this task counts toward',
       },
+      draft: {
+        long: '--draft',
+        description: 'File as a draft without a done_when; tagged draft, hidden from the bootstrap; promote with task edit --remove-tag draft',
+      },
       ...CATEGORY_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
   async run(args, ctx) {
-    if (ctx.caller === 'agent') {
+    if (ctx.caller === 'agent' && !args.draft) {
       const problem = doneWhenProblem(args.title, args.done_when);
       if (problem !== undefined) throw new ValidationError(problem);
     }

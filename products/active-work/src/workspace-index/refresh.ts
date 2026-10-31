@@ -62,7 +62,11 @@ export interface WorkspaceRefreshOptions {
  * so a reset followed by a size check alone would report every file unchanged.
  */
 function isUnchanged(
-  row: { lastOffset: number; fileSize: number | null; fileMtime: string | null },
+  row: {
+    lastOffset: number;
+    fileSize: number | null;
+    fileMtime: string | null;
+  },
   file: WorkspaceFile,
 ): boolean {
   return row.lastOffset > 0 && row.fileSize === file.size && row.fileMtime === file.mtime;
@@ -174,8 +178,16 @@ function removeVanished(
  */
 async function collectNoteFacts(activeRoot: string, graph: WorkspaceGraph): Promise<NoteFacts[]> {
   const rows = graph.db
-    .prepare('SELECT path, note_ref, initiative, tags FROM note ORDER BY path')
-    .all() as { path: string; note_ref: string; initiative: string; tags: string | null }[];
+    .prepare<
+      [],
+      {
+        path: string;
+        note_ref: string;
+        initiative: string;
+        tags: string | null;
+      }
+    >('SELECT path, note_ref, initiative, tags FROM note ORDER BY path')
+    .all();
   const facts = await Promise.all(
     rows.map(async (row) => ({
       ref: row.note_ref,
@@ -198,7 +210,7 @@ async function readBody(absolutePath: string): Promise<string> {
 
 function countRows(graph: WorkspaceGraph): Record<WorkspaceClass, number> {
   const count = (table: string): number =>
-    (graph.db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n;
+    graph.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM "${table}"`).get()?.n ?? 0;
   return {
     initiative: count('initiative'),
     note: count('note'),
@@ -236,7 +248,10 @@ export async function refreshWorkspace(
     applyBatch(graph, writer, batch);
     indexed += batch.filter((a) => a.record !== null).length;
     for (const failed of batch.filter((a) => a.record === null)) {
-      malformed.push({ path: failed.file.path, reason: failed.reason ?? 'unreadable' });
+      malformed.push({
+        path: failed.file.path,
+        reason: failed.reason ?? 'unreadable',
+      });
     }
   }
 
