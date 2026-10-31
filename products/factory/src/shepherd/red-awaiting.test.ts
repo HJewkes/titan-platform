@@ -86,6 +86,32 @@ describe("readMainCi on a red whose fix merged after it with its run still in pr
   });
 });
 
+describe("readMainCi on a red whose descendant tip has no check runs yet (serve restart, TP-4653)", () => {
+  it("does not stand the red before the descendant's run, queued after a gap with none, concludes green", async () => {
+    const fake = fakeGitHub();
+    fixMergedOver(fake, RED);
+    fake.setRuns(FIX, []);
+    let clock = 0;
+    const base = githubPort(fake.wire);
+    const queuedAt = SETTLES_AT - 5 * 60_000;
+    const port: GitHubPort = {
+      ...base,
+      checkRuns: async (repo, sha) => {
+        if (clock >= SETTLES_AT) fake.setRuns(FIX, requiredGreen(92));
+        else if (clock >= queuedAt) fake.setRuns(FIX, [running("validate", 90), running("dag-check", 91)]);
+        return base.checkRuns(repo, sha);
+      },
+    };
+    const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 30_000, timeoutMs: SH_MAIN_CI_TIMEOUT_MS };
+    const input: MainCiInput = { repo: REPO, pr: 1, baseRef: "main", mergeSha: RED, after: [] };
+
+    const result = await readMainCi(port, input, timing, new AbortController().signal);
+
+    expect(result).toMatchObject({ verdict: "green", acknowledgedSha: FIX, awaitedSha: FIX });
+    expect(clock).toBeGreaterThanOrEqual(SETTLES_AT);
+  });
+});
+
 const FIXER_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, fixer: true, seat: "demo-seat" };
 
 const hosts: FactoryHost[] = [];

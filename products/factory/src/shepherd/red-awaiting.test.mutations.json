@@ -12,6 +12,15 @@
       ]
     },
     {
+      "name": "a tip whose required runs have not been reported yet reads as settled",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "finding.kind === \"pending\" || finding.kind === \"missing\"",
+      "replace": "finding.kind === \"pending\"",
+      "kills": [
+        "readMainCi on a red whose descendant tip has no check runs yet (serve restart, TP-4653) does not stand the red before the descendant's run, queued after a gap with none, concludes green"
+      ]
+    },
+    {
       "name": "a tip whose required run already failed is still awaited",
       "file": "products/factory/src/shepherd/stale-red.ts",
       "find": "if (!findings.some((finding) => finding.kind === \"pending\") || findings.some((finding) => finding.kind === \"failed\")) return undefined;",
