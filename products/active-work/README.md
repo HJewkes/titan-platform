@@ -163,6 +163,10 @@ User-level config lives at `$XDG_CONFIG_HOME/active-work/config.json` (typically
 
 The active root itself is not in this file — it follows the XDG spec and can be overridden with `ACTIVE_ROOT=/some/path` at the env level.
 
+### Timing an `open`
+
+`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`.
+
 ### Using `active-work` from Claude Code via MCP
 
 Once `active-work setup` registers the MCP server, Claude Code can call any registry command as a tool. Tool names are `active__<command>__<subcommand>` (e.g. `active__task__add`, `active__session__record`). Inputs are derived from the same zod schemas that back the CLI flags, so the surface is identical — the only difference is that MCP calls return structured JSON envelopes (`{ ok, data, warnings }` or `{ ok: false, error, code }`) instead of human-formatted output.

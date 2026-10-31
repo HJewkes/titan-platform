@@ -1,21 +1,23 @@
-import type { Band, RegisterMetric } from "./lint-register.js";
+import type { Band } from "./lint-register.js";
+import type { WritingMetric } from "./lint-writing.js";
 import type { HumanStanding, WritingDimension, WritingReport, WritingRow } from "./writing-check.js";
 import type { WritingStatus } from "./writing-status.js";
 
 const NONE = "—";
 const DIMENSION_LABEL: Record<WritingDimension, string> = { "AI-isms": "AI-isms", rhythm: "rhythm", specificity: "specific.", register: "register" };
 const STATUS_LABEL: Record<WritingStatus, string> = { gate: "GATE", warning: "warning", "report-only": "report", drop: "dropped" };
+/** Below this many held-out windows a percentile is printed with its n: S3 hid that some rows rest on 4 windows. */
+const THIN_WINDOWS = 20;
 const WIDTHS = { dimension: 10, metric: 15, value: 13, band: 13, human: 10, status: 8, verdict: 5 } as const;
 
-const UNIT_OF: Partial<Record<RegisterMetric, string>> = { "sentence-mean": "", "sentence-cv": "", "not-x-tails": "/script" };
+const UNIT_OF: Partial<Record<WritingMetric, string>> = { "sentence-mean": "", "sentence-cv": "", "adjacent-delta": "", "not-x-tails": "/script" };
 
 const valueText = ({ metric, value }: WritingRow): string => (value === null ? NONE : `${value.toFixed(2)}${UNIT_OF[metric] ?? "/1k"}`);
 const bandText = ({ min, max }: Band): string => (min === undefined ? `<=${max}` : `${min}-${max}`);
 
 function humanText(human: HumanStanding | null): string {
-  if (human === null) return NONE;
-  if (human.percentile === null) return `flags ${Math.round(human.flaggedShare * 100)}%`;
-  return `${human.percentile.above ? ">" : "<="}p${human.percentile.edge}`;
+  if (human === null || human.percentile === null) return NONE;
+  return human.windows < THIN_WINDOWS ? `p${human.percentile} n=${human.windows}` : `p${human.percentile}`;
 }
 
 function verdictText(row: WritingRow): string {
