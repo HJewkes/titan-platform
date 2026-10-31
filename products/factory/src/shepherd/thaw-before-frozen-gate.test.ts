@@ -36,7 +36,10 @@ function frozenElsewhereWorld({ thawDuringUnfreeze }: { thawDuringUnfreeze: bool
   const port: GitHubPort = {
     ...base,
     checkRuns: async (repo, sha) => {
-      if (sha === fake.pr(1).mergeSha) (freezeOnce(), fake.setRuns(sha, [successRun("validate", 5), successRun("dag-check", 6)]));
+      if (sha === fake.pr(1).mergeSha) {
+        freezeOnce();
+        fake.setRuns(sha, [successRun("validate", 5), successRun("dag-check", 6)]);
+      }
       return base.checkRuns(repo, sha);
     },
     compareFiles: async (repo, from, to) => {

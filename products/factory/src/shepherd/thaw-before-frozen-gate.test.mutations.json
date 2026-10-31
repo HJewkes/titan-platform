@@ -4,8 +4,8 @@
     {
       "name": "sh-unfreeze reports frozen from the read taken before a thaw elsewhere",
       "file": "products/factory/src/shepherd/main-red.ts",
-      "find": "  const frozen = freezes.live(repo, episode) !== undefined;\n",
-      "replace": "  const frozen = true;\n",
+      "find": "    const frozen = freezes.live(input.repo, live.episode) !== undefined;\n",
+      "replace": "    const frozen = true;\n",
       "kills": [
         "a merged run whose repo another run froze and something else thawed opens no main-frozen gate when the episode thaws while sh-unfreeze reads main, and completes"
       ]
