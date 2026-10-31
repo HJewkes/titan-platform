@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { FixProofConfig } from "./config.js";
 import { call, GIT_SAFETY, messageOf, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
@@ -93,6 +92,10 @@ function relativeNames(report: unknown, root: string): unknown {
     return relative === null ? [] : [{ ...file, name: relative }];
   });
   return { ...report, testResults: files };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // The sandbox user owns the output dir, so the file there could be a symlink to a forged report, a FIFO that blocks,
