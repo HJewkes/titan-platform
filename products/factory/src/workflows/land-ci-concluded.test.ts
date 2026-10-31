@@ -43,4 +43,12 @@ describe("ci-wait over a job whose status stayed in_progress after it concluded"
     expect(out.verdict).toBe("red");
     expect(out.elapsed).toBeLessThanOrEqual(POLL_MS);
   });
+
+  it("keeps waiting until the timeout when the job is in_progress with no conclusion", async () => {
+    const out = await ciWait({ ...successRun("validate", 1), status: "in_progress", conclusion: null, completedAt: null });
+
+    expect(out.verdict).not.toBe("green");
+    expect(out.verdict).not.toBe("red");
+    expect(out.elapsed).toBeGreaterThanOrEqual(TIMEOUT_MS);
+  });
 });
