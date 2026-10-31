@@ -4,6 +4,7 @@ import { useQuery } from "../data/rpc.js";
 import { replace } from "../router.js";
 import { CoordinatorCards } from "./CoordinatorCards.js";
 import { CoordinatorPools } from "./CoordinatorPools.js";
+import { CoordinatorShipped } from "./CoordinatorShipped.js";
 import { PHONE_TAP } from "./phone.js";
 
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,7 +24,7 @@ function shiftDate(date: string, days: number): string {
 
 const showDay = (date: string | undefined): void => replace({ view: "coordinator", ...(date === undefined ? {} : { query: `date=${date}` }) });
 
-/** The coordinator day: pool meters, then one card per coordinator. A day runs from the configured start, 07:00 local by default. */
+/** The coordinator day: pool meters, one card per coordinator, then what shipped. A day runs from the configured start, 07:00 local by default. */
 export function CoordinatorPage({ query }: { query?: string }): ReactNode {
   const date = dateFrom(query);
   const day = date === undefined ? {} : { date };
@@ -32,6 +33,7 @@ export function CoordinatorPage({ query }: { query?: string }): ReactNode {
       <DayPicker date={date} day={day} />
       <CoordinatorPools day={day} />
       <CoordinatorCards day={day} />
+      <CoordinatorShipped day={day} />
     </VStack>
   );
 }
