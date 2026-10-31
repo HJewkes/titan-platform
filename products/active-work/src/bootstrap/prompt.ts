@@ -46,6 +46,7 @@ import {
   resolveLocalRepoPath,
   resolveOrgRepo,
 } from '../utils/git-gh.js';
+import { parseGhPrList, type GhPrList, type GhPrListEntry as GhPrEntry } from '../utils/gh-pr-wire.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import { today, nowIso } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
@@ -865,15 +866,6 @@ const BULK_PR_LIMIT = 200;
 
 type BranchPr = NonNullable<LiveBranchStatus['pr']>;
 
-interface GhPrEntry {
-  headRefName?: string;
-  number?: number;
-  state?: string;
-  title?: string;
-  url?: string;
-  statusCheckRollup?: Array<{ conclusion?: string; state?: string }>;
-}
-
 /**
  * Open PRs of one repo by head branch, newest first per head as `gh` lists
  * them. `complete` is false when the list hit its limit, so a head missing
@@ -927,31 +919,34 @@ async function fetchBranchPrs(branches: BranchEntry[]): Promise<Array<BranchPr |
 async function listRepoPrs(orgRepo: string): Promise<RepoPrIndex | null> {
   const fields = 'headRefName,number,state,title,url,statusCheckRollup';
   const args = ['pr', 'list', '--repo', orgRepo, '--json', fields];
-  const entries = await runGhPrList([...args, '--limit', String(BULK_PR_LIMIT)]);
-  if (!entries) return null;
+  const list = await runGhPrList([...args, '--limit', String(BULK_PR_LIMIT)]);
+  if (!list) return null;
   const byHead = new Map<string, GhPrEntry>();
-  for (const entry of entries) {
+  for (const entry of list.entries) {
     const head = entry.headRefName;
     if (typeof head === 'string' && !byHead.has(head)) byHead.set(head, entry);
   }
-  return { byHead, complete: entries.length < BULK_PR_LIMIT };
+  return { byHead, complete: list.total < BULK_PR_LIMIT };
 }
 
 async function fetchPrForHead(orgRepo: string, head: string): Promise<BranchPr | null> {
   const fields = 'number,state,title,url,statusCheckRollup';
   const args = ['pr', 'list', '--head', head, '--repo', orgRepo, '--json', fields];
-  const entries = await runGhPrList([...args, '--limit', '1']);
-  const first = entries?.[0];
+  const list = await runGhPrList([...args, '--limit', '1']);
+  const first = list?.entries[0];
   return first ? toBranchPr(first) : null;
 }
 
-/** PR lookup is best-effort: any failure reads as "no answer". */
-async function runGhPrList(args: string[]): Promise<GhPrEntry[] | null> {
+/** PR lookup is best-effort: any failure reads as "no answer", and a bad element is skipped. */
+async function runGhPrList(args: string[]): Promise<GhPrList | null> {
   try {
     const res = await getGhRunner()('gh', args);
     if (res.code !== 0) return null;
-    const parsed = JSON.parse(res.stdout) as unknown;
-    return Array.isArray(parsed) ? (parsed as GhPrEntry[]) : null;
+    const list = parseGhPrList(res.stdout);
+    if (list && list.skipped > 0) {
+      process.stderr.write(`bootstrap: skipped ${list.skipped} malformed gh pr list entries\n`);
+    }
+    return list;
   } catch {
     return null;
   }
