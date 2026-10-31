@@ -1253,7 +1253,7 @@ type CodeReadCommandMap = {
         result: CommandResult<N>;
     };
 };
-declare const COMMAND_NAMES: ("api.describe" | "snapshot.list" | "hierarchy.get" | "node.get" | "node.resolve" | "findings.list" | "finding.get" | "node.neighbors" | "hotspots.list" | "overview.get" | "changes.get" | "paths.impact" | "packages.stats")[];
+declare const COMMAND_NAMES: CommandName[];
 /** The agent-shaped commands the design puts on MCP; `hierarchy.get` is UI-shaped. A product filters with this until the registry can (P3). */
 declare const AGENT_COMMANDS: readonly CommandName[];
 interface SerializedContract {

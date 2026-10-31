@@ -74,7 +74,7 @@ export function isCommandName(name: string): name is CommandName {
   return Object.hasOwn(CONTRACT, name);
 }
 
-export const COMMAND_NAMES = Object.keys(CONTRACT).filter(isCommandName).sort();
+export const COMMAND_NAMES: CommandName[] = Object.keys(CONTRACT).filter(isCommandName).sort();
 
 /** The agent-shaped commands the design puts on MCP; `hierarchy.get` is UI-shaped. A product filters with this until the registry can (P3). */
 export const AGENT_COMMANDS: readonly CommandName[] = [
