@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
-import { REGISTER_METRICS } from "./lint-register.js";
+import { WRITING_METRICS } from "./lint-writing.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat } from "./writing-check.js";
@@ -14,9 +14,9 @@ const BUCKETS: readonly BucketName[] = ["150-299", "300-599", "600-1199", "1200+
 const CLEAN_LINE = "The parser reads each record and hands it to the queue for the next worker.";
 
 /** The shipped table with one row's status forced at every length, so a recalibration cannot move these tests. */
-function tableWith(statuses: Partial<Record<(typeof REGISTER_METRICS)[number], WritingStatus>>) {
+function tableWith(statuses: Partial<Record<(typeof WRITING_METRICS)[number], WritingStatus>>) {
   const table = parseWritingCheck(SHIPPED);
-  for (const metric of REGISTER_METRICS) {
+  for (const metric of WRITING_METRICS) {
     for (const bucket of BUCKETS) table.statusByBucket[metric][bucket] = statuses[metric] ?? "report-only";
   }
   return table;
@@ -24,7 +24,7 @@ function tableWith(statuses: Partial<Record<(typeof REGISTER_METRICS)[number], W
 
 const beatsOf = (lines: readonly string[]): WritingBeat[] => lines.map((spoken, i) => ({ id: `b${i + 1}`, spoken }));
 const cleanLines = (count: number): string[] => Array.from({ length: count }, () => CLEAN_LINE);
-const row = (report: ReturnType<typeof scoreWriting>, metric: (typeof REGISTER_METRICS)[number]) => report.rows.find((candidate) => candidate.metric === metric)!;
+const row = (report: ReturnType<typeof scoreWriting>, metric: (typeof WRITING_METRICS)[number]) => report.rows.find((candidate) => candidate.metric === metric)!;
 
 describe("scoreWriting", () => {
   it("reports neg-synthetic FAIL with its span when a 250-word script says \"no file\"", () => {
@@ -78,10 +78,25 @@ describe("scoreWriting", () => {
     expect(report.verdict).toMatchObject({ pass: true, gatesUnmeasured: 1 });
   });
 
-  it("places every register metric in a dimension exactly once", () => {
+  it("fails a flat script on adjacent-delta in the rhythm group, as a shape with no span to quote", () => {
+    const report = scoreWriting(beatsOf(cleanLines(14)), tableWith({ "adjacent-delta": "warning" }));
+
+    expect(row(report, "adjacent-delta")).toMatchObject({ dimension: "rhythm", value: 0, status: "warning", verdict: "fail", spans: [] });
+    expect(report.verdict).toMatchObject({ pass: true, warnings: 1 });
+  });
+
+  it("passes adjacent-delta on a script whose sentence lengths step around", () => {
+    const steps = Array.from({ length: 12 }, (_, i) => (i % 2 === 0 ? CLEAN_LINE : "It stops."));
+
+    const report = scoreWriting(beatsOf([...steps, ...steps]), tableWith({ "adjacent-delta": "warning" }));
+
+    expect(row(report, "adjacent-delta").verdict).toBe("pass");
+  });
+
+  it("places every writing metric in a dimension exactly once", () => {
     const report = scoreWriting(beatsOf(cleanLines(14)), tableWith({}));
 
-    expect(report.rows.map((candidate) => candidate.metric).sort()).toEqual([...REGISTER_METRICS].sort());
+    expect(report.rows.map((candidate) => candidate.metric).sort()).toEqual([...WRITING_METRICS].sort());
   });
 });
 
@@ -140,8 +155,9 @@ describe("explainer eval writing", () => {
 
     const [header] = output().split("\n");
     expect(header).toContain("human reference: speech transcripts, not written scripts");
-    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 11 report-only; exit 1");
+    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 12 report-only; exit 1");
     expect(output()).toMatch(/lets\s+dropped$/m);
+    expect(output()).toMatch(/adjacent-delta\s+0\.\d\d\s+0\.55-3\s/);
   });
 
   it("reads a script/v1 file by default", async () => {
@@ -167,7 +183,7 @@ describe("explainer eval writing", () => {
     await runEvalCli(["eval", "writing", failing(), "--format", "text", "--table", tableFile({ "neg-synthetic": "gate" }), "--bench", bench, "--config", "tour/writing"], { now: () => times.shift() ?? new Date(0) });
 
     const rows = readFileSync(join(bench, "evals/structure.tsv"), "utf8").trimEnd().split("\n").slice(1);
-    expect(rows).toHaveLength(REGISTER_METRICS.length);
+    expect(rows).toHaveLength(WRITING_METRICS.length);
     expect(rows).toContainEqual(expect.stringMatching(/\twriting:neg-synthetic\theuristic\terror\t[\d.]+\t2\.5\tfalse\tline-17$/));
     expect(JSON.parse(readFileSync(join(bench, "evals/runs.jsonl"), "utf8"))).toMatchObject({ config_id: "tour/writing", eval_id: "writing-check", usd: 0, wall_s: 2 });
   });

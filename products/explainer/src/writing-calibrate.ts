@@ -1,7 +1,8 @@
 import { seededRandom } from "@titan-design/evidence";
 import { aucInterval, bootstrapCI, wilson } from "@titan-design/evidence/stats";
 import { z } from "zod";
-import { MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_MEASURES, REGISTER_METRICS, spokenText, type RegisterMetric } from "./lint-register.js";
+import { MIN_REGISTER_WORDS, spokenText } from "./lint-register.js";
+import { FLOOR_ONLY_METRICS, WRITING_BANDS, WRITING_MEASURES, WRITING_METRICS, type WritingMetric } from "./lint-writing.js";
 import { rowStatus, type AucContrast, type RowMetrics, type RowStatus, type SpanPrecision, type StatusThresholds, type WritingStatus } from "./writing-status.js";
 
 const WRITING_SCHEMA = "writing-check/v1";
@@ -37,7 +38,7 @@ export interface CorpusDoc {
 interface Window {
   doc: CorpusDoc;
   bucket: BucketName;
-  values: ReadonlyMap<RegisterMetric, number | undefined>;
+  values: ReadonlyMap<WritingMetric, number | undefined>;
 }
 
 /** `n` counts windows, which are not independent; `clusters` counts what the bootstrap resamples. */
@@ -94,8 +95,8 @@ export function windowsOf(tokens: readonly string[], bucket: Bucket): (readonly 
 }
 
 /** How far a value sits outside the shipped band, as a share of the edge it crossed; 0 inside. */
-function bandDistance(metric: RegisterMetric, value: number): number {
-  const band = REGISTER_BANDS[metric];
+function bandDistance(metric: WritingMetric, value: number): number {
+  const band = WRITING_BANDS[metric];
   if (band.min !== undefined && value < band.min) return (band.min - value) / band.min;
   return value > band.max ? (value - band.max) / band.max : 0;
 }
@@ -106,14 +107,14 @@ function allWindows(docs: readonly CorpusDoc[]): Window[] {
       windowsOf(doc.tokens, bucket).map((tokens) => {
         const parsed = spokenText([tokens.join(" ")]);
         const judged = parsed.words.length >= MIN_REGISTER_WORDS;
-        const values = new Map(REGISTER_METRICS.map((metric) => [metric, judged ? REGISTER_MEASURES[metric](parsed) : undefined]));
+        const values = new Map(WRITING_METRICS.map((metric) => [metric, judged ? WRITING_MEASURES[metric](parsed) : undefined]));
         return { doc, bucket: bucket.name, values };
       }),
     ),
   );
 }
 
-const measured = (windows: readonly Window[], metric: RegisterMetric): { doc: CorpusDoc; value: number }[] =>
+const measured = (windows: readonly Window[], metric: WritingMetric): { doc: CorpusDoc; value: number }[] =>
   windows.flatMap((w) => {
     const value = w.values.get(metric);
     return value === undefined ? [] : [{ doc: w.doc, value }];
@@ -123,7 +124,7 @@ const compareKeys = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 const distinct = (keys: readonly string[]): number => new Set(keys).size;
 const byCluster = <T extends { doc: CorpusDoc }>(items: readonly T[]): T[] => [...items].sort((a, b) => compareKeys(a.doc.cluster, b.doc.cluster));
 
-function rate(windows: readonly Window[], metric: RegisterMetric): RateCell {
+function rate(windows: readonly Window[], metric: WritingMetric): RateCell {
   const items = measured(windows, metric);
   const k = items.filter((item) => bandDistance(metric, item.value) > 0).length;
   const n = items.length;
@@ -156,7 +157,7 @@ const round = (value: number, digits: number): number => Math.round(value * 10 *
 
 const seedFor = (key: string): string => `${SEED}|${key}`;
 
-function contrast(pos: readonly Window[], neg: readonly Window[], metric: RegisterMetric, key: string): AucCell | null {
+function contrast(pos: readonly Window[], neg: readonly Window[], metric: WritingMetric, key: string): AucCell | null {
   const scored = (windows: readonly Window[]) => byCluster(measured(windows, metric)).map((item) => ({ score: bandDistance(metric, item.value), cluster: item.doc.cluster }));
   const positives = scored(pos);
   const negatives = scored(neg);
@@ -171,7 +172,7 @@ function contrast(pos: readonly Window[], neg: readonly Window[], metric: Regist
 
 const isHeldOutHuman = (doc: CorpusDoc): boolean => doc.set === "human-ontopic";
 const isHuman = (doc: CorpusDoc): boolean => doc.label === "human";
-const textCount = (windows: readonly Window[], metric: RegisterMetric): number => distinct(measured(windows, metric).map((item) => item.doc.id));
+const textCount = (windows: readonly Window[], metric: WritingMetric): number => distinct(measured(windows, metric).map((item) => item.doc.id));
 
 function bucketNamed(name: BucketName): Bucket {
   const bucket = WRITING_BUCKETS.find((candidate) => candidate.name === name);
@@ -186,12 +187,12 @@ function belongsTo(doc: CorpusDoc, group: AiGroup, bucketName: BucketName): bool
   return doc.label === "ours-new" && doc.tokens.length >= bucket.lo && doc.tokens.length <= bucket.hi;
 }
 
-function fprHeldOut(held: readonly Window[], metric: RegisterMetric, bucket: BucketName): RowCell["fpr_heldout"] {
+function fprHeldOut(held: readonly Window[], metric: WritingMetric, bucket: BucketName): RowCell["fpr_heldout"] {
   const flags = measured(held, metric).map((item) => ({ flagged: bandDistance(metric, item.value) > 0, cluster: item.doc.cluster }));
   return { ...rate(held, metric), texts: textCount(held, metric), clusterCI: flags.length > 0 ? clusterRateInterval(flags, seedFor(`fpr|${metric}|${bucket}`)) : null };
 }
 
-function rowCell(windows: readonly Window[], metric: RegisterMetric, bucket: BucketName): RowCell {
+function rowCell(windows: readonly Window[], metric: WritingMetric, bucket: BucketName): RowCell {
   const inBucket = (keep: (doc: CorpusDoc) => boolean): Window[] => windows.filter((w) => w.bucket === bucket && keep(w.doc));
   const held = inBucket(isHeldOutHuman);
   const humans = inBucket(isHuman);
@@ -240,16 +241,16 @@ function channelFolds(channels: readonly string[]): ReadonlyMap<string, number> 
 }
 
 /** How the P25-P90 band-fitting method generalises: fit on four folds of channels, count flags on the fifth. */
-function foldRefit(windows: readonly Window[], metric: RegisterMetric) {
+function foldRefit(windows: readonly Window[], metric: WritingMetric) {
   const items = measured(windows.filter((w) => w.bucket === PRIMARY_BUCKET && isHuman(w.doc)), metric);
   const folds = channelFolds(items.map((item) => item.doc.cluster));
-  const hasFloor = REGISTER_BANDS[metric].min !== undefined;
+  const hasFloor = WRITING_BANDS[metric].min !== undefined;
   const flags: { flagged: boolean; cluster: string }[] = [];
   for (let fold = 0; fold < FOLDS; fold++) {
     const train = ascending(items.filter((item) => folds.get(item.doc.cluster) !== fold).map((item) => item.value));
     if (train.length < FOLDS) continue;
     const low = hasFloor ? quantile(train, 0.25) : -Infinity;
-    const high = quantile(train, 0.9);
+    const high = FLOOR_ONLY_METRICS.has(metric) ? Infinity : quantile(train, 0.9);
     for (const { doc, value } of items.filter((item) => folds.get(item.doc.cluster) === fold)) flags.push({ flagged: value < low || value > high, cluster: doc.cluster });
   }
   const n = flags.length;
@@ -260,17 +261,18 @@ function foldRefit(windows: readonly Window[], metric: RegisterMetric) {
 }
 
 /** The band that flags about 10 % of train human windows, and what it flags on held-out text. */
-function band10(windows: readonly Window[], metric: RegisterMetric) {
+function band10(windows: readonly Window[], metric: WritingMetric) {
   const primary = windows.filter((w) => w.bucket === PRIMARY_BUCKET);
   const train = ascending(measured(primary.filter((w) => w.doc.set === "human-creator" || w.doc.set === "human-auto"), metric).map((item) => item.value));
   if (train.length < 10) return null;
-  const hasFloor = REGISTER_BANDS[metric].min !== undefined;
-  const low = hasFloor ? quantile(train, 0.05) : -Infinity;
-  const high = quantile(train, hasFloor ? 0.95 : 0.9);
+  const hasFloor = WRITING_BANDS[metric].min !== undefined;
+  const floorOnly = FLOOR_ONLY_METRICS.has(metric);
+  const low = hasFloor ? quantile(train, floorOnly ? 0.1 : 0.05) : -Infinity;
+  const high = floorOnly ? Infinity : quantile(train, hasFloor ? 0.95 : 0.9);
   const held = measured(primary.filter((w) => isHeldOutHuman(w.doc)), metric);
   const heldoutK = held.filter(({ value }) => value < low || value > high).length;
   return {
-    lo: Number.isFinite(low) ? round(low, 4) : null, hi: round(high, 4), trainN: train.length,
+    lo: Number.isFinite(low) ? round(low, 4) : null, hi: Number.isFinite(high) ? round(high, 4) : null, trainN: train.length,
     heldoutK, heldoutN: held.length, heldoutFpr: held.length > 0 ? round(heldoutK / held.length, 4) : null,
   };
 }
@@ -281,7 +283,7 @@ function tally(windows: readonly Window[]): Record<string, number> {
   return Object.fromEntries([...counts].sort(([a], [b]) => compareKeys(a, b)));
 }
 
-const perMetric = <T>(value: (metric: RegisterMetric) => T): Record<RegisterMetric, T> => ({
+const perMetric = <T>(value: (metric: WritingMetric) => T): Record<WritingMetric, T> => ({
   numbers: value("numbers"),
   "second-person": value("second-person"),
   we: value("we"),
@@ -296,6 +298,7 @@ const perMetric = <T>(value: (metric: RegisterMetric) => T): Record<RegisterMetr
   phrases: value("phrases"),
   "neg-synthetic": value("neg-synthetic"),
   downtoners: value("downtoners"),
+  "adjacent-delta": value("adjacent-delta"),
 });
 const perBucket = <T>(value: (bucket: BucketName) => T): Record<BucketName, T> => ({
   "150-299": value("150-299"),
@@ -326,7 +329,7 @@ function metaOf(input: WritingCheckInput, windows: readonly Window[]) {
 export function calibrateWriting(input: WritingCheckInput) {
   const windows = allWindows(input.docs);
   const rows = perMetric((metric) => perBucket((bucket) => rowCell(windows, metric, bucket)));
-  const decide = (metric: RegisterMetric, bucket: BucketName): RowStatus => rowStatus(metricsOf(rows[metric][bucket], input.precision[metric]), input.thresholds);
+  const decide = (metric: WritingMetric, bucket: BucketName): RowStatus => rowStatus(metricsOf(rows[metric][bucket], input.precision[metric]), input.thresholds);
   const precision = Object.fromEntries(Object.entries(input.precision).map(([metric, { correct, labelled }]) => [metric, { correct, labelled }]));
   return {
     schema: WRITING_SCHEMA,
