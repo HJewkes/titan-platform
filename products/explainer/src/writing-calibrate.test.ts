@@ -5,13 +5,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { REGISTER_METRICS } from "./lint-register.js";
-import { calibrateWriting, formatWritingCheck, metricsOf, windowsOf, WRITING_BUCKETS, type WritingCheck } from "./writing-calibrate.js";
+import { calibrateWriting, formatWritingCheck, metricsOf, parseWritingCheck, windowsOf, WRITING_BUCKETS, type WritingCheck } from "./writing-calibrate.js";
 import { loadCorpus, readPrecision, readThresholds } from "./writing-calibrate-cli.js";
 import { rowStatus, type RowMetrics, type StatusThresholds } from "./writing-status.js";
 
 const fixture = (name: string): string => fileURLToPath(new URL(`../fixtures/writing-calibrate/${name}`, import.meta.url));
 const shippedPath = fileURLToPath(new URL("../doctrine/writing-check.json", import.meta.url));
-const shipped = JSON.parse(readFileSync(shippedPath, "utf8")) as WritingCheck;
+const shipped = parseWritingCheck(readFileSync(shippedPath, "utf8"));
 const thresholds: StatusThresholds = readThresholds(shippedPath);
 
 function twinCheck(): WritingCheck {
@@ -111,8 +111,8 @@ describe("windowsOf", () => {
 
 describe("eval writing-calibrate on the synthetic twin", () => {
   it("parity: the synthetic twin gives the metrics the research tool pinned", () => {
-    const golden = JSON.parse(readFileSync(fixture("golden.json"), "utf8")) as Partial<WritingCheck>;
-    const check = JSON.parse(formatWritingCheck(twinCheck())) as WritingCheck;
+    const golden = parseWritingCheck(readFileSync(fixture("golden.json"), "utf8"));
+    const check = parseWritingCheck(formatWritingCheck(twinCheck()));
 
     expect(check.rows).toEqual(golden.rows);
     expect(check.status).toEqual(golden.status);
