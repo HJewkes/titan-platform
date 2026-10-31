@@ -42,7 +42,7 @@ export interface BootstrapOptions {
 
 export const EXIT = { OK: 0, FAILED: 1, LOCKED: 75, CONFIG: 78 } as const;
 export const RELEASE_CLI = "apps/console/dist/cli.js";
-/** `build` writes it last, so a release that has it finished building. */
+/** `build` writes it last, so a release whose stamp names its sha finished building; a power loss can leave it empty (TP-4638). */
 const BUILT_MARKER = "apps/console/dist/build-info.json";
 const BUILD_STEPS: readonly (readonly string[])[] = [["install", "--frozen-lockfile"], ["--filter", "titan-console...", "build"]];
 const DETAIL_LINES = 20;
@@ -100,7 +100,7 @@ async function pass(run: Pass): Promise<number> {
   if (served === target) return stop(ports, EXIT.OK, `up to date: serving ${target}`);
   if (judgedTarget(ports.readFile(recordFile(options.stateDir))) === target) return stop(ports, EXIT.OK, `${target} was already judged; see ${recordFile(options.stateDir)}`);
   const release = path.join(options.root, "releases", target);
-  if (!ports.exists(path.join(release, BUILT_MARKER))) {
+  if (stampedSha(ports.readFile(path.join(release, BUILT_MARKER))) !== target) {
     const why = await build(run, release, target);
     if (why !== undefined) return failed(run, { target, served, stage: "build", why });
   }
@@ -120,6 +120,15 @@ function judgedTarget(text: string | undefined): string | undefined {
   try {
     const parsed: unknown = JSON.parse(text ?? "");
     return typeof parsed === "object" && parsed !== null && "target" in parsed && typeof parsed.target === "string" ? parsed.target : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function stampedSha(text: string | undefined): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(text ?? "");
+    return typeof parsed === "object" && parsed !== null && "sha" in parsed && typeof parsed.sha === "string" ? parsed.sha : undefined;
   } catch {
     return undefined;
   }

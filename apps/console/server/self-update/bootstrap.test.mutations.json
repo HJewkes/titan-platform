@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an empty build stamp counts as built",
+      "file": "apps/console/deploy/titan-console-bootstrap.mts",
+      "find": "if (stampedSha(ports.readFile(path.join(release, BUILT_MARKER))) !== target) {",
+      "replace": "if (ports.readFile(path.join(release, BUILT_MARKER)) === undefined) {",
+      "kills": [
+        "the console update bootstrap rebuilds a release whose build stamp a power loss left empty"
+      ]
+    }
+  ]
+}
