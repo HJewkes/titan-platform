@@ -463,6 +463,10 @@ Autoresearch's `autoresearch-ratchet` is also a logged path: it fast-forwards on
 own ratchet branch under the target's `ratchetPrefix`, never main or the default branch,
 records each move as evidence, and is not gated by Shepherd.
 
+Autoresearch's `autoresearch-snapshot` writes only a run's snapshot tag and `-snap` PR branch
+at a tagged ratchet sha; the PR then merges through Shepherd like any other, and
+`autoresearch-ratchet` also carries the merge of main back into the ratchet.
+
 ## Routing a reviewed head {#routing}
 
 After the review of a green head, the `sh-observe` step reads the pull request again, and one
