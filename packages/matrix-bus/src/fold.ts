@@ -1,3 +1,4 @@
+import { isRecord } from "./record.js";
 import type { ItemKind } from "./item.js";
 import type { MatrixEvent } from "./types.js";
 
@@ -36,12 +37,12 @@ const EMOJI_MODIFIERS = /\uFE0E|\uFE0F|\p{Emoji_Modifier}/gu;
 
 function relatesTo(content: Record<string, unknown>): Record<string, unknown> {
   const rel = content["m.relates_to"];
-  return typeof rel === "object" && rel !== null ? (rel as Record<string, unknown>) : {};
+  return isRecord(rel) ? rel : {};
 }
 
 function stringField(value: unknown, key: string): string | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const field = (value as Record<string, unknown>)[key];
+  if (!isRecord(value)) return undefined;
+  const field = value[key];
   return typeof field === "string" ? field : undefined;
 }
 

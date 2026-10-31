@@ -1,3 +1,5 @@
+import { isRecord } from "./record.js";
+
 export const ITEM_KEY = "io.titan.item";
 export const ITEM_VERSION = 1;
 
@@ -73,34 +75,41 @@ export function renderItemBody(item: ItemInput): string {
   return `${headline(item)}\n${detail(item)}\n\n${footer(item)}`;
 }
 
-function recordOf(item: ItemInput): TitanItem {
-  const fields = Object.entries(item).filter(([key, value]) => key !== "text" && value !== undefined);
-  return { v: ITEM_VERSION, ...Object.fromEntries(fields) } as TitanItem;
+function buildItem(source: Omit<TitanItem, "v">): TitanItem {
+  const { kind, machine, session, msg_id, at, truncated, redacted } = source;
+  const item: TitanItem = { v: ITEM_VERSION, kind, machine, session, msg_id, at, truncated, redacted };
+  if (source.agent_id !== undefined) item.agent_id = source.agent_id;
+  if (source.tool_name !== undefined) item.tool_name = source.tool_name;
+  if (source.input_preview !== undefined) item.input_preview = source.input_preview;
+  if (source.recipient !== undefined) item.recipient = source.recipient;
+  return item;
 }
 
 export function encodeItem(item: ItemInput, formattedBody?: string): ItemContent {
-  const content: ItemContent = { msgtype: "m.text", body: renderItemBody(item), [ITEM_KEY]: recordOf(item) };
+  const content: ItemContent = { msgtype: "m.text", body: renderItemBody(item), [ITEM_KEY]: buildItem(item) };
   if (formattedBody === undefined) return content;
   return { ...content, format: "org.matrix.custom.html", formatted_body: formattedBody };
 }
 
-const REQUIRED_STRINGS = ["machine", "session", "msg_id"] as const;
-const OPTIONAL_STRINGS = ["agent_id", "tool_name", "input_preview", "recipient"] as const;
+function isItemKind(value: unknown): value is ItemKind {
+  return ITEM_KINDS.some((kind) => kind === value);
+}
 
-function isItem(value: Record<string, unknown>): boolean {
-  if (value.v !== ITEM_VERSION || !ITEM_KINDS.includes(value.kind as ItemKind)) return false;
-  if (!REQUIRED_STRINGS.every((key) => typeof value[key] === "string")) return false;
-  if (!OPTIONAL_STRINGS.every((key) => value[key] === undefined || typeof value[key] === "string")) return false;
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isItem(value: Record<string, unknown>): value is Record<string, unknown> & TitanItem {
+  if (value.v !== ITEM_VERSION || !isItemKind(value.kind)) return false;
+  if (typeof value.machine !== "string" || typeof value.session !== "string" || typeof value.msg_id !== "string") return false;
+  const optionals = [value.agent_id, value.tool_name, value.input_preview, value.recipient];
+  if (!optionals.every(isOptionalString)) return false;
   return typeof value.at === "number" && typeof value.truncated === "boolean" && typeof value.redacted === "boolean";
 }
 
 /** Returns null for content without the key, an unknown version, or a malformed record. */
 export function decodeItem(content: Record<string, unknown>): TitanItem | null {
   const value = content[ITEM_KEY];
-  if (typeof value !== "object" || value === null) return null;
-  const record = value as Record<string, unknown>;
-  if (!isItem(record)) return null;
-  const pick = (keys: readonly string[]) => keys.filter((key) => record[key] !== undefined).map((key) => [key, record[key]]);
-  const base = ["v", "kind", ...REQUIRED_STRINGS, "at", "truncated", "redacted"];
-  return Object.fromEntries([...pick(base), ...pick(OPTIONAL_STRINGS)]) as TitanItem;
+  if (!isRecord(value) || !isItem(value)) return null;
+  return buildItem(value);
 }

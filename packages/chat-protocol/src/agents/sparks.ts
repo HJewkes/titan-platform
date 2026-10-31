@@ -22,10 +22,10 @@ export function treePath(layout: GraphLayout, from: string, to: string): string[
 
   const fromLine = ancestry(layout, from);
   const toLine = ancestry(layout, to);
-  const meetIndex = toLine.findIndex((name) => fromLine.includes(name));
-  if (meetIndex === -1) return [from, to];
+  const meet = toLine.find((name) => fromLine.includes(name));
+  if (meet === undefined) return [from, to];
 
-  const meet = toLine[meetIndex] as string;
+  const meetIndex = toLine.indexOf(meet);
   const up = fromLine.slice(0, fromLine.indexOf(meet) + 1);
   const down = toLine.slice(0, meetIndex).reverse();
   return [...up, ...down];
@@ -65,23 +65,25 @@ function pointOf(layout: GraphLayout, name: string): Point {
 
 /** Position at fraction `t` of a polyline, measured by length so a spark keeps constant speed. */
 export function pointAlongPolyline(points: readonly Point[], t: number): Point {
-  if (points.length === 0) return { x: 0, y: 0 };
-  if (points.length === 1) return points[0] as Point;
+  const first = points[0];
+  if (first === undefined) return { x: 0, y: 0 };
+  if (points.length === 1) return first;
 
-  const lengths = points.slice(1).map((point, i) => distance(points[i] as Point, point));
+  const segments = points.slice(1).map((end, i) => ({ start: points[i] ?? first, end }));
+  const lengths = segments.map(({ start, end }) => distance(start, end));
   const total = lengths.reduce((sum, length) => sum + length, 0);
-  if (total === 0) return points[0] as Point;
+  if (total === 0) return first;
 
   let travelled = Math.min(1, Math.max(0, t)) * total;
-  for (let i = 0; i < lengths.length; i++) {
-    const length = lengths[i] as number;
-    if (travelled <= length || i === lengths.length - 1) {
+  for (const [i, { start, end }] of segments.entries()) {
+    const length = lengths[i] ?? 0;
+    if (travelled <= length || i === segments.length - 1) {
       const ratio = length === 0 ? 0 : Math.min(1, travelled / length);
-      return lerp(points[i] as Point, points[i + 1] as Point, ratio);
+      return lerp(start, end, ratio);
     }
     travelled -= length;
   }
-  return points[points.length - 1] as Point;
+  return points.at(-1) ?? first;
 }
 
 function distance(a: Point, b: Point): number {

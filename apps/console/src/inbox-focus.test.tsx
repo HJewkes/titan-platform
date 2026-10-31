@@ -6,6 +6,7 @@ import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { href } from "./router.js";
 import { renderPage } from "./render-page.test-helpers.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -87,7 +88,7 @@ describe("an inbox deep link", () => {
     const calls = openLink(GATE_ID);
     const row = await expectFocused(GATE_ID);
     fireEvent.click(within(row).getByText("Approve merge"));
-    await screen.findByTestId("inbox-confirm");
+    await findTapSheet("inbox-confirm");
     expect(calls.filter((call) => call.name === "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: GATE_ID }]);
   });
 

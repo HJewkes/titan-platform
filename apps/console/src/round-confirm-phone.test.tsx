@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS, stagedRound, twoPrRound, type StagedRound } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { BELOW_MD } from "./pages/phone.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 
 const SHIP = "ship-tile-r1";
 const PRS = "tiles-and-panels-r1";
@@ -25,8 +25,8 @@ beforeAll(async () => {
 });
 afterAll(() => staged.remove());
 beforeEach(() => vi.stubGlobal("IntersectionObserver", SilentObserver));
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
   localStorage.clear();
 });

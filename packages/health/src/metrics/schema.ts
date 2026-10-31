@@ -39,8 +39,8 @@ function dual<S extends z.ZodRawShape>(
 ) {
   const make = (obj: ObjectFactory) => obj(shape(obj));
   return mode === "write"
-    ? make(z.strictObject as ObjectFactory)
-    : make(z.looseObject as ObjectFactory);
+    ? make(z.strictObject)
+    : make(z.looseObject);
 }
 
 const storeShape = (obj: ObjectFactory) =>
@@ -223,8 +223,8 @@ export function validateEntry(
       ? (input as { schema?: unknown }).schema
       : undefined;
   const schemas =
-    typeof id === "string" && id in SCHEMAS
-      ? SCHEMAS[id as keyof typeof SCHEMAS]
+    id === METRICS_SCHEMA_ID || id === AUDIT_SCHEMA_ID
+      ? SCHEMAS[id]
       : undefined;
   if (!schemas)
     return {

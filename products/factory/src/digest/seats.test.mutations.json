@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a merge counts for its implementer, not its coordinator",
+      "file": "products/factory/src/digest/seats.ts",
+      "find": "? coordinatorOf(implementer, spawners) : UNATTRIBUTED",
+      "replace": "? implementer : UNATTRIBUTED",
+      "kills": [
+        "seat lines credits each merge and spawn to the coordinator at the top of the spawned-by chain"
+      ]
+    },
+    {
+      "name": "a merge with no roster row counts under its implementer's name",
+      "file": "products/factory/src/digest/seats.ts",
+      "find": "implementer && onRoster.has(implementer) ?",
+      "replace": "implementer ?",
+      "kills": [
+        "seat lines credits a merge whose implementer has no roster row to unattributed, not to the implementer's own name"
+      ]
+    }
+  ]
+}

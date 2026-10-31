@@ -433,7 +433,10 @@ Its sources:
 - Shepherd rows and pending gates, from `titan-factory serve` when one answers, else the database.
 - `agent-chat digest --json --prs --since <window>`, with a 20 s timeout.
 - Each seat's `queues/<seat>.md` numbered items under `## Morning queue (owner only)`.
-- Each seat's `logs/<seat>/dispatch.jsonl`: spawns and estimated dollars.
+- `agent-chat agent ls --json`, the broker roster: Seats counts, per coordinator, the runs merged in the window and the
+  agents spawned in it. A coordinator is the top of an agent's spawned-by chain, the seat the owner started; a merge
+  counts for the coordinator above its run's implementer.
+- `$AGENT_CHAT_HOME/pace.json`, written by agent-chat's seat watchdog: Spend lists each pool's week and 5h use.
 
 A source that fails becomes one Gaps line and the rest still render. An ask that names the
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
@@ -468,8 +471,8 @@ on an anonymous topic, so keep it in the owner's config and out of logs.
 ```
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
-`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
-`shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
+`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` defaults to `queues` beside
+`shepherd.seatsDir`; `logsDir` is still accepted and no longer read. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
 unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
 absolute. `consoleOrigin` (for example `https://console.example.ts.net`) is the origin of the digest's
 stale-gate alarm links; it must be https and not loopback, and without it the alarm prints with no links.

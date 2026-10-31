@@ -185,146 +185,9 @@
       "count": 1
     }
   },
-  "packages/agent-dispatch/src/agents.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/exec.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/limits/check.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-dispatch/src/limits/defaults.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/agent-dispatch/src/limits/node.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/agent-dispatch/src/limits/resolve.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "packages/agent-lifecycle/src/sqlite-execution-ledger.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 5
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-correlations.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-fencing.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-reducer.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-terminal.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle-validation.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/lifecycle.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/agent-protocol/src/test-fixtures.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
-  "packages/agent-protocol/src/trace/privacy.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/agent-protocol/src/trace/schema.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/agent-surface/src/bin.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-surface/src/run-agent.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/agent-surface/src/run-agent.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/agent-surface/src/surfaces.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/agent-surface/src/surfaces/iterm.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/agent-surface/src/surfaces/iterm.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-surface/src/surfaces/launch-check.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-surface/src/surfaces/tmux.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/agent-surface/src/surfaces/tmux.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "packages/agent/src/claude-code-adapter.ts": {
@@ -452,26 +315,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/chat-protocol/src/agents/graph.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/chat-protocol/src/agents/layout.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/chat-protocol/src/agents/sparks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
-    }
-  },
-  "packages/chat-protocol/src/ai-sdk.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -923,128 +766,6 @@
       "count": 1
     }
   },
-  "packages/daemon/src/auth.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/daemon.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
-    }
-  },
-  "packages/daemon/src/daemon.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/file-watch.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/file-watch.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/http.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/daemon/src/http.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/lifecycle.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/lifecycle.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/daemon/src/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/remote-listener.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "packages/daemon/src/tls-files.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/daemon/src/token-file.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/always-ask.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/ask-lint-cli.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/bulk-condense.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/condense.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/contract.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/notes.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/decider/src/parse-answer.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/decider/src/store.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/decider/src/transcripts.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/egress-scan/src/allow.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1086,67 +807,6 @@
   "packages/eslint-plugin/src/no-internal-module-mock.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/fix-proof/src/classify.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/config.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/fix-proof/src/plan.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/report.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/fix-proof/src/result-line.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
-    }
-  },
-  "packages/health/src/metrics/conformance.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/health/src/metrics/schema.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/health/src/metrics/schema.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/health/src/probe-http.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "packages/health/src/store.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/health/src/store.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "packages/hitl/src/base-store.ts": {
@@ -1210,24 +870,9 @@
       "count": 14
     }
   },
-  "packages/matrix-bus/src/client.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/matrix-bus/src/fold.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/matrix-bus/src/http.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/matrix-bus/src/item.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
     }
   },
   "packages/memory/src/curate.ts": {
@@ -1238,36 +883,6 @@
   "packages/memory/src/store.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 3
-    }
-  },
-  "packages/owner-queue/src/merge.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/round-items.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/rounds.property.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/owner-queue/src/rounds.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "packages/owner-queue/src/spool.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/owner-queue/src/spool.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "packages/react-app/src/hooks/hooks.ts": {
@@ -1293,24 +908,6 @@
       "count": 1
     }
   },
-  "packages/registry/src/envelope.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/registry/src/invoke.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/registry/src/zod-introspect.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/retrieval/src/rerank.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -1319,36 +916,6 @@
   "packages/retrieval/src/retrievers/vector.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
-    }
-  },
-  "packages/rpc-client/src/client/canonical-key.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/envelope-shape.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/client/snapshot.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/client/static-source.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/rpc-client/src/live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/rpc-client/src/static-parity.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "packages/session-analytics/src/bands-parity.test.ts": {
@@ -1573,63 +1140,6 @@
     }
   },
   "packages/session-graph/src/usage-dedupe.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/editorconfig.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/eslint-rules.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/style-profile/src/exporters/eslint-rules.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/eslint.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/style-profile/src/exporters/export-index.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/ruff.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/style-profile/src/exporters/skill.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/style-profile/src/exporters/template-helpers.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "packages/style-profile/src/migrations/migrate-profile.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -2580,11 +2090,6 @@
       "count": 1
     }
   },
-  "products/factory/src/digest/seats.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/doc/draft.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -3360,31 +2865,6 @@
   "products/session-miner/src/shared-graph.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/titan/src/health/cli-cost.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/cli-health.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/cli-uptime.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/titan/src/health/sample-tick.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/titan/src/health/targets.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   }
 }

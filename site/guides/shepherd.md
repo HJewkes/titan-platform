@@ -275,6 +275,26 @@ The plan is read from the recorded intent, so a run whose intent was recorded wi
 (before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
 restart onto `on`.
 
+### Review workflow shadow {#review-workflow-shadow}
+
+`shepherd.review.workflow` in the factory config moves Shepherd's review onto
+`@titan-design/review-workflow` in phases. It takes `off`, `shadow`, `on:preflight` or `on`,
+and an absent key means `off`.
+
+| Value | What a head's review does |
+| --- | --- |
+| `off` | Shepherd's own review, unchanged |
+| `shadow` | The same review. `sh-review-intent` records `workflow: "shadow"`, and after each round `sh-review-shadow:<head>` records the workflow's preflight `decision`, the round's failure `classes` and the policy action it `would` take |
+| `on:preflight`, `on` | Not built yet; each runs as `off`, and serve logs why at startup |
+
+The shadow is computed from the round's own records (the fix-proof read, the intent's class,
+the dispatch and the verdict) and the installed-profile check, so it starts no session. Each
+round spends one step of its class's retry-policy row, so a timeout reads `late-read`, then
+`retry`, then `fixer(timeout)`. A run whose intent was recorded under `off`, or before the
+key existed, replays with no shadow step. `titan-factory shepherd stats --review-shadow`
+counts the would-actions per repo and ISO week, with the heads sent to the fixer by round 2
+and the heads it would have stopped that then merged.
+
 ### Fix-round re-review {#fix-round-rereview}
 
 `shepherd.review.scopedRereview` takes `off`, `shadow` or `on`, and an absent key means `off`.

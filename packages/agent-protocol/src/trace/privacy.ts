@@ -121,10 +121,10 @@ export async function redactTraceRecord(record: TraceRecord, options: RedactTrac
     isPublic: "repo" in record && options.publicRepos.includes(record.repo),
     isMcpTool: record.kind === "call" && record.callKind === "tool" && (Boolean(record.namespace) || record.name.startsWith("mcp__")),
   };
-  return redactObject(record as unknown as Record<string, unknown>, "", context);
+  return redactObject(record, "", context);
 }
 
-async function redactObject(value: Record<string, unknown>, prefix: string, context: RedactContext): Promise<Record<string, unknown>> {
+async function redactObject(value: object, prefix: string, context: RedactContext): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
     const path = `${prefix}${key}`;
@@ -138,7 +138,7 @@ async function redactNode(value: unknown, path: string, context: RedactContext):
   if (Array.isArray(value)) return Promise.all(value.map((item) => redactNode(item, `${path}[]`, context)));
   if (value === null || typeof value !== "object") return redactLeaf(value, context.classes[path], context);
   if (context.classes[`${path}.*`] === "local") return Object.fromEntries(Object.keys(value).map((key) => [key, REDACTED_LOCAL_VALUE]));
-  return redactObject(value as Record<string, unknown>, `${path}.`, context);
+  return redactObject(value, `${path}.`, context);
 }
 
 async function redactLeaf(value: unknown, privacy: TracePrivacyClass | undefined, context: RedactContext): Promise<unknown> {
