@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a replay whose next step is this head's packet step skips it",
+      "file": "products/factory/src/shepherd/visual-packet-trigger.ts",
+      "find": "(next !== undefined && next !== stepId)",
+      "replace": "next !== undefined",
+      "kills": [
+        "the replay guard around the packet step a replay whose recorded next step is this head's packet step replays it"
+      ]
+    },
+    {
+      "name": "a gate resumed from before the packet step records one",
+      "file": "products/factory/src/shepherd/visual-packet-trigger.ts",
+      "find": "  if (next === undefined && resumed !== undefined && stepIdMatches(gateStep, resumed)) return;\n",
+      "replace": "",
+      "kills": [
+        "the replay guard around the packet step a gate resumed from before the packet step existed spawns no packager"
+      ]
+    },
+    {
+      "name": "a second gate at a recorded head records a second packet step",
+      "file": "products/factory/src/shepherd/visual-packet-trigger.ts",
+      "find": "if (ctx.iteration(stepId) > 0 || (next",
+      "replace": "if ((next",
+      "kills": [
+        "the replay guard around the packet step a second visual gate at a head that already has its packet step records no second one"
+      ]
+    }
+  ]
+}
