@@ -37,6 +37,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:^"
+  },
   "devDependencies": {
     "@titan-design/agent-protocol": "workspace:*"
   }

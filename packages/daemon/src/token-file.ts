@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { errnoCode } from "./narrow.js";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 const SECRET_BYTES = 32;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -32,7 +32,7 @@ export function ensureTokenFile(file: string): string {
   try {
     return writeNewSecret(file);
   } catch (err) {
-    if (errnoCode(err) !== "EEXIST") throw err;
+    if (errorCode(err) !== "EEXIST") throw err;
   }
   return readSecretFile(file, parseBase64Secret).secret;
 }
@@ -127,7 +127,7 @@ function openNoFollow(file: string): number {
   try {
     return fs.openSync(file, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (err) {
-    if (errnoCode(err) === "ELOOP") throw new TokenFileError("symlink", file, "it is a symbolic link");
+    if (errorCode(err) === "ELOOP") throw new TokenFileError("symlink", file, "it is a symbolic link");
     throw err;
   }
 }

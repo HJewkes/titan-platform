@@ -9,7 +9,7 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter @titan-design/hub-deploy... --filter titan-platform
-RUN pnpm --filter @titan-design/matrix-bus build \
+RUN pnpm --filter @titan-design/matrix-bus... build \
  && pnpm --filter @titan-design/hub-deploy deploy --prod /out
 
 FROM ${NODE_IMAGE}

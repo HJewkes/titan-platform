@@ -1,6 +1,7 @@
 import { conversationRef, type ConversationIdentity, type ExecutionRecord, type UsageMeasurement } from "@titan-design/agent-protocol";
 import { TRACE_SCHEMA_VERSION, TraceAttemptSchema, TraceRunSchema, type TraceAttempt, type TraceRecord, type TraceRun } from "@titan-design/agent-protocol/trace";
 import type { GateStore } from "@titan-design/hitl";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { pendingGateRecords, stepArtifactRecords, stepGateRecords } from "./trace-projection-gates.js";
 import { usageFromMeasurements } from "./usage.js";
 import { workflowStepRequestKey, type ActiveStep, type StepOperation, type StepResult, type StepUsage, type WorkflowRun } from "./types.js";
@@ -130,10 +131,6 @@ function conversationOf(record: ExecutionRecord): ConversationIdentity | undefin
   const { conversation } = succeededResult(record.terminal);
   if (isConversation(conversation)) return conversation;
   return record.execution.conversation ?? (record.target.kind === "resume" ? record.target.conversation : undefined);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isMeasurement(value: unknown): value is UsageMeasurement {

@@ -21,8 +21,8 @@ import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto"
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { isOwnAddress } from "./bind-guard.js";
-import { isRecord } from "./narrow.js";
 import { trackTokenFile } from "./token-file.js";
 
 export type { TokenFileProblem } from "./token-file.js";
@@ -218,7 +218,7 @@ function isPeerLocal(c: Context): boolean {
 }
 
 function remoteAddressOf(env: unknown): string | undefined {
-  if (!isRecord(env) || !isRecord(env.incoming) || !isRecord(env.incoming.socket)) return undefined;
+  if (!isObjectLike(env) || !isObjectLike(env.incoming) || !isObjectLike(env.incoming.socket)) return undefined;
   const { remoteAddress } = env.incoming.socket;
   return typeof remoteAddress === "string" ? remoteAddress : undefined;
 }
@@ -284,7 +284,7 @@ async function login(c: Context, auth: DaemonAuth): Promise<Response> {
 async function readLoginCode(c: Context): Promise<string | null> {
   try {
     const body: unknown = await c.req.json();
-    const code = isRecord(body) ? body.code : undefined;
+    const code = isObjectLike(body) ? body.code : undefined;
     return typeof code === "string" ? code : null;
   } catch {
     return null;

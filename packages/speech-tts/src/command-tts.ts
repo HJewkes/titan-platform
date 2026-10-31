@@ -3,11 +3,12 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { FileRefused, readRegularFile } from "./bounded-read.js";
 import { assertSupported } from "./capabilities.js";
 import { withDeadline } from "./deadline.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
-import { errorMessage, isRecord } from "./guards.js";
+import { errorMessage } from "./guards.js";
 import { DEFAULT_MAX_OUTPUT_BYTES, errorText } from "./output-limits.js";
 import { decodeEngineWav, toSynthesis } from "./synthesis.js";
 import type {

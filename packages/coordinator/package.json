@@ -36,7 +36,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@titan-design/agent-dispatch": "workspace:^"
+    "@titan-design/agent-dispatch": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

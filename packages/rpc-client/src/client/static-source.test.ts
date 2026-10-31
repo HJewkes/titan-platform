@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { EXIT, successEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
 import { partialFake } from "@titan-design/test-kit";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { snapshotKey } from "./canonical-key.js";
 import type { LiveStatus } from "./data-source.js";
-import { isRecord } from "./envelope-shape.js";
 import { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot, type Snapshot, type SnapshotResolver } from "./snapshot.js";
 import { staticSource } from "./static-source.js";
 
@@ -36,7 +36,7 @@ describe("staticSource", () => {
   it("hands out a fresh copy per call, so a caller cannot edit the snapshot", async () => {
     const source = staticSource({ snapshot });
     const first = await source.call("n.get", { f: { a: 1, b: 2 } });
-    if (first.ok && isRecord(first.data)) first.data.n = 99;
+    if (first.ok && isObjectLike(first.data)) first.data.n = 99;
     expect(await source.call("n.get", { f: { a: 1, b: 2 } })).toEqual({ ok: true, data: { n: 1 } });
   });
 
