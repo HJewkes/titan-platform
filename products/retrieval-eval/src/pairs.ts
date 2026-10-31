@@ -112,7 +112,9 @@ function parsePairLine(line: string): EvalPair | undefined {
 /**
  * A pair file on disk may be damaged, so a bad line is skipped rather than
  * thrown on. Skipping shrinks the denominator of every score that follows,
- * which is why the log names how many lines went and which ones.
+ * which is why the log names how many lines went and which ones. A file with
+ * no valid line at all is refused, because an eval over zero pairs would pass
+ * vacuously.
  */
 export function parsePairs(jsonl: string): EvalPair[] {
   const pairs: EvalPair[] = [];
@@ -123,10 +125,10 @@ export function parsePairs(jsonl: string): EvalPair[] {
     if (pair) pairs.push(pair);
     else badLines.push(index + 1);
   }
-  if (badLines.length > 0) {
-    const total = pairs.length + badLines.length;
-    console.error(`parsePairs: skipped ${badLines.length} of ${total} pair lines (bad lines: ${badLines.join(", ")})`);
-  }
+  if (badLines.length === 0) return pairs;
+  const skipped = `skipped ${badLines.length} of ${pairs.length + badLines.length} pair lines (bad lines: ${badLines.join(", ")})`;
+  if (pairs.length === 0) throw new Error(`parsePairs: no valid pairs: ${skipped}`);
+  console.error(`parsePairs: ${skipped}`);
   return pairs;
 }
 

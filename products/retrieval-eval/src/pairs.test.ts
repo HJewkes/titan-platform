@@ -86,6 +86,19 @@ describe("parsePairs over a damaged file", () => {
     expect(errors()).toEqual(["parsePairs: skipped 1 of 3 pair lines (bad lines: 2)"]);
   });
 
+  it("a file whose every line is bad is refused", () => {
+    const jsonl = [JSON.stringify(PAIR).slice(0, 20), JSON.stringify({ ...PAIR, labels: "not-a-list" })].join("\n");
+
+    expect(() => parsePairs(jsonl)).toThrow("parsePairs: no valid pairs: skipped 2 of 2 pair lines (bad lines: 1, 2)");
+  });
+
+  it("an empty file is not a damaged one and still reads as no pairs", () => {
+    const errors = captureErrors();
+
+    expect(parsePairs("\n")).toEqual([]);
+    expect(errors()).toEqual([]);
+  });
+
   it("logs nothing for a clean file", () => {
     const errors = captureErrors();
 
