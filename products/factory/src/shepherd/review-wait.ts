@@ -34,7 +34,7 @@ export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal
 }
 
 /** Each wait for an unreachable broker doubles from the step's poll, up to this. */
-export const BROKER_DOWN_LONGEST_WAIT_MS = 2 * 60_000;
+const BROKER_DOWN_LONGEST_WAIT_MS = 2 * 60_000;
 /** A boot race or a broker restart clears well inside this; a broker still unreachable after it is an outage the seat must hear of (TP-4641). */
 export const DEFAULT_BROKER_DOWN_WAIT_MS = 15 * 60_000;
 
