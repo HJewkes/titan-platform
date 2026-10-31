@@ -65,7 +65,7 @@ export function reviewFillReport(db: Db, window: ReportWindow): ReviewFillReport
   const cells = new Map<string, Cell>();
   let unfilled = 0;
   let unresolved = 0;
-  for (const row of db.prepare(VERDICTS).all(window) as VerdictRow[]) {
+  for (const row of db.prepare<[object], VerdictRow>(VERDICTS).all(window)) {
     if (!row.prRef) unresolved += 1;
     const issuer = issuerOf(db, row);
     const band = issuer ? contextBand(issuer.tokens) : null;
@@ -82,12 +82,12 @@ export function reviewFillReport(db: Db, window: ReportWindow): ReviewFillReport
 function issuerOf(db: Db, row: VerdictRow): Issuer | null {
   const toolUseId = CHAT_KEY.exec(row.sourceKey)?.[1];
   if (!toolUseId || row.transcriptId === null) return null;
-  return (db.prepare(ISSUER).get({ toolUseId, transcriptId: row.transcriptId }) as Issuer | undefined) ?? null;
+  return db.prepare<[object], Issuer>(ISSUER).get({ toolUseId, transcriptId: row.transcriptId }) ?? null;
 }
 
 function readChangesByPr(db: Db): Map<string, string[]> {
   const byPr = new Map<string, string[]>();
-  for (const { prRef, ts } of db.prepare(CHANGES).all() as { prRef: string; ts: string }[]) byPr.set(prRef, [...(byPr.get(prRef) ?? []), ts]);
+  for (const { prRef, ts } of db.prepare<[], { prRef: string; ts: string }>(CHANGES).all()) byPr.set(prRef, [...(byPr.get(prRef) ?? []), ts]);
   return byPr;
 }
 

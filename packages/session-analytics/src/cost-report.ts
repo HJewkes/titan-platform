@@ -330,11 +330,13 @@ function wakePart(key: string, rows: readonly CostRow[]) {
   return { key, ...sumOf(rows), sessions, midLoopRequests: midLoop.length, midLoopCostUsd: sumOf(midLoop).costUsd };
 }
 
+const gapKeySchema = z.tuple([z.string(), z.string()]);
+
 function gapCells(rows: readonly CostRow[]): WakeGapCell[] {
   const keyOf = (row: CostRow) => JSON.stringify([row.wakeCause ?? NONE, row.gapBand ?? NONE]);
   return [...groupRows(rows, keyOf)]
     .map(([key, members]) => {
-      const [wakeCause, gapBand] = JSON.parse(key) as [string, string];
+      const [wakeCause, gapBand] = gapKeySchema.parse(JSON.parse(key));
       return { wakeCause, gapBand, ...sumOf(members) };
     })
     .sort((a, b) => b.costUsd - a.costUsd || a.wakeCause.localeCompare(b.wakeCause) || a.gapBand.localeCompare(b.gapBand));
