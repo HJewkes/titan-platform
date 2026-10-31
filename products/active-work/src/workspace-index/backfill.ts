@@ -34,7 +34,7 @@ export function flipWorkspaceSpans(graph: WorkspaceGraph): number {
     .run(WORKSPACE_SPAN_SOURCE_BASE).changes;
 }
 
-export interface WorkspaceBackfillStatus {
+interface WorkspaceBackfillStatus {
   /** `complete` once no legacy span remains; a graph that never held one starts there. */
   state: 'pending' | 'in_progress' | 'complete';
   legacySpans: number;
