@@ -41,15 +41,10 @@ const FULL_PREFIXES = ["scripts/fixtures/", ".github/"];
 const ROOT_TEST_INPUTS = new Set(["AGENTS.md", "CLAUDE.md"]);
 
 // Read by no test, live or by fixture; docs:build, lint and the changeset guard cover them.
-const NO_TEST_PATHS = new Set([
-  "README.md",
-  "CAPABILITIES.md",
-  "LICENSE",
-  "NOTICE",
-  "eslint-suppressions.json",
-  "eslint-suppressions.typed.json",
-]);
+const NO_TEST_PATHS = new Set(["README.md", "CAPABILITIES.md", "LICENSE", "NOTICE"]);
 const NO_TEST_PREFIXES = [".changeset/", "site/"];
+// A package's eslint baselines sit inside it, but they only change what lint reports.
+const LINT_BASELINE = /(?:^|\/)eslint-suppressions(?:\.typed)?\.json$/;
 
 // Edges the package graph cannot see, added on top of a path's own tests: files outside a package that its tests
 // read, and root scripts its tests run with what they load. factory's audit/production.test.ts runs
@@ -67,6 +62,7 @@ const startsWithAny = (path, prefixes) => prefixes.some((prefix) => path.startsW
 
 /** The tests a path owns: its member, the root script tests, none ([]), or null for a path this does not know. */
 function ownTestDirs(path, memberDirs) {
+  if (LINT_BASELINE.test(path)) return [];
   const member = memberDirs.find((dir) => path.startsWith(dir));
   if (member) return [member];
   if (ROOT_TEST_INPUTS.has(path) || path.startsWith(ROOT_TESTS) || path.startsWith("templates/")) return [ROOT_TESTS];

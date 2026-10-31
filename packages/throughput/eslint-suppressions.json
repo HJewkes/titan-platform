@@ -1,0 +1,7 @@
+{
+  "packages/throughput/src/backtest-sets.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  }
+}

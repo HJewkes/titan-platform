@@ -1,0 +1,20 @@
+{
+  "packages/eslint-plugin/src/max-function-lines.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/eslint-plugin/src/no-commented-code.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/eslint-plugin/src/no-internal-module-mock.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

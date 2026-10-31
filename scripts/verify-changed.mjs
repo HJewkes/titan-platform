@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
+import { TYPED_BASELINE } from "./lint-units.mjs";
 import { readWorkspace, testScope } from "./test-scope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -92,10 +93,12 @@ export function lintTypesScope(changed, workspace) {
   if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: "full" };
   const inMember = (path) => workspace.some((member) => path.startsWith(member.dir));
   const inputs = changed.filter((path) => !inMember(path) || SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
-  if (inputs.length === 0) return { mode: "none" };
-  const scope = testScope(inputs, workspace);
-  if (scope.mode !== "scoped") return { mode: scope.mode };
-  const dirs = scope.dirs.filter((dir) => dir !== ROOT_SCRIPTS).map((dir) => dir.replace(/\/$/, ""));
+  const scope = inputs.length === 0 ? { mode: "none" } : testScope(inputs, workspace);
+  if (scope.mode === "full") return { mode: "full" };
+  // A package's own baseline changes only that package's verdict, so it never reaches the dependents.
+  const baselines = workspace.filter((member) => changed.includes(`${member.dir}${TYPED_BASELINE}`)).map((member) => member.dir);
+  const reached = (scope.dirs ?? []).filter((dir) => dir !== ROOT_SCRIPTS);
+  const dirs = [...new Set([...reached, ...baselines])].map((dir) => dir.replace(/\/$/, "")).sort();
   return dirs.length === 0 ? { mode: "none" } : { mode: "scoped", dirs };
 }
 

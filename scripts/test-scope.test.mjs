@@ -46,7 +46,7 @@ describe("testScope", () => {
   });
 
   it("runs no tests for a diff of changesets, docs and lint suppressions only", () => {
-    const scope = testScope([".changeset/brave-fox.md", "site/guides/intro.md", "README.md", "eslint-suppressions.json"], workspace);
+    const scope = testScope([".changeset/brave-fox.md", "site/guides/intro.md", "README.md", "packages/a/eslint-suppressions.typed.json"], workspace);
 
     expect(scope).toEqual({ mode: "none" });
   });

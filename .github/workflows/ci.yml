@@ -75,7 +75,7 @@ jobs:
       - name: Restore eslint cache
         uses: actions/cache/restore@v4
         with:
-          path: .eslintcache
+          path: node_modules/.cache/lint
           key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
           restore-keys: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-
       - run: pnpm lint
@@ -83,7 +83,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
-          path: .eslintcache
+          path: node_modules/.cache/lint
           key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
       # It only orders files, so a miss leaves the step as it was and a hit never skips a test.

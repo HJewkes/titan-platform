@@ -38,11 +38,18 @@ the `repo` project, which `test:affected` runs only when their package changed. 
 
 CI also runs `pnpm lint:types` as a step of the `dag-check` job. It applies the type-aware rules
 `no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
-(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs one
-eslint process per chunk of workspace `src` dirs, in sequence, so no process nears the V8
-heap cap; it takes about a minute and names any chunk that runs out of heap. Existing hits live in `eslint-suppressions.typed.json` and are fixed when the
-file is next touched. Fix a new hit with a type guard or a parse, not a disable comment:
-`pnpm lint` does not run these rules, so it reports such a comment as unused.
+(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs up to
+four eslint processes at once, one per package that has a baseline and one per chunk of the
+rest, so no process nears the V8 heap cap; it takes about a minute and names any chunk that
+runs out of heap. Existing hits live in each package's own `eslint-suppressions.typed.json`
+and are fixed when the file is next touched. Fix a new hit with a type guard or a parse, not
+a disable comment: `pnpm lint` does not run these rules, so it reports such a comment as unused.
+
+The baselines are per package so two PRs clearing different packages touch no file in common.
+`pnpm lint` keeps its entries in `<package>/eslint-suppressions.json`. Entry keys stay
+relative to the repo root, and a package with no baseline has no file. To drop entries you
+fixed, run `pnpm lint:types --only=<package dir> --prune-suppressions`, or
+`pnpm lint --prune-suppressions` for the untyped baselines. A baseline that empties is deleted.
 
 ## Measuring what tests cost the machine
 

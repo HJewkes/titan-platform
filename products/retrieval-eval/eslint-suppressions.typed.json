@@ -1,0 +1,7 @@
+{
+  "products/retrieval-eval/src/pairs.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}
