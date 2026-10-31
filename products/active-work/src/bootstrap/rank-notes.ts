@@ -1,6 +1,7 @@
 import { fuseByRRF } from '@titan-design/retrieval';
 import type { LoadedNote } from '../notes/note-file.js';
-import { defaultGraphPath, openGraph } from '../session-index/graph.js';
+import type { SpanHit } from '@titan-design/store-sqlite';
+import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { selectTerms } from '../search/derive-query.js';
 import { graphTermStatistics } from '../search/document-frequency.js';
 import { meaningfulTerms, orExpression } from '../search/terms.js';
@@ -119,28 +120,33 @@ export function graphNoteRelevance(
     try {
       const { df, maxDf } = graphTermStatistics(graph);
       const expression = orExpression(selectTerms(terms, df, { maxDf }));
-      const titleOf = graph.db.prepare('SELECT title FROM note WHERE note_ref = ? LIMIT 1');
-      const seen = new Set<string>();
-      const hits: NoteHit[] = [];
       const spans = workspaceSpanTable(graph, spanOptions);
-      for (const span of spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' })) {
-        if (seen.has(span.ownerRef)) continue;
-        seen.add(span.ownerRef);
-        const row = titleOf.get(span.ownerRef) as { title: string } | undefined;
-        // SQLite's bm25() is negative, with better matches more negative. Divided by
-        // every subject term, not only the capped ones the floor was never measured on:
-        // the dropped common terms carried little bm25, so the total barely moves.
-        hits.push({
-          ref: span.ownerRef,
-          scorePerTerm: -span.rank / terms.length,
-          ...(row ? { title: row.title } : {}),
-        });
-      }
-      return hits;
+      return noteHits(graph, spans.search(expression, SEARCH_DEPTH, { ownerPrefix: 'note:' }), terms);
     } finally {
       graph.db.close();
     }
   };
+}
+
+/** One hit per note, in rank order, titled from the note table. */
+function noteHits(graph: WorkspaceGraph, spans: SpanHit[], terms: string[]): NoteHit[] {
+  const titleOf = graph.db.prepare('SELECT title FROM note WHERE note_ref = ? LIMIT 1');
+  const seen = new Set<string>();
+  const hits: NoteHit[] = [];
+  for (const span of spans) {
+    if (seen.has(span.ownerRef)) continue;
+    seen.add(span.ownerRef);
+    const row = titleOf.get(span.ownerRef) as { title: string } | undefined;
+    // SQLite's bm25() is negative, with better matches more negative. Divided by
+    // every subject term, not only the capped ones the floor was never measured on:
+    // the dropped common terms carried little bm25, so the total barely moves.
+    hits.push({
+      ref: span.ownerRef,
+      scorePerTerm: -span.rank / terms.length,
+      ...(row ? { title: row.title } : {}),
+    });
+  }
+  return hits;
 }
 
 export interface RankNotesInput {
