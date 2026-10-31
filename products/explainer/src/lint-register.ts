@@ -99,7 +99,7 @@ const per1k = (pattern: RegExp) => (s: SpokenText): number => (1000 * count(patt
 const punctuatedOnly = (measure: (s: SpokenText) => number | undefined) => (s: SpokenText): number | undefined =>
   s.punctuated ? measure(s) : undefined;
 
-const sentenceLengths = (s: SpokenText): number[] => s.sentences.map((sentence) => sentence.match(WORD)?.length ?? 0);
+export const sentenceLengths = (s: SpokenText): number[] => s.sentences.map((sentence) => sentence.match(WORD)?.length ?? 0);
 const mean = (xs: readonly number[]): number => xs.reduce((sum, x) => sum + x, 0) / xs.length;
 
 function sentenceMean(s: SpokenText): number | undefined {

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a run is judged by its exit status alone",
+      "file": "scripts/flake-repeat.mjs",
+      "find": "  if (UNHANDLED_ERRORS.test(output.replace(ANSI, \"\"))) return { ok: false, reason: \"unhandled errors reported\" };\n",
+      "replace": "",
+      "kills": [
+        "fails an unhandled-errors run even when every test passed"
+      ]
+    },
+    {
+      "name": "the guard runs a matching file once",
+      "file": "scripts/flake-repeat.mjs",
+      "find": "attempt <= repeats;",
+      "replace": "attempt <= 1;",
+      "kills": [
+        "runs a matching changed test file N times"
+      ]
+    },
+    {
+      "name": "a single star crosses path segments",
+      "file": "scripts/flake-repeat.mjs",
+      "find": "(star === \"*\" ? \"[^/]*\" : \"(?:.*/)?\")",
+      "replace": "(star === \"*\" ? \".*\" : \"(?:.*/)?\")",
+      "kills": [
+        "does not repeat a changed file outside every class"
+      ]
+    }
+  ]
+}
