@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { CheckRun } from "@titan-design/github";
 import { successRun } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
@@ -9,7 +10,7 @@ const BRIEF = { what: "w", why: "y", pros: ["p"], cons: ["c"], doorType: "two-wa
 
 function runWith(steps: Record<string, { at: string; result: unknown }>): WorkflowRun {
   const stepResults = Object.fromEntries(Object.entries(steps).map(([stepId, { at, result }]) => [stepId, { stepId, iteration: 0, agentId: null, signal: null, completedAt: at, data: { result } }]));
-  return { stepResults } as unknown as WorkflowRun;
+  return partialFake<WorkflowRun>({ stepResults });
 }
 
 const verdict = (head: string, kind: "MERGE" | "FIX_FIRST", ownerBrief?: unknown) => ({ kind: "verdict", verdict: kind, head, reviewer: { agentId: "rv" }, ...(ownerBrief !== undefined && { ownerBrief }) });
