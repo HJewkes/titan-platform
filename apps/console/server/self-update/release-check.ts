@@ -26,7 +26,7 @@ function stampedSha(text: string | undefined): string | undefined {
 }
 
 /** Why `release` is not a whole build of `sha`, or undefined when its bin and page have bytes and its stamp names `sha`. */
-export function releaseFault(ports: Pick<FlushPorts, "fileSize" | "readFile">, release: string, sha: string): string | undefined {
+function releaseFault(ports: Pick<FlushPorts, "fileSize" | "readFile">, release: string, sha: string): string | undefined {
   for (const name of NON_EMPTY) {
     const size = ports.fileSize(path.join(release, DIST, name));
     if (size === undefined || size === 0) return `${DIST}/${name} is ${size === undefined ? "missing" : "empty"}`;
