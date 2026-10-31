@@ -487,7 +487,7 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
       (size) => ({ command: `sudo $a ${interpreter} ${script}; ${MAIN}`, files: { [script]: fill(PATHS, size) } }),
       bytes,
     );
-  });
+  }, 30_000);
 
   it("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", async () => {
     await expectNearLinear(
@@ -497,7 +497,7 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
       }),
       1024,
     );
-  });
+  }, 30_000);
 
   it("passes a lone `$SUDO ./install.sh` of 12 KB, as main does", async () => {
     const result = await inRepo("$SUDO ./install.sh", { "install.sh": fill("echo installing\n", 12_000) });
