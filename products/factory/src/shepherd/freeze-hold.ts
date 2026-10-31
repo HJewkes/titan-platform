@@ -10,6 +10,7 @@ import { failingNotIn, failureReader, redRunsAt, type FailureReader } from "./fa
 import { FREEZE_RECHECK_MS, actionsRunsAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
 import { fixPrStallRoute } from "./fix-pr-stall.js";
 import { noticeHeldSeat } from "./gate-route.js";
+import { mainFixedSince } from "./main-fixed.js";
 import type { GateRun, PrTarget } from "./gates.js";
 import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -166,15 +167,31 @@ async function ciBaseOf(port: GitHubPort, input: HoldInput, baseSha: string): Pr
   return undefined;
 }
 
-function baseRedHold(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold {
+function heldOnBase(deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, reason: string): Hold {
   const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
-  const reason = `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`;
   return { hold: true, reason, episode: null, baseRed: { ...base, ...(seat && { seat }) } };
+}
+
+const baseRedHold = (deps: ShepherdDeps, input: HoldInput, base: Omit<BaseRed, "seat">, why: string): Hold =>
+  heldOnBase(deps, input, base, `${why}, and every failing check (${input.failing.join(", ")}) fails there too at the same step with the same failures`);
+
+/**
+ * A stale hold, merged up at once, when the since-moved base this head's CI ran against is red on every failing check,
+ * or when none passed there and a later base commit is green on them (TP-4650). A main-fixed read that fails holds nothing.
+ */
+async function staleBaseHold(deps: ShepherdDeps, input: HoldInput, base: { baseRef: string; baseSha: string; ciBase: string }, read: FailureReader): Promise<Hold | undefined> {
+  const { baseRef, baseSha, ciBase } = base;
+  const moved = `this head's CI ran against ${baseRef} at ${ciBase.slice(0, 7)}`;
+  const staleRed = { baseRef, baseSha: ciBase, stale: true };
+  if ((await notRedAt(deps.port, input, ciBase, read)).length === 0) return baseRedHold(deps, input, staleRed, `${moved}, red there and since moved to ${baseSha.slice(0, 7)}`);
+  const green = await mainFixedSince({ port: deps.port, repo: input.repo, baseRef, baseSha, ciBase, failing: input.failing }).catch(() => undefined);
+  if (green === undefined) return undefined;
+  return heldOnBase(deps, input, staleRed, `${moved}, where no failing check (${input.failing.join(", ")}) passed, and ${baseRef} went green on them at ${green.slice(0, 7)}`);
 }
 
 /**
  * Holds a red head whose every failing check also fails at the PR's base head, or at the since-moved base its CI ran
- * against, so a fixer is never woken to repair the base's red. Any read that fails passes, as does a base with no
+ * against, or failed there and has since gone green on the base, so a fixer is never woken to repair the base's red. Any read that fails passes, as does a base with no
  * completed red run there (R5: path-filtered base CI) or only cancelled ones.
  */
 async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: string): Promise<Hold> {
@@ -187,10 +204,8 @@ async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: str
     const own = await notRedAt(deps.port, input, baseSha, read);
     if (own.length === 0) return baseRedHold(deps, input, { baseRef, baseSha }, `the base ${baseRef} is red at ${baseSha.slice(0, 7)}`);
     const ciBase = await ciBaseOf(deps.port, input, baseSha).catch(() => undefined);
-    if (ciBase !== undefined && (await notRedAt(deps.port, input, ciBase, read)).length === 0) {
-      return baseRedHold(deps, input, { baseRef, baseSha: ciBase, stale: true }, `this head's CI ran against ${baseRef} at ${ciBase.slice(0, 7)}, red there and since moved to ${baseSha.slice(0, 7)}`);
-    }
-    return pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
+    const stale = ciBase === undefined ? undefined : await staleBaseHold(deps, input, { baseRef, baseSha, ciBase }, read);
+    return stale ?? pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
   } catch (error) {
     return pass(`${unfrozen}; the base could not be read: ${failureOf(error)}`);
   }
