@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { CodexRunRequest, HarnessRunProgress } from "./harness-contracts.js";
 import {
   SUPPORTED_CODEX_EXEC_VERSION,
@@ -10,6 +11,8 @@ import {
 } from "./codex-exec.js";
 import type { CodexProcessExit, CodexProcessInput, SupervisedCodexProcess } from "./codex-process.js";
 
+const verdictSchema = z.object({ verdict: z.string() });
+
 function request<T = string>(overrides: Partial<CodexRunRequest<T>> = {}): CodexRunRequest<T> {
   return {
     harness: "codex",
@@ -19,7 +22,7 @@ function request<T = string>(overrides: Partial<CodexRunRequest<T>> = {}): Codex
     wallTimeMs: 30_000,
     native: { model: "caller-selected", sandbox: "read-only", approvalPolicy: "never" },
     ...overrides,
-  } as CodexRunRequest<T>;
+  };
 }
 
 interface FakeProcessOptions {
@@ -140,7 +143,7 @@ describe("Codex exec command and policy", () => {
       ],
     },
   ])("rejects malformed adapter option %#", (options) => {
-    expect(() => createCodexExecAdapter(options as never)).toThrow(TypeError);
+    expect(() => Reflect.apply(createCodexExecAdapter, undefined, [options])).toThrow(TypeError);
   });
 
   it("requires an explicit model and noninteractive approval policy before version probing", async () => {
@@ -277,7 +280,7 @@ describe("Codex exec results", () => {
     const dispose = vi.fn(async () => undefined);
     const createSchemaFile = vi.fn(async () => ({ path: "/tmp/schema.json", dispose }));
     const runner = harness(fake.processHandle, { createSchemaFile });
-    const parse = vi.fn((value: unknown) => value as { verdict: string });
+    const parse = vi.fn((value: unknown) => verdictSchema.parse(value));
     const result = await runner.adapter.run(
       request<{ verdict: string }>({
         native: {

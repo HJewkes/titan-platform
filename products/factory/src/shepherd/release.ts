@@ -13,6 +13,7 @@ import { publishReview } from "./publish-review.js";
 import type { EffectivePolicy, MergeMode } from "./policy.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
+import { isRecord, readPath } from "../narrow.js";
 
 /** The branch the changesets action opens its "Version Packages" pull request from. */
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
@@ -201,7 +202,7 @@ function dependencyEdits({ base, head }: ManifestPair, field: (typeof DEPENDENCY
 
 function dependencyMap(value: unknown): Record<string, unknown> | null {
   if (value === undefined) return {};
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return isRecord(value) && !Array.isArray(value) ? value : null;
 }
 
 function publicPackages(pairs: readonly ManifestPair[]): string[] {
@@ -299,7 +300,7 @@ export function decideRelease(effective: EffectivePolicy, headSha: string | unde
 /** The passed preflight a MERGE verdict at `headSha` carries; a merged release reads its bumped versions here. */
 export function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
   const verdict = verdictFor(headSha);
-  const parsed = verdict?.kind === "MERGE" ? PreflightResult.safeParse((verdict.evidence as { release?: unknown } | null)?.release) : undefined;
+  const parsed = verdict?.kind === "MERGE" ? PreflightResult.safeParse(readPath(verdict.evidence, "release")) : undefined;
   return parsed?.success ? parsed.data : undefined;
 }
 

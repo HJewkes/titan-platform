@@ -7,6 +7,8 @@ import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
 import { SUPERSEDED, cancelUnlessSettled, gateHead } from "./stale-gates.js";
+import { readPath } from "../narrow.js";
+import { z } from "zod";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const ROUTE_TABLE = "shepherd-route";
@@ -59,9 +61,14 @@ export async function movedHead(services: ShepherdServices, runId: string, asked
   }
 }
 
-interface RecordedDecision {
-  result?: { outcome?: string; headSha?: string; reason?: string; rule?: { table?: string; rowId?: string } };
-}
+const RecordedDecision = z.looseObject({
+  outcome: z.string().optional(),
+  headSha: z.string().optional(),
+  reason: z.string().optional(),
+  rule: z.looseObject({ table: z.string().optional(), rowId: z.string().optional() }).optional(),
+});
+
+type RecordedDecision = z.infer<typeof RecordedDecision>;
 
 const DECISION_STEP = /^merge-policy(?::r(\d+))?:(\d+)$/;
 
@@ -76,18 +83,18 @@ function compareOrder([roundA, indexA]: [number, number], [roundB, indexB]: [num
 }
 
 /** The last merge decision the run recorded; a result that does not parse reads as none, so its gate stays. */
-function lastMergeDecision(run: WorkflowRun): RecordedDecision["result"] {
+function lastMergeDecision(run: WorkflowRun): RecordedDecision | undefined {
   const decisions = Object.values(run.stepResults).filter((result) => DECISION_STEP.test(result.stepId));
   const last = decisions.sort((a, b) => compareOrder(decisionOrder(a.stepId), decisionOrder(b.stepId))).at(-1);
   try {
-    return last ? (JSON.parse(last.output ?? "{}") as RecordedDecision).result : undefined;
+    return last ? RecordedDecision.safeParse(readPath(JSON.parse(last.output ?? "{}"), "result")).data : undefined;
   } catch {
     return undefined;
   }
 }
 
 /** The run's last decision when it gated the very head the prompt asks about and the prompt names its rule; any other last decision reads as none. A route gate at the same head, a conflict after the decision, names another rule. */
-function gatingDecision(run: WorkflowRun, prompt: string): RecordedDecision["result"] {
+function gatingDecision(run: WorkflowRun, prompt: string): RecordedDecision | undefined {
   const asked = gateHead(prompt);
   const decision = lastMergeDecision(run);
   const named = decision?.rule !== undefined && prompt.includes(`Policy ${decision.rule.table}/`);
@@ -147,7 +154,7 @@ function routeGateHead(run: WorkflowRun, gate: PendingGate["gate"]): string | un
 }
 
 function schemaHead(schema: unknown): string | undefined {
-  const head = (schema as { properties?: { headSha?: { const?: unknown } } } | undefined)?.properties?.headSha?.const;
+  const head = readPath(schema, "properties", "headSha", "const");
   return typeof head === "string" ? head : undefined;
 }
 
