@@ -119,7 +119,7 @@ export function scanTasks(
   if (docs === undefined) return abandoned({ query: empty }, deadlineMs);
 
   const df = documentFrequency(docs);
-  const query = deriveQuery(input.text, (term) => df.get(term) ?? 0, ALL_TERMS);
+  const query = deriveQuery(input.text, (term) => df.get(term) ?? 0, { limit: ALL_TERMS });
   if (query.terms.length === 0) {
     const degraded = [{ source: 'query', reason: 'empty', message: 'no query terms' }];
     return { hits: [], degraded, query };
