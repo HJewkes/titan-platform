@@ -29,15 +29,6 @@
       ]
     },
     {
-      "name": "a passing gate record with failure: null is rejected",
-      "file": "products/factory/src/build-surface/schemas.ts",
-      "find": "failure: GateFailureSchema.nullish() })",
-      "replace": "failure: GateFailureSchema.optional() })",
-      "kills": [
-        "a fresh build-surface start over a branch a stopped run left behind picks up a branch whose passing gate record carries failure: null"
-      ]
-    },
-    {
       "name": "a slice whose head is in the base is built again",
       "file": "products/factory/src/build-surface/routes.ts",
       "find": "return ancestry.status === 0 ? {",

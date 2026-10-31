@@ -45,17 +45,6 @@ describe("a fresh build-surface start over a branch a stopped run left behind", 
     expect(fake.commands.find((command) => command.argv[1] === "preview")!.env.BS_HEAD).toBe(head);
   });
 
-  it("picks up a branch whose passing gate record carries failure: null", async () => {
-    const { fake, host, runId } = pickUp([{ gate: "G1", slice: "SHELL", pass: true, dirty: false, score: 1, failure: null }]);
-    await approveDeploy(host, runId, "shell", 1);
-    await gateOpened(host, gateId(runId, "final-walk"));
-    host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
-
-    await host.runtime.wait(runId);
-
-    expect(fake.agentCalls).toEqual(["bs-review:shell:0:0"]);
-  });
-
   it("implements again when the left branch has a failing gate at its head", async () => {
     const { fake, host, runId } = pickUp([{ gate: "G1", pass: true }, { gate: "G4", pass: false, score: 0.4 }]);
     await approveDeploy(host, runId, "shell", 1);
