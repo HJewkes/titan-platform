@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "../writing-statuses-fixtures.test-helpers.js";
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
@@ -12,6 +13,9 @@ import { runStageCli } from "./stage-cli.js";
 
 const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
 import { cloneFixture, dropSeeds, fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
+
+// The rewrite stage's tests need a choppy draft the rewrite acts on, whatever the shipped status table says (TP-4662).
+usePreCalibrationStatuses();
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());

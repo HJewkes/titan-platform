@@ -148,7 +148,10 @@ function vagueRejections(before: string, after: BeatRewrite): BeatRejection[] {
   }));
 }
 
-/** A beat may keep a colon, tail, semicolon or "let's" it had, but not gain one: these rows cap near zero in any state. */
+/**
+ * A beat may keep a colon, tail, semicolon, "let's" or "no X" it had, but not gain one: these rows cap with no floor,
+ * so a rewrite never needs to add one.
+ */
 function deviceRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const was = spokenText([before]).text;
   const now = spokenText([after.spoken]).text;

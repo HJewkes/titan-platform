@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lets stays protected whatever its status",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "new Set([...humanSignalRowsAt(words)].map(",
+      "replace": "new Set([...humanSignalRowsAt(words), \"lets\"].map(",
+      "kills": [
+        "protectedRows never protects lets, which is report-only or dropped at every length"
+      ]
+    },
+    {
+      "name": "Q-V11 warns on a report-only or dropped row",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "s.words.length >= MIN_REGISTER_WORDS && !reportedOnly.has(metric);",
+      "replace": "s.words.length >= MIN_REGISTER_WORDS;",
+      "kills": [
+        "Q-V11 rows follow the status table at the script's own length never warns on a row that is report-only or dropped at 300-599 words, however far out of band"
+      ]
+    }
+  ]
+}

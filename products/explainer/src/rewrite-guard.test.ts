@@ -132,6 +132,17 @@ describe("guardBeat", () => {
       expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
     });
 
+    it("rejects a \"no X\" the original lacked", () => {
+      const after = { spoken: "The desk server checks each scan. The ledger keeps the rows. No clerk retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("accepts a \"no X\" the original already said", () => {
+      const before = "The desk server checks each scan. The ledger keeps the rows. No clerk retypes them.";
+      const after = { spoken: "The desk server checks every scan. The ledger keeps the rows. No clerk retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, before), after)).not.toContain("device-added");
+    });
+
     it("accepts a rewrite that keeps an existing colon", () => {
       const after = { spoken: "The desk server checks every scan. The ledger keeps one thing: the rows. Nobody retypes them.", labelsAdded: [] };
       expect(rules(beatWith({}, COLONED), after)).not.toContain("device-added");
