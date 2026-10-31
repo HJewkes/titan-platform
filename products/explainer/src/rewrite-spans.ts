@@ -23,7 +23,7 @@ export const collapsible = (triad: string, visual: CueVisual): boolean => cuedWo
 // "thirty to thirty-five" and "30–35" say one claim with two numbers; "between thirty and thirty-five" is already one span.
 const RANGE_JOIN = /^\s*(?:to|through|–|—|-)\s*$/i;
 
-export interface NumberRange {
+interface NumberRange {
   low: TextSpan;
   high: TextSpan;
 }
