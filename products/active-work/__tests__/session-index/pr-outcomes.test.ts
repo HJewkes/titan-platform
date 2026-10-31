@@ -185,6 +185,30 @@ describe('the gh PR resolver', () => {
     expect(summary.prsPolled).toBe(3);
   });
 
+  it('a gh answer with a wrong-typed field is reported in errors and leaves the PR unchecked', async () => {
+    addPr(3);
+    const gh = fakeGh({ 'acme/demo#3': pr({ reviews: 'not-a-list' }) });
+    const errors: string[] = [];
+
+    const resolution = await ghPrResolver(graph, { run: gh, errors })([
+      { prRef: 'pr:acme/demo#3', repo: 'acme/demo', number: 3 },
+    ]);
+
+    expect(resolution.size).toBe(0);
+    expect(errors).toEqual(['prs: acme/demo#3: unexpected gh pr view output at reviews']);
+  });
+
+  it('a gh answer with unknown keys still resolves', async () => {
+    addPr(4);
+    const gh = fakeGh({ 'acme/demo#4': pr({ state: 'MERGED', isCrossRepository: false }) });
+
+    const resolution = await ghPrResolver(graph, { run: gh })([
+      { prRef: 'pr:acme/demo#4', repo: 'acme/demo', number: 4 },
+    ]);
+
+    expect(resolution.get('pr:acme/demo#4')).toMatchObject({ state: 'MERGED' });
+  });
+
   it('a gh failure is reported in errors and the pass succeeds', async () => {
     const root = path.join(dir, 'projects');
     mkdirSync(root, { recursive: true });
