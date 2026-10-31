@@ -1,7 +1,7 @@
 import { statusCheckRuns, type GitHubPort, type RepoSlug } from "@titan-design/github";
 
 /** The commit-status contexts a repo's CI posts instead of Actions runs; empty for every repo that has none configured. */
-export type StatusContexts = (repo: RepoSlug) => readonly string[];
+type StatusContexts = (repo: RepoSlug) => readonly string[];
 
 /** Reads `shepherd.repos.<repo>.statusContexts` afresh on each call; keys match in any case, and every matching key counts. */
 export function configuredStatusContexts(read: () => Readonly<Record<string, { statusContexts?: readonly string[] }>> | undefined): StatusContexts {

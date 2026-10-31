@@ -93,10 +93,7 @@ function isTimeZone(zone: string): boolean {
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
 const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
 
-export const DigestPushConfigSchema = z.strictObject({
-  url: httpUrl,
-  tokenFile: absolutePath.optional(),
-});
+export const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
 
 export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
 
