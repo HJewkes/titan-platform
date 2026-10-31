@@ -38,7 +38,7 @@ export interface RpcHooks<M extends CommandMap> {
 
 /** Binds the hooks to a product's command map; the hooks themselves are untyped underneath. */
 export function createRpcHooks<M extends CommandMap>(): RpcHooks<M> {
-  return { useQuery, useEvents, useInvalidate, useInvalidateOn } as unknown as RpcHooks<M>;
+  return { useQuery, useEvents, useInvalidate, useInvalidateOn } as RpcHooks<M>;
 }
 
 function useQuery(name: string, args?: unknown): QueryResult<unknown> {

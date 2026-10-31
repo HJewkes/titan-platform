@@ -736,36 +736,6 @@
       "count": 2
     }
   },
-  "packages/coordinator/src/charter-policy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/coordinator/src/charter-policy.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/coordinator/src/coordinator-config.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/coordinator/src/import-autonomy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/coordinator/src/import-autonomy.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "packages/coordinator/src/seat-state.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/egress-scan/src/allow.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -901,24 +871,6 @@
     }
   },
   "packages/react-app/src/hooks/hooks.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "packages/react-app/src/hooks/query-store.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/react-app/src/vite/dev-proxy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/react-app/src/vite/index.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

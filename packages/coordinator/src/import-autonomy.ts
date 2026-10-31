@@ -24,13 +24,14 @@ function repoIdFor(repos: RepoTable, repo: SeatRepo): string {
   }
 }
 
-// The loose seat types carry index signatures, which defeat Omit, so the result is cast back.
-function without<T extends object>(value: T, keys: readonly string[]): T {
-  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key))) as T;
+// The loose seat types carry index signatures, which defeat Omit, so keys are dropped at runtime.
+function dropKeys(value: object, keys: readonly string[]): void {
+  for (const key of keys) Reflect.deleteProperty(value, key);
 }
 
 function toCoordinatorSeat(repos: RepoTable, seat: SeatConfig): CoordinatorSeat {
-  const { repos: inline, ...rest } = without(seat, ["schema", "name", "config_dir"]);
+  const { repos: inline, ...rest } = seat;
+  dropKeys(rest, ["schema", "name", "config_dir"]);
   return inline === undefined ? rest : { ...rest, repos: inline.map((repo) => repoIdFor(repos, repo)) };
 }
 
@@ -73,15 +74,21 @@ export function importAutonomyTree(
   };
 }
 
+function known<V>(value: V | undefined, what: string): V {
+  if (value === undefined) throw new Error(`${what} is not defined in the document`);
+  return value;
+}
+
 function toSeatFile(config: CoordinatorConfig, name: string, seat: CoordinatorSeat): SeatConfig {
-  const { repos, ...rest } = without(seat, ["dispatch"]);
-  const inline = repos?.map((id) => config.repos[id] as SeatRepo);
-  const pool = config.limits.pools[seat.pool];
+  const { repos, ...rest } = seat;
+  dropKeys(rest, ["dispatch"]);
+  const inline = repos?.map((id) => known(config.repos[id], `repo ${id}`));
+  const pool = known(config.limits.pools[seat.pool], `pool ${seat.pool}`);
   return {
     schema: "autonomy-seat/v1",
     name,
     ...rest,
-    config_dir: (pool as { config_dir: string }).config_dir,
+    config_dir: pool.config_dir,
     ...(inline === undefined ? {} : { repos: inline }),
   };
 }
