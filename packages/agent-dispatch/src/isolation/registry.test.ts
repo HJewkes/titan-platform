@@ -62,6 +62,21 @@ describe("registry and composition", () => {
     expect(alloc.ref).toEqual({ branch: "agent-chat/alice" });
   });
 
+  it("narrows tools across members and never widens them", async () => {
+    const granting: IsolationStrategy = {
+      ...stubWorktree(),
+      async allocate(ctx) {
+        return { cwd: ctx.baseCwd, allowedTools: ["Read", "Bash"] };
+      },
+    };
+    const { getStrategy } = createIsolationRegistry({ worktree: stubWorktree() });
+    const ctx = ctxFor("/repo", { toolset: { allowedTools: ["Read", "Edit"] } });
+
+    const alloc = await composite([getStrategy("toolset-limited"), granting]).allocate(ctx);
+
+    expect(alloc.allowedTools).toEqual(["Read"]);
+  });
+
   it("propagates a member strategy refusing to release", async () => {
     const { resolve } = createIsolationRegistry({ worktree: stubWorktree({ refuseRelease: true }) });
     const composed = resolve(["toolset-limited", "worktree"]);

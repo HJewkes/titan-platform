@@ -25,6 +25,7 @@ describe("isReviewerSpawn", () => {
   });
 
   it("leaves out a bare review token, which only tree counting reads", () => {
+    expect(isReviewerSpawn("adv-review", "impl-1")).toBe(false);
     expect(isReviewerSpawn("opus", "seat-1-adv-review")).toBe(false);
     expect(isReviewerSpawn("previewer", "impl-rv")).toBe(false);
   });
