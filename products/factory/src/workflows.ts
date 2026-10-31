@@ -58,6 +58,7 @@ import { boundCheckout, loadSeatBook, lookupSeat, seatBaselineCheck, type SeatBo
 import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
+import { configuredStatusContexts, withStatusChecks } from "./shepherd/status-checks.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
 import { proofWaiverMigration } from "./shepherd/proof-waiver.js";
 import { planApprovalMigration } from "./shepherd/plan-approval.js";
@@ -311,7 +312,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const limits = liveSpawnLimits(configuredSpawnLimits(shepherd), config);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
   const client = sharedOctokit();
-  const port = overrides.port ?? githubPort(octokitWire({ client }));
+  const port = withStatusChecks(overrides.port ?? githubPort(octokitWire({ client })), configuredStatusContexts(() => config.get().shepherd?.repos));
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const movedPast = movedPastOnList((repo) => snapshot.cachedOpen?.(repo));
