@@ -141,7 +141,7 @@ function ChoiceButtons({ choices, confirm, testID }: { choices: readonly TapConf
 type SheetBodyProps<R extends TapReady> = Pick<TapSheetProps<R>, "reading" | "command" | "renderReadBack" | "testID"> & { sheet: Sheet<R> };
 
 function SheetBody<R extends TapReady>({ sheet, reading, command, renderReadBack, testID }: SheetBodyProps<R>): ReactNode {
-  if (sheet.status === "reading") return <Spinner size="sm" label={reading} />;
+  if (sheet.status === "reading") return <Spinner size="sm" label={reading} testID={`${testID}-reading`} />;
   if (sheet.status === "refused") return <TerminalFallback message={`The console cannot take this tap: ${sheet.reason}`} command={command} testID={testID} />;
   // The outcome leads, so a short phone sheet never scrolls it out of sight below the read-back.
   return (

@@ -5,6 +5,7 @@ import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { renderPage } from "./render-page.test-helpers.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 const NOW = "2031-03-05T12:00:00.000Z";
 const HEAD = "0b7e2c1a5d4f4e8b9a1c3d5e7f9b0a2c4e6d8f01";
@@ -67,8 +68,8 @@ describe("the inbox page's Approve merge rows", () => {
   it("the confirm sheet shows the same lineage line", async () => {
     renderInbox(mergeGate(LINEAGE));
     fireEvent.click(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge"));
-    const sheet = await screen.findByTestId("inbox-confirm");
-    expect((await within(sheet).findByTestId("ship-lineage")).textContent).toBe(LINEAGE_TEXT);
+    const sheet = await findTapSheet("inbox-confirm");
+    expect(within(sheet).getByTestId("ship-lineage").textContent).toBe(LINEAGE_TEXT);
   });
 
   it("a gate with no lineage shows lineage unknown", async () => {
