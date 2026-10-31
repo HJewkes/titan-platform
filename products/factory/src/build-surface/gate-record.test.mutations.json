@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a passing gate record with failure: null is rejected",
+      "file": "products/factory/src/build-surface/schemas.ts",
+      "find": "failure: GateFailureSchema.nullish() })",
+      "replace": "failure: GateFailureSchema.optional() })",
+      "kills": [
+        "a stopped run's branch whose gate record is written as the gate README documents a pass a passing record with failure: null is picked up as green"
+      ]
+    }
+  ]
+}

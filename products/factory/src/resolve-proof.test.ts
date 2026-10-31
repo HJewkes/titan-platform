@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CLIENT_HEADER, listTools, silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { defineWorkflow } from "./definition.js";
 import { holdSinceOf } from "./hold-release-proof.js";
 import { holdDigest, itemsDigest, keyIdOf, type ProofItem } from "./presence-proof.js";
@@ -15,7 +16,6 @@ import { TEST_BRIEF } from "./test-support/brief.js";
 import { rootStat, useOwnerKeyDir } from "./test-support/owner-edges.js";
 import { REPO as SHEPHERD_REPO } from "./test-support/land.js";
 import { callCommand, shepherdFixture } from "./test-support/shepherd.js";
-import { isRecord } from "./narrow.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { FactoryContext } from "./registry.js";
 
@@ -99,7 +99,7 @@ const post = (server: FactoryServer, body: string, path = RESOLVE_PROOF_PATH): P
 
 const health = async (server: FactoryServer): Promise<Record<string, unknown>> => {
   const body: unknown = await (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
-  if (!isRecord(body)) throw new Error("/health answered no object");
+  if (!isObjectLike(body)) throw new Error("/health answered no object");
   return body;
 };
 

@@ -53,7 +53,7 @@ how it fails.
 
 ## End-to-end stories
 
-- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages composed into
+- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages composed into
   one product. Follows a refresh and a search through the DAG, with real output.
 - **[Case study: adopting registry and daemon](/guides/adopting-a-package)** — active-work
   replacing two hand-written modules with packages: about a thousand lines deleted, 1,321

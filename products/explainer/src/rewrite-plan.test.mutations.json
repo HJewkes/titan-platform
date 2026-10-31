@@ -9,6 +9,24 @@
       "kills": [
         "planRegisterEdits: over-represented phrases names no phrase once the phrases row passes"
       ]
+    },
+    {
+      "name": "the plan directs the collapse of a list its screen cues on",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": ".filter((triad) => collapsible(triad, beat.visual))",
+      "replace": "",
+      "kills": [
+        "planRegisterEdits: numbers and triads directs no collapse of a list whose items the screen cues on, and still directs one with a single cued item"
+      ]
+    },
+    {
+      "name": "the numbers directive lists each end of a range on its own",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "{ numbers: numberUnits(text) }",
+      "replace": "{ numbers: numberSpans(text).map((span) => span.text) }",
+      "kills": [
+        "planRegisterEdits: numbers and triads names a number range as one mention, so the directive never offers to cut one end"
+      ]
     }
   ]
 }

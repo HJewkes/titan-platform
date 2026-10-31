@@ -50,7 +50,7 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
-  /** `shadow` records, after each round, what review-workflow would have decided, and dispatches nothing; `on:preflight` and `on` run as `off` until TP-3928 and TP-3929. Absent means `off`. */
+  /** `shadow` records, after each round, what review-workflow would have decided, and dispatches nothing; `on:preflight` refuses a head whose planned members could only be refused at dispatch; `on` runs as `off` until TP-3929. Absent means `off`. */
   workflow: z.enum(["off", "shadow", "on:preflight", "on"]).optional(),
   /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
   adversaryProfile: profileName.optional(),

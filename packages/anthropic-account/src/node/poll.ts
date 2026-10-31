@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { z } from "zod";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
@@ -8,7 +9,6 @@ import { clearBackoff, nextBackoff, readBackoff, writeBackoff, type PollBackoff 
 import { discoverProfiles, type DiscoverOptions } from "./profiles.js";
 import { redactedError } from "./redact-error.js";
 import { writeReading } from "./usage-file.js";
-import { isRecord } from "./narrow.js";
 
 export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 // The beta flag Claude Code itself sends with an OAuth bearer token.

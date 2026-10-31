@@ -315,6 +315,23 @@ describe('v1 precedents.jsonl rows', () => {
     });
   });
 
+  it('count invalid JSON and non-object lines as malformed without dropping good rows', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', [
+        '{truncated',
+        'null',
+        '[1, 2]',
+        v1Row('Cut the release now?', 'Cut 0.9.0 now (Recommended)'),
+      ]);
+      writeCharter(activeRoot, []);
+
+      const read = await readLedgerRows(activeRoot);
+
+      expect(read.malformed).toBe(3);
+      expect(read.rows.map((row) => row.recommended)).toEqual(['Cut 0.9.0 now']);
+    });
+  });
+
   it('dedupe with the v2 row of the same call by key', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       registerWorktree(activeRoot);

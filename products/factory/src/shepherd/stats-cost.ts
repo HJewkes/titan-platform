@@ -2,9 +2,10 @@ import os from "node:os";
 import { priceRequest } from "@titan-design/session-analytics";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedObservationOf } from "@titan-design/session-read";
 import type { WorkflowRun } from "@titan-design/workflow";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { median, p90 } from "./stage-times.js";
 import { inRange, isoWeek, mergedAt, payloadOf, stepName } from "./stats.js";
-import { errnoCode, readPath } from "../narrow.js";
+import { readPath } from "../narrow.js";
 
 /** Disjoint token counts: `input` excludes cache reads and writes. */
 interface CostTokens {
@@ -287,7 +288,7 @@ export function claudeTranscripts(namespace = os.hostname()): TranscriptPort {
           if (request) requests.set(request.responseId, { ...request, at: requests.get(request.responseId)?.at ?? request.at });
         }
       } catch (error) {
-        if (errnoCode(error) === "ENOENT") return { ok: false, reason: "missing transcript" };
+        if (errorCode(error) === "ENOENT") return { ok: false, reason: "missing transcript" };
         return { ok: false, reason: `parse error: ${error instanceof Error ? error.message : String(error)}` };
       }
       return { ok: true, requests: [...requests.values()] };

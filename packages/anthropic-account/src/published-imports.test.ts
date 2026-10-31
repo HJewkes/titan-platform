@@ -44,6 +44,6 @@ describe("the published dist", () => {
   });
 
   it("is scanned for the packages it really imports, so the dependency check is not vacuous", () => {
-    expect(importedPackages()).toEqual(["zod"]);
+    expect(importedPackages()).toEqual(["@titan-design/rpc-protocol", "zod"]);
   });
 });

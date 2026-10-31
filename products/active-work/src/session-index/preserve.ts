@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { WorkspaceGraph } from './graph.js';
 
 /**
@@ -100,14 +101,28 @@ export function listPreserved(graph: WorkspaceGraph): PreservedRow[] {
       }
     >('SELECT * FROM preserved_row ORDER BY table_name, row_key')
     .all();
-  return rows.map((row) => ({
-    table: row.table_name,
-    identity: JSON.parse(row.identity) as string[],
-    key: row.row_key,
-    payload: JSON.parse(row.payload) as Record<string, string | number | null>,
-    origin: row.origin,
-    mode: row.mode,
-  }));
+  return rows.flatMap((row) => {
+    const identity = parseJsonColumn(row.identity, IdentitySchema);
+    const payload = parseJsonColumn(row.payload, PayloadSchema);
+    if (identity === null || payload === null) {
+      process.stderr.write(`preserved_row ${row.table_name}/${row.row_key}: malformed JSON; skipped\n`);
+      return [];
+    }
+    const { table_name: table, row_key: key, origin, mode } = row;
+    return [{ table, identity, key, payload, origin, mode }];
+  });
+}
+
+const IdentitySchema = z.array(z.string());
+const PayloadSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+
+function parseJsonColumn<S extends z.ZodType>(text: string, schema: S): z.output<S> | null {
+  try {
+    const parsed = schema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Stop preserving a row — for one recovered by mistake, or superseded by a real source. */

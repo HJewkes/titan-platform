@@ -6,6 +6,7 @@ import zlib from "node:zlib";
 import { PNG } from "pngjs";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { decodePngBounded } from "./png-bounded.js";
+import { encodePng } from "./png-encode.js";
 
 const MiB = 1024 * 1024;
 const LIMITS = { maxPixels: 16 * MiB };
@@ -193,15 +194,31 @@ describe("decodePngBounded decodes what Playwright writes", () => {
   });
 });
 
-describe("factory runtime code", () => {
+describe("png-delta runtime code", () => {
   it("never imports pngjs, so untrusted snapshots only reach the bounded decoder", () => {
-    const src = fileURLToPath(new URL("..", import.meta.url));
+    const src = fileURLToPath(new URL(".", import.meta.url));
     const runtime = readdirSync(src, { recursive: true, encoding: "utf8" })
       .filter((path) => /\.[cm]?tsx?$/.test(path) && !/\.test(-helpers)?\.ts$/.test(path));
 
     const importers = runtime.filter((path) => /["']pngjs["']/.test(readFileSync(join(src, path), "utf8")));
 
-    expect(runtime.length).toBeGreaterThan(100);
+    expect(runtime).toContain("delta.ts");
     expect(importers).toEqual([]);
+  });
+});
+
+describe("encodePng", () => {
+  it("writes a PNG the bounded decoder and pngjs both read back pixel for pixel", () => {
+    const image = noise(23, 17, false);
+    const decoded = { width: 23, height: 17, rgba: new Uint8Array(image.data) };
+
+    const encoded = encodePng(decoded);
+
+    expect(decodePngBounded(encoded, LIMITS)).toEqual(decoded);
+    expect(new Uint8Array(PNG.sync.read(encoded).data)).toEqual(decoded.rgba);
+  });
+
+  it("refuses rgba whose length does not match its size", () => {
+    expect(() => encodePng({ width: 2, height: 2, rgba: new Uint8Array(12) })).toThrow(RangeError);
   });
 });

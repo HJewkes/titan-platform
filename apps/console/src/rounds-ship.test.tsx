@@ -136,7 +136,6 @@ describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
     expect(panelLabels("badge-new")).toEqual(["AFTER (head)"]);
     expect(within(screen.getByTestId("montage-badge-new")).getByText("NEW")).toBeTruthy();
     expect(within(screen.getByTestId("montage-tile-light")).queryByText("NEW")).toBeNull();
-    expect(within(screen.getByTestId("montage-panel-wide")).getByText("No diff image: compare before and after side by side.")).toBeTruthy();
   });
 
   it("pairs the light and dark renders of one image", async () => {

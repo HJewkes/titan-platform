@@ -1,5 +1,6 @@
 import type { LineSource } from "@titan-design/evidence";
 import type { z } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { BeatSlotError, emphasisTargets, parseBeatSlots } from "../beat-load.js";
 import type { BeatSpec } from "../beat-schema.js";
 import { isSlotRef, type BeatSlotRef } from "../beat-slots.js";
@@ -68,8 +69,6 @@ export class FillError extends Error {
 
 const LIST = "list";
 const NOTHING: Derived = { slots: {}, reveals: [] };
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 function drawnSpec(specs: ReadonlyMap<string, BeatSpec>, type: string): { spec: BeatSpec; ref: BeatSlotRef } | string {
   const spec = specs.get(type);

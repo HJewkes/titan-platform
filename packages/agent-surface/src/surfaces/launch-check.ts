@@ -1,6 +1,6 @@
-import { isRecord } from "../guards.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * Did the launcher actually start in the pane just opened?
@@ -54,7 +54,7 @@ export const psProbe: ProcessProbe = async tty => {
     return stdout.split("\n").filter(line => line.trim() !== "");
   } catch (err) {
     // ps exits 1 with no output when nothing is on the tty, which is an answer.
-    if (isRecord(err) && err.code === 1 && err.stdout === "") return [];
+    if (isObjectLike(err) && err.code === 1 && err.stdout === "") return [];
     throw err;
   }
 };

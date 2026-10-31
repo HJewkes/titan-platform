@@ -186,6 +186,22 @@ describe("lint exit codes", () => {
     expect(ran).toHaveLength(3);
   });
 
+  it("exits 2 when one package's baseline is stale and a sibling unit started earlier finishes clean after it (TP-4651)", async () => {
+    let finishSibling;
+    const siblingDone = new Promise((resolve) => {
+      finishSibling = resolve;
+    });
+    const run = async (unit) => {
+      if (unit.patterns[0] === "g0") return siblingDone;
+      finishSibling({ status: 0, signal: null });
+      return { status: 2, signal: null, output: "There are suppressions left that do not occur anymore.\n" };
+    };
+
+    const code = await runUnits(unitsOfSize(2, 1), { run, log: () => {}, limit: 2 });
+
+    expect(code).toBe(2);
+  });
+
   it("never runs more units at once than the limit", async () => {
     let running = 0;
     let peak = 0;

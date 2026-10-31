@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a clean-head needs-fixer round is re-reviewed under a new name, failing a round",
+      "file": "products/factory/src/shepherd/route-table.ts",
+      "find": "\"needs-fixer\": \"await-fixer\", carried: \"merge\" };",
+      "replace": "\"needs-fixer\": \"fresh-reviewer\", carried: \"merge\" };",
+      "kills": ["review.workflow on:preflight in Shepherd's review round routes the needs-fixer round to await-fixer and counts no failed round"]
+    },
+    {
+      "name": "on:preflight skips the preflight, so the refusal names no fingerprint",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "preflightOn(wired.workflow) ? await preflightPlan(",
+      "replace": "false ? await preflightPlan(",
+      "kills": ["review.workflow on:preflight in Shepherd's review round holds tp#1986's head on its fixer fingerprint and records no adversary step"]
+    },
+    {
+      "name": "a member lowered to an uninstalled profile is not caught by preflight",
+      "file": "products/factory/src/shepherd/review-preflight.ts",
+      "find": "if (error instanceof UninstalledProfileError) return needsFixer(error.profile);",
+      "replace": "if (error instanceof UninstalledProfileError && error.profile === \"\") return needsFixer(error.profile);",
+      "kills": ["review.workflow on:preflight in Shepherd's review round holds tp#1986's head on its fixer fingerprint and records no adversary step"]
+    },
+    {
+      "name": "an uninstalled adversaryProfile loads",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "if (!installed(profile)) throw",
+      "replace": "if (false) throw",
+      "kills": ["the adversaryProfile config-load check fails a config whose adversaryProfile is not installed"]
+    },
+    {
+      "name": "an adversaryProfile lowered to an uninstalled profile loads",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "if (lowered !== undefined && !installed(lowered)) throw",
+      "replace": "if (lowered !== undefined && installed(lowered)) throw",
+      "kills": ["the adversaryProfile config-load check fails a config whose adversaryProfile would be lowered to an uninstalled profile (tp#1986)"]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
+import { DeltaPanel } from "./ShipDelta.js";
 import { UnchangedFrames, WhatShips, splitUnchanged } from "./ShipPairs.js";
 import { ShipTarget } from "./ShipTabs.js";
 import { stackedLabel, stackedPrefixes } from "./ship-stack.js";
@@ -97,6 +98,9 @@ function panelsOf(views: readonly FrameView[]): { label: string; side: string; v
 
 function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame }): ReactNode {
   const isNew = !frame.views.includes("base");
+  const measured = !isNew && !frame.unchanged;
+  const panels = panelsOf(frame.views);
+  const columns = measured && panels.length >= 3 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3";
   return (
     <ShipTarget target={{ kind: "frame", key: frame.key }}>
       <FrameFigure frameKey={frame.key} label={frame.label} pinnable={false} testID={`montage-${frame.key}`}>
@@ -105,15 +109,15 @@ function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame })
           {frame.theme ? <Pill variant="subtle" size="xs">{frame.theme}</Pill> : null}
           {isNew ? <Badge color="info" size="sm">NEW</Badge> : null}
         </HStack>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {panelsOf(frame.views).map(({ label, side, view }) => (
+        <div className={`grid grid-cols-1 gap-3 ${columns}`}>
+          {panels.map(({ label, side, view }) => (
             <figure key={label} className="flex flex-col gap-1">
               <Typography variant="microLabel" color="secondary">{label}</Typography>
               <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${side}`} />
             </figure>
           ))}
+          {measured ? <DeltaPanel roundId={roundId} frameKey={frame.key} label={frame.label} /> : null}
         </div>
-        {!isNew && !frame.views.includes("diff") ? <Typography variant="caption" color="secondary">No diff image: compare before and after side by side.</Typography> : null}
       </FrameFigure>
     </ShipTarget>
   );

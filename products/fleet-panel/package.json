@@ -36,5 +36,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:^"
+  }
 }

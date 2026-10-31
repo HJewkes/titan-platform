@@ -4,7 +4,7 @@ import path from "node:path";
 import { EXIT } from "@titan-design/registry";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { errnoCode } from "./rows.js";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** sysexits' EX_TEMPFAIL: another run holds the lock, so this one did nothing and the next tick retries. */
 export const EXIT_LOCKED = 75;
@@ -96,7 +96,7 @@ export function tryLock(lockPath: string): "acquired" | LockHolder | null {
       writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }), { flag: "wx" });
       return "acquired";
     } catch (err) {
-      if (errnoCode(err) !== "EEXIST") throw err;
+      if (errorCode(err) !== "EEXIST") throw err;
     }
     const holder = readHolder(lockPath);
     if (holder && isRunning(holder.pid)) return holder;
@@ -118,7 +118,7 @@ function isRunning(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return errnoCode(err) === "EPERM";
+    return errorCode(err) === "EPERM";
   }
 }
 

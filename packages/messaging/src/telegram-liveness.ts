@@ -1,6 +1,6 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { ProbeOptions } from "./liveness.js";
 import { fetchWithTimeout } from "./liveness.js";
-import { isRecord } from "./record.js";
 import { isAbortError } from "./send-failure.js";
 import type { TelegramConfig } from "./telegram.js";
 import { methodUrl, readEnvelope } from "./telegram.js";
@@ -13,7 +13,7 @@ export type TelegramLiveness =
     };
 
 function readBot(result: unknown): TelegramLiveness {
-  if (!isRecord(result)) {
+  if (!isObjectLike(result)) {
     return { state: "dark", reason: "bad-response" };
   }
   return {

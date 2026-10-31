@@ -51,6 +51,29 @@ events.addEventListener("change", refetch);
 events.addEventListener(SSE_EVENTS.READY, () => setLive(true));
 ```
 
+## Narrowing
+
+`@titan-design/rpc-protocol/narrow` holds the guards for an `unknown` from parsed JSON or a
+`catch`. It lives here because this package is tier 0, has no dependencies and is browser-safe,
+so any package may use it.
+
+```ts
+import { errorCode, isRecord } from "@titan-design/rpc-protocol/narrow";
+
+export function nameOf(parsed: unknown): string | undefined {
+  return isRecord(parsed) && typeof parsed.name === "string" ? parsed.name : undefined;
+}
+
+export function isMissing(caught: unknown): boolean {
+  return errorCode(caught) === "ENOENT";
+}
+```
+
+`isRecord` and `isObjectLike` differ only on arrays. Both narrow to `Record<string, unknown>`, so
+the type does not show which one ran. Neither accepts a function. Both accept class instances
+such as `Date`. `errorCode` is not an `instanceof Error` test: it reads `code` from any object,
+and returns `undefined` for a numeric `code`, such as an HTTP status.
+
 ## What it deliberately does not do
 
 It makes no requests. The typed client with live and static data sources is

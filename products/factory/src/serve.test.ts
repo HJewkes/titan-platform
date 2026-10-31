@@ -9,6 +9,7 @@ import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toJSONSchema, z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { configPath } from "./config.js";
@@ -22,7 +23,6 @@ import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type Facto
 import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
-import { isRecord } from "./narrow.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const dirs: string[] = [];
@@ -56,7 +56,7 @@ async function serve(dbPath: string, scenario: LandScenario, overrides: Partial<
 
 const healthOf = async (server: FactoryServer): Promise<Record<string, unknown>> => {
   const body: unknown = await (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
-  if (!isRecord(body)) throw new Error("/health answered no object");
+  if (!isObjectLike(body)) throw new Error("/health answered no object");
   return body;
 };
 

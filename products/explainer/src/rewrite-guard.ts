@@ -3,9 +3,9 @@ import { contentTerms, sentencesOf } from "./lint-text.js";
 import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
 import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
+import { numberRanges } from "./rewrite-spans.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForms } from "./spoken-numbers.js";
-
 
 export type BeatRejectionRule =
   | "empty"
@@ -15,6 +15,7 @@ export type BeatRejectionRule =
   | "length"
   | "number-lost"
   | "number-invented"
+  | "range-split"
   | "number-vague"
   | "device-added"
   | "closer-added"
@@ -119,6 +120,18 @@ function withoutCarried(before: string, after: BeatRewrite): string {
     const terms = [...contentTerms(word)];
     return terms.length > 0 && terms.every((term) => spokenByLabels.has(term)) ? " " : word;
   });
+}
+
+const valueOf = (form: string): string => form.replace(/%$/, "");
+
+const saysBound = (values: readonly string[], bound: TextSpan): boolean => numberForms(bound.text).some((form) => values.includes(valueOf(form)));
+
+/** A range is one claim: a rewrite keeps both ends or cuts it whole, so "thirty to thirty-five percent" never becomes "thirty-five percent". */
+function rangeRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  const values = formsIn(after.spoken).map(valueOf);
+  return numberRanges(spokenText([before]).text)
+    .filter(({ low, high }) => saysBound(values, low) !== saysBound(values, high))
+    .map(({ low, high }) => ({ rule: "range-split" as const, detail: `the range from "${low.text}" to "${high.text}" kept one end and lost the other` }));
 }
 
 const VAGUE_QUANTIFIER =
@@ -339,6 +352,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...generic,
     ...terms,
     ...numberRejections(before, after, lists),
+    ...rangeRejections(before.spoken, after),
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
     ...closerRejections(before.spoken, after),

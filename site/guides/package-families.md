@@ -173,6 +173,8 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - `render-qa` (private): the render QA gate. It seeks a `__titanMotion` page to cue moments, measures the DOM
   for overlaps, off-frame, small or low-contrast text and the frame rules, and holds a finding only when it
   persists. Pages mark their intent with `data-qa-*` attributes.
+- `png-delta` (private): decodes an untrusted PNG under a pixel cap, measures how much changed between a base and a
+  head screenshot, and draws the changed pixels as a delta PNG.
 
 ## Speech
 

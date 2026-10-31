@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { errnoCode, errorMessage, errorStatus, isOneOf, isRecord, readPath } from "./narrow.js";
+import { errorCode, isObjectLike } from "@titan-design/rpc-protocol/narrow";
+import { errorMessage, errorStatus, isOneOf, readPath } from "./narrow.js";
 
-describe("isRecord", () => {
+describe("isObjectLike", () => {
   it("accepts objects and arrays", () => {
-    expect(isRecord({})).toBe(true);
-    expect(isRecord([])).toBe(true);
+    expect(isObjectLike({})).toBe(true);
+    expect(isObjectLike([])).toBe(true);
   });
 
   it.each([[null], [undefined], ["text"], [1]])("refuses %s", (value) => {
-    expect(isRecord(value)).toBe(false);
+    expect(isObjectLike(value)).toBe(false);
   });
 });
 
@@ -35,11 +36,11 @@ describe("errorMessage", () => {
   });
 });
 
-describe("errnoCode", () => {
+describe("errorCode", () => {
   it("reads a string code only", () => {
-    expect(errnoCode({ code: "ENOENT" })).toBe("ENOENT");
-    expect(errnoCode({ code: 1 })).toBeUndefined();
-    expect(errnoCode(null)).toBeUndefined();
+    expect(errorCode({ code: "ENOENT" })).toBe("ENOENT");
+    expect(errorCode({ code: 1 })).toBeUndefined();
+    expect(errorCode(null)).toBeUndefined();
   });
 });
 

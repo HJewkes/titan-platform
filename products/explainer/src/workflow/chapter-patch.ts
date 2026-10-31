@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { L0Result } from "../eval-l0.js";
 import type { ScriptV1 } from "../script-schema.js";
 
@@ -17,8 +18,6 @@ export function patchTargets(rows: readonly L0Result[], chapter: ScriptV1): stri
 /** What a patch round asks for in place of the whole corrected chapter. */
 export const patchTask = (targets: readonly string[]): string =>
   `Reply with one JSON object and nothing else: "beats" lists exactly the beats ${targets.join(", ")}, in that order, each one whole and keeping its id and chapter; every other beat stays as drafted and is left out. No beat is added, split or removed. "glossary" lists only entries for names a changed beat introduces that the glossary lacks, and is left out when there are none. No other field.\n`;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 function idFault(ids: readonly unknown[], targets: readonly string[]): string | undefined {
   const wanted = new Set(targets);

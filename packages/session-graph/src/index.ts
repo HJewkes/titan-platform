@@ -34,6 +34,6 @@ export { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text
 export {
   countNormalizedEvents, countNormalizedSessions, hasNormalizedTables, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions,
   normalizedSourcePath, normalizedUsage, readIndexedText,
-  type ConversationSummary, type IndexedSpan, type ReadIndexedTextOptions, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageSummary,
+  type ConversationSummary, type IndexedSpan, type ReadIndexedTextOptions, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary,
 } from "./normalized-query.js";
 export { ensureNormalizedSchema, resolveConversationAlias } from "./normalized-schema.js";

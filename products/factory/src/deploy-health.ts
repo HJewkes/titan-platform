@@ -1,6 +1,6 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GitBehind } from "./deploy-behind.js";
 import { DEPLOY_MAX_WAIT_MS } from "./shepherd/deploy-pacer.js";
-import { isRecord } from "./narrow.js";
 
 const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
@@ -268,4 +268,4 @@ export function deployBlockOf(health: Record<string, unknown> | null): DeployHea
   return isDeployHealth(block) ? block : null;
 }
 
-const isDeployHealth = (block: unknown): block is DeployHealth => isRecord(block) && typeof block.alarm === "boolean" && Array.isArray(block.causes) && typeof block.runningSha === "string";
+const isDeployHealth = (block: unknown): block is DeployHealth => isObjectLike(block) && typeof block.alarm === "boolean" && Array.isArray(block.causes) && typeof block.runningSha === "string";

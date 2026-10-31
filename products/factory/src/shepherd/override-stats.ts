@@ -1,7 +1,7 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { inRange, isoWeek } from "./stats.js";
-import { isRecord } from "../narrow.js";
 
 /**
  * A reviewer verdict that someone else's call overturned. `owner-answer`: an approve-merge gate resolved to anything but
@@ -33,7 +33,7 @@ const stepName = (key: string): string => key.split(":")[0]!;
 
 const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
-  return isRecord(wrapped) ? wrapped : {};
+  return isObjectLike(wrapped) ? wrapped : {};
 };
 
 const overrideOf = (result: StepResult): OwnerOverride | undefined => {

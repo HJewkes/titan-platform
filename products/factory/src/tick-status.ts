@@ -1,5 +1,5 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { errorClass } from "./shepherd/error-class.js";
-import { isRecord } from "./narrow.js";
 
 /** Where the burndown tick's status file was looked for, and its text when one exists there. */
 export interface TickStatusRead {
@@ -26,7 +26,7 @@ interface Parsed {
 function parse(text: string): Parsed | undefined {
   try {
     const raw: unknown = JSON.parse(text);
-    if (!isRecord(raw)) return undefined;
+    if (!isObjectLike(raw)) return undefined;
     const p = raw;
     const heartbeatAt = typeof p.heartbeatAt === "string" ? Date.parse(p.heartbeatAt) : Number.NaN;
     const interval = p.intervalSeconds;

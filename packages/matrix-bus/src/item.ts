@@ -1,4 +1,5 @@
-import { isRecord } from "./record.js";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+
 
 export const ITEM_KEY = "io.titan.item";
 export const ITEM_VERSION = 1;
@@ -110,6 +111,6 @@ function isItem(value: Record<string, unknown>): value is Record<string, unknown
 /** Returns null for content without the key, an unknown version, or a malformed record. */
 export function decodeItem(content: Record<string, unknown>): TitanItem | null {
   const value = content[ITEM_KEY];
-  if (!isRecord(value) || !isItem(value)) return null;
+  if (!isObjectLike(value) || !isItem(value)) return null;
   return buildItem(value);
 }

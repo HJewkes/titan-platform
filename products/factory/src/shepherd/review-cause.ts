@@ -1,4 +1,5 @@
 import type { StepResult, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { stepIdMatches } from "../definition.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
 import { isCorrectionFailure } from "./correct-verdict.js";
@@ -7,7 +8,6 @@ import type { ReviewOutcome } from "./route-table.js";
 import { ReviewCauseSchema, type ReviewCause, type ReviewCauseKind } from "./review-schemas.js";
 import { inRange, isoWeek } from "./stats.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
-import { isRecord } from "../narrow.js";
 
 export type { ReviewCause } from "./review-schemas.js";
 
@@ -48,7 +48,7 @@ export interface CauseFacts {
   carry?: CarryProbe;
 }
 
-const record = (result: unknown): Record<string, unknown> => (isRecord(result) ? result : {});
+const record = (result: unknown): Record<string, unknown> => (isObjectLike(result) ? result : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const nullableText = (value: unknown): string | null => text(value) ?? null;
 

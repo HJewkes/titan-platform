@@ -290,9 +290,7 @@ export class SqliteGateStore extends BaseGateStore {
   }
 
   protected read(id: string): GateRecord | undefined {
-    const row = this.db.prepare(`SELECT * FROM ${quoteIdent(this.table)} WHERE id = ?`).get(id) as
-      | RawGateRow
-      | undefined;
+    const row = this.db.prepare<[string], RawGateRow>(`SELECT * FROM ${quoteIdent(this.table)} WHERE id = ?`).get(id);
     return row ? toRecord(row) : undefined;
   }
 
@@ -321,8 +319,8 @@ export class SqliteGateStore extends BaseGateStore {
 
   protected readByStatus(status: GateStatus): GateRecord[] {
     const rows = this.db
-      .prepare(`SELECT * FROM ${quoteIdent(this.table)} WHERE status = ? ORDER BY created_at`)
-      .all(status) as RawGateRow[];
+      .prepare<[GateStatus], RawGateRow>(`SELECT * FROM ${quoteIdent(this.table)} WHERE status = ? ORDER BY created_at`)
+      .all(status);
     return rows.map(toRecord);
   }
 }

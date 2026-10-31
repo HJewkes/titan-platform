@@ -34,6 +34,7 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    pngDelta["png-delta"]
     reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
@@ -107,9 +108,13 @@ graph TD
 
   agent --> agentLifecycle
   agent --> agentProtocol
+  agent --> rpcProtocol
+  agentDispatch --> rpcProtocol
   agentDispatch --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  agentSurface --> rpcProtocol
+  anthropicAccount --> rpcProtocol
   autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
@@ -118,11 +123,13 @@ graph TD
   codeGraph --> evidence
   codeGraph --> fixProof
   codeGraph --> retrieval
+  codeGraph --> rpcProtocol
   codeGraph --> storeSqlite
   codeRead --> codeGraph
   codeRead --> registry
   codeRead --> rpcProtocol
   coordinator --> agentDispatch
+  coordinator --> rpcProtocol
   daemon --> registry
   daemon --> rpcProtocol
   decider --> locator
@@ -132,18 +139,23 @@ graph TD
   dispatchLedger --> storeSqlite
   egressScan --> fixProof
   egressScan --> worktree
+  eslintPlugin --> rpcProtocol
   graphLayout --> codeGraph
+  health --> rpcProtocol
   health --> storeSqlite
   hitl --> authority
   hitl --> evidence
   hitl --> storeSqlite
+  matrixBus --> rpcProtocol
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  messaging --> rpcProtocol
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
+  queueMirror --> rpcProtocol
   queueMirror --> storeSqlite
   reactApp --> rpcClient
   reactApp --> rpcProtocol
@@ -152,6 +164,7 @@ graph TD
   retrieval --> embed
   retrieval --> storeSqlite
   reviewBurden --> fixProof
+  reviewBurden --> rpcProtocol
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
@@ -164,6 +177,7 @@ graph TD
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
+  sessionAnalytics --> rpcProtocol
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
@@ -174,7 +188,11 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  sessionRead --> rpcProtocol
+  speechG2p --> rpcProtocol
+  speechStt --> rpcProtocol
   speechTts --> appPaths
+  speechTts --> rpcProtocol
   speechVet --> speechG2p
   speechVet --> speechStt
   speechVet --> speechTts
@@ -190,6 +208,7 @@ graph TD
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
+  workflow --> rpcProtocol
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
@@ -201,6 +220,7 @@ graph TD
   activeWork --> pm
   activeWork --> registry
   activeWork --> retrieval
+  activeWork --> rpcProtocol
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead
@@ -239,6 +259,7 @@ graph TD
   explainer --> ownerQueue
   explainer --> pm
   explainer --> renderQa
+  explainer --> rpcProtocol
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
@@ -259,18 +280,22 @@ graph TD
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pngDelta
   factory --> registry
   factory --> reviewPanel
   factory --> reviewWorkflow
   factory --> rpcClient
+  factory --> rpcProtocol
   factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
   retrievalEval --> retrieval
+  retrievalEval --> rpcProtocol
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg
@@ -284,6 +309,7 @@ graph TD
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
+  sessionMiner --> rpcProtocol
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
@@ -311,6 +337,7 @@ graph TD
   console --> github
   console --> ownerQueue
   console --> pm
+  console --> pngDelta
   console --> reactApp
   console --> registry
   console --> rpcClient
@@ -326,7 +353,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
@@ -382,7 +409,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

@@ -17,7 +17,7 @@ function mean(values: readonly number[]): number {
 }
 
 // Linear interpolation between order statistics, numpy's default percentile rule.
-function percentile(sorted: readonly number[], p: number): number {
+export function percentile(sorted: readonly number[], p: number): number {
   const position = (sorted.length - 1) * p;
   const below = Math.floor(position);
   const low = sorted[below] ?? Number.NaN;

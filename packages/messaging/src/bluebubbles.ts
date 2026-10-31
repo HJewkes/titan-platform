@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type {
   ChannelCapabilities,
   InteractionResult,
@@ -7,7 +8,6 @@ import type {
   SendResult,
 } from "./contract.js";
 import { sendFailed } from "./contract.js";
-import { isRecord } from "./record.js";
 import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 
 export interface BlueBubblesConfig {
@@ -46,9 +46,9 @@ async function readEnvelope(response: Response): Promise<Envelope | undefined> {
     const body: unknown = await response.json();
     // A null body is unreadable, where any other non-object body is an envelope with no fields.
     if (body === null) return undefined;
-    const top = isRecord(body) ? body : {};
-    const error = isRecord(top.error) ? top.error : {};
-    const data = isRecord(top.data) ? top.data : {};
+    const top = isObjectLike(body) ? body : {};
+    const error = isObjectLike(top.error) ? top.error : {};
+    const data = isObjectLike(top.data) ? top.data : {};
     const message = error.message ?? top.message;
     return {
       message: typeof message === "string" ? message : undefined,

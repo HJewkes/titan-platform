@@ -1,10 +1,10 @@
 import { dirname, join, resolve } from "node:path";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";
 import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
 import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
-import { isRecord } from "./narrow.js";
 
 export interface CommandResult {
   code: number;
@@ -318,7 +318,7 @@ function healthSummary(health: Record<string, unknown>, port: number): string {
 }
 
 function buildSummary(build: unknown): string | undefined {
-  if (!isRecord(build)) return undefined;
+  if (!isObjectLike(build)) return undefined;
   const { sha, behindMain } = build;
   if (typeof sha !== "string") return undefined;
   const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;

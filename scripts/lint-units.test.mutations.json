@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a unit finishing clean after a failed one overwrites the worst exit code",
+      "file": "scripts/lint-units.mjs",
+      "find": "      const code = await runUnit(unit, `lint chunk ${i + 1}/${units.length}`, run, log);\n      worst = Math.max(worst, code);",
+      "replace": "      worst = Math.max(worst, await runUnit(unit, `lint chunk ${i + 1}/${units.length}`, run, log));",
+      "kills": [
+        "exits 2 when one package's baseline is stale and a sibling unit started earlier finishes clean after it (TP-4651)"
+      ]
+    }
+  ]
+}

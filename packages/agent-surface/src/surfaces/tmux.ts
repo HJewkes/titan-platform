@@ -1,6 +1,6 @@
-import { isRecord } from "../guards.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { CloseOutcome, LaunchHandle, LaunchPlan, Surface } from "../types.js";
 import { launchCommand, type Launcher } from "./command.js";
 import { SurfaceRefused, type SurfaceOptions } from "./options.js";
@@ -33,9 +33,9 @@ async function tmux(options: SurfaceOptions, args: string[]): Promise<string> {
     });
     return stdout.trim();
   } catch (err) {
-    if (isRecord(err) && err.code === "ENOENT")
+    if (isObjectLike(err) && err.code === "ENOENT")
       throw new SurfaceRefused("tmux is not installed; use surface 'headless'");
-    const said = isRecord(err) && typeof err.stderr === "string" ? err.stderr.trim() : "";
+    const said = isObjectLike(err) && typeof err.stderr === "string" ? err.stderr.trim() : "";
     throw new Error(said === "" ? err instanceof Error ? err.message : String(err) : said);
   }
 }

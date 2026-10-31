@@ -180,6 +180,9 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -298,6 +301,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -308,6 +314,9 @@ importers:
 
   packages/agent-dispatch:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -345,6 +354,10 @@ importers:
         version: 4.5.4
 
   packages/agent-surface:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/agent-protocol':
         specifier: workspace:*
@@ -352,6 +365,9 @@ importers:
 
   packages/anthropic-account:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       zod:
         specifier: ^4.0.0
         version: 4.5.4
@@ -431,6 +447,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -491,6 +510,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../agent-dispatch
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/egress-scan':
         specifier: workspace:^
@@ -576,6 +598,10 @@ importers:
         version: 3.8.1
 
   packages/eslint-plugin:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@types/estree':
         specifier: ^1.0.9
@@ -628,6 +654,9 @@ importers:
 
   packages/health:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -657,7 +686,11 @@ importers:
 
   packages/locator: {}
 
-  packages/matrix-bus: {}
+  packages/matrix-bus:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/memory:
     dependencies:
@@ -679,6 +712,10 @@ importers:
         version: 4.5.4
 
   packages/messaging:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -721,6 +758,19 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/png-delta:
+    dependencies:
+      pixelmatch:
+        specifier: 8.0.0
+        version: 8.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+
   packages/queue-mirror:
     dependencies:
       '@titan-design/hitl':
@@ -729,6 +779,9 @@ importers:
       '@titan-design/matrix-bus':
         specifier: workspace:^
         version: link:../matrix-bus
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -820,6 +873,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/review-panel:
     dependencies:
@@ -903,6 +959,9 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../session-graph
@@ -931,6 +990,10 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/session-read:
     dependencies:
@@ -943,9 +1006,15 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/speech-g2p:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       compromise:
         specifier: 14.18.0
         version: 14.18.0
@@ -955,6 +1024,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.0.0
         version: 3.8.1
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -968,6 +1040,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../app-paths
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       kokoro-js:
         specifier: ^1.2.1
         version: 1.2.1
@@ -1126,6 +1201,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../hitl
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -1187,6 +1265,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1402,6 +1483,9 @@ importers:
       '@titan-design/render-qa':
         specifier: workspace:^
         version: link:../../packages/render-qa
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -1514,6 +1598,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
@@ -1529,6 +1616,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1547,9 +1637,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      pixelmatch:
-        specifier: 8.0.0
-        version: 8.0.0
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -1570,7 +1657,11 @@ importers:
         specifier: 7.0.0
         version: 7.0.0
 
-  products/fleet-panel: {}
+  products/fleet-panel:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
 
   products/retrieval-eval:
     dependencies:
@@ -1583,6 +1674,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
@@ -1631,6 +1725,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics

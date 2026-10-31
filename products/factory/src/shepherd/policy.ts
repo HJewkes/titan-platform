@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { MergeMethod } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
@@ -18,7 +19,6 @@ import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
 import { skillPathsIn } from "./skill-paths.js";
-import { isRecord } from "../narrow.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -302,9 +302,9 @@ export function checkedBaseTap(): { base: () => string | undefined; tapping: (ct
 
 /** A guard, not a zod parse: `decideOnFacts` reads `carry` and the rest of the stored evidence, and a parse would strip them. */
 function isMergeEvidence(value: unknown): value is MergeEvidence {
-  if (!isRecord(value)) return false;
+  if (!isObjectLike(value)) return false;
   const { head, merge, record, changedFilesUnread } = value;
-  return typeof head === "string" && isRecord(merge) && Array.isArray(merge.changedPaths) && isRecord(record) && (changedFilesUnread === undefined || typeof changedFilesUnread === "string");
+  return typeof head === "string" && isObjectLike(merge) && Array.isArray(merge.changedPaths) && isObjectLike(record) && (changedFilesUnread === undefined || typeof changedFilesUnread === "string");
 }
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */

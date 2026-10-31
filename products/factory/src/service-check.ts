@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { parsePort } from "./cli-options.js";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
@@ -177,11 +178,9 @@ interface DeployWait {
   until: string | null;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
 function deployWaitOf(health: Record<string, unknown> | null): DeployWait | undefined {
   const pending = health?.deployPending;
-  if (!isRecord(pending) || !isRecord(pending.waiting)) return undefined;
+  if (!isObjectLike(pending) || !isObjectLike(pending.waiting)) return undefined;
   const { sha } = pending;
   const { why, until } = pending.waiting;
   if (typeof sha !== "string" || typeof why !== "string") return undefined;

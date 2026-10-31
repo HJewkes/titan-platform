@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { ScoredHit } from "../metrics.js";
-import { isRecord, stringField } from "../record.js";
+import { stringField } from "../record.js";
 import type { Candidate } from "./candidate.js";
 
 const run = promisify(execFile);
@@ -65,8 +66,8 @@ export function hitsOf(stdout: string, activeRoot: string): ScoredHit[] {
 }
 
 function searchHitsOf(response: unknown): SearchHit[] {
-  if (!isRecord(response) || !isRecord(response.data) || !Array.isArray(response.data.hits)) return [];
-  return response.data.hits.filter(isRecord).map((hit) => ({
+  if (!isObjectLike(response) || !isObjectLike(response.data) || !Array.isArray(response.data.hits)) return [];
+  return response.data.hits.filter(isObjectLike).map((hit) => ({
     ref: stringField(hit, "ref"),
     path: stringField(hit, "path"),
     class: stringField(hit, "class"),

@@ -1,8 +1,8 @@
 import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { reviewCheckoutRoot } from "./review-checkout.js";
-import { errnoCode } from "../narrow.js";
 
 export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
@@ -13,7 +13,7 @@ async function listOrEmpty(dir: string): Promise<string[]> {
   try {
     return await readdir(dir);
   } catch (error) {
-    if (errnoCode(error) === "ENOENT") return [];
+    if (errorCode(error) === "ENOENT") return [];
     throw error;
   }
 }

@@ -24,6 +24,8 @@ interface HoldInput extends ReviewTarget {
   runId: string;
   /** Why the reviewer dispatch was refused, as the review step recorded it. */
   refusal: string;
+  /** Set when preflight refused the head before any dispatch: the fixer fingerprint whose fix releases it (TP-3928). */
+  fingerprint?: string;
 }
 
 /** `standing` is the gating hold the wait watches: this hold's reason, or another hold's that was already in place. */
@@ -49,23 +51,29 @@ interface WaitInput extends HoldInput {
 /** The head is in the reason, so a refusal at a new head is a new hold and tells the seat again. */
 const noReviewerReason = (refusal: string, head: string): string => `no-reviewer: ${refusal} at ${head}; TP-2446`;
 
+function remedyOf(input: HoldInput): string {
+  if (input.fingerprint !== undefined) return `Fix the preflight error ${input.fingerprint} (review.workflow on:preflight; TP-3928)`;
+  return `Bind a checkout of ${input.repo} (a seat's repos: line or shepherd.repos["${input.repo}"].path)`;
+}
+
 function noReviewerAlertText(input: HoldInput): string {
   return (
     `Shepherd: no reviewer could be started for ${input.repo}#${input.pr} at ${input.head}: ${input.refusal}. ` +
-    `The run is held (no-reviewer; TP-2446) and opens no merge gate. Bind a checkout of ${input.repo} (a seat's repos: line or shepherd.repos["${input.repo}"].path), ` +
+    `The run is held (no-reviewer; TP-2446) and opens no merge gate. ${remedyOf(input)}, ` +
     `then run \`titan-factory shepherd release ${input.repo}#${input.pr} --head ${input.head} --class no-reviewer\`.`
   );
 }
 
 /**
  * The reviewer dispatch was refused for a reason a retry cannot fix: hold the run as no-reviewer, tell the seat once, and wait
- * for a release or a head move. The review ends `not-started`, which reviews again without counting a failed round.
+ * for a release or a head move. The review ends `not-started`, which reviews again without counting a failed round; a
+ * preflight refusal names its fingerprint and ends `needs-fixer`, which does the same through `await-fixer`.
  */
-export async function noReviewerHeld(ctx: WorkflowContext, target: ReviewTarget, refusal: string): Promise<Verdict> {
-  const input: HoldInput = { ...target, runId: ctx.runId, refusal };
+export async function noReviewerHeld(ctx: WorkflowContext, target: ReviewTarget, refusal: string, fingerprint?: string): Promise<Verdict> {
+  const input: HoldInput = { ...target, runId: ctx.runId, refusal, ...(fingerprint !== undefined && { fingerprint }) };
   const held = await step(ctx, `${NO_REVIEWER_HOLD_STEP}:${target.head}`, input, HoldResult);
   if (held.held && held.standing !== undefined) await step(ctx, `${NO_REVIEWER_WAIT_STEP}:${target.head}`, { ...input, reason: held.reason, standing: held.standing } satisfies WaitInput, WaitResult);
-  return { kind: "none", cause: "not-started", reason: held.reason };
+  return { kind: "none", cause: fingerprint === undefined ? "not-started" : "needs-fixer", reason: held.reason };
 }
 
 /** A failed alert never fails the hold: the run stays held and the step records that the seat was not told. */

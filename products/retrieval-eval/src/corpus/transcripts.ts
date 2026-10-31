@@ -2,7 +2,7 @@ import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { isRecord } from "../record.js";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * Raw Claude Code transcripts, read as lines rather than through the session
@@ -91,7 +91,7 @@ export function toolUsesIn(record: Record<string, unknown>): ToolUse[] {
   if (!Array.isArray(content)) return [];
   return content.filter(isToolUse).map((item) => ({
     name: item.name,
-    input: isRecord(item.input) ? item.input : {},
+    input: isObjectLike(item.input) ? item.input : {},
     timestamp: typeof record.timestamp === "string" ? record.timestamp : undefined,
     sessionId: typeof record.sessionId === "string" ? record.sessionId : undefined,
     cwd: typeof record.cwd === "string" ? record.cwd : undefined,
@@ -101,14 +101,14 @@ export function toolUsesIn(record: Record<string, unknown>): ToolUse[] {
 function parseLine(line: string): Record<string, unknown> | undefined {
   try {
     const record: unknown = JSON.parse(line);
-    return isRecord(record) ? record : undefined;
+    return isObjectLike(record) ? record : undefined;
   } catch {
     return undefined;
   }
 }
 
 function isToolUse(item: unknown): item is { type: string; name: string; input?: unknown } {
-  return isRecord(item) && item.type === "tool_use" && typeof item.name === "string";
+  return isObjectLike(item) && item.type === "tool_use" && typeof item.name === "string";
 }
 
 export interface TranscriptHead {
@@ -151,10 +151,10 @@ export function textOf(message: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((item: unknown) => (typeof item === "string" ? item : isRecord(item) ? (item.text ?? "") : ""))
+    .map((item: unknown) => (typeof item === "string" ? item : isObjectLike(item) ? (item.text ?? "") : ""))
     .join("\n");
 }
 
 function contentOf(message: unknown): unknown {
-  return isRecord(message) ? message.content : undefined;
+  return isObjectLike(message) ? message.content : undefined;
 }

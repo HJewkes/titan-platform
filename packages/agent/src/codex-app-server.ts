@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { DEFAULT_CODEX_EXECUTABLE } from "./codex-available.js";
 import { terminateProcessGroup, type CodexProcessExit } from "./codex-process.js";
 
@@ -257,10 +258,6 @@ interface JsonRpcMessage {
   params?: unknown;
   result?: unknown;
   error?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseMessage(line: string): JsonRpcMessage | undefined {

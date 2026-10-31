@@ -1,4 +1,5 @@
 import type { StepRunOutcome } from "@titan-design/workflow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { L0Result } from "../eval-l0.js";
 import { stampLedgerTerms } from "../ledger-stamp.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
@@ -69,7 +70,6 @@ interface Joined {
 type Video = ScriptV1["video"];
 type Glossary = Video["glossary"];
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const nameKey = (entry: unknown): string | undefined => (isRecord(entry) && typeof entry.name === "string" ? entry.name.toLowerCase() : undefined);
 
 function addGlossary<T>(glossary: Glossary, added: readonly T[]): (Glossary[number] | T)[] {
