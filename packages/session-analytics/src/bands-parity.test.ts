@@ -22,7 +22,7 @@ function boundaryValues(bands: readonly Band[]): number[] {
 }
 
 function costRow(requestId: string): CostRow {
-  return fixture.graph.db.prepare("SELECT * FROM request_cost WHERE request_id = ?").get(requestId) as CostRow;
+  return fixture.graph.db.prepare<[string], CostRow>("SELECT * FROM request_cost WHERE request_id = ?").get(requestId)!;
 }
 
 describe("request_cost and the TypeScript bands", () => {

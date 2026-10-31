@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canonicalJson, caseHash, hashCanonical, pinVariantPrompts, suiteHash, unitHash, variantHash } from "./hash.js";
-import { readFixture } from "./test-fixtures.js";
-import type { EvalCase, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
+import type { UnitSpec } from "./spec/index.js";
+import { asRecord, llmStep, readCase, readSuite, readUnit, readVariant, unvalidated } from "./test-fixtures.js";
 
 function reversedKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(reversedKeys);
@@ -19,14 +19,14 @@ function promptReader(files: Record<string, string>) {
 
 describe("canonical hashing", () => {
   it("gives the same hash when the same object is hashed twice", () => {
-    const unit = readFixture<UnitSpec>("unit.json");
+    const unit = readUnit();
 
     expect(unitHash(unit)).toBe(unitHash(unit));
   });
 
   it("gives the same hash after every key is reordered", () => {
-    const unit = readFixture<UnitSpec>("unit.json");
-    const reordered = reversedKeys(unit) as UnitSpec;
+    const unit = readUnit();
+    const reordered = unvalidated<UnitSpec>(asRecord(reversedKeys(unit)));
 
     expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(unit));
     expect(unitHash(reordered)).toBe(unitHash(unit));
@@ -48,7 +48,7 @@ describe("canonical hashing", () => {
 
 describe("what each hash covers", () => {
   it("ignores a unit's title and description but not its objective", () => {
-    const unit = readFixture<UnitSpec>("unit.json");
+    const unit = readUnit();
     const retitled = { ...unit, title: "Another title", description: "Reworded." };
     const reranked = { ...unit, objective: { ...unit.objective, primary: { name: "brevity", direction: "minimize" as const } } };
 
@@ -57,7 +57,7 @@ describe("what each hash covers", () => {
   });
 
   it("ignores a case's tags and provenance source but not its gold label or label version", () => {
-    const evalCase = readFixture<EvalCase>("cases/standup-note.json");
+    const evalCase = readCase("cases/standup-note.json");
     const retagged = { ...evalCase, tags: ["other"], provenance: { ...evalCase.provenance, source: "contributed" as const } };
     const relabelled = { ...evalCase, provenance: { ...evalCase.provenance, labelVersion: 2 } };
     const regolded = { ...evalCase, expected: { actionItems: [] } };
@@ -68,7 +68,7 @@ describe("what each hash covers", () => {
   });
 
   it("ignores a suite's id and version text and the order its cases are listed in", () => {
-    const suite = readFixture<SuiteSpec>("suite.json");
+    const suite = readSuite();
     const renamed = { ...suite, id: "renamed", version: "9.9.9", cases: [...suite.cases].reverse() };
 
     expect(suiteHash(renamed)).toBe(suiteHash(suite));
@@ -76,9 +76,9 @@ describe("what each hash covers", () => {
   });
 
   it("ignores a variant's notes and parents but not its model", () => {
-    const variant = readFixture<VariantSpec>("variants/single-pass.json");
+    const variant = readVariant();
     const annotated = { ...variant, notes: "Another hypothesis.", parents: ["a".repeat(64)] };
-    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const step = llmStep(variant);
     const remodelled = { ...variant, steps: { summarize: { ...step, model: "claude-opus-5-5" } } };
 
     expect(variantHash(annotated)).toBe(variantHash(variant));
@@ -87,7 +87,7 @@ describe("what each hash covers", () => {
 });
 
 describe("variant prompt pinning", () => {
-  const variant = readFixture<VariantSpec>("variants/single-pass.json");
+  const variant = readVariant();
 
   it("changes the variant hash when a referenced prompt file changes", async () => {
     const before = await pinVariantPrompts(variant, promptReader({ "prompts/summarize.md": "Summarize {{note}}." }));
@@ -98,7 +98,7 @@ describe("variant prompt pinning", () => {
 
   it("keeps the variant hash when the prompt file moves but its content does not", async () => {
     const content = "Summarize {{note}}.";
-    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const step = llmStep(variant);
     const moved = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, path: "prompts/moved.md" } } } };
 
     const original = await pinVariantPrompts(variant, promptReader({ "prompts/summarize.md": content }));

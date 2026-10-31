@@ -30,7 +30,7 @@ interface VerdictRow {
 /** Verdict messages, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive, and `seats` limits the refused count to verdicts sent to those seats. */
 export function readVerdicts(db: Db, window: { since?: string; until?: string }, seats?: readonly string[]): { verdicts: VerdictRecord[]; unparsed: number } {
   const bounds = { since: window.since ? Date.parse(window.since) : 0, until: window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER };
-  const rows = db.prepare(VERDICTS_SQL).all(bounds) as VerdictRow[];
+  const rows = db.prepare<[object], VerdictRow>(VERDICTS_SQL).all(bounds);
   const verdicts = rows.flatMap((row) => {
     const parsed = parseVerdict(row.body);
     return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
@@ -44,7 +44,7 @@ export const SPAWNS_SQL = `SELECT id AS eventId, msg_id AS agentId, coalesce(tar
 
 /** Each `agent_spawned` row's agent id, name and profile. */
 export function readSpawns(db: Db): SpawnRecord[] {
-  return db.prepare(SPAWNS_SQL).all() as SpawnRecord[];
+  return db.prepare<[], SpawnRecord>(SPAWNS_SQL).all();
 }
 
 export const LAST_PROMPTS_SQL = [
@@ -62,7 +62,7 @@ interface LastEventRow extends Omit<LastEventRecord, "at"> {
 
 /** Each actor's newest event before asOf other than a resolution, kept only where it is an approval request, with any resolution of it and any later exit or retirement. */
 export function readLastPrompts(db: Db, asOf: string): LastEventRecord[] {
-  const rows = db.prepare(LAST_PROMPTS_SQL).all({ asOf: Date.parse(asOf) }) as LastEventRow[];
+  const rows = db.prepare<[object], LastEventRow>(LAST_PROMPTS_SQL).all({ asOf: Date.parse(asOf) });
   return rows.map(({ ts, ...row }) => ({ ...row, at: new Date(ts).toISOString() }));
 }
 
