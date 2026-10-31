@@ -107,6 +107,24 @@ describe("rounds.frameDelta measures a changed frame", () => {
   });
 });
 
+describe("rounds.frameDelta off the event loop", () => {
+  it("answers a cheap read while a large delta is still computing", async () => {
+    await writeFrames({
+      "tile-big": { base: png(2400, 2400), head: png(2400, 2400, { square: 6 }) },
+      "tile-same": { base: png(4, 4), head: png(4, 4) },
+    });
+
+    const big = delta("tile-big");
+    const settled = vi.fn();
+    void big.then(settled);
+    const cheap = await delta("tile-same");
+
+    expect(cheap).toEqual({ status: "unchanged" });
+    expect(settled).not.toHaveBeenCalled();
+    expect(await big).toMatchObject({ status: "changed" });
+  });
+});
+
 describe("the delta cache", () => {
   it("drops the least recently used entry once it is full", () => {
     const cache = deltaCache(2);

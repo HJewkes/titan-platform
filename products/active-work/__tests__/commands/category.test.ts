@@ -247,6 +247,19 @@ describe('category init', () => {
     });
   });
 
+  it.each([
+    ['a scalar', 'just a string\n'],
+    ['nothing', ''],
+    ['an area that is no list', 'area: nope\n'],
+  ])('refuses an --areas file holding %s', async (_label, body) => {
+    await withTempActiveRoot(async (root) => {
+      const areas = path.join(root, 'areas.yml');
+      await fs.writeFile(areas, body, 'utf8');
+
+      await expect(categoryInit.run({ areas }, ctx(root))).rejects.toThrow(/holds no area list/);
+    });
+  });
+
   it('seeds an empty area list and says so without --areas', async () => {
     await withTempActiveRoot(async (root) => {
       const context = ctx(root);

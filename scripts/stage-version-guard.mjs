@@ -3,7 +3,7 @@
 // name it (products/explainer/stage-bumps/README.md). A version must never return to a value an older stage body
 // keyed its outputs under, so against the base branch a PR may add bump files and reword their `why`, but may not
 // edit a base value, delete or rename a bump, or change a bump's stages. index-version:check runs this in CI.
-// Reads BASE_REF (default origin/main) and HEAD_SHA (default HEAD); git runs in the current directory.
+// Compares against the merge base of BASE_REF and HEAD_SHA. Reads BASE_REF (default origin/main) and HEAD_SHA (default HEAD); git runs in the current directory.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -89,10 +89,12 @@ function readBumps(ref) {
 function main(env = process.env) {
   const baseRef = env.BASE_REF || "origin/main";
   const headSha = env.HEAD_SHA || "HEAD";
+  // The merge base, not the base tip: a bump that landed on the base after this branch was cut is not a deletion here.
+  const mergeBase = git(["merge-base", baseRef, headSha]).trim();
   const verdict = decide({
-    base: parseBaseVersions(readFileAt(baseRef, STAGE_SPEC_PATH)),
+    base: parseBaseVersions(readFileAt(mergeBase, STAGE_SPEC_PATH)),
     head: parseBaseVersions(readFileAt(headSha, STAGE_SPEC_PATH)),
-    baseBumps: readBumps(baseRef),
+    baseBumps: readBumps(mergeBase),
     headBumps: readBumps(headSha),
   });
   const lines = verdict.messages.map((message) => `stage-version:check: ${message}`);

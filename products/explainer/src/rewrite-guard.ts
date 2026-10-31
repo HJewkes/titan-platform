@@ -4,6 +4,9 @@ import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, t
 import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { numberRanges } from "./rewrite-spans.js";
+
+/** Runs before the guard: a new sentence the cap would refuse is split at a clause joint first (TP-4685). */
+export { splitOverlong } from "./rewrite-split.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForms } from "./spoken-numbers.js";
 
@@ -148,7 +151,10 @@ function vagueRejections(before: string, after: BeatRewrite): BeatRejection[] {
   }));
 }
 
-/** A beat may keep a colon, tail, semicolon or "let's" it had, but not gain one: these rows cap near zero in any state. */
+/**
+ * A beat may keep a colon, tail, semicolon, "let's" or "no X" it had, but not gain one: these rows cap with no floor,
+ * so a rewrite never needs to add one.
+ */
 function deviceRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const was = spokenText([before]).text;
   const now = spokenText([after.spoken]).text;

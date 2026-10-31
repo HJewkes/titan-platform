@@ -65,6 +65,29 @@ it("passes two PRs that each add a bump to the same stage, merged in turn", () =
   expect(result.stdout).toContain("1 new bump");
 });
 
+it("passes a branch cut before a new bump landed on the base", () => {
+  writeBump("TP-2", ["script"]);
+  commitAll("pr bump");
+  git("switch", "-q", "main");
+  writeBump("TP-3", ["script"]);
+  commitAll("bump landed after the branch was cut");
+
+  const result = runGuard();
+
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("1 new bump");
+});
+
+it("passes a PR that changes no bump", () => {
+  writeFileSync(path.join(repo, "unrelated.txt"), "x");
+  commitAll("unrelated");
+
+  const result = runGuard();
+
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("0 new bumps");
+});
+
 it("fails a PR that deletes a merged bump", () => {
   rmSync(path.join(repo, BUMPS_DIR, "TP-1.json"));
   commitAll("drop bump");

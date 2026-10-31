@@ -6,6 +6,7 @@ import {
   type CategoryRegistry,
   type StatusEntry,
 } from '@titan-design/pm';
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';
 import { UsageError, ValidationError } from '../errors.js';
@@ -58,7 +59,7 @@ function observedTagValues(tags: readonly string[], prefix: string, seed: string
 async function readAreas(file: string | undefined): Promise<unknown[]> {
   if (file === undefined) return [];
   const parsed: unknown = YAML.parse(await fs.readFile(file, 'utf8'));
-  const areas = Array.isArray(parsed) ? parsed : (parsed as { area?: unknown } | null)?.area;
+  const areas = isRecord(parsed) ? parsed.area : parsed;
   if (!Array.isArray(areas)) throw new UsageError(`${file} holds no area list`);
   return areas;
 }

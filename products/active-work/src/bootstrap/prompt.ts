@@ -123,6 +123,11 @@ export interface BootstrapInput {
    */
   archivedTaskIds?: string[];
   /**
+   * Tasks the caller already parsed (minus any it archived). When supplied the
+   * task directory is not read again.
+   */
+  loadedTasks?: LoadedTasks;
+  /**
    * When `true`, frame the session as ad-hoc work related to the workstream
    * rather than a continuation of its handoff / top task. The same context is
    * rendered, but the opening and closing directives tell the session to treat
@@ -1309,6 +1314,25 @@ async function retrievalDegradations(input: RenderedHits, hitLog: HitLogWriter):
   return degraded;
 }
 
+async function renderArtifactsBody(args: {
+  artifacts: Artifacts;
+  slug: string;
+  includeLiveStatus: boolean;
+  fetcher: LiveStatusFetcher;
+}): Promise<string | null> {
+  const { artifacts, slug, includeLiveStatus, fetcher } = args;
+  if (!includeLiveStatus || artifacts.branches.length === 0) {
+    return renderStaticArtifacts(artifacts, slug);
+  }
+  try {
+    const statuses = await fetcher(artifacts.branches);
+    return renderLiveArtifacts(artifacts, statuses, slug);
+  } catch {
+    // Live fetch failed entirely — degrade to static rendering.
+    return renderStaticArtifacts(artifacts, slug);
+  }
+}
+
 /**
  * Build the bootstrap prompt for `slug`.
  *
@@ -1326,6 +1350,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     includeLiveStatus = true,
     liveStatusFetcher,
     archivedTaskIds,
+    loadedTasks: preloadedTasks,
     adhoc = false,
     init = false,
     detectSiblings = true,
@@ -1343,13 +1368,23 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
 
   const [loaded, loadedTasks, loadedArtifacts, notes] = await Promise.all([
     loadSessionsNewestFirst(initiativeDir),
-    loadTasks(initiativeDir),
+    preloadedTasks ?? loadTasks(initiativeDir),
     loadArtifacts(initiativeDir),
     loadNotesFromDir(initiativeDir),
   ]);
   const { sessions, malformed } = loaded;
   const { tasks, malformed: malformedTasks } = loadedTasks;
   const { artifacts, error: artifactsError } = loadedArtifacts;
+
+  // Started now so the gh/git round trips overlap note ranking and loop
+  // retrieval; awaited only where artifacts render. Never rejects, so the
+  // handler is attached from the start.
+  const artifactsBodyPending = renderArtifactsBody({
+    artifacts,
+    slug,
+    includeLiveStatus,
+    fetcher: liveStatusFetcher ?? defaultLiveStatusFetcher,
+  });
 
   // `mergedPrs` is deliberately unsupplied: derivation must stay offline
   // because bootstrap runs it on every launch.
@@ -1378,20 +1413,6 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     now,
     slug,
   );
-  let artifactsBody: string | null = null;
-  if (!includeLiveStatus || artifacts.branches.length === 0) {
-    artifactsBody = renderStaticArtifacts(artifacts, slug);
-  } else {
-    const fetcher = liveStatusFetcher ?? defaultLiveStatusFetcher;
-    try {
-      const statuses = await fetcher(artifacts.branches);
-      artifactsBody = renderLiveArtifacts(artifacts, statuses, slug);
-    } catch {
-      // Live fetch failed entirely — degrade to static rendering.
-      artifactsBody = renderStaticArtifacts(artifacts, slug);
-    }
-  }
-
   const timeSinceHuman = narrativeSession
     ? formatTimeSince(new Date(narrativeSession.frontmatter.ended), now)
     : undefined;
@@ -1522,8 +1543,9 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     sections.push(
       `# Open artifacts\n_${artifactsPath} exists but could not be read (${artifactsError}). Branch and stash context is MISSING from this bootstrap — do not treat the working tree as clean. Run \`active-work doctor\`._`,
     );
-  } else if (artifactsBody) {
-    sections.push(`# Open artifacts\n${artifactsBody}`);
+  } else {
+    const artifactsBody = await artifactsBodyPending;
+    if (artifactsBody) sections.push(`# Open artifacts\n${artifactsBody}`);
   }
 
   const bootstrapAt = nowIso();

@@ -5,18 +5,20 @@
  * measure the factory's visual-delta threshold uses. The work is cached per (round, key, base sha256, head sha256), so
  * a new head or a rewritten base is measured afresh and nothing else is.
  */
-import { createHash } from "node:crypto";
+import { Worker } from "node:worker_threads";
 import { z } from "zod";
-import { decodePngBounded, encodePng, pixelDelta, type Decoded } from "@titan-design/png-delta";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { FRAME_KEY, readListedPng, roundFrameIndex } from "./round-frames.js";
+import type { DeltaJob } from "./round-frame-delta-worker.js";
 import { ROUND_ID, type RoundsSource } from "./rounds.js";
 
 /** A decode peaks near 8 bytes a pixel, so two inputs and the delta stay near 120 MB however large a PNG claims to be. */
 const MAX_DELTA_PIXELS = 6 * 1024 * 1024;
 const CACHE_ENTRIES = 16;
+/** Source runs (tsx, vitest) load the TypeScript entry; the tsup bundle ships it beside cli.js. */
+const WORKER_URL = new URL(import.meta.url.endsWith(".ts") ? "./round-frame-delta-worker.ts" : "./round-frame-delta-worker.js", import.meta.url);
 
 const size = z.object({ width: z.number(), height: z.number() });
 
@@ -40,44 +42,46 @@ const deltaResult = z.discriminatedUnion("status", [
 ]);
 export type FrameDelta = z.infer<typeof deltaResult>;
 
-type Measured = Exclude<FrameDelta, { status: "unchanged" }>;
+export type Measured = Exclude<FrameDelta, { status: "unchanged" }>;
 
 const refusal = (reason: string): Error => failure(`frame delta refused: ${reason}`, EXIT.NOINPUT);
 
-function decodeSide(side: "base" | "head", bytes: Buffer): Decoded | string {
-  const decoded = decodePngBounded(bytes, { maxPixels: MAX_DELTA_PIXELS });
-  return "refused" in decoded ? `${side}: ${decoded.refused}` : decoded;
+/** A fresh worker per measure keeps the entry tiny; the cache above it means a pair is decoded once. */
+function measure(base: Buffer, head: Buffer): Promise<Measured> {
+  const job: DeltaJob = { base, head, maxPixels: MAX_DELTA_PIXELS };
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER_URL, { workerData: job });
+    worker.once("message", (measured: Measured) => resolve(measured));
+    worker.once("error", reject);
+    worker.once("exit", (code) => reject(new Error(`frame delta worker exited ${code} without a result`)));
+  });
 }
 
-function measure(baseBytes: Buffer, headBytes: Buffer): Measured {
-  const base = decodeSide("base", baseBytes);
-  if (typeof base === "string") return { status: "unmeasured", reason: base };
-  const head = decodeSide("head", headBytes);
-  if (typeof head === "string") return { status: "unmeasured", reason: head };
-  const delta = pixelDelta(base, head);
-  if (delta.sizesDiffer) return { status: "sizesDiffer", base: delta.before, head: delta.after };
-  const png = encodePng(delta.image);
-  const { changedPixels, share, image } = delta;
-  const sha256 = createHash("sha256").update(png).digest("hex");
-  return { status: "changed", changedPixels, share, width: image.width, height: image.height, contentType: "image/png", bytes: png.length, sha256, base64: png.toString("base64") };
-}
-
-/** A small LRU: a hit moves to the back, and the oldest entry leaves once it is full. */
+/** A small LRU of pending and settled measures: a hit moves to the back, a failed measure is forgotten, and the oldest entry leaves once it is full. */
 export function deltaCache(limit = CACHE_ENTRIES) {
-  const entries = new Map<string, Measured>();
-  return (key: string, compute: () => Measured): Measured => {
+  const entries = new Map<string, Promise<Measured>>();
+  return (key: string, compute: () => Measured | Promise<Measured>): Promise<Measured> => {
     const hit = entries.get(key);
     if (hit !== undefined) {
       entries.delete(key);
       entries.set(key, hit);
       return hit;
     }
-    const value = compute();
+    const value = start(compute);
     entries.set(key, value);
+    value.catch(() => entries.delete(key));
     const oldest = entries.keys().next();
     if (entries.size > limit && oldest.done !== true) entries.delete(oldest.value);
     return value;
   };
+}
+
+function start(compute: () => Measured | Promise<Measured>): Promise<Measured> {
+  try {
+    return Promise.resolve(compute());
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 type Cache = ReturnType<typeof deltaCache>;
