@@ -16,6 +16,8 @@ const WORKSPACE_GLOB = /^([^*{]+)\/\*\/(.+)$/;
 const PACKAGE_PREFIX = /^[^/*{]+\/[^/*{]+(?=\/)/;
 // A target outside every package, such as `scripts`, belongs to the repo root.
 const ROOT_PACKAGE = ".";
+// Never the root itself, where rootBaselineRefusal would stop the next run.
+const ROOT_BASELINE_DIR = "scripts";
 // Creating a baseline has to reach packages that have none yet; pruning one leaves those alone.
 const CREATES_BASELINE = /^--suppress-(?:all|rule)(?:=|$)/;
 const PRUNE = "--prune-suppressions";
@@ -64,11 +66,22 @@ export function chunkGroups(groups, maxFiles) {
   return chunks;
 }
 
+/**
+ * A shared unit names no baseline, so eslint would read a root eslint-suppressions.json by default, and only for the
+ * files that unit lints would it report a stale entry. A root file could then hide a new error in any package without
+ * a baseline, so a run refuses to start. Returns the refusal, or undefined when no root file exists.
+ */
+export function rootBaselineRefusal(root) {
+  const found = [UNTYPED_BASELINE, TYPED_BASELINE].filter((name) => existsSync(join(root, name)));
+  if (found.length === 0) return undefined;
+  return `lint refused: ${found.join(", ")} at the repo root. Move its entries into each package's own file and delete it.`;
+}
+
 /** Which package gets its own baseline flag: the one with a file, or every package when the run creates baselines. */
 export function baselineFinder(root, name, eslintArgs) {
   const creating = eslintArgs.some((arg) => CREATES_BASELINE.test(arg));
   return (pkg) => {
-    const path = join(pkg, name);
+    const path = join(pkg === ROOT_PACKAGE ? ROOT_BASELINE_DIR : pkg, name);
     return creating || existsSync(join(root, path)) ? path : undefined;
   };
 }

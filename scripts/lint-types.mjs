@@ -7,7 +7,7 @@ import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TYPED_FILES } from "../eslint.typed.config.js";
-import { baselineFinder, groupsInPackages, lintGroups, lintUnits, runEslint, runUnits, TYPED_BASELINE } from "./lint-units.mjs";
+import { baselineFinder, groupsInPackages, lintGroups, lintUnits, rootBaselineRefusal, runEslint, runUnits, TYPED_BASELINE } from "./lint-units.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MAX_CHUNK_FILES = 600;
@@ -18,6 +18,11 @@ const TYPED_CONFIG = "eslint.typed.config.js";
 export const LINT_TYPES_INPUTS = [TYPED_CONFIG];
 
 async function main(args) {
+  const refusal = rootBaselineRefusal(ROOT);
+  if (refusal) {
+    console.error(refusal);
+    return 2;
+  }
   const only = args.find((arg) => arg.startsWith("--only="));
   const extra = args.filter((arg) => arg !== only);
   const all = lintGroups(ROOT, TYPED_FILES);

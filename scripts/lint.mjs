@@ -5,7 +5,7 @@
 import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { baselineFinder, lintGroups, lintUnits, runEslint, runUnits, UNTYPED_BASELINE } from "./lint-units.mjs";
+import { baselineFinder, lintGroups, lintUnits, rootBaselineRefusal, runEslint, runUnits, UNTYPED_BASELINE } from "./lint-units.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE_DIR = "node_modules/.cache/lint";
@@ -17,6 +17,11 @@ const MAX_SHARED_FILES = 800;
 const cacheArgs = (unit) => ["--cache", "--cache-strategy", "content", "--cache-location", `${CACHE_DIR}/${unit.groups[0].dir.replace(/\W+/g, "-")}`];
 
 async function main(args) {
+  const refusal = rootBaselineRefusal(ROOT);
+  if (refusal) {
+    console.error(refusal);
+    return 2;
+  }
   const options = args.filter((arg) => arg.startsWith("-"));
   const groups = lintGroups(ROOT, args.filter((arg) => !arg.startsWith("-")));
   const units = lintUnits(groups, baselineFinder(ROOT, UNTYPED_BASELINE, options), MAX_SHARED_FILES);

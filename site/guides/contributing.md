@@ -50,6 +50,7 @@ The baselines are per package so two PRs clearing different packages touch no fi
 relative to the repo root, and a package with no baseline has no file. To drop entries you
 fixed, run `pnpm lint:types --only=<package dir> --prune-suppressions`, or
 `pnpm lint --prune-suppressions` for the untyped baselines. A baseline that empties is deleted.
+Both commands refuse to run while a baseline sits at the repo root.
 
 ## Measuring what tests cost the machine
 

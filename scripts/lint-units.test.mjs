@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { TYPED_FILES } from "../eslint.typed.config.js";
-import { baselineFinder, chunkExit, chunkGroups, groupsInPackages, lintGroups, lintUnits, runEslint, runUnits, TYPED_BASELINE, UNTYPED_BASELINE } from "./lint-units.mjs";
+import { baselineFinder, chunkExit, chunkGroups, groupsInPackages, lintGroups, lintUnits, rootBaselineRefusal, runEslint, runUnits, TYPED_BASELINE, UNTYPED_BASELINE } from "./lint-units.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const groupsOfSize = (...sizes) => sizes.map((files, i) => ({ pattern: `g${i}`, dir: `d${i}`, pkg: `pkg/${i}`, files }));
@@ -108,6 +108,20 @@ describe("lint units and baselines", () => {
     const units = lintUnits(groupsIn(root), baselineFinder(root, UNTYPED_BASELINE, [flag]), 600);
 
     expect(units.map((unit) => unit.baseline).sort()).toEqual(["packages/a", "packages/b", "packages/c"].map((dir) => `${dir}/${UNTYPED_BASELINE}`));
+  });
+
+  it("creates a baseline for root targets under scripts, never at the root", () => {
+    const finder = baselineFinder(repoWith([]), UNTYPED_BASELINE, ["--suppress-all"]);
+
+    expect(finder(".")).toBe(`scripts/${UNTYPED_BASELINE}`);
+  });
+
+  it.each([UNTYPED_BASELINE, TYPED_BASELINE])("refuses a run when %s sits at the root, where a shared unit would read it", (name) => {
+    expect(rootBaselineRefusal(repoWith([name]))).toContain(name);
+  });
+
+  it("lets a run start when no baseline sits at the root", () => {
+    expect(rootBaselineRefusal(repoWith([`packages/a/${UNTYPED_BASELINE}`]))).toBeUndefined();
   });
 
   it("leaves a package with no baseline shared under --prune-suppressions, which fails on a missing file", () => {
