@@ -21,7 +21,7 @@ function storeRef(registration: RegistrationInput | undefined = base): { ref: Sh
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db, () => 0);
-  if (registration) store.register(registration);
+  store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
 }
 
@@ -354,8 +354,7 @@ describe("sh-cleanup task", () => {
 
   it("neither closes nor notes a second time when the run replays after a restart", async () => {
     const w = world({ task: "open" });
-    const stateful = w.tasks as unknown as { state: () => Promise<TaskState> };
-    stateful.state = async () => (w.tasks.closed.length > 0 ? "done" : "open");
+    Object.assign(w.tasks, { state: async (): Promise<TaskState> => (w.tasks.closed.length > 0 ? "done" : "open") });
 
     await w.run();
     const replay = await w.run();

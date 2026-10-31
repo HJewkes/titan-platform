@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -20,6 +19,8 @@ import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
+import { partialFake } from "@titan-design/test-kit";
+import { fakeLocator } from "../test-support/fakes.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -31,7 +32,7 @@ const HEAD = fakeSha("merge-facts-head");
 const OTHER_HEAD = fakeSha("merge-facts-other-head");
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
-const locator = { sourceId: "transcript-1", selector: { kind: "subrecord-text" } } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1", selector: { kind: "subrecord-text" } });
 const ALLOW_ALL = { verdict: "allow", ruleId: "MRG-AU-RV" } as const;
 
 const input: MergeEvidenceInput = {
@@ -62,11 +63,11 @@ afterEach(() => vi.mocked(evaluate).mockReset());
 
 const HOSTNAME = "host-a.example";
 const TRANSCRIPT_PATH = "/srv/agents/sessions/s-1.jsonl";
-const hostLocator = {
+const hostLocator = fakeLocator({
   source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, namespace: HOSTNAME, conversation: { harness: "claude-code", namespace: HOSTNAME, nativeId: "s-1" } },
   evidence: { line: { sourceId: `claude-code:${HOSTNAME}:s-1`, byteOffset: 4096, byteLength: 80, contentHash: "abc", lineNumber: 7, nativeOrdinal: null }, subrecord: { index: 2, path: ["message"] } },
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"], textIndex: 1 },
-} as unknown as SourceTextLocator;
+});
 
 describe("evidenceComment", () => {
   const record = async () => (await collect(world(), { verdict: { value: "MERGE", head: HEAD, locator: hostLocator } })).record;
@@ -119,7 +120,7 @@ describe("evidenceComment layout", () => {
     ...base,
     decision: { outcome: "deny", rule: { table: "authority", rowId: "MRG-AU-X", version: 1 }, reason: "the reviewer did not merge" },
   };
-  const jsonOf = (body: string) => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!) as EvidenceRecord;
+  const jsonOf = (body: string): unknown => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!);
 
   it("leads a cleared comment with the marker, a one-line outcome and the check table, then the collapsed JSON", () => {
     expect(evidenceComment(base).split("\n").slice(0, 10)).toEqual([
@@ -190,7 +191,7 @@ describe("evidenceComment layout", () => {
 });
 
 describe("locatorReference", () => {
-  const withSource = (source: object, rest: object = {}) => ({ source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, ...source }, ...rest }) as unknown as SourceTextLocator;
+  const withSource = (source: object, rest: object = {}) => fakeLocator({ source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, ...source }, ...rest });
 
   it("posts unknown for a locator with no nativeId, not its path or source id", () => {
     const reference = locatorReference(withSource({ conversation: { harness: "claude-code" } }));
@@ -279,7 +280,7 @@ describe("mergeEvidence", () => {
 
   it("gates, not allows, when a required context is still pending at the head", async () => {
     const fake = world();
-    fake.setRuns(HEAD, [successRun("validate", 1, undefined, null as unknown as string), successRun("dag-check", 2)]);
+    fake.setRuns(HEAD, [Object.assign(successRun("validate", 1), { conclusion: null }), successRun("dag-check", 2)]);
 
     const evidence = await collect(fake);
 
@@ -585,7 +586,7 @@ async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
   const route = reviewRoutes(deps).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
   const prompt = JSON.stringify({ ...input, runId: EVIDENCE_RUN, ...carried() });
-  const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+  const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
   if (!outcome.ok) throw new Error(outcome.error);
   const { result } = JSON.parse(outcome.output) as { result: MergeEvidence };
   return result;
@@ -702,7 +703,7 @@ describe("a fact that cannot be read", () => {
 
   it("gates a carried MERGE whose registration read throws, and names only the store error's class, never its text", async () => {
     const leaky = new TypeError("fetch https://db.example.invalid/store failed: Authorization: Bearer tok_FAKE0000SECRET");
-    const failing = { get: () => { throw leaky; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw leaky; } });
 
     const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
     const comment = evidenceComment(evidence.record);
@@ -717,21 +718,21 @@ describe("a fact that cannot be read", () => {
   });
 
   it("names a fixed word, not the thrown value, when a registration read throws something that is not an Error", () => {
-    const failing = { get: () => { throw "secret-token-value"; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw "secret-token-value"; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: non-Error" });
   });
 
   it("names a plain Error when a thrown error's name is not identifier-shaped", () => {
     const named = Object.assign(new Error("boom"), { name: "https://leak.example.invalid" });
-    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw named; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
   });
 
   it("names a plain Error when a thrown error's identifier-shaped name looks like a GitHub token", () => {
     const named = Object.assign(new Error("boom"), { name: "ghp_FAKE0000NOTAREALTOKEN0000" });
-    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw named; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
   });
@@ -739,7 +740,7 @@ describe("a fact that cannot be read", () => {
   it("gates with the fixed class Error, never failing the step or storing the message, when a thrown error's name getter throws", async () => {
     const hostile = new Error("boom");
     Object.defineProperty(hostile, "name", { get: () => { throw new Error("getter-secret-message"); } });
-    const failing = { get: () => { throw hostile; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw hostile; } });
 
     const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
@@ -755,7 +756,7 @@ describe("a fact that cannot be read", () => {
     ];
 
     it.each(hostileProxies)("gates with the fixed class Error, never failing the step or storing text, when %s", async (_case, thrown) => {
-      const failing = { get: () => { throw thrown(); } } as unknown as ShepherdStoreRef;
+      const failing = partialFake<ShepherdStoreRef>({ get: () => { throw thrown(); } });
 
       const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
@@ -770,7 +771,7 @@ describe("a fact that cannot be read", () => {
     let reads = 0;
     const shifty = new Error("boom");
     Object.defineProperty(shifty, "name", { get: () => answers[Math.min(reads++, 1)] });
-    const failing = { get: () => { throw shifty; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw shifty; } });
 
     const { unread } = registeredKind(failing, "run-1");
 
@@ -875,7 +876,7 @@ describe("approve-merge under merge:auto", () => {
 
   it("opens approve-merge and does not merge when the facts at the head gate", async () => {
     const fake = world();
-    fake.setRuns(HEAD, [successRun("validate", 1, undefined, null as unknown as string), successRun("dag-check", 2)]);
+    fake.setRuns(HEAD, [Object.assign(successRun("validate", 1), { conclusion: null }), successRun("dag-check", 2)]);
     const host = shepherdHost(fake, () => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)])));
     const runId = host.runtime.start("shepherd-merge");
 

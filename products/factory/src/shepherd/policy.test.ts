@@ -7,6 +7,7 @@ import type { Verdict } from "./phases.js";
 import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { escalationReason } from "./route-table.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
+import { partialFake } from "@titan-design/test-kit";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -223,7 +224,7 @@ function evidenceAt(head: string, changedPaths = ["src/a.ts"]): MergeEvidence {
     changedPaths,
     seatGrants: ["merge-on-green-approve"],
   };
-  return { head, merge, record: { repo: "acme/gizmos", pr: 3, head, reviewer: REVIEWER } } as unknown as MergeEvidence;
+  return Object.assign(partialFake<MergeEvidence>(), { head, merge, record: { repo: "acme/gizmos", pr: 3, head, reviewer: REVIEWER } });
 }
 
 const reviewed = (evidence: MergeEvidence) => (): Verdict => ({ kind: "MERGE", headSha: evidence.head, evidence });

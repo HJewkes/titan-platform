@@ -1,5 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
+import type { RosterReader } from "./roster.js";
 
 const dispatch = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@titan-design/agent-dispatch", async (original) => ({ ...(await original<object>()), dispatchToAgentChat: dispatch }));
@@ -37,7 +39,7 @@ describe("the profile Shepherd's implementer-class agents spawn under", () => {
   });
 
   it("forwards it to the dispatch both as the profile and as the allowlist", async () => {
-    await agentChatAgents("/bin/agent-chat", { roster: { rows: async () => [], invalidate: () => undefined } as never }).spawn({ name: "n", profile: "bd-implementer", brief: "b", cwd: "/c" });
+    await agentChatAgents("/bin/agent-chat", { roster: partialFake<RosterReader>({ rows: async () => [], invalidate: () => undefined }) }).spawn({ name: "n", profile: "bd-implementer", brief: "b", cwd: "/c" });
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ profile: "bd-implementer" }), expect.any(Number), ["bd-implementer"]);
   });
 });

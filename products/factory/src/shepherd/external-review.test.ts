@@ -1,5 +1,4 @@
 import { fakeSha } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +11,8 @@ import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@ti
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { readPath } from "../narrow.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -19,7 +20,7 @@ const OLD_HEAD = fakeSha("seat-verdict-old-head");
 const target = { repo: REPO, pr: 4, head: HEAD };
 
 const agent = (name: string, session = `session-${name}`): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: session, presence: "exited", spawnedBy: "coord" });
-const locatorIn = (nativeId: string) => ({ source: { conversation: { nativeId } } }) as unknown as SourceTextLocator;
+const locatorIn = (nativeId: string) => fakeLocator({ source: { conversation: { nativeId } } });
 const verdictAt = (verdict: string, head = HEAD) => `Findings.\n\nVerdict: ${verdict}\nPR: ${REPO}#4\nHead: ${head}\n`;
 const said = (who: ReviewerAgent, text: string, writtenAt: number): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt, text, locator: locatorIn(who.sessionId) });
 
@@ -147,8 +148,8 @@ describe("seatFixFirst", () => {
     const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5)]), target);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: HEAD, reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } });
-    expect((result as { text: string }).text).toContain("Seat reviewer seat-c-9-review said FIX_FIRST");
-    expect((result as { text: string }).text).toContain("Findings.");
+    expect(readPath(result, "text")).toContain("Seat reviewer seat-c-9-review said FIX_FIRST");
+    expect(readPath(result, "text")).toContain("Findings.");
   });
 
   it("clears when the same reviewer later writes a MERGE at the same head, in a later session under the same name", async () => {
@@ -793,7 +794,7 @@ describe("Shepherd's MERGE meeting a seat WAIT", () => {
 
 describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
   const POSTSCRIPT = `A background search timed out. The verdict stands.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
-  const textOf = (result: unknown) => (result as { text: string }).text;
+  const textOf = (result: unknown) => String(readPath(result, "text"));
 
   it("keeps a hold reviewer's findings when a postscript restating the block follows them", () => {
     const result = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, verdictAt("FIX_FIRST"), 2), said(SEAT, POSTSCRIPT, 3)]);
@@ -809,8 +810,8 @@ describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
 });
 
 describe("G10 disagreement between a seat reviewer and Shepherd", () => {
-  const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
-  const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
+  const wiring = (...rows: ReviewerAgent[]) => partialFake<NonNullable<Parameters<typeof seatVetoed>[0]>>({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) });
+  const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows), reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
   const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" };
   const ownInput = { ...target, reviewerAgentId: SHEPHERD_RV.agentId, reviewerSessionId: SHEPHERD_RV.sessionId };
   const seatMerge: AwaitVerdictResult = { ...shepherdMerge, locator: locatorIn(SEAT.sessionId), reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } };
@@ -837,7 +838,7 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
   it("ties or unties an unreadable seat reviewer by the PR's registered owner when seatVetoed is given one", async () => {
     const stale = elsewhere(agent("seat-z-1-review"));
-    const unreadable = { ...wiring(stale)!, reader: { read: async () => Promise.reject(new Error("ENOENT")) } } as Parameters<typeof seatVetoed>[0];
+    const unreadable = { ...wiring(stale), reader: { read: async () => Promise.reject(new Error("ENOENT")) } } as Parameters<typeof seatVetoed>[0];
     const ownersOf = vi.fn(() => ({ owner: owned.owner, others: owned.others }));
 
     const registered = await seatVetoed(unreadable, async () => shepherdMerge, Date.now, undefined, ownersOf)(ownInput, new AbortController().signal);
@@ -851,7 +852,7 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
   it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
     const seat = seatSaying("WAIT", "MERGE");
 
-    const step = seatVetoed({ ...wiring(SEAT)!, reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
+    const step = seatVetoed({ ...wiring(SEAT), reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
 
     expect(await step(ownInput, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
     expect(seat.reads()).toBe(2);

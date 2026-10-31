@@ -10,6 +10,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { ESCALATIONS } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
+import { readPath } from "../narrow.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];
@@ -43,7 +44,7 @@ describe("a merge conflict that survives one fixer attempt", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
     const updatedHeads = Object.values(host.runtime.status(runId)!.stepResults)
       .filter((result) => result.stepId.startsWith("update-branch"))
-      .map((result) => (result.data as { result: { headSha: string } }).result.headSha);
+      .map((result) => readPath(result.data, "result", "headSha"));
     host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     await host.runtime.wait(runId);
 
