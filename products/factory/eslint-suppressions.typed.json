@@ -1,9 +1,4 @@
 {
-  "products/factory/src/audit/routes.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/audit/workflow.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -39,65 +34,9 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/approval-carry.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/await-verdict.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/busy-serve.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/carry-merge.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 11
-    }
-  },
   "products/factory/src/shepherd/carry-merge.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/cleanup.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/codewatch-questions.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/conflict-check.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/conflict-escalation.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/events.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/external-review.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/factory/src/shepherd/external-review.ts": {
@@ -105,44 +44,9 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/failure-class.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/freeze-policy.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/factory/src/shepherd/freeze.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/factory/src/shepherd/g10-release-workflow.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/g10-release.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 9
-    }
-  },
-  "products/factory/src/shepherd/head-moved.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/held-wake-view.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/hold.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/factory/src/shepherd/hold.ts": {
@@ -150,118 +54,14 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/ledger-replay.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/merge-facts.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 15
-    }
-  },
-  "products/factory/src/shepherd/merge-state-unsettled.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/merge-up-carry.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/no-progress.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/factory/src/shepherd/override-gate.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/override-stats.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/park.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/policy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/post-merge.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/pr.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/publish-review.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/redeploy.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/release.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/restart-replay.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/resync.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
-    }
-  },
-  "products/factory/src/shepherd/reverts.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/review-cause.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/review-schemas.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
   "products/factory/src/shepherd/review.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 30
-    }
-  },
-  "products/factory/src/shepherd/reviewer-dispatch.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
+      "count": 3
     }
   },
   "products/factory/src/shepherd/round-merge.test.ts": {
@@ -269,72 +69,9 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/route-table.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/seat-fix-first.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/slo-queries.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/spawn-gate.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/spawn-profile.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/stage-times.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/store.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/structural-pass.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/surface.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
-  "products/factory/src/shepherd/task-ref.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/train.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/shepherd/train.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/view.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
     }
   },
   "products/factory/src/test-support/shepherd.ts": {

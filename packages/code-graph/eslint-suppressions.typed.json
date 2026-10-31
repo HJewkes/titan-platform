@@ -1,9 +1,4 @@
 {
-  "packages/code-graph/src/aliases.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/code-graph/src/rows.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 4

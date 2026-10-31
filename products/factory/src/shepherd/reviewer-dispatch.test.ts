@@ -12,6 +12,7 @@ import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 import { createRosterReader } from "./roster.js";
 import { spawnGate } from "./spawn-gate.js";
+import { errorMessage } from "../narrow.js";
 
 type ExecFileDone = (error: Error | null, stdout: string, stderr: string) => void;
 type ExecFileOverride = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone) => unknown;
@@ -75,7 +76,7 @@ const failure = (attempt: Promise<unknown>): Promise<unknown> =>
 function expectRefusal(error: unknown, text: string): void {
   expect(error).toBeInstanceOf(Error);
   expect(error).not.toBeInstanceOf(ReviewerBrokerDown);
-  expect((error as Error).message).toContain(text);
+  expect(errorMessage(error)).toContain(text);
 }
 
 describe("expandHome", () => {
@@ -224,7 +225,7 @@ describe("agentChatReviewerDispatch roster", () => {
     const error = await failure(dispatchOver(BROKER_DOWN).roster());
 
     expect(error).toBeInstanceOf(ReviewerBrokerDown);
-    expect((error as Error).message).toContain(BROKER_DOWN_LINE);
+    expect(errorMessage(error)).toContain(BROKER_DOWN_LINE);
   });
 
   it("reports the no-autostart probe's refusal of agent ls as broker-down, not a refused dispatch (TP-4641)", async () => {
@@ -316,7 +317,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(undefined, { cwdFor }).spawn("rv-demo-7", BRIEF, target));
 
     expectRefusal(error, text);
-    expect((error as Error).message).toContain("octo/demo");
+    expect(errorMessage(error)).toContain("octo/demo");
     expect(wasRun()).toBe(false);
   });
 
@@ -331,7 +332,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(BROKER_DOWN).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerDown);
-    expect((error as Error).message).toContain(BROKER_DOWN_LINE);
+    expect(errorMessage(error)).toContain(BROKER_DOWN_LINE);
   });
 
   it.each([
@@ -352,7 +353,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: ${reason}'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe(reason);
+    expect(errorMessage(error)).toBe(reason);
   });
 
   it("reports a refusal agent-chat marks retryable as busy, carrying the guard's reason without the trailer", async () => {
@@ -360,14 +361,14 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: ${guard}'\necho 'code: machine_headless_limit retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe(guard);
+    expect(errorMessage(error)).toBe(guard);
   });
 
   it("reports a refusal coded machine_hold as a machine hold", async () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: machine stop holds: load5 34'\necho 'code: machine_hold retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerMachineHold);
-    expect((error as Error).message).toBe("machine stop holds: load5 34 (machine_hold)");
+    expect(errorMessage(error)).toBe("machine stop holds: load5 34 (machine_hold)");
   });
 
   it("tells the machine-stop ledger of a machine_hold refusal and still throws the machine hold", async () => {
@@ -400,7 +401,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: spawn budget spent'\necho 'code: spawn_rate retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe("spawn budget spent (spawn_rate)");
+    expect(errorMessage(error)).toBe("spawn budget spent (spawn_rate)");
   });
 
   it("keeps a refusal marked retryable: false a refusal", async () => {

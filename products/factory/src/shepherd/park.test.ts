@@ -17,6 +17,7 @@ import { createRosterReader, type RosterReader } from "./roster.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, parkSettledMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
+import { partialFake } from "@titan-design/test-kit";
 
 interface Registered {
   implementer?: string;
@@ -35,7 +36,7 @@ const storeWith = ({
   reviewer,
   settled = () => false,
 }: Registered = {}) =>
-  ({
+  (Object.assign(partialFake<ShepherdStoreRef>(), {
     get: () => ({
       byRun: () =>
         implementer
@@ -52,7 +53,7 @@ const storeWith = ({
       parkSettled: settled,
       settlePark: () => undefined,
     }),
-  } as unknown as ShepherdStoreRef);
+  }));
 const input = { runId: "run-1", headSha: "a".repeat(40) };
 
 const refusing =

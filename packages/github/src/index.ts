@@ -10,7 +10,7 @@ export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
 export type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopRange, BackstopRequest, BackstopReview, BackstopSnapshot, BackstopTrain, RateLimit, RollupContext } from "./backstop-read.js";
 export { BACKSTOP_CAPS, BackstopTruncated, DONE_OVERLAP_MS, graphqlPoints, readBackstopSnapshot, snapshotRequests, TRAIN_PREFIX } from "./backstop-read.js";
-export { isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
+export { isConcluded, isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
 export type { CiVerdict, CiVerdictInput } from "./ci-verdict.js";
 export { ciVerdict, loadRequiredContexts } from "./ci-verdict.js";
 export type { CiWaitOptions, CiWaitOutcome, CiWaitResult } from "./ci-wait.js";

@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -16,6 +15,8 @@ import { FIX_FIRST_STEP } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
 import { WAKE_STEPS, wakeRoutes, type ImplementerAgents } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
+import { readPath } from "../narrow.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "octo/demo";
 const HEADS = [fakeSha("structural-1"), fakeSha("structural-2"), fakeSha("structural-3")] as const;
@@ -31,7 +32,7 @@ const DEFECT_CLASS = ["Defect class: fail-open defaults. Every guard returns suc
 const SECOND_FINDINGS = ["Blocking items:", ...SECOND_ITEMS, "", DEFECT_CLASS].join("\n");
 const RE_REVIEW_ASK = "your review must include a section that starts with a line `Defect class:`";
 
-const locatorIn = (nativeId: string) => ({ source: { conversation: { nativeId } } }) as unknown as SourceTextLocator;
+const locatorIn = (nativeId: string) => fakeLocator({ source: { conversation: { nativeId } } });
 
 function implementerRow(): AgentRow {
   const base = { name: "impl-a", agentId: "id-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", surface: "headless", model: null };
@@ -101,7 +102,7 @@ describe("a PR's second FIX_FIRST", () => {
     store.get().register({ repo: REPO, pr: 1, runId, task: "demo task", implementer: "impl-a", policy: { ...OWNER_GATE_POLICY, fixer: true, seat: "demo-seat" } });
     const done = await host.runtime.wait(runId);
     const counted = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId === FIX_FIRST_STEP);
-    return { status: done.status, verdicts, reviewerBriefs: reviewers.briefs, fixerBriefs: implementer.messages, counted: counted.map((result) => (result.data as { result: unknown }).result) };
+    return { status: done.status, verdicts, reviewerBriefs: reviewers.briefs, fixerBriefs: implementer.messages, counted: counted.map((result) => readPath(result.data, "result")) };
   }
 
   const findings = (head: string) => (head === HEADS[0] ? FIRST_FINDINGS : SECOND_FINDINGS);
