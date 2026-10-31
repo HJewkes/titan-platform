@@ -365,7 +365,7 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
   if (!freezes || !live) return { unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" };
-  const stays = (detail: string) => ({ unfrozen: false, frozen: true, episode: live.episode, detail });
+  const stays = (detail: string) => staysUnlessThawed(freezes, input.repo, live.episode, detail);
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
@@ -376,6 +376,15 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   }
   const unfrozen = freezes.unfreeze(input.repo, input.mergeSha);
   return { unfrozen, frozen: freezes.isFrozen(input.repo), episode: live.episode, detail: "green after the red sha" };
+}
+
+/**
+ * The reads take seconds, so another run or the main watch may thaw the episode meanwhile. Its thaw sweep runs before
+ * this step's main-frozen gate opens, so a frozen read from before the reads would leave that gate pending (TP-2919).
+ */
+function staysUnlessThawed(freezes: FreezeStore, repo: RepoSlug, episode: number, detail: string): z.infer<typeof UnfreezeResult> {
+  const frozen = freezes.live(repo, episode) !== undefined;
+  return { unfrozen: false, frozen, episode, detail: frozen ? detail : `${detail}; episode ${episode} thawed meanwhile` };
 }
 
 /** A read that fails records an ordinary red, which only a later green sha clears. */
