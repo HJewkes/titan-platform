@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
+import { stableNodePath } from "@titan-design/daemon/service";
 import type { Command } from "commander";
 import { installTimer, uninstallTimer, type CommandResult, type InstallPorts } from "./install.js";
-import { stableNodePath } from "./units.js";
 import type { HostEnv } from "./targets.js";
 
 interface InstallCliIo extends HostEnv {
