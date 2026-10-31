@@ -161,7 +161,7 @@ export default defineCommand<Args, TaskOrLine>({
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);
       return { task, existing };
     });
-    await warnRelatedTasks(ctx, args.slug, filed.task, filed.existing);
-    return quietOr(args.quiet, ctx, filed.task, () => `${filed.task.id} created`);
+    const result = await warnRelatedTasks(ctx, args.slug, filed.task, filed.existing);
+    return quietOr(args.quiet, ctx, result, () => `${result.id} created`);
   },
 });
