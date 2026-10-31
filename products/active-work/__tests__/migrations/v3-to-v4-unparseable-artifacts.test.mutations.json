@@ -11,7 +11,6 @@
       ]
     },
     {
-<<<<<<< HEAD
       "name": "a non-mapping artifacts.yml is read as empty again",
       "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
       "find": "return 'not a mapping';",
@@ -22,8 +21,6 @@
       ]
     },
     {
-=======
->>>>>>> origin/main
       "name": "the skip is not reported in the migration log",
       "file": "products/active-work/src/migrations/v3-to-v4-worktrees.ts",
       "find": "if (skipped) {",
