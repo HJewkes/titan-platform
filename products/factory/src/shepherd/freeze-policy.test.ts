@@ -1,5 +1,4 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +9,8 @@ import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from
 import type { EffectivePolicy } from "./policy.js";
 import type { ReviewerReader } from "@titan-design/review-panel";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStore } from "./store.js";
+import { partialFake } from "@titan-design/test-kit";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "octo/demo";
 const RED = fakeSha("freeze-policy-red");
@@ -18,7 +19,7 @@ const FIX_TASK = "demo/FIX-1";
 const FIXER = "fix-demo-red";
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
-const locator = { sourceId: "transcript-1", selector: { kind: "subrecord-text" } } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1", selector: { kind: "subrecord-text" } });
 
 const dbs: Db[] = [];
 afterEach(() => dbs.splice(0).forEach((db) => db.close()));
@@ -42,12 +43,12 @@ function scene(): Scene {
   freeze.bind(db);
   const fake = fakeGitHub();
   const clock = { at: 0 };
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, freeze, now: () => clock.at, sleep: async () => undefined, review: { reader: {} as ReviewerReader } });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, freeze, now: () => clock.at, sleep: async () => undefined, review: { reader: partialFake<ReviewerReader>() } });
   const route = routes.find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
   const evidence = async (pr: number) => {
     const head = fake.pr(pr).headSha;
     const input: MergeEvidenceInput = { runId: `run-${pr}`, repo: REPO, pr, head, verdict: { value: "MERGE", head, locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: ["merge-on-green-approve"] };
-    const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: `k-${pr}` } as unknown as RoutedStepInput);
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: `k-${pr}` }));
     if (!outcome.ok) throw new Error(outcome.error);
     return (JSON.parse(outcome.output) as { result: MergeEvidence }).result;
   };

@@ -1,6 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -14,6 +13,8 @@ import { reviewPhase } from "./review.js";
 import type { Presence } from "./presence.js";
 import { shepherdStoreRef } from "./store.js";
 import { withDemotionOff } from "../test-support/gate-demotions.js";
+import { partialFake } from "@titan-design/test-kit";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -96,10 +97,10 @@ describe("the no-progress escalation", () => {
 
 describe("a reviewer's Closer line", () => {
   const input = { repo: REPO, pr: 1, head: H1, reviewerAgentId: "a", reviewerSessionId: "s", dispatchedAt: 0 };
-  const said = (text: string) => ({ agentId: "a", sessionId: "s", writtenAt: 1, text, locator: { source: { conversation: { nativeId: "s" } } } as unknown as SourceTextLocator });
+  const said = (text: string) => ({ agentId: "a", sessionId: "s", writtenAt: 1, text, locator: fakeLocator({ source: { conversation: { nativeId: "s" } } }) });
 
   it("reaches the accepted FIX_FIRST verdict", () => {
-    const result = acceptVerdict(input as never, [said(`Read all.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\nCloser: no\n`)]);
+    const result = acceptVerdict(partialFake<Parameters<typeof acceptVerdict>[0]>(input), [said(`Read all.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\nCloser: no\n`)]);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", closer: "no" });
   });
@@ -112,7 +113,7 @@ describe("the Closer signal through the real review phase", () => {
   const row = (name: string, presence: Presence = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
   const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
     ...{ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text },
-    locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator,
+    locator: fakeLocator({ source: { conversation: { nativeId: who.sessionId } } }),
   });
 
   it("asks only a re-review for Closer, and two replies ending Closer: no open the no-progress gate", async () => {
@@ -151,7 +152,7 @@ describe("the Closer signal through the real review phase", () => {
     const input = { repo: REPO, pr: 1, head: H1 };
     const text = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\nCloser: no\n`;
 
-    const result = acceptExternalVerdict(input as never, external, [said(external, text)]);
+    const result = acceptExternalVerdict(partialFake<Parameters<typeof acceptExternalVerdict>[0]>(input), external, [said(external, text)]);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", closer: "no" });
   });

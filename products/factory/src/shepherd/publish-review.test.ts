@@ -1,5 +1,4 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -12,6 +11,9 @@ import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
+import { readPath } from "../narrow.js";
+import { fakeLocator } from "../test-support/fakes.js";
+import { z } from "zod";
 
 const A = fakeSha("publish-review-a");
 const B = fakeSha("publish-review-b");
@@ -23,7 +25,7 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const locatorIn = (nativeId: string) =>
-  ({ source: { conversation: { nativeId } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } }) as unknown as SourceTextLocator;
+  fakeLocator({ source: { conversation: { nativeId } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } });
 
 /** Every spawned reviewer is live at once with a started session. */
 function liveDispatch(): ReviewerDispatch {
@@ -81,7 +83,7 @@ const posted = (fake: FakeGitHub) => fake.createdCheckRuns.map(({ request }) => 
 
 function publishResults(host: FactoryHost, runId: string): Record<string, unknown>[] {
   const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("sh-publish-review:"));
-  return results.map((result) => (result.data as { result: Record<string, unknown> }).result);
+  return results.map((result) => z.record(z.string(), z.unknown()).parse(readPath(result.data, "result")));
 }
 
 describe("sh-publish-review", () => {

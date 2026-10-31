@@ -17,6 +17,7 @@ import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { timelineEntries, watchRow } from "./view.js";
 import { WAKE_STEP, wakeRoutes, type ImplementerAgents } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
+import { readPath } from "../narrow.js";
 
 const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
 const SCRATCH = mkdtempSync(join(tmpdir(), "tp1751-held-"));
@@ -85,7 +86,7 @@ function seen({ host, store }: World, runId: string) {
   const run = host.runtime.status(runId)!;
   const wakeStep = Object.values(run.stepResults).find((result) => result.stepId.startsWith(WAKE_STEP))!;
   const entry = timelineEntries(run, []).find((item) => "stepId" in item && item.stepId === wakeStep.stepId);
-  return { record: (wakeStep.data as { result: unknown }).result, entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
+  return { record: readPath(wakeStep.data, "result"), entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
 }
 
 describe("what the watch view shows after a wake no fixer took", () => {

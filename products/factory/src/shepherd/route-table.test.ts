@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, escalationReason, fixFirstEscalation, mergeableState, nextCloserStreak, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
+import { readPath } from "../narrow.js";
 
 const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review", throttled: "fresh-reviewer" };
 
@@ -25,7 +26,7 @@ describe("the Shepherd route table", () => {
   });
 
   it("gives every cell a route, so a missing state or outcome fails here", () => {
-    const missing = CELLS.filter(([run, state, outcome]) => !(ROUTES as readonly unknown[]).includes(ROUTE_TABLE[run]?.[state]?.[outcome]));
+    const missing = CELLS.filter(([run, state, outcome]) => !(ROUTES as readonly unknown[]).includes(readPath(ROUTE_TABLE, run, state, outcome)));
 
     expect(missing).toEqual([]);
   });

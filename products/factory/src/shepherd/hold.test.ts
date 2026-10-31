@@ -2,7 +2,6 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } fro
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +14,10 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
+import { partialFake } from "@titan-design/test-kit";
+import { fakeLocator } from "../test-support/fakes.js";
+import type { RoutedStepInput } from "@titan-design/workflow";
+import { readPath } from "../narrow.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -58,7 +61,7 @@ function rig(kind?: string): Rig {
 
 function say(r: Rig, text: string, from: ReviewerAgent = agent(REVIEWER)): void {
   const writtenAt = r.messages.length + 1;
-  r.messages.push({ agentId: from.agentId, sessionId: from.sessionId, writtenAt, text, locator: { sourceId: `line-${writtenAt}` } as unknown as SourceTextLocator });
+  r.messages.push({ agentId: from.agentId, sessionId: from.sessionId, writtenAt, text, locator: fakeLocator({ sourceId: `line-${writtenAt}` }) });
 }
 
 const satisfier = (r: Rig) => holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: { read: async () => r.messages } });
@@ -230,9 +233,9 @@ describe("a hold that names a reviewer", () => {
     const r = rig();
     let ran = false;
     const route = { match: "merge", runner: { run: async () => ((ran = true), { ok: true as const, output: "{}" }) } };
-    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep: async () => say(r, verdictAt(H1)), now: () => 0 }, openHeadRead(r.port));
+    const waiting = waitWhileHeld(partialFake<StepRoute>(route), heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep: async () => say(r, verdictAt(H1)), now: () => 0 }, openHeadRead(r.port));
 
-    const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean; output?: string }>)({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 });
+    const result = await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 }));
 
     expect(result.ok).toBe(true);
     expect(ran).toBe(false);
@@ -393,7 +396,6 @@ describe("a run held at registration whose seat sends the reviewed head back", (
     return r;
   }
 
-  type Run = (input: unknown) => Promise<{ ok: boolean; output?: string; error?: string }>;
   const MAX_POLLS = 5;
 
   /** The step's sleep runs `onPoll` and gives up after MAX_POLLS by aborting, so a wait that never ends fails the test instead of hanging it. */
@@ -406,13 +408,13 @@ describe("a run held at registration whose seat sends the reviewed head back", (
       onPoll(probe.polls);
     };
     const route = { match: "merge", runner: { run: async () => ((probe.ran = true), { ok: true as const, output: "{}" }) } };
-    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep, now: () => 0 }, openHeadRead(r.port));
-    const run = (sha: string) => (waiting.runner.run as Run)({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha }), signal: control.signal, stepId: "merge:0", attempt: 0 });
+    const waiting = waitWhileHeld(partialFake<StepRoute>(route), heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep, now: () => 0 }, openHeadRead(r.port));
+    const run = (sha: string) => waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha }), signal: control.signal, stepId: "merge:0", attempt: 0 }));
     return { probe, run };
   }
 
   /** The step gave up still waiting: it neither merged nor answered. */
-  function stillWaiting(r: Rig, step: ReturnType<typeof mergeStep>, result: Awaited<ReturnType<Run>>): void {
+  function stillWaiting(r: Rig, step: ReturnType<typeof mergeStep>, result: Awaited<ReturnType<ReturnType<typeof mergeStep>["run"]>>): void {
     expect(result.ok).toBe(false);
     expect(step.probe).toMatchObject({ ran: false, polls: MAX_POLLS + 1 });
     expect(r.fake.pr(r.pr).merged).toBe(false);
@@ -448,7 +450,7 @@ describe("a run held at registration whose seat sends the reviewed head back", (
 
     expect(result).toMatchObject({ ok: true });
     expect(step.probe).toMatchObject({ ran: false, polls: 1 });
-    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(JSON.parse(String(readPath(result, "output"))).result).toEqual(AFTER_HOLD);
     expect(r.fake.pr(r.pr).merged).toBe(false);
   });
 
@@ -460,7 +462,7 @@ describe("a run held at registration whose seat sends the reviewed head back", (
 
     expect(result).toMatchObject({ ok: true });
     expect(step.probe).toMatchObject({ ran: false, polls: 1 });
-    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(JSON.parse(String(readPath(result, "output"))).result).toEqual(AFTER_HOLD);
     expect(r.fake.pr(r.pr).merged).toBe(false);
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-review: +415/-0 diff over 400" });
   });
@@ -504,7 +506,7 @@ describe("a run held at registration whose seat sends the reviewed head back", (
 
     expect(result).toMatchObject({ ok: true });
     expect(step.probe.ran).toBe(false);
-    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(JSON.parse(String(readPath(result, "output"))).result).toEqual(AFTER_HOLD);
   });
 });
 

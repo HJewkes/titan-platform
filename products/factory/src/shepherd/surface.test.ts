@@ -14,6 +14,8 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerReading } from "./review-slots.js";
 import { spawnGate } from "./spawn-gate.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
+import { z } from "zod";
+import { portOf } from "../test-support/fakes.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
 const dirs: string[] = [];
@@ -56,13 +58,13 @@ async function post(port: number, path: string, body: unknown): Promise<string> 
 /** The streamable HTTP transport may answer as one SSE event; its data line is the JSON-RPC response. */
 function jsonRpcResult(text: string): { tools: { name: string }[] } {
   const data = text.split("\n").find((line) => line.startsWith("data: "));
-  return (JSON.parse(data ? data.slice("data: ".length) : text) as { result: { tools: { name: string }[] } }).result;
+  return z.object({ tools: z.array(z.looseObject({ name: z.string() })) }).parse(JSON.parse(data ? data.slice("data: ".length) : text).result);
 }
 
 async function deadPort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const port = portOf(probe);
   await new Promise((resolve) => probe.close(resolve));
   return port;
 }
@@ -109,7 +111,7 @@ describe("shepherd surfaces on titan-factory serve", () => {
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
     const server = await serve(fixture);
 
-    const registered = JSON.parse(await post(server.port, "/rpc/shepherd.register", register)) as { ok: boolean; data: { runId: string; created: boolean } };
+    const registered = z.looseObject({ ok: z.boolean(), data: z.looseObject({ runId: z.string(), created: z.boolean() }) }).parse(JSON.parse(await post(server.port, "/rpc/shepherd.register", register)));
     const status = await cli(["shepherd", "status", `${REPO}#1`, "--json", "--port", String(server.port)], fixture);
 
     expect(registered).toMatchObject({ ok: true, data: { created: true } });

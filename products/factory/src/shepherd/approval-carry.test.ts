@@ -5,6 +5,8 @@ import { followingApprovals } from "./approval-carry.js";
 import type { FixCarryResult } from "./fix-carry.js";
 import type { OwnMergeUpResult } from "./own-merge-up.js";
 import type { RemergeResult } from "./remerge-carry.js";
+import { partialFake } from "@titan-design/test-kit";
+import { z } from "zod";
 
 const REPO = "acme/widgets";
 const TARGET = { repo: REPO, pr: 1 };
@@ -48,11 +50,11 @@ function rig({ kind = "correctness", remerge = EMPTY, fix = NO_FIX, own = { carr
     return input;
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
-    const input = JSON.parse(Object.values(options.vars)[0]!) as Record<string, unknown>;
+    const input = z.record(z.string(), z.unknown()).parse(JSON.parse(Object.values(options.vars)[0]!));
     steps.push({ stepId, input });
     return { data: { result: respond(stepId, input) } };
   };
-  const ctx = { runId: "run-1", dispatch } as unknown as WorkflowContext;
+  const ctx = Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch });
   const owner: WorkflowContext["assisted"] = async (_stepId, prompt) => {
     const head = /at head ([0-9a-f]{40})/.exec(prompt)?.[1] ?? "";
     gates.push(head);
