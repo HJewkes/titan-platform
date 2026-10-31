@@ -1,7 +1,7 @@
 import { sentencesOf, wordsOf } from "./lint-text.js";
 
 /** Whether the beat guard refuses a new sentence for its length. */
-export type Overlong = (sentence: string) => boolean;
+type Overlong = (sentence: string) => boolean;
 
 // A piece this short reads as a fragment rather than a sentence of its own.
 const MIN_PIECE_WORDS = 4;
