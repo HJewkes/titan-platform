@@ -47,7 +47,7 @@ describe("MergeEvidenceSchema", () => {
 
   it("rejects evidence whose resolver names no session", () => {
     const bad = evidence();
-    bad.merge.resolver = { agentId: "agent-rv" } as typeof reviewer;
+    Object.assign(bad.merge, { resolver: { agentId: "agent-rv" } });
 
     expect(MergeEvidenceSchema.safeParse(bad).success).toBe(false);
   });

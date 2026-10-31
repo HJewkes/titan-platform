@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isConcluded, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import type { HeadObserver } from "../head-guard/head-regression.js";
@@ -124,7 +124,7 @@ function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
 function withoutCancelledWorkflowRuns(runs: readonly CheckRun[]): CheckRun[] {
   const jobs = new Map<number, CheckRun[]>();
   for (const run of runs) if (run.workflowRunId !== null) jobs.set(run.workflowRunId, [...(jobs.get(run.workflowRunId) ?? []), run]);
-  const standing = (own: readonly CheckRun[]) => own.every((job) => job.status !== "completed" || isPassingConclusion(job.conclusion));
+  const standing = (own: readonly CheckRun[]) => own.every((job) => !isConcluded(job) || isPassingConclusion(job.conclusion));
   const sibling = (id: number, own: readonly CheckRun[]) => [...jobs].some(([other, theirs]) => other !== id && standing(theirs) && theirs.some((job) => own.some((mine) => mine.name === job.name)));
   const cancelled = new Set([...jobs].filter(([id, own]) => own.some((job) => job.conclusion === "cancelled") && sibling(id, own)).map(([id]) => id));
   return runs.filter((run) => run.workflowRunId === null || !cancelled.has(run.workflowRunId));

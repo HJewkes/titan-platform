@@ -37,7 +37,8 @@
     "@titan-design/embed": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "zod": "^4.4.3"
   },
   "bin": {
     "retrieval-eval": "./dist/bin.js"

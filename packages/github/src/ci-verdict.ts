@@ -1,4 +1,4 @@
-import { isPassing, isSucceeded, latestPerName } from "./checks.js";
+import { isConcluded, isPassing, isSucceeded, latestPerName } from "./checks.js";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import type { CheckRun, CommitStatus, GitHubPort, RepoSlug, RequiredChecks } from "./port.js";
 
@@ -62,14 +62,14 @@ function requiredFindings({ rules, runs, statuses }: CiVerdictInput): Finding[] 
  */
 function decidingRun(runs: readonly CheckRun[], name: string, app: number): CheckRun | null {
   const slot = runs.filter((run) => run.name === name && run.appId === app);
-  const unfinished = slot.filter((run) => run.status !== "completed");
+  const unfinished = slot.filter((run) => !isConcluded(run));
   return latestPerName(unfinished.length > 0 ? unfinished : slot)[0] ?? null;
 }
 
 /** A required context needs `isSucceeded`, as checks.ts documents: skipped and neutral are red here, unlike the all-runs rule. */
 function judge(name: string, run: CheckRun | null): Finding | null {
   if (run && isSucceeded(run)) return null;
-  if (!run || run.status !== "completed") return { kind: "pending", text: name };
+  if (!run || !isConcluded(run)) return { kind: "pending", text: name };
   return { kind: "bad", text: `${name}=${run.conclusion}` };
 }
 
@@ -89,7 +89,7 @@ function judgeStatus(name: string, state: string | null): Finding | null {
 function allFindings(runs: readonly CheckRun[], statuses: readonly CommitStatus[]): Finding[] {
   const findings: Finding[] = [];
   for (const run of runs) {
-    if (run.status !== "completed") findings.push({ kind: "pending", text: run.name });
+    if (!isConcluded(run)) findings.push({ kind: "pending", text: run.name });
     else if (!isPassing(run)) findings.push({ kind: "bad", text: `${run.name}=${run.conclusion}` });
   }
   for (const status of statuses) {
