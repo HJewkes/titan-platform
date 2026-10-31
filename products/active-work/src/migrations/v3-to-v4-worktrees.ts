@@ -84,16 +84,25 @@ function mergeWorktrees(
   return out;
 }
 
-async function readArtifacts(file: string): Promise<{
+interface CurrentArtifacts {
   branches: unknown[];
   stashes: unknown[];
   worktrees: WorktreeEntry[];
-}> {
-  let raw: unknown;
+}
+
+/** Returns `null` for a file that exists but is not valid YAML: writing over it would lose its content. */
+async function readArtifacts(file: string): Promise<CurrentArtifacts | null> {
+  let text: string;
   try {
-    raw = YAML.parse(await fs.readFile(file, 'utf8'));
+    text = await fs.readFile(file, 'utf8');
   } catch {
     return { branches: [], stashes: [], worktrees: [] };
+  }
+  let raw: unknown;
+  try {
+    raw = YAML.parse(text);
+  } catch {
+    return null;
   }
   if (!isRecord(raw)) return { branches: [], stashes: [], worktrees: [] };
   return {
@@ -105,39 +114,54 @@ async function readArtifacts(file: string): Promise<{
   };
 }
 
-/** Returns how many worktrees moved out of this brief. */
-async function migrateOne(initiativeDir: string): Promise<number> {
+/** Returns false, writing nothing, when the existing `artifacts.yml` is unparseable. */
+async function mergeIntoArtifacts(
+  initiativeDir: string,
+  incoming: Array<{ name: string; path: string; default: boolean }>,
+): Promise<boolean> {
+  const artifactsPath = path.join(initiativeDir, 'artifacts.yml');
+  const current = await readArtifacts(artifactsPath);
+  if (current === null) return false;
+  await writeYaml(
+    artifactsPath,
+    ArtifactsSchema.parse({
+      branches: current.branches,
+      stashes: current.stashes,
+      worktrees: mergeWorktrees(current.worktrees, incoming),
+    }),
+    ArtifactsSchema,
+  );
+  return true;
+}
+
+interface MigrateOutcome {
+  moved: number;
+  skipped: boolean;
+}
+
+/** Leaves the brief and an unreadable `artifacts.yml` untouched, so a later run can retry. */
+async function migrateOne(initiativeDir: string): Promise<MigrateOutcome> {
   const briefPath = path.join(initiativeDir, 'brief.md');
   let raw: string;
   try {
     raw = await fs.readFile(briefPath, 'utf8');
   } catch {
-    return 0;
+    return { moved: 0, skipped: false };
   }
   const parsed = parseFrontmatter(raw);
   const data = parsed.data;
-  if (!('worktrees' in data)) return 0;
+  if (!('worktrees' in data)) return { moved: 0, skipped: false };
 
   const incoming = toEntries(data.worktrees);
   delete data.worktrees;
 
-  if (incoming.length > 0) {
-    const artifactsPath = path.join(initiativeDir, 'artifacts.yml');
-    const current = await readArtifacts(artifactsPath);
-    await writeYaml(
-      artifactsPath,
-      ArtifactsSchema.parse({
-        branches: current.branches,
-        stashes: current.stashes,
-        worktrees: mergeWorktrees(current.worktrees, incoming),
-      }),
-      ArtifactsSchema,
-    );
+  if (incoming.length > 0 && !(await mergeIntoArtifacts(initiativeDir, incoming))) {
+    return { moved: 0, skipped: true };
   }
 
   // Rewrite the brief frontmatter only; `stringifyFrontmatter` preserves the body.
   await atomicWrite(briefPath, stringifyFrontmatter(parsed.content, data));
-  return incoming.length;
+  return { moved: incoming.length, skipped: false };
 }
 
 async function initiativeDirs(activeRoot: string): Promise<string[]> {
@@ -168,8 +192,12 @@ export const v3ToV4Worktrees: Migration = {
   async run(activeRoot: string): Promise<void> {
     const moved: string[] = [];
     for (const dir of await initiativeDirs(activeRoot)) {
-      const count = await migrateOne(dir);
-      if (count > 0) moved.push(`${path.basename(dir)}\t${count} worktree(s)`);
+      const { moved: count, skipped } = await migrateOne(dir);
+      if (skipped) {
+        moved.push(`${path.basename(dir)}\tSKIPPED: artifacts.yml is unparseable, left untouched`);
+      } else if (count > 0) {
+        moved.push(`${path.basename(dir)}\t${count} worktree(s)`);
+      }
     }
     if (moved.length === 0) return;
     const stamp = new Date().toISOString();

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "null list elements are no longer filtered out",
+      "file": "products/active-work/src/migrations/v1-to-v2-artifacts.ts",
+      "find": "value.filter(isRecord) as T[]",
+      "replace": "value as T[]",
+      "kills": [
+        "v1ToV2Artifacts null list elements does not throw on a null element and migrates the valid entries around it",
+        "v1ToV2Artifacts null list elements does not throw when every element is null"
+      ]
+    },
+    {
+      "name": "non-array values are treated as a list",
+      "file": "products/active-work/src/migrations/v1-to-v2-artifacts.ts",
+      "find": "return Array.isArray(value) ? (value.filter(isRecord) as T[]) : [];",
+      "replace": "return [];",
+      "kills": [
+        "v1ToV2Artifacts null list elements migrates valid inputs exactly as before"
+      ]
+    }
+  ]
+}

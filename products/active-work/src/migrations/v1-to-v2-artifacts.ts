@@ -47,8 +47,9 @@ interface V1Stash {
   sha?: string;
 }
 
+/** Non-record elements (null, scalars) carry no v1 fields, so they are skipped. */
 function asArray<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
+  return Array.isArray(value) ? (value.filter(isRecord) as T[]) : [];
 }
 
 function normaliseBranch(b: V1Branch): { repo: string; name: string; note?: string } | null {
