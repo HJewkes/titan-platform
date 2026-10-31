@@ -1,5 +1,45 @@
 # @titan-design/egress-scan
 
+## 0.7.0
+
+### Minor Changes
+
+- 45eebed: Add the `@titan-design/egress-scan/hooks` subpath: `writeGitHooks` writes a spawn-time git hooks dir that `gitHooksEnv` points git at. Its pre-push runs `titan-egress-scan pre-push` on a baked PATH, refuses when the private term list is missing, and chains to the repo's own hook. A `noRewriteHooksDir` dir also refuses the deletes, main or master updates, refs outside heads and tags and non-fast-forwards git hands the hook, and pushes to a configured mirror remote; a typed `push --mirror` must be refused before git runs. Relative PATH entries are never baked into the hook. Ported from agent-chat's leak guard; the generated hooks are byte-identical to its own.
+- 16bd97d: `/hooks` gains the agent `git` shim: `gitShimScript`, `writeGitShim` and `findRealGit` (which never returns a shim, this one or another, as the real git), the exec-path mirror (`writeGitMirror`, `gitMirrorDirFor`, `mirrorEntries`, `probeGit`), and the shim header check (`SHIM_HEADER`, `isAgentChatShim`, `holdsAgentChatShim`). The shim's transport pin narrows `GIT_ALLOW_PROTOCOL` to `@titan-design/worktree`'s safe list and gives git the same environment as its `withPinnedGitProtocols`. egress-scan now depends on `@titan-design/worktree` and moves to tier 1.
+- 87cf6c2: `/hooks` gains `posixShell`, `hardenedShebang`, `ENVIRONMENT_SCRUB` and `hookShell` (the `HookShell` the hooks writer takes), and `ownToolDirs`, `withOwnTools` and `defaultScanInputs`, so a hooks writer whose PATH lacks the scanner still bakes its own scanner and node.
+- 6d9f2c7: A private term line may start with a `[category]` tag. A finding on a tagged term carries `category`, and the report prints `[category]` in place of `#<line>`. Untagged lines behave as before; a malformed tag fails the load with a `TermFileError`.
+
+### Patch Changes
+
+- 8a8ab19: A new-branch push no longer trusts local tracking refs. The scan now excludes only commits reachable from the tips the push URL advertises; a forged or stale `refs/remotes/<remote>/*` ref can no longer hide a commit. When the push URL is missing or cannot be listed, a new branch's whole history is scanned.
+- 0848c31: `compileGlobs` matches in time linear in the path instead of compiling a backtracking RegExp, so a short glob such as `d/` and twenty `*`, `**/` repeated, or `*a` repeated can no longer hang a fix-proof plan or an egress-scan `.egress-allow` check. Match results are unchanged.
+- Updated dependencies [7492819]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [ca8e8b7]
+- Updated dependencies [8b92ba0]
+- Updated dependencies [36dc03f]
+- Updated dependencies [f3d3107]
+- Updated dependencies [661a027]
+- Updated dependencies [4080191]
+- Updated dependencies [32637bd]
+- Updated dependencies [2451aa9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [719f05e]
+- Updated dependencies [8031169]
+- Updated dependencies [247171d]
+- Updated dependencies [9ad447f]
+- Updated dependencies [d5e44a5]
+  - @titan-design/fix-proof@0.9.0
+  - @titan-design/worktree@0.4.0
+
 ## 0.6.7
 
 ### Patch Changes

@@ -1,5 +1,22 @@
 # @titan-design/titan
 
+## 0.4.1
+
+### Patch Changes
+
+- 12f75a6: Health target merging and the cost report build their results without type assertions. No behaviour change.
+- 5390a34: titan imports the systemd escaping, PATH, unit-directory and node-path helpers from `@titan-design/daemon/service` and deletes its own copies. Rendered unit files are byte-identical, except that a node directory containing ":" now throws instead of writing a broken PATH.
+- Updated dependencies [1ac0fa2]
+- Updated dependencies [24f1577]
+- Updated dependencies [6554538]
+- Updated dependencies [c525f57]
+- Updated dependencies [9dd8d1c]
+- Updated dependencies [9b42150]
+- Updated dependencies [00fb3ee]
+- Updated dependencies [147ff5d]
+  - @titan-design/daemon@0.9.0
+  - @titan-design/health@0.2.1
+
 ## 0.4.0
 
 ### Minor Changes

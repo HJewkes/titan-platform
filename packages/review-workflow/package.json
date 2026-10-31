@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/review-workflow",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome",
   "type": "module",
   "main": "./dist/index.js",

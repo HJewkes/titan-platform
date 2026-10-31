@@ -1,5 +1,54 @@
 # @titan-design/session-graph
 
+## 0.19.0
+
+### Minor Changes
+
+- e8fbf15: `session_origin` gains eleven `route_*` text columns (mode, source, prior, reason, requested, wanted, workflow, table, facts, candidate, candidate wanted) and `ResolvedOrigin` gains the matching `route*` fields, so a spawn's routing decision can be joined to its outcome. Migration 15 adds them to an existing database.
+- 49fa132: Full and `--full` index passes no longer hold the event loop for seconds (TP-4175). `refreshCorpus` and `indexTranscript` take a `yieldPoint`. With one, each transcript's delta is applied by the new `applyDeltaYielding` in bounded steps inside one transaction held open across the yields, so it still commits or rolls back whole. The rollup runs one session per transaction with a yield after each. Without a `yieldPoint`, nothing changes. session-analytics adds `staleEpisodeSessionsYielding`, which pages the backlog sweep by session and returns the same list as `staleEpisodeSessions`. active-work's full pass passes its `yieldPoint` to both. On a fixture of 500 transcripts, the longest synchronous chunk of a `--full` rebuild drops from 2380 ms to 141 ms.
+- 59b27e3: session-graph exports `rollupYielding`, the session-by-session rollup with a yield after each that `refreshCorpus` runs when given a `yieldPoint` (TP-4261). active-work's delta pass and unfinished-turn sweep use it in place of their own copy.
+- 1bc6431: Add the `@titan-design/agent-protocol/source-schema` subpath: `SessionSourceDescriptorSchema`, `SourceTextLocatorSchema` and `UsageMeasurementSchema`, loose zod schemas for stored source descriptors, text locators and usage measurements. Keys a newer writer added survive a parse; `lifecycle-schema` now reads usage through the same schema.
+
+  `session-graph` parses its stored columns with them. `readIndexedText` returns null for a malformed stored descriptor or locator list instead of throwing or reading through it. `normalizedUsage` skips a usage row that does not parse and reports it through a new `warn` option (default `console.warn`), so the remaining rows still sum. `zod` is now a peer dependency of `session-graph`.
+
+- 78ae7d9: Stop writing tool spans, context blocks and unchanged state echoes by default (TP-880).
+
+  session-read: `ReadOptions` gains `toolSpans` and `contextBlocks` (default true), passed to `LineReader` as an optional `EmitPolicy`. A fact from an echo line (`ai-title`, `custom-title`, `agent-name`, `mode`, `permission-mode`, `cost-state`) carries `state: { key, value }`; `atis-latch`, `bridge-session` and `last-prompt` emit no fact. `EXTRACT_VERSION` is 9.
+
+  session-graph: `IndexOptions` gains `indexToolSpans` and `contextBlocks` (default false); `refreshCorpus` forwards `contextBlocks` to `backfillFacets`. Migration 14 replaces `session_state` with `echo_state`, keyed per transcript, and an echo fact is stored only when its value changed. `turn.thinking_ms` now counts the gap from a tool result past a skipped echo.
+
+  session-miner and active-work keep storing tool spans and context blocks; active-work does so on both its full and delta passes.
+
+### Patch Changes
+
+- b672645: Type the prepared statements and read stored JSON columns through checked readers instead of casts.
+- Updated dependencies [211db45]
+- Updated dependencies [f896485]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [c58d555]
+- Updated dependencies [7813c1f]
+- Updated dependencies [6525ba7]
+- Updated dependencies [f77d79d]
+- Updated dependencies [9b42150]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+- Updated dependencies [78ae7d9]
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/locator@0.2.2
+
 ## 0.18.0
 
 ### Minor Changes

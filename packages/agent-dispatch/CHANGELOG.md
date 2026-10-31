@@ -1,5 +1,62 @@
 # @titan-design/agent-dispatch
 
+## 0.10.0
+
+### Minor Changes
+
+- 59db533: Add `bootPacket`, which builds an implementer's first-turn packet (git state labelled with its capture time, task card, plan slice excerpt, touch-point excerpts, readiness) within a token budget from injected readers, and `nodeBootReaders`, the readers over a local checkout.
+- c1af4ba: Declare the empty subpaths `/profiles`, `/profiles/node`, `/launch`, `/brief`, `/host`, `/roster` and `/gates` so the fold lanes can fill them without sharing `package.json` or `tsup.config.ts`. The root exports are unchanged.
+- 73c018b: Add `lastFencedJson(text)`, which parses the last ` ```json ` block of an agent's final message, and optional `role` and `task` on a spawn, sent as agent-chat's `--role` and `--task` so the roster row records the agent's role and task. A task id outside `TASK_ID_PATTERN` is refused before the spawn.
+- 74ad076: Add `limitsReport` and `limitsReportSchema` to `./limits`: a pure projection of a planner's dry-run result, the claim ledger and a Shepherd read onto the v1 `/limits` report (binding, roles live against the ledger, pools, refusals with top PR blockers, supply with bookkeeping under `seeded`, worktrees, Shepherd reviews in flight, contradictions). The input is the structural `LimitsPlanInput`; the report reads no config.
+- 81395d7: `messageAgent` takes an optional trailing `{ source }` (`WakeSource`: `"watchdog"`, `"shepherd"` or `"console"`), sent as `agent-chat debug send --source <source>` ahead of `--`, so the message arrives labelled `wake_source=<source>` instead of as the owner's words. Without it the argv is unchanged.
+- 9411e94: `retire` takes a `caller` option (TP-3622). It is checked against `PEER_NAME_PATTERN` and sent to the agent-chat CLI as `AGENT_CHAT_NAME`, the only addition to the minimal env, so the broker's `agent_retired` event names that caller instead of `human`. `RetireOptions` is exported.
+- dcbf00e: Add `routeSpawn` to `./routing`: the spawn-time implementer route over the workflow table, with the implementer family and tier map, `auto`, override, keep-role, shadow and on modes, and a candidate table recorded beside the live one. Add `ROUTE_META_KEYS` and `routeMeta` for the `route_*` fields of a spawn row, and `summarizeRoutes` to read them back into agreement and fact coverage.
+- e391005: Add `readSpawnFacts` and `readRouteTable` to `./routing/node`. `readSpawnFacts` reads a spawn's routing facts from an active-work root: estimate, done_when and tags (with a `kind:` field folded in) from the task file, and owns and points from the plan's `burndown-slices` block, falling back to the spawn's own owns. It marks a task id found in two initiatives as ambiguous. `readRouteTable` gives the table with its `shape-v1@<sha8>` id and re-reads the file only when its mtime or size changes.
+- d0d51f1: Add the `./routing` and `./routing/node` subpaths: the `shape-v1` workflow table (schema, lint and the shipped default in `workflow/shape-v1.yml`), `classifyTask`, `profileFor` and `priorRoute`, ported from agent-chat's burndown router. A new `needsOwns` rule field keeps a task whose owns are unknown from routing down; the shipped table sets it on `small` and `standard`.
+- f85e2ba: Add `spawnAsCaller`, an agent-chat spawn that forwards the caller's `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` and `CLAUDE_CONFIG_DIR` and returns the CLI's stdout lines. `buildSpawnArgs` takes `host`, `account`, `surface` and `remoteControl`; its argv is unchanged when they are absent.
+- b7c8320: `DispatchRequest` takes an optional `worktree`, passed to `agent-chat agent spawn` as `--worktree` so the agent adopts that path. Autoresearch implementers now adopt the engine's idea tree, which sits at the ratchet head, instead of working in a fresh worktree cut from the clone's default branch, and an exploit lane no longer moves a tree the agent already sits in.
+- 292fbe9: `@titan-design/agent-dispatch/profiles` now holds agent-chat's profile schema and parser: `parseProfile`, the closed value lists with their type guards, and `harnessRefusal`. The parser is split by field family, and its checks, messages, `denies` alias and derived denies match agent-chat's. Unknown keys warn. A `codex` profile that names a Claude model is refused at load, and any `codex` profile is refused at launch with `harness_unsupported`.
+- ed8310b: `@titan-design/agent-dispatch/brief` now carries the return contract (the implementer and reviewer blocks, with and without the Shepherd handoff), `withReturnContract` and `contractOf`, the standing rules, and `lintBrief` with `repoVisibilityReader`, ported from agent-chat. The block text is byte-identical to agent-chat's, pinned by a golden fixture. Profiles are structural (`ContractProfile`), and `repoVisibilityReader` takes its git and gh runners from the caller.
+- fa9516b: Add the `/host` ports `AgentJournal`, `PresencePort`, `AdmissionLedger` (types only) and `RetireHoldPort`, plus an in-memory `memoryHost` that implements all four. Its admission ledger always admits and records each call.
+- 26598f3: The `/roster` subpath now carries the agent-chat roster fold: `foldAgent` projects an agent's journal rows into its identity through a per-event-kind reducer table (the branching that made the original cognitive complexity 39 is gone), with `AgentLog`, `pairPresence`, `filterRoster`/`viewRoster`/`newestByName`, and the predecessor briefing section (`resolvePredecessor`) over the `/host` journal port. The predecessor briefing reads the message lookup and transcript check through a `PredecessorSource` the product supplies.
+- 792265b: `/roster` gains the agent records: exit-report (what an unreported exit was doing, as a bounded pattern), the pure half of resume-session (resume refusals, retired-name pointer, reply text), the mode-switch plan, spawn-provenance (route meta keyed by `/routing`'s `ROUTE_META_KEYS`) and brief-paths (symlink-crossing brief warnings).
+- db5ea61: Add `sqliteHost` to `@titan-design/agent-dispatch/host`: the same ports as `memoryHost`, with the journal kept in SQLite through `@titan-design/store-sqlite` so a reopened database folds the same rows in append order.
+- a20c348: New `receivesMessages(row)`: whether `messageAgent` can reach the agent a roster row names. Its unregistered `debug send` reaches only a connected session, so only a `live` row counts; a `detached` row is as unreachable as an `exited` one.
+- 8e09d50: Add the `./isolation` subpath: the isolation strategy types and registry factory, the `none`, `toolset-limited` and `file-ownership` strategies, the shared CC-141 tenancy rule for retire and park, the park rules, and the reviewer name rules (TP-646 I1a).
+- fcb7e85: Add `stablePrefix(sections)`: joins ordered named sections deterministically into `{text, hash}` and refuses agent names, worktree paths, ISO dates, 40-hex shas and `<spawner>` fill-ins.
+- 3d709d8: Offer a forced retire on the agent page once agent-chat's grace has passed (TP-4600). `listAgents` passes through each row's `exitedAt`. The factory's retire-agent route sends `--force` only when the roster's exit time is at least two minutes old, and its preview reports `forceStop`. The console's Retire sheet reads back the exit time and offers "Retire and discard" only when `forceStop` is null, with the same CHANGED re-check at act time.
+- 9396ce4: Add the worktree isolation strategy to `./isolation`: `createWorktreeStrategy` with per-spawn budget readers, the implementer and reviewer pools, and `inspectForRelease`, judged by one ignored-file policy (`unsavedWork`, `dispatchIgnoredFiles`) that keeps paid codewatch data and honours a committed `.agent-chat/generated` (TP-646 I1b).
+- 29062e0: Add park, sweep and worktree headroom to `./isolation`: `parkWorktree` with the process check and a merged-PR reader (`readMergedPrs`, `mergedPrReader`), `sweepWorktrees` and `reclaim` over a `HeldAllocationStore`, and the worktree state words (`rowState`, `repoHeadroom`, `repoSummary`) (TP-646 I1c).
+- 9d74995: Add the retire and park-at-exit rules to `./isolation`: the bulk finished retire over a `FinishedHolds` port, the retire at the final report, the merged-PR retire with its PR-state reader, the park of a finished tree at exit, the branches an open PR holds, and the reviewer-tree guard (TP-646 I1d).
+
+### Patch Changes
+
+- 2380fd4: Walk retired generations in Shepherd's reviewer independence proof (TP-4132). agent-dispatch adds `listAgentLineage`, which reads `agent ls --json --include-retired`, parses each row's `retired` marker, and on an agent-chat that predates the flag falls back to the plain roster marked incomplete. Factory proves independence against that lineage, so the spawner of a seat's retired first generation counts as an ancestor; an incomplete lineage proves nothing. Retired rows feed the proof only: the roster that names, resumes and finds reviewers never includes them.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 5f33d7a: Replace the type assertions in the limits resolver, the limits file readers, the agent row check and the sync exec failure path with runtime narrowing, and parse the resolved limit values with zod. No change for valid input.
+- cb470f4: Carry `predecessor` from `agent-chat agent ls --json` through to Shepherd's roster. `AgentRow` gains an optional
+  `predecessor`: a string or null passes through, a missing or mistyped key stays absent and is never read as null. The
+  reviewer roster maps it the same way, so lineage can prove a reviewer independent once agent-chat reports the field,
+  and a roster without it still proves nothing.
+- 4eb9812: An agent-chat call that finds no broker listening now throws `BrokerUnavailableError` instead of a plain `DispatchError`. Exit 69 (agent-chat's EX_UNAVAILABLE) always means an unreachable broker, and agent-chat's no-autostart probe line ("broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one") joins the whole-line broker-down list, because `agent ls` and the other legacy verbs exit 1 on it.
+
+  Shepherd's review steps wait out an unreachable broker with a doubling wait (from the poll interval up to 2 min) for at most the review wiring's `brokerDownWaitMs` (default 15 min). Only then is the run held as no-reviewer, with the reason "broker unavailable (no broker answered for 15 min)". Before this change, a broker that came up after serve booted got the run held on the first refused roster read.
+
+- 9028bd0: The bulk finished-agent retire now treats a blank (empty or whitespace-only) caller or spawner name as absent, so it can no longer match an agent by a blank name.
+- Updated dependencies [ca8e8b7]
+- Updated dependencies [c58d555]
+- Updated dependencies [8b92ba0]
+- Updated dependencies [f3d3107]
+- Updated dependencies [5edd38d]
+- Updated dependencies [c1f9297]
+- Updated dependencies [8031169]
+- Updated dependencies [247171d]
+- Updated dependencies [9ad447f]
+- Updated dependencies [d5e44a5]
+  - @titan-design/worktree@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.9.0
 
 ### Minor Changes

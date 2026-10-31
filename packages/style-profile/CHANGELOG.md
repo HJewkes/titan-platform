@@ -1,5 +1,11 @@
 # @titan-design/style-profile
 
+## 0.4.2
+
+### Patch Changes
+
+- 00099bd: Narrow exporter inputs instead of asserting types, so typed lint reports nothing for this package.
+
 ## 0.4.1
 
 ### Patch Changes

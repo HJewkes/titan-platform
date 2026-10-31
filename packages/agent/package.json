@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets",
   "type": "module",
   "main": "./dist/index.js",

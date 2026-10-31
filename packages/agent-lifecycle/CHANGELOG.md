@@ -1,5 +1,24 @@
 # @titan-design/agent-lifecycle
 
+## 0.1.10
+
+### Patch Changes
+
+- fa4dd19: Clear the typed-lint baseline for the execution ledger: stored rows are read through a checked column reader instead of type assertions.
+- ae64085: The SQLite execution ledger now parses stored snapshot, receipt and event rows with the agent-protocol lifecycle schemas and throws a clear `TypeError` on a malformed row instead of returning it unchecked. Unknown keys on a stored row are kept.
+- Updated dependencies [211db45]
+- Updated dependencies [c58d555]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/store-sqlite@0.5.0
+
 ## 0.1.9
 
 ### Patch Changes

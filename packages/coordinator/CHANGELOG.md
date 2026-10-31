@@ -1,5 +1,53 @@
 # @titan-design/coordinator
 
+## 0.6.0
+
+### Minor Changes
+
+- 74fe992: `EDITABLE_FIELDS` rows may carry any zod schema, not only a number: `bounds` is now optional and present on numeric rows only, and `checkEditableValue` returns an `EditableValue` (number, string or string list). Add factory rows marked `live`: `shepherd.gateReset.noReproProceed` and `heldRepair` (`off`/`on`), `twoMergeRelease` (`off`/`shadow`/`on`), `shepherd.review.adversaryProfile` (one profile name), `shepherd.review.fallbackConfigDirs` (up to 16 absolute paths) and `shepherd.review.maxConcurrent` (1..64). Add `shepherd.spawnGate.buildLoad5` beside `load5`, both still `restart`. Paths the factory writes, secrets and any other `shepherd` key stay not editable.
+- 1640772: Shepherd: `shepherd.taskClose` picks when a merged PR closes its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge as before. `last-slice-only` closes it only on the last slice: a `Last slice: yes` line in the PR body, `shepherd register --last-slice`, or no other open PR registered with the same task and no `Last slice: no` line. Otherwise the task stays open and gains a `slice merged: <owner/repo>#<n> at <sha>` note. Migration 43 adds the registration's `last_slice` column. The coordinator adds `shepherd.taskClose` as a live editable factory row.
+- f1d79a5: Load is now the only limiter for factory spawns. The spawn gate's `windowMs` and `headroomIntervalMs` default to 0 and reload live, like `load5`. Coordinator's editable fields list both as live factory rows (0 to 3,600,000 ms). `burstMax` meant nothing without a window, so a config that still sets it fails to load with a message saying to remove it. When the gate would admit a review, any asker within the first N of the queue goes, where N is the free review slots the load check also allows. Fixers still sort first, then the oldest intent. A review counts as unabsorbed from the moment it is admitted until the roster shows it running, so a burst can no longer overshoot `buildLoad5`. A queued ask whose PR moved to a new head, or left the open list the PR snapshot already read, leaves the queue at once instead of aging out.
+
+### Patch Changes
+
+- 6889f5d: `EDITABLE_FIELDS` marks the factory rows `shepherd.spawnGate.load5` and `buildLoad5` as `live`: the factory now reads them through its reloadable config instead of once at start.
+- f15a84e: Add `shepherd.gateReset.nonSourceNoRepro` (`keep-owner` when absent, today's behaviour). With `record-fact`, a fix-proof NO_REPRO on a non-security PR that changes no source goes to review marked unverified `no-repro-non-source`, and no `sh-sent-back` owner gate opens; the merge grant is unchanged. No source means the fix-proof plan, under the trusted configs, sorts no path as source, or the diff is the workflow-only diff a CI proof read. `@titan-design/review-panel` exports `noReproProceedOf`, the one reading of which unverified standings proceed and on what, so the brief rule, the tests member question and the panel plan all follow it. The row is live-editable (TP-4275).
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- e63d1a9: Replace unsafe type assertions in the coordinator package with real narrowing.
+- Updated dependencies [59db533]
+- Updated dependencies [c1af4ba]
+- Updated dependencies [73c018b]
+- Updated dependencies [74ad076]
+- Updated dependencies [81395d7]
+- Updated dependencies [9411e94]
+- Updated dependencies [dcbf00e]
+- Updated dependencies [e391005]
+- Updated dependencies [d0d51f1]
+- Updated dependencies [f85e2ba]
+- Updated dependencies [b7c8320]
+- Updated dependencies [292fbe9]
+- Updated dependencies [ed8310b]
+- Updated dependencies [fa9516b]
+- Updated dependencies [26598f3]
+- Updated dependencies [792265b]
+- Updated dependencies [db5ea61]
+- Updated dependencies [2380fd4]
+- Updated dependencies [a20c348]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [8e09d50]
+- Updated dependencies [5f33d7a]
+- Updated dependencies [cb470f4]
+- Updated dependencies [fcb7e85]
+- Updated dependencies [3d709d8]
+- Updated dependencies [4eb9812]
+- Updated dependencies [9028bd0]
+- Updated dependencies [9396ce4]
+- Updated dependencies [29062e0]
+- Updated dependencies [9d74995]
+  - @titan-design/agent-dispatch@0.10.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.5.3
 
 ### Patch Changes

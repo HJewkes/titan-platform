@@ -1,5 +1,71 @@
 # @titan-design/session-analytics
 
+## 0.18.0
+
+### Minor Changes
+
+- 25fcc67: Move the return-contract report parser into session-analytics. `parseReport` now lives there, reads the `Head:` sha and the `CI:` paste (worst state first) as well as the status, PR, plan, PARKED line and proposed tasks, and accepts a sentence after the status word (`Status: DONE. Plan: ...`). session-analytics also exports `extractFriction`, `extractConcerns`, `lineCluster` and `clusterOf`. factory keeps only the `burndown-slices` reader. session-miner gains `titan-miner report intake --shadow [--since 24h] [--eval]`, which writes one row per worker report (status, PR, head, CI, concern classes, suggested actions), acts on nothing, and with `--eval` scores the suggested closeouts against what happened next in the event log.
+- 974b429: `routeOutcomes` joins routed spawns (the `session_origin.route_*` columns) to their PRs and Shepherd runs. It groups them by table, mode, prior, estimate band, profile, source and agreement, never pooled, and reports spawns, merged PRs, first-pass clean %, review rounds and fix-round spawns per PR, and implementer and all-in $ per merged PR. A run joins on its PR and the spawn's task, so two slices of one task never share a PR.
+- f896485: `prefixReuse(rows, { windowMin })` reports first-call cache-read share, input spend at list price, a simulated system-prompt hit rate within the window, and the pairwise first divergence of requests by block; `firstDivergence` compares two requests. `scripts/prefix-report.mjs` prints it over recent transcripts.
+- 207a81b: Add the daily friction audit. session-analytics gains `readWorkerReports`, which reads agent-chat's `Status:` report messages with each worker's last spawn, and `frictionDailyReport`, which takes each report's `Friction:` line (falling back to labelled `Concerns:` and blocked lines), buckets the lines by keyword and ranks the clusters by reports and agent-hours, plus `renderFrictionTop`, `renderFrictionMarkdown` and `frictionDeposit` for the day's owner inbox know-item. session-miner gains `titan-miner friction-daily [--since 24h] [--dry-run] [--archive-dir <dir>]`, which archives the raw rows, withdraws the earlier days' items and files today's through `titan-console`, and a daily 14:05 UTC systemd timer in `ops/systemd`.
+- 207a81b: Lead the daily friction audit with friction measured from worker transcripts. session-analytics gains `transcriptSignals` (denials and tool errors through insights Q5's classifier, in-turn waits over five minutes, and repeated commands and test re-runs with no edit between), `followUpSignals` (insights Q6's brief-fix and correction classes), `readWorkerSessions` and `readSpawnerMessages`, and a per-agent agreement between log and self-report. Q5's `classifyError` and Q6's `classifyFollowUp` move into session-analytics, and the miner's insights now import them. `frictionDailyReport` now takes `{ reports, logs, window }` and returns `logs`, `reports` and `agreement`. Report lines that are scope notes, or `Concerns:` lines that name no friction cause, are set aside as non-friction, and `ci-wait` needs a wait word. The renderers move to `renderLogTop` and `renderReportTop`. `titan-miner friction-daily` gains `--profiles <dir>`.
+- 49fa132: Full and `--full` index passes no longer hold the event loop for seconds (TP-4175). `refreshCorpus` and `indexTranscript` take a `yieldPoint`. With one, each transcript's delta is applied by the new `applyDeltaYielding` in bounded steps inside one transaction held open across the yields, so it still commits or rolls back whole. The rollup runs one session per transaction with a yield after each. Without a `yieldPoint`, nothing changes. session-analytics adds `staleEpisodeSessionsYielding`, which pages the backlog sweep by session and returns the same list as `staleEpisodeSessions`. active-work's full pass passes its `yieldPoint` to both. On a fixture of 500 transcripts, the longest synchronous chunk of a `--full` rebuild drops from 2380 ms to 141 ms.
+
+### Patch Changes
+
+- 5ba850e: `parseDenials` reads classifier refusals from session-read's `decodeClaudeToolLines` observations, joined to the refused call by call id, instead of its own transcript decoder. A refusal whose result carries no call id is no longer counted.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 37d60d1: Typed-lint burn-down: the SQL readers type their rows through `prepare<Params, Row>` and the JSON key and record reads narrow instead of asserting. A tool-result array with a null element no longer throws in the denial classifier. No other behaviour change.
+- Updated dependencies [7492819]
+- Updated dependencies [211db45]
+- Updated dependencies [f896485]
+- Updated dependencies [e8fbf15]
+- Updated dependencies [c15f0dc]
+- Updated dependencies [7a34209]
+- Updated dependencies [f15a84e]
+- Updated dependencies [c18be57]
+- Updated dependencies [ed2be7e]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [c58d555]
+- Updated dependencies [6525ba7]
+- Updated dependencies [44038c9]
+- Updated dependencies [7d3b5fb]
+- Updated dependencies [481f3e4]
+- Updated dependencies [801f9c4]
+- Updated dependencies [377cca9]
+- Updated dependencies [f77d79d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [b672645]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [12afa80]
+- Updated dependencies [32637bd]
+- Updated dependencies [49fa132]
+- Updated dependencies [852d2a9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [59b27e3]
+- Updated dependencies [6bc98f3]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+- Updated dependencies [78ae7d9]
+- Updated dependencies [7012bf0]
+  - @titan-design/review-panel@0.9.0
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/session-graph@0.19.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.17.4
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/yt-scout",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest",
   "type": "module",
   "main": "./dist/index.js",

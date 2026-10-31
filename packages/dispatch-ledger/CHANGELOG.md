@@ -1,5 +1,13 @@
 # @titan-design/dispatch-ledger
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [c58d555]
+- Updated dependencies [c1f9297]
+  - @titan-design/store-sqlite@0.5.0
+
 ## 0.1.0
 
 ### Minor Changes

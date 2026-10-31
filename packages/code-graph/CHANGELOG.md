@@ -1,5 +1,67 @@
 # @titan-design/code-graph
 
+## 0.19.0
+
+### Minor Changes
+
+- 59b9c44: Add `planBodyDeletes`, the body-delete mutant generator for extreme mutation (C-263 T2). For each changed function that coverage saw run, it emits one early-return edit (`return undefined as never;` after the body's opening brace) whose `find` is unique in the head text, widening back a line at a time up to fix-proof's 400-character edit cap. Expression-bodied arrows, constructors, generators, overloads and abstract members are skipped with reasons, as are unchanged, uncovered and over-cap functions. Over `max` (default 10), a sample seeded by the head sha is kept and the rest are reported as `capped`. The generator is pure and writes nothing.
+- 31bb9da: Add extreme mutation findings (C-263 T3). `runExtremeMutation` body-deletes each changed function that a whole-suite coverage file (measured at head) saw run, runs fix-proof's head mode against the owning package's tests, and returns `pseudo-tested` and `test-deletion-candidate` warnings with a counts-only summary. `extremeFindings` is the pure reading; `coveredFunctionStarts` reads covered function start lines from Istanbul coverage; A function a test outside its package reaches is `unverified`, and a run whose failure list hit the cap never supports a deletion candidate. Nothing is scored and nothing is deleted.
+- 538c0f7: code-graph adds `extractProtocolEdges`, which reads HTTP routes, SSE streams and MCP tools from source text and links each to the files that call it, plus a `NO_PROTOCOL_SOURCE` diagnostic when a repo declares none. graph-layout's `emitRepoMap` takes those edges as `protocolEdges` and draws one labelled one-way `protocol` arrow per container pair, or labels the container import arrows "imports only" when there is no arrow to draw.
+- 30d9837: `canonicalRole` and `canonicalEdgeKind` now return `string` instead of `NodeRole` and `EdgeKind`. Both pass an unaliased name through as given, so the narrower return type was not true. No runtime change. A caller that assigns the result to `NodeRole` or `EdgeKind` must now narrow it itself.
+
+### Patch Changes
+
+- 67eec51: `planBodyDeletes` mutants now build: the early return is `if (true as boolean) return undefined as never;`, so the rest of the body stays reachable and TS keeps its narrowing. A bare return made the body unreachable, dropped narrowing, and failed the dts build with TS18048.
+- 7492819: - **Count work in timing tests instead of reading a clock (TP-4262).** Glob growth tests compared thread CPU ratios, which read up to 415 on a loaded hosted runner and turned main red. fix-proof's `LinearRegExp` now counts its NFA steps (`linearRegExpSteps`), and test-kit's `linearWork` compares those counts across a size ladder. It replaces the timed `linearGrowth`, which is removed. A matcher that falls back to a backtracking RegExp counts nothing and fails at size 1. test-kit also adds `countCalls` and `callMeter`, which count calls to chosen methods and stop at a cap. fix-proof's brace and glob rows and code-graph's reach and link rows use them in place of millisecond limits.
+  - **Refuse new clock limits in tests.** eslint-plugin adds `no-test-clock-budget`. It reports a test that compares a clock reading, or a ratio of readings, with a limit outside a bench gate. The repo enables it with a shrink-only baseline that TP-4264 empties.
+- 54d25fc: `indexPaths` no longer re-parses every byte-identical file that imports through a barrel or imports a stylesheet whenever a file is added or removed. The membership-delta check now compares how a relative specifier resolves before and after the delta, not against the stored edge target, which for those edges never matched.
+- c89daa1: Index `.mjs` and `.cjs` files as typescript-family sources (TP-4161). `shouldIncludeFile` and
+  `getLanguageFromPath` now treat both as `typescript`, so code-graph's walk picks up ES module and
+  CommonJS scripts and their symbols, imports and calls enter the graph.
+- 7a34209: The remaining RegExp glob compilers match in time linear in the path (TP-4223). fix-proof exports `LinearRegExp`, also from `@titan-design/fix-proof/linear-regexp`: a RegExp whose `test` simulates its source as an NFA, so a glob such as `d/` and twenty `*`, or `**/` repeated twelve times, can no longer hang a match. review-panel's `matchesGlob`, autoresearch's bounds globs, code-graph's `patternToRegex` and `.gitattributes` patterns, and tool-guard's merge-lint `globToRegExp`, guarded path patterns and glob command words now build one. Each still returns a RegExp and matches what it did, except that a glob too large for V8 to compile, which used to throw at its first test, now matches as written. test-kit exports `linearGrowth`, a growth-ratio ladder that fails a polynomial matcher on a small input before trying a large one, and `hostileGlobs`, the timing rows of tp#2491.
+- 7792f8b: `indexPaths` reuses the snapshot that shares the most byte-identical files with the tree being indexed, not the newest one. A baseline indexed after its head, or another worktree's run in a shared graph, no longer forces every file it differs on to re-parse. `loadReuseBasis` takes an optional map of file id to content hash for this choice.
+- ae8141d: `indexPaths` outside a git checkout no longer re-probes git for churn history and HEAD after the toplevel probe has already found no repo. The snapshot is unchanged: both probes returned nothing there.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- fe806c0: Narrow stored JSON and thrown errors instead of asserting them, and drop tree-sitter child guards that 0.26 cannot reach. A stored finding that is not a `Finding` is now skipped, and non-object `attrs` read as empty.
+- 565913d: Skip Python virtualenvs and tool caches in the source walk (TP-3688). `.venv`, `venv`, `__pycache__`,
+  `.pytest_cache` and `.tox` are now excluded directories, and `walkSourceFiles` also skips any
+  directory holding a `pyvenv.cfg`, so a virtualenv under any name no longer floods the graph.
+- Updated dependencies [7492819]
+- Updated dependencies [eaa03c2]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [c89daa1]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [42551ba]
+- Updated dependencies [42b6a21]
+- Updated dependencies [c58d555]
+- Updated dependencies [36dc03f]
+- Updated dependencies [d279098]
+- Updated dependencies [67aa361]
+- Updated dependencies [f996bb9]
+- Updated dependencies [661a027]
+- Updated dependencies [5edd38d]
+- Updated dependencies [c1f9297]
+- Updated dependencies [4080191]
+- Updated dependencies [565913d]
+- Updated dependencies [32637bd]
+- Updated dependencies [2451aa9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [719f05e]
+  - @titan-design/fix-proof@0.9.0
+  - @titan-design/evidence@0.5.0
+  - @titan-design/code-parser@0.2.1
+  - @titan-design/retrieval@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.18.2
 
 ### Patch Changes

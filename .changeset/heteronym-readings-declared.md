@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": patch
----
-
-The script stage declares one heteronym reading itself: a "minute" or "minutes" that a numeral (digits or a spelled number word) directly counts becomes `[minute(s)](=time)`, so Q-V10 no longer stops a run on "eighteen point eight three minutes". Every other heteronym stays bare and fails Q-V10, and the L0 repair declares it: the Q-V10 repair hint names each undeclared word, its beat, its place in the line (numbers counted as words) and the declarations its readings allow, and asks for the reading the sentence means. The l0 gate detail names each undeclared word and its place too. A declared line now times, counts and captions as its plain words: the tts stage realigns the words a listener hears, so words.json and captions.vtt carry no `[w](=reading)` markup, and a cue may name a declared word; a beat opening on a declared word lands its uncued reveals on that word. The rewrite stage re-applies the counted-minute rule to each parsed reply. Script stage version x16, rewrite x10, tts p6c.

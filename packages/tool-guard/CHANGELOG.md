@@ -1,5 +1,59 @@
 # @titan-design/tool-guard
 
+## 0.6.0
+
+### Minor Changes
+
+- 020e7e7: merge-lint: add the `git-refspec-push` shape. A push that names its destination ref (`:${…}` or `:refs/heads/…`, in argv or on a shell line) writes a branch with no PR, so only declared ratchets may.
+
+### Patch Changes
+
+- 7492819: - **Count work in timing tests instead of reading a clock (TP-4262).** Glob growth tests compared thread CPU ratios, which read up to 415 on a loaded hosted runner and turned main red. fix-proof's `LinearRegExp` now counts its NFA steps (`linearRegExpSteps`), and test-kit's `linearWork` compares those counts across a size ladder. It replaces the timed `linearGrowth`, which is removed. A matcher that falls back to a backtracking RegExp counts nothing and fails at size 1. test-kit also adds `countCalls` and `callMeter`, which count calls to chosen methods and stop at a cap. fix-proof's brace and glob rows and code-graph's reach and link rows use them in place of millisecond limits.
+  - **Refuse new clock limits in tests.** eslint-plugin adds `no-test-clock-budget`. It reports a test that compares a clock reading, or a ratio of readings, with a limit outside a bench gate. The repo enables it with a shrink-only baseline that TP-4264 empties.
+- 7a34209: The remaining RegExp glob compilers match in time linear in the path (TP-4223). fix-proof exports `LinearRegExp`, also from `@titan-design/fix-proof/linear-regexp`: a RegExp whose `test` simulates its source as an NFA, so a glob such as `d/` and twenty `*`, or `**/` repeated twelve times, can no longer hang a match. review-panel's `matchesGlob`, autoresearch's bounds globs, code-graph's `patternToRegex` and `.gitattributes` patterns, and tool-guard's merge-lint `globToRegExp`, guarded path patterns and glob command words now build one. Each still returns a RegExp and matches what it did, except that a glob too large for V8 to compile, which used to throw at its first test, now matches as written. test-kit exports `linearGrowth`, a growth-ratio ladder that fails a polynomial matcher on a small input before trying a large one, and `hostileGlobs`, the timing rows of tp#2491.
+- 6dc90a8: Test that the merge rule's own docs sentences produce no merge-lint finding.
+- ee4b114: Read what a shell's script may run besides itself. Once a shell runs a script (a `-c` string, a file, or under `-s` a stdin something feeds), every substitution after it is read, since the script may run it by its positional (`bash ./run.sh <(...)`, `bash -s <(...) <<< 'bash "$1"'`), and so is every substitution a `source` or `.` passes on. A file operand after a `-c` string or a fed `-s` is read as a relayed stdin file is (`bash -c 'bash "$1"' _ ./x.sh`). bash's `--rcfile` and `--init-file` are read when the file is there. A bare `<(...)` as the whole command is read as `exec <(...)` is. `sourcedFiles` replaces `sourcedOperand` as the one reader of a sourced word: it reads bash 5.3's `source -p PATH FILE`, looking FILE up in PATH, reads zsh's file named `-p` or `-x` only when one is there, and after a first word only known at run time (`source "$D" <(...)`) reads every later word. Lines that open a descriptor also refuse a `-c` positional, an rcfile or a `source -p` file that may name it.
+- ff008c2: Read a process substitution as a script in three more places. A substitution that is the program itself (`exec <(...)`, `env <(...)`, `sudo <(...)`) is read as the file `exec ./x.sh` names is, instead of failing closed on an unreadable path. Under `bash -c STR`, every substitution after the string is read, since the string may run it by its positional (`bash -c 'bash "$1"' _ <(...)`). `source -- <(...)` and `. -- <(...)` read the substitution after `--`, and so does `source -- FILE`. A quoted or escaped `--` ends the options of `source`, `.` and a body's `cat` as the bare one does, so `bash <(cat '--' ./x.sh)` reads the file. Every reader of a `source` or `.` script word now takes it from one `sourcedOperand`, so the check for a descriptor the line opened also refuses `exec {fd}< f; source -- /dev/fd/$fd`.
+- 50a5735: `eval` and a shell's `-c` now read the printed text of a group, subshell, list or pipeline inside `$( )` (TP-3333).
+- 7be0840: Stop swallowing `ClassifyContext` errors. A `readHead` that throws now reads as an unknown, protected head, so `git push origin HEAD` and `git merge` no longer pass as if no branch were checked out. A `readLink` or `readScript` that throws now reaches the caller, where the hook denies the Bash command, instead of reading as no link or no script.
+- e57fd67: A gh command whose group or verb is only known at run time (`gh $X`, `gh pr $X 5`, `gh -R o/r $X`), whose last command word gh may run as an alias or extension, or whose prefix points gh at another config, now reads as `bash.merge.gh-pr-merge {}`, `bash.release.gh-release {tool: "gh"}` and `bash.egress.gh-gist` at once, and as a switch to an unknown head, so a later push counts as protected (TP-2703 b). A dynamic command word read as gh counts only a run-time word after it, so `"$EDITOR" file` still passes. Literal gh paths keep their verdicts.
+- 42d4e02: Read a git push that moves a tag as `release` (`bash.release.git-push-tag`): `--tags`, `--follow-tags`, `git -c push.followTags`, a refspec whose destination is `refs/tags/…`, `tags/…`, a `v<digit>` name or a changesets `[@scope/]pkg@<digit>` tag, and `tag <name>`. Branch-push verdicts are unchanged and still reported beside it.
+- 1136ede: Deny GitHub REST writes to rulesets (repos, repositories/<id>, orgs, enterprises) and to branch protection on any branch, through gh api, curl, wget or httpie, as `authority-config` (`bash.config.gh-api-ruleset`, `bash.config.curl-api-ruleset`).
+- 061eb2f: Remember each guarded-path answer by list, home and path. A script names the same few paths in every line, and since the patterns run as a linear-time NFA (TP-4223), testing each one every line made a 34 KiB script take seconds to check (TP-4255).
+- ecbd245: Document the parked bypass tail in the README as "Known gaps (parked)": each open bypass by class, the node-option cases from #1859, a plain statement that tool-guard is a guard-rail against accidents and not a security boundary, and the pointer to egress control below the shell (TP-3751).
+- 3bc893a: TP-3256: read a process substitution a shell or `source` runs as its script. `bash <(echo 'git push origin HEAD:main')`, `sh <(printf …)`, `source <(echo …)` and `bash <(cat ./x.sh)` are now walked like the same text piped in, and a `cat` of a file the guard cannot read in full is refused. A body the guard does not model (`kubectl completion bash`, `curl …`) keeps the verdict the same program piped into the shell gets. A body's pipeline passes printed text through `cat` and `tee` (`bash <(echo … | cat)`), and once a shell runs a substitution as its script every later substitution operand is read too, since the script may run it by its positional (`bash <(echo 'bash "$1"') <(echo …)`).
+- e8ee079: The secret list gains `**/titan-factory/**/*.token`, so a Read, cat, cp or base64 of a titan-factory token file (for example `~/.config/titan-factory/secrets/github-bot.token`) classifies as secret-read. Other files under `titan-factory` stay unclassified.
+- 44cbdd1: Compiling a glob with many unterminated `[` no longer searches to the end of the word for each one, so a script word full of `$${x[` openers costs linear work instead of quadratic (TP-4051).
+- 06b2ee6: Read an abbreviated `git push` long option as git does, against `git push`'s own option list: `--ta` is `--tags`, `--fol` is `--follow-tags`, `--al` is `--all` and `--mir` is `--mirror`, so each classifies like its full form. An ambiguous prefix such as `--t` makes git refuse the push and now reads as a push to an unknown branch (TP-4173).
+- 07e1b6b: Record which characters of a spliced word were read outside quotes and escapes (`WordToken.bare`), so `expandsAtRunTime` counts only bare glob, brace, tilde and `=cmd` characters: `query='{viewer{login}}'`, `query='[ID!]'` and `a"*"b` no longer read as expanding, while `query={a,b}`, `'query='*` and `a*"b"` still do. A word whose value is rewritten after lexing counts as bare throughout, as before.
+- d8929b5: Read the push config a git command passes itself. `git -c remote.<r>.push=…` and `-c push.default=upstream` with `-c branch.<name>.merge=…` can send a plain `git push` or a colon-less refspec to a protected branch; those now deny as `bash.merge.git-push-protected`. A `--config-env` on a push-shaping key, `-c include.path` or `includeIf.*.path`, `push.default=upstream` without the pushed branch's upstream, and a run-time `-c` word whose key may shape the push deny with branch `unknown`. `-c remote.<r>.mirror` and `-c push.default=matching` deny as `bash.merge.git-push-all`. `GitInvocation` gains `configEnv` and `configUnsure`.
+- 7414219: List `zod` under `dependencies` instead of `peerDependencies`. The `titan-merge-lint` and
+  `titan-tool-guard` bins import it at run time, so `npx -p @titan-design/tool-guard` failed with
+  `ERR_MODULE_NOT_FOUND` wherever npm runs with `legacy-peer-deps=true`.
+- 2451aa9: The mutants side now parses and pairs a diff's `*.mutations.json` specs even when the diff changes source, and runs each mutation through `checkMutation` against head there (its new optional `at` names that commit in the error). Any refused spec, or on a source diff any failure reading one, also writes `mutants.refused`, which fails the fix-proof-mutants job. Before, a source diff skipped its specs unread, so over-cap specs landed. tool-guard: one sidecar mutation name shortened to the 80-character cap; test material only.
+- Updated dependencies [9411e94]
+- Updated dependencies [91e3e3d]
+- Updated dependencies [7492819]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [c026f23]
+- Updated dependencies [36dc03f]
+- Updated dependencies [661a027]
+- Updated dependencies [4080191]
+- Updated dependencies [32637bd]
+- Updated dependencies [2451aa9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [719f05e]
+  - @titan-design/authority@0.6.0
+  - @titan-design/fix-proof@0.9.0
+
 ## 0.5.3
 
 ### Patch Changes

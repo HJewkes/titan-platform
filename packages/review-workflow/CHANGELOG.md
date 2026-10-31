@@ -1,0 +1,114 @@
+# @titan-design/review-workflow
+
+## 0.1.0
+
+### Minor Changes
+
+- e623b29: Add `reviewWorkflow`, the review recipe as a registrable `@titan-design/workflow` definition pinned to `REVIEW_WORKFLOW_VERSION`, with `reviewRoutes` (one inline code route per step body) and `reviewOutcomeOf`. Add `reviewRunner`, the standalone host: it registers the definition under its version, starts and awaits review runs, resumes an interrupted run from its record on `hydrate` with no second member spawn, parks a run pinned to another version as `recovery_required`, and on `resolve(fingerprint)` reviews every run parked on the fixer fingerprint again (TP-3926).
+- 6f1c6b9: Add the workflow fixer: `fixerFingerprint`, `fixerName` (one fixer per fingerprint across PRs), the propose-only `fixerBrief`, `requestFixer` that parks a run as `needs-fixer`, `resolveFingerprint`, and the `FIXER-REPORT` parser `readFixerReport` (TP-3921).
+- fa60411: Add the heals: `refresh-checkout`, `degrade-headroom`, `retarget` and `await-account` (`applyHeal`), and `healOnce`, which runs one heal pass and re-decides once; an ineffective heal returns `fixer(heal-ineffective)` (TP-3922).
+- f325826: Add the review-workflow package: its ports, step ids, outcome union, failure classes and `DEFAULT_RETRY_POLICY` as data (TP-3920).
+- 32637bd: `proofStanding(read, head)` in fix-proof is the one reading of a fix-proof read at a head: `proved`, `no-repro` (with `proceeds` for a test-only or non-source NO_REPRO the caller lets through), `unverified`, `unproven` or `none`. `endsReview` and `needsTestsSeat` answer the two questions callers ask of it, and `FixProofUnverified` moves here. Shepherd's gate and waiver and review-panel's `fixProofNeedsTests` now derive from it instead of parsing the line each in their own way; no behavior changes, and `unproven` still lets the review run while making the tests seat blocking. review-panel re-exports `FixProofUnverified` unchanged. review-workflow's `ProofRead` is now fix-proof's `ProofReadInput` (TP-3923).
+- 9a16e4e: Add `preflight(snapshot, policy)`, the pure gate before any reviewer starts (`go | heal | stop | fixer`), the `preflightRead` step body that builds its snapshot over the ports, and `planForHead`, which plans a tests member whenever the proof standing needs one. `ReviewWorkflowPorts` gains a required `profiles` port, so a member whose profile is not installed goes to the fixer before dispatch (TP-3924).
+- 3771a0c: Add `reviewHead`, the recipe that reviews one full PR head over recorded steps (preflight, one heal pass, the plan, the member fan-out with each member's retry-policy row, the aggregate and a typed outcome), `REVIEW_STEP_BODIES`, its step bodies, and `classifyFailure`. A member with a verdict is never dispatched again, and the same refusal twice goes to the fixer at once. `ReviewHeadInput` gains a required `runId`, and `heal-ineffective` joins the failure classes with its own fixer row (TP-3925).
+
+### Patch Changes
+
+- Updated dependencies [59db533]
+- Updated dependencies [c1af4ba]
+- Updated dependencies [73c018b]
+- Updated dependencies [74ad076]
+- Updated dependencies [81395d7]
+- Updated dependencies [9411e94]
+- Updated dependencies [dcbf00e]
+- Updated dependencies [e391005]
+- Updated dependencies [d0d51f1]
+- Updated dependencies [f85e2ba]
+- Updated dependencies [b7c8320]
+- Updated dependencies [581c26f]
+- Updated dependencies [b458a20]
+- Updated dependencies [83a5759]
+- Updated dependencies [7492819]
+- Updated dependencies [eaa03c2]
+- Updated dependencies [2256a3b]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [292fbe9]
+- Updated dependencies [ed8310b]
+- Updated dependencies [fa9516b]
+- Updated dependencies [26598f3]
+- Updated dependencies [792265b]
+- Updated dependencies [db5ea61]
+- Updated dependencies [c15f0dc]
+- Updated dependencies [5f2d9ed]
+- Updated dependencies [d3d9a04]
+- Updated dependencies [123f2d0]
+- Updated dependencies [7b53127]
+- Updated dependencies [dcaebb9]
+- Updated dependencies [24f1577]
+- Updated dependencies [b3209e3]
+- Updated dependencies [2380fd4]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [f15a84e]
+- Updated dependencies [a20c348]
+- Updated dependencies [c18be57]
+- Updated dependencies [ed2be7e]
+- Updated dependencies [423c9ce]
+- Updated dependencies [36dc03f]
+- Updated dependencies [67aa361]
+- Updated dependencies [a2df0c0]
+- Updated dependencies [a2da8ac]
+- Updated dependencies [0b09ff1]
+- Updated dependencies [44038c9]
+- Updated dependencies [7d3b5fb]
+- Updated dependencies [481f3e4]
+- Updated dependencies [661a027]
+- Updated dependencies [801f9c4]
+- Updated dependencies [377cca9]
+- Updated dependencies [9b42150]
+- Updated dependencies [8e09d50]
+- Updated dependencies [63ccb71]
+- Updated dependencies [5f33d7a]
+- Updated dependencies [4080191]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [869014a]
+- Updated dependencies [12afa80]
+- Updated dependencies [32637bd]
+- Updated dependencies [2451aa9]
+- Updated dependencies [d130bd8]
+- Updated dependencies [cb470f4]
+- Updated dependencies [2f306ce]
+- Updated dependencies [181c229]
+- Updated dependencies [852d2a9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [db14121]
+- Updated dependencies [5833044]
+- Updated dependencies [fcb7e85]
+- Updated dependencies [6bc98f3]
+- Updated dependencies [719f05e]
+- Updated dependencies [3d709d8]
+- Updated dependencies [4eb9812]
+- Updated dependencies [449504e]
+- Updated dependencies [84114b3]
+- Updated dependencies [9028bd0]
+- Updated dependencies [9396ce4]
+- Updated dependencies [29062e0]
+- Updated dependencies [9d74995]
+- Updated dependencies [4a2495f]
+- Updated dependencies [0229ba6]
+- Updated dependencies [ee64f09]
+- Updated dependencies [7012bf0]
+- Updated dependencies [2165cec]
+- Updated dependencies [50fd2a5]
+  - @titan-design/agent-dispatch@0.10.0
+  - @titan-design/github@0.12.0
+  - @titan-design/fix-proof@0.9.0
+  - @titan-design/review-panel@0.9.0
+  - @titan-design/evidence@0.5.0
+  - @titan-design/workflow@0.14.0

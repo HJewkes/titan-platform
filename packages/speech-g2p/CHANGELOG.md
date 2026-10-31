@@ -1,5 +1,19 @@
 # @titan-design/speech-g2p
 
+## 0.2.0
+
+### Minor Changes
+
+- f7b9e60: `misakiEnglish({ words })` takes misaki phonemes for words the shipped lexicon misreads or lacks. They match case-insensitively, are read ahead of golds and special cases, and fold into `version`; with no `words` (or an empty map) the version is unchanged.
+
+### Patch Changes
+
+- 938ede4: Look up context-free punctuation tags in `punctTag` from one table, with no change to the tags it returns.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 8bd93fc: `misakiEnglish()` grows the vendored gold and silver dictionaries once per process and shares them across instances; caller `words` still apply per instance.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.1.0
 
 ### Minor Changes

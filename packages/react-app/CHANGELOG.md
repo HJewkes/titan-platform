@@ -1,5 +1,22 @@
 # @titan-design/react-app
 
+## 0.2.0
+
+### Minor Changes
+
+- 0b40e0f: `RpcProvider` and `createQueryStore` take a `gcMs` option. An unwatched query keeps its result for that long, so a page revisited inside the window shows the kept data at once while a refetch runs behind it. The default of 0 keeps today's drop-a-tick-after-unmount behavior.
+- 5fd32b6: `RpcProvider` and `createQueryStore` take an optional `onSettle` observer. It is called once per finished call with `{ command, ms, ok, fromCache }` and never sees arguments or results; a superseded or aborted call is not reported, and an observer that throws cannot break a query.
+
+### Patch Changes
+
+- 05895cd: Type the query store's state as the same status union as `QueryResult`, so `useQuery` needs no cast.
+- 9b2057c: Narrow vite plugin and dev-server address types instead of asserting them.
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [661cf66]
+  - @titan-design/rpc-protocol@0.4.0
+  - @titan-design/rpc-client@0.4.2
+
 ## 0.1.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @titan-design/cluster
 
+## 0.3.0
+
+### Minor Changes
+
+- 90f36b4: Add `parseClustererSnapshot`, which narrows a stored snapshot from `unknown`, refuses a wrong shape or version and keeps unknown keys. `zod` is now a peer dependency of cluster. session-miner's `drain.ingest` reads its stored snapshot through it, so a malformed row stops the run with a clear error.
+
 ## 0.2.0
 
 ### Minor Changes

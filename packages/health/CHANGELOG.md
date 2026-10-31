@@ -1,5 +1,17 @@
 # @titan-design/health
 
+## 0.2.1
+
+### Patch Changes
+
+- c525f57: The store and metrics validator now narrow database rows, stats and the schema id with zod and equality checks instead of type assertions. A schema id that names an inherited object key, such as `toString`, now returns the usual schema-id error instead of throwing.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- Updated dependencies [c58d555]
+- Updated dependencies [5edd38d]
+- Updated dependencies [c1f9297]
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.2.0
 
 ### Minor Changes
