@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorCode, isObjectLike, isRecord } from "./index.js";
+import { errorCode, isObjectLike, isRecord } from "./narrow.js";
 
 describe("isRecord", () => {
   it("accepts plain objects, null-prototype objects and class instances", () => {

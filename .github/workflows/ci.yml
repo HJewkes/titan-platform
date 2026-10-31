@@ -424,7 +424,7 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != pull_request ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           changed=$(git diff --name-only HEAD^1 HEAD)
-          inputs='^(deploy/hub/|packages/(matrix-bus|egress-scan|eslint-plugin|fix-proof|narrow|worktree)/|(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json)$)'
+          inputs='^(deploy/hub/|packages/(matrix-bus|egress-scan|eslint-plugin|fix-proof|rpc-protocol|worktree)/|(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json)$)'
           if grep -qE "$inputs" <<< "$changed"; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
       - name: Report a no-op
         if: steps.changes.outputs.run != 'true'

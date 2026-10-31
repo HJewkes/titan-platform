@@ -20,6 +20,22 @@ const res = await fetch(`${origin}${RPC_PREFIX}task.list`, {
 const envelope = (await res.json()) as JsonEnvelope<Task[]>;
 ```
 
+## Narrowing
+
+`@titan-design/rpc-protocol/narrow` holds the guards every envelope reader needs, and any
+package may use them: it is tier 0, has no dependencies and is browser-safe.
+
+```ts
+import { errorCode, isRecord } from "@titan-design/rpc-protocol/narrow";
+
+if (isRecord(parsed) && typeof parsed.name === "string") use(parsed.name);
+if (errorCode(caught) === "ENOENT") return null;
+```
+
+- `isRecord(value)`: a non-null object that is not an array.
+- `isObjectLike(value)`: any non-null object, arrays included.
+- `errorCode(err)`: the string `code` on any thrown object, otherwise `undefined`.
+
 ## Contents
 
 | Export | What it pins |

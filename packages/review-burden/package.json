@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@titan-design/fix-proof": "workspace:^",
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "scripts": {
     "build": "tsup",

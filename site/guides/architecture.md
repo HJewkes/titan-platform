@@ -32,7 +32,6 @@ graph TD
     evidence["evidence"]
     fixProof["fix-proof"]
     locator["locator"]
-    narrow["narrow"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
     reviewBurden["review-burden"]
@@ -111,8 +110,8 @@ graph TD
   agentDispatch --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
-  anthropicAccount --> narrow
-  authority --> narrow
+  anthropicAccount --> rpcProtocol
+  authority --> rpcProtocol
   autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
@@ -135,8 +134,8 @@ graph TD
   dispatchLedger --> storeSqlite
   egressScan --> fixProof
   egressScan --> worktree
-  eslintPlugin --> narrow
-  fixProof --> narrow
+  eslintPlugin --> rpcProtocol
+  fixProof --> rpcProtocol
   graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
@@ -157,7 +156,7 @@ graph TD
   retrieval --> embed
   retrieval --> storeSqlite
   reviewBurden --> fixProof
-  reviewBurden --> narrow
+  reviewBurden --> rpcProtocol
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
@@ -331,7 +330,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `locator`, `narrow`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

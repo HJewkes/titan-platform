@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loadsOnlyCarried } from "./carried-closure.js";
 import { classifyReports, type Classification } from "./classify.js";
 import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";

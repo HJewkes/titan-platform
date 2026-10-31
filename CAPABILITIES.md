@@ -29,7 +29,6 @@ Before adding code:
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
-| [`narrow`](#cap-narrow) | 0 | You hold an `unknown`, from parsed JSON or a `catch`, and need to read a field without a cast. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
@@ -387,20 +386,6 @@ Key exports:
 - `read-locator`: `readLocatorBytes`, `readLocatorText`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/locator)
 
-<a id="cap-narrow"></a>
-
-### [`narrow`](https://hjewkes.github.io/titan-platform/reference/narrow)
-
-Tier 0, `@titan-design/narrow@0.0.0`. Narrow unknown values: isRecord, isObjectLike and errorCode for parsed JSON and caught errors, with no runtime dependencies
-
-**Use this when:**
-
-You hold an `unknown`, from parsed JSON or a `catch`, and need to read a field without a cast. `isRecord` refuses arrays, `isObjectLike` accepts them, and `errorCode` reads a thrown value's string `code`. For a full shape, use a zod schema instead.
-
-Key exports:
-
-- `index`: `isRecord`, `isObjectLike`, `errorCode`
-
 <a id="cap-openai-account"></a>
 
 ### [`openai-account`](https://hjewkes.github.io/titan-platform/reference/openai-account)
@@ -462,7 +447,7 @@ Tier 0, `@titan-design/rpc-protocol@0.3.0`. Dependency-free wire contract betwee
 
 **Use this when:**
 
-You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary.
+You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. The `./narrow` subpath holds `isRecord`, `isObjectLike` and `errorCode`, for reading a field off an `unknown` from parsed JSON or a `catch` without a cast; for a whole shape, use a zod schema.
 
 Key exports:
 

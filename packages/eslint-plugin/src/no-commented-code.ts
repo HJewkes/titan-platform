@@ -1,6 +1,6 @@
 import type { Rule } from "eslint";
 import type { Comment } from "estree";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 type ParserLike = {
   parse?: (text: string, options: object) => unknown;
