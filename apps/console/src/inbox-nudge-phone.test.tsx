@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource } from "@titan-design/rpc-client";
 import { BELOW_MD } from "./pages/phone.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const ROUND_SHA = "e".repeat(64);
@@ -37,8 +37,8 @@ function renderNudge(): string[] {
   return writes;
 }
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 

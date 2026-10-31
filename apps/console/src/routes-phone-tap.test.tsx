@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import type { Snapshot } from "@titan-design/rpc-client";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 
 /*
  * jsdom lays nothing out, so these name the phone-only class that gives each press target its 44px; the measured sizes
@@ -29,8 +29,8 @@ class SeeNothing {
 
 beforeEach(() => vi.stubGlobal("IntersectionObserver", SeeNothing));
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 

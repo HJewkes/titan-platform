@@ -1,0 +1,23 @@
+{
+  "packages/session-graph/src/apply.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    },
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "packages/session-graph/src/normalized-index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "packages/session-graph/src/refresh.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "packages/daemon/src/daemon.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/daemon/src/http.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  }
+}

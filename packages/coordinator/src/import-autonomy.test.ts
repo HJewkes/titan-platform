@@ -1,19 +1,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import { checkCoordinatorConfig } from "./coordinator-config.js";
 import { importAutonomyTree, renderSeatBook } from "./import-autonomy.js";
-import type { CharterPolicy } from "./charter-policy.js";
-import type { SeatConfig } from "./seat-config.js";
+import { charterPolicySchema } from "./charter-policy.js";
+import { seatConfigSchema } from "./seat-config.js";
 
-function frontmatter<T>(file: string): T {
+function frontmatter<S extends z.ZodType>(file: string, schema: S): z.output<S> {
   const text = readFileSync(new URL(`./fixtures/autonomy-tree/${file}`, import.meta.url), "utf8");
   const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
   if (!match) throw new Error(`${file} has no front matter`);
-  return JSON.parse(match[1] as string) as T;
+  return schema.parse(JSON.parse(match[1] ?? ""));
 }
 
-const charter = frontmatter<CharterPolicy>("charter.md");
-const seats = [frontmatter<SeatConfig>("seat-a.md"), frontmatter<SeatConfig>("seat-b.md")];
+const charter = frontmatter("charter.md", charterPolicySchema);
+const seats = [frontmatter("seat-a.md", seatConfigSchema), frontmatter("seat-b.md", seatConfigSchema)];
 const limits = {
   version: 1 as const,
   pools: {

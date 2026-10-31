@@ -48,9 +48,9 @@ export function layoutSpawnTree(items: readonly BrokerEvent[]): GraphLayout {
   });
 
   const byName = new Map(nodes.map((node) => [node.name, node]));
-  const edges: GraphEdge[] = nodes
-    .filter((node) => node.parent !== null && byName.has(node.parent))
-    .map((node) => ({ from: node.parent as string, to: node.name }));
+  const edges: GraphEdge[] = nodes.flatMap((node) =>
+    node.parent !== null && byName.has(node.parent) ? [{ from: node.parent, to: node.name }] : [],
+  );
 
   return {
     nodes,

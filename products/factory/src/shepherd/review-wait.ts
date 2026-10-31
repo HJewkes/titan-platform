@@ -33,6 +33,38 @@ export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal
   }
 }
 
+/** Each wait for an unreachable broker doubles from the step's poll, up to this. */
+const BROKER_DOWN_LONGEST_WAIT_MS = 2 * 60_000;
+/** A boot race or a broker restart clears well inside this; a broker still unreachable after it is an outage the seat must hear of (TP-4641). */
+export const DEFAULT_BROKER_DOWN_WAIT_MS = 15 * 60_000;
+
+/** The broker stayed unreachable for the whole wait; the message is built from the budget alone, since it becomes a stored hold reason. */
+export class ReviewerBrokerStillDown extends Error {
+  override readonly name = "ReviewerBrokerStillDown";
+
+  constructor(cause: ReviewerBrokerDown, budgetMs: number) {
+    super(`broker unavailable (no broker answered for ${minutes(budgetMs)})`, { cause });
+  }
+}
+
+export type BrokerDownTiming = PollTiming & { brokerDownWaitMs: number };
+
+/** Waits out a broker that is down, doubling each wait, until `brokerDownWaitMs` has passed; any other failure is the caller's to handle. */
+export async function whileBrokerBooting<T>(timing: BrokerDownTiming, signal: AbortSignal, ask: () => Promise<T>): Promise<T> {
+  const startedAt = timing.now();
+  for (let wait = timing.pollMs; ; wait = Math.min(wait * 2, BROKER_DOWN_LONGEST_WAIT_MS)) {
+    signal.throwIfAborted();
+    try {
+      return await ask();
+    } catch (error) {
+      if (!(error instanceof ReviewerBrokerDown)) throw error;
+      const left = timing.brokerDownWaitMs - (timing.now() - startedAt);
+      if (left <= 0) throw new ReviewerBrokerStillDown(error, timing.brokerDownWaitMs);
+      await timing.sleep(Math.min(wait, left), signal);
+    }
+  }
+}
+
 /**
  * The roster read stayed timed out for the whole session-start window, so no reviewer could be chosen and none was started.
  * The message is built from the class and the budget alone, since it becomes a stored step reason.

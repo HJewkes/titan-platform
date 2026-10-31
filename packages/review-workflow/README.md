@@ -34,6 +34,16 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `classifyFailure(dispatch, awaited)`: pure. Reads one member attempt's records and returns its `FailureClass`, or
   nothing when it reached a verdict.
 
+- `requestFixer`, `fixerFingerprint`, `fixerName`, `fixerBrief` and `resolveFingerprint`: the fixer. A hard error parks
+  the run on its fingerprint through the host's `ParkingPort`, and the fixer's name is a pure function of the
+  fingerprint, so a second run with the same fingerprint spawns nothing. `readFixerReport` parses the fixer's
+  `FIXER-REPORT` block.
+
+- `reviewWorkflow(options)`: the recipe as a registrable `@titan-design/workflow` definition, with `reviewRoutes` as its
+  inline code routes and `REVIEW_WORKFLOW_VERSION` as the version a host pins it to.
+- `reviewRunner(options)`: the standalone host. It registers the definition under its version, starts and awaits review
+  runs, resumes interrupted ones on `hydrate`, and re-runs every run parked on a fingerprint on `resolve`.
+
 The retry policy is data: the recipe reads it, and a variant replaces rows, never code.
 
 ```ts

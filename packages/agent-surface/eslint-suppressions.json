@@ -1,0 +1,12 @@
+{
+  "packages/agent-surface/src/run-agent.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent-surface/src/surfaces/headless.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

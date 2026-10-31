@@ -6,6 +6,7 @@ import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HEAD = "0b7e2c1a5d4f4e8b9a1c3d5e7f9b0a2c4e6d8f01";
@@ -92,8 +93,9 @@ describe("the inbox page on a waivable sent-back gate", () => {
     expect(within(row).getByText("Wait for new head")).toBeTruthy();
 
     fireEvent.click(within(row).getByText("Waive fix-proof"));
-    await screen.findByText(EFFECT);
-    await act(async () => void fireEvent.click(screen.getByTestId("inbox-confirm-ok")));
+    const sheet = await findTapSheet("inbox-confirm");
+    expect(within(sheet).getByText(EFFECT)).toBeTruthy();
+    await act(async () => void fireEvent.click(within(sheet).getByTestId("inbox-confirm-ok")));
 
     expect(argsOf(calls, "inbox.prepare")).toEqual([{ itemId: "gate-1", decision: "waive-proof" }]);
     await waitFor(() => expect(argsOf(calls, "inbox.act")).toEqual([{ itemId: "gate-1", decision: "waive-proof", confirm: CONFIRM }]));

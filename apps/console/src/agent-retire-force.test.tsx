@@ -7,6 +7,7 @@ import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@t
 import type { ConsoleCommands } from "../server/commands.js";
 import { z } from "zod";
 import { renderPage } from "./render-page.test-helpers.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -52,8 +53,8 @@ function renderAgent(taps: Record<string, (args: unknown) => Promise<JsonEnvelop
 
 async function openPlain(): Promise<HTMLElement> {
   await act(async () => void fireEvent.click(await screen.findByTestId("agent-retire")));
-  const sheet = await screen.findByTestId("agent-retire-confirm");
-  await within(sheet).findByTestId("agent-retire-readback");
+  const sheet = await findTapSheet("agent-retire-confirm");
+  expect(within(sheet).getByTestId("agent-retire-readback")).toBeTruthy();
   return sheet;
 }
 
@@ -64,8 +65,8 @@ describe("the agent page's forced retire", () => {
     const plain = await openPlain();
     expect(within(plain).getByTestId("agent-retire-exited").textContent).toBe(`exited ${EXITED_AT}`);
     await act(async () => void fireEvent.click(within(plain).getByTestId("agent-retire-force-open")));
-    const forced = await screen.findByTestId("agent-retire-force");
-    await within(forced).findByText(/with --force: discard/);
+    const forced = await findTapSheet("agent-retire-force");
+    expect(within(forced).getByText(/with --force: discard/)).toBeTruthy();
     await act(async () => void fireEvent.click(within(forced).getByTestId("agent-retire-force-discard")));
 
     expect((await screen.findByTestId("agent-retire-force-outcome")).textContent).toContain("Retired dock-impl");

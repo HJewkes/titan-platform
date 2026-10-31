@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the flush is skipped before the read-back",
+      "file": "apps/console/server/self-update/release-check.ts",
+      "find": "  const unsynced = await ports.syncFs(release);\n",
+      "replace": "  const unsynced: string | undefined = undefined;\n",
+      "kills": [
+        "flushing a release before current may name it syncs the release's filesystem before reading the build back, and logs what the flush cost",
+        "flushing a release before current may name it refuses without reading the build back when the sync fails"
+      ]
+    },
+    {
+      "name": "an empty file counts as built",
+      "file": "apps/console/server/self-update/release-check.ts",
+      "find": "if (size === undefined || size === 0) return",
+      "replace": "if (size === undefined) return",
+      "kills": [
+        "flushing a release before current may name it refuses a release whose bin is empty or whose page is missing"
+      ]
+    },
+    {
+      "name": "the page is not checked",
+      "file": "apps/console/server/self-update/release-check.ts",
+      "find": "const NON_EMPTY = [\"cli.js\", \"index.html\"] as const;",
+      "replace": "const NON_EMPTY = [\"cli.js\"] as const;",
+      "kills": [
+        "flushing a release before current may name it syncs the release's filesystem before reading the build back, and logs what the flush cost",
+        "flushing a release before current may name it refuses a release whose bin is empty or whose page is missing"
+      ]
+    },
+    {
+      "name": "any parsed stamp passes, whatever sha it names",
+      "file": "apps/console/server/self-update/release-check.ts",
+      "find": "return stamped === sha ? undefined",
+      "replace": "return stamped !== undefined || stamped === sha ? undefined",
+      "kills": [
+        "flushing a release before current may name it refuses a release whose build-info names another sha, or does not parse"
+      ]
+    }
+  ]
+}

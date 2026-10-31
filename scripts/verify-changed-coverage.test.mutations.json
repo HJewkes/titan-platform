@@ -4,7 +4,7 @@
     {
       "name": "lint:types scope skips the dependents test-scope's closure adds",
       "file": "scripts/verify-changed.mjs",
-      "find": "  const scope = testScope(inputs, workspace);\n",
+      "find": "  const scope = inputs.length === 0 ? { mode: \"none\" } : testScope(inputs, workspace);\n",
       "replace": "  const scope = { mode: \"scoped\", dirs: inputs.map((path) => path.split(\"/\").slice(0, 2).join(\"/\")) };\n",
       "kills": [
         "lint:types scope covers a changed package and its workspace dependents, and nothing else"

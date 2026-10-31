@@ -1,4 +1,3 @@
-import type { AgentIdentity } from "@titan-design/authority";
 import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
@@ -16,38 +15,38 @@ import { consoleTextOf, failureOf } from "./error-class.js";
 import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
 import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
-import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
+import { Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, whileRosterSlow, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
-import { withReviewerProfile, type TwoMergeMode } from "./g10-release.js";
+import type { TwoMergeMode } from "./g10-release.js";
 import { chooseReviewer, lineageFor } from "./reviewer-choice.js";
 import type { Lineage } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
-import { fixFirstCount } from "./wake-brief.js";
-import { convergenceFields } from "./fix-first-trail.js";
-import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedRereviewOf, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
-import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, scopeRoundOf, type ScopeCheckWiring } from "./scope-check-round.js";
-import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
+import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
+import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, type ScopeCheckWiring } from "./scope-check-round.js";
+import { FIX_PROOF_STEPS, readFixProofAt } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualThreshold } from "./visual-delta-read.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
-import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
-import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelOn, panelReview, panelVerdictRoute, plannedPanel, proofPlanFields, type MemberBase, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
+import type { HoldMember, PanelMode } from "./review-panel-plan.js";
+import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
 import { CI_UNREAD_STEPS, ciUnreadRoute } from "./ci-unread.js";
-import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { notReviewed } from "./not-reviewed.js";
 import { ciChecksAt } from "./green-checks.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
+import { REVIEW_SHADOW_STEP, recordShadow, reviewShadowRoute, shadowOn } from "./review-shadow.js";
+import { dispatchedRound } from "./review-round.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export { AWAIT_VERDICT_STEP, LATE_VERDICT_STEP, REVIEW_STEP, mergeVerdict };
@@ -70,6 +69,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...PANEL_STEPS,
   ...NO_REVIEWER_STEPS,
   ...SCOPE_CHECK_STEPS,
+  { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -138,14 +138,14 @@ type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
  * Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one.
  * A timed-out ask may have landed, so it is `timed-out`, looked for like any ask, and never asked again blind (TP-2804).
  */
-async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & BrokerDownTiming, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
   const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief, signal) : dispatch.spawn(intent.reviewer, brief, target, facts, signal));
   const note = (text: string) => {
     waits.push(text);
     noteReviewWait(target.repo, target.pr, `waiting for reviewer admission (the broker has not started ${intent.reviewer}): ${text}`);
   };
   try {
-    await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
+    await whileBrokerBusy(timing, signal, note, () => whileBrokerBooting(timing, signal, ask));
     return "asked";
   } catch (error) {
     if (error instanceof ReviewerAskTimedOut) return "timed-out";
@@ -184,6 +184,8 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   seatWaitMs?: number;
   /** How long a busy broker is asked again before its refusal stands; absent means `DEFAULT_BUSY_WAIT_MS`. */
   busyWaitMs?: number;
+  /** How long an unreachable broker is waited out before the run is held; absent means `DEFAULT_BROKER_DOWN_WAIT_MS`. */
+  brokerDownWaitMs?: number;
   exitGraceMs?: number;
   detachGraceMs?: number;
   isFrozen?: IsFrozen;
@@ -209,10 +211,16 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
+  /** `review.workflow: shadow`: the intent records it, and each round then records what review-workflow would have done. Absent means `off`. */
+  workflow?: "shadow";
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
 const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS });
+const bootTiming = (deps: ShepherdDeps, wired: Wired): BrokerDownTiming => ({ ...brokerTiming(deps), brokerDownWaitMs: wired.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS });
+
+/** A broker that stayed down says so in the stored reason, from its budget alone; any other refusal carries only its class. */
+const refusalOf = (error: unknown): string => (error instanceof ReviewerBrokerStillDown ? error.message : failureOf(error));
 
 type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean, clock?: StepClock) => Promise<T>;
 
@@ -227,7 +235,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
     return body(deps, { ...wiring, dispatch }, input, signal, repeat, clock).catch((error: unknown) => {
       signal.throwIfAborted();
-      const failure = failureOf(error);
+      const failure = refusalOf(error);
       console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${consoleTextOf(error)}`);
       return { kind: "none", reason: `the reviewer dispatch was refused: ${failure}`, refused: failure };
     });
@@ -239,9 +247,9 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, wired, input, signal) => {
   const { dispatch, accounts } = wired;
-  const timing = brokerTiming(deps);
+  const timing = bootTiming(deps, wired);
   const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
-  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerDown(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, () => dispatch.roster())).catch(rosterUnread);
   if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
@@ -249,7 +257,7 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, lineage, input.fresh), () => chooseReviewer(input, registration, roster, lineage, true));
   if ("exhausted" in billed) return { kind: "none", reason: "every review account is exhausted", exhausted: billed.exhausted };
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
-  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck) };
+  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck), ...(wired.workflow && { workflow: wired.workflow }) };
   return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, { ...input, reviewer: intent.reviewer, mode: intent.mode }, roster)) };
 };
 
@@ -263,8 +271,8 @@ const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispat
  */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, shape, profile, convergence, earlierFindings, scopedRereview, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
-  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
-  const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
+  const timing = { ...bootTiming(deps, wired), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
+  const roster = await whileBrokerBooting(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
@@ -322,6 +330,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     panelVerdictRoute(deps),
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
+    reviewShadowRoute(deps.now, wiring),
   ];
 };
 
@@ -352,22 +361,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
-  const fixFirsts = fixFirstCount(ctx);
-  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }), ...workflowCiFieldOf(proof) };
-  const { scopedRereview } = await scopedRereviewOf(ctx, request, intent);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...workflowCiFieldOf(proof), ...convergenceFields(request.convergence), ...(scopedRereview && { scopedRereview }) }, Dispatched);
-  if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
-  const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
-  const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
-    ...target,
-    reviewerAgentId: dispatched.agentId,
-    reviewerSessionId: dispatched.sessionId,
-    dispatchedAt: dispatched.at,
-    ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }),
-    ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
-  };
-  const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const scope = scopeRoundOf(intent, scopedRereview);
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing, scope) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing, scope);
-  return withReviewerProfile(reviewed, dispatched.profile);
+  const { dispatched, verdict } = await dispatchedRound(ctx, request, { target, proof, standing, intent });
+  if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });
+  return verdict;
 };

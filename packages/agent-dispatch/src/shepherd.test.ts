@@ -182,6 +182,15 @@ describe("broker unavailable", () => {
   });
 
   it.each([
+    ["the no-autostart probe line, exit 1", `echo 'broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one' >&2\nexit 1\n`],
+    ["exit 69 with any text", `echo 'gone' >&2\nexit 69\n`],
+  ])("ls raises BrokerUnavailableError on %s", async (_, script) => {
+    const bin = fakeAgentChat(script);
+
+    await expect(listAgents(bin, 5_000)).rejects.toThrow(BrokerUnavailableError);
+  });
+
+  it.each([
     ["ECONNREFUSED", "connect ECONNREFUSED /tmp/home/chat.sock"],
     ["ENOENT", "Error: connect ENOENT /tmp/home/chat.sock"],
   ])("a socket %s is broker-down", async (_, line) => {
@@ -194,6 +203,7 @@ describe("broker unavailable", () => {
     ["a name collision", `echo 'the name impl-7-s1 is held by a live agent; retire it or choose another'\nexit 1\n`],
     ["a usage error", `echo "error: unknown option '--config-dir'" >&2\nexit 1\n`],
     ["a refusal quoting the broker text", `echo 'denied: could not reach or start the agent-chat broker' >&2\nexit 1\n`],
+    ["a refusal quoting the no-autostart line", `echo 'denied: broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one' >&2\nexit 1\n`],
     ["a missing socket named in stdout", `echo 'connect ENOENT /tmp/home/chat.sock'\nexit 1\n`],
   ])("%s stays a plain DispatchError", async (_, script) => {
     const bin = fakeAgentChat(script);

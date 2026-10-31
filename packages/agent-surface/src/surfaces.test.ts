@@ -63,7 +63,7 @@ function fakeIterm(found = true, stillThere = false, placed = 'NEW-SESSION-UUID'
     runAppleScript: run,
     onNotice: message => void notices.push(message),
   }
-  return { scripts, notices, options }
+  return { scripts, notices, options, run }
 }
 
 const lastScript = (scripts: string[]): string => scripts[scripts.length - 1] ?? ''
@@ -87,15 +87,15 @@ describe('surface registry', () => {
 
 describe('headless surface', () => {
   const capturingSpawn = () => {
-    const calls: { bin: string; args: string[]; options: Record<string, unknown> }[] = []
-    const listeners = new Map<string, (...args: unknown[]) => void>()
+    const calls: { bin: string; args: string[]; options: Parameters<SpawnFn>[2] }[] = []
+    const listeners = new Map<string, (code: number | null, signal: string | null) => void>()
     const spawn: SpawnFn = (bin, args, options) => {
-      calls.push({ bin, args, options: options as Record<string, unknown> })
+      calls.push({ bin, args, options })
       return {
         pid: 4242,
         unref: () => undefined,
-        once: (event: string, listener: (...a: never[]) => void) => {
-          listeners.set(event, listener as (...a: unknown[]) => void)
+        once: (event: string, listener: (code: number | null, signal: string | null) => void) => {
+          listeners.set(event, listener)
           return undefined
         },
       }
@@ -701,8 +701,7 @@ describe('a pane the broker opens', () => {
 
   /** An iTerm2 whose new pane has a tty and some text on screen. */
   function paneIterm(contents = 'Last login: Mon\n\nzsh: command not found: s\n\n') {
-    const { scripts, options } = fakeIterm()
-    const base = options.runAppleScript as (script: string) => Promise<string>
+    const { scripts, options, run: base } = fakeIterm()
     const runAppleScript = async (script: string): Promise<string> => {
       if (script.includes('return tty of s')) return (scripts.push(script), TTY)
       if (script.includes('return contents of s')) return (scripts.push(script), contents)
@@ -862,7 +861,7 @@ describe('a pane the broker opens', () => {
   it('fails the launch when the pane’s tty stays empty past the deadline, since nothing runs on a pane with no tty', async () => {
     const { options } = paneIterm()
     const runAppleScript = async (script: string): Promise<string> =>
-      script.includes('return tty of s') ? '' : (options.runAppleScript as (s: string) => Promise<string>)(script)
+      script.includes('return tty of s') ? '' : options.runAppleScript(script)
     const probed: string[] = []
     const handle = await surfaceFor('iterm-pane', {
       ...options,

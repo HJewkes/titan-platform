@@ -24,8 +24,20 @@ describe("lint:types scope", () => {
   });
 
   it("runs unscoped when a lint:types input or a path test-scope does not know changes", () => {
-    expect(lintTypesArgs(["packages/c/src/y.ts", "eslint-suppressions.typed.json"])).toEqual(["scripts/lint-types.mjs"]);
+    expect(lintTypesArgs(["packages/c/src/y.ts", "eslint.typed.config.js"])).toEqual(["scripts/lint-types.mjs"]);
     expect(lintTypesArgs(["foo.config.ts"])).toEqual(["scripts/lint-types.mjs"]);
+  });
+
+  it("covers only the package whose typed baseline changed", () => {
+    expect(lintTypesArgs(["packages/a/eslint-suppressions.typed.json"])).toEqual(["scripts/lint-types.mjs", "--only=packages/a"]);
+  });
+
+  it("adds a baseline's package to the packages a source change reaches", () => {
+    expect(lintTypesArgs(["packages/c/src/y.ts", "packages/a/eslint-suppressions.typed.json"])).toEqual(["scripts/lint-types.mjs", "--only=packages/a,packages/c"]);
+  });
+
+  it("is skipped when only an untyped baseline changes", () => {
+    expect(lintTypesArgs(["packages/a/eslint-suppressions.json"])).toBeUndefined();
   });
 
   it("is skipped when no changed path reaches a typed file", () => {

@@ -1,0 +1,22 @@
+{
+  "packages/workflow/src/context.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/durable-harness-runner.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/prompt.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/runners.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  }
+}

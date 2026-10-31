@@ -817,6 +817,44 @@ have had its effect is parked as `recovery_required` for a human. The post-merge
 reconciled from its result file instead: a finished chore is recorded, a running one is
 awaited, and only a chore that is gone and wrote no result parks the run.
 
+## `review` {#review}
+
+```sh
+titan-factory review acme/widgets#7                # review the PR's current head
+titan-factory review acme/widgets#7 --head <sha>   # review this full head sha
+titan-factory review acme/widgets#7 --json         # one JSON object: outcome, head, fingerprint, members
+titan-factory review acme/widgets#7 --wait-ci      # wait out pending CI, and follow a moved head once
+titan-factory review resolve <fingerprint>         # review every run parked on the fingerprint again
+```
+
+`review` runs the review workflow (`@titan-design/review-workflow`) on one PR head with no
+Shepherd run: preflight, the panel's members, and the aggregate. It reads the reviewer
+profiles, `agentChatBin`, the timeouts and the disk floors from `shepherd.review`, and the
+repo's checkout from the seat book or `shepherd.repos`. It prints the outcome, the head, the
+run id and each member dispatch. It posts nothing to GitHub and never updates the branch.
+
+| Outcome | Exit | What to do |
+|---|---|---|
+| `MERGE`, `carried` | 0 | nothing |
+| `needs-update` | 1 | the branch is behind and merges clean; the author updates it, then reviews again |
+| `needs-fixer` | 1 | a hard error parked the run and spawned a read-only `bd-planner` fixer that proposes a fix; once the fix is in, run `review resolve <fingerprint>` |
+| any other | 1 | read the outcome line |
+
+`review resolve` reviews every run parked on the fingerprint again, each as a fresh run, and
+exits 0 only when every one ends in `MERGE` or `carried`. Runs and parked fingerprints live in
+`review.sqlite3` beside the factory database, so `serve` never picks them up.
+
+`--wait-ci` polls every 30 seconds for up to an hour. Each pass stops at preflight, so waiting
+spends no reviewer session. CI comes from the base's required checks. When none can be read,
+it comes from every check run at the head: green once all have completed and none failed.
+The `CI:` line (and `ci` under `--json`) names which source was used.
+
+With no Shepherd run, the PR itself opens the fix-proof gate. A `fix/` head branch opens it,
+and so does a `fix-proof` run from GitHub Actions at the head. The review then reads that
+check's result line once, without waiting, so a `NO_REPRO` line ends the review as
+`NO_REPRO`. A `fix-proof` run still going reads as unverified. The review carries nothing
+across merge-ups.
+
 ## `digest run`
 
 ```sh

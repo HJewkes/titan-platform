@@ -1,0 +1,7 @@
+{
+  "packages/matrix-bus/src/http.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

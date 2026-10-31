@@ -331,6 +331,9 @@ importers:
 
   packages/agent-protocol:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -389,6 +392,9 @@ importers:
 
   packages/chat-protocol:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       ai:
         specifier: ^7.0.0
         version: 7.0.102(zod@4.5.4)
@@ -498,6 +504,9 @@ importers:
         specifier: ^4.12.18
         version: 4.13.7
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -680,6 +689,9 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -829,13 +841,19 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../workflow
     devDependencies:
+      '@titan-design/hitl':
+        specifier: workspace:*
+        version: link:../hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../test-kit
-      '@titan-design/workflow':
-        specifier: workspace:*
-        version: link:../workflow
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -852,6 +870,9 @@ importers:
       '@titan-design/registry':
         specifier: workspace:*
         version: link:../registry
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -1021,6 +1042,9 @@ importers:
         specifier: ^4.7.8
         version: 4.7.9
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.46.0
         version: 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
@@ -1286,6 +1310,9 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../../packages/review-panel
+      '@titan-design/review-workflow':
+        specifier: workspace:^
+        version: link:../../packages/review-workflow
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1477,6 +1504,9 @@ importers:
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
+      '@titan-design/review-workflow':
+        specifier: workspace:^
+        version: link:../../packages/review-workflow
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client

@@ -29,6 +29,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHost
 import type { StepRoute } from "@titan-design/workflow";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
 import { registerScorecard } from "./cli-scorecard.js";
+import { registerReview } from "./review/command.js";
 import { registerContextAudit } from "./context-audit/command.js";
 import { registerBotToken } from "./cli-bot-token.js";
 import { registerToolchain } from "./cli-toolchain.js";
@@ -150,7 +151,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

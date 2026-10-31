@@ -111,6 +111,49 @@ dispatch-to-verdict latency, and five raw labels: `revert`, `main-red`, `later-f
 | `false-block` | FIX_FIRST, and the next head changed no cited path, or the owner merged over it |
 | `unresolved` | old enough, but the evidence cannot decide: the PR never merged, the head is missing from the clone, or there is no next head or cited path |
 
+## Review workflow replay
+
+`replayCase(case, variant, worldFor)` runs one `titan.case/v1` case through
+`@titan-design/review-workflow`'s `reviewRunner` over a fresh in-memory run store, under one
+variant: the `ReviewHeadPolicy` (panel table, roles, retry policy, timing) a hill-climb changes.
+`replaySuite` runs every case under every variant. Each result carries the case's content hash,
+the variant's policy hash, the outcome, the reviewer agents spawned, and three scores:
+
+- `hit`: the outcome is FIX_FIRST and a finding cites the case's `path` at lines that exist at
+  the head. A FIX_FIRST that cites another path, or a line past the file's end, is no hit.
+- `falseCatch`: a hit on a case expected to pass.
+- `matched`: the expected outcome kind, fixer fingerprint and session count all held.
+
+Two case sets ship, all synthetic text and public PR facts:
+
+| Set | Cases |
+|---|---|
+| `SEED_CASES` | three heads to block (tp#747 at `1d9e6287`, tp#754 at `a60be999`, tp#755 at `ea0bf5f4`) and tp#755's fixed heads `84dc2b72` and `00ec6c05` |
+| `FAILURE_FIXTURES` | tp#1986's adversary lowered to an uninstalled profile, tp#2145's mutants-proved vacuous proof, an unproved workflow-only CI proof, tp#2138's carried test-support spec error, and synthetic malformed, timeout and usage-limit members |
+
+In CI the suite runs with the deterministic fake ports in `src/review-workflow/test-fixture.ts`:
+one broker and one clock, each member's scripted reply, no model, network or disk.
+
+**Live run.** A live replay passes `worldFor` real ports instead: the factory's PR facts, line
+source and agent-chat dispatch and reader, with each case's `target` pointing at a clone that
+holds its head. It spawns real reviewers, so it costs a review per member per case. Run it by
+hand on a candidate variant and the incumbent, from a scratch directory outside every repo,
+then compare the two result lists.
+
+**Scorecard and accept rule.** `reviewScorecard(variant, cases, results)` scores one variant
+on catch rate (with a Wilson interval), false blocks, sessions per head, verdicts reached, and
+no-verdict heads by outcome kind. Only the kinds a replay produced are listed. A replay spends
+nothing and takes no wall time, so sessions stand for cost and no latency is reported.
+`compare(candidate, incumbent)` picks the track from the plan policy hash:
+
+| Track | When | Accept |
+|---|---|---|
+| reliability | only retry or timing rows changed | no new loop (a no-verdict head with more sessions than the incumbent's), no fewer verdicts reached, sessions per head not higher |
+| verdict | the plan changed | catch not lower and fewer sessions, or catch higher, with the delta reported; then 10 live heads in shadow |
+
+Seed cases are a floor on both tracks: a missed blocking seed or a falsely blocked passing seed
+rejects the candidate.
+
 ## When to reach for it
 
 You need a stable identity for "this workflow configuration on this suite", or you want to

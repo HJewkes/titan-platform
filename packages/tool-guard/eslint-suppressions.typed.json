@@ -1,0 +1,177 @@
+{
+  "packages/tool-guard/src/cli.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/decide.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/event.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/families/copy-destination.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 4
+    }
+  },
+  "packages/tool-guard/src/families/merge.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/families/options.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/families/release.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/families/secret.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/hook.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/hook.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/mentions.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/paths-glob.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/paths.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "packages/tool-guard/src/scripts.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "packages/tool-guard/src/shell/case-attrs.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/cluster.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/commands.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/commands.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/declarations.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 7
+    }
+  },
+  "packages/tool-guard/src/shell/git.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 4
+    }
+  },
+  "packages/tool-guard/src/shell/lexer.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/lexer.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/shell/piped-nul.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/printed.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "packages/tool-guard/src/shell/unwrap.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 8
+    }
+  },
+  "packages/tool-guard/src/shell/vars.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 7
+    }
+  },
+  "packages/tool-guard/src/shell/wrapper-dynamic.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "packages/tool-guard/src/shell/xargs-input.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/xargs-options.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 4
+    }
+  },
+  "packages/tool-guard/src/shell/xargs-readings.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/xargs-readings.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/shell/xargs-replace.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

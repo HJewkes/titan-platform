@@ -5,6 +5,7 @@ import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { renderPage } from "./render-page.test-helpers.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 const NOW = "2031-03-05T12:00:00.000Z";
 const CONFIRM = "c".repeat(64);
@@ -70,7 +71,7 @@ function renderApprove(item: Record<string, unknown>, readBack: Record<string, u
 
 async function openSheet(id: string): Promise<HTMLElement> {
   fireEvent.click(within(await screen.findByTestId(`inbox-row-${id}`)).getByText("Approve"));
-  return screen.findByTestId("inbox-confirm");
+  return findTapSheet("inbox-confirm");
 }
 
 const actArgs = (calls: readonly Call[]): unknown[] => calls.filter((call) => call.name === "inbox.act").map((call) => call.args);
@@ -90,7 +91,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   it("reads back a permission prompt's tool, input and description, offering Allow and Deny in place of Confirm", async () => {
     renderApprove(PROMPT, PERMISSION_READBACK);
     const sheet = await openSheet("perm-1");
-    expect((await within(sheet).findByTestId("inbox-readback-tool")).textContent).toBe("Tool: Bash");
+    expect(within(sheet).getByTestId("inbox-readback-tool").textContent).toBe("Tool: Bash");
     expect(within(sheet).getByTestId("inbox-readback-input").textContent).toBe("example command --flag\n  second line");
     expect(within(sheet).getByTestId("inbox-readback-description").textContent).toBe("agent-1 says: Run the example command");
     expect(within(sheet).getByTestId("inbox-confirm-allow")).toBeTruthy();
@@ -101,7 +102,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   it.each(["allow", "deny"])("sends a permission prompt's %s as the act's verdict, with no text", async (verdict) => {
     const calls = renderApprove(PROMPT, PERMISSION_READBACK);
     const sheet = await openSheet("perm-1");
-    const button = await within(sheet).findByTestId(`inbox-confirm-${verdict}`);
+    const button = within(sheet).getByTestId(`inbox-confirm-${verdict}`);
     await act(async () => void fireEvent.click(button));
     expect(actArgs(calls)).toEqual([{ itemId: "perm-1", verdict, confirm: CONFIRM }]);
   });
@@ -109,7 +110,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   it("renders an endorsement's exact stored text with its whitespace intact, never the item's summary", async () => {
     renderApprove(ENDORSE, ENDORSE_READBACK);
     const sheet = await openSheet("end-1");
-    const block = await within(sheet).findByTestId("inbox-readback-text");
+    const block = within(sheet).getByTestId("inbox-readback-text");
     expect(block.tagName).toBe("PRE");
     expect(block.textContent).toBe(ENDORSED_TEXT);
     expect(block.className).toContain("whitespace-pre-wrap");
@@ -120,7 +121,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   it("sends Endorse as the act's verdict with no text, offering no Allow or Deny", async () => {
     const calls = renderApprove(ENDORSE, ENDORSE_READBACK);
     const sheet = await openSheet("end-1");
-    const button = await within(sheet).findByTestId("inbox-confirm-endorse");
+    const button = within(sheet).getByTestId("inbox-confirm-endorse");
     expect(within(sheet).queryByTestId("inbox-confirm-allow")).toBeNull();
     await act(async () => void fireEvent.click(button));
     expect(actArgs(calls)).toEqual([{ itemId: "end-1", verdict: "endorse", confirm: CONFIRM }]);
@@ -131,7 +132,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   it("reaches the broker only through inbox.prepare and inbox.act, so the page never holds the token", async () => {
     const calls = renderApprove(ENDORSE, ENDORSE_READBACK, { inApp: true });
     const sheet = await openSheet("end-1");
-    await act(async () => void fireEvent.click(await within(sheet).findByTestId("inbox-confirm-endorse")));
+    await act(async () => void fireEvent.click(within(sheet).getByTestId("inbox-confirm-endorse")));
     expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build", "blockers.banner", "inbox.prepare", "inbox.act"]));
     expect(document.body.textContent).not.toMatch(/token/i);
   });

@@ -6,6 +6,7 @@ import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
 import { renderPage } from "./render-page.test-helpers.js";
+import { findTapSheet } from "./tap-sheet.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -47,8 +48,8 @@ function renderAgent(entry: RosterEntry, taps?: Record<string, Tap>, hash = `#/a
 
 async function retire(): Promise<HTMLElement> {
   await act(async () => void fireEvent.click(await screen.findByTestId("agent-retire")));
-  const sheet = await screen.findByTestId("agent-retire-confirm");
-  await within(sheet).findByTestId("agent-retire-readback");
+  const sheet = await findTapSheet("agent-retire-confirm");
+  expect(within(sheet).getByTestId("agent-retire-readback")).toBeTruthy();
   return sheet;
 }
 

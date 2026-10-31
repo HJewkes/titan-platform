@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer, listTools, type McpServerOptions } from "./mcp.js";
@@ -21,8 +22,10 @@ async function connectedClient(): Promise<Client> {
   return client;
 }
 
+const TextResult = z.object({ content: z.tuple([z.object({ text: z.string() })], z.unknown()) });
+
 function envelopeOf(result: unknown): unknown {
-  const [first] = (result as { content: [{ text: string }] }).content;
+  const [first] = TextResult.parse(result).content;
   return JSON.parse(first.text);
 }
 

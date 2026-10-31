@@ -31,9 +31,9 @@
     },
     {
       "name": "panel members get no unverified fix-proof standing",
-      "file": "products/factory/src/shepherd/review.ts",
-      "find": "...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined",
-      "replace": "...(standing.waivedAt !== undefined",
+      "file": "products/factory/src/shepherd/review-round.ts",
+      "find": "...(proof.kind === \"result\" && { fixProof: proof.line }), ...unverified, ...waived,",
+      "replace": "...(proof.kind === \"result\" && { fixProof: proof.line }), ...waived,",
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member briefs every member, not only correctness, that an unreadable proof is unverified"
       ]

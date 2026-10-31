@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing ledger source names no follow-up gap",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": "  if (!sources.agentChat) gaps.push(...AGENT_CHAT_FOLLOW_UPS);\n",
+      "replace": "",
+      "kills": [
+        "collectDigest lists Shepherd's merges and stuck runs and names the agent-chat follow-ups when no ledger source is wired (TP-4628)"
+      ]
+    },
+    {
+      "name": "stalled claims and reports are left out of Stuck",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": ", ...(chat ? chatStuck(chat) : [])]",
+      "replace": "]",
+      "kills": [
+        "collectDigest lists stalled claims and BLOCKED reports from a wired agent-chat ledger under Stuck, with no follow-up gap (TP-4628)"
+      ]
+    },
+    {
+      "name": "the decider's answers are left out",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": "    ...(chat && decidedSection(chat)),\n",
+      "replace": "",
+      "kills": [
+        "collectDigest reads the decider's answers with an overrule only on the one awaiting audit, and the reversal rate"
+      ]
+    },
+    {
+      "name": "a failing ledger source throws instead of a gap line",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": "await guarded(gaps, \"agent-chat ledger\", undefined, () => sources.agentChat!(windowMinutes))",
+      "replace": "await sources.agentChat!(windowMinutes)",
+      "kills": [
+        "collectDigest turns a ledger source that fails into one gap line"
+      ]
+    },
+    {
+      "name": "broker asks in the owner list are dropped",
+      "file": "products/factory/src/digest/collect.ts",
+      "find": ".filter((item) => item.kind !== \"know\")",
+      "replace": ".filter((item) => item.kind !== \"know\" && item.sources[0]!.system !== \"agent-chat\")",
+      "kills": [
+        "collectDigest with the merged owner list lists a broker ask from the merged owner list among the asks, not as a gap line (TP-4628)"
+      ]
+    }
+  ]
+}

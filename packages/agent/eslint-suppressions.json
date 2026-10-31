@@ -1,0 +1,32 @@
+{
+  "packages/agent/src/claude-code-adapter.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent/src/codex-exec.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/agent/src/durable-dispatcher.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 2
+    }
+  },
+  "packages/agent/src/durable-dispatcher.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent/src/fake-query.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 5
+    }
+  },
+  "packages/agent/src/preflight.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 2
+    }
+  }
+}

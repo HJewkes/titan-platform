@@ -4,6 +4,7 @@ import { z } from "zod";
 import { FAILURE_STAGES, failureDeposit, type FailureStage } from "./alarm.js";
 import { releaseLock, takeLock, type LockPorts } from "./lock.js";
 import { CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
+import { flushRelease, type FlushPorts } from "./release-check.js";
 import { releaseCli, smokeFromRelease, type SmokePorts } from "./release-smoke.js";
 import { shimPath, shimText } from "./shim.js";
 
@@ -14,7 +15,7 @@ export interface CommandResult {
 }
 
 /** Every effect the updater has; tests pass fakes, so none of them reaches git, pnpm, systemd or a port. */
-export interface UpdatePorts extends LockPorts, SmokePorts {
+export interface UpdatePorts extends LockPorts, SmokePorts, FlushPorts {
   git: (cwd: string, args: readonly string[]) => Promise<CommandResult>;
   pnpm: (cwd: string, args: readonly string[]) => Promise<CommandResult>;
   systemctl: (args: readonly string[]) => Promise<CommandResult>;
@@ -89,7 +90,7 @@ const stopWith = (code: number, message: string): Stop => ({ kind: "stop", code,
 
 /**
  * The bootstrap's hand-off (TP-4043): it fetched and built `target` into releases/<target>, and this process runs from
- * that release, so a fix to anything here applies on the pass that builds it. Decide, smoke, swap, restart, verify;
+ * that release, so a fix to anything here applies on the pass that builds it. Decide, smoke, flush, swap, restart, verify;
  * any failure leaves the previous build serving, and the previous release stays on disk until the new one answers.
  */
 export async function applyRelease(ports: UpdatePorts, options: UpdateOptions, target: string): Promise<number> {
@@ -179,6 +180,8 @@ async function apply(update: Update, go: Go): Promise<number> {
   update.ports.log(`updating ${go.served} -> ${go.target}; ${go.touched.length} changed path(s) reach the console build`);
   const smoke = await smokeFromRelease(update.ports, go.release, go.target);
   if (smoke !== undefined) return failBeforeSwap(update, go, "smoke", smoke);
+  const unflushed = await flushRelease(update.ports, go.release, go.target);
+  if (unflushed !== undefined) return failBeforeSwap(update, go, "flush", unflushed);
   update.ports.swapLink(update.link, go.release);
   const restarted = await restartTo(update, go.target);
   if (restarted !== undefined) return rollBack(update, go, restarted);
