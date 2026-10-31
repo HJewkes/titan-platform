@@ -10,10 +10,10 @@ const HEAD_REPORTS = ["head", "head-2", "head-3"] as const;
 const CLONE_TIMEOUT_MS = 10 * 60_000;
 const REPO_NAME = /^[\w-][\w.-]*\/[\w-][\w.-]*$/;
 
-export type ScreenVerdict = "keep" | "no-hidden-tests" | `screen-error:${string}` | "flaky" | "fails-on-accepted" | "vacuous" | "not-collected";
+type ScreenVerdict = "keep" | "no-hidden-tests" | `screen-error:${string}` | "flaky" | "fails-on-accepted" | "vacuous" | "not-collected";
 export type HeadRuns = readonly [Classification, Classification, Classification];
 
-export interface ScreenOptions {
+interface ScreenOptions {
   /** Holds `.scratch`, the export's to remove. */
   outDir: string;
   /** The local clone of `owner/repo`; it is only read, and a screen's worktrees go in a scratch clone of it. */
