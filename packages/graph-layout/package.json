@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/graph-layout",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot",
   "type": "module",
   "main": "./dist/index.js",

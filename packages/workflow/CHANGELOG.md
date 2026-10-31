@@ -1,5 +1,54 @@
 # @titan-design/workflow
 
+## 0.14.0
+
+### Minor Changes
+
+- 2256a3b: Meter agent-chat workflow steps from their transcripts and retire an agent mid-step when its slice's budget runs out. `StepUsage` gains `peakContextTokens`, and a code step can throw `CodeStepFailure` to keep what it spent.
+- 869014a: `StepUsage` gains optional `cacheReadTokens`, `cacheWrite5mTokens`, `cacheWrite1hTokens` and `model`. `agentRunner` fills them from the run's usage, and `addUsage` and `usageFromMeasurements` carry them. Absent stays absent.
+- 4a2495f: Capability context: `WorkflowRuntimeOptions.capabilities` and `ctx.capability(name)` give step bodies an opaque handle whose declared secrets are refused (`CapabilityLeakError`) or redacted before they reach step output, the trace, the store or a prompt variable. The factory's guarded context forwards `capability`.
+- 0229ba6: Add `codeStep`, `codeRoute` and `codeRecordRoute`: the code-step pair a host dispatches JSON input through and records one `{ result }` record from, with an `envelope` hook for the stored record and an `errorText` hook for thrown messages.
+- ee64f09: Add `WorkflowRunStore.listByWorkflow` and `WorkflowRuntime.listByWorkflow`, which load one workflow's runs of the asked statuses with a `WHERE workflow_name = ?` read instead of every run. New tables get a `(workflow_name, status)` index, and `workflowNameIndexMigration` adds it to an existing table.
+- 2165cec: Keep per-step telemetry. A completed dispatch's `StepResult` now records `startedAt`, `firstStartedAt` and `restarts`, and a seed's records `startedAt`; `projectRunTrace` places each attempt at its recorded start. Every `WorkflowEvent` carries `at` from the runtime clock. A `codeRecordRoute` body may return `usage` beside `result`; the route reports it as the step's usage, so `mapItems` sums and budgets it like a dispatch's. All fields are optional, so stored runs and events from earlier releases read as before; no migration is needed.
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 50fd2a5: A replayed authorize step now reads its recorded outcome through a schema instead of a cast, so a malformed record throws a validation error rather than being trusted. Typed-lint cleanup elsewhere in the package changes no behavior.
+- Updated dependencies [ff061ba]
+- Updated dependencies [9386796]
+- Updated dependencies [e8159b1]
+- Updated dependencies [cca108a]
+- Updated dependencies [9411e94]
+- Updated dependencies [91e3e3d]
+- Updated dependencies [4ea511b]
+- Updated dependencies [2917ad8]
+- Updated dependencies [211db45]
+- Updated dependencies [b3f677b]
+- Updated dependencies [84d962e]
+- Updated dependencies [6c2df6a]
+- Updated dependencies [c58d555]
+- Updated dependencies [c026f23]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [c1f9297]
+- Updated dependencies [646f4d7]
+- Updated dependencies [5e34e3d]
+- Updated dependencies [869014a]
+- Updated dependencies [d46cbce]
+- Updated dependencies [ae64085]
+- Updated dependencies [1b0c46a]
+- Updated dependencies [1bc6431]
+- Updated dependencies [342c6ba]
+- Updated dependencies [342c6ba]
+- Updated dependencies [0100482]
+  - @titan-design/agent@0.7.0
+  - @titan-design/authority@0.6.0
+  - @titan-design/agent-protocol@0.10.0
+  - @titan-design/hitl@0.10.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.13.1
 
 ### Patch Changes

@@ -1,5 +1,70 @@
 # @titan-design/review-panel
 
+## 0.9.0
+
+### Minor Changes
+
+- c18be57: Scope a fix-round re-review brief to the fix diff (TP-3735): `ReviewerBriefInput.scope` (`ReviewScope`: `sinceHead`, `paths`, `hunks`, `mergedBase`), given with earlier findings, swaps `gh pr diff` for `git diff <sinceHead> <head> -- <paths>`, lists the fix's line ranges, makes the `Earlier findings:` checklist required with a `- partly fixed:` option, and adds the unchanged-line rule (`Important:` plus `Class:`), the no-repeat rule and the callers rule. A scope that fails `usableScope` (shell-active path, short sha, over `MAX_SCOPE_PATHS`, no open finding) leaves the brief full; with no scope every brief is byte-identical. `shapeBrief` drops `scope`, so panel members keep the full diff. Exports `IMPORTANT_TAG` and `CLASS_TAG`.
+- 44038c9: Shepherd no longer asks the owner to merge a fix-first-runaway or no-progress head (D8, `GATE_DEMOTIONS.fixFirstRunaway`, on by default). One fresh reviewer gets the run's FIX_FIRST trail as a convergence review: its MERGE takes the normal land path, and its FIX_FIRST sends the repo's seat (or the hub seat) a `fix-first-planner` notice while the run waits for a new head. A moved head re-arms the review. The reviewer brief gains `convergence`, which asks for a `Convergence:` section tagging each open finding Important, Nit or Pre-existing.
+- 7d3b5fb: Add the `scope_untagged` and `repeated_finding` refusals (TP-3735 S5) and export their `ScopeRefusal` type. Their correction prompt tells a scoped fix-round FIX_FIRST which rule it broke (an out-of-range item with no `Important:` and `Class:` line, or a restated earlier finding) and that its reply stands as written, within `MAX_CORRECTION_PROMPT_CHARS`.
+- 481f3e4: The panel aggregate counts a vacuous fix-proof that `provedByMutants` proves as good, as Shepherd's fix-proof judge already did, so it no longer adds an unplanned blocking tests seat that left every round `no-verdict`. `PanelVerdict` gains `fixProofShortfall`, set when that unplanned tests seat is the only blocking member missing; when that proof is vacuous or test-less, Shepherd sends the head back as its own NO_REPRO instead of retrying a fresh reviewer, and an owner's waiver of it now clears the seat on a test-only head that proceeds.
+- 377cca9: `ReviewerDispatch.spawn` and `resume` take an optional `AbortSignal` as their last argument. A dispatch that waits before starting the reviewer stops waiting, and starts nothing, once the signal aborts.
+- 52dc7f3: A reviewer verdict correction now quotes the line that made the verdict malformed (TP-3798). `session-read` exports `refusedLines(text, refusal)`, which returns the non-canonical `Verdict:` lines (for `multiple_blocks`) or labelled CI-policy lines (for `ci_policy_malformed`); the reading itself is unchanged and still fails closed. `review-panel` records them as `malformed.quotes`, and `correctionPrompt` takes `quotes`, shows up to three of them cut to 120 characters inside `MAX_CORRECTION_PROMPT_CHARS`, and asks the reviewer to reword or remove them. `CI_POLICY_RULE` now says no other line may start with "CI policy" or "Verdict", markdown headings such as `**CI policy:**` included.
+- 12afa80: `planPanel` caps premium seats by price class: `fable-reviewer` joins `bd-reviewer` in `DEFAULT_SONNET_FOR`, so a Fable member takes the one premium seat and is priced at premium points. A `ShapeRule` with `uncapped: true` keeps its premium profile beside the capped seat (headroom still lowers it). `PanelPolicy.installed` lets the caller say which profiles exist; a premium member lowered to one that does not throws `UninstalledProfileError` at plan time. Because `aggregate` reads the same default table, a g10 correctness member at `fable-reviewer` now counts as premium for `satisfiesG10`.
+- 852d2a9: `fixProofNeedsTests` is exported: the predicate `aggregate` uses to make the tests seat blocking. Shepherd's review intent plans a blocking tests member whenever it holds, so an `unproven` or `error` fix-proof on a panel with no tests member is reviewed by one instead of ending every round as no-verdict (TP-4195). A panel that still meets the unplanned seat (an intent recorded before this change) says so in its no-verdict reason, and the diagnosis brief no longer claims no reviewer was dispatched when every one answered.
+- 6bc98f3: `acceptVerdict` takes a MERGE's exact `CI-policy: unchanged` line at Head+1 when every other CI-policy-labelled line is prose (bold, a list item or a sentence) that only says nothing changed (an allowlist: `unchanged`, or no files under `.github/` changed), instead of refusing the block as `ci_policy_malformed`. A weakened reading still wins. A refusal where every other labelled line is prose is recorded as the new `ci_policy_prose` refusal, apart from `ci_policy_malformed` (TP-4391).
+- 7012bf0: Shepherd's fix-proof gate takes CI as the proof for a PR whose diff is only `.github/workflows/**` (changesets and the repo's declared generated files may ride along), since no unit test can cover a workflow edit (TP-3861). `sh-fix-proof` then reads the base branch's required checks from check-runs instead of the fix-proof run: it records a `workflow-ci` read citing each required check's newest run at the merge base and at the head. The read passes when a required check concluded failure at the merge base and every required check concluded success at the head; otherwise the review ends as NO_REPRO carrying the read. A passed read reaches the reviewer as `workflowCiProof`, a new `ReviewerBriefInput` field, and the brief names CI as the proof and tells the reviewer not to ask for a unit test; the tests panel member reads it in place of the missing-result line. A mixed diff keeps the fix-proof run path unchanged.
+
+### Patch Changes
+
+- 7492819: - **Count work in timing tests instead of reading a clock (TP-4262).** Glob growth tests compared thread CPU ratios, which read up to 415 on a loaded hosted runner and turned main red. fix-proof's `LinearRegExp` now counts its NFA steps (`linearRegExpSteps`), and test-kit's `linearWork` compares those counts across a size ladder. It replaces the timed `linearGrowth`, which is removed. A matcher that falls back to a backtracking RegExp counts nothing and fails at size 1. test-kit also adds `countCalls` and `callMeter`, which count calls to chosen methods and stop at a cap. fix-proof's brace and glob rows and code-graph's reach and link rows use them in place of millisecond limits.
+  - **Refuse new clock limits in tests.** eslint-plugin adds `no-test-clock-budget`. It reports a test that compares a clock reading, or a ratio of readings, with a limit outside a bench gate. The repo enables it with a shrink-only baseline that TP-4264 empties.
+- c15f0dc: Add `shepherd.gateReset.noReproProceed` (off by default): a test-only PR whose diff the classifier reads as tests alone goes to review on a vacuous or test-less fix-proof, recorded as unverified `no-repro-test-only`; the reviewer brief names it.
+- 7a34209: The remaining RegExp glob compilers match in time linear in the path (TP-4223). fix-proof exports `LinearRegExp`, also from `@titan-design/fix-proof/linear-regexp`: a RegExp whose `test` simulates its source as an NFA, so a glob such as `d/` and twenty `*`, or `**/` repeated twelve times, can no longer hang a match. review-panel's `matchesGlob`, autoresearch's bounds globs, code-graph's `patternToRegex` and `.gitattributes` patterns, and tool-guard's merge-lint `globToRegExp`, guarded path patterns and glob command words now build one. Each still returns a RegExp and matches what it did, except that a glob too large for V8 to compile, which used to throw at its first test, now matches as written. test-kit exports `linearGrowth`, a growth-ratio ladder that fails a polynomial matcher on a small input before trying a large one, and `hostileGlobs`, the timing rows of tp#2491.
+- f15a84e: Add `shepherd.gateReset.nonSourceNoRepro` (`keep-owner` when absent, today's behaviour). With `record-fact`, a fix-proof NO_REPRO on a non-security PR that changes no source goes to review marked unverified `no-repro-non-source`, and no `sh-sent-back` owner gate opens; the merge grant is unchanged. No source means the fix-proof plan, under the trusted configs, sorts no path as source, or the diff is the workflow-only diff a CI proof read. `@titan-design/review-panel` exports `noReproProceedOf`, the one reading of which unverified standings proceed and on what, so the brief rule, the tests member question and the panel plan all follow it. The row is live-editable (TP-4275).
+- ed2be7e: Clear the typed-lint baseline for the package: narrow the tool-call input and index reads instead of casting, and drop optional chains the types already rule out. No change for well-formed input.
+- 801f9c4: A test-only head that proceeds on its vacuous fix-proof no longer dead-ends under the review panel (TP-4058). Shepherd plans a fresh, blocking tests member for it, right after a g10-adversary hold's member, instead of leaving aggregate's unplanned tests seat empty and sending the head back as the proof's NO_REPRO. The tests member's brief asks, for each changed test, whether it would fail without the change it covers. Its MERGE lets the panel merge with no waiver; its silence is still no verdict, and its FIX_FIRST goes to the fixer. A diff that also changes source still ends as NO_REPRO, and an intent recorded before this change keeps the old NO_REPRO.
+- 32637bd: `proofStanding(read, head)` in fix-proof is the one reading of a fix-proof read at a head: `proved`, `no-repro` (with `proceeds` for a test-only or non-source NO_REPRO the caller lets through), `unverified`, `unproven` or `none`. `endsReview` and `needsTestsSeat` answer the two questions callers ask of it, and `FixProofUnverified` moves here. Shepherd's gate and waiver and review-panel's `fixProofNeedsTests` now derive from it instead of parsing the line each in their own way; no behavior changes, and `unproven` still lets the review run while making the tests seat blocking. review-panel re-exports `FixProofUnverified` unchanged. review-workflow's `ProofRead` is now fix-proof's `ProofReadInput` (TP-3923).
+- d2cce6c: Give the fix-proof result line a `refused` verdict for a PR whose base is not the default branch (TP-4259). A refused line names the PR's `base` and the `defaultBranch` in fields of their own, with no count and no test, so no reader parses a message to find a refusal. Every judged line may also carry the `base` it judged; `fix-proof judge` takes it as `--base-ref`, and `fix-proof-run.sh` passes it from the workflow's `BASE_REF`. A reader that predates either field rejects the line, so it fails closed.
+
+  The review panel counts a refused line as a bad fix-proof, as it did the error line that carried the refusal before.
+
+  Shepherd's fix-proof read binds a run to the PR only when GitHub lists it on the PR's base and its line, if it names a base, names that same base. A run GitHub lists on main after a retarget, whose line judged the stacked parent, no longer counts as a second run on main. A job log that cannot be read is read again on the next poll and is an error at the deadline. A run's distrust is settled before its verdict is read. A refused line's standing is `refused`, and the MERGE evidence records the base the line judged as `proofBase`.
+
+- Updated dependencies [7492819]
+- Updated dependencies [eaa03c2]
+- Updated dependencies [f896485]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [36dc03f]
+- Updated dependencies [67aa361]
+- Updated dependencies [6525ba7]
+- Updated dependencies [661a027]
+- Updated dependencies [f77d79d]
+- Updated dependencies [9b42150]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [4080191]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [32637bd]
+- Updated dependencies [2451aa9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [719f05e]
+- Updated dependencies [78ae7d9]
+  - @titan-design/fix-proof@0.9.0
+  - @titan-design/evidence@0.5.0
+  - @titan-design/session-read@0.17.0
+
 ## 0.8.1
 
 ### Patch Changes

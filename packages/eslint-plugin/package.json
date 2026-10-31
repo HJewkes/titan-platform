@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/eslint-plugin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, opt-in code lines of at most 200 characters, opt-in no wall clock in beat and motion code, comments that hold code, and TODO comments without a tracking task",
   "type": "module",
   "main": "./dist/index.js",

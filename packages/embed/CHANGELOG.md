@@ -1,5 +1,11 @@
 # @titan-design/embed
 
+## 0.2.1
+
+### Patch Changes
+
+- d279098: Narrow the Ollama response and the optional transformers import with type guards instead of assertions. A response whose embeddings are not number arrays now fails with the embedding-count error.
+
 ## 0.2.0
 
 ### Minor Changes

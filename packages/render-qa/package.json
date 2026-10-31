@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/render-qa",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Render QA gate: in-page geometry inspection, cue moments and the persistence rule over any __titanMotion page",
   "type": "module",

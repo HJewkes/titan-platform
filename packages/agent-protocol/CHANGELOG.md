@@ -1,5 +1,24 @@
 # @titan-design/agent-protocol
 
+## 0.10.0
+
+### Minor Changes
+
+- ae64085: Add the `@titan-design/agent-protocol/lifecycle-schema` subpath: `executionRecordSchema`, `executionTransitionSchema` and the `ExecutionRecordSchema` / `ExecutionTransitionSchema` defaults, zod schemas for stored execution rows. Objects are loose, so keys a newer writer added survive a parse, and the `ExecutionRecord` / `ExecutionTransition` types are checked against them at compile time.
+- 1bc6431: Add the `@titan-design/agent-protocol/source-schema` subpath: `SessionSourceDescriptorSchema`, `SourceTextLocatorSchema` and `UsageMeasurementSchema`, loose zod schemas for stored source descriptors, text locators and usage measurements. Keys a newer writer added survive a parse; `lifecycle-schema` now reads usage through the same schema.
+
+  `session-graph` parses its stored columns with them. `readIndexedText` returns null for a malformed stored descriptor or locator list instead of throwing or reading through it. `normalizedUsage` skips a usage row that does not parse and reports it through a new `warn` option (default `console.warn`), so the remaining rows still sum. `zod` is now a peer dependency of `session-graph`.
+
+- 342c6ba: `@titan-design/agent-protocol/wire` adds MCP argument schemas for the agent tools (spawn, resume, surface, list, profiles), the shared argument validators, and synthetic fixtures under `fixtures/wire/v1/`. The argument schemas strip unknown keys and carry no help text.
+- 342c6ba: `@titan-design/agent-protocol/wire` carries agent-chat's spawn route fields: `agent_spawn` arguments gain optional `slice` and `route_override`, and the socket `spawn` frame gains optional `slice` and `routeOverride`. The v1 fixtures populate both.
+- 0100482: Add `@titan-design/agent-protocol/wire`: zod schemas and types for agent-chat's spawn, resume, retire, agents and surface frames, and the profile, launch and roster records they carry. agent-surface gains a test that pins its `SURFACE_NAMES` to the wire copy.
+
+### Patch Changes
+
+- 211db45: A Claude adapter run that reaches its native `maxTurns` now fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by the version or capability check before spawn fails as `harness_mismatch`. Both used to be `runtime_error`, which the durable dispatcher parks in `recovery_required`; they now persist as terminal `failed`. `runtime_error` stays reserved for ambiguous transport loss, and `HarnessRunFailure` documents which kinds the dispatcher treats as ambiguous.
+- 646f4d7: Clear the typed-lint baseline for agent-protocol: narrow instead of asserting, with no change to runtime behaviour.
+- d46cbce: Bring `PRICE_TABLE` to version 5 against the 2026 published rates: add a dated `claude-sonnet-5-5` row for the $0.10/MTok cache read from 2026-10-07, add `claude-mythos-5-1` at Fable 5.1 rates, and price `claude-fable-5` cache reads at $1.00/MTok instead of Fable 5.1's $0.25.
+
 ## 0.9.1
 
 ### Patch Changes

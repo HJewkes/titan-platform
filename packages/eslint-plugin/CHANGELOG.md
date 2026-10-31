@@ -1,5 +1,21 @@
 # @titan-design/eslint-plugin
 
+## 0.4.0
+
+### Minor Changes
+
+- 7492819: - **Count work in timing tests instead of reading a clock (TP-4262).** Glob growth tests compared thread CPU ratios, which read up to 415 on a loaded hosted runner and turned main red. fix-proof's `LinearRegExp` now counts its NFA steps (`linearRegExpSteps`), and test-kit's `linearWork` compares those counts across a size ladder. It replaces the timed `linearGrowth`, which is removed. A matcher that falls back to a backtracking RegExp counts nothing and fails at size 1. test-kit also adds `countCalls` and `callMeter`, which count calls to chosen methods and stop at a cap. fix-proof's brace and glob rows and code-graph's reach and link rows use them in place of millisecond limits.
+  - **Refuse new clock limits in tests.** eslint-plugin adds `no-test-clock-budget`. It reports a test that compares a clock reading, or a ratio of readings, with a limit outside a bench gate. The repo enables it with a shrink-only baseline that TP-4264 empties.
+- 1b2977c: Add the opt-in `no-wall-clock-motion` rule. In files under `/ui/beats/` or `/motion/` (option `paths`), it reports `Date.now`, `performance.now`, `Math.random` and the timer calls, and it ignores test and spec files, so beat motion stays a function of the beat's time.
+
+### Patch Changes
+
+- 6c852fa: `no-test-clock-budget` no longer overflows the stack on a loop that walks a property of its own variable, such as `node = node.parentElement` (TP-4266). Each pass of the self-write grew the property path the rule followed, so its seen-guard never matched. The rule now stops following a name past 8 nested property reads.
+- 5edd38d: Use the shared `isRecord` and `isObjectLike` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- ad5bd85: Narrow rule options and parser output with type guards instead of assertions; rule reports are unchanged.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

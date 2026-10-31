@@ -1,5 +1,132 @@
 # @titan-design/session-miner
 
+## 0.11.0
+
+### Minor Changes
+
+- 25fcc67: Move the return-contract report parser into session-analytics. `parseReport` now lives there, reads the `Head:` sha and the `CI:` paste (worst state first) as well as the status, PR, plan, PARKED line and proposed tasks, and accepts a sentence after the status word (`Status: DONE. Plan: ...`). session-analytics also exports `extractFriction`, `extractConcerns`, `lineCluster` and `clusterOf`. factory keeps only the `burndown-slices` reader. session-miner gains `titan-miner report intake --shadow [--since 24h] [--eval]`, which writes one row per worker report (status, PR, head, CI, concern classes, suggested actions), acts on nothing, and with `--eval` scores the suggested closeouts against what happened next in the event log.
+- 3bc655b: Add the `route-outcomes` insight (Q15). It reports, per workflow-table version, prior, estimate band and tier, the routed spawns, clean first pass, review rounds and cost per merged PR, reading from `--since` onward; `--shepherd-runs` joins Shepherd's per-run stats.
+- 207a81b: Add the daily friction audit. session-analytics gains `readWorkerReports`, which reads agent-chat's `Status:` report messages with each worker's last spawn, and `frictionDailyReport`, which takes each report's `Friction:` line (falling back to labelled `Concerns:` and blocked lines), buckets the lines by keyword and ranks the clusters by reports and agent-hours, plus `renderFrictionTop`, `renderFrictionMarkdown` and `frictionDeposit` for the day's owner inbox know-item. session-miner gains `titan-miner friction-daily [--since 24h] [--dry-run] [--archive-dir <dir>]`, which archives the raw rows, withdraws the earlier days' items and files today's through `titan-console`, and a daily 14:05 UTC systemd timer in `ops/systemd`.
+- 207a81b: Lead the daily friction audit with friction measured from worker transcripts. session-analytics gains `transcriptSignals` (denials and tool errors through insights Q5's classifier, in-turn waits over five minutes, and repeated commands and test re-runs with no edit between), `followUpSignals` (insights Q6's brief-fix and correction classes), `readWorkerSessions` and `readSpawnerMessages`, and a per-agent agreement between log and self-report. Q5's `classifyError` and Q6's `classifyFollowUp` move into session-analytics, and the miner's insights now import them. `frictionDailyReport` now takes `{ reports, logs, window }` and returns `logs`, `reports` and `agreement`. Report lines that are scope notes, or `Concerns:` lines that name no friction cause, are set aside as non-friction, and `ci-wait` needs a wait word. The renderers move to `renderLogTop` and `renderReportTop`. `titan-miner friction-daily` gains `--profiles <dir>`.
+- 5ae38eb: Add `titan-miner self-improve-daily`: the self-improve chunk classification stage as one resumable workflow run, with `mapItems` over the chunk files, one `claude-print` call per chunk on its family's model and output schema, memoization per chunk hash, and a run budget that reserves the next call's ceiling.
+
+### Patch Changes
+
+- d4ad311: Use the shared narrowing helpers from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 90f36b4: Add `parseClustererSnapshot`, which narrows a stored snapshot from `unknown`, refuses a wrong shape or version and keeps unknown keys. `zod` is now a peer dependency of cluster. session-miner's `drain.ingest` reads its stored snapshot through it, so a malformed row stops the run with a clear error.
+- a770805: Row reads, JSON envelopes and the lock file in session-miner are now narrowed with zod schemas instead of type assertions; three assertions with no runtime schema stay baselined. No change to command output.
+- 78ae7d9: Stop writing tool spans, context blocks and unchanged state echoes by default (TP-880).
+
+  session-read: `ReadOptions` gains `toolSpans` and `contextBlocks` (default true), passed to `LineReader` as an optional `EmitPolicy`. A fact from an echo line (`ai-title`, `custom-title`, `agent-name`, `mode`, `permission-mode`, `cost-state`) carries `state: { key, value }`; `atis-latch`, `bridge-session` and `last-prompt` emit no fact. `EXTRACT_VERSION` is 9.
+
+  session-graph: `IndexOptions` gains `indexToolSpans` and `contextBlocks` (default false); `refreshCorpus` forwards `contextBlocks` to `backfillFacets`. Migration 14 replaces `session_state` with `echo_state`, keyed per transcript, and an echo fact is stored only when its value changed. `turn.thinking_ms` now counts the gap from a tool result past a skipped echo.
+
+  session-miner and active-work keep storing tool spans and context blocks; active-work does so on both its full and delta passes.
+
+- Updated dependencies [581c26f]
+- Updated dependencies [25fcc67]
+- Updated dependencies [b458a20]
+- Updated dependencies [83a5759]
+- Updated dependencies [d666020]
+- Updated dependencies [1ac0fa2]
+- Updated dependencies [24f1577]
+- Updated dependencies [5ba850e]
+- Updated dependencies [2256a3b]
+- Updated dependencies [f896485]
+- Updated dependencies [e8fbf15]
+- Updated dependencies [974b429]
+- Updated dependencies [5f2d9ed]
+- Updated dependencies [d3d9a04]
+- Updated dependencies [123f2d0]
+- Updated dependencies [7b53127]
+- Updated dependencies [dcaebb9]
+- Updated dependencies [24f1577]
+- Updated dependencies [b3209e3]
+- Updated dependencies [b3f677b]
+- Updated dependencies [84d962e]
+- Updated dependencies [6c2df6a]
+- Updated dependencies [a5f2f40]
+- Updated dependencies [2c20516]
+- Updated dependencies [5993fba]
+- Updated dependencies [5cd2a5a]
+- Updated dependencies [cda1b03]
+- Updated dependencies [7835f1b]
+- Updated dependencies [f896485]
+- Updated dependencies [b6ce883]
+- Updated dependencies [b6ce883]
+- Updated dependencies [820d4d2]
+- Updated dependencies [42551ba]
+- Updated dependencies [42b6a21]
+- Updated dependencies [6554538]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [423c9ce]
+- Updated dependencies [c58d555]
+- Updated dependencies [d279098]
+- Updated dependencies [7813c1f]
+- Updated dependencies [02ed42b]
+- Updated dependencies [f996bb9]
+- Updated dependencies [a2df0c0]
+- Updated dependencies [a2da8ac]
+- Updated dependencies [0b09ff1]
+- Updated dependencies [6525ba7]
+- Updated dependencies [9dd8d1c]
+- Updated dependencies [207a81b]
+- Updated dependencies [207a81b]
+- Updated dependencies [f77d79d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [90f36b4]
+- Updated dependencies [b672645]
+- Updated dependencies [37d60d1]
+- Updated dependencies [63ccb71]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [00fb3ee]
+- Updated dependencies [c1f9297]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [869014a]
+- Updated dependencies [d130bd8]
+- Updated dependencies [2f306ce]
+- Updated dependencies [181c229]
+- Updated dependencies [49fa132]
+- Updated dependencies [6d79a8b]
+- Updated dependencies [59b27e3]
+- Updated dependencies [db14121]
+- Updated dependencies [5833044]
+- Updated dependencies [36e0a48]
+- Updated dependencies [147ff5d]
+- Updated dependencies [1b0c46a]
+- Updated dependencies [1bc6431]
+- Updated dependencies [3157198]
+- Updated dependencies [449504e]
+- Updated dependencies [84114b3]
+- Updated dependencies [78ae7d9]
+- Updated dependencies [20c93ed]
+- Updated dependencies [4a2495f]
+- Updated dependencies [0229ba6]
+- Updated dependencies [ee64f09]
+- Updated dependencies [2165cec]
+- Updated dependencies [50fd2a5]
+  - @titan-design/github@0.12.0
+  - @titan-design/session-analytics@0.18.0
+  - @titan-design/owner-queue@0.6.0
+  - @titan-design/daemon@0.9.0
+  - @titan-design/workflow@0.14.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/session-graph@0.19.0
+  - @titan-design/hitl@0.10.0
+  - @titan-design/registry@0.6.0
+  - @titan-design/retrieval@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+  - @titan-design/locator@0.2.2
+  - @titan-design/memory@0.3.1
+  - @titan-design/rpc-protocol@0.4.0
+  - @titan-design/cluster@0.3.0
+  - @titan-design/throughput@0.3.2
+
 ## 0.10.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @titan-design/rpc-protocol
 
+## 0.4.0
+
+### Minor Changes
+
+- 5edd38d: Add the `./narrow` subpath: `isRecord`, `isObjectLike` and `errorCode`, the narrowing helpers packages had each been copying.
+
 ## 0.3.0
 
 ### Minor Changes

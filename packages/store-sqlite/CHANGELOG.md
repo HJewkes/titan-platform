@@ -1,5 +1,15 @@
 # @titan-design/store-sqlite
 
+## 0.5.0
+
+### Minor Changes
+
+- c58d555: `SpanFtsTables` and `spanFtsTablesDdl` take `contentlessDelete`, which creates the FTS table with `contentless_delete=1` so purges remove FTS rows instead of stranding them. It needs SQLite 3.43 or later and throws a clear error on an older build. `purgeOwner` deletes FTS rows when the option is on, and the new `purgeSource(sourceId)` removes every span of one source. Default tables behave exactly as before.
+
+### Patch Changes
+
+- c1f9297: Type the prepared statements and parse JSON columns with a checked object reader instead of casts; a non-object `attrs` or `meta` column now throws.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/speech-stt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler",
   "type": "module",
   "main": "./dist/index.js",

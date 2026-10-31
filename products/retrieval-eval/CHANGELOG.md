@@ -1,5 +1,25 @@
 # @titan-design/retrieval-eval
 
+## 0.0.6
+
+### Patch Changes
+
+- 7308e68: The `notes-fts` candidate reads `workspace_span` once a graph has been cut over, and the shared table before that or while a backfill is unfinished, so it no longer returns nothing after the cutover.
+- d4ad311: Use the shared narrowing helpers from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- aa345ae: Narrow transcript, search-response and ref-class reads instead of casting them.
+- aa66e49: Validate pair files on read: a malformed line is skipped and the count logged to stderr
+- Updated dependencies [42551ba]
+- Updated dependencies [42b6a21]
+- Updated dependencies [c58d555]
+- Updated dependencies [d279098]
+- Updated dependencies [f996bb9]
+- Updated dependencies [5edd38d]
+- Updated dependencies [c1f9297]
+  - @titan-design/retrieval@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.0.5
 
 ### Patch Changes

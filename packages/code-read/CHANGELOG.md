@@ -1,5 +1,32 @@
 # @titan-design/code-read
 
+## 0.3.5
+
+### Patch Changes
+
+- 60c867c: Typed-lint burn-down: narrow the command-name list, the error-code read and the finding-delta keys with type guards instead of assertions. No behaviour change.
+- Updated dependencies [59b9c44]
+- Updated dependencies [67eec51]
+- Updated dependencies [31bb9da]
+- Updated dependencies [7492819]
+- Updated dependencies [54d25fc]
+- Updated dependencies [c89daa1]
+- Updated dependencies [7a34209]
+- Updated dependencies [b6ce883]
+- Updated dependencies [b6ce883]
+- Updated dependencies [820d4d2]
+- Updated dependencies [7792f8b]
+- Updated dependencies [ae8141d]
+- Updated dependencies [5edd38d]
+- Updated dependencies [9b42150]
+- Updated dependencies [fe806c0]
+- Updated dependencies [538c0f7]
+- Updated dependencies [565913d]
+- Updated dependencies [30d9837]
+  - @titan-design/code-graph@0.19.0
+  - @titan-design/registry@0.6.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.4
 
 ### Patch Changes

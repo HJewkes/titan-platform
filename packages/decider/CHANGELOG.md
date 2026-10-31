@@ -1,5 +1,37 @@
 # @titan-design/decider
 
+## 0.7.0
+
+### Minor Changes
+
+- 9b03130: Match decide thresholds on the normalized category. `minConfidenceFor` looked up `policy.categories` by the raw category, so "Tech Design" missed the `tech_design` row and fell back to the 0.8 default. It now matches rows on the same key as `categoryPolicy` and takes the strictest threshold when several spellings match. New `decidePolicyFrom(routingPolicy)` builds the `DecidePolicy` that `validate` reads from a `RoutingPolicy`.
+- 5ada6c1: `validate` now runs `checkUnlock` on the question and the answer and forces escalation when either touches the unlock table or the category is not decidable. It also rejects a reply whose answer differs from the label of `options[optionIndex]`.
+
+### Patch Changes
+
+- 7b901b2: `route` and `score` no longer throw on a ledger category that normalizes to empty: a blank category uses the `other` policy row and score bucket. `condense` no longer advances a domain's watermark, or records its feedback, when the reflector's output is not an array, so the next run offers the same rows again.
+- 2242334: The decision-notes source reports a notes directory it cannot read in `SourceRead.errors` instead of silently dropping its precedents; only a missing directory stays silent.
+- b8e2df5: Remove unsafe and unnecessary type assertions; ledger store reads now validate row shapes with zod.
+- Updated dependencies [f896485]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [c58d555]
+- Updated dependencies [7813c1f]
+- Updated dependencies [02ed42b]
+- Updated dependencies [6525ba7]
+- Updated dependencies [f77d79d]
+- Updated dependencies [9b42150]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [c1f9297]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [78ae7d9]
+  - @titan-design/session-read@0.17.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/locator@0.2.2
+  - @titan-design/memory@0.3.1
+
 ## 0.6.6
 
 ### Patch Changes

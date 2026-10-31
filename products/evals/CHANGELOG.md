@@ -1,5 +1,121 @@
 # @titan-design/evals
 
+## 0.6.0
+
+### Minor Changes
+
+- 1bef60b: Replay review-workflow cases through `reviewWorkflow` under policy variants: `replayCase`, `replaySuite` and `scoreReplay`, which counts a FIX_FIRST as a hit only when a verified citation names the case's path. Ships the TP-1929 seed cases and the failure-fixture suite, run in CI over fake ports with no model.
+- 860784b: Score review-workflow replay results per variant with `reviewScorecard`, and accept or reject a candidate with `compare(candidate, incumbent)`. A retry or timing change is judged on the failure fixtures alone: no new loop, no fewer verdicts, no more sessions per head. A plan change is judged on catch and cost. Seed cases are a floor on both tracks.
+- fe87036: The implement-task selector now accepts npm repos: `hasPnpmLock` became `hasSupportedLock`, true for `pnpm-lock.yaml` or `package-lock.json` at the base. New `cloneFacts(gitFor)` answers the selector's lockfile, merge-parent and test-change questions from a clone with git and the fix-proof plan. `briefOf` and `planHiddenTests` are exported.
+- 1d2d520: TP-1144e2: add the implement-task export orchestrator. `exportImplementTaskCases` selects candidates, filters private ones, screens each class in seeded order until `perClass` fills or the pool ends, then writes the kept cases, `suite.json` (`implement-task-private`, `checks: []`) and `manifest.json`, and removes `.scratch` even on a throw. `selectExportPool` is the selection step alone.
+- 1dda35e: TP-1144e3: add `titan-evals implement-task export`, with `--dry-run` (select only), `--max-candidates`, `--owner`, `--selftest` and the flags of `review-pr cases`.
+
+### Patch Changes
+
+- e5158bd: Add `titan-evals history build` and `history v2-parity`. `build` lists merged PRs from the session graph, computes each one's git facts from local bare mirrors, applies the private exclusion and writes canonical `cases.jsonl` and a per-repo `summary.json` outside every work tree; it calls no GitHub API. `v2-parity` recomputes label v2 from a gh-cache window and exits 1 on any mismatch (TP-949).
+- 5f1ec1f: Add bare PR mirrors with `refs/pull/*/head` and per-PR commit facts (base, start, head and merge shas, paths, test paths, size band) for the history corpus.
+- cd2e635: Each `explainer.<stage>` child run ends with a `checks:<stage>` step that runs the stage's deterministic checks; every verdict carries `gate`, a failed gate fails the stage, and reported checks only show in the run report's new Checks table. `bridge.json` `check` commands take `gate` (default `true`). `explainer stage --json` prints the record, verdicts included, even when a gate failed. Adds the `explainer-video` and per-stage ev units with frozen, sha-only cases.
+- 7dc68a3: Add `src/history/graph.ts`: `openGraph(path)` opens the session graph read-only and `mergedPrs({ repos, until })` lists merged PRs from allowlisted repos (case-insensitive) merged at or before `until`, sorted by repo then number. First slice of the eval corpus history builder (TP-949).
+- 63bbf5a: Add `src/history/label-v2.ts`, a port of the eval corpus label v2 rule (rework commits, prior attempts, follow-up fixes, reverts, outcome, exclusions and the pinned window), an offline `gh-cache` reader that never fetches, and `v2Parity`, which lists each stored case and label field the port disagrees on (TP-949 slice d). Not wired into the CLI yet.
+- 3c6ccec: `titan-evals review-pr cases` skips a corpus row whose head, or next head, the local clone no longer holds, and counts it as `head-unreachable` in the manifest's `skipped`. Before, one such row aborted the whole build (TP-4114).
+- 0e817d8: TP-1144c: add the implement-task flake screen. `screenCase` builds and tests one accepted merge in a scratch clone under `<out>/.scratch`, base once and head three times, and `screenVerdict` keeps it or names why it drops: `no-hidden-tests`, `screen-error:<msg>`, `flaky`, `fails-on-accepted`, `vacuous` or `not-collected`.
+- 5b1b1c4: Read titan-design as an engineering repo and initiative, with its TD-\* task ids joined to it, so the history build includes titan-design PRs instead of dropping them as private-repo or private-marker.
+- Updated dependencies [ff061ba]
+- Updated dependencies [9386796]
+- Updated dependencies [e8159b1]
+- Updated dependencies [cca108a]
+- Updated dependencies [9411e94]
+- Updated dependencies [91e3e3d]
+- Updated dependencies [25fcc67]
+- Updated dependencies [4ea511b]
+- Updated dependencies [2917ad8]
+- Updated dependencies [7492819]
+- Updated dependencies [211db45]
+- Updated dependencies [5ba850e]
+- Updated dependencies [eaa03c2]
+- Updated dependencies [2256a3b]
+- Updated dependencies [f896485]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [56d107b]
+- Updated dependencies [0848c31]
+- Updated dependencies [136b507]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [974b429]
+- Updated dependencies [c15f0dc]
+- Updated dependencies [b3f677b]
+- Updated dependencies [84d962e]
+- Updated dependencies [6c2df6a]
+- Updated dependencies [7a34209]
+- Updated dependencies [bea67f1]
+- Updated dependencies [f15a84e]
+- Updated dependencies [f896485]
+- Updated dependencies [c18be57]
+- Updated dependencies [ed2be7e]
+- Updated dependencies [e623b29]
+- Updated dependencies [6f1c6b9]
+- Updated dependencies [fa60411]
+- Updated dependencies [f325826]
+- Updated dependencies [5a67a0b]
+- Updated dependencies [cfdfb64]
+- Updated dependencies [ff6fb95]
+- Updated dependencies [c58d555]
+- Updated dependencies [c026f23]
+- Updated dependencies [c525f57]
+- Updated dependencies [36dc03f]
+- Updated dependencies [67aa361]
+- Updated dependencies [6525ba7]
+- Updated dependencies [44038c9]
+- Updated dependencies [7d3b5fb]
+- Updated dependencies [481f3e4]
+- Updated dependencies [661a027]
+- Updated dependencies [801f9c4]
+- Updated dependencies [207a81b]
+- Updated dependencies [207a81b]
+- Updated dependencies [377cca9]
+- Updated dependencies [f77d79d]
+- Updated dependencies [9b42150]
+- Updated dependencies [37d60d1]
+- Updated dependencies [cd8a1ce]
+- Updated dependencies [c1f9297]
+- Updated dependencies [4080191]
+- Updated dependencies [5f2b39f]
+- Updated dependencies [5e34e3d]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [869014a]
+- Updated dependencies [869014a]
+- Updated dependencies [12afa80]
+- Updated dependencies [32637bd]
+- Updated dependencies [9a16e4e]
+- Updated dependencies [3771a0c]
+- Updated dependencies [2451aa9]
+- Updated dependencies [49fa132]
+- Updated dependencies [852d2a9]
+- Updated dependencies [d2cce6c]
+- Updated dependencies [6bc98f3]
+- Updated dependencies [719f05e]
+- Updated dependencies [1b0c46a]
+- Updated dependencies [78ae7d9]
+- Updated dependencies [4a2495f]
+- Updated dependencies [0229ba6]
+- Updated dependencies [ee64f09]
+- Updated dependencies [7012bf0]
+- Updated dependencies [2165cec]
+- Updated dependencies [50fd2a5]
+  - @titan-design/agent@0.7.0
+  - @titan-design/authority@0.6.0
+  - @titan-design/session-analytics@0.18.0
+  - @titan-design/fix-proof@0.9.0
+  - @titan-design/review-panel@0.9.0
+  - @titan-design/evidence@0.5.0
+  - @titan-design/workflow@0.14.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/hitl@0.10.0
+  - @titan-design/review-workflow@0.1.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/health@0.2.1
+
 ## 0.5.5
 
 ### Patch Changes

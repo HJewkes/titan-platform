@@ -1,5 +1,26 @@
 # @titan-design/daemon
 
+## 0.9.0
+
+### Minor Changes
+
+- 1ac0fa2: `startDaemon` takes `contentOrigin: { port, mountRoutes }`: a read-only origin on its own port for untrusted content, such as a built Storybook shown in an iframe. It serves only the product's routes, answers every method but GET and HEAD with 405, and has no `/rpc`, `/events`, `/health`, `/mcp` or `/auth/*`. It binds loopback and, with `remote`, the remote address behind the same TLS pair, port-bound Host check and auth gate, so the main listener's session cookie authenticates there with no sign-in route of its own. Every listener binds or none does; `handle.contentPort` reports the port. The new `containedFile(root, pathname)` resolves a URL path to a real file under a root chosen per request, refusing `..`, encoded separators and symlinks that leave the root, and returns the file's content type for `fileResponse`.
+- 24f1577: Add `trackSecretFile(file, parse)`: the tracked, stat-checked secret file reader (symlink, not-regular, owner, mode refusals; re-read on change) for any secret shape. The caller injects the path and the parser; a parser's error text is never copied into the refusal. `trackTokenFile` is now `trackSecretFile(file, parseBase64Secret)`. Also exports `SecretRejection`, `SecretParser` and `parseBase64Secret`.
+- 6554538: `onRpc` on `HttpAppOptions` and `startDaemon` reports `{ name, ms, bytes, status, surface }` for every `/rpc` answer. `bytes` is the exact length of the body sent, an unknown command reports `(unknown)`, and a sample never carries arguments, ids or the body. An observer that throws is ignored, so telemetry cannot fail a call.
+- 9dd8d1c: `watchTree` takes an `ignore` list of directories under the root. It attaches no watcher to them and their events never fire `onChange`, so a host can keep its own state inside the watched tree.
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 00fb3ee: Typed-lint burn-down: the daemon narrows caught errors, parsed JSON and the hono environment instead of asserting their types. A pid-file meta with wrongly typed fields now reads as the default for that field.
+- 147ff5d: The file-watch test "never fires once closed" no longer races a real 10ms sleep against a 20ms debounce; fake timers hold the debounce pending until close. Test only; no production code changes.
+- Updated dependencies [b6ce883]
+- Updated dependencies [b6ce883]
+- Updated dependencies [820d4d2]
+- Updated dependencies [5edd38d]
+  - @titan-design/registry@0.6.0
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.8.0
 
 ### Minor Changes
