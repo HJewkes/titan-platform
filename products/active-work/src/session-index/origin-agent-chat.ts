@@ -1,3 +1,4 @@
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import { assignedTaskIds } from '@titan-design/session-read';
 import Database from 'better-sqlite3';
 import { existsSync, readFileSync } from 'node:fs';
@@ -141,12 +142,13 @@ function parseMeta(raw: string | null): Record<string, unknown> {
  * positional prompt after `--`, which is 1,134 of 1,278 plans as of 2026-09-23.
  */
 function readPlan(file: string): LaunchPlan | null {
-  let plan: { stdin?: unknown; args?: unknown };
+  let plan: unknown;
   try {
-    plan = JSON.parse(readFileSync(file, 'utf8')) as typeof plan;
+    plan = JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
+  if (!isRecord(plan)) return null;
   const brief = typeof plan.stdin === 'string' ? plan.stdin : promptArg(plan.args);
   return brief === null ? null : { path: file, brief };
 }

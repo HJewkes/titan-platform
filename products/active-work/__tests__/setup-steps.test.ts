@@ -189,6 +189,30 @@ describe('stepRegisterAgentChatHooks', () => {
     expect(existsSync(hooksPath())).toBe(false);
   });
 
+  it.each([
+    ['a string', '{"on_spawn":"not-a-list"}'],
+    ['a number', '{"on_complete":7}'],
+  ])('fails without rewriting a hooks.json whose hook list is %s', async (_label, body) => {
+    await fs.mkdir(path.join(paths.homeDir, '.agent-chat'), { recursive: true });
+    await fs.writeFile(hooksPath(), body, 'utf8');
+
+    const result = await stepRegisterAgentChatHooks({ paths });
+
+    expect(result.ok).toBe(false);
+    expect(await fs.readFile(hooksPath(), 'utf8')).toBe(body);
+  });
+
+  it('keeps unknown keys and non-string hook entries when registering', async () => {
+    await fs.mkdir(path.join(paths.homeDir, '.agent-chat'), { recursive: true });
+    await fs.writeFile(hooksPath(), '{"on_spawn":[{"cmd":"x"}],"other":1}', 'utf8');
+
+    await stepRegisterAgentChatHooks({ paths });
+
+    const config = JSON.parse(await fs.readFile(hooksPath(), 'utf8'));
+    expect(config.other).toBe(1);
+    expect(config.on_spawn).toEqual([{ cmd: 'x' }, 'active-work hooks agent-chat-spawn']);
+  });
+
   it('creates hooks.json with both commands when ~/.agent-chat exists but hooks.json does not', async () => {
     await fs.mkdir(path.join(paths.homeDir, '.agent-chat'), { recursive: true });
 

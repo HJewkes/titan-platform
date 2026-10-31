@@ -1,5 +1,6 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import YAML from 'yaml';
 import { ArtifactsSchema } from '../schemas/artifacts.js';
 import { writeYaml } from '../utils/yaml-io.js';
@@ -46,13 +47,6 @@ interface V1Stash {
   sha?: string;
 }
 
-interface RawArtifacts {
-  prs?: V1Pr[];
-  branches?: V1Branch[];
-  stashes?: V1Stash[];
-  [key: string]: unknown;
-}
-
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -96,13 +90,15 @@ async function migrateOne(filePath: string): Promise<MigrateOneResult> {
     return { changed: false, droppedPrs: [] };
   }
 
-  let parsed: RawArtifacts;
+  let parsed: unknown;
   try {
-    parsed = (YAML.parse(raw) ?? {}) as RawArtifacts;
+    parsed = YAML.parse(raw);
   } catch {
     // Malformed YAML — leave it; user will see it on next read.
     return { changed: false, droppedPrs: [] };
   }
+  // A scalar or list has no v1 fields, so there is nothing to migrate.
+  if (!isRecord(parsed)) return { changed: false, droppedPrs: [] };
 
   const droppedPrs = asArray<V1Pr>(parsed.prs);
   const branches = asArray<V1Branch>(parsed.branches)

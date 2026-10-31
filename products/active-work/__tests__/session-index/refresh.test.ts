@@ -480,6 +480,32 @@ describe('withRefreshLock', () => {
     await first.release();
   });
 
+  it.each([
+    ['null', 'null'],
+    ['no pid', JSON.stringify({ command: 'x', startedAt: '2026-01-01T00:00:00.000Z' })],
+    ['no command', JSON.stringify({ pid: 1, startedAt: '2026-01-01T00:00:00.000Z' })],
+    ['a string pid', JSON.stringify({ pid: '1', command: 'x', startedAt: 'now' })],
+  ])('reads a holder file with %s as no holder', async (_label, body) => {
+    const first = await holdLock(() => writeFileSync(refreshLockHolderPath(), body));
+
+    expect(await readRefreshLockHolder()).toBeNull();
+
+    await first.release();
+  });
+
+  it('keeps unknown keys on a holder file and ignores a wrong-typed stale', async () => {
+    const startedAt = new Date().toISOString();
+    const first = await holdLock(() => {
+      const holder = { pid: process.pid, command: 'c', startedAt, stale: 'no', host: 'h' };
+      writeFileSync(refreshLockHolderPath(), JSON.stringify(holder));
+    });
+
+    const holder = await readRefreshLockHolder(Date.parse(startedAt) - 1);
+
+    expect(holder).toEqual({ pid: process.pid, command: 'c', startedAt, host: 'h' });
+    await first.release();
+  });
+
   it('stops waiting for a held lock once the signal aborts, without running fn', async () => {
     const first = await holdLock();
     const abort = new AbortController();
