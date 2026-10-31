@@ -1,4 +1,5 @@
 import type { GitBehind } from "./deploy-behind.js";
+import { DEPLOY_MAX_WAIT_MS } from "./shepherd/deploy-pacer.js";
 
 const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
@@ -30,6 +31,8 @@ interface DeployHealthInput {
   held?: ReadonlySet<string>;
   /** Why ancestry could not be proved for some asks; those stay behind. */
   unverified?: string;
+  /** The pacer's target, when it holds one the running build lacks; the minute alarms then wait for its cap. */
+  wanted?: HeldWanted;
 }
 
 /** The deploy block of `/health` and `shepherd status`. */
@@ -47,6 +50,8 @@ export interface DeployHealth {
   causes: string[];
   /** Set when git could not say whether the running build holds an ask, so the block counts it behind rather than guess. */
   unverified?: string;
+  /** When the pacer's 90-min cap deploys the target it holds (`firstAt` + max wait), ISO; set only while it holds one the running build lacks. */
+  capAt?: string;
 }
 
 const START = /^(\d{4}-\d\d-\d\dT\S+Z) service deploy --expect ([0-9a-f]{7,})\b/;
@@ -181,12 +186,20 @@ function waiting(uncovered: readonly Ask[], now: number): Pick<DeployHealth, "be
   return { behind, behindMinutes: Math.max(0, Math.floor((now - Math.min(...asks)) / 60_000)) };
 }
 
-function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">): string[] {
+/**
+ * The minute alarms count from the oldest commit serve lacks, but a pacer that holds a target waits until its cap,
+ * counted from `firstAt`; while it holds one they wait for the cap too, so the alarm cannot pass the pacer's own bound.
+ */
+function pastLimit(health: Pick<DeployHealth, "capAt">, minutes: number, now: number): boolean {
+  return health.capAt === undefined ? minutes > BEHIND_MINUTES_TO_ALARM : now >= Date.parse(health.capAt);
+}
+
+function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">, now: number): string[] {
   const { consecutiveRefusals: refusals, behind, behindMinutes, runningSha } = health;
   const causes: string[] = [];
   if (refusals >= REFUSALS_TO_ALARM) causes.push(`service deploy refused ${refusals} times in a row; last: ${health.lastRefusal?.reason.split("\n")[0] ?? ""}`);
   if (behind > BEHIND_MERGES_TO_ALARM) causes.push(`serve runs ${runningSha}, and ${behind} green merges asked to deploy have not landed`);
-  if (behindMinutes > BEHIND_MINUTES_TO_ALARM) causes.push(`a deploy asked for ${behindMinutes} min ago has not landed`);
+  if (pastLimit(health, behindMinutes, now)) causes.push(`a deploy asked for ${behindMinutes} min ago has not landed`);
   return causes;
 }
 
@@ -203,15 +216,15 @@ export function withGitBehind(health: DeployHealth, git: GitBehind, now: number)
   const aged = git.commitTimes.filter((at) => now - at >= DEPLOY_GRACE_MS);
   const merges = aged.length;
   const minutes = merges === 0 ? 0 : Math.max(0, Math.floor((now - Math.min(...aged)) / 60_000));
-  const causes = [...health.causes, ...gitCauses(merges, minutes, health.runningSha)];
+  const causes = [...health.causes, ...gitCauses(merges, pastLimit(health, minutes, now), minutes, health.runningSha)];
   const originLag = { merges, minutes, asked: health.behind };
   return { ...health, behind: Math.max(health.behind, merges), behindMinutes: Math.max(health.behindMinutes, minutes), originLag, alarm: causes.length > 0, causes };
 }
 
-function gitCauses(merges: number, minutes: number, runningSha: string): string[] {
+function gitCauses(merges: number, minutesPast: boolean, minutes: number, runningSha: string): string[] {
   const causes: string[] = [];
   if (merges > BEHIND_MERGES_TO_ALARM) causes.push(`origin/main holds ${merges} commits that serve (${runningSha}) does not run`);
-  if (minutes > BEHIND_MINUTES_TO_ALARM) causes.push(`origin/main has held a commit serve does not run for ${minutes} min`);
+  if (minutesPast) causes.push(`origin/main has held a commit serve does not run for ${minutes} min`);
   return causes;
 }
 
@@ -228,8 +241,9 @@ export function deployHealth(input: DeployHealthInput): DeployHealth {
     ...waiting(uncoveredAsks(input.entries, askedAt, landings), input.now),
     consecutiveRefusals: refusalStreak(input.entries, landings),
     lastRefusal: lastRefusal(input.entries, input.lockNote),
+    ...(input.wanted !== undefined && { capAt: new Date(Date.parse(input.wanted.firstAt) + DEPLOY_MAX_WAIT_MS).toISOString() }),
   };
-  const causes = alarmCauses(base);
+  const causes = alarmCauses(base, input.now);
   return { ...base, alarm: causes.length > 0, causes, ...(input.unverified !== undefined && { unverified: input.unverified }) };
 }
 
@@ -239,11 +253,12 @@ export const alarmMessage = (health: DeployHealth): string =>
 
 /** The human summary line `shepherd status` prints under its rows. */
 export function deploySummary(health: DeployHealth): string {
+  const cap = health.capAt === undefined ? "" : `, cap ${new Date(health.capAt).toISOString().slice(11, 16)}Z`;
   const state = health.alarm ? `ALARM: ${health.causes.join("; ")}` : "ok";
   const unverified = health.unverified === undefined ? "" : `; ${health.unverified}`;
   const lag = !health.originLag?.merges ? "" : `, origin/main ${health.originLag.merges} commit(s) ahead (${health.originLag.minutes} min)`;
   const asked = health.originLag?.asked ?? health.behind;
-  return `deploy: running ${health.runningSha}, ${asked} asked deploy(s) not landed${lag}, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
+  return `deploy: running ${health.runningSha}, ${asked} asked deploy(s) not landed${lag}${cap}, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
 }
 
 /** The deploy block from a `/health` answer; null when serve answered none or keeps none. */

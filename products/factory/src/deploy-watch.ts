@@ -85,11 +85,13 @@ async function heldByRunning(probe: AncestryProbe | undefined, entries: ReturnTy
 }
 
 async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
-  const entries = withWanted(parseRedeployLog(ports.readLog() ?? ""), ports.deployWanted?.());
+  const wanted = ports.deployWanted?.();
+  const entries = withWanted(parseRedeployLog(ports.readLog() ?? ""), wanted);
   const note = await lockNote(ports, entries);
   const runningSha = ports.runningSha();
   const ancestry = await heldByRunning(ports.isAncestor, entries, runningSha);
-  const health = deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...(note !== undefined && { lockNote: note }) });
+  const waitingOn = wanted !== undefined && wanted.sha !== runningSha && !ancestry.held.has(wanted.sha) ? { wanted } : {};
+  const health = deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...waitingOn, ...(note !== undefined && { lockNote: note }) });
   if (ports.originBehind === undefined) return health;
   return withGitBehind(health, await ports.originBehind(runningSha), ports.now());
 }
