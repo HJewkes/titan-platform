@@ -120,9 +120,7 @@ under its task instead of inside a product. Edit the list in `scripts/capabiliti
 | TP-254 | `agent` | No auth-mode switch (oauth-token, cli-login, api-key) or `appendSystemPrompt` on agent runs |
 | TP-225 | `agent` | No config-dir auth source for headless Claude runs |
 | TP-226 | `agent` | No `claude -p` adapter with a pinned conversation id |
-| TP-247 | `agent` | No weekly or window budget pace cap |
 | TP-227 | `agent-thread` | No conversation control core (agent-thread package not built) |
-| TP-171 | `registry` | Six exports agent-chat needs: JSON Schema io and override, invalid-args formatter, CLI value names, variadic positionals, option defaults |
 | TP-246 | `registry` | No byte-budget head and tail truncator for tool output |
 | TP-194 | `store-sqlite` | No driver-neutral SQLite seam; packages call better-sqlite3 directly |
 | TP-220 | `store-sqlite` | `CacheBlobTable` has no delete, eviction or TTL |
@@ -131,17 +129,13 @@ under its task instead of inside a product. Edit the list in `scripts/capabiliti
 | TP-240 | `md-chunk` | No byte-range markdown and JSON chunker for embeddings |
 | TP-241 | `retrieval` | No typo recovery when fused results are empty |
 | TP-109 | `retrieval` | No token-budgeted, tiered context assembly |
-| TP-146 | `hitl` | The root entry is not runtime-neutral: `SqliteGateStore` still lives there |
-| TP-147 | `messaging` | No channel-neutral inbound, liveness or capabilities |
+| TP-147 | `messaging` | No channel-neutral inbound message type; Telegram and BlueBubbles inbound are still separate shapes |
 | TP-150 | `messaging` | No Web Push backend |
-| TP-118 | `session-read` | No storage-free `tailTranscript(path, turns)` read-back helper |
 | TP-252 | `code-read` | No static dataset encoder, `./export` writer or static source |
 | TP-309 | `code-graph` | `computeLcomMetrics` and cognitive complexity are not exported from the root |
-| TP-166 | `code-parser` | `.tsx` files parse with the TypeScript grammar, and `.js` has no grammar |
 | TP-189 | `style-profile` | `generateEslintExport` emits a config without plugins, parser or files |
-| TP-235 | `style-profile` | Generated naming-convention config passes values typescript-eslint rejects |
+| TP-366 | `proc` | No shared subprocess-with-deadline runner, git wrapper or repo-root resolver; each repo carries its own copies (package not built) |
 | TP-358 | `docs` | Some package.json descriptions are stale, and they feed this catalog |
-| TP-363 | `all` | Reimplementation audit: duplicated helpers and parallel implementations not yet mapped to one canonical unit |
 
 ## Tier 0 — primitives
 
