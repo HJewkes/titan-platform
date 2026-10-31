@@ -54,7 +54,7 @@ type HoldAdversary = Pick<ReviewWiring, "holdMember" | "adversaryDispatch" | "tw
  * A configured adversary the hold could only dispatch to a refusal fails the config load: its profile, and the profile no
  * headroom lowers it to, must both be installed headless (tp#1986). An absent profile is the installed default's.
  */
-export function assertAdversaryProfile(review: Pick<ReviewConfig, "adversaryProfile">, installed: (profile: string) => boolean): void {
+function assertAdversaryProfile(review: Pick<ReviewConfig, "adversaryProfile">, installed: (profile: string) => boolean): void {
   const profile = review.adversaryProfile;
   if (profile === undefined) return;
   if (!installed(profile)) throw new Error(`invalid config: shepherd.review.adversaryProfile '${profile}' is not installed headless`);

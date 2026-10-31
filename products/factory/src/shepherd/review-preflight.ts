@@ -20,7 +20,7 @@ interface PlannedMembers {
   plan: { members: readonly { profile: string }[] };
 }
 
-export type PreflightPlan<P> = { kind: "planned"; planned: P } | { kind: "none"; reason: string; fixer: PreflightFixer };
+type PreflightPlan<P> = { kind: "planned"; planned: P } | { kind: "none"; reason: string; fixer: PreflightFixer };
 
 export const preflightOn = (workflow: ReviewWorkflowWiring | undefined): boolean => workflow === "on:preflight";
 

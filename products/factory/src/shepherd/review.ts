@@ -212,10 +212,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   twoMergeRelease?: TwoMergeMode;
   /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
-  /**
-   * `review.workflow`: the intent records it. Under `shadow` each round then records what review-workflow would have done; under
-   * `on:preflight` the intent refuses a head whose planned members could only be refused at dispatch. Absent means `off`.
-   */
+  /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
 }
 
@@ -367,7 +364,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
-  if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : (preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent));
+  if (intent.kind !== "intent" && typeof intent.exhausted === "string") return accountHeld(ctx, target, { account: intent.exhausted });
+  if (intent.kind !== "intent") return preflightRefused(ctx, target, intent) ?? notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const { dispatched, verdict } = await dispatchedRound(ctx, request, { target, proof, standing, intent });
   if (shadowOn(intent)) await recordShadow(ctx, { target, proof, intent, dispatched, verdict });
