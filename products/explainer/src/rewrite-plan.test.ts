@@ -107,6 +107,21 @@ describe("planRegisterEdits: numbers and triads", () => {
     expect(directiveFor(plan(s).directives, "h1")?.numbers).toEqual(["thirty to thirty-five percent", "2"]);
   });
 
+  it("offers only the uncued number of a beat that cues on one of its numbers", () => {
+    const cued = { visual: { assertion: "The desk held parcels", job: "numbers", cues: [{ action: "V11", target: "card:12", atCue: "12" }] } };
+    const s = tour([
+      ["h1", "ch1", "WHAT", CROWDED, cued],
+      ["w4", "ch2", "WHAT", CROWDED],
+      ["c1", "ch3", "WHAT", CROWDED],
+      ...script([...MORE_CROWDED, ...choppyLines(15)]).beats.map((beat, i): BeatSpec => [`m${i}`, beat.chapter, "WHAT", beat.spoken]),
+    ]);
+
+    const { directives } = plan(s);
+
+    expect(directiveFor(directives, "h1")?.numbers).toEqual(["3", "two"]);
+    expect(directiveFor(directives, "w4")?.numbers).toEqual(["12", "3", "two"]);
+  });
+
   it("leaves a beat that speaks one number alone", () => {
     const s = script(["The desk held 12 parcels overnight.", CROWDED, ...MORE_CROWDED, ...choppyLines(14)]);
 
