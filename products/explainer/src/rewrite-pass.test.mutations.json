@@ -31,8 +31,8 @@
     {
       "name": "a rewrite reply is judged without re-declaring its readings",
       "file": "products/explainer/src/rewrite-pass.ts",
-      "find": "const spoken = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);",
-      "replace": "const spoken = spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken;",
+      "find": "const declared = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);",
+      "replace": "const declared = spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken;",
       "kills": [
         "rewriteScript guard and revert re-declares a reading the rewrite dropped, so the beat is kept rather than reverted for Q-V10"
       ]
