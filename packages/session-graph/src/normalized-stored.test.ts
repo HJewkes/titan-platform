@@ -38,6 +38,8 @@ describe("stored normalized columns", () => {
       const hit = graph.spans.search("storedword")[0]!;
       graph.db.prepare("UPDATE normalized_source SET descriptor = ?").run(JSON.stringify({ path: file }));
       expect(await readIndexedText(graph, hit)).toBeNull();
+      graph.db.prepare("UPDATE normalized_source SET descriptor = ?").run("not json");
+      expect(await readIndexedText(graph, hit)).toBeNull();
     } finally { graph.db.close(); }
   });
 
