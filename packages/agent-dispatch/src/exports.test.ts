@@ -8,6 +8,7 @@ const subpaths = [
   "host",
   "roster",
   "gates",
+  "isolation",
 ];
 
 describe("package subpaths", () => {

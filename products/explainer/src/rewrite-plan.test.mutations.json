@@ -4,10 +4,19 @@
     {
       "name": "a directed beat names its phrases even when the phrases row passes",
       "file": "products/explainer/src/rewrite-plan.ts",
-      "find": "failing(rows, \"register:phrases\") ? phraseSpans",
-      "replace": "true ? phraseSpans",
+      "find": "failing(rows, \"register:phrases\") !== undefined && ",
+      "replace": "",
       "kills": [
         "planRegisterEdits: over-represented phrases names no phrase once the phrases row passes"
+      ]
+    },
+    {
+      "name": "phrases are directed whatever the status table says at the script's length",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": " && humanSignalRowsAt(words).has(\"phrases\")",
+      "replace": "",
+      "kills": [
+        "planRegisterEdits: over-represented phrases directs no stock phrase in a script under 150 words, where the status table judges no row"
       ]
     },
     {

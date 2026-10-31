@@ -22,6 +22,7 @@ const FILLER = "The queue moves each job to the next free worker.";
 const filler = (n: number): string[] => Array.from({ length: n }, () => FILLER);
 const TRIAD = "It reads the scan, checks the row and prints the label.";
 const NO_X = "No clerk retypes the rows.";
+const STOCK = "The desk stays calm.";
 
 describe("Q-V11 rows follow the status table at the script's own length", () => {
   it("never warns on a row that is report-only or dropped at 300-599 words, however far out of band", () => {
@@ -78,5 +79,16 @@ describe("chapterRefusal with the shipped protections", () => {
     const refusal = chapterRefusal(runL0(script(...before)), runL0(script(...after)), protectedRows(wordsOf(before)));
 
     expect(refusal).toEqual({ why: "a protected row turned red", rows: ["register:neg-synthetic"] });
+  });
+
+  it("keeps a chapter that only cuts a stock phrase while the phrases row fails", () => {
+    const before = [...filler(40), STOCK, STOCK, STOCK];
+    const after = [...filler(40), STOCK, STOCK, "The desk is quiet."];
+    const rowsBefore = runL0(script(...before));
+
+    const refusal = chapterRefusal(rowsBefore, runL0(script(...after)), protectedRows(wordsOf(before)));
+
+    expect(rowsBefore.find((row) => row.check_id === "register:phrases")?.pass).toBe(false);
+    expect(refusal).toBeUndefined();
   });
 });

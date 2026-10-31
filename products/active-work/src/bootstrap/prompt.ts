@@ -172,6 +172,8 @@ export interface BootstrapInput {
   hitLog?: HitLogWriter;
   /** Facet alias the session opened through; scopes tasks and loops to its tags (TP-326). */
   facet?: BootstrapFacet;
+  /** Millisecond clock (DI) for `timings_ms`. Defaults to `performance.now`. */
+  clock?: () => number;
 }
 
 export interface BootstrapMetadata {
@@ -190,6 +192,17 @@ export interface BootstrapMetadata {
   retrieval_degraded?: string[];
   /** Facet alias the session opened through; absent for a plain slug. */
   facet?: string;
+  /** Per-phase wall time; metadata only, never rendered into the prompt. */
+  timings_ms?: BootstrapTimings & { archive?: number; total?: number };
+}
+
+/** Milliseconds each assembly phase took; `loop_queries` counts the loop retrievals run. */
+interface BootstrapTimings {
+  load: number;
+  live_status: number;
+  rank_notes: number;
+  loop_retrieval: number;
+  loop_queries: number;
 }
 
 export interface BootstrapOutput {
@@ -1361,8 +1374,10 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     loopRetriever,
     hitLog = fileHitLog(),
     facet,
+    clock = () => performance.now(),
   } = input;
 
+  const loadStart = clock();
   const initiativeDir = path.join(activeRoot, slug);
   const { frontmatter: brief, body: briefBody } = await loadBrief(initiativeDir, slug);
 
@@ -1375,15 +1390,21 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
   const { sessions, malformed } = loaded;
   const { tasks, malformed: malformedTasks } = loadedTasks;
   const { artifacts, error: artifactsError } = loadedArtifacts;
+  const loadMs = clock() - loadStart;
 
   // Started now so the gh/git round trips overlap note ranking and loop
   // retrieval; awaited only where artifacts render. Never rejects, so the
   // handler is attached from the start.
+  const liveStart = clock();
+  let liveStatusMs = 0;
   const artifactsBodyPending = renderArtifactsBody({
     artifacts,
     slug,
     includeLiveStatus,
     fetcher: liveStatusFetcher ?? defaultLiveStatusFetcher,
+  }).then((body) => {
+    liveStatusMs = clock() - liveStart;
+    return body;
   });
 
   // `mergedPrs` is deliberately unsupplied: derivation must stay offline
@@ -1446,6 +1467,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     ...(topTask !== undefined ? { topTaskId: topTask.id, topTaskTitle: topTask.title } : {}),
   });
   // Only the live graph needs catching up; a stale one still ranks, just without the newest writes.
+  const rankStart = clock();
   if (noteRelevance === undefined) await indexFreshness.ensure(READ_FRESH_BUDGET_MS);
   const noteRanking = rankNotes({
     notes: notes.notes,
@@ -1453,6 +1475,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     subject,
     ...(noteRelevance ? { relevance: noteRelevance } : {}),
   });
+  const rankNotesMs = clock() - rankStart;
 
   const { loops: shownLoops, hidden: hiddenLoops } = selectFacetLoops(
     openLoops,
@@ -1461,6 +1484,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
   );
   // Fails open like the ranking above: no index or no match renders the loops as before.
   const loopLabels = shownLoops.map(loopLabel);
+  const loopStart = clock();
   const loopContext = await relatedForLoops({
     loops: shownLoops,
     labels: loopLabels,
@@ -1468,6 +1492,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     shown: shownNoteRefs(noteRanking, slug),
     ...(loopRetriever ? { retriever: loopRetriever } : {}),
   });
+  const loopRetrievalMs = clock() - loopStart;
   const retrievalDegraded = await retrievalDegradations(
     { slug, loops: shownLoops, labels: loopLabels, loopContext, noteRanking, subject },
     hitLog,
@@ -1593,6 +1618,13 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     metadata.retrieval_degraded = retrievalDegraded;
   }
   if (facet) metadata.facet = facet.name;
+  metadata.timings_ms = {
+    load: loadMs,
+    live_status: liveStatusMs,
+    rank_notes: rankNotesMs,
+    loop_retrieval: loopRetrievalMs,
+    loop_queries: shownLoops.length,
+  };
 
   return { prompt, metadata };
 }

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "allocatedWorktree reads the oldest row",
+      "file": "packages/agent-dispatch/src/isolation/park-rules.ts",
+      "find": "for (let i = rows.length - 1; i >= 0; i--) {",
+      "replace": "for (let i = 0; i < rows.length; i++) {",
+      "kills": [
+        "allocatedWorktree reads the newest allocation row for the agent"
+      ]
+    },
+    {
+      "name": "allocatedWorktree takes any strategy",
+      "file": "packages/agent-dispatch/src/isolation/park-rules.ts",
+      "find": "if (meta?.strategy !== \"worktree\") return undefined;",
+      "replace": "if (meta === undefined) return undefined;",
+      "kills": [
+        "allocatedWorktree ignores an allocation by another strategy"
+      ]
+    },
+    {
+      "name": "park ignores whether the broker still tracks the process",
+      "file": "packages/agent-dispatch/src/isolation/park-rules.ts",
+      "find": "if (finished && !tracked) return undefined;",
+      "replace": "if (finished) return undefined;",
+      "kills": [
+        "parkBlocker refuses an exited agent this broker still tracks"
+      ]
+    },
+    {
+      "name": "park takes an adopted tree",
+      "file": "packages/agent-dispatch/src/isolation/park-rules.ts",
+      "find": "  if (target.assigned)\n    return",
+      "replace": "  if (target.assigned && !target.assigned)\n    return",
+      "kills": [
+        "parkBlocker refuses a tree it adopted, since resume could not re-create it"
+      ]
+    },
+    {
+      "name": "park skips the tenancy rule",
+      "file": "packages/agent-dispatch/src/isolation/park-rules.ts",
+      "find": "  if (byTenant) return byTenant;\n",
+      "replace": "",
+      "kills": [
+        "parkBlocker refuses a tree a live successor occupies"
+      ]
+    }
+  ]
+}
