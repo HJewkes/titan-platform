@@ -107,6 +107,17 @@ describe("rounds.frameDelta measures a changed frame", () => {
   });
 });
 
+describe("the delta cache", () => {
+  it("drops the least recently used entry once it is full", () => {
+    const cache = deltaCache(2);
+    const compute = vi.fn(() => ({ status: "unmeasured" as const, reason: "stub" }));
+
+    for (const key of ["a", "b", "a", "c", "a", "b"]) cache(key, compute);
+
+    expect(compute).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe("rounds.frameDelta refuses what rounds.frame refuses", () => {
   it("refuses a key the round does not list", async () => {
     await writeFrames({ "tile-light": { base: png(10, 10), head: png(10, 10, { dot: [3, 3] }) } });

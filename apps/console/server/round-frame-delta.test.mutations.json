@@ -36,6 +36,15 @@
       "kills": [
         "rounds.frameDelta refuses what rounds.frame refuses refuses a frame the round lists with a head but no base"
       ]
+    },
+    {
+      "name": "a cache hit does not move to the back",
+      "file": "apps/console/server/round-frame-delta.ts",
+      "find": "      entries.delete(key);\n      entries.set(key, hit);\n",
+      "replace": "",
+      "kills": [
+        "the delta cache drops the least recently used entry once it is full"
+      ]
     }
   ]
 }

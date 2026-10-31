@@ -15,7 +15,7 @@ import { FRAME_KEY, readListedPng, roundFrameIndex } from "./round-frames.js";
 import { ROUND_ID, type RoundsSource } from "./rounds.js";
 
 /** A decode peaks near 8 bytes a pixel, so two inputs and the delta stay near 120 MB however large a PNG claims to be. */
-export const MAX_DELTA_PIXELS = 6 * 1024 * 1024;
+const MAX_DELTA_PIXELS = 6 * 1024 * 1024;
 const CACHE_ENTRIES = 16;
 
 const size = z.object({ width: z.number(), height: z.number() });
@@ -74,7 +74,8 @@ export function deltaCache(limit = CACHE_ENTRIES) {
     }
     const value = compute();
     entries.set(key, value);
-    if (entries.size > limit) entries.delete(entries.keys().next().value as string);
+    const oldest = entries.keys().next();
+    if (entries.size > limit && oldest.done !== true) entries.delete(oldest.value);
     return value;
   };
 }
