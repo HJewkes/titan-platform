@@ -40,7 +40,7 @@ type MergeMainResult = z.infer<typeof MergeMainResult>;
 const NO_MERGE: MergeMainResult = { merge: false };
 
 /** Some MRG-AU row's only unmet condition is no-non-green-run, so a head with main's fix in it is all that row lacks. */
-export function onlyNonGreenRunUnmet(reason: string): boolean {
+function onlyNonGreenRunUnmet(reason: string): boolean {
   const rows = [...reason.matchAll(/MRG-AU-[A-Z]+ unmet: ([^;]+)/g)].map((match) => (match[1] ?? "").split(",").map((c) => c.trim()));
   return rows.some((row) => row.length === 1 && row[0] === NON_GREEN_RUN);
 }
@@ -62,7 +62,7 @@ async function triggerAt(port: GitHubPort, input: MergeMainInput, tip: string, m
 }
 
 /** A head already on the base tip, or any failed read, merges nothing and leaves the run as it was. */
-export async function readMergeMain(port: GitHubPort, input: MergeMainInput): Promise<MergeMainResult> {
+async function readMergeMain(port: GitHubPort, input: MergeMainInput): Promise<MergeMainResult> {
   try {
     const tip = await port.getHeadSha(input.repo, input.base);
     if (tip === null || tip === input.headSha) return NO_MERGE;

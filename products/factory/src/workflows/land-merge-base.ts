@@ -1,6 +1,6 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 
-export interface MergeBaseAsk {
+interface MergeBaseAsk {
   headSha: string;
   base: string;
   /** The gated decision's reason; absent before the decision. */
