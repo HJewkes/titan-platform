@@ -67,20 +67,19 @@ describe("splitOverlong", () => {
 });
 
 describe("rewriteScript on the workflow path, with no speech verdict", () => {
-  // h1 joined into one 30-word sentence: past the plain cap, with one comma joint left over.
-  const LONG_H1 =
-    "When a courier asks for a label, the desk refuses ghost labels, so it looks for the parcel row and waits for the ledger before it prints anything at all.";
-  const longH1: Rewriter = (id, prompt) => (id === "h1" ? { id, spoken: LONG_H1, labels_added: [] } : compliant(id, prompt));
+  // h3 collapses its list of three into one 26-word sentence: past the plain cap, with one comma joint.
+  const LONG_H3 = "It checks the scan and the row before the label, so nothing is skipped and the courier never sees a guess because the check is fast.";
+  const longH3: Rewriter = (id, prompt) => (id === "h3" ? { id, spoken: LONG_H3, labels_added: [] } : compliant(id, prompt));
 
   it("keeps a beat whose rewrite overshoots the cap, split at a clause joint, instead of refusing it", async () => {
-    const script = cuedChoppy({ h1: { plannedS: 13 } });
+    const script = cuedChoppy();
 
-    const { script: out, report } = await rewriteScript(script, { harness: fakeRewriter(longH1).harness, judge: sonnet, rounds: 1 });
+    const { script: out, report } = await rewriteScript(script, { harness: fakeRewriter(longH3).harness, judge: sonnet, rounds: 1 });
 
     expect(report.rounds[0]!.rejected.flatMap((beat) => beat.rejections.map((r) => r.rule))).not.toContain("sentence-cap");
-    expect(report.rounds[0]!.rewritten).toContain("h1");
-    expect(out.beats.find((beat) => beat.id === "h1")!.spoken).toBe(
-      "When a courier asks for a label, the desk refuses ghost labels. So it looks for the parcel row and waits for the ledger before it prints anything at all.",
+    expect(report.rounds[0]!.rewritten).toContain("h3");
+    expect(out.beats.find((beat) => beat.id === "h3")!.spoken).toBe(
+      "It checks the scan and the row before the label. So nothing is skipped and the courier never sees a guess because the check is fast.",
     );
   });
 });
