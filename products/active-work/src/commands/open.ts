@@ -82,6 +82,17 @@ const OpenResultSchema = z.object({
     sibling_sessions: z.number().int().nonnegative().optional(),
     retrieval_degraded: z.array(z.string()).optional(),
     facet: z.string().optional(),
+    timings_ms: z
+      .object({
+        load: z.number().nonnegative(),
+        archive: z.number().nonnegative().optional(),
+        live_status: z.number().nonnegative(),
+        rank_notes: z.number().nonnegative(),
+        loop_retrieval: z.number().nonnegative(),
+        loop_queries: z.number().int().nonnegative(),
+        total: z.number().nonnegative().optional(),
+      })
+      .optional(),
   }),
   // Present when the slug argument was a facet alias for this initiative (TP-326).
   facet: z
@@ -184,6 +195,16 @@ export function sessionAbout(
   return explicit ?? facet?.about;
 }
 
+/** The one stderr line `AW_TIMING=1` prints; the same numbers sit in the result metadata. */
+export function formatTimings(slug: string, timings: NonNullable<BootstrapMetadata['timings_ms']>): string {
+  const ms = (value: number | undefined) => `${Math.round(value ?? 0)}ms`;
+  return (
+    `aw timing ${slug}: load=${ms(timings.load)} archive=${ms(timings.archive)} ` +
+    `live_status=${ms(timings.live_status)} rank_notes=${ms(timings.rank_notes)} ` +
+    `loop_retrieval=${ms(timings.loop_retrieval)} (${timings.loop_queries} queries) total=${ms(timings.total)}\n`
+  );
+}
+
 async function bootstrapInitiative(
   activeRoot: string,
   slug: string,
@@ -197,17 +218,22 @@ async function bootstrapInitiative(
     detectSiblings?: boolean;
     deferLease?: boolean;
     facet?: LoadedFacet;
+    clock?: () => number;
   },
 ): Promise<OpenResult & { metadata: BootstrapMetadata }> {
+  const clock = opts.clock ?? (() => performance.now());
+  const openStart = clock();
   const briefPath = path.join(activeRoot, slug, 'brief.md');
   const { frontmatter: brief } = await readMarkdownWithSchema(briefPath, BriefFrontmatterSchema);
   // When we resolved via cwd, launch in the worktree the user was standing in,
   // not the brief's default worktree.
   const cwdHint = opts.cwdHintOverride ?? (await resolveCwdHint(activeRoot, slug));
+  const archiveStart = clock();
   const archivedTaskIds = await archiveStaleTasks(path.join(activeRoot, slug), {
     retentionDays: ARCHIVE_DONE_AFTER_DAYS,
     now: new Date(),
   });
+  const archiveMs = clock() - archiveStart;
   const detectSiblings = opts.detectSiblings !== false;
   const { facet } = opts;
   const about = sessionAbout(opts.about, facet);
@@ -221,8 +247,14 @@ async function bootstrapInitiative(
     ...(about !== undefined ? { about } : {}),
     ...(facet ? { facet } : {}),
     detectSiblings,
+    clock,
     ...(process.env.AW_LEASE_ID ? { ownLeaseId: process.env.AW_LEASE_ID } : {}),
   });
+  if (metadata.timings_ms) {
+    metadata.timings_ms.archive = archiveMs;
+    metadata.timings_ms.total = clock() - openStart;
+    if (process.env.AW_TIMING === '1') process.stderr.write(formatTimings(slug, metadata.timings_ms));
+  }
   // After the probe, so this session never warns about itself.
   if (detectSiblings && !opts.deferLease) {
     await claimOneshotLease(activeRoot, slug, cwdHint);
