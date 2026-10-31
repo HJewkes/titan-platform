@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 
-function readPackageVersion(manifest: unknown): string {
+export function readPackageVersion(manifest: unknown): string {
   const version = typeof manifest === "object" && manifest !== null ? Reflect.get(manifest, "version") : undefined;
   if (typeof version !== "string") throw new Error("throughput package.json has no string version");
   return version;
