@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { gitHooksEnv, hookScripts, writeGitHooks } from "./dir.js";
+import { gitHooksEnv, hookScripts } from "./dir.js";
 import { gitShimScript } from "./git-shim.js";
-import { HOST_PATH, NO_VERIFY, realGitOn, installExecutable } from "./git-shim.fixture.js";
+import { HOST_PATH, NO_VERIFY, expectSpawned, realGitOn, installExecutable, writeGitHooksForExec } from "./git-shim.fixture.js";
 import { ENVIRONMENT_SCRUB, hardenedShebang, hookShell, posixShell } from "./posix-shell.js";
 
 const SCRATCH = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "egress-posix-shell-")));
@@ -95,10 +95,10 @@ describe("a chain hook counting the commands it runs from PATH", () => {
 
   it.each(SHELLS)("runs exactly one PATH command, git, under %s", (shell) => {
     const hooks = path.join(SCRATCH, `hooks-${path.basename(shell)}`);
-    writeGitHooks(hooks, INPUTS, { shell: hookShell(shell), shimDirs: [] });
+    writeGitHooksForExec(hooks, INPUTS, { shell: hookShell(shell), shimDirs: [] });
     fs.rmSync(log, { force: true });
 
-    const run = spawnSync(path.join(hooks, "pre-commit"), [], { cwd: repo, env, encoding: "utf8" });
+    const run = expectSpawned(spawnSync(path.join(hooks, "pre-commit"), [], { cwd: repo, env, encoding: "utf8" }), "pre-commit");
 
     expect(run.status).toBe(0);
     expect(fs.readFileSync(log, "utf8").trim().split("\n")).toEqual(["git"]);
@@ -109,13 +109,16 @@ describe("a chain hook counting the commands it runs from PATH", () => {
     const envFile = path.join(SCRATCH, "envfile");
     fs.writeFileSync(envFile, `touch '${marker}'\n`);
     const hooks = path.join(SCRATCH, "hooks-hostile");
-    writeGitHooks(hooks, INPUTS, { shell: hookShell(), shimDirs: [] });
+    writeGitHooksForExec(hooks, INPUTS, { shell: hookShell(), shimDirs: [] });
 
-    const run = spawnSync(path.join(hooks, "pre-commit"), [], {
-      cwd: repo,
-      env: { ...env, ENV: envFile, BASH_ENV: envFile, SHELLOPTS: "xtrace" },
-      encoding: "utf8",
-    });
+    const run = expectSpawned(
+      spawnSync(path.join(hooks, "pre-commit"), [], {
+        cwd: repo,
+        env: { ...env, ENV: envFile, BASH_ENV: envFile, SHELLOPTS: "xtrace" },
+        encoding: "utf8",
+      }),
+      "pre-commit",
+    );
 
     expect(run.status).toBe(0);
     expect(fs.existsSync(marker)).toBe(false);
@@ -155,7 +158,7 @@ describe.each(SHELLS)("a commit through the git shim on %s under a hostile SHELL
     fs.writeFileSync(path.join(repo, "a.txt"), "a\n");
     execFileSync(REAL_GIT, ["add", "a.txt"], { cwd: repo, env: clean });
     installExecutable(path.join(repo, ".git", "hooks", "pre-commit"), `${shebang}\necho ran >> '${marker}'\nexit 1\n`);
-    writeGitHooks(guard, INPUTS, { shell: hookShell(shell), shimDirs: [] });
+    writeGitHooksForExec(guard, INPUTS, { shell: hookShell(shell), shimDirs: [] });
     installExecutable(shim, gitShimScript(REAL_GIT, guard, [], "", shell));
 
     const run = spawnSync(shim, ["commit", "-q", "-m", "x"], {

@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterAll, expect } from "vitest";
-import { gitHooksEnv } from "./dir.js";
+import { gitHooksEnv, writeGitHooks, type HookSetup } from "./dir.js";
 import { findRealGit, writeGitShim } from "./git-shim.js";
+import type { ScanInputs } from "./pre-push.js";
 import { holdsAgentChatShim } from "./shim-header.js";
 
 export const NO_VERIFY = ["--no", "verify"].join("-");
@@ -142,4 +143,16 @@ export function gitShimHarness(): GitShimHarness {
     spawnSync(realGit, ["--git-dir", fx.remote, "rev-parse", "-q", "--verify", "refs/heads/main"]).status === 0;
 
   return { scratch, realGit, git, fixture, runScript, remoteHasMain };
+}
+
+/**
+ * `writeGitHooks` into a staging dir, then `cp` the hooks into `dir`, for a test that execs a hook it just
+ * wrote: the write fd would otherwise leak into a sibling thread's fork and make the exec fail ETXTBSY.
+ */
+export function writeGitHooksForExec(dir: string, inputs: ScanInputs, setup: HookSetup): void {
+  const staging = `${dir}.staging`;
+  writeGitHooks(staging, inputs, setup);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  execFileSync("cp", ["-Rp", `${staging}/.`, dir]);
+  fs.rmSync(staging, { recursive: true, force: true });
 }
