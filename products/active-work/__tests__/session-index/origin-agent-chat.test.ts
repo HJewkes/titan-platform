@@ -360,6 +360,20 @@ function writeTaskFile(root: string, file: string): void {
   writeFileSync(path.join(root, file), 'id: synthetic\n', 'utf8');
 }
 
+describe('a plan.json that is not an object', () => {
+  it.each([
+    ['null', 'null'],
+    ['a list', '["--", "brief"]'],
+    ['a string', '"brief"'],
+  ])('reads %s as no plan', (_label, body) => {
+    const dir = path.join(home, 'agents', 'bad-plan');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'plan.json'), body, 'utf8');
+
+    expect(eventsDbSource(home).plan('bad-plan')).toBeNull();
+  });
+});
+
 describe('agent-chat origin task links', () => {
   it('fills taskIds from a pane plan whose brief carries an orientation block', () => {
     writeEvents([

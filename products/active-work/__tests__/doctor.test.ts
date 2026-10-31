@@ -211,6 +211,34 @@ describe('runDoctor', () => {
     );
   }
 
+  it.each([
+    ['null', 'null'],
+    ['a list', '[]'],
+    ['mcpServers as a list', '{"mcpServers":["active-work"]}'],
+  ])('warns as unregistered when ~/.claude.json holds %s', async (_label, body) => {
+    await fs.mkdir(homeDir, { recursive: true });
+    await writeSkill();
+    await fs.writeFile(path.join(homeDir, '.claude.json'), body, 'utf8');
+
+    const report = await runDoctor(healthyDeps());
+
+    expect(statusOf(report.checks, 'mcp-registration')).toBe('warn');
+  });
+
+  it('counts a malformed server entry as registered', async () => {
+    await fs.mkdir(homeDir, { recursive: true });
+    await writeSkill();
+    await fs.writeFile(
+      path.join(homeDir, '.claude.json'),
+      '{"mcpServers":{"active-work":"odd"}}',
+      'utf8',
+    );
+
+    const report = await runDoctor(healthyDeps());
+
+    expect(statusOf(report.checks, 'mcp-registration')).toBe('ok');
+  });
+
   it('accepts the http `active-work` server name too', async () => {
     await fs.mkdir(homeDir, { recursive: true });
     await writeSkill();

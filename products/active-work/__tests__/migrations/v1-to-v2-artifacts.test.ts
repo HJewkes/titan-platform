@@ -78,6 +78,19 @@ describe('v1ToV2Artifacts migrator', () => {
     expect(log).toContain('#42 (HJewkes/sample) Sample PR');
   });
 
+  it.each([
+    ['a scalar', 'just a string\n'],
+    ['a list', '- one\n- two\n'],
+    ['unparseable YAML', '{ not: valid: yaml'],
+  ])('leaves an artifacts.yml holding %s byte-for-byte', async (_label, body) => {
+    const file = path.join(ws.activeRoot, 'malformed', 'artifacts.yml');
+    await writeFile_(file, body);
+
+    await v1ToV2Artifacts.run(ws.activeRoot);
+
+    expect(await readFile(file, 'utf8')).toBe(body);
+  });
+
   it('is a no-op on already-v2 files', async () => {
     const file = path.join(ws.activeRoot, 'sample', 'artifacts.yml');
     const v2Body = [
