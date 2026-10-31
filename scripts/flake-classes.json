@@ -21,10 +21,10 @@
       "patterns": ["packages/daemon/src/file-watch.test.ts"]
     },
     {
-      "id": "console-phone-teardown",
+      "id": "console-jsdom-teardown",
       "task": "TP-4636",
       "shape": "a React scheduler timer fires after jsdom teardown: window is not defined",
-      "patterns": ["apps/console/src/*-phone.test.tsx", "apps/console/src/phone-*.test.tsx", "apps/console/src/routes-phone-tap.test.tsx"]
+      "patterns": ["apps/console/src/*-phone.test.tsx", "apps/console/src/phone-*.test.tsx", "apps/console/src/routes-phone-tap.test.tsx", "apps/console/src/blocker-banner.test.tsx"]
     }
   ]
 }

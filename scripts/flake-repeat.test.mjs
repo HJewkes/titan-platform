@@ -77,7 +77,7 @@ const WEEK_FLAKES = [
   { id: "frame-capture-ordered-sink-rejection", path: "packages/frame-capture/src/ordered-sink.test.ts", failure: UNHANDLED_ON_GREEN },
   { id: "daemon-file-watch-debounce", path: "packages/daemon/src/file-watch.test.ts", failure: { status: 1, output: "AssertionError: expected 1 to be +0\n Tests  1 failed | 11 passed (12)" } },
   {
-    id: "console-phone-teardown",
+    id: "console-jsdom-teardown",
     path: "apps/console/src/tasks-phone.test.tsx",
     failure: { status: 1, output: "⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯\nReferenceError: window is not defined\nVitest caught 1 unhandled error during the test run." },
   },
