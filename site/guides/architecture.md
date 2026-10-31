@@ -160,6 +160,7 @@ graph TD
   reviewWorkflow --> fixProof
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
+  reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
@@ -218,6 +219,7 @@ graph TD
   evals --> health
   evals --> hitl
   evals --> reviewPanel
+  evals --> reviewWorkflow
   evals --> sessionAnalytics
   evals --> sessionRead
   evals --> storeSqlite
@@ -258,6 +260,7 @@ graph TD
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
+  factory --> reviewWorkflow
   factory --> rpcClient
   factory --> sessionAnalytics
   factory --> sessionRead

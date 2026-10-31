@@ -8,6 +8,7 @@ import { X509Certificate, createPrivateKey } from "node:crypto";
 import fs from "node:fs";
 import type { Server as HttpsServer, ServerOptions as HttpsServerOptions } from "node:https";
 import type { Logger } from "./logger.js";
+import { errnoCode } from "./narrow.js";
 
 export interface RemoteTlsOptions {
   /** PEM certificate chain. Every name the listener answers to must be on it. */
@@ -89,12 +90,17 @@ function readPair(files: RemoteTlsOptions, names: readonly string[]): PairSnapsh
   return { material: { cert, key }, identity };
 }
 
+/** Windows defines no `O_NONBLOCK`; the typings say every flag is a number. */
+function optionalFlag(flag: number | undefined): number {
+  return flag ?? 0;
+}
+
 function readFile(file: string, check?: (file: string, stat: fs.Stats) => void): Buffer {
   let fd: number;
   try {
-    fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+    fd = fs.openSync(file, fs.constants.O_RDONLY | optionalFlag(fs.constants.O_NONBLOCK));
   } catch (err) {
-    throw new TlsFileError(file, `it cannot be opened (${(err as NodeJS.ErrnoException).code ?? "error"})`, { cause: err });
+    throw new TlsFileError(file, `it cannot be opened (${errnoCode(err) ?? "error"})`, { cause: err });
   }
   try {
     const stat = fs.fstatSync(fd);
@@ -145,6 +151,6 @@ function fileIdentity(file: string): string {
     const stat = fs.statSync(file, { bigint: true });
     return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.mode, stat.uid].join(":");
   } catch (err) {
-    return `missing:${(err as NodeJS.ErrnoException).code ?? "error"}`;
+    return `missing:${errnoCode(err) ?? "error"}`;
   }
 }

@@ -33,7 +33,8 @@ const ARMS = ["spawn", "bootstrap", "both"] as const;
 type Arm = (typeof ARMS)[number];
 
 function parseChoice<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
-  if ((allowed as readonly string[]).includes(value)) return value as T;
+  const match = allowed.find((candidate) => candidate === value);
+  if (match !== undefined) return match;
   throw new Error(`${flag} must be one of ${allowed.join(", ")}, got ${value}`);
 }
 

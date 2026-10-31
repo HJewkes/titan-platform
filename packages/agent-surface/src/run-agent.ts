@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { clearOutputTail, tailKeeper, writeOutputTail } from "./launch-output.js";
 import { NO_PANE_SOURCES, paneEscapes, type PaneSources } from "./pane-identity.js";
-import type { LaunchPlan } from "./types.js";
+import { isRecord } from "./guards.js";
+import { SURFACE_NAMES, type LaunchPlan, type SurfaceName } from "./types.js";
 
 /**
  * The fixed command every surface launches. It reads the plan, sets the terminal
@@ -48,17 +49,51 @@ export interface RunAgentOptions {
 const definedEnv = (env: NodeJS.ProcessEnv): Record<string, string> =>
   Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined));
 
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every(item => typeof item === "string");
+
+const isOptionalStringArray = (value: unknown): value is string[] | undefined =>
+  value === undefined || isStringArray(value);
+
+const isOptionalString = (value: unknown): value is string | undefined => value === undefined || typeof value === "string";
+
+const wrongType = (file: string, fields: string): Error =>
+  new Error(`launch plan at ${file} has an ${fields} of the wrong type`);
+
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+  isRecord(value) && !Array.isArray(value) && Object.values(value).every(item => typeof item === "string");
+
+const isSurfaceName = (value: unknown): value is SurfaceName => SURFACE_NAMES.some(name => name === value);
+
 /** Reads a plan the host wrote; the host owns its shape, so only the fields the launcher execs are checked. */
 export function readLaunchPlan(file: string): LaunchPlan {
   if (!fs.existsSync(file)) throw new Error(`no launch plan at ${file}`);
-  const plan = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<LaunchPlan>;
-  const valid =
-    typeof plan.agentId === "string" &&
-    typeof plan.bin === "string" &&
-    Array.isArray(plan.args) &&
-    typeof plan.cwd === "string";
-  if (!valid) throw new Error(`launch plan at ${file} lacks agentId, bin, args or cwd`);
-  return { env: {}, title: plan.agentId ?? "", surface: "headless", ...plan } as LaunchPlan;
+  const plan: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (
+    !isRecord(plan) ||
+    typeof plan.agentId !== "string" ||
+    typeof plan.bin !== "string" ||
+    !isStringArray(plan.args) ||
+    typeof plan.cwd !== "string"
+  )
+    throw new Error(`launch plan at ${file} lacks agentId, bin, args or cwd`);
+  const { agentId, bin, args, cwd, unsetEnv, stdin } = plan;
+  const env = plan.env ?? {};
+  const title = plan.title ?? agentId;
+  const surface = plan.surface ?? "headless";
+  if (!isStringRecord(env) || typeof title !== "string" || !isSurfaceName(surface)) throw wrongType(file, "env, title or surface");
+  if (!isOptionalStringArray(unsetEnv) || !isOptionalString(stdin)) throw wrongType(file, "unsetEnv or stdin");
+  return {
+    agentId,
+    bin,
+    args,
+    cwd,
+    env,
+    title,
+    surface,
+    ...(unsetEnv === undefined ? {} : { unsetEnv }),
+    ...(stdin === undefined ? {} : { stdin }),
+  };
 }
 
 /** Writes the pane escapes and execs the plan; this process exits the way the launched one did. */

@@ -2,7 +2,7 @@ import type { UIMessage } from "ai";
 import { validateUIMessages } from "ai";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { toUIMessage, fromUIMessage, type ChatEnvelope, type UIMessageLike } from "./ai-sdk.js";
+import { toUIMessage, fromUIMessage, type ChatEnvelope } from "./ai-sdk.js";
 import { chatMessage } from "./envelope.js";
 import { chatPart } from "./parts.js";
 
@@ -67,7 +67,7 @@ describe("the envelope", () => {
   });
 
   it("never lets a UIMessage off the wire assert its own provenance", () => {
-    const wire = { ...fixture, provenance: { authored: "human" } } as unknown as UIMessageLike;
+    const wire = { ...fixture, provenance: { authored: "human" } };
     expect(fromUIMessage(wire, envelope).provenance).toBeUndefined();
   });
 });

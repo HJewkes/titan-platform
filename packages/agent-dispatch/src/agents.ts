@@ -205,8 +205,8 @@ const REQUIRED_FIELDS: Record<RequiredKey, FieldCheck> = {
 
 function hasRequiredFields(value: unknown): value is RawRow {
   if (typeof value !== "object" || value === null) return false;
-  const row = value as Record<string, unknown>;
-  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(row[key]));
+  const row: object = value;
+  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(Reflect.get(row, key)));
 }
 
 /** An optional field with the wrong type is dropped rather than costing the whole row. */

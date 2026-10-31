@@ -1,5 +1,6 @@
 import { AppserviceClient, ITEM_KEY, bootstrapQueueRoom, encodeItem, loginPassword, type MatrixEvent } from "@titan-design/matrix-bus";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stringField } from "./content-field.js";
 import { MemoryMirrorState } from "./memory-state.js";
 import { MemoryQueueSource } from "./memory-source.js";
 import { runMirror } from "./run.js";
@@ -73,7 +74,7 @@ describe.skipIf(!process.env.MATRIX_BASE_URL)("queue-mirror against a live homes
   const recent = async (): Promise<MatrixEvent[]> => (await hub.owner.messages(hub.roomId, { limit: 100 })).chunk;
   const posted = (id: string) => until(`${id} posted`, () => state.bySourceId(id));
   const editOf = async (eventId: string) =>
-    (await recent()).find((event) => (event.content["m.relates_to"] as { rel_type?: string; event_id?: string } | undefined)?.event_id === eventId && "m.new_content" in event.content);
+    (await recent()).find((event) => stringField(event.content["m.relates_to"], "event_id") === eventId && "m.new_content" in event.content);
 
   beforeAll(async () => {
     hub = await setUp();
@@ -101,7 +102,7 @@ describe.skipIf(!process.env.MATRIX_BASE_URL)("queue-mirror against a live homes
     const resolution = await until("resolution", () => source.resolutions.find((r) => r.id === "it-allow"));
     const edit = await until("edit", () => editOf(eventId));
     log(`owner ✅ on ${eventId} -> source.resolve ${resolution.verdict}`);
-    log(`R4 m.replace from ${edit.sender} -> ${edit.event_id} body ${JSON.stringify((edit.content["m.new_content"] as { body: string }).body)}`);
+    log(`R4 m.replace from ${edit.sender} -> ${edit.event_id} body ${JSON.stringify(stringField(edit.content["m.new_content"], "body"))}`);
 
     expect(resolution.verdict).toBe("allow");
     expect(edit.sender).toBe(hub.mirrorId);
@@ -115,7 +116,7 @@ describe.skipIf(!process.env.MATRIX_BASE_URL)("queue-mirror against a live homes
     const edit = await until("edit", () => editOf(eventId));
     log(`local close of ${eventId} -> m.replace ${edit.event_id}`);
 
-    expect((edit.content["m.new_content"] as { body: string }).body).toContain("cancelled");
+    expect(stringField(edit.content["m.new_content"], "body")).toContain("cancelled");
   });
 
   it("refuses the owner's ✅ on a redacted item", async () => {
@@ -156,8 +157,8 @@ describe.skipIf(!process.env.MATRIX_BASE_URL)("queue-mirror against a live homes
     await posted("it-after");
 
     const ids = (await recent()).flatMap((event) => {
-      const record = event.content[ITEM_KEY] as { msg_id?: string } | undefined;
-      return record?.msg_id && !("m.relates_to" in event.content) ? [record.msg_id] : [];
+      const msgId = stringField(event.content[ITEM_KEY], "msg_id");
+      return msgId && !("m.relates_to" in event.content) ? [msgId] : [];
     });
     log(`after restart: ${ids.length} items, ${new Set(ids).size} distinct msg_ids`);
 

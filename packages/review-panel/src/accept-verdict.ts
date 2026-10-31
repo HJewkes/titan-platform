@@ -44,6 +44,10 @@ const isUsageLimitNotice = ({ text, synthetic }: ReviewerMessage): boolean =>
 export const isUsageLimit = (result: { kind: string; reason?: unknown; notice?: unknown }): boolean =>
   result.kind === "none" && result.reason === USAGE_LIMIT_REASON && typeof result.notice === "string";
 
+/** The locator comes from stored or external transcript data, so its shape is checked here rather than trusted: a malformed one must read as no match, never throw on the verdict path. */
+const field = (value: unknown, key: string): unknown => (typeof value === "object" && value !== null && key in value ? Reflect.get(value, key) : undefined);
+const reviewerSessionOf = (message: ReviewerMessage): unknown => ["locator", "source", "conversation", "nativeId"].reduce<unknown>(field, message);
+
 const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boolean =>
   message.agentId === input.reviewerAgentId && message.sessionId === input.reviewerSessionId && message.writtenAt > input.dispatchedAt;
 
@@ -69,7 +73,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   const final = messages.at(-1);
   if (!final) return { kind: "none" };
   if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
+  if (reviewerSessionOf(final) !== input.reviewerSessionId) return { kind: "none" };
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   if (isUsageLimitNotice(final)) return { kind: "none", reason: USAGE_LIMIT_REASON, notice: final.text.trim(), ...(typeof final.synthetic?.resetsAt === "number" && { resetsAt: final.synthetic.resetsAt }) };

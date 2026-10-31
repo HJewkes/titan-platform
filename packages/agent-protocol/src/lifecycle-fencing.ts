@@ -15,11 +15,15 @@ const EXECUTION_FENCING: ExecutionFencing = { kind: "execution" };
 
 export function resolveFencing(options: ExecutionReducerOptions): ExecutionFencing {
   const fencing = options.fencing ?? EXECUTION_FENCING;
-  if (fencing.kind === "supervisor") {
-    validateFence(fencing.lease);
-    validTime("fencing.lease.leaseUntil", fencing.lease.leaseUntil);
-  } else if (fencing.kind !== "execution") {
-    fail("invalid_transition", "fencing.kind must be execution or supervisor");
+  switch (fencing.kind) {
+    case "supervisor":
+      validateFence(fencing.lease);
+      validTime("fencing.lease.leaseUntil", fencing.lease.leaseUntil);
+      break;
+    case "execution":
+      break;
+    default:
+      fail("invalid_transition", "fencing.kind must be execution or supervisor");
   }
   return fencing;
 }

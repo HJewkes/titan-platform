@@ -45,7 +45,7 @@ describe("sampleTick", () => {
     const observed = self?.observed ?? {};
     for (const key of ["cpuUserUs", "cpuSystemUs", "fsReadBlocks", "fsWriteBlocks", "voluntaryCtx", "involuntaryCtx", "maxRssKb", "wallMs"]) {
       expect(observed[key], key).toBeTypeOf("number");
-      expect(observed[key] as number, key).toBeGreaterThanOrEqual(0);
+      expect(observed[key], key).toBeGreaterThanOrEqual(0);
     }
     expect(observed.targets).toBe(3);
   });

@@ -17,6 +17,8 @@ export interface HitlSourceOptions {
   resolverOf?: (gate: GateRecord, verdict: VerdictInput) => GateResolver;
 }
 
+type Uncursored<T> = T extends unknown ? Omit<T, "cursor"> : never;
+
 const DEFAULT_POLL_MS = 1_000;
 // Matched by name, so a second hitl copy in node_modules cannot break instanceof.
 const CLOSED_ERRORS = new Set(["GateAlreadySettled", "GateExpired", "GateNotFound"]);
@@ -51,7 +53,7 @@ function errorResult(err: unknown): ResolveResult {
 
 // The refusal reason can come from a caller's authorize, so only the actor class reaches the room.
 function refusalDetail(err: unknown): string {
-  const actorClass = (err as { actorClass?: unknown }).actorClass;
+  const actorClass = err instanceof Error && "actorClass" in err ? err.actorClass : undefined;
   return typeof actorClass === "string" ? `resolver ${actorClass} refused` : "resolver refused";
 }
 
@@ -85,12 +87,12 @@ class HitlQueueSource implements QueueSource {
     const known = new Set<string>();
     let seq = 0;
     while (!signal.aborted) {
-      for (const event of this.diff(known)) yield { ...event, cursor: String(++seq) } as SourceEvent;
+      for (const event of this.diff(known)) yield { ...event, cursor: String(++seq) };
       await abortableSleep(this.options.pollMs ?? DEFAULT_POLL_MS, signal);
     }
   }
 
-  private diff(known: Set<string>): Array<Omit<SourceEvent, "cursor">> {
+  private diff(known: Set<string>): Array<Uncursored<SourceEvent>> {
     const pending = this.store.listPending();
     const pendingIds = new Set(pending.map((gate) => gate.id));
     const closed = [...known].filter((id) => !pendingIds.has(id)).map((id) => this.closedEvent(id));

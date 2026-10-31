@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { errnoCode } from "./narrow.js";
 
 const SECRET_BYTES = 32;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -31,7 +32,7 @@ export function ensureTokenFile(file: string): string {
   try {
     return writeNewSecret(file);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    if (errnoCode(err) !== "EEXIST") throw err;
   }
   return readSecretFile(file, parseBase64Secret).secret;
 }
@@ -126,7 +127,7 @@ function openNoFollow(file: string): number {
   try {
     return fs.openSync(file, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ELOOP") throw new TokenFileError("symlink", file, "it is a symbolic link");
+    if (errnoCode(err) === "ELOOP") throw new TokenFileError("symlink", file, "it is a symbolic link");
     throw err;
   }
 }

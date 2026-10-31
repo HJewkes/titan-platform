@@ -44,6 +44,7 @@
   "devDependencies": {
     "@titan-design/daemon": "workspace:*",
     "@titan-design/registry": "workspace:*",
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   }
 }

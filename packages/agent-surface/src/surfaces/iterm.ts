@@ -245,7 +245,7 @@ async function closeIterm(handle: LaunchHandle, options: SurfaceOptions): Promis
       return { closed: false, reason: `could not re-read iTerm2 to confirm session ${paneRef} is gone` };
     return { closed: true };
   } catch (err) {
-    return { closed: false, reason: `iTerm2 could not be reached: ${(err as Error).message}` };
+    return { closed: false, reason: `iTerm2 could not be reached: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 
