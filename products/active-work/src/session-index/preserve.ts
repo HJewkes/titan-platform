@@ -88,15 +88,18 @@ export function preserveRow(graph: WorkspaceGraph, row: PreservedRow): void {
 
 export function listPreserved(graph: WorkspaceGraph): PreservedRow[] {
   const rows = graph.db
-    .prepare('SELECT * FROM preserved_row ORDER BY table_name, row_key')
-    .all() as {
-    table_name: string;
-    identity: string;
-    row_key: string;
-    payload: string;
-    origin: string;
-    mode: PreserveMode;
-  }[];
+    .prepare<
+      [],
+      {
+        table_name: string;
+        identity: string;
+        row_key: string;
+        payload: string;
+        origin: string;
+        mode: PreserveMode;
+      }
+    >('SELECT * FROM preserved_row ORDER BY table_name, row_key')
+    .all();
   return rows.map((row) => ({
     table: row.table_name,
     identity: JSON.parse(row.identity) as string[],
@@ -150,8 +153,16 @@ const UNREACHABLE_SESSIONS = `
  * leaves no derived row for a `merge` to land on, and a transcript that comes
  * back must win over the copy.
  */
-const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => string }[] = [
-  { table: 'session', identity: ['session_id'], key: (r) => String(r.session_id) },
+const SESSION_OWNED: {
+  table: string;
+  identity: string[];
+  key: (row: Row) => string;
+}[] = [
+  {
+    table: 'session',
+    identity: ['session_id'],
+    key: (r) => String(r.session_id),
+  },
   { table: 'turn', identity: ['prompt_id'], key: (r) => String(r.prompt_id) },
   {
     table: 'session_model_usage',
@@ -185,7 +196,11 @@ const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => str
     identity: ['transcript_id', 'byte_offset'],
     key: (r) => `${r.transcript_id}:${r.byte_offset}`,
   },
-  { table: 'session_origin', identity: ['session_id'], key: (r) => String(r.session_id) },
+  {
+    table: 'session_origin',
+    identity: ['session_id'],
+    key: (r) => String(r.session_id),
+  },
 ];
 
 type Row = Record<string, string | number | null>;
@@ -197,6 +212,13 @@ function payloadOf(row: Row): Row {
   return Object.fromEntries(Object.entries(row).filter(([column]) => !SYNTHETIC_KEYS.has(column)));
 }
 
+function unreachableSessionIds(graph: WorkspaceGraph): string[] {
+  return graph.db
+    .prepare<[], { session_id: string }>(UNREACHABLE_SESSIONS)
+    .all()
+    .map((row) => row.session_id);
+}
+
 /**
  * Declare every row a rebuild could not reproduce, before one runs.
  *
@@ -205,17 +227,17 @@ function payloadOf(row: Row): Row {
  * failure it exists to prevent, not a smaller version of it.
  */
 export function preserveUnreachable(graph: WorkspaceGraph, origin: string): number {
-  const ids = (graph.db.prepare(UNREACHABLE_SESSIONS).all() as { session_id: string }[]).map(
-    (row) => row.session_id,
-  );
+  const ids = unreachableSessionIds(graph);
   if (ids.length === 0) return 0;
   const placeholders = ids.map(() => '?').join(', ');
   let preserved = 0;
   graph.db.transaction(() => {
     for (const spec of SESSION_OWNED) {
       const rows = graph.db
-        .prepare(`SELECT * FROM "${spec.table}" WHERE session_id IN (${placeholders})`)
-        .all(...ids) as Row[];
+        .prepare<string[], Row>(
+          `SELECT * FROM "${spec.table}" WHERE session_id IN (${placeholders})`,
+        )
+        .all(...ids);
       for (const row of rows) {
         const payload = payloadOf(row);
         preserveRow(graph, {

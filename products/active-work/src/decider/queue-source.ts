@@ -50,10 +50,13 @@ interface AskMeta {
 }
 
 function readAnswers(eventsDbPath: string, afterId: number): AnswerRow[] {
-  const db = new Database(eventsDbPath, { readonly: true, fileMustExist: true });
+  const db = new Database(eventsDbPath, {
+    readonly: true,
+    fileMustExist: true,
+  });
   try {
     return db
-      .prepare(
+      .prepare<[number], AnswerRow>(
         `SELECT a.id AS id, a.ts AS ts, a.msg_id AS msgId, q.body AS question, a.body AS answer,
                 q.meta AS meta,
                 (SELECT json_extract(r.meta, '$.cwd') FROM events r
@@ -64,7 +67,7 @@ function readAnswers(eventsDbPath: string, afterId: number): AnswerRow[] {
           WHERE a.kind = 'answer' AND a.id > ?
           ORDER BY a.id`,
       )
-      .all(afterId) as AnswerRow[];
+      .all(afterId);
   } finally {
     db.close();
   }
@@ -110,7 +113,10 @@ function queueRow(eventsDbPath: string, row: AnswerRow, initiative: string | nul
     v: 2,
     source: 'queue',
     asked_at: new Date(row.ts).toISOString(),
-    locator: { path: eventsDbPath, ...(row.msgId === null ? {} : { msgId: row.msgId }) },
+    locator: {
+      path: eventsDbPath,
+      ...(row.msgId === null ? {} : { msgId: row.msgId }),
+    },
     initiative,
     category: classifyQuestion({ header: '', question, options: [] }),
     header: null,
@@ -131,7 +137,10 @@ async function queueCandidates(
   const candidates: SourceCandidate[] = [];
   for (const row of answers) {
     const initiative = await resolveAsk(options, slugs, row);
-    candidates.push({ row: queueRow(eventsDbPath, row, initiative), cwd: row.askerCwd });
+    candidates.push({
+      row: queueRow(eventsDbPath, row, initiative),
+      cwd: row.askerCwd,
+    });
   }
   return candidates;
 }
@@ -141,7 +150,12 @@ export function queueSource(eventsDbPath: string, options: QueueSourceOptions): 
   return {
     name: QUEUE_SOURCE,
     async read(since: SourceWatermarks): Promise<SourceRead> {
-      const out: SourceRead = { candidates: [], watermarks: new Map(), pending: 0, errors: [] };
+      const out: SourceRead = {
+        candidates: [],
+        watermarks: new Map(),
+        pending: 0,
+        errors: [],
+      };
       if (!existsSync(eventsDbPath)) return out;
       const answers = readAnswers(eventsDbPath, since.get(CURSOR)?.offset ?? 0);
       out.candidates = await queueCandidates(eventsDbPath, options, answers);
