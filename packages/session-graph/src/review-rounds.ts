@@ -2,6 +2,7 @@ import { RELATIONS } from "@titan-design/session-read";
 import { REVIEW_TABLE } from "./review-schema.js";
 import type { SessionGraph } from "./graph.js";
 import { KIT } from "./schema.js";
+import { parseJsonArray } from "./stored-json.js";
 import type { Db } from "@titan-design/store-sqlite";
 
 /** Decides from a sender's `session_origin.profile` whether its chat verdicts count. */
@@ -34,8 +35,8 @@ export function countRounds(changesRequestedAt: readonly string[], commitTimes: 
   return commits ? answeredHeads(changesRequestedAt, commits).heads.size : null;
 }
 
-function parseCommitTimes(commitTimes: readonly string[]): number[] | null {
-  const commits = commitTimes.map(Date.parse);
+function parseCommitTimes(commitTimes: readonly unknown[]): number[] | null {
+  const commits = commitTimes.map((time) => (typeof time === "string" ? Date.parse(time) : NaN));
   return commits.some(Number.isNaN) ? null : commits;
 }
 
@@ -63,7 +64,7 @@ export function projectReviewRounds(graph: SessionGraph, options: ReviewRoundOpt
   return graph.db.transaction(() => {
     const resolved = resolveChatVerdicts(graph.db);
     const invalidTimes = writeRounds(graph.db, isReviewer);
-    const { n } = graph.db.prepare(`SELECT count(*) AS n FROM ${REVIEW_TABLE} WHERE surface = 'chat' AND pr_ref IS NULL`).get() as { n: number };
+    const n = graph.db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${REVIEW_TABLE} WHERE surface = 'chat' AND pr_ref IS NULL`).get()?.n ?? 0;
     return { resolved, unresolved: n, invalidTimes };
   })();
 }
@@ -83,7 +84,7 @@ interface Candidate {
 }
 
 function resolveChatVerdicts(db: Db): number {
-  const rows = db.prepare(`SELECT source_key, session_id, repo, repo_hint, cwd_repo, number FROM ${REVIEW_TABLE} WHERE surface = 'chat' AND pr_ref IS NULL`).all() as ChatVerdictRow[];
+  const rows = db.prepare<[], ChatVerdictRow>(`SELECT source_key, session_id, repo, repo_hint, cwd_repo, number FROM ${REVIEW_TABLE} WHERE surface = 'chat' AND pr_ref IS NULL`).all();
   const update = db.prepare(`UPDATE ${REVIEW_TABLE} SET pr_ref = ? WHERE source_key = ?`);
   let resolved = 0;
   for (const row of rows) {
@@ -95,7 +96,7 @@ function resolveChatVerdicts(db: Db): number {
 
 /** An exact repo must exist; a hint that matches nothing falls through to the family links and then the sender's repo. */
 function resolvePrRef(db: Db, row: ChatVerdictRow): string | null {
-  const candidates = db.prepare("SELECT pr_ref, repo FROM pr WHERE number = ? AND repo IS NOT NULL").all(row.number) as Candidate[];
+  const candidates = db.prepare<[number], Candidate>("SELECT pr_ref, repo FROM pr WHERE number = ? AND repo IS NOT NULL").all(row.number);
   if (row.repo) return candidates.find((c) => c.repo === row.repo)?.pr_ref ?? null;
   const hinted = candidates.filter((c) => sameRepoName(c.repo, row.repo_hint));
   if (hinted.length === 1) return hinted[0]!.pr_ref;
@@ -129,7 +130,7 @@ const FAMILY_LINKS = `
 
 function familyLinks(db: Db, sessionId: string | null): Set<string> {
   if (!sessionId) return new Set();
-  const rows = db.prepare(FAMILY_LINKS).all({ sessionId }) as { target_ref: string }[];
+  const rows = db.prepare<{ sessionId: string }, { target_ref: string }>(FAMILY_LINKS).all({ sessionId });
   return new Set(rows.map((r) => r.target_ref));
 }
 
@@ -153,13 +154,13 @@ const CHANGES_REQUESTED = `
 /** Returns the count of unusable times met, for the pass summary. */
 function writeRounds(db: Db, isReviewer: ReviewerProfilePredicate): number {
   const byPr = new Map<string, ChangesRequested[]>();
-  for (const review of db.prepare(CHANGES_REQUESTED).all() as ChangesRequested[]) {
+  for (const review of db.prepare<[], ChangesRequested>(CHANGES_REQUESTED).all()) {
     if (review.surface === "chat" && !(review.profile && isReviewer(review.profile))) continue;
     byPr.set(review.pr_ref, [...(byPr.get(review.pr_ref) ?? []), review]);
   }
   const update = db.prepare("UPDATE pr SET review_rounds_chat = ?, review_rounds = ? WHERE pr_ref = ?");
   let invalidTimes = 0;
-  for (const pr of db.prepare("SELECT pr_ref, commit_times, review_rounds_gh FROM pr").all() as PrRoundRow[]) {
+  for (const pr of db.prepare<[], PrRoundRow>("SELECT pr_ref, commit_times, review_rounds_gh FROM pr").all()) {
     const { chat, total, invalid } = roundsFor(pr, byPr.get(pr.pr_ref) ?? []);
     update.run(chat, total, pr.pr_ref);
     invalidTimes += invalid;
@@ -172,7 +173,7 @@ function writeRounds(db: Db, isReviewer: ReviewerProfilePredicate): number {
  * so a resolver that sends only a count still adds to the chat rounds unchanged.
  */
 function roundsFor(pr: PrRoundRow, reviews: readonly ChangesRequested[]): { chat: number | null; total: number | null; invalid: number } {
-  const commits = pr.commit_times === null ? null : parseCommitTimes(JSON.parse(pr.commit_times) as string[]);
+  const commits = pr.commit_times === null ? null : parseCommitTimes(parseJsonArray(pr.commit_times));
   if (!commits) return { chat: null, total: pr.review_rounds_gh, invalid: pr.commit_times === null ? 0 : 1 };
   const timesOn = (surface: string) => reviews.filter((r) => r.surface === surface).map((r) => r.ts);
   const forge = answeredHeads(timesOn("github"), commits);

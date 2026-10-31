@@ -65,7 +65,7 @@ export interface ReconcileResult {
   pruned: number;
 }
 
-type StoredPrice = Record<string, number | string | null>;
+type StoredPrice = Record<string, number | string | null> & { table_version: number };
 
 function matchesRow(stored: StoredPrice, r: PriceInput, version: number, source: string | null): boolean {
   const expected = rates(r);
@@ -79,7 +79,7 @@ function matchesRow(stored: StoredPrice, r: PriceInput, version: number, source:
  * With a `source`, rows of that source the table no longer names are pruned (a longer stale prefix would win in `request_cost`), unless a newer version wrote any of them.
  */
 export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[], options: SyncPricesOptions): ReconcileResult {
-  const find = graph.db.prepare("SELECT * FROM price WHERE model = ? AND effective_from = ?");
+  const find = graph.db.prepare<[string, string], StoredPrice>("SELECT * FROM price WHERE model = ? AND effective_from = ?");
   const upsert = graph.db.prepare(
     `${INSERT_PRICE}
      ON CONFLICT (model, effective_from) DO UPDATE SET table_version = excluded.table_version, source = excluded.source,
@@ -89,8 +89,8 @@ export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[]
   const result: ReconcileResult = { added: 0, updated: 0, pruned: 0 };
   graph.db.transaction(() => {
     for (const r of rows) {
-      const stored = find.get(r.modelPrefix, r.effectiveFrom) as StoredPrice | undefined;
-      if (stored && (stored.table_version as number) > options.tableVersion) continue;
+      const stored = find.get(r.modelPrefix, r.effectiveFrom);
+      if (stored && stored.table_version > options.tableVersion) continue;
       if (stored && matchesRow(stored, r, options.tableVersion, source)) continue;
       upsert.run(...priceValues(r, options.tableVersion, source));
       if (stored) result.updated++;
@@ -102,8 +102,7 @@ export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[]
 }
 
 function pruneAbsent(graph: SessionGraph, rows: readonly PriceInput[], source: string, tableVersion: number): number {
-  const owned = graph.db.prepare("SELECT model, effective_from, table_version FROM price WHERE source = ?").all(source) as
-    { model: string; effective_from: string; table_version: number }[];
+  const owned = graph.db.prepare<[string], { model: string; effective_from: string; table_version: number }>("SELECT model, effective_from, table_version FROM price WHERE source = ?").all(source);
   if (owned.some((o) => o.table_version > tableVersion)) return 0;
   const keep = new Set(rows.map((r) => `${r.modelPrefix}\u0000${r.effectiveFrom}`));
   const drop = graph.db.prepare("DELETE FROM price WHERE model = ? AND effective_from = ?");

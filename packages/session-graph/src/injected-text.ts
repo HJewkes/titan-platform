@@ -74,7 +74,8 @@ const INTERRUPTION = /\[Request interrupted by user[^\]\n]*\]/g;
 const HUMAN_WRAPPERS = ["command-args", "bash-input"].map(tag => new RegExp(`</?${tag}>`, "g"));
 
 /** Unclosed markers in session-read's list: when one heads the text, the whole turn is injected. */
-const WHOLE_TURN_MARKERS = (Object.keys(INJECTED_MARKERS) as InjectedMarkerName[])
+const WHOLE_TURN_MARKERS = Object.keys(INJECTED_MARKERS)
+  .filter((name): name is InjectedMarkerName => name in INJECTED_MARKERS)
   .filter(name => INJECTED_MARKERS[name].close === null);
 
 /**

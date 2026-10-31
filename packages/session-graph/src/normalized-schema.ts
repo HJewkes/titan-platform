@@ -39,7 +39,7 @@ export function ensureNormalizedSchema(db: Db): void {
 export function backfillClaudeAliases(db: Db, sessionIds?: readonly string[]): void {
   const insert = db.prepare("INSERT OR IGNORE INTO conversation(ref,harness,namespace,native_id,legacy_session_id) VALUES (?,?,?,?,?)");
   const alias = db.prepare("INSERT OR IGNORE INTO conversation_alias VALUES (?,?)");
-  const rows = sessionIds?.map(session_id => ({ session_id })) ?? db.prepare("SELECT session_id FROM session").all() as Iterable<{ session_id: string }>;
+  const rows = sessionIds?.map(session_id => ({ session_id })) ?? db.prepare<[], { session_id: string }>("SELECT session_id FROM session").all();
   for (const row of rows) {
     const ref = conversationRef({ harness: "claude-code", namespace: "legacy", nativeId: row.session_id });
     insert.run(ref, "claude-code", "legacy", row.session_id, row.session_id);
@@ -49,7 +49,7 @@ export function backfillClaudeAliases(db: Db, sessionIds?: readonly string[]): v
 
 /** Ambiguity is explicit; workspace session bodies remain in their original namespace. */
 export function resolveConversationAlias(db: Db, legacyRef: string): string | null {
-  const rows = db.prepare("SELECT conversation_ref FROM conversation_alias WHERE legacy_ref = ?").all(legacyRef) as { conversation_ref: string }[];
+  const rows = db.prepare<[string], { conversation_ref: string }>("SELECT conversation_ref FROM conversation_alias WHERE legacy_ref = ?").all(legacyRef);
   if (rows.length > 1) throw new Error(`ambiguous conversation alias: ${legacyRef}`);
   return rows[0]?.conversation_ref ?? null;
 }
