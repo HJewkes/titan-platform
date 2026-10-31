@@ -12,13 +12,26 @@ import { quoteIdent, type Db } from "../open.js";
 export interface SpanFtsOptions {
   /** Base name; tables are `<name>_span` and `<name>_fts`. */
   name?: string;
+  /**
+   * Create the FTS table with `contentless_delete=1` (SQLite 3.43+), so purges
+   * delete FTS rows instead of stranding them. Default false: the table and its
+   * orphan behaviour stay as they were.
+   */
+  contentlessDelete?: boolean;
+}
+
+const MIN_CONTENTLESS_DELETE = [3, 43];
+
+function supportsContentlessDelete(version: string): boolean {
+  const [major = 0, minor = 0] = version.split(".").map(Number);
+  return major > MIN_CONTENTLESS_DELETE[0]! || (major === MIN_CONTENTLESS_DELETE[0] && minor >= MIN_CONTENTLESS_DELETE[1]!);
 }
 
 function names(name: string): { span: string; fts: string } {
   return { span: quoteIdent(`${name}_span`), fts: quoteIdent(`${name}_fts`) };
 }
 
-export function spanFtsTablesDdl({ name = "search" }: SpanFtsOptions = {}): string {
+export function spanFtsTablesDdl({ name = "search", contentlessDelete = false }: SpanFtsOptions = {}): string {
   const { span, fts } = names(name);
   return `
     CREATE TABLE IF NOT EXISTS ${span} (
@@ -31,7 +44,7 @@ export function spanFtsTablesDdl({ name = "search" }: SpanFtsOptions = {}): stri
       UNIQUE (owner_ref, field, source_id, byte_offset)
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${name}_span_owner`)} ON ${span}(owner_ref);
-    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content='');
+    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content=''${contentlessDelete ? ", contentless_delete=1" : ""});
   `;
 }
 
@@ -115,12 +128,23 @@ export class SpanFtsTables {
   private readonly scopedSearchStmts = new Map<string, Database.Statement<unknown[], RawSpanHit>>();
   private readonly deleteAllFts;
   private readonly deleteSpansStmt;
+  private readonly deleteSourceSpansStmt;
+  private readonly purgeOwnerTxn;
+  private readonly purgeSourceTxn;
   private readonly countSpans;
   private readonly countFts;
   private readonly indexTxn;
 
-  constructor(db: Db, { name = "search" }: SpanFtsOptions = {}) {
+  constructor(db: Db, { name = "search", contentlessDelete = false }: SpanFtsOptions = {}) {
     const { span, fts } = names(name);
+    if (contentlessDelete) {
+      const version = db.prepare("SELECT sqlite_version()").pluck().get();
+      if (typeof version !== "string" || !supportsContentlessDelete(version)) {
+        throw new Error(
+          `contentlessDelete needs SQLite ${MIN_CONTENTLESS_DELETE.join(".")} or later; this build is ${String(version)}`,
+        );
+      }
+    }
     this.db = db;
     this.tableNames = { span, fts };
     // Contentless FTS retains orphan rowids after a purge. Never reuse one: old
@@ -142,6 +166,18 @@ export class SpanFtsTables {
     );
     this.deleteAllFts = db.prepare(`INSERT INTO ${fts}(${fts}) VALUES ('delete-all')`);
     this.deleteSpansStmt = db.prepare(`DELETE FROM ${span} WHERE owner_ref = ?`);
+    this.deleteSourceSpansStmt = db.prepare(`DELETE FROM ${span} WHERE source_id = ?`);
+    const deleteOwnerFts = db.prepare(`DELETE FROM ${fts} WHERE rowid IN (SELECT span_id FROM ${span} WHERE owner_ref = ?)`);
+    const deleteSourceFts = db.prepare(`DELETE FROM ${fts} WHERE rowid IN (SELECT span_id FROM ${span} WHERE source_id = ?)`);
+    // FTS rows go first: once the spans are gone there is no way to find their rowids.
+    this.purgeOwnerTxn = db.transaction((ownerRef: string): number => {
+      if (contentlessDelete) deleteOwnerFts.run(ownerRef);
+      return this.deleteSpansStmt.run(ownerRef).changes;
+    });
+    this.purgeSourceTxn = db.transaction((sourceId: number): number => {
+      if (contentlessDelete) deleteSourceFts.run(sourceId);
+      return this.deleteSourceSpansStmt.run(sourceId).changes;
+    });
     this.countSpans = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${span}`);
     this.countFts = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${fts}`);
     // One transaction, so a failed FTS insert cannot strand a span row with no FTS row.
@@ -216,9 +252,17 @@ export class SpanFtsTables {
     return statement;
   }
 
-  /** Drop an owner's spans. Their FTS rows become orphans, hidden by the join, until `clearIndex` and a re-stream. */
+  /**
+   * Drop an owner's spans. Without `contentlessDelete` their FTS rows become
+   * orphans, hidden by the join, until `clearIndex` and a re-stream.
+   */
   purgeOwner(ownerRef: string): number {
-    return this.deleteSpansStmt.run(ownerRef).changes;
+    return this.purgeOwnerTxn(ownerRef);
+  }
+
+  /** Drop every span of one source (transcript or file), with the same FTS behaviour as `purgeOwner`. */
+  purgeSource(sourceId: number): number {
+    return this.purgeSourceTxn(sourceId);
   }
 
   /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
