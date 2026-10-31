@@ -20,10 +20,19 @@
       ]
     },
     {
+      "name": "the numbers directive offers a number the screen cues on",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": ".filter((unit) => cuedWordsIn(unit, beat.visual).length === 0)",
+      "replace": "",
+      "kills": [
+        "planRegisterEdits: numbers and triads offers only the uncued number of a beat that cues on one of its numbers"
+      ]
+    },
+    {
       "name": "the numbers directive lists each end of a range on its own",
       "file": "products/explainer/src/rewrite-plan.ts",
-      "find": "{ numbers: numberUnits(text) }",
-      "replace": "{ numbers: numberSpans(text).map((span) => span.text) }",
+      "find": "numberUnits(text).filter(",
+      "replace": "numberSpans(text).map((span) => span.text).filter(",
       "kills": [
         "planRegisterEdits: numbers and triads names a number range as one mention, so the directive never offers to cut one end"
       ]
