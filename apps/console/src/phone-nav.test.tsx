@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { SNAPSHOT_FORMAT, type Snapshot } from "@titan-design/rpc-client";
 import { BELOW_MD } from "./pages/TasksPage.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 import { VIEWS } from "./views.js";
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 

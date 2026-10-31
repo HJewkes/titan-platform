@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import { unmountPages } from "../render-page.test-helpers.js";
 import type { Question } from "../../server/round-schema.js";
 import { RoundQuestion } from "./RoundQuestion.js";
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 
