@@ -19,6 +19,7 @@ import {
   type SetupRunner,
   type WorktreeAddRunner,
   type WorktreeAllocation,
+  type WorktreeAllocator,
   type WorktreeOptions,
   type WorktreeRecord,
   type WorktreeReleaseSafety,
@@ -278,6 +279,17 @@ async function checkTree(
   return reasons;
 }
 
+async function releaseThroughPackage(
+  allocator: WorktreeAllocator,
+  ctx: IsolationContext,
+  allocation: Allocation,
+  opts: ReleaseOptions,
+): Promise<string | undefined> {
+  const exited = ctx.stoppedAt === undefined ? {} : { exitedAt: ctx.stoppedAt };
+  const result = await allocator.release(exited, allocation, opts);
+  return result.released ? undefined : result.refusal;
+}
+
 export function createWorktreeStrategy(opts: WorktreeStrategyOptions = {}): IsolationStrategy {
   const basePath = opts.basePath ?? DEFAULT_BASE_PATH;
   const allocator = createWorktreeAllocator(platformOptions(opts));
@@ -298,18 +310,12 @@ export function createWorktreeStrategy(opts: WorktreeStrategyOptions = {}): Isol
     async release(ctx, allocation, releaseOpts = {}) {
       clearRefusal(allocation);
       const owned = ownedTree(allocation, releaseOpts);
-      if (owned !== undefined) {
-        const refusal = await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs);
-        if (refusal !== undefined) recordRefusal(allocation, refusal);
-        return refusal === undefined;
-      }
-      const result = await allocator.release(
-        ctx.stoppedAt === undefined ? {} : { exitedAt: ctx.stoppedAt },
-        allocation,
-        releaseOpts,
-      );
-      if (!result.released) recordRefusal(allocation, result.refusal);
-      return result.released;
+      const refusal =
+        owned === undefined
+          ? await releaseThroughPackage(allocator, ctx, allocation, releaseOpts)
+          : await releaseInspected(ctx.stoppedAt, owned, opts.ghTimeoutMs);
+      if (refusal !== undefined) recordRefusal(allocation, refusal);
+      return refusal === undefined;
     },
   };
 }
