@@ -5,9 +5,9 @@ import { waitingGates } from "../shepherd/waiting.js";
 import { lastAwaitClause } from "../shepherd/none-reason.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type AgentSpan, type FlowPorts } from "./flow.js";
-import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
+import { prKey, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatDigest, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
+import type { AgentChatLedger, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
 import { seatLines } from "./seats.js";
 
 export interface GateFact {
@@ -26,10 +26,10 @@ export interface GateFact {
 export interface DigestSources {
   rows(): Promise<WatchRow[]>;
   gates(): Promise<GateFact[]>;
-  /** Throws when agent-chat is missing, slow, or too old to print JSON. */
-  agentChat(windowMinutes: number): Promise<AgentChatDigest>;
+  /** Decided answers, stalled claims and status reports from agent-chat. Optional: without it each section is a follow-up gap line. */
+  agentChat?(windowMinutes: number): Promise<AgentChatLedger>;
   queueAsks(): Ask[] | Promise<Ask[]>;
-  /** The merged owner list (`titan-factory needs`). When set, it is the whole of "Needs you"; gates, seat queues and the agent-chat asks are not read for it. */
+  /** The merged owner list (`titan-factory needs`), broker asks included. When set, it is the whole of "Needs you"; gates and seat queues are not read for it. */
   needs?(): Promise<NeedsList>;
   /** Pool readings from agent-chat's `pace.json`. */
   spend(): PoolLine[] | Promise<PoolLine[]>;
@@ -47,6 +47,11 @@ export interface CollectOptions {
 }
 
 const WAITING_SHOWN = 5;
+/** Named so an owner reading Gaps sees what is missing and why, not a refused CLI flag. */
+export const AGENT_CHAT_FOLLOW_UPS = [
+  "decided: agent-chat has no JSON read of the decider's answers yet; follow-up to TP-4628",
+  "agent-chat stalls: agent-chat has no JSON read of stalled claims or BLOCKED reports yet; follow-up to TP-4628",
+];
 const FINISHED = new Set(["done", "cancelled", "failed"]);
 const refOf = (row: WatchRow): string => (row.pr === null ? `${row.repo}@${row.branch}` : `${row.repo}#${row.pr}`);
 
@@ -82,7 +87,8 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const rows = allRows.filter((row) => !proofRuns.has(row.runId));
   const allGates = await guarded(gaps, "factory gates", [], () => sources.gates());
   const gates = allGates.filter((gate) => !proofRuns.has(gate.runId));
-  const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
+  const chat = sources.agentChat ? await guarded(gaps, "agent-chat ledger", undefined, () => sources.agentChat!(windowMinutes)) : undefined;
+  if (!sources.agentChat) gaps.push(...AGENT_CHAT_FOLLOW_UPS);
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
   const spend = await guarded(gaps, "pace.json", [], () => sources.spend());
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
@@ -92,15 +98,15 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: needs ? ownerAsks(needs.items.filter((item) => !proofRuns.has(runOfItem(item) ?? "")), rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
-    merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
+    needsYou: needs ? ownerAsks(needs.items.filter((item) => !proofRuns.has(runOfItem(item) ?? "")), rows, since) : [...gateAsks(gates, rows, since), ...queue],
+    merged: shepherdMerged(rows, since),
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     spend,
     ...(chat && decidedSection(chat)),
     ...waitingSection(rows, now), ...autoPassSection(rows, since),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
     ...measured,
-    gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
+    gaps,
   };
 }
 
@@ -192,20 +198,13 @@ function ownerAsk(item: OwnerItem, rows: readonly WatchRow[], since: Date): Ask 
   };
 }
 
-function chatAsks(chat: AgentChatDigest): Ask[] {
-  const named = (label: string, items: AgentChatDigest["readyToMerge"]): Ask[] =>
-    items.map((item) => ({ text: `${label} ${refOfUrl(item.label)} ${item.detail}`.trim(), source: "agent-chat", keys: keysIn(item.label) }));
-  const escalations = chat.ledger.escalations.map((e) => ({ text: `${e.from}: ${e.text}`, source: "agent-chat", keys: keysIn(e.text) }));
-  return [...escalations, ...named("ready to merge:", chat.readyToMerge), ...named("needs a grant:", chat.needsGrant)];
-}
-
 /** Item 101: a two-way decision takes effect at once, so it is a notice with its overrule, not an ask. */
-function decidedSection(chat: AgentChatDigest): Pick<DigestModel, "decided" | "reversals"> {
-  if (chat.ledger.decided.length === 0) return {};
-  return { decided: chat.ledger.decided.map(decidedLine), reversals: chat.ledger.reversals };
+function decidedSection(chat: AgentChatLedger): Pick<DigestModel, "decided" | "reversals"> {
+  if (chat.decided.length === 0) return {};
+  return { decided: chat.decided.map(decidedLine), reversals: chat.reversals };
 }
 
-function decidedLine({ questionId, question, answer, class: cls, state, reversible, confidence, principleIds }: AgentChatDigest["ledger"]["decided"][number]): DecidedLine {
+function decidedLine({ questionId, question, answer, class: cls, state, reversible, confidence, principleIds }: AgentChatLedger["decided"][number]): DecidedLine {
   return {
     questionId,
     question,
@@ -242,8 +241,8 @@ function shepherdStuck(rows: readonly WatchRow[], since: Date): Stuck[] {
   return [...live, ...unmerged];
 }
 
-function chatStuck(chat: AgentChatDigest): Stuck[] {
+function chatStuck(chat: AgentChatLedger): Stuck[] {
   const claims = chat.stalled.map((c) => ({ ref: c.taskId, reason: `${c.agentId} stalled in ${c.phase}`, since: c.phaseAt }));
-  const reports = chat.ledger.reports.map((r) => ({ ref: r.from, reason: r.line, since: new Date(r.at).toISOString() }));
+  const reports = chat.reports.map((r) => ({ ref: r.from, reason: r.line, since: new Date(r.at).toISOString() }));
   return [...claims, ...reports];
 }

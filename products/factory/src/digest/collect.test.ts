@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { fakeSources, NOW, SLOT, watchRow } from "../test-support/digest.js";
-import { collectDigest, type GateFact } from "./collect.js";
+import { AGENT_CHAT_FOLLOW_UPS, collectDigest, type GateFact } from "./collect.js";
 import { rankDigest } from "./rank.js";
 import { renderMarkdown } from "./render-md.js";
-import { readAgentChat, type Exec } from "./sources.js";
+import type { AgentChatLedger } from "./model.js";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import { gateItem } from "../test-support/owner-queue-10-05.js";
 import { collectNeeds, type NeedsList } from "../needs/merged.js";
@@ -16,19 +16,18 @@ function gateFact(overrides: Partial<GateFact> = {}): GateFact {
   return { runId: RUN, stepId: "approve-merge", gateId: "g-1", prompt: "raw prompt", resolve: RESOLVE, createdAt: "2026-03-10T19:00:00Z", ...overrides };
 }
 
-const failingAgentChat: Exec = async () => ({ code: 1, stdout: "", stderr: "error: unknown option '--json'\nUsage: agent-chat digest" });
+const ledger = (overrides: Partial<AgentChatLedger>): (() => Promise<AgentChatLedger>) => async () => ({ decided: [], reversals: [], stalled: [], reports: [], ...overrides });
 
 describe("collectDigest", () => {
-  it("turns an agent-chat that cannot print JSON into a gap line and keeps the Shepherd sections", async () => {
+  it("lists Shepherd's merges and stuck runs and names the agent-chat follow-ups when no ledger source is wired (TP-4628)", async () => {
     const rows = [
       watchRow({ pr: 7, phase: "done", outcome: { kind: "merged", reason: null }, phaseSince: "2026-03-10T19:00:00Z", task: "demo/T-7" }),
       watchRow({ pr: 8, held: { reason: "waiting on a design call" }, phaseSince: "2026-03-10T15:00:00Z" }),
     ];
-    const sources = fakeSources({ rows: async () => rows, agentChat: (minutes) => readAgentChat(failingAgentChat, "agent-chat", minutes) });
 
-    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => rows }), now: NOW, windowMinutes: 360, slot: SLOT });
 
-    expect(model.gaps).toEqual(["agent-chat digest: exit 1: error: unknown option '--json'"]);
+    expect(model.gaps).toEqual(AGENT_CHAT_FOLLOW_UPS);
     expect(model.merged).toEqual([{ ref: "acme/widgets#7", title: "demo/T-7", at: "2026-03-10T19:00:00Z" }]);
     expect(model.stuck).toEqual([{ ref: "acme/widgets#8", reason: "held: waiting on a design call", since: "2026-03-10T15:00:00Z" }]);
   });
@@ -59,41 +58,49 @@ describe("collectDigest", () => {
     expect(model.stuck).toEqual([{ ref: "acme/widgets#6", reason: "stopped: closed", since: "2026-03-10T19:00:00Z" }]);
   });
 
-  it("reads asks and merged PRs from agent-chat JSON", async () => {
-    const json = {
-      ledger: { available: true, escalations: [{ from: "seat-a", text: "approve acme/widgets#9?", at: 0 }], reports: [] },
-      mergedPrs: [{ label: "https://github.com/acme/widgets/pull/12", detail: "Add a knob" }],
-    };
-    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify(json), stderr: "" });
+  it("lists stalled claims and BLOCKED reports from a wired agent-chat ledger under Stuck, with no follow-up gap (TP-4628)", async () => {
+    const agentChat = ledger({
+      stalled: [{ taskId: "DEMO-3", agentId: "worker-3", phase: "awaiting-ci", phaseAt: "2026-03-10T16:00:00Z" }],
+      reports: [{ from: "worker-4", at: Date.parse("2026-03-10T17:00:00Z"), line: "Status: BLOCKED on a missing grant" }],
+    });
 
-    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+    const model = await collectDigest({ sources: fakeSources({ agentChat }), now: NOW, windowMinutes: 360, slot: SLOT });
 
-    expect(model.needsYou).toEqual([{ text: "seat-a: approve acme/widgets#9?", source: "agent-chat", keys: ["pr:widgets#9"] }]);
-    expect(model.merged).toEqual([{ ref: "acme/widgets#12", title: "Add a knob" }]);
+    expect(model.stuck).toEqual([
+      { ref: "DEMO-3", reason: "worker-3 stalled in awaiting-ci", since: "2026-03-10T16:00:00Z" },
+      { ref: "worker-4", reason: "Status: BLOCKED on a missing grant", since: "2026-03-10T17:00:00.000Z" },
+    ]);
     expect(model.gaps).toEqual([]);
   });
 
   it("reads the decider's answers with an overrule only on the one awaiting audit, and the reversal rate", async () => {
-    const entry = { questionId: "q-1", asker: "seat-a", question: "Rebase?", answer: "rebase", by: "decider", at: 0, class: "tech_design", basis: "precedent", precedent: "p", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] };
-    const json = { ledger: { available: true, decided: [entry, { ...entry, questionId: "q-2", state: "overruled" }], reversals: [{ class: "tech_design", decided: 2, overruled: 1 }] } };
-    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify(json), stderr: "" });
+    const entry = { questionId: "q-1", question: "Rebase?", answer: "rebase", class: "tech_design", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] };
+    const agentChat = ledger({ decided: [entry, { ...entry, questionId: "q-2", state: "overruled" }], reversals: [{ class: "tech_design", decided: 2, overruled: 1 }] });
 
-    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+    const model = await collectDigest({ sources: fakeSources({ agentChat }), now: NOW, windowMinutes: 60, slot: SLOT });
 
     expect(model.decided).toEqual([
-      { questionId: "q-1", question: "Rebase?", answer: "rebase", class: "tech_design", state: "awaiting audit", reversible: "force-push", confidence: 0.7, principleIds: ["p1"], overrule: 'agent-chat answer q-1 "..."' },
-      { questionId: "q-2", question: "Rebase?", answer: "rebase", class: "tech_design", state: "overruled", reversible: "force-push", confidence: 0.7, principleIds: ["p1"] },
+      { ...entry, overrule: 'agent-chat answer q-1 "..."' },
+      { ...entry, questionId: "q-2", state: "overruled" },
     ]);
     expect(model.reversals).toEqual([{ class: "tech_design", decided: 2, overruled: 1 }]);
+    expect(model.gaps).toEqual([]);
   });
 
-  it("parses an older agent-chat with no decided list and adds no section or gap", async () => {
-    const exec: Exec = async () => ({ code: 0, stdout: JSON.stringify({ ledger: { available: true, escalations: [], reports: [] } }), stderr: "" });
-
-    const model = await collectDigest({ sources: fakeSources({ agentChat: (m) => readAgentChat(exec, "agent-chat", m) }), now: NOW, windowMinutes: 60, slot: SLOT });
+  it("adds no Decided section for a ledger with no answers", async () => {
+    const model = await collectDigest({ sources: fakeSources({ agentChat: ledger({}) }), now: NOW, windowMinutes: 60, slot: SLOT });
 
     expect(model.decided).toBeUndefined();
-    expect(model.gaps).toEqual([]);
+  });
+
+  it("turns a ledger source that fails into one gap line", async () => {
+    const agentChat = async (): Promise<AgentChatLedger> => {
+      throw new Error("broker down");
+    };
+
+    const model = await collectDigest({ sources: fakeSources({ agentChat }), now: NOW, windowMinutes: 60, slot: SLOT });
+
+    expect(model.gaps).toEqual(["agent-chat ledger: broker down"]);
   });
 
   it("a pending gate becomes one ask with summary, evidence and resolve command", async () => {
@@ -129,6 +136,8 @@ describe("collectDigest", () => {
 });
 
 describe("collectDigest with the merged owner list", () => {
+  const listOf = (items: OwnerItem[]): NeedsList => ({ items, gaps: [], overlaps: [], counts: {} });
+
   it("reads needsYou from the merged list, asks only (no news), not the separate gate, queue and chat reads", async () => {
     const [first, second] = await sources10_05();
     const list = await collectNeeds([first!, second!]);
@@ -140,6 +149,16 @@ describe("collectDigest with the merged owner list", () => {
     expect(model.needsYou.map((ask) => ask.text)).not.toContain("widgets#9 approve-merge: raw prompt");
   });
 
+  it("lists a broker ask from the merged owner list among the asks, not as a gap line (TP-4628)", async () => {
+    const ask: OwnerItem = { ...gateItem(1), id: "chat:m-1", sources: [{ system: "agent-chat", ref: "m-1" }], summary: "seat-a: approve acme/widgets#9?", keys: ["pr:acme/widgets#9"] };
+    const sources = fakeSources({ needs: async () => listOf([ask]) });
+
+    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou).toEqual([{ text: "seat-a: approve acme/widgets#9?", source: "agent-chat", keys: ["pr:widgets#9"] }]);
+    expect(model.gaps).toEqual(AGENT_CHAT_FOLLOW_UPS);
+  });
+
   it("carries the list's gaps into the digest", async () => {
     const sources = fakeSources({ needs: async () => ({ items: [], gaps: ["agent-chat: down"], overlaps: [], counts: {} }) });
 
@@ -147,8 +166,6 @@ describe("collectDigest with the merged owner list", () => {
 
     expect(model.gaps).toContain("agent-chat: down");
   });
-
-  const listOf = (items: OwnerItem[]): NeedsList => ({ items, gaps: [], overlaps: [], counts: {} });
 
   function hitlItem(overrides: Partial<OwnerItem> = {}): OwnerItem {
     return {
