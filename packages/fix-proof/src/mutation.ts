@@ -1,4 +1,3 @@
-import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { CHANGESET_GLOB, isHarnessPath, MUTATION_SPEC_GLOB, type FixProofConfig } from "./config.js";
 import { compileGlobs } from "./glob.js";
 import { normalizeRelative } from "./paths.js";
@@ -32,6 +31,10 @@ export type MutationCheck = { ok: true } | { ok: false; error: string };
 
 const SPEC_KEYS = new Set(["v", "mutations"]);
 const MUTATION_KEYS = new Set(["name", "file", "find", "replace", "kills"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function asRecord(value: unknown, what: string, keys: ReadonlySet<string>): Record<string, unknown> {
   if (!isRecord(value)) throw new Error(`${what} must be a JSON object`);
