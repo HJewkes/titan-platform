@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a carried path reads as source, so a baseline prune makes a test-only diff a source diff",
+      "file": "packages/fix-proof/src/plan.ts",
+      "find": "return sorter.isTest(path) || sorter.isCarry(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
+      "replace": "return sorter.isTest(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
+      "kills": [
+        ".github/fix-proof.json runtime globs a typed-lint burn-down of tests plus its eslint-suppressions baseline prune reads test-only"
+      ]
+    }
+  ]
+}
