@@ -168,7 +168,9 @@ async function planEntry(
   agent: AgentIdentity,
   { roster, events }: { roster: readonly AgentIdentity[]; events: readonly JournalRow[] }
 ): Promise<RetirePlanEntry> {
-  const callers = [scope.caller, scope.spawner];
+  const callers = [scope.caller, scope.spawner].filter(
+    (name) => name?.trim()
+  );
   const reason = callers.includes(agent.name)
     ? `${agent.name} is the caller itself, not an agent it spawned`
     : port.ownership?.(agent) ??
