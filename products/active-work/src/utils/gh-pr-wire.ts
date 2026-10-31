@@ -6,7 +6,7 @@ import { z } from 'zod';
  * Every field is nullish: callers still decide what a missing field means, and a
  * pending check run reports a null conclusion. Unknown keys survive the parse.
  */
-export const GhPrListEntrySchema = z.looseObject({
+const GhPrListEntrySchema = z.looseObject({
   headRefName: z.string().nullish(),
   number: z.number().nullish(),
   state: z.string().nullish(),
