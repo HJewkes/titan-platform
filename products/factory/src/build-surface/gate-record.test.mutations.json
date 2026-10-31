@@ -7,7 +7,7 @@
       "find": "failure: GateFailureSchema.nullish() })",
       "replace": "failure: GateFailureSchema.optional() })",
       "kills": [
-        "a stopped run's branch with a passing gate record carrying failure: null is picked up as green"
+        "a stopped run's branch whose gate record is written as the gate README documents a pass a passing record with failure: null is picked up as green"
       ]
     }
   ]
