@@ -2,9 +2,13 @@
 import type { OwnerItem } from "@titan-design/owner-queue";
 import type { ArRunSummary } from "../autoresearch-view.js";
 import type { RpcAnswer } from "../test-support.js";
+import { dayWindow } from "../coord-day.js";
 import { draw, isoAt, pad, WORDS, type Draw } from "./random.fixture.js";
 
 export const FACTORY_SIZES = { needs: 600, activeRuns: 300, finishedRuns: 2000, autoresearchRuns: 20 } as const;
+/** Runs merged inside the coordinator day the coord budget rows read (`BUDGET_DAY`), as a busy day has them. */
+export const MERGED_ON_BUDGET_DAY = 80;
+export const BUDGET_DAY = "2031-01-01";
 
 const NEED_SOURCES = [
   { system: "agent-chat", id: "chat" },
@@ -33,12 +37,20 @@ export interface WatchRow {
   held: { reason: string } | null;
   stalled: { reason: string } | null;
   stepResults: string[];
+  outcome?: { kind: string; reason: null };
+}
+
+export interface MergedRun {
+  row: WatchRow;
+  landedAt: string;
 }
 
 export interface FactoryState {
   needs: OwnerItem[];
   active: WatchRow[];
   finished: WatchRow[];
+  /** Merged runs whose phase flipped after their merge, inside the budget day; kept apart so `finished` stays at its size. */
+  mergedOnBudgetDay: MergedRun[];
   autoresearch: ArRunSummary[];
 }
 
@@ -87,6 +99,24 @@ function watchRow(random: Draw, index: number, phases: readonly string[]): Watch
   };
 }
 
+const MINUTE_MS = 60_000;
+const PHASE_TRAIL_MIN = 40;
+
+/** Built from the local-time window, so the day holds them in any timezone; no draw, so the other rows keep their values. */
+function mergedOnBudgetDay(): MergedRun[] {
+  const { from } = dayWindow(Date.parse(`${BUDGET_DAY}T12:00:00`), "07:00", BUDGET_DAY);
+  return Array.from({ length: MERGED_ON_BUDGET_DAY }, (_, index) => {
+    const pr = 9000 + index;
+    const phaseSince = new Date(from + (60 + index * 5) * MINUTE_MS);
+    const row: WatchRow = {
+      repo: "example-org/repo-00", pr, branch: `feat/merged-${pr}`, runId: `run-merged-${pad(index, 3)}`, task: `example/EX-${pr}`, phase: "done",
+      headSha: "0".repeat(40), phaseSince: phaseSince.toISOString(), nextAction: "none", pendingGate: null, held: null, stalled: null,
+      stepResults: ["step 0: ok"], outcome: { kind: "merged", reason: null },
+    };
+    return { row, landedAt: new Date(phaseSince.getTime() - PHASE_TRAIL_MIN * MINUTE_MS).toISOString() };
+  });
+}
+
 function autoresearchRun(random: Draw, index: number): ArRunSummary {
   const status = random.pick(AR_STATUSES);
   const rounds = 4 + random.int(8);
@@ -119,16 +149,26 @@ export function factoryState(seed: string): FactoryState {
     needs: Array.from({ length: FACTORY_SIZES.needs }, (_, index) => need(random, index)),
     active: withOldOwnerGate(Array.from({ length: FACTORY_SIZES.activeRuns }, (_, index) => watchRow(random, index, ACTIVE_PHASES))),
     finished: Array.from({ length: FACTORY_SIZES.finishedRuns }, (_, index) => watchRow(random, FACTORY_SIZES.activeRuns + index, FINISHED_PHASES)),
+    mergedOnBudgetDay: mergedOnBudgetDay(),
     autoresearch: Array.from({ length: FACTORY_SIZES.autoresearchRuns }, (_, index) => autoresearchRun(random, index)),
   };
 }
 
 export function factoryAnswer(state: FactoryState): RpcAnswer {
-  const lists = { active: state.active, finished: state.finished, all: [...state.active, ...state.finished] };
+  const finished = [...state.finished, ...state.mergedOnBudgetDay.map(({ row }) => row)];
+  const lists = { active: state.active, finished, all: [...state.active, ...finished] };
   return (command, args) => {
     if (command === "needs.list") return { items: state.needs, gaps: [] };
     if (command === "shepherd.list") return lists[args.state === "finished" || args.state === "all" ? args.state : "active"];
+    if (command === "shepherd.timeline") return timelineOf(state, args);
     if (command === "autoresearch.runs") return state.autoresearch;
     throw new Error(`the perf fixture has no factory answer for ${command}`);
   };
+}
+
+/** Only the merged runs have a timeline here; any other PR is a read the fixture cannot answer. */
+function timelineOf(state: FactoryState, args: Record<string, unknown>) {
+  const run = state.mergedOnBudgetDay.find(({ row }) => row.repo === args.repo && row.pr === args.pr);
+  if (run === undefined) throw new Error("the perf fixture has no timeline for that PR");
+  return { row: run.row, entries: [{ kind: "step", stepId: "sh-landed", iteration: 0, startedAt: null, completedAt: run.landedAt, signal: null, status: "done" }] };
 }

@@ -28,7 +28,7 @@ const AUTH_EXIT = 2;
 const SYSTEM_PROMPT = "You group merged pull requests into themes for a daily engineering summary. Answer only with the requested JSON.";
 
 export interface ShippedBuildDeps {
-  shepherd: Pick<ShepherdSource, "list">;
+  shepherd: Pick<ShepherdSource, "list" | "timeline">;
   github: Pick<GitHubPort, "getSquashSource">;
   run: (config: AgentRunConfig<ThemeAnswer>) => Promise<AgentRunResult<ThemeAnswer>>;
   dir: string;
