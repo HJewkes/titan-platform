@@ -90,8 +90,10 @@ interface CurrentArtifacts {
   worktrees: WorktreeEntry[];
 }
 
-/** Returns `null` for a file that exists but is not valid YAML: writing over it would lose its content. */
-async function readArtifacts(file: string): Promise<CurrentArtifacts | null> {
+type SkipReason = 'unparseable' | 'not a mapping';
+
+/** Returns the reason for a file that exists but holds no mapping: writing over it would lose its content. */
+async function readArtifacts(file: string): Promise<CurrentArtifacts | SkipReason> {
   let text: string;
   try {
     text = await fs.readFile(file, 'utf8');
@@ -102,9 +104,11 @@ async function readArtifacts(file: string): Promise<CurrentArtifacts | null> {
   try {
     raw = YAML.parse(text);
   } catch {
-    return null;
+    return 'unparseable';
   }
-  if (!isRecord(raw)) return { branches: [], stashes: [], worktrees: [] };
+  // An empty file parses to null and holds nothing to lose; any other non-mapping is data.
+  if (raw === null || raw === undefined) return { branches: [], stashes: [], worktrees: [] };
+  if (!isRecord(raw)) return 'not a mapping';
   return {
     branches: Array.isArray(raw.branches) ? raw.branches : [],
     stashes: Array.isArray(raw.stashes) ? raw.stashes : [],
@@ -114,14 +118,14 @@ async function readArtifacts(file: string): Promise<CurrentArtifacts | null> {
   };
 }
 
-/** Returns false, writing nothing, when the existing `artifacts.yml` is unparseable. */
+/** Returns the skip reason, writing nothing, when the existing `artifacts.yml` is not a mapping. */
 async function mergeIntoArtifacts(
   initiativeDir: string,
   incoming: Array<{ name: string; path: string; default: boolean }>,
-): Promise<boolean> {
+): Promise<SkipReason | null> {
   const artifactsPath = path.join(initiativeDir, 'artifacts.yml');
   const current = await readArtifacts(artifactsPath);
-  if (current === null) return false;
+  if (typeof current === 'string') return current;
   await writeYaml(
     artifactsPath,
     ArtifactsSchema.parse({
@@ -131,12 +135,12 @@ async function mergeIntoArtifacts(
     }),
     ArtifactsSchema,
   );
-  return true;
+  return null;
 }
 
 interface MigrateOutcome {
   moved: number;
-  skipped: boolean;
+  skipped: SkipReason | null;
 }
 
 /** Leaves the brief and an unreadable `artifacts.yml` untouched, so a later run can retry. */
@@ -146,22 +150,21 @@ async function migrateOne(initiativeDir: string): Promise<MigrateOutcome> {
   try {
     raw = await fs.readFile(briefPath, 'utf8');
   } catch {
-    return { moved: 0, skipped: false };
+    return { moved: 0, skipped: null };
   }
   const parsed = parseFrontmatter(raw);
   const data = parsed.data;
-  if (!('worktrees' in data)) return { moved: 0, skipped: false };
+  if (!('worktrees' in data)) return { moved: 0, skipped: null };
 
   const incoming = toEntries(data.worktrees);
   delete data.worktrees;
 
-  if (incoming.length > 0 && !(await mergeIntoArtifacts(initiativeDir, incoming))) {
-    return { moved: 0, skipped: true };
-  }
+  const skipped = incoming.length > 0 ? await mergeIntoArtifacts(initiativeDir, incoming) : null;
+  if (skipped !== null) return { moved: 0, skipped };
 
   // Rewrite the brief frontmatter only; `stringifyFrontmatter` preserves the body.
   await atomicWrite(briefPath, stringifyFrontmatter(parsed.content, data));
-  return { moved: incoming.length, skipped: false };
+  return { moved: incoming.length, skipped: null };
 }
 
 async function initiativeDirs(activeRoot: string): Promise<string[]> {
@@ -193,8 +196,8 @@ export const v3ToV4Worktrees: Migration = {
     const moved: string[] = [];
     for (const dir of await initiativeDirs(activeRoot)) {
       const { moved: count, skipped } = await migrateOne(dir);
-      if (skipped) {
-        moved.push(`${path.basename(dir)}\tSKIPPED: artifacts.yml is unparseable, left untouched`);
+      if (skipped !== null) {
+        moved.push(`${path.basename(dir)}\tSKIPPED: artifacts.yml is ${skipped}, left untouched`);
       } else if (count > 0) {
         moved.push(`${path.basename(dir)}\t${count} worktree(s)`);
       }
