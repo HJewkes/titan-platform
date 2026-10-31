@@ -54,7 +54,7 @@ const DEFAULT_LENGTH_TOLERANCE = 0.35;
 // A short beat that gains a "three things" clause grows by about six words, which 35 % of 15 words does not allow.
 const DEFAULT_LENGTH_SLACK = 6;
 
-const ONE_BEFORE = /\b(?:the|each|no|any|every|which|this|that|another|first|last)\s+$/i;
+const ONE_BEFORE = /\b(?:the|each|no|any|every|which|this|that|another|first|second|third|last|next|other)\s+$/i;
 const ONE_AFTER = /^\s+(?:of|that|who|which|matters|among)\b/i;
 
 /** "The one that", "one of" and "no one" count nothing, so a rewrite that says them invents no number. */
@@ -321,15 +321,20 @@ function saidForm(spoken: string, term: string): string | undefined {
   return hasWord(line, norm(term)) ? term : termSpellings(term).find((form) => hasWord(line, norm(form), NUMBER_ENDS));
 }
 
-/** Only a term the original said can stop being spoken: a declared fact id is not a word any line holds. */
-const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
-  before.new_terms
-    .filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)
-    .map((term) => ({ rule: "new-term", detail: `"${term}" is introduced here and no longer spoken` }));
+const namedIn = ({ new_terms, fact_ids }: Pick<ScriptBeat, "new_terms" | "fact_ids">): string[] => [...new Set([...new_terms, ...fact_ids])];
 
-/** The beat's new terms as its line says them, for the prompt: a model told to keep a fact id pastes it into the line. */
-export const termsToKeep = ({ spoken, new_terms }: Pick<ScriptBeat, "spoken" | "new_terms">): string[] =>
-  [...new Set(new_terms.flatMap((term) => saidForm(spoken, term) ?? []))];
+/**
+ * Only what the original said can stop being spoken, since a declared fact id is not a word any line holds. An item
+ * the beat cites stays named at least once: "TP forty-one oh three" cut to "TP forty-one" is a different ticket.
+ */
+const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
+  namedIn(before)
+    .filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)
+    .map((term) => ({ rule: "new-term", detail: `"${term}" is named in this beat and no longer spoken` }));
+
+/** What the beat names, as its line says it, for the prompt: a model told to keep a fact id pastes it into the line. */
+export const termsToKeep = (beat: Pick<ScriptBeat, "spoken" | "new_terms" | "fact_ids">): string[] =>
+  [...new Set(namedIn(beat).flatMap((term) => saidForm(beat.spoken, term) ?? []))];
 
 const factKinds = ({ new_terms, fact_ids }: ScriptBeat): string[] =>
   [...new Set([...new_terms, ...fact_ids].flatMap((id) => /^[a-z]+(?=\/)/i.exec(id)?.[0].toLowerCase() ?? []))];

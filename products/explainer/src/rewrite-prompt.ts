@@ -10,7 +10,7 @@ export interface RewritePromptDeps {
   guidesDir?: string;
 }
 
-type PromptBeat = Pick<ScriptBeat, "id" | "spoken" | "new_terms" | "visual">;
+type PromptBeat = Pick<ScriptBeat, "id" | "spoken" | "new_terms" | "fact_ids" | "visual">;
 
 const DEFAULT_GUIDES_DIR = fileURLToPath(new URL("../doctrine/guides/", import.meta.url));
 
@@ -44,7 +44,7 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",
     "cue-order": "the cue words came in a different order; keep the original order",
-    "new-term": "a term this beat introduces was no longer spoken; keep saying it",
+    "new-term": "a term or id this beat names was no longer spoken; keep saying it in full",
     "fact-id": "a citation id was pasted into the line; say the name the way the original says it",
     "sentence-cap": "a sentence was too long to say in one breath; split it",
     missing: "the reply left this beat out; return an entry for it",

@@ -58,6 +58,47 @@ describe("a term declared as a fact id", () => {
   });
 });
 
+describe("an item the beat cites but does not introduce", () => {
+  function citing(spoken: string): ScriptBeat {
+    const beat = spelledBeat(spoken, []);
+    return { ...beat, fact_ids: [TICKET, ...beat.fact_ids] };
+  }
+  const before = citing("Therefore we would rule on TP-7001 first, before the dock server waits again.");
+
+  it("rejects a rewrite that cuts the id short into a different ticket", () => {
+    const after = { spoken: "Therefore we would rule on TP seventy first, before the dock server waits again.", labelsAdded: [] };
+
+    const rejections = guardBeat(before, after);
+
+    expect(rejections.map((rejection) => rejection.rule)).toContain("new-term");
+  });
+
+  it("rejects a rewrite that stops naming the ticket", () => {
+    const rules = rulesFor(before, "Therefore we would rule on the dock ticket first, before the dock server waits again.");
+
+    expect(rules).toContain("new-term");
+  });
+
+  it("accepts a rewrite that cuts a repeat and names the ticket once", () => {
+    const twice = citing("We rule on TP-7001 first, and TP-7001 stops the dock server waiting.");
+
+    const rules = rulesFor(twice, "We rule on TP-7001 first, and that stops the dock server waiting.");
+
+    expect(rules).toEqual([]);
+  });
+});
+
+describe("a count word that is a pronoun", () => {
+  it("accepts 'the second one' and 'the other one' as naming no number", () => {
+    const before = spelledBeat("The dock server sends the scan, and the ledger keeps the row for the morning courier.", []);
+    const rewritten = "The dock server sends the scan, then the second one keeps the row, and the other one waits for the morning courier.";
+
+    const rules = rulesFor(before, rewritten);
+
+    expect(rules).not.toContain("number-invented");
+  });
+});
+
 describe("a term written with its digits", () => {
   it("still counts as spoken once the original and the rewrite are spelled", () => {
     const before = spelledBeat("So the landing that counts is PR 6420, and it switched the dock order on for every run.", ["PR 6420"]);
