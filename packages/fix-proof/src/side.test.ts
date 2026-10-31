@@ -119,6 +119,60 @@ describe("execSide", { timeout: 120_000 }, () => {
     });
   });
 
+  it("three head runs build once and write three reports", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = (file, args, options) => {
+      calls.push([file, ...args]);
+      return spawnExec(file, args, options);
+    };
+    const repo = makeRepo({ build: "echo building" });
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, headRuns: 3 });
+
+    expect(fs.readdirSync(out).sort()).toEqual(["head-2.report", "head-3.report", "head.report"]);
+    expect(calls.filter((call) => call.some((arg) => arg.startsWith("echo building")))).toHaveLength(1);
+    expect(calls.filter((call) => call.includes("--outputFile"))).toHaveLength(3);
+    readReports(out, ["head", "head-2", "head-3"]).forEach((report) => expect(report.ok).toBe(true));
+  });
+
+  it("no head runs set writes only head.report, byte-identical", async () => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const [unset, one] = [outDir(), outDir()];
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out: unset });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out: one, headRuns: 1 });
+
+    expect(fs.readdirSync(unset)).toEqual(["head.report"]);
+    expect(fs.readFileSync(path.join(one, "head.report"))).toEqual(fs.readFileSync(path.join(unset, "head.report")));
+  });
+
+  it.each([0, 6, 1.5])("headRuns %s writes error markers", async (headRuns) => {
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, headRuns });
+
+    const [report] = readReports(out, ["head"]);
+    expect(report).toMatchObject({ ok: false, reported: true });
+    expect(report?.ok === false && report.error).toContain("headRuns must be an integer from 1 to 5");
+  });
+
+  it("a failed head build writes an error marker to every run's report", async () => {
+    const repo = makeRepo({ build: "exit 3" });
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, headRuns: 3 });
+
+    readReports(out, ["head", "head-2", "head-3"]).forEach((report) =>
+      expect(report).toEqual({ ok: false, error: "head: build failed (exit 3)", reported: true }),
+    );
+  });
+
   it("execSide resolves when its out dir cannot be created", async () => {
     const repo = makeRepo();
     const head = repo.commit({ "src/math.ts": FIXED });
