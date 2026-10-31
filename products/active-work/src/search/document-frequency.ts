@@ -1,6 +1,7 @@
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { documentFrequencyCap, type DocumentFrequency } from './derive-query.js';
 import { orExpression } from './terms.js';
+import { hasLegacyWorkspaceSpans } from './workspace-spans.js';
 
 /**
  * Document frequency off the span index, cheap enough to ask for every term.
@@ -135,10 +136,25 @@ function corpusSpans(graph: WorkspaceGraph): number {
 
 interface TermStatistics {
   df: DocumentFrequency;
-  /** The most spans a query term may match on this graph. */
-  maxDf: number;
+  /** The most spans a term may match in a query over these classes. */
+  maxDfFor: (classes: readonly string[]) => number;
+}
+
+/**
+ * The cap pays for ranking the shared table, whose bm25 runs over every match
+ * before a class filter. A cut-over workspace class ranks only its own small
+ * table, so it keeps its common terms, which measured +0.018 R@10 (TP-4680).
+ */
+function ranksSharedTable(graph: WorkspaceGraph, classes: readonly string[]): boolean {
+  return classes.includes('transcripts') || hasLegacyWorkspaceSpans(graph);
 }
 
 export function graphTermStatistics(graph: WorkspaceGraph): TermStatistics {
-  return { df: graphDocumentFrequency(graph), maxDf: documentFrequencyCap(corpusSpans(graph)) };
+  return {
+    df: graphDocumentFrequency(graph),
+    maxDfFor: (classes) =>
+      ranksSharedTable(graph, classes)
+        ? documentFrequencyCap(corpusSpans(graph))
+        : Number.POSITIVE_INFINITY,
+  };
 }

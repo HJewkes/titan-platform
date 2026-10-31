@@ -133,7 +133,7 @@ describe('class-scoped search on a transcript-heavy graph', () => {
       expect(uncapped / ms, cls).toBeGreaterThan(MIN_SPEEDUP);
     }
     const notes = await relatedContext({ text: LOOP_TEXT, classes: ['notes'], dbPath, activeRoot: root });
-    expect(notes.query.terms).not.toContain('agent');
+    expect(notes.query.terms).toContain('agent');
     expect(notes.hits.map((hit) => hit.ref)).toContain('note:alpha/2026-09-02-alpha-lesson.md');
   }, 60_000);
 
