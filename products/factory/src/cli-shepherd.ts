@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
@@ -91,6 +92,16 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
+  registerBriefVerb(verb, verbs);
+}
+
+/** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
+function registerBriefVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("brief <ref>", "print the owner PR section for owner/repo#N as markdown, or as the review harness's round-section JSON; read-only")
+    .option("--format <format>", "md or round-section", "md")
+    .option("--images <dir>", "a directory holding pr-<n>/manifest.json, for the before and after pairs of a UI PR")
+    .action((ref: string, opts: ShepherdOpts & { format: string; images?: string }) =>
+      runShepherd(verbs, "shepherd.brief", () => ({ ...parsePrRef(ref), format: opts.format, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
 }
 
 /** TP-4320's calibration read: the delta the evidence step would measure, before a repo's threshold goes `on`. */

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "visuals captured at another head are paired anyway",
+      "file": "products/factory/src/shepherd/visuals-manifest.ts",
+      "find": "if (manifest.headSha !== headSha) return",
+      "replace": "if (false as boolean) return",
+      "kills": ["refuses visuals captured at another head"]
+    },
+    {
+      "name": "a shot missing its before is dropped and the rest are shown",
+      "file": "products/factory/src/shepherd/visuals-manifest.ts",
+      "find": "if (pairs.length < manifest.shots.length) return",
+      "replace": "if (false as boolean) return",
+      "kills": ["never offers an after-only set"]
+    }
+  ]
+}

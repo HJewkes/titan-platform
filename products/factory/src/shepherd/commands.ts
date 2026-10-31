@@ -15,6 +15,7 @@ import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
+import { briefCommand } from "./brief-command.js";
 import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
@@ -376,6 +377,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,
+  "shepherd.brief": briefCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;
