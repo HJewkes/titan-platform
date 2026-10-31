@@ -1159,6 +1159,9 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../../packages/memory
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
