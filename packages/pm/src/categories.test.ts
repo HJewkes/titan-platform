@@ -123,9 +123,13 @@ describe("checkCategories", () => {
       expect(checkCategories(task({ status }), null)).toEqual([]);
     });
 
+    it("knows draft as a status with no registry", () => {
+      expect(checkCategories(task({ status: "draft" }), null)).toEqual([]);
+    });
+
     it("rejects a status outside the built-in set", () => {
       expect(checkCategories(task({ status: "icebox" }), null)).toEqual([
-        { kind: "unknown-category", id: "AA-1", axis: "status", value: "icebox", allowed: ["open", "done"] },
+        { kind: "unknown-category", id: "AA-1", axis: "status", value: "icebox", allowed: ["open", "done", "draft"] },
       ]);
     });
 

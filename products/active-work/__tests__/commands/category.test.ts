@@ -155,7 +155,7 @@ describe('task edit with categories', () => {
   it('keeps the built-in statuses in a root with no categories.yml', async () => {
     await withTempActiveRoot(async (root) => {
       await expect(edit(root, { field: 'status', value: 'wont-do' })).rejects.toThrow(
-        'Unknown status: wont-do (allowed: open, done)',
+        'Unknown status: wont-do (allowed: open, done, draft)',
       );
     });
   });

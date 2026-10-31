@@ -47,6 +47,7 @@ const ArgsSchema = z.object({
   cos: z.string().min(1).optional(),
   area: z.string().min(1).optional(),
   due: DueArg,
+  draft: z.boolean().optional(),
   quiet: QuietArg,
 });
 
@@ -84,7 +85,7 @@ function newTask(args: Args, id: string, priority: number): Task {
     severity: args.severity,
     estimate: args.estimate,
     done_when: args.done_when,
-    status: 'open',
+    status: args.draft ? 'draft' : 'open',
     kind: args.kind,
     cos: args.cos,
     area: args.area,
@@ -127,12 +128,16 @@ export default defineCommand<Args, TaskOrLine>({
         long: '--deliverable',
         description: 'Comma-separated deliverable ids this task counts toward',
       },
+      draft: {
+        long: '--draft',
+        description: 'File as a draft without a done_when; not dispatched until promoted to open',
+      },
       ...CATEGORY_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
   async run(args, ctx) {
-    if (ctx.caller === 'agent') {
+    if (ctx.caller === 'agent' && !args.draft) {
       const problem = doneWhenProblem(args.title, args.done_when);
       if (problem !== undefined) throw new ValidationError(problem);
     }
@@ -148,7 +153,7 @@ export default defineCommand<Args, TaskOrLine>({
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
       const task = newTask(args, id, args.priority ?? nextPriority(existing));
-      await assertCategories(activeRoot, task, changedCategoryFields(args));
+      await assertCategories(activeRoot, task, changedCategoryFields({ ...args, status: task.status }));
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);
