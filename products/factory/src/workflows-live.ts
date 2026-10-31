@@ -1,3 +1,4 @@
+import { DEFAULT_SONNET_FOR } from "@titan-design/review-panel";
 import { liveField, type ConfigRef } from "./config-ref.js";
 import type { ReviewConfig } from "./config.js";
 import { accountsFrom } from "./shepherd/account-fallback.js";
@@ -49,7 +50,20 @@ export function successorAccounts(fixerConfigDir: string | undefined, accounts: 
  */
 type HoldAdversary = Pick<ReviewWiring, "holdMember" | "adversaryDispatch" | "twoMergeRelease">;
 
-export function holdAdversary(review: ReviewConfig, config: ConfigRef, under: DispatchUnder): HoldAdversary {
+/**
+ * A configured adversary the hold could only dispatch to a refusal fails the config load: its profile, and the profile no
+ * headroom lowers it to, must both be installed headless (tp#1986). An absent profile is the installed default's.
+ */
+function assertAdversaryProfile(review: Pick<ReviewConfig, "adversaryProfile">, installed: (profile: string) => boolean): void {
+  const profile = review.adversaryProfile;
+  if (profile === undefined) return;
+  if (!installed(profile)) throw new Error(`invalid config: shepherd.review.adversaryProfile '${profile}' is not installed headless`);
+  const lowered = Object.hasOwn(DEFAULT_SONNET_FOR, profile) ? DEFAULT_SONNET_FOR[profile] : undefined;
+  if (lowered !== undefined && !installed(lowered)) throw new Error(`invalid config: shepherd.review.adversaryProfile '${profile}' would be lowered to '${lowered}', which is not installed headless`);
+}
+
+export function holdAdversary(review: ReviewConfig, config: ConfigRef, under: DispatchUnder, installed: (profile: string) => boolean): HoldAdversary {
+  assertAdversaryProfile(review, installed);
   const twoMerge = liveField(config, "shepherd.gateReset.twoMergeRelease");
   const profile = liveField(config, "shepherd.review.adversaryProfile");
   const mode = () => {
