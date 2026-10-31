@@ -42,7 +42,7 @@ describe("parseTerms", () => {
     const secret = "zq-planted-" + "secret(";
     const error = captureError(() => parseTerms(`# c\nzq-ok\nre:${secret}`));
     expect(error).toBeInstanceOf(TermFileError);
-    expect((error as TermFileError).line).toBe(3);
+    expect(error).toMatchObject({ line: 3 });
     expect(String(error)).toContain("line 3");
     expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain("zq-planted-");
   });

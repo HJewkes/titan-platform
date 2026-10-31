@@ -33,11 +33,15 @@ export function termFilePath(env: Env): string | undefined {
   return configHome ? path.join(configHome, "titan-egress", "private-terms") : undefined;
 }
 
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+}
+
 function readIfPresent(file: string, what: string): string | undefined {
   try {
     return fs.readFileSync(file, "utf-8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (errorCode(error) === "ENOENT") return undefined;
     throw new ConfigError(`${what} could not be read`);
   }
 }
