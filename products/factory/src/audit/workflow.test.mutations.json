@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the report records a fixed mode instead of the audit input's mode",
+      "file": "products/factory/src/audit/report.ts",
+      "find": "    mode: loaded.input.mode,",
+      "replace": "    mode: \"reaudit\",",
+      "kills": [
+        "measurement-audit on Shepherd's recorded step outputs writes a report that validates as titan.measurement-audit/v1"
+      ]
+    }
+  ]
+}

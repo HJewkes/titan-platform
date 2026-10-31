@@ -1,0 +1,179 @@
+{
+ "schema": "script/v1",
+ "beats": [
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Only 7 of them finished, and the rest sat idle."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "That number alone matters."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "The queue held 412 jobs at noon."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "That number alone matters."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Only 7 of them finished, and the rest sat idle."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "Only 7 of them finished, and the rest sat idle."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "The queue held 412 jobs at noon."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "That number alone matters."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "That number alone matters."
+  },
+  {
+   "spoken": "That number alone matters."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "The queue held 412 jobs at noon."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Neither shard saw the failure."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "The queue held 412 jobs at noon."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Latency nearly doubled, from 88 to 171 milliseconds."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "Only 7 of them finished, and the rest sat idle."
+  },
+  {
+   "spoken": "Only 7 of them finished, and the rest sat idle."
+  },
+  {
+   "spoken": "The worker stays busy on its own."
+  },
+  {
+   "spoken": "No dashboard showed it."
+  },
+  {
+   "spoken": "The queue held 412 jobs at noon."
+  },
+  {
+   "spoken": "No retry budget, no owner, no alert."
+  }
+ ]
+}

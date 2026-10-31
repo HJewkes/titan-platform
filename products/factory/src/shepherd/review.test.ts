@@ -1861,7 +1861,7 @@ describe("reviewPhase", () => {
     named.cause = causeOnReplay;
     const report = await crash.takeOver(routesUnder(panelOnReplay)).resume();
     crash.dispose();
-    const dispatched = (Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data as { result: ReviewDispatchResult }).result;
+    const dispatched = readPath(Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data, "result");
     return { verdicts, dispatch, dispatched, resumed: report.resumed[0]! };
   }
 

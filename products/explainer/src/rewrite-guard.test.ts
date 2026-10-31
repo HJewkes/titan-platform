@@ -132,6 +132,17 @@ describe("guardBeat", () => {
       expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
     });
 
+    it("rejects a \"no X\" the original lacked", () => {
+      const after = { spoken: "The desk server checks each scan. The ledger keeps the rows. No clerk retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("accepts a \"no X\" the original already said", () => {
+      const before = "The desk server checks each scan. The ledger keeps the rows. No clerk retypes them.";
+      const after = { spoken: "The desk server checks every scan. The ledger keeps the rows. No clerk retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, before), after)).not.toContain("device-added");
+    });
+
     it("accepts a rewrite that keeps an existing colon", () => {
       const after = { spoken: "The desk server checks every scan. The ledger keeps one thing: the rows. Nobody retypes them.", labelsAdded: [] };
       expect(rules(beatWith({}, COLONED), after)).not.toContain("device-added");
@@ -229,6 +240,30 @@ describe("guardBeat", () => {
     const before = beatWith({}, "The desk ledger can hold 5000 rows before it rolls over.");
     const after = { spoken: "The ledger keeps its rows until it rolls over.", labelsAdded: [] };
     expect(rules(before, after)).toEqual(["terms"]);
+  });
+
+  describe("with a number range in the line", () => {
+    const RANGE = "The desk retries thirty to thirty-five percent of scans before the ledger answers them.";
+
+    it("rejects a rewrite that keeps one end of the range and drops the other", () => {
+      const after = { spoken: "The desk retries up to thirty-five percent of scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, RANGE), after)).toContain("range-split");
+    });
+
+    it("rejects a digit range that loses its lower bound", () => {
+      const after = { spoken: "The desk retries 35% of scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, "The desk retries 30–35% of scans before the ledger answers them."), after)).toContain("range-split");
+    });
+
+    it("accepts a rewrite that keeps the whole range, or cuts it whole", () => {
+      const kept = { spoken: "Before the ledger answers, the desk retries thirty to thirty-five percent of scans.", labelsAdded: [] };
+      const cut = { spoken: "The desk retries scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, RANGE), kept)).not.toContain("range-split");
+      expect(rules(beatWith({}, RANGE), cut)).not.toContain("range-split");
+    });
   });
 
   describe("with a spelled number cut from the line", () => {
