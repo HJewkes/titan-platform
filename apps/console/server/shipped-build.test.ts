@@ -55,13 +55,13 @@ beforeEach(async () => {
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
 function depsWith(rows: WatchRow[], run: ShippedBuildDeps["run"], github = fakeGithub().github): ShippedBuildDeps {
-  return { shepherd: { list: async () => rows, timeline: async () => ({ row: undefined as never, entries: [] }) }, github, run, dir, now: NOW };
+  return { shepherd: { list: async () => rows, timeline: async () => Promise.reject(new Error("no timeline")) }, github, run, dir, now: NOW };
 }
 
 const build = (deps: ShippedBuildDeps, extra: { force?: boolean; dryRun?: boolean; group?: string } = {}) =>
   buildShipped(deps, { date: DATE, dryRun: false, force: false, ...extra });
 async function readWritten(): Promise<ShippedDigest> {
-  const { digest } = await readShipped({ list: async () => [], timeline: async () => ({ row: undefined as never, entries: [] }) }, { dir }, NOW, DATE);
+  const { digest } = await readShipped({ list: async () => [], timeline: async () => Promise.reject(new Error("no timeline")) }, { dir }, NOW, DATE);
   if (digest === null) throw new Error("no digest written");
   return digest;
 }
