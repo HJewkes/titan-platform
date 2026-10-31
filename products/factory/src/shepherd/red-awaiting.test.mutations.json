@@ -23,7 +23,7 @@
     {
       "name": "a tip whose required run already failed is still awaited",
       "file": "products/factory/src/shepherd/stale-red.ts",
-      "find": "if (!findings.some((finding) => finding.kind === \"pending\") || findings.some((finding) => finding.kind === \"failed\")) return undefined;",
+      "find": "if (!findings.some((finding) => finding.kind === \"pending\" || finding.kind === \"missing\") || findings.some((finding) => finding.kind === \"failed\")) return undefined;",
       "replace": "if (findings.length === 0) return undefined;",
       "kills": [
         "readMainCi on a red whose fix merged after it with its run still in progress lets the red stand on the next poll once the awaited run goes red"
