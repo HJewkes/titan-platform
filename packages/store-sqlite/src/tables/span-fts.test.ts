@@ -157,3 +157,91 @@ describe("SpanFtsTables scope", () => {
     expect(statements()).toBe(2);
   });
 });
+
+describe("SpanFtsTables contentlessDelete", () => {
+  function setupDeleting(): { db: Db; fts: SpanFtsTables } {
+    const db = openDatabase(":memory:");
+    db.exec(spanFtsTablesDdl({ contentlessDelete: true }));
+    return { db, fts: new SpanFtsTables(db, { contentlessDelete: true }) };
+  }
+  const inSource = (owner: string, sourceId: number, offset: number) => ({ ...span(owner, offset), sourceId });
+
+  it("creates a contentless-delete FTS table", () => {
+    const { db } = setupDeleting();
+    const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'search_fts'").pluck().get();
+    expect(sql).toContain("contentless_delete=1");
+  });
+
+  it("removes a purged owner's tokens from the index, leaving no orphans", () => {
+    const { db, fts } = setupDeleting();
+    fts.index(span("session:a", 0), "alpha");
+    fts.index(span("session:b", 1), "beta");
+
+    expect(fts.purgeOwner("session:a")).toBe(1);
+
+    expect(fts.orphanRatio()).toBe(0);
+    expect(db.prepare("SELECT count(*) FROM search_fts").pluck().get()).toBe(1);
+  });
+
+  it("purgeSource removes only that source's spans and tokens", () => {
+    const { db, fts } = setupDeleting();
+    fts.index(inSource("session:a", 1, 0), "alpha");
+    fts.index(inSource("session:b", 1, 5), "alpha");
+    fts.index(inSource("session:c", 2, 0), "alpha");
+
+    expect(fts.purgeSource(1)).toBe(2);
+
+    expect(fts.search("alpha").map((h) => h.ownerRef)).toEqual(["session:c"]);
+    expect(fts.orphanRatio()).toBe(0);
+    expect(db.prepare("SELECT count(*) FROM search_fts").pluck().get()).toBe(1);
+  });
+
+  it("returns no stale tokens when a purged locator is re-indexed", () => {
+    const { fts } = setupDeleting();
+    fts.index(inSource("session:a", 1, 0), "alpha");
+    fts.purgeSource(1);
+
+    fts.index(inSource("session:a", 1, 0), "beta");
+
+    expect(fts.search("alpha")).toEqual([]);
+    expect(fts.search("beta").map((h) => h.ownerRef)).toEqual(["session:a"]);
+  });
+
+  it("rebuilds after clearIndex and a re-stream", () => {
+    const { fts } = setupDeleting();
+    const id = fts.index(span("session:a", 0), "alpha");
+    fts.clearIndex();
+    expect(fts.search("alpha")).toEqual([]);
+
+    expect(fts.index(span("session:a", 0), "alpha")).toBe(id);
+    expect(fts.search("alpha").map((h) => h.spanId)).toEqual([id]);
+  });
+
+  it("keeps the default table's DDL and still strands FTS rows on purgeSource", () => {
+    const { db, fts } = setup();
+    expect(spanFtsTablesDdl()).not.toContain("contentless_delete");
+    fts.index(inSource("session:a", 1, 0), "alpha");
+    fts.index(inSource("session:b", 2, 0), "alpha");
+
+    expect(fts.purgeSource(1)).toBe(1);
+
+    expect(fts.orphanRatio()).toBe(0.5);
+    expect(db.prepare("SELECT count(*) FROM search_fts").pluck().get()).toBe(2);
+  });
+
+  it("fails loudly when the SQLite build predates contentless_delete", () => {
+    const db = openDatabase(":memory:");
+    const old = new Proxy(db, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (sql: string) =>
+            sql === "SELECT sqlite_version()" ? target.prepare("SELECT '3.42.0'") : target.prepare(sql);
+        }
+        const value: unknown = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    expect(() => new SpanFtsTables(old, { contentlessDelete: true })).toThrow(/contentlessDelete needs SQLite 3\.43/);
+  });
+});
