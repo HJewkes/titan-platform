@@ -2,6 +2,7 @@ import type { L0Result } from "./eval-l0.js";
 import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, phraseSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
+import { collapsible, numberUnits } from "./rewrite-spans.js";
 import type { ScriptBeat } from "./script-schema.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
@@ -24,9 +25,9 @@ export type RefusalRule = BeatRejectionRule | "missing";
 export interface BeatDirective {
   beat: string;
   chapter: string;
-  /** The number mentions a crowded beat speaks, in order. */
+  /** The number mentions a crowded beat speaks, in order; a range such as "thirty to thirty-five" is one mention. */
   numbers?: string[];
-  /** The lists of three the beat speaks, in order. */
+  /** The lists of three the beat speaks, in order, except a list holding more than one cue word, which cannot collapse. */
   triads?: string[];
   /** The over-represented phrases the beat speaks, in order; only on a beat the plan directs for another reason. */
   phrases?: string[];
@@ -58,7 +59,7 @@ export interface PlanOptions {
   refused?: ReadonlyMap<string, readonly RefusalRule[]>;
 }
 
-type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken">;
+type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual">;
 
 const SHORT_WORDS = 5;
 // The model overshoots a planned length, so a long sentence is planned this far under the cap.
@@ -162,10 +163,10 @@ const numbersCrowded = (rows: readonly L0Result[]): boolean => {
 
 function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDirective, "numbers" | "triads"> {
   const text = beatText(beat);
-  const numbers = numberSpans(text).map((span) => span.text);
-  const triads = triadSpans(text).map((span) => span.text);
+  const crowded = numberSpans(text).length > MAX_SPOKEN_NUMBERS_PER_BEAT;
+  const triads = triadSpans(text).map((span) => span.text).filter((triad) => collapsible(triad, beat.visual));
   return {
-    ...(numbersCrowded(rows) && numbers.length > MAX_SPOKEN_NUMBERS_PER_BEAT ? { numbers } : {}),
+    ...(numbersCrowded(rows) && crowded ? { numbers: numberUnits(text) } : {}),
     ...(failing(rows, "register:triads") && triads.length > 0 ? { triads } : {}),
   };
 }

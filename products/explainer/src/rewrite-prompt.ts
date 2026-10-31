@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
+import { cuedWordsIn } from "./rewrite-spans.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
 
 export interface RewritePromptDeps {
@@ -34,7 +35,8 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     length: "the line grew or shrank too far; keep it close to the original's length",
     "number-lost": "a number the screen shows left the line; keep saying it, and put no number in a label",
     "number-invented": "a count appeared that the original never says; add no number of your own",
-    "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
+    "range-split": "a range lost one of its ends; keep both ends or cut the whole range",
+    "number-vague":"a vague word stood in for a number; keep the number or cut the clause",
     "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
     "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
@@ -54,7 +56,14 @@ export const refusalNote = (rule: string): string => REFUSAL_NOTES.get(rule) ?? 
 const refusalLines = (refused: readonly string[]): string[] =>
   [...new Set(refused.map(refusalNote))].map((note) => `- Your last version was not used: ${note}.`);
 
-function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
+/** A list the plan lets collapse holds at most one cue word; the line names it so the collapse keeps that item spoken. */
+function cuedItemLines(triads: readonly string[], beat: PromptBeat): string[] {
+  const cued = [...new Set(triads.flatMap((triad) => cuedWordsIn(triad, beat.visual)))];
+  if (cued.length === 0) return [];
+  return [`- The screen cues on ${quoted(cued)}: the list item that holds each one is the item you keep in the line.`];
+}
+
+function directiveLines(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
   const { numbers, triads, phrases, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
@@ -63,7 +72,10 @@ function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round
       ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and cut the others with the clause they count; put none of them in labels_added.`]
       : []),
     ...(triads
-      ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]
+      ? [
+          `- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`,
+          ...cuedItemLines(triads, beat),
+        ]
       : []),
     ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
@@ -84,7 +96,7 @@ function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterE
     `Cue words, in order: ${cueWords(beat).join(", ") || "(none)"}`,
     `Terms to keep: ${beat.new_terms.join(", ") || "(none)"}`,
     "Directive:",
-    ...directiveLines(directive, round),
+    ...directiveLines(beat, directive, round),
   ].join("\n");
 }
 

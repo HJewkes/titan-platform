@@ -192,11 +192,24 @@ async function collectNoteFacts(activeRoot: string, graph: WorkspaceGraph): Prom
     rows.map(async (row) => ({
       ref: row.note_ref,
       initiative: row.initiative,
-      tags: (JSON.parse(row.tags ?? '[]') as string[]) ?? [],
+      tags: parseTags(row.tags),
       body: await readBody(toAbsolute(activeRoot, row.path)),
     })),
   );
   return facts;
+}
+
+const TagsSchema = z.array(z.string());
+
+/** A note whose stored tags do not parse is indexed as untagged; its edges still come from the body. */
+function parseTags(stored: string | null): string[] {
+  if (stored === null) return [];
+  try {
+    const tags = TagsSchema.safeParse(JSON.parse(stored));
+    return tags.success ? tags.data : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. */

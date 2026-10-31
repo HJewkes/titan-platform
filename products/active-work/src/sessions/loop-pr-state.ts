@@ -11,6 +11,7 @@
  */
 
 import path from 'node:path';
+import { z } from 'zod';
 import { ArtifactsSchema } from '../schemas/artifacts.js';
 import { getGhRunner, resolveOrgRepo } from '../utils/git-gh.js';
 import { readYaml } from '../utils/yaml-io.js';
@@ -22,7 +23,10 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 /** PRs asked of `gh` in one call. Cached answers are free and do not count. */
 export const MAX_PR_CHECKS_PER_CALL = 10;
 
-const URL_REF = /github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
+/** Any value of `state` is read; only the object shape is required. */
+const GhPrStateSchema = z.looseObject({ state: z.unknown() });
+
+const URL_REF =/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 const QUALIFIED_REF = /^([^/\s#]+\/[^/\s#]+)#(\d+)$/;
 const BARE_REF = /^#?(\d+)$/;
 
@@ -101,7 +105,9 @@ async function isMerged(target: PrTarget): Promise<boolean> {
   if (result.code !== 0) {
     throw new Error(result.stderr.trim().split('\n')[0] || `gh exited ${String(result.code)}`);
   }
-  return (JSON.parse(result.stdout) as { state?: string }).state === 'MERGED';
+  const view = GhPrStateSchema.safeParse(JSON.parse(result.stdout));
+  if (!view.success) throw new Error('gh pr view did not return a PR object');
+  return view.data.state === 'MERGED';
 }
 
 function groupTargets(

@@ -231,6 +231,30 @@ describe("guardBeat", () => {
     expect(rules(before, after)).toEqual(["terms"]);
   });
 
+  describe("with a number range in the line", () => {
+    const RANGE = "The desk retries thirty to thirty-five percent of scans before the ledger answers them.";
+
+    it("rejects a rewrite that keeps one end of the range and drops the other", () => {
+      const after = { spoken: "The desk retries up to thirty-five percent of scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, RANGE), after)).toContain("range-split");
+    });
+
+    it("rejects a digit range that loses its lower bound", () => {
+      const after = { spoken: "The desk retries 35% of scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, "The desk retries 30–35% of scans before the ledger answers them."), after)).toContain("range-split");
+    });
+
+    it("accepts a rewrite that keeps the whole range, or cuts it whole", () => {
+      const kept = { spoken: "Before the ledger answers, the desk retries thirty to thirty-five percent of scans.", labelsAdded: [] };
+      const cut = { spoken: "The desk retries scans before the ledger answers them.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, RANGE), kept)).not.toContain("range-split");
+      expect(rules(beatWith({}, RANGE), cut)).not.toContain("range-split");
+    });
+  });
+
   describe("with a spelled number cut from the line", () => {
     const SPELLED = "The factory had twenty-eight implementer slots this morning. It filled almost none of them.";
     const MOVED = "The factory had spare implementer slots this morning, and it filled almost none of them.";
