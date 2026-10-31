@@ -38,12 +38,12 @@
       ]
     },
     {
-      "name": "the coordinator accepts a pull request that moved off the gated head",
+      "name": "the coordinator ack accepts an approve-merge gate under any rule",
       "file": "products/factory/src/coordinator-evidence.ts",
-      "find": "pull.headSha === land.head && pull.mergeable",
-      "replace": "pull.headSha !== \"\" && pull.mergeable",
+      "find": "run.rule === \"authority/MRG-AU\" && ",
+      "replace": "",
       "kills": [
-        "coordinator resolve of an approve-merge gate on fresh evidence falls back when the PR moved off the gated head"
+        "coordinator resolve of an approve-merge gate on fresh evidence falls back on an authority gate under a rule other than MRG-AU"
       ]
     }
   ]
