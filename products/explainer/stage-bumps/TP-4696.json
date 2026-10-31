@@ -1,0 +1,1 @@
+{ "stages": ["rewrite"], "why": "The rewrite prompt and guard read a fact-id new term as the number the line says, and a respelled number is no dropped term" }

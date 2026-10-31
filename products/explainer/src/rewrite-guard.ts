@@ -8,7 +8,7 @@ import { numberRanges } from "./rewrite-spans.js";
 /** Runs before the guard: a new sentence the cap would refuse is split at a clause joint first (TP-4685). */
 export { splitOverlong } from "./rewrite-split.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
-import { numberForms } from "./spoken-numbers.js";
+import { numberForms, termSpellings } from "./spoken-numbers.js";
 
 export type BeatRejectionRule =
   | "empty"
@@ -27,6 +27,7 @@ export type BeatRejectionRule =
   | "cue-lost"
   | "cue-order"
   | "new-term"
+  | "fact-id"
   | "sentence-cap";
 
 export interface BeatRejection {
@@ -76,8 +77,8 @@ const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").t
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Whole-word containment, so "3" is not found in "30" or "13.5" and "led" is not found in "ledger". */
-const hasWord = (text: string, needle: string): boolean =>
-  new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[.,])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])(?![.,]\\d)`, "u").test(text);
+const hasWord = (text: string, needle: string, tail = ""): boolean =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[.,])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])(?![.,]\\d)${tail}`, "u").test(text);
 
 /** What `left` holds more often than `right`, with repeats. */
 function surplus(left: readonly string[], right: readonly string[]): string[] {
@@ -96,28 +97,15 @@ const formsIn = (spoken: string): string[] => numbersIn(spoken).flatMap(numberFo
 /** The number mentions that left the spoken line, in that form, with repeats. */
 const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(formsIn(before), formsIn(after.spoken));
 
-/** The number mentions of the original line, markup reduced, that left the spoken line. */
-function movedSpans(before: string, after: BeatRewrite): { text: string; spans: TextSpan[] } {
-  let moved = movedNumbers(before, after);
-  const text = spokenText([before]).text;
-  const spans = countSpans(text).filter((span) => {
-    const forms = numberForms(span.text);
-    const rest = surplus(moved, forms);
-    if (rest.length !== moved.length - forms.length) return false;
-    moved = rest;
-    return true;
-  });
-  return { text, spans };
-}
-
 /**
- * The original line without its cut number mentions and every word an appended label speaks. The terms rule reads
- * this, so "5000 rows" cut from the line does not count "thousand" as a dropped content term, and a list item moved
- * to a label does not count its words. The number rows decide whether a number may go at all.
+ * The original line without its number mentions and every word an appended label speaks. The terms rule reads this,
+ * so neither "5000 rows" cut from the line nor 2324 respelled from "two thousand three hundred twenty-four" to
+ * "twenty-three twenty-four" counts a number word as a dropped content term, and a list item moved to a label does
+ * not count its words. The number rows decide whether a number may go at all.
  */
 function withoutCarried(before: string, after: BeatRewrite): string {
-  const { text, spans } = movedSpans(before, after);
-  const line = spans.reduceRight((rest, span) => rest.slice(0, span.index) + rest.slice(span.index + span.text.length), text);
+  const text = spokenText([before]).text;
+  const line = countSpans(text).reduceRight((rest, span) => rest.slice(0, span.index) + rest.slice(span.index + span.text.length), text);
   const spokenByLabels = contentTerms(after.labelsAdded.join(" "));
   return line.replace(/[\p{L}\p{N}'’-]+/gu, (word) => {
     const terms = [...contentTerms(word)];
@@ -324,10 +312,35 @@ export function rewrittenBeat(before: ScriptBeat, after: BeatRewrite): ScriptBea
   return { ...before, spoken: after.spoken, visual: { ...before.visual, labels: [...before.visual.labels, ...after.labelsAdded] } };
 }
 
+// A spelled number ends at a word, not a hyphen: "sixty-four twenty" is not said by "sixty-four twenty-one".
+const NUMBER_ENDS = "(?!-\\p{L})";
+
+/** A term as a line says it: word for word, or, for a term naming a numbered item, that number in any spelling. */
+function saidForm(spoken: string, term: string): string | undefined {
+  const line = norm(spoken);
+  return hasWord(line, norm(term)) ? term : termSpellings(term).find((form) => hasWord(line, norm(form), NUMBER_ENDS));
+}
+
+/** Only a term the original said can stop being spoken: a declared fact id is not a word any line holds. */
 const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
   before.new_terms
-    .filter((term) => !hasWord(norm(spoken), norm(term)))
+    .filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)
     .map((term) => ({ rule: "new-term", detail: `"${term}" is introduced here and no longer spoken` }));
+
+/** The beat's new terms as its line says them, for the prompt: a model told to keep a fact id pastes it into the line. */
+export const termsToKeep = ({ spoken, new_terms }: Pick<ScriptBeat, "spoken" | "new_terms">): string[] =>
+  [...new Set(new_terms.flatMap((term) => saidForm(spoken, term) ?? []))];
+
+const factKinds = ({ new_terms, fact_ids }: ScriptBeat): string[] =>
+  [...new Set([...new_terms, ...fact_ids].flatMap((id) => /^[a-z]+(?=\/)/i.exec(id)?.[0].toLowerCase() ?? []))];
+
+const holdsFactId = (spoken: string, kind: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}])${kind}/`, "iu").test(spoken);
+
+/** A fact id is a citation, not speech: pasted in, the voice reads out its slashes and the spelling garbles its number. */
+const factIdRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
+  factKinds(before)
+    .filter((kind) => holdsFactId(spoken, kind) && !holdsFactId(before.spoken, kind))
+    .map((kind) => ({ rule: "fact-id", detail: `a "${kind}/" fact id was pasted into the line` }));
 
 function capRejections(before: string, spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {
   const ceiling = maxVettedSentenceWords ?? MAX_VETTED_SENTENCE_WORDS;
@@ -366,6 +379,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
+    ...factIdRejections(before, after.spoken),
     ...capRejections(before.spoken, after.spoken, opts),
   ];
 }

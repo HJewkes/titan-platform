@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { termsToKeep } from "./rewrite-guard.js";
 import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
 import { cuedWordsIn } from "./rewrite-spans.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
@@ -44,6 +45,7 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "cue-lost": "a cue word was no longer spoken; say every cue word",
     "cue-order": "the cue words came in a different order; keep the original order",
     "new-term": "a term this beat introduces was no longer spoken; keep saying it",
+    "fact-id": "a citation id was pasted into the line; say the name the way the original says it",
     "sentence-cap": "a sentence was too long to say in one breath; split it",
     missing: "the reply left this beat out; return an entry for it",
   } satisfies Record<RefusalRule, string>),
@@ -94,7 +96,7 @@ function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterE
     `## ${beat.id}`,
     `Original: ${beat.spoken}`,
     `Cue words, in order: ${cueWords(beat).join(", ") || "(none)"}`,
-    `Terms to keep: ${beat.new_terms.join(", ") || "(none)"}`,
+    `Terms to keep: ${termsToKeep(beat).join(", ") || "(none)"}`,
     "Directive:",
     ...directiveLines(beat, directive, round),
   ].join("\n");
