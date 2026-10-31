@@ -1,4 +1,4 @@
-import { isRecord } from "../narrow.js";
+import { isRecord } from "@titan-design/narrow";
 import type { GraphEdge } from "../types.js";
 
 /**

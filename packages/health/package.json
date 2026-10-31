@@ -39,6 +39,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/narrow": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
   },
   "peerDependencies": {

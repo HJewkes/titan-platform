@@ -45,6 +45,9 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "@titan-design/narrow": "workspace:^"
+  },
   "devDependencies": {
     "zod": "^4.4.3"
   }

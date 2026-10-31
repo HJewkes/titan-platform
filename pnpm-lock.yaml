@@ -298,6 +298,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -308,6 +311,9 @@ importers:
 
   packages/agent-dispatch:
     dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -342,6 +348,10 @@ importers:
         version: 4.5.4
 
   packages/agent-surface:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@titan-design/agent-protocol':
         specifier: workspace:*
@@ -428,6 +438,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
@@ -491,6 +504,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../agent-dispatch
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@titan-design/egress-scan':
         specifier: workspace:^
@@ -507,6 +523,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@4.5.4)
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/registry':
         specifier: workspace:*
         version: link:../registry
@@ -636,6 +655,9 @@ importers:
 
   packages/health:
     dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -662,7 +684,11 @@ importers:
 
   packages/locator: {}
 
-  packages/matrix-bus: {}
+  packages/matrix-bus:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
 
   packages/memory:
     dependencies:
@@ -684,6 +710,10 @@ importers:
         version: 4.5.4
 
   packages/messaging:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -736,6 +766,9 @@ importers:
       '@titan-design/matrix-bus':
         specifier: workspace:^
         version: link:../matrix-bus
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -886,6 +919,9 @@ importers:
 
   packages/rpc-client:
     dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/rpc-protocol':
         specifier: workspace:*
         version: link:../rpc-protocol
@@ -910,6 +946,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
@@ -953,9 +992,15 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
 
   packages/speech-g2p:
     dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       compromise:
         specifier: 14.18.0
         version: 14.18.0
@@ -965,6 +1010,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.0.0
         version: 3.8.1
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -978,6 +1026,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../app-paths
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       kokoro-js:
         specifier: ^1.2.1
         version: 1.2.1
@@ -1136,6 +1187,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../hitl
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
