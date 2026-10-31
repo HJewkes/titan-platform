@@ -357,8 +357,8 @@ describe("scoped request dedup", () => {
 
   function viewLifetimeMs(sessionId: string): number {
     const row = fixture.graph.db
-      .prepare("SELECT MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE session_id = ? AND is_sidechain = 0")
-      .get(sessionId) as { first: string; last: string };
+      .prepare<[string], { first: string; last: string }>("SELECT MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE session_id = ? AND is_sidechain = 0")
+      .get(sessionId)!;
     return Date.parse(row.last) - Date.parse(row.first);
   }
 
@@ -467,7 +467,7 @@ describe("readEpisodeInput", () => {
   });
 
   it("episode input for one session does not scan every request", () => {
-    const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
+    const plan = fixture.graph.db.prepare<[object], { detail: string }>(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" });
     const details = plan.map((row) => row.detail);
 
     expect(details.filter((detail) => /^SCAN (r|request)\b/.test(detail))).toEqual([]);

@@ -4,7 +4,7 @@ export function countAtOrBefore(sortedMs: readonly number[], targetMs: number): 
   let hi = sortedMs.length;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
-    if ((sortedMs[mid] as number) <= targetMs) lo = mid + 1;
+    if (sortedMs[mid]! <= targetMs) lo = mid + 1;
     else hi = mid;
   }
   return lo;
