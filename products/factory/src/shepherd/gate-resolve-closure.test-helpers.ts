@@ -1,5 +1,6 @@
 import { relative, sep } from "node:path";
 import ts from "typescript";
+import { filesReaching } from "./gate-resolve-reach.test-helpers.js";
 
 /**
  * A resolve sink (TP-4052): the declaration a gate answer must reach, and which argument says who answered. A call into
@@ -38,10 +39,19 @@ export const COMPILER_OPTIONS: ts.CompilerOptions = {
   noUncheckedIndexedAccess: true,
 };
 
-/** `packages/hitl` for any file under it, src or dist, so a declaration and its built `.d.ts` share one key. */
+const units = new Map<string, string | undefined>();
+
+/**
+ * `packages/hitl` for any file under it, src or dist, so a declaration and its built `.d.ts` share one key. Memoized:
+ * the scan asks for every declaration it meets, and `relative` was a second of the repo walk (TP-4452).
+ */
 function unitOf(root: string, fileName: string): string | undefined {
+  const cacheKey = `${root}\0${fileName}`;
+  if (units.has(cacheKey)) return units.get(cacheKey);
   const parts = relative(root, fileName).split(sep);
-  return parts.length > 2 && TOPS.includes(parts[0]!) ? `${parts[0]}/${parts[1]}` : undefined;
+  const unit = parts.length > 2 && TOPS.includes(parts[0]!) ? `${parts[0]}/${parts[1]}` : undefined;
+  units.set(cacheKey, unit);
+  return unit;
 }
 
 const hasName = (node: ts.Node): node is ts.Node & { readonly name?: ts.Node } => "name" in node;
@@ -88,6 +98,10 @@ export class GateResolveClosure {
   private checker!: ts.TypeChecker;
   private sinkInterfaces: { type: ts.Type; member: string; slot: number }[] = [];
   private factoryCache = new Map<ts.Symbol, boolean>();
+  /** Units an exported sink is declared in, kept across scans like `sinks`: a later unit reaches them through `.d.ts`. */
+  private readonly sinkUnits = new Set(SINK_UNITS);
+  /** This program's files that declare a sink, so a file importing an unexported forwarder's file is scanned. */
+  private sinkFiles = new Set<ts.SourceFile>();
 
   private readonly rules: ClosureRules;
 
@@ -107,9 +121,11 @@ export class GateResolveClosure {
     this.checker = program.getTypeChecker();
     this.sinkInterfaces = [];
     this.factoryCache = new Map();
-    const files = scanned.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
+    this.sinkFiles = new Set();
+    const all = scanned.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
     this.anchorSinkInterfaces();
     if (this.rules.implementers) this.addImplementers(program.getSourceFiles());
+    const files = filesReaching(program, (file) => this.holdsSink(file), all);
     if (this.rules.forwarders) this.addForwarders(files);
     return files.filter((file) => this.touches(file)).map((file) => relative(this.root, file.fileName).split(sep).join("/"));
   }
@@ -134,10 +150,17 @@ export class GateResolveClosure {
     return `${unit}#${owner ? `${nameOf(owner)}.` : ""}${name}`;
   }
 
+  private holdsSink(file: ts.SourceFile): boolean {
+    const unit = unitOf(this.root, file.fileName);
+    return this.sinkFiles.has(file) || (unit !== undefined && this.sinkUnits.has(unit));
+  }
+
   /** Records a sink under its own key, and an exported one also under the key a later unit's `.d.ts` call lands on. */
   private addSink(decl: ts.Node, slot: number): boolean {
     const own = this.keyOf(decl);
     const exported = this.isExported(ownerOf(decl) ?? decl) ? this.unitKeyOf(decl) : undefined;
+    this.sinkFiles.add(decl.getSourceFile());
+    if (exported !== undefined) this.sinkUnits.add(exported.slice(0, exported.indexOf("#")));
     return [own, exported].reduce((grew, key) => (key === undefined ? grew : this.addSlot(key, slot) || grew), false);
   }
 
