@@ -84,6 +84,18 @@ export interface LandOptions extends ApproveMergeFacts {
   evidenceBase?: (headSha: string) => string | undefined;
   /** Takes any read the decision on `base` still lacks at this head, such as a fix-proof judged on another base; called before each decision. */
   readOn?: (ctx: WorkflowContext, headSha: string, base: string) => Promise<void>;
+  /**
+   * Asked at an untrusted green head before its decision, then with the reason of a gated one; true merges the base into the
+   * head through land's own update-branch, whose conflict stops `conflict` as any update's does. The hook records its own step.
+   */
+  mergeBaseFirst?: (ctx: WorkflowContext, at: MergeBaseAsk) => Promise<boolean>;
+}
+
+export interface MergeBaseAsk {
+  headSha: string;
+  base: string;
+  /** The gated decision's reason; absent before the decision. */
+  reason?: string;
 }
 
 export type LandOutcome =
@@ -312,16 +324,29 @@ async function refreshEvidence(ctx: WorkflowContext, headSha: string, base: stri
 async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
   const base = await decisionBase(ctx, input, ci, state, options);
   if (base === undefined) return undefined;
+  if (await mergesBaseFirst(ctx, input, { headSha: ci.headSha, base }, options)) return mergeBase(ctx, input, ci, state);
   await refreshEvidence(ctx, ci.headSha, base, state, options);
   const decided = await decideMerge(ctx, input, ci, state, options);
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy", base);
+  if (await mergesBaseFirst(ctx, input, { headSha: ci.headSha, base, reason: decided.reason }, options)) return mergeBase(ctx, input, ci, state);
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) =>
     step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = gatedOnRecord(ctx) ? decided : await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, (by) => trust(state, ci.headSha, by, base));
+}
+
+/** A run that may not update the branch never merges the base on the hook's word either. */
+async function mergesBaseFirst(ctx: WorkflowContext, input: LandInput, at: MergeBaseAsk, options: LandOptions): Promise<boolean> {
+  return input.update !== false && options.mergeBaseFirst !== undefined && (await options.mergeBaseFirst(ctx, at));
+}
+
+/** TP-4691: the hook's merge of the base is an ordinary update-branch step, so every reader of that step covers it. */
+async function mergeBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
+  const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
+  return afterUpdate(ci, update, state);
 }
 
 /**
