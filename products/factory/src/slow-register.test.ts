@@ -3,6 +3,7 @@ import { z } from "zod";
 import { defineCommand } from "@titan-design/registry";
 import type { FactoryContext } from "./registry.js";
 import { logSlowRegister } from "./slow-register.js";
+import { partialFake } from "@titan-design/test-kit";
 
 function setup(takesMs: number, name = "shepherd.register") {
   let clock = 0;
@@ -23,7 +24,7 @@ describe("logSlowRegister", () => {
   it("warns with the elapsed time and repo when a register takes longer than 5 s", async () => {
     const { wrapped, warnings } = setup(6200);
 
-    await expect(wrapped.run({ repo: "o/r" }, {} as FactoryContext)).resolves.toBe("done");
+    await expect(wrapped.run({ repo: "o/r" }, partialFake<FactoryContext>())).resolves.toBe("done");
 
     expect(warnings).toEqual([{ fields: { command: "shepherd.register", repo: "o/r", elapsedMs: 6200 }, message: expect.stringMatching(/slow/) }]);
   });
@@ -31,7 +32,7 @@ describe("logSlowRegister", () => {
   it("stays quiet for a register that finishes within 5 s", async () => {
     const { wrapped, warnings } = setup(4999);
 
-    await wrapped.run({ repo: "o/r" }, {} as FactoryContext);
+    await wrapped.run({ repo: "o/r" }, partialFake<FactoryContext>());
 
     expect(warnings).toEqual([]);
   });

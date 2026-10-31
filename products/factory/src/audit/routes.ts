@@ -12,7 +12,7 @@ import * as S from "./schemas.js";
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** Every audit step only reads (publish rewrites the same file), so each is safe to repeat after a crash. */
-function auditRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
+function auditRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<unknown>): StepRoute {
   const run = async (step: RoutedStepInput) => {
     try {
       const result = await fn(JSON.parse(step.prompt) as I, step.signal);
@@ -26,7 +26,7 @@ function auditRoute<I>(match: string, now: () => number, fn: (input: I, signal: 
 
 function agentRoute(ports: AuditPorts, step: AgentStepName, schema: ZodType): StepRoute {
   const model = manifestStep(step).model!;
-  return auditRoute(auditStepId(step), ports.now, async (input: unknown, signal) => schema.parse(await ports.agent({ step, model, prompt: agentPrompt(step, input), schema, signal })) as object);
+  return auditRoute(auditStepId(step), ports.now, async (input: unknown, signal) => schema.parse(await ports.agent({ step, model, prompt: agentPrompt(step, input), schema, signal })));
 }
 
 async function load(ports: AuditPorts, raw: unknown): Promise<S.Loaded> {

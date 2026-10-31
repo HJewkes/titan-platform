@@ -5,6 +5,8 @@ import { toJSONSchema, z } from "zod";
 import { coordinatorEvidencePolicy, gatePr, landGate, mainGate, mechanicalAuthorityReason, mergeableOf, type CoordinatorEvidence } from "./coordinator-evidence.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision } from "./gate-brief.js";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { FailingCheck } from "./workflows/land-ci.js";
 
 const HEAD = fakeSha("head");
 const MERGE_SHA = fakeSha("merge");
@@ -24,23 +26,23 @@ function gate(fields: Partial<GateRecord> & Pick<GateRecord, "id" | "prompt">): 
 function mergeGate(rule = "authority/MRG-AU", reason = MECHANICAL): GateRecord {
   const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason, reviewedMerge: true });
   const prompt = `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: ${reason}`;
-  return gate({ id: "run-1/approve-merge", prompt, schema: toJSONSchema(schema) as Record<string, unknown>, ...brief });
+  return gate({ id: "run-1/approve-merge", prompt, schema: toJSONSchema(schema), ...brief });
 }
 
 const RUN = { workflow: "shepherd-pr", repo: "o/r", pr: 1, rule: "authority/MRG-AU", reason: MECHANICAL, merge: "auto", visualPaths: false, held: false, frozen: false };
 const CHECK = (id: number, name: string, conclusion = "success") => ({ id, name, conclusion, headSha: HEAD });
 
-function mergeEvidence(overrides: Partial<Extract<CoordinatorEvidence, { kind: "approve-merge" }>> = {}): CoordinatorEvidence {
+function mergeEvidence(overrides: object = {}): CoordinatorEvidence {
   return {
     ...{ kind: "approve-merge", gateId: "run-1/approve-merge", repo: "o/r", pr: 1, headSha: HEAD, run: RUN },
     ...{ verdict: { step: `sh-await-verdict:${HEAD}`, verdict: "MERGE", head: HEAD, reviewer: "rv-synthetic" } },
     ...{ checks: { base: "main", required: ["validate", "dag-check"], runs: [CHECK(11, "validate"), CHECK(12, "dag-check")] } },
     ...{ pull: { state: "open", headSha: HEAD, mergeableState: "clean", mergeable: "MERGEABLE" }, readAt: "2026-10-07T18:00:00.000Z" },
     ...overrides,
-  } as CoordinatorEvidence;
+  };
 }
 
-const admits = (record: GateRecord, payload: unknown, evidence: unknown, resolver = COORDINATOR) => coordinatorEvidencePolicy(record, resolver, payload, evidence as Record<string, unknown>);
+const admits = (record: GateRecord, payload: unknown, evidence: Record<string, unknown>, resolver = COORDINATOR) => coordinatorEvidencePolicy(record, resolver, payload, evidence);
 
 describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
   it("admits complete evidence at the gated head", () => {
@@ -63,7 +65,7 @@ describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
     ["a recorded rule other than the prompt's", { run: { ...RUN, rule: "authority/MRG-AU-RV" } }],
     ["a recorded reason other than the prompt's", { run: { ...RUN, reason: authorityGateReason(HEAD, { ...pendingCheck(HEAD), changedPaths: ["CODEOWNERS"] }) } }],
   ])("refuses %s", (_case, overrides) => {
-    expect(admits(mergeGate(), MERGE, mergeEvidence(overrides as never))).toBe(false);
+    expect(admits(mergeGate(), MERGE, mergeEvidence(overrides))).toBe(false);
   });
 
   it.each(["shepherd-merge-guard/visual-path", "shepherd-seat/synthetic", "shepherd-route/repair-budget", "shepherd-merge-guard/github-path", "shepherd-merge-guard/ci-policy-weakened", "shepherd-release/owner-gate"])("refuses a %s gate even with matching evidence", (rule) => {
@@ -111,9 +113,9 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
   });
 
   it("admits an abandon of a merged PR's red-CI gate only with the head its schema pins, never one still open", () => {
-    const failing = [{ name: "validate", url: "https://example.test/job/1" }] as never;
+    const failing = [partialFake<FailingCheck>({ name: "validate", url: "https://example.test/job/1" })];
     const { schema, brief } = ciFailedDecision({ repo: "o/r", pr: 1, headSha: HEAD, failing });
-    const ciFailed = gate({ id: "run-1/ci-failed:2", prompt: "red", schema: toJSONSchema(schema) as Record<string, unknown>, ...brief });
+    const ciFailed = gate({ id: "run-1/ci-failed:2", prompt: "red", schema: toJSONSchema(schema), ...brief });
     const gone = { kind: "pr-gone", gateId: "run-1/ci-failed:2", repo: "o/r", pr: 1, state: "merged", readAt: "x" };
     const abandon = { decision: "abandon", headSha: HEAD };
 

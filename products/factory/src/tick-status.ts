@@ -1,4 +1,5 @@
 import { errorClass } from "./shepherd/error-class.js";
+import { isRecord } from "./narrow.js";
 
 /** Where the burndown tick's status file was looked for, and its text when one exists there. */
 export interface TickStatusRead {
@@ -25,8 +26,8 @@ interface Parsed {
 function parse(text: string): Parsed | undefined {
   try {
     const raw: unknown = JSON.parse(text);
-    if (typeof raw !== "object" || raw === null) return undefined;
-    const p = raw as Record<string, unknown>;
+    if (!isRecord(raw)) return undefined;
+    const p = raw;
     const heartbeatAt = typeof p.heartbeatAt === "string" ? Date.parse(p.heartbeatAt) : Number.NaN;
     const interval = p.intervalSeconds;
     if (p.version !== 1 || Number.isNaN(heartbeatAt) || typeof interval !== "number" || !(interval > 0)) return undefined;

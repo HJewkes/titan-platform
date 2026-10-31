@@ -48,7 +48,7 @@ function harness(options: { jumpAtSleep?: number; greenAfterMs?: number } = {}):
   const route = routes.find((candidate) => candidate.match === "ci-wait")!;
   const prompt = JSON.stringify({ repo: REPO, pr: 1, contexts: ["validate"], strict: false });
   const ciWait = () =>
-    route.runner.run({ runId: "r", workflowName: "w", stepId: "ci-wait", iteration: 0, prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k" }) as never;
+    route.runner.run({ runId: "r", workflowName: "w", stepId: "ci-wait", iteration: 0, prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k" });
   return { fake, clock, polls, wakes, ciWait };
 }
 

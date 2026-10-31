@@ -9,6 +9,7 @@ import { MANAGED_PLATFORMS, runServiceVerb, type ServiceIo, type ServicePorts } 
 import { SERVICE_CHECK_HEALTH_TIMEOUT_MS } from "./service-ports.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
+import { readPath } from "./narrow.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. `stale CLI` alone is advisory: it leaves the check ok. */
 type Cause = "unreadable" | "not loaded" | "socket down" | "restarting" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
@@ -122,7 +123,7 @@ async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean)
 }
 
 function runningSha(health: Record<string, unknown> | null): string | undefined {
-  const sha = typeof health?.build === "object" && health.build !== null ? (health.build as Record<string, unknown>).sha : undefined;
+  const sha = readPath(health, "build", "sha");
   return typeof sha === "string" ? sha : undefined;
 }
 

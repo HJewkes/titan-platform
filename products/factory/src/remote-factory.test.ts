@@ -11,6 +11,7 @@ import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import type * as Host from "./host.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
+import { portOf } from "./test-support/fakes.js";
 
 vi.mock("./host.js", async (importOriginal) => {
   const actual = await importOriginal<typeof Host>();
@@ -67,7 +68,7 @@ async function pausedRun(dbPath: string): Promise<string> {
 async function deadPort(): Promise<string> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const port = portOf(probe);
   await new Promise<void>((resolve) => probe.close(() => resolve()));
   return String(port);
 }
@@ -82,7 +83,7 @@ async function answeringServe(): Promise<{ port: string; requests: () => number 
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  return { port: String((server.address() as { port: number }).port), requests: () => requests };
+  return { port: String(portOf(server)), requests: () => requests };
 }
 
 const cleanups: (() => Promise<void>)[] = [];

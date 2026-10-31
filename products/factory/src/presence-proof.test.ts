@@ -254,9 +254,9 @@ describe("verifyProof", () => {
 
   it("refuses non-string input without throwing", () => {
     const { keys } = setup();
-    const bad = { statementB64: 5, signatureB64: null } as unknown as ProofInput;
+    const bad = { statementB64: 5, signatureB64: null };
     expect(refusal(verifyProof(bad, keys, NOW, AUD))).toBe("malformed");
-    expect(refusal(verifyProof(undefined as unknown as ProofInput, keys, NOW, AUD))).toBe("malformed");
+    expect(refusal(verifyProof(undefined, keys, NOW, AUD))).toBe("malformed");
   });
 
   it("refuses a deeply nested payload without throwing", () => {

@@ -34,11 +34,6 @@
       "count": 1
     }
   },
-  "products/factory/src/gate-brief.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/gate-brief.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -49,18 +44,8 @@
       "count": 1
     }
   },
-  "products/factory/src/presence-proof.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
   "products/factory/src/remote-factory.test.ts": {
     "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/factory/src/required-checks.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -530,11 +515,6 @@
       "count": 10
     }
   },
-  "products/factory/src/workflows/await-head.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/land-ci-wait.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -548,11 +528,6 @@
   "products/factory/src/workflows/land-settle.ts": {
     "titan/max-line-length": {
       "count": 2
-    }
-  },
-  "products/factory/src/workflows/pr-snapshot.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
     }
   }
 }

@@ -5,6 +5,8 @@ import { H1, REPO } from "../test-support/land.js";
 import { fixtureClone } from "../test-support/reflog.js";
 import { BASE_RED_RECHECK_MS, CHECKS_RECHECK_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
 import { prSnapshot } from "./pr-snapshot.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { PullRequest } from "@titan-design/github";
 
 const H2 = fakeSha("head2");
 
@@ -222,8 +224,8 @@ describe("awaitNewHead", () => {
 
   it("treats a rejection that is not an Error as transient", async () => {
     const { sleeps, sleep } = world();
-    const reads = [Promise.reject("socket hang up"), Promise.resolve({ headSha: H2, state: "open" })];
-    const port = { getPr: () => reads.shift()! } as unknown as Parameters<typeof awaitNewHead>[0];
+    const reads = [Promise.reject<PullRequest>("socket hang up"), Promise.resolve(partialFake<PullRequest>({ headSha: H2, state: "open" }))];
+    const port = partialFake<Parameters<typeof awaitNewHead>[0]>({ getPr: () => reads.shift()! });
 
     const pr = await awaitNewHead(port, target, new AbortController().signal, { sleep });
 

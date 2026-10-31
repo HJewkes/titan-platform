@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto";
 import { z } from "zod";
 import { stepOf } from "./coordinator-evidence.js";
+import { readPath } from "./narrow.js";
 
 const HEX = (length: number) => new RegExp(`^[0-9a-f]{${length}}$`);
 const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
@@ -250,7 +251,7 @@ const GATE_PRESENCE: StatementKind<GatePresenceStatement> = { schema: GatePresen
  * - Release and hardware gates are told apart here by step id alone. The `shepherd-release/` rule needs the gate
  *   record, so apply #837's `mergeTarget` to each item before firing it.
  */
-export function verifyProof(input: ProofInput, keys: KeyRing, now: number, aud: string): ProofResult {
+export function verifyProof(input: unknown, keys: KeyRing, now: number, aud: string): ProofResult {
   return verifySigned(input, keys, now, aud, GATE_RESOLVE);
 }
 
@@ -270,7 +271,7 @@ export function verifyGatePresence(input: ProofInput, keys: KeyRing, now: number
   return verifySigned(input, keys, now, aud, GATE_PRESENCE);
 }
 
-function verifySigned<S extends Envelope>(input: ProofInput, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
+function verifySigned<S extends Envelope>(input: unknown, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
   try {
     return verifyChecked(input, keys, now, aud, kind);
   } catch {
@@ -278,11 +279,13 @@ function verifySigned<S extends Envelope>(input: ProofInput, keys: KeyRing, now:
   }
 }
 
-function verifyChecked<S extends Envelope>(input: ProofInput, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
-  if (typeof input?.statementB64 !== "string" || typeof input.signatureB64 !== "string") return { ok: false, refusal: "malformed" };
+function verifyChecked<S extends Envelope>(input: unknown, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
+  const statementB64 = readPath(input, "statementB64");
+  const signatureB64 = readPath(input, "signatureB64");
+  if (typeof statementB64 !== "string" || typeof signatureB64 !== "string") return { ok: false, refusal: "malformed" };
   if (!Number.isFinite(now) || typeof aud !== "string") return { ok: false, refusal: "malformed" };
-  const bytes = decodeBase64url(input.statementB64);
-  const signature = decodeBase64url(input.signatureB64);
+  const bytes = decodeBase64url(statementB64);
+  const signature = decodeBase64url(signatureB64);
   if (bytes === undefined || signature === undefined || bytes.length > MAX_STATEMENT_BYTES) return { ok: false, refusal: "malformed" };
   if (keys.size === 0) return { ok: false, refusal: "unknown-key" };
   const [signer] = signingKeys(keys, bytes, signature);

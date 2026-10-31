@@ -17,6 +17,8 @@ import { authorityGateReason, pendingCheck } from "./test-support/authority-reas
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { codeRoute, step } from "./workflows/land.js";
 import { tableGateRule } from "./workflows/land-approval.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { FailingCheck } from "./workflows/land-ci.js";
 
 const REPO = "o/r";
 const HEAD = fakeSha("head");
@@ -69,7 +71,7 @@ const shepherdPr = defineWorkflow({
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. The repo is frozen. Stay frozen, or unfreeze?`;
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
     }
-    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
+    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [partialFake<FailingCheck>({ name: "validate", url: "https://example.test/job/1" })] })));
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", `The review of PR #1 in ${REPO} at head ${HEAD} said FIX_FIRST. Await a new head or abandon?`, sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");

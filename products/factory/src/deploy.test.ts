@@ -18,7 +18,7 @@ const UID = 501;
 const TARGET = `gui/${UID}/${SERVICE_LABEL}`;
 const OLD_PID = 100;
 const DEPLOYER_PID = 4242;
-const [BASE, DOCS, CORE, TIP] = ["1", "2", "3", "4"].map((digit) => digit.repeat(40)) as [string, string, string, string];
+const [BASE, DOCS, CORE, TIP] = ["1".repeat(40), "2".repeat(40), "3".repeat(40), "4".repeat(40)];
 const STRAY = "f".repeat(40);
 const HISTORY = [BASE, DOCS, CORE, TIP];
 const CHANGES: Record<string, string[]> = { [DOCS]: ["README.md"], [CORE]: ["products/factory/src/serve.ts"], [TIP]: ["site/guides/factory.md"] };
@@ -240,7 +240,11 @@ function fakeMachine(init: MachineInit = {}) {
     },
     copyTree: (from, to) => [...trees].filter(([key]) => under(key, from)).forEach(([key, value]) => trees.set(to + key.slice(from.length), value)),
     removeTree: (path) => [...trees.keys()].filter((key) => under(key, path)).forEach((key) => trees.delete(key)),
-    createExclusive: (path, text) => !files.has(path) && files.set(path, text) !== undefined,
+    createExclusive: (path, text) => {
+      if (files.has(path)) return false;
+      files.set(path, text);
+      return true;
+    },
     rename: (from, to) => {
       const text = files.get(from);
       if (text === undefined) return false;
@@ -1160,7 +1164,11 @@ describe("deploy lock", () => {
       pid: DEPLOYER_PID,
       readFile: (path) => map.get(path),
       remove: (path) => void map.delete(path),
-      createExclusive: (path, text) => !map.has(path) && map.set(path, text) !== undefined,
+      createExclusive: (path, text) => {
+        if (map.has(path)) return false;
+        map.set(path, text);
+        return true;
+      },
       rename: (from, to) => {
         beforeRename?.(map);
         const text = map.get(from);

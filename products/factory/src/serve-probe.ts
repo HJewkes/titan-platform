@@ -1,3 +1,4 @@
+import { isRecord } from "./narrow.js"
 const HEALTH_PATH = "/health";
 
 /** Two attempts of `DEFAULT_SERVE_WAIT_MS / 2` each, so a busy serve gets the whole bound and one retry. */
@@ -17,7 +18,8 @@ async function attempt(port: number, timeoutMs: number): Promise<Attempt> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, { signal: controller.signal });
     if (!res.ok) return { state: "unready", status: res.status };
-    return { state: "up", health: (await res.json()) as Record<string, unknown> };
+    const health: unknown = await res.json();
+    return { state: "up", health: isRecord(health) ? health : {} };
   } catch {
     return controller.signal.aborted ? { state: "timeout" } : { state: "refused" };
   } finally {

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { errnoCode } from "./narrow.js";
 
 /** Runs the helper with `input` on stdin; rejects on a non-zero exit or when the helper cannot start. */
 export type HelperRunner = (file: string, args: readonly string[], input?: Uint8Array) => Promise<string>
@@ -38,10 +39,7 @@ export const helperSearchOrder = (): readonly string[] => [ROOT_HELPER_PATH, def
 
 const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"])
 
-const errorCode = (error: unknown): string => {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === "string" ? code : "UNKNOWN"
-}
+const errorCode = (error: unknown): string => errnoCode(error) ?? "UNKNOWN"
 
 export const defaultStat: StatPort = (path) => {
   try {
