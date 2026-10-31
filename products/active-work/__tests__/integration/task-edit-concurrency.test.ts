@@ -19,7 +19,7 @@ describe('task edit under concurrent writers', () => {
     await withEmptyActiveRoot(async (root) => {
       // Arrange
       arrange(root, ['new', 'demo', '--title', 'Demo']);
-      arrange(root, ['task', 'add', 'demo', '--title', 'Shared task']);
+      arrange(root, ['task', 'add', 'demo', '--title', 'Shared task', '--done-when', 'every appended line survives the queued writers']);
       const release = await lockfile.lock(path.join(root, 'demo', '.lock'), { realpath: false });
       const lines = Array.from({ length: WRITERS }, (_, i) => `note-${i}-end`);
 

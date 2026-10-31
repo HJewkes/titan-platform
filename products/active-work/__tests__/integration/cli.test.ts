@@ -255,6 +255,8 @@ describe('cli integration', () => {
           SLUG,
           '--title',
           'Demo',
+          '--done-when',
+          'the edit flags leave the other fields untouched',
           '--tags',
           'alpha,beta',
           '--notes',
@@ -341,14 +343,14 @@ describe('cli integration', () => {
     });
 
     it('task add --quiet prints "<id> created"', async () => {
-      const res = await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--quiet'], env());
+      const res = await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
 
       expect(res.status).toBe(0);
       expect(res.stdout).toBe('QD-1 created\n');
     });
 
     it('task edit --quiet prints "<id> edited: <what>"', async () => {
-      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--quiet'], env());
+      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
 
       const res = await runCliInProcess(['task', 'edit', SLUG, 'QD-1', '--append', 'Two', '--quiet'], env());
 
@@ -357,7 +359,7 @@ describe('cli integration', () => {
     });
 
     it('task done --quiet prints "<id> done <date>"', async () => {
-      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--quiet'], env());
+      await runCliInProcess(['task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
 
       const res = await runCliInProcess(['task', 'done', SLUG, 'QD-1', '--quiet'], env());
 
@@ -366,7 +368,7 @@ describe('cli integration', () => {
     });
 
     it('exits 64 and writes nothing for --quiet with --json', async () => {
-      const res = await runCliInProcess(['--json', 'task', 'add', SLUG, '--title', 'Demo', '--quiet'], env());
+      const res = await runCliInProcess(['--json', 'task', 'add', SLUG, '--title', 'Demo', '--done-when', 'the quiet output prints exactly the new id line', '--quiet'], env());
 
       expect(res.status).toBe(64);
       expect(res.stdout).toContain('--quiet and --json cannot be combined');
