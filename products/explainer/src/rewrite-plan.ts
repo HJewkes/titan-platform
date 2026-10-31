@@ -2,7 +2,7 @@ import type { L0Result } from "./eval-l0.js";
 import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, phraseSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
-import { collapsible, numberUnits } from "./rewrite-spans.js";
+import { collapsible, cuedWordsIn, numberUnits } from "./rewrite-spans.js";
 import type { ScriptBeat } from "./script-schema.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
@@ -181,8 +181,9 @@ function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDir
   const text = beatText(beat);
   const crowded = numberSpans(text).length > MAX_SPOKEN_NUMBERS_PER_BEAT;
   const triads = triadSpans(text).map((span) => span.text).filter((triad) => collapsible(triad, beat.visual));
+  const numbers = numberUnits(text).filter((unit) => cuedWordsIn(unit, beat.visual).length === 0);
   return {
-    ...(numbersCrowded(rows) && crowded ? { numbers: numberUnits(text) } : {}),
+    ...(numbersCrowded(rows) && crowded && numbers.length > 0 ? { numbers } : {}),
     ...(failing(rows, "register:triads") && triads.length > 0 ? { triads } : {}),
   };
 }
