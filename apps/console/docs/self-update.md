@@ -13,6 +13,7 @@ Everything lives under `~/.local/share/titan-console` (`TITAN_CONSOLE_UPDATE_ROO
 | Path | What it is |
 | --- | --- |
 | `bin/titan-console-bootstrap.mts` | A copy of `apps/console/deploy/titan-console-bootstrap.mts`, made once by the owner if they take the optional step below. It sits outside every release, so no release can break it |
+| `bin/titan-console-start-check.mts` | A copy of `apps/console/deploy/titan-console-start-check.mts`, the service's `ExecStartPre` (see [Start check](#start-check)) |
 | `checkout/` | The clone the bootstrap fetches in. It is never built into again once `current` leaves it |
 | `releases/<sha>/` | One `git worktree` of `checkout/` per build, installed and built in place |
 | `current` | Symlink to the release being served. `titan-console.service` starts `current/apps/console/dist/cli.js` |
@@ -34,7 +35,7 @@ and it imports nothing but node builtins.
 3. When `self-update.json` already names origin/main's sha as its `target`, it stops: that sha was
    judged (updated, unchanged, failed or rolled back), and a broken sha is not rebuilt every 10
    minutes. The next main commit is tried as usual.
-4. Unless `releases/<sha>/apps/console/dist/build-info.json` exists from an earlier pass:
+4. Unless `releases/<sha>/apps/console/dist/build-info.json` from an earlier pass names `<sha>`:
    `git worktree add --detach releases/<sha>`, `pnpm install --frozen-lockfile`, then
    `pnpm --filter "titan-console..." build`. A failure writes the output to
    `$TITAN_CONSOLE_STATE/self-update-build.log`, removes the release, records the failure and
@@ -58,19 +59,24 @@ The new release's updater (`self-update --apply <sha>`) then:
    stderr (at most 1000 characters), which also reach the owner-queue item. It runs as
    `self-update --smoke <release> <sha>` in a child that is stopped with SIGTERM after 2 minutes
    (SIGKILL 10 s later).
-4. Swaps `current` to the new release by renaming a fresh symlink over it.
-5. `systemctl --user restart titan-console.service`, then polls `/health` on
+4. Flushes the release to disk with `sync -f <release>` (one `syncfs`, about 0.1 s for 200 MB of
+   unwritten pages), then reads it back: `dist/cli.js` and `dist/index.html` must have bytes and
+   `dist/build-info.json` must name `<sha>`. Otherwise it records a `flush` failure, removes the
+   release and keeps the old build serving. Without the flush, the swap can reach the disk before
+   the release does, and a power loss leaves `current` on files of 0 bytes (TP-4638).
+5. Swaps `current` to the new release by renaming a fresh symlink over it.
+6. `systemctl --user restart titan-console.service`, then polls `/health` on
    `TITAN_CONSOLE_PORT` until it reports the new sha, for up to 60 s. When it does not, `current`
    goes back to the previous release, which is still on disk, and the unit is restarted once more.
-6. Only after the new sha answers does it record `updated` and prune releases older than the
+7. Only after the new sha answers does it record `updated` and prune releases older than the
    previous one.
-7. Writes the `titan-console` shim into `TITAN_CONSOLE_BIN_DIR` (default `~/.local/bin`): a `sh`
+8. Writes the `titan-console` shim into `TITAN_CONSOLE_BIN_DIR` (default `~/.local/bin`): a `sh`
    script that runs `exec node <root>/current/apps/console/dist/cli.js "$@"`, mode 755. It names
    `current/`, never a release dir, so a later rollback leaves it valid. A shim that already holds
    that text is not rewritten; a new one is written to a temp file and renamed over the old. A
    failed write is logged in the unit's journal and does not undo the update, record a failure or
    file an alarm. Nothing else writes the shim, so the first update after this change creates it.
-8. Withdraws every open update-failure item it filed earlier (asker `titan-console`, key
+9. Withdraws every open update-failure item it filed earlier (asker `titan-console`, key
    `console-update`) with reason `resolved`, since a newer sha now serves. Each lands in the
    spool's `withdrawals.jsonl` with `titan-console` as its actor. A failed withdraw is logged and does not undo the update. An
    unchanged, failed or rolled-back pass withdraws nothing.
@@ -79,7 +85,7 @@ Every failure records `self-update.json` (`outcome`, `stage`, `target`, `served`
 owner-queue item through `@titan-design/owner-queue`'s `writeDeposit` into the console's inbox
 spool (`TITAN_CONSOLE_INBOX_DIR`), the same path the factory's deploy incident uses; console-coord
 reads it there. The item is keyed `console-update-<sha>-<stage>`, so one broken sha files one item.
-Stages are `build` and `handoff` (from the bootstrap) and `smoke`, `restart` and `rollback` (from
+Stages are `build` and `handoff` (from the bootstrap) and `smoke`, `flush`, `restart` and `rollback` (from
 the updater). A rollback that does not answer `/health` either is filed as "CONSOLE MAY BE DOWN".
 A held sha files nothing more: its item was filed when it failed. Each item also carries the key
 `alarm:console-update`, so the inbox shows open failures as one item, the newest, with a repeat count.
@@ -87,6 +93,31 @@ A held sha files nothing more: its item was filed when it failed. Each item also
 `/health` carries the served build as `build: { sha, builtAt, dirty }`, read from
 `dist/build-info.json`, which `build` writes last. The footer shows the same through
 `console.build`.
+
+## Start check
+
+`20-current.conf` runs `bin/titan-console-start-check.mts` as `ExecStartPre` before every start.
+When `current`'s `dist/cli.js` is empty or missing, or its `dist/build-info.json` does not parse,
+it logs why to the service's stderr and points `current` at the newest release under `releases/`
+whose bin has bytes and whose stamp names its own directory. It leaves the broken release on disk.
+When there is none, it exits 1 with `error: no whole release under …`, so the start fails loudly
+instead of node exiting 0 on an empty file. A whole `current` starts with no output.
+
+It runs from a copy outside every release, since a release a power loss emptied holds an empty
+copy too. Install it with the drop-in:
+
+```sh
+cd ~/.local/share/titan-console/checkout
+git fetch -q origin main
+mkdir -p ~/.local/share/titan-console/bin
+git show origin/main:apps/console/deploy/titan-console-start-check.mts > ~/.local/share/titan-console/bin/titan-console-start-check.mts
+git show origin/main:apps/console/deploy/systemd/titan-console.service.d/20-current.conf > ~/.config/systemd/user/titan-console.service.d/20-current.conf
+systemctl --user daemon-reload
+systemctl --user restart titan-console.service
+journalctl --user -u titan-console.service -n 20
+```
+
+Copy the check before the drop-in: the drop-in fails every start while the file it names is missing.
 
 ## Without an owner step
 
