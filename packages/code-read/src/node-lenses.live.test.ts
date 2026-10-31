@@ -52,7 +52,7 @@ function exported(): MemorySnapshot {
   const model = loadReadModel(repo.store, snapshotId, { rules: RULES });
   const { snapshot: info, nodes, edges, findings, rules } = model;
   const metrics = repo.store.listMetrics(snapshotId);
-  return JSON.parse(JSON.stringify({ info, nodes, edges, metrics, findings, rules })) as MemorySnapshot;
+  return structuredClone({ info, nodes: [...nodes], edges: [...edges], metrics, findings: [...findings], rules: [...rules] });
 }
 
 function staticNode(args: object): NodeGet {

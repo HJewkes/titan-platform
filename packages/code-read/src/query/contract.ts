@@ -70,7 +70,11 @@ export type CommandResult<N extends CommandName> = z.output<(typeof CONTRACT)[N]
 /** Name to input args and result: the shape a typed client (`rpc-protocol`'s `CommandMap`) needs. */
 export type CodeReadCommandMap = { [N in CommandName]: { args: CommandInput<N>; result: CommandResult<N> } };
 
-export const COMMAND_NAMES = Object.keys(CONTRACT).sort() as CommandName[];
+export function isCommandName(name: string): name is CommandName {
+  return Object.hasOwn(CONTRACT, name);
+}
+
+export const COMMAND_NAMES: CommandName[] = Object.keys(CONTRACT).filter(isCommandName).sort();
 
 /** The agent-shaped commands the design puts on MCP; `hierarchy.get` is UI-shaped. A product filters with this until the registry can (P3). */
 export const AGENT_COMMANDS: readonly CommandName[] = [
