@@ -219,6 +219,7 @@ graph TD
   activeWork --> pm
   activeWork --> registry
   activeWork --> retrieval
+  activeWork --> rpcProtocol
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead
