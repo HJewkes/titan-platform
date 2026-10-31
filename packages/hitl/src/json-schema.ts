@@ -8,7 +8,42 @@ import type { JsonSchema } from "./types.js";
  * boundary check, not the type guarantee.
  */
 export function checkAgainstJsonSchema(schema: JsonSchema, value: unknown, path = "$"): string[] {
-  return collectIssues(schema, value, path);
+  const malformed = shapeIssues(schema, path);
+  return malformed.length > 0 ? malformed : collectIssues(schema, value, path);
+}
+
+const MALFORMED = "schema is malformed";
+
+/**
+ * A stored schema is untrusted data, so its shape is judged once, before any check reads it: a schema is `true` or a
+ * plain object, and a keyword this checker reads must hold the type it reads. Anything else refuses the resolve
+ * rather than reading as an open schema.
+ */
+function shapeIssues(schema: unknown, path: string): string[] {
+  if (schema === true) return [];
+  if (!isObject(schema)) return [`${path}: ${MALFORMED}`];
+  const issues: string[] = [];
+  for (const keyword of ["anyOf", "oneOf"]) {
+    const branches = schema[keyword];
+    if (branches === undefined) continue;
+    if (Array.isArray(branches)) branches.forEach((branch) => issues.push(...shapeIssues(branch, path)));
+    else issues.push(`${path}: ${MALFORMED}`);
+  }
+  if (schema.type !== undefined && typeof schema.type !== "string") issues.push(`${path}: ${MALFORMED}`);
+  if (schema.enum !== undefined && !Array.isArray(schema.enum)) issues.push(`${path}: ${MALFORMED}`);
+  if (schema.required !== undefined && !isKeyList(schema.required)) issues.push(`${path}: ${MALFORMED}`);
+  if (schema.items !== undefined) issues.push(...shapeIssues(schema.items, path));
+  if (schema.properties !== undefined) issues.push(...propertyShapeIssues(schema.properties, path));
+  return issues;
+}
+
+function propertyShapeIssues(properties: unknown, path: string): string[] {
+  if (!isObject(properties)) return [`${path}: ${MALFORMED}`];
+  return Object.entries(properties).flatMap(([key, sub]) => shapeIssues(sub, `${path}.${key}`));
+}
+
+function isKeyList(value: unknown): value is Array<string | number> {
+  return Array.isArray(value) && value.every((key) => typeof key === "string" || typeof key === "number");
 }
 
 function collectIssues(schema: unknown, value: unknown, path: string): string[] {
@@ -17,13 +52,9 @@ function collectIssues(schema: unknown, value: unknown, path: string): string[] 
   return issues;
 }
 
-/** A schema that cannot be read is an issue, never an open schema: a stored schema is untrusted data and an unreadable one must refuse the resolve. */
+/** Reads a schema that `shapeIssues` has already accepted. */
 function collect(schema: unknown, value: unknown, path: string, issues: string[]): void {
-  if (schema === true) return;
-  if (!isObject(schema)) {
-    issues.push(`${path}: schema is malformed`);
-    return;
-  }
+  if (!isObject(schema)) return;
   const branches = Array.isArray(schema.anyOf) ? schema.anyOf : schema.oneOf;
   if (Array.isArray(branches)) {
     checkUnion(branches, value, path, issues);
@@ -52,12 +83,9 @@ function checkUnion(branches: unknown[], value: unknown, path: string, issues: s
 }
 
 function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: string, issues: string[]): void {
-  const properties = schema.properties ?? {};
-  if (!isObject(properties)) {
-    issues.push(`${path}: schema is malformed`);
-    return;
-  }
-  for (const key of requiredKeys(schema.required, path, issues)) {
+  const properties = isObject(schema.properties) ? schema.properties : {};
+  const required = isKeyList(schema.required) ? schema.required : [];
+  for (const key of required) {
     if (!(key in value)) issues.push(`${path}.${key}: required`);
   }
   if (schema.additionalProperties === false) {
@@ -72,7 +100,7 @@ function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: s
 
 function checkArray(schema: JsonSchema, value: unknown[], path: string, issues: string[]): void {
   const items: unknown = schema.items;
-  if (!items) return;
+  if (items === undefined) return;
   value.forEach((entry, index) => collect(items, entry, `${path}[${index}]`, issues));
 }
 
@@ -95,20 +123,6 @@ function matchesType(type: string, value: unknown): boolean {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requiredKeys(required: unknown, path: string, issues: string[]): Array<string | number> {
-  if (required === undefined || required === null) return [];
-  if (!Array.isArray(required)) {
-    issues.push(`${path}: schema is malformed`);
-    return [];
-  }
-  const keys: Array<string | number> = [];
-  for (const key of required) {
-    if (typeof key === "string" || typeof key === "number") keys.push(key);
-    else issues.push(`${path}: schema is malformed`);
-  }
-  return keys;
 }
 
 function describe(value: unknown): string {
