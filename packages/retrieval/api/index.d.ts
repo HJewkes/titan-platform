@@ -104,7 +104,7 @@ declare function defaultMatchExpression(query: string): string;
  * BM25 over a contentless span index. Several spans of one owner collapse to
  * the owner's best rank, and the winning span's locator rides along as payload.
  */
-declare function ftsRetriever(spans: SpanFtsTables, options?: FtsRetrieverOptions): Retriever;
+declare function ftsRetriever(spans: Pick<SpanFtsTables, "search">, options?: FtsRetrieverOptions): Retriever;
 
 interface VectorMatch {
     id: string;

@@ -60,8 +60,8 @@ export interface LivenessReport {
   transcripts: number;
 }
 
-/** Bookkeeping tables that have no product meaning, and the contentless FTS index. */
-const SKIP_TABLES = /^(sqlite_|_migration$|search_fts)/;
+/** Bookkeeping tables that have no product meaning, and the contentless FTS indexes. */
+const SKIP_TABLES = /^(sqlite_|_migration$|search_fts|workspace_fts)/;
 
 /**
  * Structures that are empty *on purpose*, with the reason.

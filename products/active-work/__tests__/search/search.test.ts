@@ -120,19 +120,6 @@ describe('search', () => {
     expect(await transcriptRefs('checkout')).toEqual([]);
   });
 
-  it('ignores the workspace span table by default, so results match a graph without one', async () => {
-    const before = await search('lesson index');
-    graph.workspaceSpans.index(
-      { ownerRef: 'note:alpha/decoy.md', field: 'body', sourceId: 1, byteOffset: 0, byteLength: 6 },
-      'lesson index decoy',
-    );
-
-    const after = await search('lesson index');
-
-    expect(JSON.stringify(after.hits)).toBe(JSON.stringify(before.hits));
-    expect(before.hits.length).toBeGreaterThan(0);
-  });
-
   it('answers an empty query with nothing rather than everything', async () => {
     expect((await search('   ')).hits).toEqual([]);
   });
@@ -157,6 +144,7 @@ describe('search', () => {
   it('survives a retriever that throws, naming it instead of failing', async () => {
     // Drop the table one retriever reads, so its query throws for real.
     graph.db.exec('DROP TABLE search_span');
+    graph.db.exec('DROP TABLE workspace_span');
 
     const result = await search('lesson');
 

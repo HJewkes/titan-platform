@@ -14,7 +14,7 @@ import { agentChatOriginResolver } from './origin-agent-chat.js';
 import type { RunCommand } from '../discover/run-command.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace, type WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
-import { resetWorkspaceIndex } from '../workspace-index/write.js';
+import { resetWorkspaceIndex, resetWorkspaceSpans } from '../workspace-index/write.js';
 import { preserveUnreachable, replayPreserved, type ReplaySummary } from './preserve.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
 import { runDeltaPass } from './delta-pass.js';
@@ -88,6 +88,8 @@ export interface RefreshOptions {
   activeRoot?: string;
   /** Skip the workspace half of the pass. For tests that only care about transcripts. */
   skipWorkspace?: boolean;
+  /** Full mode only: rebuild the workspace span table from the files, cheaper than `full`. */
+  resetWorkspaceSpans?: boolean;
   /** Skip PR outcomes from `gh`. For tests that must not reach the network. */
   skipPrOutcomes?: boolean;
   /** Runs `gh` for PR outcomes; tests replace it so the real binary never runs. */
@@ -394,6 +396,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
 
     // After the transcripts, so `mentions` and the task join see the rows the
     // transcript pass just wrote.
+    if (options.resetWorkspaceSpans && !options.skipWorkspace) resetWorkspaceSpans(graph);
     const workspace = options.skipWorkspace
       ? null
       : await refreshWorkspace(graph, {

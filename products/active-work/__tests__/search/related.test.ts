@@ -154,6 +154,7 @@ describe('relatedContext', () => {
   it('degrades to no hits when every retriever throws', async () => {
     const db = new Database(dbPath);
     db.exec('DROP TABLE search_fts');
+    db.exec('DROP TABLE workspace_fts');
     db.close();
 
     const result = await related({ text: 'lesson' });
