@@ -1,4 +1,5 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
+import { isRecord } from "../narrow.js";
 
 /** A merge that waited longer than this between the reviewer's MERGE and the merge itself is slow. */
 const SLOW_WAIT_MS = 60 * 60_000;
@@ -39,7 +40,7 @@ interface MergeUps {
 /** A dispatch step's answer sits under `data.result` in the ledger. */
 export const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
-  return typeof wrapped === "object" && wrapped !== null ? (wrapped as Record<string, unknown>) : {};
+  return isRecord(wrapped) ? wrapped : {};
 };
 export const stepName = (key: string): string => key.split(":")[0]!;
 const MS_PER_DAY = 86_400_000;
