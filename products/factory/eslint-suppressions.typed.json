@@ -1,9 +1,4 @@
 {
-  "products/factory/src/audit/routes.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/audit/workflow.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

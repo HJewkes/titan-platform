@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
 import { isDeclaredSurface } from "./classify.js";
@@ -12,10 +12,10 @@ import * as S from "./schemas.js";
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** Every audit step only reads (publish rewrites the same file), so each is safe to repeat after a crash. */
-function auditRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<unknown>): StepRoute {
+function auditRoute<I>(match: string, now: () => number, inputSchema: ZodType<I>, fn: (input: I, signal: AbortSignal) => Promise<unknown>): StepRoute {
   const run = async (step: RoutedStepInput) => {
     try {
-      const result = await fn(JSON.parse(step.prompt) as I, step.signal);
+      const result = await fn(inputSchema.parse(JSON.parse(step.prompt)), step.signal);
       return { ok: true as const, output: JSON.stringify(evidenceRecord(`audit.${match}`, step, new Date(now()).toISOString(), { result })) };
     } catch (error) {
       return { ok: false as const, error: redactForEvidence(messageOf(error)), retryable: false };
@@ -26,7 +26,7 @@ function auditRoute<I>(match: string, now: () => number, fn: (input: I, signal: 
 
 function agentRoute(ports: AuditPorts, step: AgentStepName, schema: ZodType): StepRoute {
   const model = manifestStep(step).model!;
-  return auditRoute(auditStepId(step), ports.now, async (input: unknown, signal) => schema.parse(await ports.agent({ step, model, prompt: agentPrompt(step, input), schema, signal })));
+  return auditRoute(auditStepId(step), ports.now, z.unknown(), async (input, signal) => schema.parse(await ports.agent({ step, model, prompt: agentPrompt(step, input), schema, signal })));
 }
 
 async function load(ports: AuditPorts, raw: unknown): Promise<S.Loaded> {
@@ -74,15 +74,15 @@ async function publish(ports: AuditPorts, input: { report: unknown; out: string 
 export function auditRoutes(ports: AuditPorts): StepRoute[] {
   const now = ports.now;
   return [
-    auditRoute(auditStepId("load"), now, (input: { input: unknown }) => load(ports, input.input)),
-    auditRoute(auditStepId("inventory-data"), now, async (input: { stores: S.StoreRef[] }, signal) => ({ stores: await Promise.all(input.stores.map((store) => ports.inventory(store, signal))) })),
+    auditRoute(auditStepId("load"), now, S.LoadStepSchema, (input) => load(ports, input.input)),
+    auditRoute(auditStepId("inventory-data"), now, S.InventoryStepSchema, async (input, signal) => ({ stores: await Promise.all(input.stores.map((store) => ports.inventory(store, signal))) })),
     agentRoute(ports, "inventory-code", S.EmitterInventorySchema),
     agentRoute(ports, "purpose", S.PurposeSchema),
-    auditRoute(auditStepId("answerability"), now, (input: { questions: S.Question[]; surfaces: S.SurfaceRef[] }, signal) => checkQuestions(ports, input, signal)),
+    auditRoute(auditStepId("answerability"), now, S.AnswerabilityStepSchema, (input, signal) => checkQuestions(ports, input, signal)),
     agentRoute(ports, "propose", S.ProposalSchema),
-    auditRoute(auditStepId("baseline"), now, (input: { query?: S.MetricQuery; store?: S.StoreRef }, signal) => measureOne(ports, input, signal)),
+    auditRoute(auditStepId("baseline"), now, S.BaselineStepSchema, (input, signal) => measureOne(ports, input, signal)),
     agentRoute(ports, "gaps", S.GapProposalSchema),
     agentRoute(ports, "plan", S.SurfacePlanSchema),
-    auditRoute(auditStepId("publish"), now, (input: { report: unknown; out: string }) => publish(ports, input)),
+    auditRoute(auditStepId("publish"), now, S.PublishStepSchema, (input) => publish(ports, input)),
   ];
 }
