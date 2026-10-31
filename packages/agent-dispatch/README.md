@@ -139,6 +139,9 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
+- `limitsReport(plan, ledger, clock)` projects a planner's dry-run result (a structural
+  `LimitsPlanInput`), the claim ledger and a Shepherd read onto the v1 `/limits` report;
+  `limitsReportSchema` validates it. It reads no config, so its counts match the tick's.
 
 ## Routing (`./routing`, `./routing/node`)
 
