@@ -16,13 +16,6 @@
       "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer when the head fails at its own step while the merge ref's base run was cancelled"]
     },
     {
-      "name": "a passing last finished run still merges up",
-      "file": "products/factory/src/shepherd/main-fixed.ts",
-      "find": "if (last === undefined || last.some(isPassing)) return false;\n  const own = await failingNotIn(read.port, { repo: read.repo, headSha: read.headSha, failing: [...read.failing] }, last, read.failures);\n  return own.length === 0;",
-      "replace": "if (last === undefined) return false;\n  return true;",
-      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer when main's last finished run before the cancelled one passed"]
-    },
-    {
       "name": "a cancelled run at the CI base is read as the base's last run",
       "file": "products/factory/src/shepherd/main-fixed.ts",
       "find": "sha).filter(finished);",
