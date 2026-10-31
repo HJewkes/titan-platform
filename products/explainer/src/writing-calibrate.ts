@@ -4,7 +4,7 @@ import { z } from "zod";
 import { MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_MEASURES, REGISTER_METRICS, spokenText, type RegisterMetric } from "./lint-register.js";
 import { rowStatus, type AucContrast, type RowMetrics, type RowStatus, type SpanPrecision, type StatusThresholds, type WritingStatus } from "./writing-status.js";
 
-export const WRITING_SCHEMA = "writing-check/v1";
+const WRITING_SCHEMA = "writing-check/v1";
 const SEED = 4662;
 const RESAMPLES = 2000;
 const RATE_RESAMPLES = 1000;
@@ -20,8 +20,8 @@ export const WRITING_BUCKETS = [
   { name: "full", lo: 150, hi: Infinity, mid: Infinity },
 ] as const;
 type Bucket = (typeof WRITING_BUCKETS)[number];
-export type BucketName = Bucket["name"];
-export const PRIMARY_BUCKET: BucketName = "300-599";
+type BucketName = Bucket["name"];
+const PRIMARY_BUCKET: BucketName = "300-599";
 
 type AiGroup = "ours-new" | "ai-other" | "ours" | "ours-new-native";
 
@@ -41,7 +41,7 @@ interface Window {
 }
 
 /** `n` counts windows, which are not independent; `clusters` counts what the bootstrap resamples. */
-export interface RateCell {
+interface RateCell {
   k: number;
   n: number;
   clusters: number;
@@ -49,28 +49,28 @@ export interface RateCell {
   wilson: readonly [number, number];
 }
 
-export interface AucCell extends AucContrast {
+interface AucCell extends AucContrast {
   auc: number;
   nNeg: number;
   clustersPos: number;
   clustersNeg: number;
 }
 
-export interface GroupCell {
+interface GroupCell {
   tpr: RateCell;
   texts: number;
   auc_heldout: AucCell | null;
   auc_all_human: AucCell | null;
 }
 
-export type RowCell = {
+type RowCell = {
   fpr_heldout: RateCell & { texts: number; clusterCI: readonly number[] | null };
   fpr_creator: RateCell;
   fpr_auto: RateCell;
   fpr_all_human: RateCell;
 } & Record<AiGroup, GroupCell>;
 
-export interface WritingCheckInput {
+interface WritingCheckInput {
   docs: readonly CorpusDoc[];
   thresholds: StatusThresholds;
   precision: Readonly<Record<string, SpanPrecision>>;
@@ -152,7 +152,7 @@ function clusterRateInterval(flags: readonly { flagged: boolean; cluster: string
   return [round(interval.lower, 4), round(interval.upper, 4)];
 }
 
-export const round = (value: number, digits: number): number => Math.round(value * 10 ** digits) / 10 ** digits;
+const round = (value: number, digits: number): number => Math.round(value * 10 ** digits) / 10 ** digits;
 
 const seedFor = (key: string): string => `${SEED}|${key}`;
 
