@@ -3,6 +3,7 @@ import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writ
 import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";
@@ -11,7 +12,6 @@ import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
 import type { PauseClearPorts } from "./owner-ops/pause-clear.js";
 import { systemServicePorts } from "./service-ports.js";
-import { errnoCode } from "./narrow.js";
 
 const GIT_TIMEOUT_MS = 120_000;
 const PNPM_TIMEOUT_MS = 15 * 60_000;
@@ -54,7 +54,7 @@ function createExclusive(path: string, text: string): boolean {
     writeFileSync(path, text, { flag: "wx" });
     return true;
   } catch (err) {
-    if (errnoCode(err) === "EEXIST") return false;
+    if (errorCode(err) === "EEXIST") return false;
     throw err;
   }
 }
@@ -64,7 +64,7 @@ function rename(from: string, to: string): boolean {
     renameSync(from, to);
     return true;
   } catch (err) {
-    if (errnoCode(err) === "ENOENT") return false;
+    if (errorCode(err) === "ENOENT") return false;
     throw err;
   }
 }

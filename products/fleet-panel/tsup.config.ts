@@ -18,6 +18,7 @@ export default defineConfig([
     platform: "neutral",
     outExtension: () => ({ js: ".js" }),
     external: ["claude-code"],
+    noExternal: ["@titan-design/rpc-protocol"],
     clean: false,
     dts: false,
     esbuildOptions(options) {

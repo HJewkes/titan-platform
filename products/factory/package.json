@@ -52,6 +52,7 @@
     "@titan-design/review-schema": "^0.1.0",
     "@titan-design/review-workflow": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",

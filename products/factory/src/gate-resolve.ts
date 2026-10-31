@@ -1,6 +1,7 @@
 import { userInfo } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { matchesAllowance, type GateResolver } from "@titan-design/hitl";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import type { CoordinatorEvidence } from "./coordinator-evidence.js";
 import { readCoordinatorEvidence, type EvidenceSources } from "./coordinator-evidence-read.js";
@@ -10,7 +11,6 @@ import { EXIT } from "./exit-codes.js";
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { mintPresenceRecord } from "./gate-resolve-presence.js";
 import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
-import { isRecord } from "./narrow.js";
 
 interface ResolveIo {
   stdout: (text: string) => void;
@@ -150,7 +150,7 @@ export function presenceReason(gateId: string, payload: Record<string, unknown>)
 export function parsePayload(json: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(json);
-    return isRecord(value) && !Array.isArray(value) ? value : undefined;
+    return isObjectLike(value) && !Array.isArray(value) ? value : undefined;
   } catch {
     return undefined;
   }

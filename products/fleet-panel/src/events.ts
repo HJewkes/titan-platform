@@ -1,3 +1,5 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
+
 /** One SSE frame from the broker's `/events`: `event` names it, `data` is its raw payload. */
 export interface SseFrame {
   event: string;
@@ -62,8 +64,6 @@ interface LogRow {
 
 const STATUS_LINE = /^Status:\s*([A-Z][A-Z_]*)/;
 const PR_LINE = /^PR:\s*\S*?#(\d+)/m;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Only the string-valued keys: the broker writes meta as strings, and nothing else is read. */
 function stringsOf(value: unknown): Record<string, string> {

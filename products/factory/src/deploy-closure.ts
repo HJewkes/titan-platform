@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
-import { isRecord, readPath } from "./narrow.js";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+import { readPath } from "./narrow.js";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";
 /** Root files every workspace build reads; a lockfile change for an unrelated package over-triggers, which a drain makes harmless. */
@@ -49,7 +50,7 @@ export function readWorkspace(reader: WorkspaceReader): WorkspacePackage[] {
     if (typeof name !== "string") return [];
     const deps = DEP_FIELDS.flatMap((field) => {
       const listed = readPath(manifest, field);
-      return isRecord(listed) ? Object.keys(listed) : [];
+      return isObjectLike(listed) ? Object.keys(listed) : [];
     });
     return [{ dir, name, deps }];
   });

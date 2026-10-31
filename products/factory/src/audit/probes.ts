@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { MetricQuery, StoreInventory, StoreRef } from "./schemas.js";
-import { isRecord, readPath } from "../narrow.js";
+import { readPath } from "../narrow.js";
 
 const run = promisify(execFile);
 const PROBE_TIMEOUT_MS = 30_000;
@@ -32,9 +33,9 @@ function withReadOnly<T>(store: StoreRef, fn: (db: Db) => T): T {
 /** These stores are not ours, so a row is read from `unknown`; a value of another type names no key, table or column. */
 const textColumn = (rows: readonly unknown[], column: string): string[] => rows.map((row) => readPath(row, column)).filter((value) => typeof value === "string");
 
-const sortedKeys = (body: unknown): string[] => (isRecord(body) ? Object.keys(body).sort() : []);
+const sortedKeys = (body: unknown): string[] => (isObjectLike(body) ? Object.keys(body).sort() : []);
 
-const isColumn = (row: unknown): row is { name: string; type: string } => isRecord(row) && typeof row.name === "string" && typeof row.type === "string";
+const isColumn = (row: unknown): row is { name: string; type: string } => isObjectLike(row) && typeof row.name === "string" && typeof row.type === "string";
 
 /** `ci-wait:0:1` and `ci-wait:2` are one family: the suffixes are rounds and iterations, not kinds. */
 function jsonKeyFamilies(db: Db, table: string, column: string): string[] | undefined {
@@ -139,7 +140,7 @@ function sqlValue(rows: Record<string, unknown>[], valuePath: string | undefined
 }
 
 export async function queryStore(store: StoreRef, query: MetricQuery, signal: AbortSignal): Promise<{ value: number | null; n: number }> {
-  if (query.kind === "sql") return withReadOnly(store, (db) => sqlValue(db.prepare(query.text).all().filter(isRecord), query.valuePath));
+  if (query.kind === "sql") return withReadOnly(store, (db) => sqlValue(db.prepare(query.text).all().filter(isObjectLike), query.valuePath));
   if (query.kind === "http") return { value: numberOf(at(await fetchJson(httpUrl(store, query.text), signal), query.valuePath)), n: 1 };
   const declared = store.command;
   if (!declared || (query.text !== declared && !query.text.startsWith(`${declared} `))) throw new Error(`cli query is outside the store's declared command`);

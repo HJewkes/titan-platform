@@ -4,7 +4,8 @@ import { readLocatorText } from "@titan-design/locator";
 import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { errnoCode, parseRows } from "../rows.js";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
+import { parseRows } from "../rows.js";
 
 /** A Bash tool call in the graph, located in its transcript; the graph keeps no command text. */
 export interface BashCall {
@@ -103,7 +104,7 @@ export function runHelp(argv: readonly string[]): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(program, [...rest, "--help"], { timeout: HELP_TIMEOUT_MS, maxBuffer: 1 << 20 }, (error, stdout, stderr) => {
       const text = `${stdout}${stderr}`;
-      resolve(errnoCode(error) === "ENOENT" || text.trim() === "" ? null : text);
+      resolve(errorCode(error) === "ENOENT" || text.trim() === "" ? null : text);
     });
   });
 }

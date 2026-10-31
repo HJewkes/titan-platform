@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mapItems, type MapResult, type WorkflowContext, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { PromptFamily } from "./families.js";
 
 export const DAILY_WORKFLOW = "self-improve-daily";
@@ -107,10 +108,6 @@ function parseJson(output: string | undefined): unknown {
   } catch {
     return undefined;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function writeOutputs(outDir: string, outcomes: FamilyOutcome[]): void {

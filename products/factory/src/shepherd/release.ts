@@ -2,6 +2,7 @@ import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { StepDeclaration } from "../definition.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { codeRoute, step, type LandOptions } from "../workflows/land.js";
@@ -13,7 +14,7 @@ import { publishReview } from "./publish-review.js";
 import type { EffectivePolicy, MergeMode } from "./policy.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
-import { isRecord, readPath } from "../narrow.js";
+import { readPath } from "../narrow.js";
 
 /** The branch the changesets action opens its "Version Packages" pull request from. */
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
@@ -202,7 +203,7 @@ function dependencyEdits({ base, head }: ManifestPair, field: (typeof DEPENDENCY
 
 function dependencyMap(value: unknown): Record<string, unknown> | null {
   if (value === undefined) return {};
-  return isRecord(value) && !Array.isArray(value) ? value : null;
+  return isObjectLike(value) && !Array.isArray(value) ? value : null;
 }
 
 function publicPackages(pairs: readonly ManifestPair[]): string[] {

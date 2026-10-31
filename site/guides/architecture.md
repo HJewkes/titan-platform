@@ -257,6 +257,7 @@ graph TD
   explainer --> ownerQueue
   explainer --> pm
   explainer --> renderQa
+  explainer --> rpcProtocol
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
@@ -281,14 +282,17 @@ graph TD
   factory --> reviewPanel
   factory --> reviewWorkflow
   factory --> rpcClient
+  factory --> rpcProtocol
   factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
   retrievalEval --> retrieval
+  retrievalEval --> rpcProtocol
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg
@@ -302,6 +306,7 @@ graph TD
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
+  sessionMiner --> rpcProtocol
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
@@ -400,7 +405,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

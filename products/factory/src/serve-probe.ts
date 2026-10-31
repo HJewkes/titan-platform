@@ -1,4 +1,5 @@
-import { isRecord } from "./narrow.js"
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+
 const HEALTH_PATH = "/health";
 
 /** Two attempts of `DEFAULT_SERVE_WAIT_MS / 2` each, so a busy serve gets the whole bound and one retry. */
@@ -19,7 +20,7 @@ async function attempt(port: number, timeoutMs: number): Promise<Attempt> {
     const res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, { signal: controller.signal });
     if (!res.ok) return { state: "unready", status: res.status };
     const health: unknown = await res.json();
-    return { state: "up", health: isRecord(health) ? health : {} };
+    return { state: "up", health: isObjectLike(health) ? health : {} };
   } catch {
     return controller.signal.aborted ? { state: "timeout" } : { state: "refused" };
   } finally {
