@@ -68,13 +68,13 @@ describe("owner-op.preview", () => {
     });
   });
 
-  it("shows the authority table's deny for an op owner-remote may not run yet", async () => {
+  it("shows the owner-remote gate for closing a PR, with the PR read back", async () => {
     const { fixture, preview } = world();
-    const { number } = fixture.fake.addPr({ headSha: H });
+    const { number } = fixture.fake.addPr({ headSha: H, title: "Synthetic change" });
 
     const answer = await preview({ kind: "close-pr", repo: REPO, pr: number, headSha: H });
 
-    expect(answer.ok && answer.data.authority).toMatchObject({ verdict: "deny", ruleId: "DSR-OR" });
+    expect(answer.ok && answer.data).toMatchObject({ authority: { verdict: "gate", ruleId: "PRC-OR" }, pr: { state: "open", head: H } });
   });
 
   it("reads a gate the store does not hold as missing", async () => {

@@ -1227,6 +1227,217 @@
       "evidence": [
         "E-dec"
       ]
+    },
+    {
+      "id": "PRC-OT",
+      "action": "pr-close",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Closing keeps the branch, so a reopen restores the pull request.",
+      "evidence": [
+        "E-gh"
+      ]
+    },
+    {
+      "id": "PRC-OR",
+      "action": "pr-close",
+      "actor": "owner-remote",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-remote"
+      ],
+      "condition": "Owner decision of 2026-10-22 (528, Q1): the console tap, with a read-back of repo, pull request number, head SHA and title. Closes only at the head the owner saw and keeps the branch; never a branch delete.",
+      "evidence": [
+        "E-gate",
+        "E-prin",
+        "E-gh"
+      ]
+    },
+    {
+      "id": "PRC-CO",
+      "action": "pr-close",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "condition": "Seats never close a pull request; they ask the owner.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PRC-WK",
+      "action": "pr-close",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PRC-HD",
+      "action": "pr-close",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PRC-AU",
+      "action": "pr-close",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PRC-DC",
+      "action": "pr-close",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DPR-OT",
+      "action": "deploy-resume",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Clears a deploy pause the owner names at the terminal.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "DPR-OR",
+      "action": "deploy-resume",
+      "actor": "owner-remote",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-remote"
+      ],
+      "condition": "Owner decision of 2026-10-22 (528, Q2): the console tap clears only the exact pause it read back, by paused-at time and target. Refused while a deploy runs, and never clears a hand-set hold.",
+      "evidence": [
+        "E-gate",
+        "E-prin"
+      ]
+    },
+    {
+      "id": "DPR-CO",
+      "action": "deploy-resume",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "condition": "Seats never clear a deploy pause; they ask the owner.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DPR-WK",
+      "action": "deploy-resume",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DPR-HD",
+      "action": "deploy-resume",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DPR-AU",
+      "action": "deploy-resume",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DPR-DC",
+      "action": "deploy-resume",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "FLC-OT",
+      "action": "fleet-config",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Fleet config is caps, pools, spend limits, machine limits and factory knobs. Permission surfaces stay authority-config.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "FLC-OR",
+      "action": "fleet-config",
+      "actor": "owner-remote",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-remote"
+      ],
+      "condition": "Owner decisions 445 and of 2026-10-22 (528, Q3): a console owner session plus a prepare read-back of the key, its old and new value and the file revision. Covers restart-class keys too; the restart itself is a separate drained step. Permission surfaces stay authority-config.",
+      "evidence": [
+        "E-gate",
+        "E-prin"
+      ]
+    },
+    {
+      "id": "FLC-CO",
+      "action": "fleet-config",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "condition": "Seats propose a fleet config change to the owner; they never write it.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "FLC-WK",
+      "action": "fleet-config",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "FLC-HD",
+      "action": "fleet-config",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "FLC-AU",
+      "action": "fleet-config",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "FLC-DC",
+      "action": "fleet-config",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
     }
   ]
 }

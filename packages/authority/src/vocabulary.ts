@@ -24,6 +24,9 @@ export const ACTION_CLASSES = [
   "authority-config",
   "human-verb",
   "answer-question",
+  "pr-close",
+  "deploy-resume",
+  "fleet-config",
 ] as const;
 
 export const VERDICTS = ["allow", "gate", "deny"] as const;

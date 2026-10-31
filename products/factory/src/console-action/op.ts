@@ -1,3 +1,4 @@
+import type { PolicyTable } from "@titan-design/authority";
 import type { OwnerOpKind } from "@titan-design/owner-queue";
 import { opAuthority } from "../owner-ops/authority.js";
 import { closePr, type ClosePrDeps } from "../owner-ops/close-pr.js";
@@ -25,12 +26,13 @@ export interface OpDeps<C = OpContext> {
   effects: OpEffects<C>;
   ledger: OwnerOpsLedger;
   now: () => number;
+  table?: PolicyTable;
 }
 
 /** The authority table decides first, so an op it denies owner-remote never reaches an effect or the ledger. */
-export async function actOnOp<C>(actionId: string, read: OpRead, { effects, ledger, now }: OpDeps<C>, context: C): Promise<Outcome> {
+export async function actOnOp<C>(actionId: string, read: OpRead, { effects, ledger, now, table }: OpDeps<C>, context: C): Promise<Outcome> {
   const { op } = read;
-  const decision = opAuthority(op);
+  const decision = opAuthority(op, table);
   if (decision.verdict === "deny") return refused("class", `a ${op.kind} op: ${decision.reason}`);
   const effect = effects[op.kind];
   if (effect === undefined) return refused("class", `a ${op.kind} op has no factory effect`);

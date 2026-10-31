@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close-pr keeps its deny-only stand-in",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"close-pr\": \"pr-close\",",
+      "replace": "\"close-pr\": \"destructive-remote\",",
+      "kills": [
+        "opAuthority gates close-pr, factory-config-set and deploy-pause-clear each on its own owner-remote row"
+      ]
+    },
+    {
+      "name": "retire-agent maps back onto destructive-local",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"retire-agent\": \"agent-retire\",",
+      "replace": "\"retire-agent\": \"destructive-local\",",
+      "kills": [
+        "actOnOp admits a retire-agent op under RET-OR and runs its effect"
+      ]
+    }
+  ]
+}
