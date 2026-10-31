@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stableNodePath } from "@titan-design/daemon/service";
 import type { Command } from "commander";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
 import type { CliIo, Verbs } from "./cli.js";
@@ -14,7 +15,7 @@ import { configuredDeployIncident, configuredDeployResolve } from "./deploy-watc
 import { morningQueuesDir } from "./needs/morning-source.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
-import { servicePath, stableNodePath, type PlistOptions } from "./service.js";
+import { servicePath, type PlistOptions } from "./service.js";
 import { registerServiceCheck } from "./service-check.js";
 import {
   installService,
