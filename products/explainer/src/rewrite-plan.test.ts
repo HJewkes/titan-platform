@@ -86,9 +86,10 @@ describe("planRegisterEdits: sentence shape", () => {
       }
     });
 
-    it.each([26, 28, 30, 32, 34, 36, 38, 40, 44, 48])("stays at 24 words when one beat speaks %i sentences", (sentences) => {
+    // One-sentence beats hold their count, so the wordy beats get too few sentences and overflow the most.
+    it.each([26, 28, 30, 32, 34, 36, 38, 40, 44, 48])("stays at 24 words when wordy beats speak %i sentences each", (sentences) => {
       const speech = Array.from({ length: sentences }, (_, i) => CHOPPY[i % CHOPPY.length]).join(" ");
-      const wordy = script([speech, speech, speech, speech]);
+      const wordy = script([...Array<string>(20).fill(CHOPPY[0]!), speech, speech]);
 
       const longest = longestPlanned(wordy, MAX_VETTED_SENTENCE_WORDS);
 

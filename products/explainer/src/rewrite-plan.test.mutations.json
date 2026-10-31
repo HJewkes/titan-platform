@@ -34,7 +34,7 @@
       "find": "if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;",
       "replace": "return trimmed;",
       "kills": [
-        "planRegisterEdits: sentence shape longest planned sentence stays at 24 words when one beat speaks 40 sentences"
+        "planRegisterEdits: sentence shape longest planned sentence stays at 24 words when wordy beats speak 40 sentences each"
       ]
     },
     {
