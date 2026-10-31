@@ -46,7 +46,7 @@
     }
   },
   "dependencies": {
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "devDependencies": {
     "zod": "^4.4.3"

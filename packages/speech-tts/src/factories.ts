@@ -1,4 +1,4 @@
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { commandTts, type CommandOutput } from "./command-tts.js";
 import type { TtsProviderConfig } from "./config.js";
 import { fakeTts } from "./fake-tts.js";

@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { ProbeOptions } from "./liveness.js";
 import { fetchWithTimeout } from "./liveness.js";
 import { isAbortError } from "./send-failure.js";

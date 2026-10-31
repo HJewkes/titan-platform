@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * CC-266 and CC-255: what a headless agent was doing when it exited without the

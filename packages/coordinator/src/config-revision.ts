@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { isObjectLike, isRecord } from "@titan-design/narrow";
+import { isObjectLike, isRecord } from "@titan-design/rpc-protocol/narrow";
 import { checkCoordinatorConfig, coordinatorConfigSchema } from "./coordinator-config.js";
 import type { CoordinatorConfig, CoordinatorConfigError } from "./coordinator-config.js";
 

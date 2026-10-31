@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 
 export const ITEM_KEY = "io.titan.item";

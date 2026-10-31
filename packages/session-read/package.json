@@ -38,6 +38,6 @@
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/anthropic-account": "workspace:^",
     "@titan-design/locator": "workspace:^",
-    "@titan-design/narrow": "workspace:^"
+    "@titan-design/rpc-protocol": "workspace:^"
   }
 }

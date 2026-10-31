@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 /** health/v1 follows draft-inadarei-api-health-check, an open format, so other readers can consume it unchanged. */
 export const HEALTH_STATUSES = ["pass", "warn", "fail"] as const;

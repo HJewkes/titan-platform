@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { HashEmbedder, OllamaEmbedder, type EmbedRole, type Embedder } from "@titan-design/embed";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { FIXTURE_TSCONFIG, openTestStore } from "../incremental.test-helpers.js";
 import { indexPaths } from "../indexer.js";
 import type { CodeGraphStore } from "../store.js";

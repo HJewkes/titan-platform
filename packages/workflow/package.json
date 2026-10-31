@@ -39,7 +39,7 @@
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/hitl": "workspace:^",
-    "@titan-design/narrow": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
   },
   "devDependencies": {

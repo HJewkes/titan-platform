@@ -1,4 +1,4 @@
-import { isObjectLike } from "@titan-design/narrow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { TelegramCallback, TelegramTextUpdate } from "./telegram-updates.js";
 
 /**

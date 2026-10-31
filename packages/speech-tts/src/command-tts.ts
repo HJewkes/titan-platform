@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
-import { isRecord } from "@titan-design/narrow";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { FileRefused, readRegularFile } from "./bounded-read.js";
 import { assertSupported } from "./capabilities.js";
 import { withDeadline } from "./deadline.js";
