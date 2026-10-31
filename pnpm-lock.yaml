@@ -180,6 +180,9 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -754,6 +757,19 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+
+  packages/png-delta:
+    dependencies:
+      pixelmatch:
+        specifier: 8.0.0
+        version: 8.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
 
   packages/queue-mirror:
     dependencies:
@@ -1582,6 +1598,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
@@ -1618,9 +1637,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      pixelmatch:
-        specifier: 8.0.0
-        version: 8.0.0
       yaml:
         specifier: ^2.9.1
         version: 2.9.1

@@ -47,6 +47,7 @@
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
+    "@titan-design/png-delta": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/review-schema": "^0.1.0",
@@ -59,7 +60,6 @@
     "@titan-design/workflow": "workspace:^",
     "@titan-design/worktree": "workspace:^",
     "commander": "^14.0.3",
-    "pixelmatch": "8.0.0",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
