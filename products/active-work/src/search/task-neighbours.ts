@@ -19,7 +19,7 @@ const TITLE_WEIGHT = 3;
 /** Body length at which a word counts 1/sqrt(2): a long body shares words by chance. */
 const BODY_NORM = 40;
 
-export interface TaskDoc {
+interface TaskDoc {
   task: Task;
   title: Set<string>;
   body: Set<string>;
@@ -31,16 +31,16 @@ export interface TaskDoc {
  */
 const ALL_TERMS = Number.POSITIVE_INFINITY;
 
-export type TermWeight = (term: string) => number;
+type TermWeight = (term: string) => number;
 
-export type TaskScore = (terms: string[], doc: TaskDoc, weight: TermWeight) => number;
+type TaskScore = (terms: string[], doc: TaskDoc, weight: TermWeight) => number;
 
 export interface TaskScanSeams {
   score?: TaskScore;
   now?: () => number;
 }
 
-export interface TaskScanOptions extends TaskScanSeams {
+interface TaskScanOptions extends TaskScanSeams {
   deadlineMs: number;
 }
 
@@ -50,7 +50,7 @@ function toDoc(task: Task): TaskDoc {
   return { task, title: new Set(title), body: new Set(body) };
 }
 
-export const scoreTask: TaskScore = (terms, { title, body }, weight) =>
+const scoreTask: TaskScore = (terms, { title, body }, weight) =>
   terms.reduce((sum, term) => {
     if (title.has(term)) return sum + TITLE_WEIGHT * weight(term);
     return body.has(term) ? sum + weight(term) / Math.sqrt(1 + body.size / BODY_NORM) : sum;
