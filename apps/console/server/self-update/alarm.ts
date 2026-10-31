@@ -1,7 +1,7 @@
 import { alarmKey, type OwnerItemDeposit } from "@titan-design/owner-queue";
 
 /** `build` and `handoff` are recorded by the bootstrap (deploy/titan-console-bootstrap.mts), the rest by the updater. */
-export const FAILURE_STAGES = ["build", "handoff", "smoke", "restart", "rollback"] as const;
+export const FAILURE_STAGES = ["build", "handoff", "smoke", "flush", "restart", "rollback"] as const;
 export type FailureStage = (typeof FAILURE_STAGES)[number];
 
 interface UpdateFailure {
