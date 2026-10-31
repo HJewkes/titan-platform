@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../src/commands/index.js';
 import {
   RELATED_DEADLINE_MS,
+  titleJaccard,
+  type TagWriter,
   warnRelatedTasks,
   type RelatedPort,
 } from '../../src/commands/_task-related.js';
@@ -231,5 +233,46 @@ describe('task.add related list', () => {
 
       expect(ctx.warnings.join('\n')).toContain(open);
     });
+  });
+});
+
+describe('possible-dup tag', () => {
+  const neighbour = { ...task('RT-1'), title: 'one two three four five six seven eight nine ten' };
+  const filed = (title: string): Task => ({ ...task('RT-99'), title });
+
+  async function tagging(title: string, tagWriter: TagWriter) {
+    const ctx = context();
+    const result = await warnRelatedTasks(ctx, SLUG, filed(title), [neighbour], {
+      related: returning([hit('RT-1')]),
+      tagWriter,
+    });
+    return { ctx, result };
+  }
+
+  it('a title at the threshold is tagged with the neighbour\'s id', async () => {
+    const write = vi.fn<TagWriter>(async () => {});
+    const { result } = await tagging(neighbour.title, write);
+
+    expect(write).toHaveBeenCalledWith(SLUG, 'RT-99', 'possible-dup:RT-1');
+    expect(result.tags).toEqual(['possible-dup:RT-1']);
+    expect(titleJaccard('a b c d e f g h i', 'a b c d e f g h i j')).toBeCloseTo(0.9);
+  });
+
+  it('just under is not', async () => {
+    const write = vi.fn<TagWriter>(async () => {});
+
+    const { result } = await tagging('one two three four five six seven eight nine eleven', write);
+
+    expect(write).not.toHaveBeenCalled();
+    expect(result.tags).toBeUndefined();
+  });
+
+  it('a tag write failure leaves the task filed with a warning', async () => {
+    const { ctx, result } = await tagging(neighbour.title, async () => {
+      throw new Error('locked');
+    });
+
+    expect(result.id).toBe('RT-99');
+    expect(ctx.warnings.at(-1)).toContain('could not tag RT-99 possible-dup:RT-1');
   });
 });

@@ -48,6 +48,7 @@ const FORMATTERS: Formatters = {
   "shepherd.watch": formatWatches,
   // A calibration read feeds a threshold recommendation, so it prints JSON with or without --json.
   "shepherd.visual-delta": (report) => `${JSON.stringify(report, null, 2)}\n`,
+  "shepherd.brief": (output) => (output.format === "md" ? output.markdown : `${JSON.stringify({ section: output.section, question: output.question }, null, 2)}\n`),
 };
 
 const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;

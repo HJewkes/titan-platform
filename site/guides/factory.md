@@ -855,6 +855,18 @@ check's result line once, without waiting, so a `NO_REPRO` line ends the review 
 `NO_REPRO`. A `fix-proof` run still going reads as unverified. The review carries nothing
 across merge-ups.
 
+## `shepherd brief` {#shepherd-brief}
+
+```sh
+titan-factory shepherd brief owner/repo#N [--format md|round-section] [--images <dir>]
+```
+
+Prints the owner section for a PR that waits on its `approve-merge` gate: what it does, why it reaches the owner, pros and cons from the reviewer's owner brief, a recommendation, and what yes and no do. It reads the PR through the GitHub port (view, files, checks at the head), the run, pending gate, latest verdict and owner brief from Shepherd's store, and the task title and done_when from active-work. It writes nothing to GitHub or Shepherd.
+
+- `--format md` (the default) prints the markdown section. `--format round-section` prints `{ section, question }`, a round@2 section and its pick-one question for the review harness.
+- `--images <dir>` reads `<dir>/pr-<n>/manifest.json` for a UI PR and adds before and after variants. A missing manifest, `rendered: false`, a shot missing its before or its after, or a manifest captured at another head gives a stated reason and no images; an after-only set is never shown.
+- A PR that is not registered, or has no pending `approve-merge` gate, exits 66 with the reason. An unreadable task is stated in the section instead of failing it.
+
 ## `digest run`
 
 ```sh
