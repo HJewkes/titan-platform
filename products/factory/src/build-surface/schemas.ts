@@ -16,8 +16,8 @@ export type ImplementerReport = z.infer<typeof ImplementerReportSchema>;
 /** Loose on purpose: a class this build does not know still parses, and `gateFailureClass` gives it the default route. */
 const GateFailureSchema = z.looseObject({ class: z.string().optional(), signature: z.string().optional() });
 
-/** One `<gate>.json` the repo's gate command writes; `score` lets the fix loop see progress on a failing gate, and `failure` routes it. */
-export const GateEvidenceSchema = z.looseObject({ gate: z.string().min(1), head: z.string(), pass: z.boolean(), score: z.number().optional(), failure: GateFailureSchema.optional() });
+/** One `<gate>.json` the repo's gate command writes; `score` lets the fix loop see progress on a failing gate, and `failure` routes it (null, as the gate README writes a pass, means none). */
+export const GateEvidenceSchema = z.looseObject({ gate: z.string().min(1), head: z.string(), pass: z.boolean(), score: z.number().optional(), failure: GateFailureSchema.nullish() });
 export type GateEvidence = z.infer<typeof GateEvidenceSchema>;
 
 export const GateRunSchema = z.object({
