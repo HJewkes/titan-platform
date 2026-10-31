@@ -460,7 +460,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 19
+      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
@@ -469,9 +469,6 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {
@@ -480,9 +477,6 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/active-work/src/setup/supervision.ts": {
