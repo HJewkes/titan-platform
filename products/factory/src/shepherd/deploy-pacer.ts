@@ -10,7 +10,7 @@ export const DEPLOY_WANTED = "deploy-wanted.json";
 /** No newer green merge for this long means the burst is over. */
 export const DEPLOY_QUIET_MS = 15 * 60_000;
 /** Steady merges or busy runs never hold a wanted deploy longer than this. */
-export const DEPLOY_MAX_WAIT_MS = 90 * 60_000;
+export const DEPLOY_MAX_WAIT_MS = 45 * 60_000;
 /** Longer than a deployer's own worst case (45 min drain, install, build, watch), so a live deployer is never asked twice. */
 export const DEPLOY_STALE_SPAWN_MS = 2 * 60 * 60_000;
 /** Past the window end, longer than the watch can run on (10 min of unavailable reads, three slow misses, the rollback restart), so only a deployer that died is outwaited. */
@@ -332,6 +332,8 @@ export interface DeployPacerOptions {
   /** Reads main CI before each tick; required, so a pacer wired with no reader never deploys an unchecked sha. */
   green: GreenProbe;
   store?: WantedStore;
+  /** How long a wanted deploy may be held while steady merges keep re-arming the quiet window; defaults to `DEPLOY_MAX_WAIT_MS`. */
+  maxWaitMs?: number;
   /** How often the sweep runs; defaults to `PACER_SWEEP_MS`. */
   sweepMs?: number;
   /** The seat queue files whose Morning `DEPLOY HOLD:` items set and clear the manual hold each tick; absent leaves the hold to `service pause`. */
