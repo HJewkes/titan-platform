@@ -21,6 +21,10 @@ means re-running `validate` and updating the digests it reports.
 one JSONL row per reviewed head, labelled from git history and the factory database, which it
 opens read-only. The label rules are in the reference page.
 
+`replayCase` and `replaySuite` replay review-workflow cases through `reviewWorkflow` under
+policy variants. A FIX_FIRST counts as a hit only when a verified citation names the case's path.
+`SEED_CASES` and `FAILURE_FIXTURES` run in CI over fake ports with no model.
+
 Full reference: `site/reference/evals.md`.
 
 `titan-evals review-pr cases` builds the private cases for the `review-pr` unit in `units/review-pr/`:

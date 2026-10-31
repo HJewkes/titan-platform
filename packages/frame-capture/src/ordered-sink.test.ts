@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, test } from 'vitest'
@@ -66,6 +66,26 @@ describe('OrderedSink', () => {
     assert.deepEqual(stalled, { calls: [0], spilled: 8 * FRAME_BYTES })
     assert.deepEqual(calls, ALL_FRAMES)
     assert.ok(received.every((buf, i) => buf.equals(png(i))), 'a frame came back with other bytes')
+  })
+
+  // Mutations: spillDirectory skips the sweep (the dead render's spill stays); the spill name drops the pid.
+  test('a capture that spills removes a dead render\'s spill and names its own after its pid', async () => {
+    const deadPid = 2_147_483_000
+    mkdirSync(path.join(parent, `frame-spill-${deadPid}-stale1`))
+    const { sink, release } = gatedSink()
+    const ordered = new OrderedSink(RANGES, sink, parent)
+    const [head, ...rest] = RANGES.map((range) => sweep(ordered, range))
+
+    await Promise.all(rest)
+    const whileSpilling = readdirSync(parent)
+    release()
+    await head
+    await ordered.drained()
+    await ordered.close()
+
+    assert.equal(whileSpilling.length, 1)
+    assert.match(whileSpilling[0] ?? '', new RegExp(`^frame-spill-${process.pid}-[A-Za-z0-9]{6}$`))
+    assert.deepEqual(readdirSync(parent), [])
   })
 
   // Mutation: emit resolves without waiting on the sink; the worker runs ahead and its frames pile up in memory.

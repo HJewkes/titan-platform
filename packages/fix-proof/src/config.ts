@@ -49,13 +49,21 @@ export type ConfigResult = { ok: true; config: FixProofConfig } | { ok: false; e
 
 const KEYS = new Set(["tests", "carry", "runtime", "command", "build"]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGlobList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((glob) => typeof glob === "string" && glob !== "");
+}
+
 function readGlobs(value: unknown, key: string, fallback: readonly string[]): string[] {
   if (value === undefined) return [...fallback];
-  if (!Array.isArray(value) || !value.every((glob) => typeof glob === "string" && glob !== "")) {
+  if (!isGlobList(value)) {
     throw new Error(`${key} must be an array of non-empty strings`);
   }
-  value.forEach((glob: string) => expandBraces(glob));
-  return [...value] as string[];
+  value.forEach((glob) => expandBraces(glob));
+  return [...value];
 }
 
 function readString(value: unknown, key: string): string | undefined {
@@ -65,8 +73,8 @@ function readString(value: unknown, key: string): string | undefined {
 }
 
 function readConfig(raw: unknown): FixProofConfig {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("config must be a JSON object");
-  const record = raw as Record<string, unknown>;
+  if (!isRecord(raw)) throw new Error("config must be a JSON object");
+  const record = raw;
   const unknownKey = Object.keys(record).find((key) => !KEYS.has(key));
   if (unknownKey !== undefined) throw new Error(`unknown config key: ${unknownKey}`);
   const config: FixProofConfig = {
@@ -87,6 +95,6 @@ export function parseFixProofConfig(text: string | null | undefined): ConfigResu
   try {
     return { ok: true, config: readConfig(JSON.parse(text)) };
   } catch (error) {
-    return { ok: false, error: `${CONFIG_PATH}: ${(error as Error).message}` };
+    return { ok: false, error: `${CONFIG_PATH}: ${error instanceof Error ? error.message : String(error)}` };
   }
 }

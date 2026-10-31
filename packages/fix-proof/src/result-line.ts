@@ -47,10 +47,21 @@ export function provedByMutants(result: FixProofResult): boolean {
   return result.verdict === "vacuous" && mutants?.verdict === "killed" && covered && headPasses;
 }
 
+// Spelled out so a new test class fails to compile here instead of leaving a count missing.
+function countsBy(read: (name: TestClass) => number): Record<TestClass, number> {
+  return {
+    reproduces: read("reproduces"),
+    "passes-on-base": read("passes-on-base"),
+    "new-api": read("new-api"),
+    "fails-on-head": read("fails-on-head"),
+    "not-run": read("not-run"),
+  };
+}
+
 /** Joins a plan and its classification into the result a runner prints for head. */
 export function toResult(args: { head: string; mergeBase: string; plan: FixProofPlan; classification: Classification }): FixProofResult {
   const { classification, plan } = args;
-  const counts = Object.fromEntries(TEST_CLASSES.map((name) => [name, 0])) as Record<TestClass, number>;
+  const counts = countsBy(() => 0);
   classification.tests.forEach((test) => (counts[test.class] += 1));
   const result: FixProofResult = {
     head: args.head,
@@ -72,7 +83,7 @@ function canonical(result: FixProofResult): FixProofResult {
     head: result.head,
     mergeBase: result.mergeBase,
     verdict: result.verdict,
-    counts: Object.fromEntries(TEST_CLASSES.map((name) => [name, result.counts[name]])) as Record<TestClass, number>,
+    counts: countsBy((name) => result.counts[name]),
     notCollected: [...result.notCollected],
     deletedTests: [...result.deletedTests],
     configEdited: result.configEdited,
@@ -173,14 +184,25 @@ export function parseResultLine(line: string): ParsedResultLine {
   } catch {
     return { ok: false, error: "result is not valid JSON" };
   }
-  const invalid = validate(parsed);
-  if (invalid !== null) return { ok: false, error: invalid };
-  const result = parsed as FixProofResult;
+  try {
+    assertValidResult(parsed);
+  } catch (error) {
+    if (error instanceof InvalidResultError) return { ok: false, error: error.message };
+    throw error;
+  }
+  const result = parsed;
   if (JSON.stringify(canonical(result)) !== json) return { ok: false, error: "result is not canonical: duplicate, reordered or padded keys" };
   return { ok: true, result };
 }
 
 type UnknownRecord = Record<string, unknown>;
+
+class InvalidResultError extends Error {}
+
+function assertValidResult(value: unknown): asserts value is FixProofResult {
+  const invalid = validate(value);
+  if (invalid !== null) throw new InvalidResultError(invalid);
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -201,7 +223,10 @@ function validateCounts(value: unknown): string | null {
   if (!isRecord(value)) return "counts must be an object";
   const keys = checkKeys(value, TEST_CLASSES, [], "counts.");
   if (keys !== null) return keys;
-  const bad = TEST_CLASSES.find((name) => !Number.isSafeInteger(value[name]) || (value[name] as number) < 0);
+  const bad = TEST_CLASSES.find((name) => {
+    const count = value[name];
+    return typeof count !== "number" || !Number.isSafeInteger(count) || count < 0;
+  });
   return bad === undefined ? null : `counts.${bad} must be a non-negative integer`;
 }
 
@@ -272,7 +297,7 @@ function validate(value: unknown): string | null {
     validateMutants(value.mutants, value.truncated) ??
     validateRefs(value);
   if (problem !== null) return problem;
-  if (value.verdict === "reproduced" && (value.counts as UnknownRecord).reproduces === 0) return "verdict reproduced with no reproducing test";
+  if (value.verdict === "reproduced" && isRecord(value.counts) && value.counts.reproduces === 0) return "verdict reproduced with no reproducing test";
   if (!Array.isArray(value.tests)) return "tests must be an array";
   return value.tests.map(validateTest).find((error) => error !== null) ?? null;
 }

@@ -39,14 +39,16 @@
     "@titan-design/evidence": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
-    "@titan-design/review-panel": "workspace:^"
+    "@titan-design/review-panel": "workspace:^",
+    "@titan-design/workflow": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@titan-design/hitl": "workspace:*",
+    "@titan-design/store-sqlite": "workspace:*",
     "@titan-design/test-kit": "workspace:*",
-    "@titan-design/workflow": "workspace:*",
     "zod": "^4.4.3"
   }
 }
