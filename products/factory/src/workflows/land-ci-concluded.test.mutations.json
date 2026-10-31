@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a run with a conclusion and a completion time is still read as open",
+      "file": "packages/github/src/checks.ts",
+      "find": "return run.status === \"completed\" || (run.conclusion !== null && run.completedAt !== null);",
+      "replace": "return run.status === \"completed\";",
+      "kills": [
+        "ci-wait over a job whose status stayed in_progress after it concluded finishes green within one poll when the conclusion is success",
+        "ci-wait over a job whose status stayed in_progress after it concluded finishes red within one poll when the conclusion is failure"
+      ]
+    }
+  ]
+}
