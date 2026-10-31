@@ -72,6 +72,8 @@ export const ShepherdRepoConfigSchema = z.strictObject({
   advisory: z.boolean().optional(),
   /** Opt-in: after Shepherd's own merge, restack the repo's stacked agent-chat children by a fast-forward push. Absent means off. */
   stackRestack: z.boolean().optional(),
+  /** Commit-status contexts that count as the repo's CI beside its Actions check runs, for CI that posts a status (TP-4645). */
+  statusContexts: z.array(z.string().min(1)).optional(),
 });
 
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
@@ -91,10 +93,7 @@ function isTimeZone(zone: string): boolean {
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
 const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
 
-export const DigestPushConfigSchema = z.strictObject({
-  url: httpUrl,
-  tokenFile: absolutePath.optional(),
-});
+export const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
 
 export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
 

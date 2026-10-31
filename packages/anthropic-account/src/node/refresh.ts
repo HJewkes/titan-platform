@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
 import {
@@ -13,7 +14,6 @@ import {
 import { currentUid } from "./login.js";
 import type { FetchLike } from "./poll.js";
 import { refreshFailureDeposit, type RefreshFailureDeposit, type RefreshFailureKind } from "./refresh-deposit.js";
-import { isRecord } from "./narrow.js";
 
 // Claude Code 2.1.x's production OAuth config: its TOKEN_URL and CLIENT_ID, and the scopes
 // its refresh asks for when the stored login names no client.

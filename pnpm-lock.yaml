@@ -331,6 +331,9 @@ importers:
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/agent-protocol:
     devDependencies:
@@ -349,6 +352,9 @@ importers:
 
   packages/anthropic-account:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       zod:
         specifier: ^4.0.0
         version: 4.5.4
@@ -573,6 +579,10 @@ importers:
         version: 3.8.1
 
   packages/eslint-plugin:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@types/estree':
         specifier: ^1.0.9
@@ -817,6 +827,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/review-panel:
     dependencies:

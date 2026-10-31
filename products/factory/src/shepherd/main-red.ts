@@ -365,7 +365,11 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
   if (!freezes || !live) return { unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" };
-  const stays = (detail: string) => ({ unfrozen: false, frozen: true, episode: live.episode, detail });
+  // A thaw elsewhere during the reads already ran its sweep, so a frozen answer read before them strands the gate (TP-2919).
+  const stays = (detail: string) => {
+    const frozen = freezes.live(input.repo, live.episode) !== undefined;
+    return { unfrozen: false, frozen, episode: live.episode, detail: frozen ? detail : `${detail}; episode ${live.episode} thawed meanwhile` };
+  };
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);

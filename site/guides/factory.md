@@ -152,8 +152,8 @@ stays out of the repo.
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
-- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory` and
-  `stackRestack`. All three keys are optional, and an unknown one fails the load. Keys match in any case. The
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
+  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. The
   reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
   `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
   spawn, as the seat book is.
@@ -180,6 +180,13 @@ stays out of the repo.
   the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
   deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
   and keeps the branch with a caveat while any of them is still based on it.
+- `statusContexts: ["<context>"]` names commit-status contexts that count as the repo's CI beside
+  its GitHub Actions check runs, for a repo whose CI posts a commit status instead of running
+  Actions (TP-4645). Land's `ci-wait`, its no-required-checks rule and `sh-main-ci` read each
+  context as a check run: `success` is green, `pending` holds, `failure` or `error` is red, and a
+  context with no status yet holds until the wait times out. A failed status read fails that poll,
+  so it is read again rather than judged. A repo without the key reads only its check runs, as
+  before. The list is re-read on every check-run read.
 - `shepherd.redSeat` says where serve's [main CI watch](/guides/shepherd#main-ci-watch) sends a
   red-main event: `{ "repos": { "acme/widgets": "widgets-coord" }, "fallback": "ops-coord" }`.
   The repo's entry wins (keys match in any case), then `fallback`, and either one wins over the

@@ -17,4 +17,6 @@ export interface SqliteExecutionLedgerOptions {
   table?: string;
   /** Trusted ledger clock, distinct from a caller-supplied event timestamp. */
   now?: () => string;
+  /** Receives one line per stored row `listRecoverable` skips; defaults to `console.warn`. */
+  warn?: (line: string) => void;
 }

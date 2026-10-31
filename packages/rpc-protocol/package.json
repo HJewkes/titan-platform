@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./narrow": {
+      "types": "./dist/narrow.d.ts",
+      "import": "./dist/narrow.js"
     }
   },
   "files": [
