@@ -20,7 +20,7 @@ export const RELATED_DEADLINE_MS = 1000;
 
 // From the TP-2544 replay: at 0.9 every flagged pair was a true duplicate, and
 // at 0.8 templated titles that differ by one token start to fire.
-export const POSSIBLE_DUP_THRESHOLD = 0.9;
+const POSSIBLE_DUP_THRESHOLD = 0.9;
 
 // Most hits are done or belong to another initiative, because the initiative is
 // a ranking boost and not a filter, so the three that survive sit further down.
