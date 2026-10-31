@@ -43,7 +43,7 @@ async function fetchPull({ repo, pr }: { repo: string; pr: number }, github: Git
     const found = await github.getPr(repo, pr);
     return { repo, pr, state: found.state, mergedAt: found.mergedAt && new Date(found.mergedAt).toISOString(), headSha: found.headSha };
   } catch (error) {
-    if ((error as { status?: unknown }).status === 404) return null;
+    if (typeof error === "object" && error !== null && "status" in error && error.status === 404) return null;
     throw error;
   }
 }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "./cli.js";
 import { checkGraph, EXIT_LOCKED, runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
 
@@ -31,7 +32,7 @@ async function minerRefresh(): Promise<{ indexed: number; unchanged: number }> {
   let out = "";
   const code = await runCli(["--json", "--state", state, "--corpus", corpus, "refresh"], { stdout: (t) => (out += t), stderr: () => {}, env: {} });
   if (code !== 0) throw new Error(`miner refresh exited ${code}`);
-  return (JSON.parse(out) as { data: { indexed: number; unchanged: number } }).data;
+  return z.object({ data: z.object({ indexed: z.number(), unchanged: z.number() }) }).parse(JSON.parse(out)).data;
 }
 
 beforeEach(() => {

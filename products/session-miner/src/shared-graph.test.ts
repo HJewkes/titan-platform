@@ -4,11 +4,13 @@ import path from "node:path";
 import { openSessionGraph } from "@titan-design/session-graph";
 import { openDatabase, runMigrations, type Migration } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "./cli.js";
 import { resolveConfig } from "./config.js";
 import { createMinerContext } from "./context.js";
 import { FIXTURE_WINDOW, seedInsightGraph } from "./insights/fixture.js";
 import { spendByAction } from "./insights/questions.js";
+import { parseRows } from "./rows.js";
 import { MINER_MIGRATIONS } from "./schema.js";
 
 /** A synthetic stand-in for another owner's band on the shared graph, numbered where active-work's sits. */
@@ -39,7 +41,7 @@ function seedCoOwnedGraph(file: string): void {
 function migrationRows(file: string): { version: number; name: string }[] {
   const db = openDatabase(file, { readonly: true });
   try {
-    return db.prepare("SELECT version, name FROM _migration ORDER BY version").all() as { version: number; name: string }[];
+    return parseRows(z.object({ version: z.number(), name: z.string() }), db.prepare("SELECT version, name FROM _migration ORDER BY version").all());
   } finally {
     db.close();
   }
