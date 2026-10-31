@@ -70,11 +70,11 @@ export function startLiveExecution<H extends Harness>(options: {
   let resolveProblem!: LiveExecution<H>["resolveProblem"];
   const problemPromise = new Promise<NonNullable<LiveExecution<H>["problem"]>>((resolve) => { resolveProblem = resolve; });
   const timer = options.schedule(options.onRenew, options.renewEveryMs);
-  if (typeof timer === "object") timer.unref?.();
+  if (typeof timer === "object") timer.unref();
   const live: LiveExecution<H> = {
     fence: options.fence,
     controller: options.controller,
-    completion: Promise.resolve(undefined as never),
+    completion: new Promise<never>(() => undefined),
     problemPromise,
     resolveProblem,
     timer,
