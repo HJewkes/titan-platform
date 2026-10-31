@@ -1,0 +1,48 @@
+{
+  "products/evals/src/fixtures.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 7
+    }
+  },
+  "products/evals/src/hash-coverage.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 12
+    }
+  },
+  "products/evals/src/hash.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
+  "products/evals/src/measurement-audit.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 5
+    }
+  },
+  "products/evals/src/spec/index.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 5
+    }
+  },
+  "products/evals/src/spec/index.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "products/evals/src/test-fixtures.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/evals/src/trial.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 5
+    }
+  }
+}

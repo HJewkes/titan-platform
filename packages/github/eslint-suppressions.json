@@ -1,0 +1,40 @@
+{
+  "packages/github/src/fake.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/gh-cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    },
+    "titan/max-line-length": {
+      "count": 7
+    }
+  },
+  "packages/github/src/port.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/rest.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/rules-read.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/github/src/titan-gh-cli.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/github/src/upsert-comment.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  }
+}

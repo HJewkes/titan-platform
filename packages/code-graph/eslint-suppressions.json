@@ -1,0 +1,87 @@
+{
+  "packages/code-graph/src/analysis/dashboard-health.ts": {
+    "titan/max-line-length": {
+      "count": 2
+    }
+  },
+  "packages/code-graph/src/analysis/dashboard-node-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/analysis/graph-report-drift.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/code-graph/src/analysis/partition-quality.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/check/validate.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/call-sites.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/reexport-resolve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/ts-morph-extractor-retention.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/ts-morph-extractor.test-helpers.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/history-overflow.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/history/git-overflow.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/indexer-history-warnings.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/indexer.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/load-reuse-basis.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/source-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/store.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

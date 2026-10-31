@@ -1,0 +1,7 @@
+{
+  "packages/agent-dispatch/src/exec.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

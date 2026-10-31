@@ -1,0 +1,7 @@
+{
+  "packages/throughput/src/model-hash.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

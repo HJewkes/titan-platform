@@ -1,0 +1,52 @@
+{
+  "products/session-miner/src/cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/commands/sessions.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/commands/throughput-pr-backfill.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/gh-call-log.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/insights.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 5
+    }
+  },
+  "products/session-miner/src/insights/probes.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/round-trips.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/tool-errors.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/insights/tool-gaps.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/registry.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  }
+}

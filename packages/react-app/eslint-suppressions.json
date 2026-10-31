@@ -1,0 +1,12 @@
+{
+  "packages/react-app/src/hooks/event-bus.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/react-app/src/hooks/query-store.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

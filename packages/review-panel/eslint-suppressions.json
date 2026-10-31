@@ -1,0 +1,7 @@
+{
+  "packages/review-panel/src/accept-verdict.ts": {
+    "titan/max-line-length": {
+      "count": 4
+    }
+  }
+}
