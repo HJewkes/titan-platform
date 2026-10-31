@@ -38,14 +38,14 @@ beforeEach(async () => {
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
 async function readWritten(): Promise<ShippedDigest> {
-  const { digest } = await readShipped({ list: async () => [] }, { dir }, Date.parse("2031-03-06T07:10:00"), DATE);
+  const { digest } = await readShipped({ list: async () => [], timeline: async () => ({ row: undefined as never, entries: [] }) }, { dir }, Date.parse("2031-03-06T07:10:00"), DATE);
   if (digest === null) throw new Error("no digest written");
   return digest;
 }
 
 function depsWith(rows: WatchRow[], run: ShippedBuildDeps["run"]): ShippedBuildDeps {
   const github: ShippedBuildDeps["github"] = { getSquashSource: async (_repo, number) => ({ title: `PR ${number}`, body: "x".repeat(5000), commits: [] }) };
-  return { shepherd: { list: async () => rows }, github, run, dir, now: Date.parse("2031-03-06T07:10:00") };
+  return { shepherd: { list: async () => rows, timeline: async () => ({ row: undefined as never, entries: [] }) }, github, run, dir, now: Date.parse("2031-03-06T07:10:00") };
 }
 
 describe("shipped build options", () => {

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dayWindow } from "./coord-day.js";
-import { mergedInWindow, prSetHash, readShipped, writeDigest, type ShippedDigest } from "./shipped.js";
+import { mergedInWindow, mergeTimes, prSetHash, readShipped, writeDigest, type ShippedDigest } from "./shipped.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -18,10 +18,20 @@ function finished(pr: number, kind: string, since: string, task = "example/EX-1"
   };
 }
 
-/** A Shepherd whose only answer is the finished list; any other call is a read the page must not make. */
-function fakeShepherd(rows: WatchRow[]): { source: Pick<ShepherdSource, "list">; calls: string[] } {
+/** A Shepherd that answers the finished list and, per run, a timeline whose `sh-landed` step completed at `landed[pr]`; a PR without one has no such step. */
+function fakeShepherd(rows: WatchRow[], landed: Record<number, string> = {}): { source: Pick<ShepherdSource, "list" | "timeline">; calls: string[] } {
   const calls: string[] = [];
-  return { calls, source: { list: async (state) => (calls.push(`list:${state}`), rows) } };
+  return {
+    calls,
+    source: {
+      list: async (state) => (calls.push(`list:${state}`), rows),
+      timeline: async (_repo, pr) => {
+        calls.push(`timeline:${pr}`);
+        const entries = landed[pr] === undefined ? [] : [{ kind: "step", stepId: "sh-landed", completedAt: landed[pr] }];
+        return { row: rows.find((row) => row.pr === pr)!, entries };
+      },
+    },
+  };
 }
 
 const digestFor = (merged: ReturnType<typeof mergedInWindow>): ShippedDigest => ({
@@ -57,17 +67,51 @@ describe("mergedInWindow", () => {
   });
 });
 
+describe("merge time", () => {
+  it("lands a PR merged 06:40 on its own day even though the run's phase flipped at 07:20", async () => {
+    const rows = [finished(1, "merged", "5T07:20:00")];
+    const times = await mergeTimes(fakeShepherd(rows, { 1: at("5T06:40:00") }).source, rows, dayWindow(Date.parse("2031-03-05T12:00:00"), "07:00", "2031-03-04"));
+
+    expect(mergedInWindow(rows, dayWindow(Date.parse("2031-03-05T12:00:00"), "07:00", "2031-03-04"), times).map((pr) => pr.number)).toEqual([1]);
+    expect(mergedInWindow(rows, WINDOW, times)).toEqual([]);
+  });
+
+  it("falls back to phaseSince when the timeline has no landed step", async () => {
+    const rows = [finished(1, "merged", "5T10:00:00")];
+
+    const times = await mergeTimes(fakeShepherd(rows).source, rows, WINDOW);
+
+    expect(mergedInWindow(rows, WINDOW, times).map((pr) => pr.number)).toEqual([1]);
+  });
+
+  it("falls back to phaseSince when the timeline cannot be read", async () => {
+    const rows = [finished(1, "merged", "5T10:00:00")];
+    const broken = { timeline: async () => Promise.reject(new Error("down")) };
+
+    expect((await mergeTimes(broken, rows, WINDOW)).size).toBe(0);
+  });
+
+  it("reads no timeline for a stopped run or one that phased long after the window", async () => {
+    const rows = [finished(1, "stopped", "5T10:00:00"), finished(2, "merged", "9T10:00:00")];
+    const shepherd = fakeShepherd(rows);
+
+    await mergeTimes(shepherd.source, rows, WINDOW);
+
+    expect(shepherd.calls).toEqual([]);
+  });
+});
+
 describe("coord.shipped read", () => {
   const now = Date.parse("2031-03-05T20:00:00");
 
-  it("reports built:false with the merged list when no digest exists, and calls only Shepherd's finished list", async () => {
+  it("reports built:false with the merged list when no digest exists, and reads only Shepherd's own list and timeline", async () => {
     const shepherd = fakeShepherd([finished(1, "merged", "5T10:00:00")]);
 
     const result = await readShipped(shepherd.source, { dir }, now, "2031-03-05");
 
     expect(result).toMatchObject({ date: "2031-03-05", built: false, stale: false, digest: null });
     expect(result.merged).toHaveLength(1);
-    expect(shepherd.calls).toEqual(["list:finished"]);
+    expect(shepherd.calls).toEqual(["list:finished", "timeline:1"]);
   });
 
   it("returns the cached digest as fresh when the merged set hashes the same", async () => {

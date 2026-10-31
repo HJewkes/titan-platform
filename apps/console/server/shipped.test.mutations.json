@@ -4,8 +4,8 @@
     {
       "name": "a stopped run counts as shipped",
       "file": "apps/console/server/shipped.ts",
-      "find": "outcomeOf.safeParse(row).data?.outcome.kind === \"merged\" && since",
-      "replace": "since",
+      "find": "isMerged(row) && when >= window.from",
+      "replace": "when >= window.from",
       "kills": [
         "mergedInWindow keeps the run merged inside the window, not one merged before it or one stopped inside it"
       ]
@@ -13,8 +13,8 @@
     {
       "name": "the window end is inclusive",
       "file": "apps/console/server/shipped.ts",
-      "find": "since < window.to;",
-      "replace": "since <= window.to;",
+      "find": "when < window.to;",
+      "replace": "when <= window.to;",
       "kills": [
         "mergedInWindow ends the window at the next day start, exclusive"
       ]

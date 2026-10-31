@@ -6,11 +6,11 @@ import type { CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { dayWindow, type DayWindow } from "./coord-day.js";
 import { foldSpawns, readLifecycleRows, type SpawnFact } from "./coord-spawns.js";
 import type { ShepherdSource } from "./shepherd.js";
-import { mergedRunsInWindow, type FinishedRow, type PrRef } from "./shipped.js";
+import { mergedRunsInWindow, mergeTimes, type FinishedRow, type PrRef } from "./shipped.js";
 
 /** What `coord.cards` reads besides the coordinator roots: Shepherd's finished runs, task titles, and agent-chat's event log. */
 export interface CardsSource {
-  shepherd: Pick<ShepherdSource, "list">;
+  shepherd: Pick<ShepherdSource, "list" | "timeline">;
   activeWork: ActiveWork;
   /** The broker's history holds about an hour of events, so a day of spawns is read from events.db. */
   eventsDbPath: string;
@@ -131,7 +131,7 @@ export async function readCards(source: CardsSource, { roots, dayStart, now, dat
   const rows = readLifecycleRows(source.eventsDbPath, window.from - ATTRIBUTION_LOOKBACK_MS);
   if (rows === null) gaps.push(EVENTS_DB_UNREADABLE);
   const [finished, seats] = await Promise.all([source.shepherd.list("finished"), seatNames(roots)]);
-  const runs = mergedRunsInWindow(finished, window);
+  const runs = mergedRunsInWindow(finished, window, await mergeTimes(source.shepherd, finished, window));
   const { cards, unattributed } = groupCards({ window, spawns: foldSpawns(rows ?? []), runs, seats });
   return { date: window.date, cards: await withTitles(source.activeWork, cards, gaps), unattributed, gaps };
 }

@@ -57,7 +57,7 @@ afterEach(() => rm(dir, { recursive: true, force: true }));
 
 function source(rows: FinishedRow[], activeWork: ActiveWork = titled): CardsSource & { calls: string[] } {
   const calls: string[] = [];
-  return { calls, activeWork, eventsDbPath: path.join(dir, "events.db"), shepherd: { list: async (state) => (calls.push(state), rows) } };
+  return { calls, activeWork, eventsDbPath: path.join(dir, "events.db"), shepherd: { list: async (state) => (calls.push(state), rows), timeline: async () => ({ row: undefined as never, entries: [] }) } };
 }
 
 const read = (cards: CardsSource, autonomyDir: string | null = null) =>
