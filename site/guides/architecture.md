@@ -215,6 +215,7 @@ graph TD
   activeWork --> daemon
   activeWork --> decider
   activeWork --> locator
+  activeWork --> memory
   activeWork --> pm
   activeWork --> registry
   activeWork --> retrieval
