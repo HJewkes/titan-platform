@@ -113,7 +113,10 @@ function beatShape(words: number, n: number, shortShare: number, cap: number): n
     const longest = Math.max(...lengths);
     if (longest <= Math.min(headroom, MAX_PLANNED_WORDS) || count * SHORT_WORDS >= words) return lengths;
     // Adding a sentence here would pull the script's mean under its floor, so the count holds and the words move.
-    if (count > 1 && longest <= headroom) return trimLong(lengths, MAX_PLANNED_WORDS);
+    if (count > 1 && longest <= headroom) {
+      const trimmed = trimLong(lengths, MAX_PLANNED_WORDS);
+      if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;
+    }
   }
 }
 

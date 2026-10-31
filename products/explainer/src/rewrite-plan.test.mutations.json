@@ -22,10 +22,19 @@
     {
       "name": "a beat over the limit gains a sentence instead of moving its words",
       "file": "products/explainer/src/rewrite-plan.ts",
-      "find": "if (count > 1 && longest <= headroom) return trimLong(lengths, MAX_PLANNED_WORDS);",
-      "replace": "if (count < 0) return trimLong(lengths, MAX_PLANNED_WORDS);",
+      "find": "if (count > 1 && longest <= headroom) {",
+      "replace": "if (count < 0) {",
       "kills": [
         "planRegisterEdits: sentence shape longest planned sentence holds the sentence count on a beat over the limit, so the planned mean stays over its floor"
+      ]
+    },
+    {
+      "name": "a trimmed beat keeps its count though the overflow passes the limit",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;",
+      "replace": "return trimmed;",
+      "kills": [
+        "planRegisterEdits: sentence shape longest planned sentence stays at 24 words when one beat speaks 40 sentences"
       ]
     },
     {

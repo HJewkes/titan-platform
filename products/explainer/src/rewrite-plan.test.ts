@@ -86,6 +86,15 @@ describe("planRegisterEdits: sentence shape", () => {
       }
     });
 
+    it.each([26, 28, 30, 32, 34, 36, 38, 40, 44, 48])("stays at 24 words when one beat speaks %i sentences", (sentences) => {
+      const speech = Array.from({ length: sentences }, (_, i) => CHOPPY[i % CHOPPY.length]).join(" ");
+      const wordy = script([speech, speech, speech, speech]);
+
+      const longest = longestPlanned(wordy, MAX_VETTED_SENTENCE_WORDS);
+
+      expect(longest).toBeLessThanOrEqual(24);
+    });
+
     it("holds the sentence count on a beat over the limit, so the planned mean stays over its floor", () => {
       const { projected } = planRegisterEdits(choppy, runL0(choppy, undefined, [registerCheck]), { cap: MAX_VETTED_SENTENCE_WORDS });
 
