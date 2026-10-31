@@ -48,6 +48,8 @@ export interface ShepherdServices extends SnapshotServices {
   mergeOrder?: MergeOrderServices;
   /** `shepherd.visualThreshold` for a repo, which `shepherd visual-delta` measures under; absent means that command refuses. */
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
+  /** Reads a task's title and done_when for `shepherd brief`; absent means the active-work daemon at its loopback origin. */
+  tasks?: (slug: string, id: string) => Promise<{ title: string; done_when: string }>;
 }
 
 export interface MergeOrderServices {
