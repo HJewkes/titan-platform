@@ -20,7 +20,7 @@ import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BROKER_DOWN_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, ReviewerBrokerStillDown, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBooting, whileBrokerBusy, whileRosterSlow, type BrokerDownTiming, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
@@ -138,14 +138,14 @@ type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
  * Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one.
  * A timed-out ask may have landed, so it is `timed-out`, looked for like any ask, and never asked again blind (TP-2804).
  */
-async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & BrokerDownTiming, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
   const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief, signal) : dispatch.spawn(intent.reviewer, brief, target, facts, signal));
   const note = (text: string) => {
     waits.push(text);
     noteReviewWait(target.repo, target.pr, `waiting for reviewer admission (the broker has not started ${intent.reviewer}): ${text}`);
   };
   try {
-    await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
+    await whileBrokerBusy(timing, signal, note, () => whileBrokerBooting(timing, signal, ask));
     return "asked";
   } catch (error) {
     if (error instanceof ReviewerAskTimedOut) return "timed-out";
@@ -184,6 +184,8 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   seatWaitMs?: number;
   /** How long a busy broker is asked again before its refusal stands; absent means `DEFAULT_BUSY_WAIT_MS`. */
   busyWaitMs?: number;
+  /** How long an unreachable broker is waited out before the run is held; absent means `DEFAULT_BROKER_DOWN_WAIT_MS`. */
+  brokerDownWaitMs?: number;
   exitGraceMs?: number;
   detachGraceMs?: number;
   isFrozen?: IsFrozen;
@@ -215,6 +217,10 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
 const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS });
+const bootTiming = (deps: ShepherdDeps, wired: Wired): BrokerDownTiming => ({ ...brokerTiming(deps), brokerDownWaitMs: wired.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS });
+
+/** A broker that stayed down says so in the stored reason, from its budget alone; any other refusal carries only its class. */
+const refusalOf = (error: unknown): string => (error instanceof ReviewerBrokerStillDown ? error.message : failureOf(error));
 
 type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean, clock?: StepClock) => Promise<T>;
 
@@ -229,7 +235,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
     return body(deps, { ...wiring, dispatch }, input, signal, repeat, clock).catch((error: unknown) => {
       signal.throwIfAborted();
-      const failure = failureOf(error);
+      const failure = refusalOf(error);
       console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${consoleTextOf(error)}`);
       return { kind: "none", reason: `the reviewer dispatch was refused: ${failure}`, refused: failure };
     });
@@ -241,9 +247,9 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, wired, input, signal) => {
   const { dispatch, accounts } = wired;
-  const timing = brokerTiming(deps);
+  const timing = bootTiming(deps, wired);
   const budgetMs = wired.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS;
-  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerDown(timing, signal, () => dispatch.roster())).catch(rosterUnread);
+  const roster = await whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, () => dispatch.roster())).catch(rosterUnread);
   if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
@@ -265,8 +271,8 @@ const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispat
  */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, shape, profile, convergence, earlierFindings, scopedRereview, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
-  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
-  const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
+  const timing = { ...bootTiming(deps, wired), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
+  const roster = await whileBrokerBooting(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
