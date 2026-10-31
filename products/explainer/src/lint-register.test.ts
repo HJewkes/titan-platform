@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import { L0_CHECKS } from "./eval-l0.js";
 import {
   REGISTER_CHECK_IDS,
@@ -15,6 +16,9 @@ import {
   type RegisterMetric,
 } from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 const measure = (metric: RegisterMetric, ...spoken: string[]): number | undefined => REGISTER_MEASURES[metric](spokenText(spoken));
 

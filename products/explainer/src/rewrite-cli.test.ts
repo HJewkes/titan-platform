@@ -2,12 +2,16 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli, type RewriteCliDeps } from "./rewrite-cli.js";
 import { BEATS, cuedChoppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { RewriteReport } from "./rewrite-pass.js";
 import { ScriptSchema } from "./script-schema.js";
 import { pipelineScript } from "./spike-fixtures.test-helpers.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 let dir: string;
 const write = (name: string, value: unknown): string => {
