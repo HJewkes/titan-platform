@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -19,11 +18,13 @@ import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import { MergeTrain, mergeTrainRef, trainMigration, type MergeTrainRef } from "./train.js";
 import type { WatchRow } from "./view.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const HEADS = { 1: fakeSha("train-head1"), 2: fakeSha("train-head2") } as const;
+const headOf: Readonly<Record<number, string>> = HEADS;
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1" });
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
@@ -146,7 +147,7 @@ describe("the merge train", () => {
   it("lands two PRs approved at once one after the other, with no merge GitHub refuses", async () => {
     const repo = twoPrRepo();
     const both = barrier(2);
-    const w = world(repo, async (ctx, request) => (request.headSha === HEADS[request.pr as 1 | 2] && (await both()), merges(ctx, request)));
+    const w = world(repo, async (ctx, request) => (request.headSha === headOf[request.pr] && (await both()), merges(ctx, request)));
     const runs = [shepherd(w, 1), shepherd(w, 2)];
 
     await Promise.all(runs.map((runId) => w.host.runtime.wait(runId)));

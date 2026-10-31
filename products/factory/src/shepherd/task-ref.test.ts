@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { qualifyTask } from "./task-ref.js";
 
 function index(tasks: { id: string; slug: string }[]): typeof fetch {
-  return vi.fn(async () => new Response(JSON.stringify({ ok: true, data: { tasks } }))) as unknown as typeof fetch;
+  return vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ ok: true, data: { tasks } })));
 }
 
 const origin = "http://127.0.0.1:7400";
@@ -25,7 +25,7 @@ describe("qualifyTask", () => {
   });
 
   it("refuses when the daemon cannot be reached", async () => {
-    const fetch = vi.fn(async () => Promise.reject(new Error("connection refused"))) as unknown as typeof globalThis.fetch;
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Promise.reject(new Error("connection refused")));
     await expect(qualifyTask("CC-784", { origin, fetch })).rejects.toThrow("pass --task <initiative>/<ID>");
   });
 

@@ -2,7 +2,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
@@ -18,6 +17,7 @@ import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-des
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -63,7 +63,7 @@ function mergingReviewers(seat?: { fixFirst: boolean }): { dispatch: ReviewerDis
   const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), ...(seat ? [row(SEAT_REVIEWER)] : [])];
   const spawned: string[] = [];
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void (spawned.push(name), agents.push(row(name))), resume: async () => undefined };
-  const said = (who: ReviewerAgent, head: string, verdict: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text: `Verdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`, locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator });
+  const said = (who: ReviewerAgent, head: string, verdict: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text: `Verdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`, locator: fakeLocator({ source: { conversation: { nativeId: who.sessionId } } }) });
   const answer = (who: ReviewerAgent, head: string) => (who.name !== SEAT_REVIEWER ? [said(who, head, "MERGE")] : seat?.fixFirst && head !== H1 ? [said(who, head, "FIX_FIRST")] : []);
   const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).flatMap((who) => answer(who, input.head)) };
   return { dispatch, reader, spawned };

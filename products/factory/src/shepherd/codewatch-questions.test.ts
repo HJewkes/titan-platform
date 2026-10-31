@@ -55,7 +55,7 @@ describe("codewatchReader", () => {
   });
 
   it("gives no questions and a warning for a report with the wrong schema", async () => {
-    const report = { ...(fixture("pr-report-worsened.json") as object), schema: "codewatch-pr-report@2" };
+    const report = Object.assign({}, fixture("pr-report-worsened.json"), { schema: "codewatch-pr-report@2" });
     const read = codewatchReader(serving(report), [REPO]);
 
     const result = await read(target);

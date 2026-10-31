@@ -1,5 +1,4 @@
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -14,6 +13,7 @@ import { ReviewerAskTimedOut } from "./review-wait.js";
 import { MAX_SEAT_HELD_ROUNDS } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -29,7 +29,7 @@ const SEAT = row("seat-pr-1-review");
 const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
 const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
   ...{ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text },
-  locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator,
+  locator: fakeLocator({ source: { conversation: { nativeId: who.sessionId } } }),
 });
 
 /** Every reviewer Shepherd spawns says MERGE at the head it reads; the seat reviewer said FIX_FIRST at REVIEWED before the run looked. */

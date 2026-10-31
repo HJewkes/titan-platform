@@ -15,6 +15,8 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { DEPLOY_WANTED, readWanted, type WantedStore } from "./deploy-pacer.js";
 import { deployPacerPorts, deployUnitName, isFactoryRepo, redeploy, REDEPLOY_LOG, SYSTEMD_RUN, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { ChildProcess } from "node:child_process";
 
 const OWN_REPO = FACTORY_REPO!;
 const SHA = "b".repeat(40);
@@ -179,11 +181,11 @@ function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append", refuse
     spawn: (file, args, options) => {
       fail("spawn");
       if (file === refusedFile) throw new Error(`${file} refused`);
-      calls.push({ file, args, options: options as Record<string, unknown> });
+      calls.push({ file, args, options: { ...options } });
       const own: Record<string, ((value: unknown) => void)[]> = {};
       handlers.push(own);
       const on = (event: string, handler: (value: unknown) => void) => void (own[event] ??= []).push(handler);
-      return { pid: 776 + calls.length, unref: () => void effects.push("unref"), on: on as never };
+      return Object.assign(partialFake<Pick<ChildProcess, "pid" | "unref" | "on">>(), { pid: 776 + calls.length, unref: () => void effects.push("unref"), on });
     },
     mkdir: (dir) => (fail("mkdir"), void effects.push(`mkdir ${dir}`)),
     append: (path, text) => (fail("append"), effects.push(`append ${path}`), void lines.push(text)),

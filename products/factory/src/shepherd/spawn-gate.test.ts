@@ -11,6 +11,7 @@ import type { RosterReader } from "./roster.js";
 import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
+import { partialFake } from "@titan-design/test-kit";
 
 /** A configured cost of four cores per unabsorbed review, which the accounting below reads; the measured default is in measured-load.test.ts. */
 const limits: SpawnLimits = { ...DEFAULT_SPAWN_LIMITS, reviewLoad: 4 };
@@ -268,7 +269,7 @@ describe("every factory-started agent passes the one gate", () => {
     return path;
   };
   const ran = () => existsSync(join(dir, "ran"));
-  const roster: RosterReader = { read: async () => ({ known: true, rows: [] }) as never, rows: async () => [], invalidate: () => undefined };
+  const roster: RosterReader = { read: async () => Object.assign(partialFake<Awaited<ReturnType<RosterReader["read"]>>>(), { known: true, rows: [] }), rows: async () => [], invalidate: () => undefined };
   const overloaded = () => spawnGate({ read: () => ({ ...idle, load5: 40 }), log: () => undefined });
 
   it("queues a reviewer spawn on an overloaded machine, starting nobody and showing its place", async () => {

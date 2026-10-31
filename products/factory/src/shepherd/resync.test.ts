@@ -280,7 +280,7 @@ describe("resyncShepherd when superseding moved gates throws", () => {
     const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
     cleanups.push(() => host.close());
     const services = routes.shepherd!;
-    const broken: FactoryHost = Object.assign(Object.create(host) as FactoryHost, {
+    const broken: FactoryHost = Object.assign(Object.create(host), {
       pendingGates: () => {
         throw new Error(LEAKY_MESSAGE);
       },
@@ -353,8 +353,8 @@ describe("endRunsGoneElsewhere while the run moves on", () => {
   });
 
   it("counts a recorded sh-landed step as Shepherd's own merge", () => {
-    const landed = { stepResults: { "sh-landed": {} }, activeSteps: {} } as unknown as WorkflowRun;
-    const reviewing = { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } } as unknown as WorkflowRun;
+    const landed = Object.assign(partialFake<WorkflowRun>(), { stepResults: { "sh-landed": {} }, activeSteps: {} });
+    const reviewing = Object.assign(partialFake<WorkflowRun>(), { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } });
 
     expect([mergedByShepherd(landed), mergedByShepherd(reviewing)]).toEqual([true, false]);
   });
@@ -1159,7 +1159,7 @@ describe("which recorded gate decisions are authority/MRG-AU gates", () => {
 
   function runDeciding(result: object): WorkflowRun {
     const output = JSON.stringify({ result: { outcome: "gate", headSha: REVIEWED, reason: MERGE_TREE_ONLY, ...result } });
-    return { stepResults: { "merge-policy:r0:0:0": { stepId: "merge-policy:r0:0", iteration: 0, output } } } as unknown as WorkflowRun;
+    return Object.assign(partialFake<WorkflowRun>(), { stepResults: { "merge-policy:r0:0:0": { stepId: "merge-policy:r0:0", iteration: 0, output } } });
   }
 
   it("reads an authority/MRG-AU gate at the head the prompt names", () => {

@@ -8,11 +8,13 @@ import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { GateRecord } from "@titan-design/hitl";
 
 const MINUTE_MS = 60_000;
-const gateRecord =(id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
+const gateRecord = (id: string) => partialFake<GateRecord>({ id, createdAt: "2026-01-01T00:00:00.000Z" });
 
-const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
+const registration = partialFake<Registration>({ repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } });
 
 function pausedAt(currentStep: string): WorkflowRun {
   return {
@@ -33,7 +35,7 @@ function pausedAt(currentStep: string): WorkflowRun {
 
 function completedWith(stepId: string, result: object): WorkflowRun {
   const stepResult = { stepId, iteration: 0, completedAt: "2026-01-01T01:00:00.000Z", signal: null, data: { result } };
-  return { ...pausedAt(stepId), status: "completed", currentStep: null, completedAt: "2026-01-01T01:00:00.000Z", stepResults: { [stepId]: stepResult } } as unknown as WorkflowRun;
+  return Object.assign(partialFake<WorkflowRun>(), { ...pausedAt(stepId), status: "completed", currentStep: null, completedAt: "2026-01-01T01:00:00.000Z", stepResults: { [stepId]: stepResult } });
 }
 
 describe("shepherd view outcomes", () => {
