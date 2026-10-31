@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { leaksAnswer, parseCorpusV3, selectCandidates, type CandidateFacts, type CorpusV3Row, type SelectOptions, type TestChange } from "./select.js";
+import { briefOf, leaksAnswer, parseCorpusV3, selectCandidates, type CandidateFacts, type CorpusV3Row, type SelectOptions, type TestChange } from "./select.js";
 
 const MERGE = "abcdef1234567890abcdef1234567890abcdef12";
 
@@ -22,10 +22,10 @@ function row(caseId: string, overrides: Partial<CorpusV3Row> = {}): CorpusV3Row 
 }
 
 /** Facts keyed by case id, so each row can be pointed at one fact-driven skip. */
-function factsFor(overrides: Record<string, { pnpm?: boolean; parents?: number; change?: TestChange }> = {}): CandidateFacts {
+function factsFor(overrides: Record<string, { lock?: boolean; parents?: number; change?: TestChange }> = {}): CandidateFacts {
   const of = (r: CorpusV3Row) => overrides[r.case_id] ?? {};
   return {
-    hasPnpmLock: async (r) => of(r).pnpm ?? true,
+    hasSupportedLock: async (r) => of(r).lock ?? true,
     mergeParents: async (r) => of(r).parents ?? 1,
     testChange: async (r) => of(r).change ?? "tests-and-source",
   };
@@ -55,7 +55,7 @@ describe("selectCandidates", () => {
     const rows = [
       row("clean#1"),
       row("voltras-mcp#2", { repo: "voltras-mcp" }),
-      row("npm#3"),
+      row("no-lock#3"),
       row("release#4", { class: "release" }),
       row("two-tasks#5", { n_tasks: 2 }),
       row("merge-commit#6"),
@@ -63,14 +63,14 @@ describe("selectCandidates", () => {
       row("source#8"),
       row("leak#9", { brief_text: "Bound the cache (#100)" }),
     ];
-    const facts = factsFor({ "npm#3": { pnpm: false }, "merge-commit#6": { parents: 2 }, "tests#7": { change: "test-only" }, "source#8": { change: "no-test-change" } });
+    const facts = factsFor({ "no-lock#3": { lock: false }, "merge-commit#6": { parents: 2 }, "tests#7": { change: "test-only" }, "source#8": { change: "no-test-change" } });
 
     const selection = await selectCandidates(rows, OPTIONS, facts);
 
     expect(selection.byClass).toEqual({ mechanical: [], "local-fix": [row("clean#1")], "feature-slice": [] });
     expect(selection.skipped).toEqual([
       { caseId: "voltras-mcp#2", reason: "private-repo" },
-      { caseId: "npm#3", reason: "unsupported-runner" },
+      { caseId: "no-lock#3", reason: "unsupported-runner" },
       { caseId: "release#4", reason: "class-not-requested" },
       { caseId: "two-tasks#5", reason: "tangled" },
       { caseId: "merge-commit#6", reason: "tangled" },
@@ -83,7 +83,7 @@ describe("selectCandidates", () => {
   it("asks the clone nothing about a row the row alone disqualifies", async () => {
     const asked: string[] = [];
     const facts: CandidateFacts = {
-      hasPnpmLock: async (r) => (asked.push(r.case_id), true),
+      hasSupportedLock: async (r) => (asked.push(r.case_id), true),
       mergeParents: async () => 1,
       testChange: async () => "tests-and-source",
     };
@@ -125,5 +125,12 @@ describe("leaksAnswer", () => {
     ["a plain brief", "Bound the cache; done when evictions are counted"],
   ])("passes a brief naming %s", (_, brief) => {
     expect(leaksAnswer(brief, target)).toBe(false);
+  });
+});
+
+describe("briefOf", () => {
+  it("uses the task brief when the row has one and the PR title otherwise", () => {
+    expect(briefOf(row("a#1", { brief_text: "Bound the cache" }))).toBe("Bound the cache");
+    expect(briefOf(row("b#2", { brief_text: null, title: "Fix the thing" }))).toBe("Fix the thing");
   });
 });
