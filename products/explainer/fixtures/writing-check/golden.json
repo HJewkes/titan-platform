@@ -1,0 +1,404 @@
+{
+  "clean": {
+    "words": 715,
+    "bucket": "600-1199",
+    "rows": {
+      "phrases": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "neg-synthetic": {
+        "value": 1.4,
+        "outOfBand": false
+      },
+      "triads": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "colon-reveals": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "downtoners": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "not-x-tails": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "semicolons": {
+        "value": 0,
+        "outOfBand": false
+      },
+      "lets": {
+        "value": 1.4,
+        "outOfBand": false
+      },
+      "sentence-mean": {
+        "value": 12.77,
+        "outOfBand": false
+      },
+      "sentence-cv": {
+        "value": 0.63,
+        "outOfBand": false
+      },
+      "adjacent-delta": {
+        "value": 0.77,
+        "outOfBand": false
+      },
+      "numbers": {
+        "value": 12.59,
+        "outOfBand": false
+      },
+      "second-person": {
+        "value": 2.8,
+        "outOfBand": true
+      },
+      "we": {
+        "value": 12.59,
+        "outOfBand": false
+      },
+      "contractions": {
+        "value": 11.19,
+        "outOfBand": false
+      }
+    }
+  },
+  "ours": {
+    "pipeline-explainer": {
+      "words": 1792,
+      "bucket": "1200+",
+      "rows": {
+        "phrases": {
+          "value": 2.79,
+          "outOfBand": true
+        },
+        "neg-synthetic": {
+          "value": 3.35,
+          "outOfBand": true
+        },
+        "triads": {
+          "value": 5.02,
+          "outOfBand": true
+        },
+        "colon-reveals": {
+          "value": 0,
+          "outOfBand": false
+        },
+        "downtoners": {
+          "value": 5.58,
+          "outOfBand": true
+        },
+        "not-x-tails": {
+          "value": 2,
+          "outOfBand": true
+        },
+        "semicolons": {
+          "value": 0.56,
+          "outOfBand": false
+        },
+        "lets": {
+          "value": 0,
+          "outOfBand": false
+        },
+        "sentence-mean": {
+          "value": 11.13,
+          "outOfBand": true
+        },
+        "sentence-cv": {
+          "value": 0.48,
+          "outOfBand": true
+        },
+        "adjacent-delta": {
+          "value": 0.57,
+          "outOfBand": false
+        },
+        "numbers": {
+          "value": 49.11,
+          "outOfBand": true
+        },
+        "second-person": {
+          "value": 4.46,
+          "outOfBand": true
+        },
+        "we": {
+          "value": 0,
+          "outOfBand": true
+        },
+        "contractions": {
+          "value": 10.6,
+          "outOfBand": true
+        }
+      }
+    },
+    "redesign-explainer-v4": {
+      "words": 1637,
+      "bucket": "1200+",
+      "rows": {
+        "phrases": {
+          "value": 4.89,
+          "outOfBand": true
+        },
+        "neg-synthetic": {
+          "value": 6.11,
+          "outOfBand": true
+        },
+        "triads": {
+          "value": 9.77,
+          "outOfBand": true
+        },
+        "colon-reveals": {
+          "value": 8.55,
+          "outOfBand": true
+        },
+        "downtoners": {
+          "value": 6.72,
+          "outOfBand": true
+        },
+        "not-x-tails": {
+          "value": 2,
+          "outOfBand": true
+        },
+        "semicolons": {
+          "value": 7.33,
+          "outOfBand": true
+        },
+        "lets": {
+          "value": 0,
+          "outOfBand": false
+        },
+        "sentence-mean": {
+          "value": 11.95,
+          "outOfBand": true
+        },
+        "sentence-cv": {
+          "value": 0.43,
+          "outOfBand": true
+        },
+        "adjacent-delta": {
+          "value": 0.52,
+          "outOfBand": true
+        },
+        "numbers": {
+          "value": 51.31,
+          "outOfBand": true
+        },
+        "second-person": {
+          "value": 9.77,
+          "outOfBand": true
+        },
+        "we": {
+          "value": 0.61,
+          "outOfBand": true
+        },
+        "contractions": {
+          "value": 7.94,
+          "outOfBand": true
+        }
+      }
+    }
+  },
+  "seeded": {
+    "triad": {
+      "row": "triads",
+      "doses": {
+        "1": {
+          "words": 724,
+          "value": 1.38,
+          "outOfBand": false
+        },
+        "2": {
+          "words": 724,
+          "value": 1.38,
+          "outOfBand": false
+        },
+        "4": {
+          "words": 738,
+          "value": 4.07,
+          "outOfBand": true
+        }
+      }
+    },
+    "colon-reveal": {
+      "row": "colon-reveals",
+      "doses": {
+        "1": {
+          "words": 722,
+          "value": 1.39,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 722,
+          "value": 1.39,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 736,
+          "value": 4.08,
+          "outOfBand": true
+        }
+      }
+    },
+    "not-x-tail": {
+      "row": "not-x-tails",
+      "doses": {
+        "1": {
+          "words": 722,
+          "value": 1,
+          "outOfBand": false
+        },
+        "2": {
+          "words": 722,
+          "value": 1,
+          "outOfBand": false
+        },
+        "4": {
+          "words": 737,
+          "value": 3,
+          "outOfBand": true
+        }
+      }
+    },
+    "voice-phrase": {
+      "row": "phrases",
+      "doses": {
+        "1": {
+          "words": 721,
+          "value": 1.39,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 721,
+          "value": 1.39,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 732,
+          "value": 4.1,
+          "outOfBand": true
+        }
+      }
+    },
+    "verbless-no": {
+      "row": "neg-synthetic",
+      "doses": {
+        "1": {
+          "words": 717,
+          "value": 2.79,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 717,
+          "value": 2.79,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 723,
+          "value": 5.53,
+          "outOfBand": true
+        }
+      }
+    },
+    "downtoner": {
+      "row": "downtoners",
+      "doses": {
+        "1": {
+          "words": 721,
+          "value": 1.39,
+          "outOfBand": false
+        },
+        "2": {
+          "words": 721,
+          "value": 1.39,
+          "outOfBand": false
+        },
+        "4": {
+          "words": 732,
+          "value": 4.1,
+          "outOfBand": true
+        }
+      }
+    },
+    "vague-quantifier": {
+      "row": "numbers",
+      "doses": {
+        "1": {
+          "words": 715,
+          "value": 11.19,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 715,
+          "value": 11.19,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 715,
+          "value": 8.39,
+          "outOfBand": true
+        }
+      }
+    },
+    "closer": {
+      "row": "sentence-mean",
+      "doses": {
+        "1": {
+          "words": 719,
+          "value": 12.61,
+          "outOfBand": false
+        },
+        "2": {
+          "words": 719,
+          "value": 12.61,
+          "outOfBand": false
+        },
+        "4": {
+          "words": 728,
+          "value": 12.34,
+          "outOfBand": true
+        }
+      }
+    },
+    "flatten": {
+      "row": "sentence-cv",
+      "doses": {
+        "1": {
+          "words": 715,
+          "value": 0.13,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 715,
+          "value": 0.13,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 715,
+          "value": 0.13,
+          "outOfBand": true
+        }
+      }
+    },
+    "expand-contractions": {
+      "row": "contractions",
+      "doses": {
+        "1": {
+          "words": 723,
+          "value": 0,
+          "outOfBand": true
+        },
+        "2": {
+          "words": 723,
+          "value": 0,
+          "outOfBand": true
+        },
+        "4": {
+          "words": 723,
+          "value": 0,
+          "outOfBand": true
+        }
+      }
+    }
+  }
+}

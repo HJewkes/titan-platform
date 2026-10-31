@@ -1,4 +1,5 @@
-import type { Band, RegisterMetric } from "./lint-register.js";
+import type { Band } from "./lint-register.js";
+import type { WritingMetric } from "./lint-writing.js";
 import type { HumanStanding, WritingDimension, WritingReport, WritingRow } from "./writing-check.js";
 import type { WritingStatus } from "./writing-status.js";
 
@@ -7,7 +8,7 @@ const DIMENSION_LABEL: Record<WritingDimension, string> = { "AI-isms": "AI-isms"
 const STATUS_LABEL: Record<WritingStatus, string> = { gate: "GATE", warning: "warning", "report-only": "report", drop: "dropped" };
 const WIDTHS = { dimension: 10, metric: 15, value: 13, band: 13, human: 10, status: 8, verdict: 5 } as const;
 
-const UNIT_OF: Partial<Record<RegisterMetric, string>> = { "sentence-mean": "", "sentence-cv": "", "not-x-tails": "/script" };
+const UNIT_OF: Partial<Record<WritingMetric, string>> = { "sentence-mean": "", "sentence-cv": "", "adjacent-delta": "", "not-x-tails": "/script" };
 
 const valueText = ({ metric, value }: WritingRow): string => (value === null ? NONE : `${value.toFixed(2)}${UNIT_OF[metric] ?? "/1k"}`);
 const bandText = ({ min, max }: Band): string => (min === undefined ? `<=${max}` : `${min}-${max}`);
