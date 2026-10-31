@@ -212,6 +212,13 @@ function payloadOf(row: Row): Row {
   return Object.fromEntries(Object.entries(row).filter(([column]) => !SYNTHETIC_KEYS.has(column)));
 }
 
+function unreachableSessionIds(graph: WorkspaceGraph): string[] {
+  return graph.db
+    .prepare<[], { session_id: string }>(UNREACHABLE_SESSIONS)
+    .all()
+    .map((row) => row.session_id);
+}
+
 /**
  * Declare every row a rebuild could not reproduce, before one runs.
  *
@@ -220,10 +227,7 @@ function payloadOf(row: Row): Row {
  * failure it exists to prevent, not a smaller version of it.
  */
 export function preserveUnreachable(graph: WorkspaceGraph, origin: string): number {
-  const ids = graph.db
-    .prepare<[], { session_id: string }>(UNREACHABLE_SESSIONS)
-    .all()
-    .map((row) => row.session_id);
+  const ids = unreachableSessionIds(graph);
   if (ids.length === 0) return 0;
   const placeholders = ids.map(() => '?').join(', ');
   let preserved = 0;
