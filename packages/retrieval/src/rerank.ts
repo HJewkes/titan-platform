@@ -32,17 +32,22 @@ export interface CrossEncoderOptions {
 
 const MISSING = "@huggingface/transformers is not installed; add it as a dependency or supply your own Reranker";
 
+function isClassifier(value: unknown): value is Classifier {
+  return typeof value === "function";
+}
+
 async function defaultLoadClassifier(model: string): Promise<Classifier> {
   const name = "@huggingface/transformers";
-  let mod: { pipeline?: unknown };
+  let mod: unknown;
   try {
-    mod = (await import(name)) as { pipeline?: unknown };
+    mod = await import(name);
   } catch (err) {
     throw new Error(MISSING, { cause: err });
   }
-  if (typeof mod.pipeline !== "function") throw new Error(MISSING);
-  const pipeline = mod.pipeline as (task: string, model: string, options: { dtype: string }) => Promise<Classifier>;
-  return pipeline("text-classification", model, { dtype: "q8" });
+  if (typeof mod !== "object" || mod === null || !("pipeline" in mod) || typeof mod.pipeline !== "function") throw new Error(MISSING);
+  const classifier: unknown = await Reflect.apply(mod.pipeline, undefined, ["text-classification", model, { dtype: "q8" }]);
+  if (!isClassifier(classifier)) throw new Error("@huggingface/transformers pipeline did not return a classifier function");
+  return classifier;
 }
 
 /** In-process cross-encoder (default `Xenova/ms-marco-MiniLM-L-6-v2`), loaded on first use. */
