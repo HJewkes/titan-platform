@@ -11,14 +11,14 @@ import { readPrFacts } from "./pr-facts.js";
  * TP-4635: with no required contexts to read, every check run at the head stands in. All completed and none red is green;
  * a head with no run yet is pending, since its CI may not have started.
  */
-export function headRunsState(runs: readonly CheckRun[], head: string): HeadSnapshot["ci"] {
+function headRunsState(runs: readonly CheckRun[], head: string): HeadSnapshot["ci"] {
   const atHead = runs.filter((run) => run.headSha === head);
   if (atHead.some((run) => run.status === "completed" && !isPassing(run))) return "failing";
   return atHead.length > 0 && atHead.every(isPassing) ? "green" : "pending";
 }
 
 /** The base's required contexts when they can be read, else the head's own check runs; the read names which it took. */
-export async function ciAt(port: GitHubPort, repo: string, base: string, head: string): Promise<CiRead> {
+async function ciAt(port: GitHubPort, repo: string, base: string, head: string): Promise<CiRead> {
   const required = await checksAt(port, repo, base, head);
   if (required.state !== "unreadable") return { state: required.state, source: "required-checks" };
   return { state: headRunsState(await port.checkRuns(repo, head), head), source: "head-check-runs" };

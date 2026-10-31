@@ -17,7 +17,6 @@ import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./wo
 
 export { FIX_PROOF_CHECK };
 export type { FixProofUnverified };
-export type { FixProofRead, PollTiming };
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
