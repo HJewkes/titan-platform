@@ -1,5 +1,6 @@
 import { execGh, type GhExec } from "@titan-design/github";
 import { cachedProbe } from "./cached-probe.js";
+import { readPath } from "./narrow.js";
 
 const NORMAL_TICK_MS = 60_000;
 const SLOW_TICK_MS = 5 * 60_000;
@@ -42,7 +43,7 @@ async function readRemaining(exec: GhExec): Promise<number | null> {
   try {
     const { code, stdout } = await exec(["api", "rate_limit"], undefined, { timeoutMs: RATE_PROBE_TIMEOUT_MS });
     if (code !== 0) return null;
-    const remaining = (JSON.parse(stdout) as { resources?: { core?: { remaining?: unknown } } }).resources?.core?.remaining;
+    const remaining = readPath(JSON.parse(stdout), "resources", "core", "remaining");
     return typeof remaining === "number" ? remaining : null;
   } catch {
     return null;

@@ -1,5 +1,6 @@
 import type { GitBehind } from "./deploy-behind.js";
 import { DEPLOY_MAX_WAIT_MS } from "./shepherd/deploy-pacer.js";
+import { isRecord } from "./narrow.js";
 
 const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
@@ -264,7 +265,7 @@ export function deploySummary(health: DeployHealth): string {
 /** The deploy block from a `/health` answer; null when serve answered none or keeps none. */
 export function deployBlockOf(health: Record<string, unknown> | null): DeployHealth | null {
   const block = health?.deploy;
-  if (typeof block !== "object" || block === null) return null;
-  const { alarm, causes, runningSha } = block as Partial<DeployHealth>;
-  return typeof alarm === "boolean" && Array.isArray(causes) && typeof runningSha === "string" ? (block as DeployHealth) : null;
+  return isDeployHealth(block) ? block : null;
 }
+
+const isDeployHealth = (block: unknown): block is DeployHealth => isRecord(block) && typeof block.alarm === "boolean" && Array.isArray(block.causes) && typeof block.runningSha === "string";

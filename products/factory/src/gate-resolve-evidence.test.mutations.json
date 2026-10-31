@@ -25,8 +25,8 @@
     {
       "name": "the main-green policy admits a payload naming another merge",
       "file": "products/factory/src/coordinator-evidence.ts",
-      "find": "keyof typeof MAIN_GATES], mergeSha: main.mergeSha })) return false;",
-      "replace": "keyof typeof MAIN_GATES], mergeSha: (payload as { mergeSha?: unknown }).mergeSha })) return false;",
+      "find": "mainDecisions[stepOf(gate.id)], mergeSha: main.mergeSha })) return false;",
+      "replace": "mainDecisions[stepOf(gate.id)], mergeSha: (payload as { mergeSha?: unknown }).mergeSha })) return false;",
       "kills": ["coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back on an acknowledgement naming another merge"]
     }
   ]

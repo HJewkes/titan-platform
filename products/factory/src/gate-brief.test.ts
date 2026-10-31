@@ -2,6 +2,7 @@ import { snapshotBrief } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { approveMergeDecision, ciEvidence, ciFailedDecision, ciPolicyAt, ciPolicyCardLines, conflictDecision, frozenDecision, mainEvidence, oneLine, ownerBriefAt, prEvidence, sentBackDecision, stuckBehindDecision, verdictIsMergeAt } from "./gate-brief.js";
+import { readPath } from "./narrow.js";
 
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -17,7 +18,7 @@ const decisions = {
   frozen: frozenDecision({ repo: "octo/demo", mergeSha: HEAD, situation: "main is red" }),
 };
 
-const enumOf = (schema: z.ZodType): unknown => (z.toJSONSchema(schema) as unknown as { properties: { decision: { enum: unknown } } }).properties.decision.enum;
+const enumOf = (schema: z.ZodType): unknown => readPath(z.toJSONSchema(schema), "properties", "decision", "enum");
 
 describe("a gate's question options and its answer schema's decision enum", () => {
   it.each(Object.entries(decisions))("%s: come from one list", (_name, { schema, brief }) => {

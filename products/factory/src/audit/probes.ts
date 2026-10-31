@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import type { MetricQuery, StoreInventory, StoreRef } from "./schemas.js";
+import { isRecord, readPath } from "../narrow.js";
 
 const run = promisify(execFile);
 const PROBE_TIMEOUT_MS = 30_000;
@@ -28,20 +29,27 @@ function withReadOnly<T>(store: StoreRef, fn: (db: Db) => T): T {
   }
 }
 
+/** These stores are not ours, so a row is read from `unknown`; a value of another type names no key, table or column. */
+const textColumn = (rows: readonly unknown[], column: string): string[] => rows.map((row) => readPath(row, column)).filter((value) => typeof value === "string");
+
+const sortedKeys = (body: unknown): string[] => (isRecord(body) ? Object.keys(body).sort() : []);
+
+const isColumn = (row: unknown): row is { name: string; type: string } => isRecord(row) && typeof row.name === "string" && typeof row.type === "string";
+
 /** `ci-wait:0:1` and `ci-wait:2` are one family: the suffixes are rounds and iterations, not kinds. */
 function jsonKeyFamilies(db: Db, table: string, column: string): string[] | undefined {
-  const sample = db.prepare(`select "${column}" as v from "${table}" where "${column}" is not null limit 1`).get() as { v: unknown } | undefined;
-  if (typeof sample?.v !== "string" || !sample.v.trimStart().startsWith("{")) return undefined;
+  const sample = readPath(db.prepare(`select "${column}" as v from "${table}" where "${column}" is not null limit 1`).get(), "v");
+  if (typeof sample !== "string" || !sample.trimStart().startsWith("{")) return undefined;
   const sql = `select distinct case when instr(j.key, ':') > 0 then substr(j.key, 1, instr(j.key, ':') - 1) else j.key end as k
     from (select "${column}" as v from "${table}" limit ${MAX_JSON_ROWS}) t, json_each(t.v) j where json_valid(t.v) order by k`;
-  return (db.prepare(sql).all() as { k: string }[]).map((row) => row.k);
+  return textColumn(db.prepare(sql).all(), "k");
 }
 
 function sqliteTables(db: Db): NonNullable<StoreInventory["tables"]> {
-  const names = (db.prepare("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name").all() as { name: string }[]).map((row) => row.name);
+  const names = textColumn(db.prepare("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name").all(), "name");
   return names.map((name) => {
-    const columns = (db.prepare(`pragma table_info("${name}")`).all() as { name: string; type: string }[]).filter((column) => column.type.toUpperCase() !== "BLOB");
-    const rows = (db.prepare(`select count(*) as n from "${name}"`).get() as { n: number }).n;
+    const columns = db.prepare(`pragma table_info("${name}")`).all().filter(isColumn).filter((column) => column.type.toUpperCase() !== "BLOB");
+    const rows = Number(readPath(db.prepare(`select count(*) as n from "${name}"`).get(), "n"));
     const jsonKeys = Object.fromEntries(columns.flatMap((column) => (column.type.toUpperCase() === "TEXT" ? [[column.name, jsonKeyFamilies(db, name, column.name)]] : [])).filter(([, keys]) => keys));
     return { name, columns: columns.map((column) => column.name), rows, ...(Object.keys(jsonKeys).length > 0 && { jsonKeys }) };
   });
@@ -63,7 +71,7 @@ function jsonlKeys(text: string): string[] {
   const keys = new Set<string>();
   for (const line of text.split("\n").slice(0, MAX_JSON_ROWS)) {
     try {
-      Object.keys(JSON.parse(line) as object).forEach((key) => keys.add(key));
+      Object.keys(JSON.parse(line)).forEach((key) => keys.add(key));
     } catch {
       continue;
     }
@@ -98,7 +106,7 @@ async function inventoryOf(store: StoreRef, signal: AbortSignal): Promise<Omit<S
     case "jsonl":
       return { keys: jsonlKeys(await readFile(required(store.path, store, "path"), "utf8")) };
     case "http":
-      return { keys: Object.keys((await fetchJson(httpUrl(store), signal)) as object).sort() };
+      return { keys: sortedKeys(await fetchJson(httpUrl(store), signal)) };
     case "cli":
       return logInventory(await runReadCommand(`${required(store.command, store, "command")} --help`, signal));
   }
@@ -114,7 +122,7 @@ export async function inventoryStore(store: StoreRef, signal: AbortSignal): Prom
 }
 
 function at(value: unknown, path: string | undefined): unknown {
-  return (path ?? "").split(".").filter(Boolean).reduce<unknown>((node, key) => (node as Record<string, unknown> | undefined)?.[key], value);
+  return (path ?? "").split(".").filter(Boolean).reduce<unknown>((node, key) => readPath(node, key), value);
 }
 
 function numberOf(value: unknown): number | null {
@@ -131,7 +139,7 @@ function sqlValue(rows: Record<string, unknown>[], valuePath: string | undefined
 }
 
 export async function queryStore(store: StoreRef, query: MetricQuery, signal: AbortSignal): Promise<{ value: number | null; n: number }> {
-  if (query.kind === "sql") return withReadOnly(store, (db) => sqlValue(db.prepare(query.text).all() as Record<string, unknown>[], query.valuePath));
+  if (query.kind === "sql") return withReadOnly(store, (db) => sqlValue(db.prepare(query.text).all().filter(isRecord), query.valuePath));
   if (query.kind === "http") return { value: numberOf(at(await fetchJson(httpUrl(store, query.text), signal), query.valuePath)), n: 1 };
   const declared = store.command;
   if (!declared || (query.text !== declared && !query.text.startsWith(`${declared} `))) throw new Error(`cli query is outside the store's declared command`);

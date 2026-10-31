@@ -7,6 +7,7 @@ import { EXIT } from "../exit-codes.js";
 import { untilSettledOrGated, type FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
 import { AUDIT_WORKFLOW } from "./workflow.js";
+import { errorMessage, readPath } from "../narrow.js";
 
 interface AuditOpts {
   input: string;
@@ -15,8 +16,9 @@ interface AuditOpts {
 
 /** YAML is a superset of JSON, so one parser reads either form of the input file. */
 function readInput(path: string, area: string): unknown {
-  const input = parse(readFileSync(path, "utf8")) as { system?: unknown } | null;
-  if (input?.system !== area) throw new Error(`input is for ${JSON.stringify(input?.system)}, not "${area}"`);
+  const input: unknown = parse(readFileSync(path, "utf8"));
+  const system = readPath(input, "system");
+  if (system !== area) throw new Error(`input is for ${JSON.stringify(system)}, not "${area}"`);
   return input;
 }
 
@@ -34,7 +36,7 @@ async function auditVerb(verbs: Verbs, area: string, opts: AuditOpts): Promise<v
   try {
     input = readInput(opts.input, area);
   } catch (err) {
-    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    verbs.io.stderr(`error: ${errorMessage(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
   const out = resolve(opts.out);

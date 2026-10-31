@@ -15,6 +15,9 @@ import { TEST_BRIEF } from "./test-support/brief.js";
 import { rootStat, useOwnerKeyDir } from "./test-support/owner-edges.js";
 import { REPO as SHEPHERD_REPO } from "./test-support/land.js";
 import { callCommand, shepherdFixture } from "./test-support/shepherd.js";
+import { isRecord } from "./narrow.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { FactoryContext } from "./registry.js";
 
 const REPO = "example-org/example-repo";
 const AUD = "factory.test";
@@ -94,7 +97,11 @@ function proofOf(items: readonly ProofItem[], nonce = randomBytes(16).toString("
 const post = (server: FactoryServer, body: string, path = RESOLVE_PROOF_PATH): Promise<Response> =>
   fetch(`http://127.0.0.1:${server.port}${path}`, { method: "POST", headers: { "content-type": "application/json", [CLIENT_HEADER]: "test" }, body });
 
-const health = async (server: FactoryServer): Promise<Record<string, unknown>> => (await fetch(`http://127.0.0.1:${server.port}/health`)).json() as Promise<Record<string, unknown>>;
+const health = async (server: FactoryServer): Promise<Record<string, unknown>> => {
+  const body: unknown = await (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
+  if (!isRecord(body)) throw new Error("/health answered no object");
+  return body;
+};
 
 describe("POST /gates/resolve-proof", () => {
   it("verifies a signed proof and resolves every item, returning per-item outcomes", async () => {
@@ -214,7 +221,7 @@ describe("POST /gates/resolve-proof", () => {
   });
 
   it("is not an MCP tool or an RPC command", () => {
-    const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
+    const tools = listTools({ registry: createFactoryRegistry(), createContext: () => partialFake<FactoryContext>({ warnings: [], format: "json" }), toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
     expect(tools.map((tool) => tool.name).filter((name) => /resolve|proof/.test(name))).toEqual([]);
     expect(createFactoryRegistry().list().map((cmd) => cmd.name).filter((name) => /resolve|proof/.test(name))).toEqual([]);

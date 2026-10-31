@@ -6,6 +6,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { readCi, type CiSnapshot } from "./land-ci.js";
 import { LAND_STEPS, land, landRoutes, type LandOutcome } from "./land.js";
 import { prSnapshot } from "./pr-snapshot.js";
+import { readPath } from "../narrow.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const REPOS = ["octo/a", "octo/b", "octo/c", "octo/d", "octo/e"];
 const CONTEXTS = ["validate", "dag-check"];
@@ -19,9 +21,12 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** One fake per repo behind one wire, as the service's one port reaches every repo. */
 function multiRepoWire(fakes: Map<string, FakeGitHub>): GitHubWire {
-  return new Proxy({} as GitHubWire, {
-    get: (_target, method: string) => {
-      return (repo: string, ...rest: unknown[]) => (fakes.get(repo)!.wire as unknown as Record<string, (...args: unknown[]) => unknown>)[method]!(repo, ...rest);
+  return new Proxy(partialFake<GitHubWire>(), {
+    get: (_target, method: string) => (repo: string, ...rest: unknown[]) => {
+      const wire = fakes.get(repo)!.wire;
+      const call = readPath(wire, method);
+      if (typeof call !== "function") throw new Error(`the fake wire has no ${method}`);
+      return Reflect.apply(call, wire, [repo, ...rest]);
     },
   });
 }

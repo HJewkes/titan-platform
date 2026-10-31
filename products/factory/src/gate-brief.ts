@@ -29,7 +29,8 @@ function decisionGate<const Id extends string, Shape extends z.ZodRawShape = Rec
   options: readonly [DecisionOption<Id>, ...DecisionOption<Id>[]];
   shape?: Shape;
 }): DecisionGate<Id, Shape> {
-  const ids = spec.options.map((option) => option.id) as [Id, ...Id[]];
+  const [first, ...rest] = spec.options;
+  const ids: [Id, ...Id[]] = [first.id, ...rest.map((option) => option.id)];
   const schema = z.object({ decision: z.enum(ids), ...spec.shape }) as unknown as DecisionGate<Id, Shape>["schema"];
   const options = spec.options.map(({ id, label, recommended }) => ({ id, label, ...(recommended && { recommended: true as const }) }));
   return { schema, questions: [{ id: "decision", question: spec.question, options }] };

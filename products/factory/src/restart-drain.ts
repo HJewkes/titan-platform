@@ -38,6 +38,7 @@ const REPORT_EVERY_MS = 60_000;
 /** Consecutive unanswered `/health` polls for this long mean serve is down, not slow. */
 export const NO_ANSWER_PROCEED_MS = 2 * 60_000;
 const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
+const isDrainPhase = (phase: string): phase is BusyPhase => DRAIN_PHASES.has(phase);
 /**
  * Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account or an unbound checkout can hold one for days,
  * a seat reviewer runs outside serve, so its verdict waits for the repeated read, and a merging run in sh-order-wait only polls for the PRs ahead of it, replaying that wait (TP-4567).
@@ -68,7 +69,7 @@ function classify(run: WorkflowRun, routeFor: RouteFor): BusyRun | undefined {
   if (routeFor(step)?.onRestart === "park") return { runId: run.id, step, phase: "park" };
   if (IDLE_WAITS.some((id) => stepIdMatches(id, step))) return undefined;
   const phase = stepPhase(step);
-  return DRAIN_PHASES.has(phase) ? { runId: run.id, step, phase: phase as BusyPhase } : undefined;
+  return isDrainPhase(phase) ? { runId: run.id, step, phase } : undefined;
 }
 
 /**
