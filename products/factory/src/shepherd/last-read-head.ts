@@ -1,9 +1,10 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
+import { readPath } from "../narrow.js";
 
 function headIn(result: StepResult | undefined): string | undefined {
   try {
-    const head = (JSON.parse(result?.output ?? "{}") as { result?: { headSha?: unknown } }).result?.headSha;
+    const head = readPath(JSON.parse(result?.output ?? "{}"), "result", "headSha");
     return typeof head === "string" ? head : undefined;
   } catch {
     return undefined;

@@ -18,6 +18,7 @@ import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
 import { skillPathsIn } from "./skill-paths.js";
+import { isRecord } from "../narrow.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -299,21 +300,19 @@ export function checkedBaseTap(): { base: () => string | undefined; tapping: (ct
   return { base: () => checked, tapping };
 }
 
+/** A guard, not a zod parse: `decideOnFacts` reads `carry` and the rest of the stored evidence, and a parse would strip them. */
+function isMergeEvidence(value: unknown): value is MergeEvidence {
+  if (!isRecord(value)) return false;
+  const { head, merge, record, changedFilesUnread } = value;
+  return typeof head === "string" && isRecord(merge) && Array.isArray(merge.changedPaths) && isRecord(record) && (changedFilesUnread === undefined || typeof changedFilesUnread === "string");
+}
+
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
 export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
   const verdict = verdictFor(headSha);
   if (verdict?.kind !== "MERGE") return undefined;
-  const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
-  const wellFormed =
-    typeof evidence?.head === "string" &&
-    typeof evidence.merge === "object" &&
-    evidence.merge !== null &&
-    Array.isArray(evidence.merge.changedPaths) &&
-    typeof evidence.record === "object" &&
-    evidence.record !== null &&
-    (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
-  if (!wellFormed) return undefined;
-  const stored = evidence as MergeEvidence;
+  const stored: unknown = verdict.evidence;
+  if (!isMergeEvidence(stored)) return undefined;
   // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
   const ciPolicy = CiPolicySchema.parse(stored.ciPolicy);
   return ciPolicy ? { ...stored, ciPolicy } : stored;
