@@ -294,6 +294,11 @@ interface ClustererSnapshot {
     partitions: PartitionSnapshot[];
 }
 /**
+ * Narrow a stored value to a snapshot, or throw. Template ids are founder-order,
+ * so a caller must not answer this throw with a fresh `Clusterer`: that rebinds them.
+ */
+declare function parseClustererSnapshot(value: unknown): ClustererSnapshot;
+/**
  * The storage-free clustering pipeline: signature extraction, masking, Drain,
  * founder-order template id. Persist the snapshot to survive restarts with
  * learned wildcards and id bindings intact; where occurrences go is the
@@ -317,4 +322,4 @@ declare class Clusterer {
     private unbind;
 }
 
-export { type AnchorConfig, type AnchorConfigs, type ClusterInput, type ClusterResult, Clusterer, type ClustererOptions, type ClustererSnapshot, DEFAULT_ANCHOR_CONFIGS, DEFAULT_MASK_CONFIGS, type DrainCluster, DrainTree, type DrainTreeOptions, DrainTreeRegistry, type DrainTreeSnapshot, type LineCountBucket, type MaskConfigs, type MaskResult, type MaskRule, type MatchResult, type PartitionSnapshot, type Signature, WILDCARD, applyMasks, extractSignature, hasErrorSignal, mergeTemplate, templateId, tokenSimilarity };
+export { type AnchorConfig, type AnchorConfigs, type ClusterInput, type ClusterResult, Clusterer, type ClustererOptions, type ClustererSnapshot, DEFAULT_ANCHOR_CONFIGS, DEFAULT_MASK_CONFIGS, type DrainCluster, DrainTree, type DrainTreeOptions, DrainTreeRegistry, type DrainTreeSnapshot, type LineCountBucket, type MaskConfigs, type MaskResult, type MaskRule, type MatchResult, type PartitionSnapshot, type Signature, WILDCARD, applyMasks, extractSignature, hasErrorSignal, mergeTemplate, parseClustererSnapshot, templateId, tokenSimilarity };
