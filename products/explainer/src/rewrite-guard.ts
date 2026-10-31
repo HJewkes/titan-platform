@@ -4,6 +4,9 @@ import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, t
 import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { numberRanges } from "./rewrite-spans.js";
+
+/** Runs before the guard: a new sentence the cap would refuse is split at a clause joint first (TP-4685). */
+export { splitOverlong } from "./rewrite-split.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForms } from "./spoken-numbers.js";
 
