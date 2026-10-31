@@ -1,9 +1,10 @@
 import { contentHash, prefixHash } from "@titan-design/locator";
-import type { UsageMeasurement } from "@titan-design/agent-protocol";
 import type { HarnessSourcePort } from "@titan-design/agent-protocol/harness";
-import { expandHome, readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
+import { SessionSourceDescriptorSchema, SourceTextLocatorSchema, UsageMeasurementSchema } from "@titan-design/agent-protocol/source-schema";
+import { expandHome, readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SpanField } from "@titan-design/session-read";
 import { hasTable } from "@titan-design/store-sqlite";
 import os from "node:os";
+import { z } from "zod";
 import { parseDescriptorPath } from "./stored-json.js";
 import type { SessionGraph } from "./graph.js";
 import { stripInjected } from "./injected-text.js";
@@ -30,14 +31,16 @@ async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: s
   if (row) {
     const source = graph.db.prepare<[number], { descriptor: string }>("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(span.sourceId);
     if (!source) return null;
-    const descriptor = JSON.parse(source.descriptor) as SessionSourceDescriptor;
+    const descriptor = parseStored(source.descriptor, SessionSourceDescriptorSchema);
+    const locators = parseStored(row.locators, z.array(SourceTextLocatorSchema));
+    if (!descriptor || !locators) return null;
     const watermark = graph.transcripts.list().find(t => t.sourceId === span.sourceId);
     try { if (!watermark?.prefixHash || await prefixHash(descriptor.path, watermark.lastOffset) !== watermark.prefixHash) return null; }
     catch { return null; }
     if (span.byteOffset + span.byteLength + 1 > watermark.lastOffset) {
       try { if (!watermark.contentHash || await contentHash(descriptor.path) !== watermark.contentHash) return null; } catch { return null; }
     }
-    const texts = await Promise.all((JSON.parse(row.locators) as SourceTextLocator[]).map(locator => {
+    const texts = await Promise.all(locators.map(locator => {
       const options = { sources: [descriptor] };
       return sourcePort ? sourcePort.readText(locator, options) : readSessionSourceText(locator, options);
     }));
@@ -107,8 +110,12 @@ export function normalizedSessions(graph: SessionGraph, options: { ref?: string;
 }
 
 export type NormalizedUsageSummary = SessionUsageSummary;
+export interface NormalizedUsageOptions {
+  /** Receives one line per stored usage row that does not parse; defaults to `console.warn`. */
+  warn?: (line: string) => void;
+}
 /** Shared storage-free usage policy keeps graph and direct readers consistent. */
-export function normalizedUsage(graph: SessionGraph, ref: string): NormalizedUsageSummary[] {
+export function normalizedUsage(graph: SessionGraph, ref: string, options: NormalizedUsageOptions = {}): NormalizedUsageSummary[] {
   if (!hasNormalizedTables(graph)) return [];
   // Snapshot epochs are local to a physical source; never add copies from different files.
   // Pick the source with the latest native timestamp (then fullest coverage, then stable ID).
@@ -119,11 +126,23 @@ export function normalizedUsage(graph: SessionGraph, ref: string): NormalizedUsa
     AND usage IS NOT NULL AND history_origin IS NULL
     AND (json_extract(usage,'$.kind') = 'delta' OR transcript_id = ?)
     ORDER BY byte_offset,subrecord_index`);
+  const warn = options.warn ?? (line => { console.warn(line); });
   const accumulator = new SessionUsageAccumulator();
   for (const row of rows.iterate(ref, preferred?.transcript_id ?? -1)) {
-    accumulator.add(JSON.parse(row.usage) as UsageMeasurement);
+    const usage = parseStored(row.usage, UsageMeasurementSchema);
+    // A skipped row understates cost, so say so rather than drop it silently.
+    if (usage) accumulator.add(usage);
+    else warn(`session-graph: skipping an unreadable usage row in ${ref}; its cost is not counted`);
   }
   return accumulator.summaries();
+}
+
+/** A stored JSON column narrowed by its schema; null when it is not JSON or does not match. */
+function parseStored<T>(json: string, schema: z.ZodType<T>): T | null {
+  let value: unknown;
+  try { value = JSON.parse(json); } catch { return null; }
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 interface TurnRow { turn_ref: string; started: string | null; ended: string | null; tool_calls: number }

@@ -39,5 +39,11 @@
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }
