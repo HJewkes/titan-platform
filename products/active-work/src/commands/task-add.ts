@@ -14,6 +14,7 @@ import {
 import { writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { DRAFT_TAG } from '../tasks/draft.js';
 import { ValidationError } from '../errors.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { doneWhenProblem } from './_done-when-gate.js';
@@ -30,6 +31,7 @@ import {
   quietOr,
   type TaskOrLine,
 } from './_task-quiet.js';
+import { warnRelatedTasks } from './_task-related.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -47,6 +49,7 @@ const ArgsSchema = z.object({
   cos: z.string().min(1).optional(),
   area: z.string().min(1).optional(),
   due: DueArg,
+  draft: z.boolean().optional(),
   quiet: QuietArg,
 });
 
@@ -89,7 +92,7 @@ function newTask(args: Args, id: string, priority: number): Task {
     cos: args.cos,
     area: args.area,
     due: args.due,
-    tags: args.tags,
+    tags: args.draft ? [...new Set([...(args.tags ?? []), DRAFT_TAG])] : args.tags,
     notes: args.notes,
     created: nowIso(),
     updated: today(),
@@ -127,19 +130,23 @@ export default defineCommand<Args, TaskOrLine>({
         long: '--deliverable',
         description: 'Comma-separated deliverable ids this task counts toward',
       },
+      draft: {
+        long: '--draft',
+        description: 'File as a draft without a done_when; tagged draft, hidden from the bootstrap; promote with task edit --remove-tag draft',
+      },
       ...CATEGORY_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
   async run(args, ctx) {
-    if (ctx.caller === 'agent') {
+    if (ctx.caller === 'agent' && !args.draft) {
       const problem = doneWhenProblem(args.title, args.done_when);
       if (problem !== undefined) throw new ValidationError(problem);
     }
     // Touch activeRoot so it's resolved before locking.
     const activeRoot = getActiveRoot();
     if (args.deliverable !== undefined) await assertKnownDeliverables(activeRoot, args.deliverable);
-    return withFileLock(getLockPath(args.slug), async () => {
+    const filed = await withFileLock(getLockPath(args.slug), async () => {
       const brief = await loadBrief(args.slug);
       const existing = await loadExistingTasks(args.slug);
       const n = allocateTaskNumber(brief, existing);
@@ -152,7 +159,9 @@ export default defineCommand<Args, TaskOrLine>({
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);
-      return quietOr(args.quiet, ctx, task, () => `${id} created`);
+      return { task, existing };
     });
+    const result = await warnRelatedTasks(ctx, args.slug, filed.task, filed.existing);
+    return quietOr(args.quiet, ctx, result, () => `${result.id} created`);
   },
 });

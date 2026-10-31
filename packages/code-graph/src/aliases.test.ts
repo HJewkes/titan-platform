@@ -39,6 +39,10 @@ describe("canonicalRole", () => {
     expect(canonicalRole("test")).toBe("test");
     expect(canonicalRole("source")).toBe("source");
   });
+
+  it("an unknown role name returns as given", () => {
+    expect(canonicalRole("not_a_role")).toBe("not_a_role");
+  });
 });
 
 describe("canonicalEdgeKind", () => {
@@ -52,6 +56,10 @@ describe("canonicalEdgeKind", () => {
   it("returns canonical edge kinds unchanged", () => {
     expect(canonicalEdgeKind("imports")).toBe("imports");
     expect(canonicalEdgeKind("re-exports")).toBe("re-exports");
+  });
+
+  it("an unknown edge kind returns as given", () => {
+    expect(canonicalEdgeKind("not_an_edge_kind")).toBe("not_an_edge_kind");
   });
 });
 

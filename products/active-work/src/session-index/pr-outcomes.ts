@@ -98,8 +98,8 @@ function selectPrs(
 ): PrKey[] {
   const backoff = failBackoffMs();
   const rows = graph.db
-    .prepare('SELECT pr_ref, state, outcome_checked_at FROM pr')
-    .all() as CheckedRow[];
+    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at FROM pr')
+    .all();
   const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
   const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
   return prs

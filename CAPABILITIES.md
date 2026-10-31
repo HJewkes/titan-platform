@@ -263,9 +263,9 @@ Key exports:
 - `registry`: `DrainTreeRegistry`
 - `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
-- `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
+- `masks`: `applyMasks`
 - `template-id`: `templateId`
-- `clusterer`: `Clusterer`
+- `clusterer`: `Clusterer`, `parseClustererSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/cluster)
 
 <a id="cap-code-parser"></a>
@@ -670,7 +670,7 @@ Key exports:
 - `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isPassing`, `isPassingConclusion`
+- `checks`: `isConcluded`, `isPassing`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>

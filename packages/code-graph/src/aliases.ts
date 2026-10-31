@@ -1,4 +1,4 @@
-import type { EdgeKind, NodeRole } from "./types.js";
+import type { NodeRole } from "./types.js";
 
 /**
  * Schema-healing aliases: deprecated or synonymous spellings mapped to the one
@@ -60,12 +60,12 @@ export function canonicalMetricName(name: string): string {
   return METRIC_ALIASES.get(name) ?? name;
 }
 
-export function canonicalRole(name: string): NodeRole {
-  return (ROLE_ALIASES.get(name) ?? name) as NodeRole;
+export function canonicalRole(name: string): string {
+  return ROLE_ALIASES.get(name) ?? name;
 }
 
-export function canonicalEdgeKind(name: string): EdgeKind {
-  return (EDGE_KIND_ALIASES.get(name) ?? name) as EdgeKind;
+export function canonicalEdgeKind(name: string): string {
+  return EDGE_KIND_ALIASES.get(name) ?? name;
 }
 
 /** Canonical metric name for a deprecated alias, or `undefined`. */

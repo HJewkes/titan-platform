@@ -68,6 +68,7 @@
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",
     "@titan-design/locator": "workspace:^",
+    "@titan-design/memory": "workspace:^",
     "@titan-design/pm": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/retrieval": "workspace:^",

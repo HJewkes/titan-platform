@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a named context with no status reads as passed",
+      "file": "packages/github/src/status-runs.ts",
+      "find": "  if (status === undefined) return { ...base, ...posted, status: \"queued\", conclusion: null, completedAt: null };",
+      "replace": "  if (status === undefined) return { ...base, ...posted, status: \"completed\", conclusion: \"success\", completedAt: null };",
+      "kills": ["statusCheckRuns reads a named context with no status as a queued run, so it never counts as passed"]
+    },
+    {
+      "name": "a failure status reads as passed",
+      "file": "packages/github/src/status-runs.ts",
+      "find": "conclusion: status.state, completedAt",
+      "replace": "conclusion: \"success\", completedAt",
+      "kills": ["statusCheckRuns reads a failure status as a run that concluded red"]
+    }
+  ]
+}

@@ -560,7 +560,7 @@ describe("shepherd lineage", () => {
   it("refuses a role other than implementer or successor", () => {
     const store = openLineageStore();
 
-    expect(() => store.recordAuthor("run-1", { ...implementer, role: "reviewer" as never })).toThrow(/CHECK/);
+    expect(() => store.recordAuthor("run-1", Object.assign({ ...implementer }, { role: "reviewer" }))).toThrow(/CHECK/);
   });
 
   it("keeps every registration when a database that holds them gains the lineage table", () => {

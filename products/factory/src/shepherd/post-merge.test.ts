@@ -438,7 +438,7 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed, stackRestack, advisory });
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal.throwIfAborted(), void (clock += ms)), cleanup, mainRed, stackRestack, advisory });
   const host = openFactoryHost({ dbPath: deploy?.dbPath ?? ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, store, routes, freezes: () => freeze.get() };

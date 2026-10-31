@@ -337,6 +337,9 @@ importers:
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/agent-protocol:
     devDependencies:
@@ -418,7 +421,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/cluster: {}
+  packages/cluster:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/code-graph:
     dependencies:
@@ -667,6 +674,9 @@ importers:
         specifier: workspace:*
         version: link:../store-sqlite
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -1223,6 +1233,9 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../../packages/memory
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
@@ -1634,6 +1647,9 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   products/session-miner:
     dependencies:

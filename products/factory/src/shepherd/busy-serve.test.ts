@@ -1,11 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { createServer as createSocketServer } from "node:net";
 import { silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../cli.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { REPO } from "../test-support/land.js";
+import { portOf } from "../test-support/fakes.js";
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -16,7 +16,7 @@ async function listen(handler: (req: IncomingMessage, res: ServerResponse) => vo
   const server = createServer(handler);
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return (server.address() as AddressInfo).port;
+  return portOf(server);
 }
 
 const registered = { ok: true, data: { runId: "run-1", created: true } };
@@ -33,7 +33,7 @@ const slowServe = (delayMs: number) =>
 async function deadPort(): Promise<number> {
   const probe = createSocketServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as AddressInfo;
+  const port = portOf(probe);
   await new Promise((resolve) => probe.close(resolve));
   return port;
 }

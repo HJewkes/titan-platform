@@ -1,11 +1,13 @@
 import type { StepResult } from "@titan-design/workflow";
 import { describe, expect, it, vi } from "vitest";
 import { recordingOverrides } from "./override-gate.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const HEAD = "a".repeat(40);
 const PROMPT = `Merge PR #1 in octo/demo at head ${HEAD}? CI is green. Policy shepherd-merge/owner-gate: owner decides`;
-const answered = (data: Record<string, unknown>) => (async () => ({ stepId: "approve-merge", iteration: 0, agentId: null, signal: null, completedAt: "", data }) as StepResult) as never;
-const ask = (assisted: never, record: () => Promise<void>, reviewed = true, warn = vi.fn()) => recordingOverrides(assisted, () => reviewed, record, warn)("approve-merge", PROMPT, {} as never);
+type Assisted = Parameters<typeof recordingOverrides>[0];
+const answered = (data: Record<string, unknown>): Assisted => async () => partialFake<StepResult>({ stepId: "approve-merge", iteration: 0, agentId: null, signal: null, completedAt: "", data });
+const ask = (assisted: Assisted, record: () => Promise<void>, reviewed = true, warn = vi.fn()) => recordingOverrides(assisted, () => reviewed, record, warn)("approve-merge", PROMPT, {});
 
 describe("recordingOverrides", () => {
   it("records an abandon after a reviewer MERGE and returns the answer untouched", async () => {

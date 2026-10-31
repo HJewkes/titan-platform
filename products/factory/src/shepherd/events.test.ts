@@ -6,6 +6,8 @@ import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMig
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration } from "./store.js";
 import { timelineEntries } from "./view.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { WorkflowRun } from "@titan-design/workflow";
 
 const REPO = "octo/demo";
 const STAMP = Date.parse("2026-01-01T00:00:00Z");
@@ -120,7 +122,7 @@ describe("shepherd event history", () => {
     freezes.freeze(REPO, "red1");
     store.release("run-1");
 
-    const run = { activeSteps: {}, stepResults: {} } as never;
+    const run = partialFake<WorkflowRun>({ activeSteps: {}, stepResults: {} });
     const entries = timelineEntries(run, [], store.eventsOf("run-1"));
 
     expect(entries.map((entry) => entry.kind === "event" && entry.event)).toEqual(["hold", "freeze", "release"]);
