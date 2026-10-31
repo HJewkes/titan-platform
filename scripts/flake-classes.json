@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "repeats": 5,
+  "classes": [
+    {
+      "id": "egress-hook-exec-etxtbsy",
+      "task": "TP-4654",
+      "shape": "a hook test execs a script it has just written and races ETXTBSY",
+      "patterns": ["packages/egress-scan/src/hooks/*.test.ts"]
+    },
+    {
+      "id": "frame-capture-ordered-sink-rejection",
+      "task": "TP-4655",
+      "shape": "every test passes but Vitest reports an unhandled rejection",
+      "patterns": ["packages/frame-capture/src/ordered-sink.test.ts"]
+    },
+    {
+      "id": "daemon-file-watch-debounce",
+      "task": "TP-4640",
+      "shape": "a real-timer sleep overruns the watcher debounce on a loaded event loop",
+      "patterns": ["packages/daemon/src/file-watch.test.ts"]
+    },
+    {
+      "id": "console-phone-teardown",
+      "task": "TP-4636",
+      "shape": "a React scheduler timer fires after jsdom teardown: window is not defined",
+      "patterns": ["apps/console/src/*-phone.test.tsx", "apps/console/src/phone-*.test.tsx", "apps/console/src/routes-phone-tap.test.tsx"]
+    }
+  ]
+}
