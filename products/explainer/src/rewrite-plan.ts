@@ -4,6 +4,7 @@ import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
 import { collapsible, cuedWordsIn, numberUnits } from "./rewrite-spans.js";
 import type { ScriptBeat } from "./script-schema.js";
+import { humanSignalRowsAt } from "./writing-statuses.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
 export const REWRITE_TARGET_ROWS = [
@@ -29,7 +30,7 @@ export interface BeatDirective {
   numbers?: string[];
   /** The lists of three the beat speaks, in order, except a list holding more than one cue word, which cannot collapse. */
   triads?: string[];
-  /** The over-represented phrases the beat speaks, in order; only on a beat the plan directs for another reason. */
+  /** The over-represented phrases the beat speaks, in order, while the phrases row fails and warns at this length. */
   phrases?: string[];
   /** Planned sentence lengths in words, shortest first. */
   shape?: number[];
@@ -209,27 +210,37 @@ function refusedFor(beat: string, refused: PlanOptions["refused"]): Pick<BeatDir
   return rules.length > 0 ? { refused: [...new Set(rules)] } : {};
 }
 
-/** Phrases ride on a beat the plan already directs: the phrases row is eval-only, so it never directs a beat on its own. */
-function phrasesFor(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDirective, "phrases"> {
-  const phrases = failing(rows, "register:phrases") ? phraseSpans(beatText(beat)).map((span) => span.text) : [];
+/**
+ * True when the phrases row fails and the status table makes it a gate or a warning at the script's length. Phrases
+ * once rode only on beats directed for another row, so they fell only while shape directed most beats (TP-4695).
+ */
+function phrasesAimed(beats: readonly PlanBeat[], rows: readonly L0Result[]): boolean {
+  const words = spokenText(beats.map((beat) => beat.spoken)).words.length;
+  return failing(rows, "register:phrases") !== undefined && humanSignalRowsAt(words).has("phrases");
+}
+
+function phrasesFor(beat: PlanBeat, aimed: boolean): Pick<BeatDirective, "phrases"> {
+  const phrases = aimed ? phraseSpans(beatText(beat)).map((span) => span.text) : [];
   return phrases.length > 0 ? { phrases } : {};
 }
 
 /**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
  * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
- * beat still under the mean floor while a shape row fails. A directed beat carries the over-represented phrases it
- * speaks while the phrases row fails, and why the previous round refused it.
+ * beat still under the mean floor while a shape row fails. While phrases is aimed, each beat that speaks a stock
+ * phrase is directed to replace it, directed for another row or not; a directed beat also carries why the previous
+ * round refused it.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS, refused } = options;
   if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
   const shape = shapeFailing(rows) ? (round === 1 ? planShape(script.beats, cap) : planStillShort(script.beats, cap)) : undefined;
+  const aimed = phrasesAimed(script.beats, rows);
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
-    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };
+    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed) };
     if (Object.keys(directive).length === 0) return [];
-    return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...phrasesFor(beat, rows), ...refusedFor(beat.id, refused) }];
+    return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }];
   });
   return { round, directives, ...(shape ? { projected: shape.projected } : {}) };
 }

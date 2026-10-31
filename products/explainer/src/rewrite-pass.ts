@@ -118,8 +118,13 @@ const failingErrors = (rows: readonly L0Result[]): number => rows.filter((row) =
 const rowDistance = ({ pass, value, threshold }: TargetRow): number =>
   pass ? 0 : threshold === 0 ? Math.abs(value) : Math.abs(value - threshold) / threshold;
 
-/** The target rows' summed distance to band: zero only when all of them pass. */
-export const bandDistance = (rows: readonly L0Result[]): number => targetRows(rows).reduce((sum, row) => sum + rowDistance(row), 0);
+// The plan directs stock phrases on their own (TP-4695), so a chapter that only cuts them must count as closer to band.
+// The row passes wherever the status table makes it report-only or dropped, so there it adds nothing.
+const AIMED: ReadonlySet<string> = new Set([...REWRITE_TARGET_ROWS, "register:phrases"]);
+
+/** The target rows' and the phrases row's summed distance to band: zero only when all of them pass. */
+export const bandDistance = (rows: readonly L0Result[]): number =>
+  rows.filter((row) => AIMED.has(row.check_id)).reduce((sum, row) => sum + rowDistance(row), 0);
 
 /**
  * The register rows outside the targets that a chapter must not turn red (TP-3817 D5): each row whose status in
