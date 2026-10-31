@@ -59,20 +59,30 @@ const PHASE_TRAIL_SLACK_MS = 6 * 60 * 60 * 1000;
 
 const isMerged = (row: FinishedRow): boolean => outcomeOf.safeParse(row).data?.outcome.kind === "merged";
 
+/** A run's `sh-landed` time never changes once written, so each source reads a run's timeline at most once. */
+const landedCache = new WeakMap<object, Map<string, number>>();
+
+async function landedAt(shepherd: Pick<ShepherdSource, "timeline">, row: FinishedRow, known: Map<string, number>): Promise<number | undefined> {
+  const cached = known.get(row.runId);
+  if (cached !== undefined) return cached;
+  const { entries } = await shepherd.timeline(row.repo, row.pr!).catch(() => ({ entries: [] as unknown[] }));
+  const landed = entries.map((entry) => landedStep.safeParse(entry)).flatMap((parsed) => (parsed.success ? [Date.parse(parsed.data.completedAt)] : []));
+  const time = landed.at(-1);
+  if (time === undefined || Number.isNaN(time)) return undefined;
+  known.set(row.runId, time);
+  return time;
+}
+
 /**
  * When each merged run that could belong to the window landed, from its local timeline's `sh-landed` step; a run whose timeline
  * has no such step or cannot be read is left out, and bucketing falls back to its `phaseSince`.
  */
 export async function mergeTimes(shepherd: Pick<ShepherdSource, "timeline">, rows: readonly FinishedRow[], window: DayWindow): Promise<Map<string, number>> {
+  const known = landedCache.get(shepherd) ?? new Map<string, number>();
+  landedCache.set(shepherd, known);
   const candidates = rows.filter((row) => row.pr !== null && isMerged(row) && Date.parse(row.phaseSince) >= window.from && Date.parse(row.phaseSince) < window.to + PHASE_TRAIL_SLACK_MS);
-  const times = await Promise.all(
-    candidates.map(async (row) => {
-      const { entries } = await shepherd.timeline(row.repo, row.pr!).catch(() => ({ entries: [] as unknown[] }));
-      const landed = entries.map((entry) => landedStep.safeParse(entry)).flatMap((parsed) => (parsed.success ? [Date.parse(parsed.data.completedAt)] : []));
-      return [row.runId, landed.at(-1)] as const;
-    }),
-  );
-  return new Map(times.flatMap(([runId, time]) => (time === undefined || Number.isNaN(time) ? [] : [[runId, time] as const])));
+  const times = await Promise.all(candidates.map(async (row) => [row.runId, await landedAt(shepherd, row, known)] as const));
+  return new Map(times.flatMap(([runId, time]) => (time === undefined ? [] : [[runId, time] as const])));
 }
 
 /** Shepherd's finished runs whose outcome is `merged` and whose merge time (`mergedAt`, else `phaseSince`) falls inside the window. */

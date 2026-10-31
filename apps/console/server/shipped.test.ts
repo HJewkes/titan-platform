@@ -91,6 +91,17 @@ describe("merge time", () => {
     expect((await mergeTimes(broken, rows, WINDOW)).size).toBe(0);
   });
 
+  it("reads a run's timeline once per source, however often the page loads", async () => {
+    const rows = [finished(1, "merged", "5T10:00:00")];
+    const shepherd = fakeShepherd(rows, { 1: at("5T09:20:00") });
+
+    await mergeTimes(shepherd.source, rows, WINDOW);
+    const again = await mergeTimes(shepherd.source, rows, WINDOW);
+
+    expect(shepherd.calls).toEqual(["timeline:1"]);
+    expect(again.get("run-1")).toBe(Date.parse(at("5T09:20:00")));
+  });
+
   it("reads no timeline for a stopped run or one that phased long after the window", async () => {
     const rows = [finished(1, "stopped", "5T10:00:00"), finished(2, "merged", "9T10:00:00")];
     const shepherd = fakeShepherd(rows);

@@ -39,6 +39,7 @@ function row(rpc: string, args: Record<string, unknown> = {}, limits: Partial<Li
 const ROUND = "perf-round-0000";
 const RUN = { repo: "example-org/repo-24", pr: 1000 };
 
+/** The coord rows read a day with 80 merged runs (factory.fixture.ts): cold, one timeline call each besides the list (and, for cards, the task list); warm, the cached merge times need none. */
 export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("agents.graph", {}, { maxBytes: 13 * KB }),
   row("agents.messages", {}, { maxBytes: 52 * KB, maxUpstreamCalls: 0 }),
@@ -54,9 +55,9 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("config.hosts"),
   row("config.surfaces"),
   row("console.build"),
-  row("coord.cards", { date: "2031-01-01" }, { maxBytes: 1 * KB, maxUpstreamCalls: 2 }),
+  row("coord.cards", { date: "2031-01-01" }, { maxBytes: 12 * KB, maxUpstreamCalls: 82, maxUpstreamCallsWarm: 2 }),
   row("coord.pools", {}, { maxBytes: 4 * KB, maxUpstreamCalls: 0 }),
-  row("coord.shipped", { date: "2031-01-01" }, { maxBytes: 2 * KB, maxUpstreamCalls: 1 }),
+  row("coord.shipped", { date: "2031-01-01" }, { maxBytes: 12 * KB, maxUpstreamCalls: 81, maxUpstreamCallsWarm: 1 }),
   row("gates.strip", RUN, { maxBytes: 1 * KB, maxUpstreamCalls: 4 }),
   row("graph.ego", { ref: "task:AA-1" }, { maxBytes: 1 * KB, maxUpstreamCalls: 1 }),
   row("inbox.list", {}, { maxMs: 4200, maxBytes: 150 * KB, maxUpstreamCalls: 5, maxUpstreamCallsWarm: 3 }),
