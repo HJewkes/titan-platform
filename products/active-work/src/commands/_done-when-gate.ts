@@ -24,11 +24,21 @@ export function doneWhenProblem(title: string, doneWhen: string | undefined): st
 }
 
 /**
- * A draft skips the gate at add, so the gate runs when an edit makes the draft live: an agent
- * that drops the draft tag must leave the task with a usable done_when.
+ * A draft skips the gate at add, so the gate runs on every write that makes the draft live: an
+ * agent that drops the draft tag must leave the task with a usable done_when. Every task write
+ * that can change tags (task edit, task apply) calls this with the task before and after.
  */
-export function assertPromotable(ctx: CommandContext, before: Task, after: Task): void {
-  if (ctx.caller !== 'agent' || !isDraft(before) || isDraft(after)) return;
+export function promotionProblem(
+  caller: CommandContext['caller'],
+  before: Task,
+  after: Task,
+): string | undefined {
+  if (caller !== 'agent' || !isDraft(before) || isDraft(after)) return undefined;
   const problem = doneWhenProblem(after.title, after.done_when);
-  if (problem !== undefined) throw new ValidationError(`${after.id} cannot leave draft: ${problem}`);
+  return problem === undefined ? undefined : `${after.id} cannot leave draft: ${problem}`;
+}
+
+export function assertPromotable(ctx: CommandContext, before: Task, after: Task): void {
+  const problem = promotionProblem(ctx.caller, before, after);
+  if (problem !== undefined) throw new ValidationError(problem);
 }

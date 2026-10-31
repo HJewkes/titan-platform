@@ -15,6 +15,8 @@ import { getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { nowIso } from '../utils/today.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
+import { promotionProblem } from './_done-when-gate.js';
+import type { CommandContext } from '../registry/index.js';
 import { patchChange, type PatchEdit } from './task-edit.js';
 import { isEdgeOp, type ApplyOp, type EdgeOp, type PlanEntry } from './_task-apply-plan.js';
 
@@ -121,9 +123,9 @@ function recordTask(edges: EdgeIndex | undefined, slug: string, task: Task): voi
 function applyEntry(
   task: Task,
   entry: PlanEntry,
-  date: string,
-  edges: EdgeIndex | undefined,
+  run: ApplyContext,
 ): { task: Task; line: LineResult } {
+  const { date, edges } = run;
   let next = task;
   const changes: string[] = [];
   for (const op of entry.ops) {
@@ -132,6 +134,8 @@ function applyEntry(
     if (step.changed) changes.push(describeOp(op));
   }
   if (changes.length === 0) return { task, line: result(entry, 'unchanged') };
+  const unpromotable = promotionProblem(run.caller, task, next);
+  if (unpromotable !== undefined) return { task, line: failed(entry, unpromotable) };
   const refused = edgeErrors(edges, entry.slug, task, next);
   if (refused.length > 0) {
     return { task, line: failed(entry, `Refusing to write ${task.id}: ${refused.join('; ')}`) };
@@ -156,6 +160,7 @@ export interface ApplyContext {
   date: string;
   dryRun: boolean;
   edges?: EdgeIndex;
+  caller?: CommandContext['caller'];
 }
 
 /** On a failed write, put the index back, so later lines are not checked against edges never written. */
@@ -183,7 +188,7 @@ async function applyTask(
   let task = original;
   const lines: LineResult[] = [];
   for (const entry of entries) {
-    const step = applyEntry(task, entry, run.date, run.edges);
+    const step = applyEntry(task, entry, run);
     task = step.task;
     lines.push(step.line);
   }
