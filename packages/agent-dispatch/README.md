@@ -167,6 +167,13 @@ or a park from removing a tree another agent works in.
   release and park. `inspectForRelease` applies it over the package's commit checks, and it
   lets go of everything the package does, plus a few more build outputs, an index-only
   `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `parkWorktree(target, recheck, listCwds?, mergedPr?)` removes a tree and keeps its branch.
+  `lsofCwds` finds a process still in the tree; `readMergedPrs` backs a squash merge whose head
+  branch origin deleted. It runs `gh` under `minimalEnv`, so a host whose `gh` needs a token or
+  a shim builds its own with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every held tree, and `reclaim(entry, { store, strategy })`
+  re-checks the work before removing one. `HeldAllocationStore` is the host's record of allocations.
+- `rowState`, `repoHeadroom` and `repoSummary` turn a sweep into the state words a seat counts.
 
 ## Routing (`./routing`, `./routing/node`)
 

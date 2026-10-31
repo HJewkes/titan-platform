@@ -348,6 +348,14 @@ describe("a worktree someone is standing in", () => {
   });
 });
 
+describe("a held allocation with no git root", () => {
+  it("is passed over, since there is no repository to scan", async () => {
+    store.record("a1", { cwd: "/gone", ref: { branch: "agent-chat/scout" } });
+
+    expect(await sweepWorktrees([identity()], { list: lister })).toEqual([]);
+  });
+});
+
 describe("reclaiming", () => {
   it("keeps the allocation when the strategy will not release", async () => {
     const repo = makeRepo();

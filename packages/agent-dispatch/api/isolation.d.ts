@@ -1,4 +1,5 @@
-import { WorktreeRecord, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety } from '@titan-design/worktree';
+import { WorktreeRecord, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety, GitLister, SweptWorktree } from '@titan-design/worktree';
+export { GitLister, SweepStatus, SweptWorktree } from '@titan-design/worktree';
 import { h as IsolationName } from '../schema.js';
 import { A as AgentIdentity } from '../types.js';
 import { J as JournalRow } from '../ports.js';
@@ -321,7 +322,163 @@ declare function recreateWorktree(record: WorktreeRecord, opts?: WorktreeStrateg
 declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof, ghTimeoutMs?: number): Promise<WorktreeReleaseSafety>;
 declare function createWorktreeStrategy(opts?: WorktreeStrategyOptions): IsolationStrategy;
 
-export { type Allocation, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type HeldTree, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, type OwnershipConflict, type OwnershipRule, type ParkTarget, type PoolBudgets, type PoolUse, type ReleaseOptions, type TenancyVerdict, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeStrategyOptions, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, heldBy, inspectForRelease, isAtOrUnder, isReviewerSpawn, isReviewerTreeName, isWarning, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkTenancyBlocker, parkable, reattachWorktree, recordRefusal, recreateWorktree, refusalOf, refusalsIn, tenantsOf, toolsetStrategy, treeHoldersOf, unsavedWork, warn, worktreeTenancy };
+interface MergedPr {
+    number: number;
+    headSha: string;
+}
+/** Merged PRs whose head was `branch`; rejects when it cannot tell, which park treats as a refusal. */
+type MergedPrReader = (gitRoot: string, branch: string) => Promise<MergedPr[]>;
+interface MergedPrGhOutcome {
+    exitCode: number;
+    stdout: string;
+}
+/** Runs `gh` in `cwd`. A host whose `gh` needs more than `minimalEnv` (a token, a shim, a PATH entry) passes its own. */
+type MergedPrGh = (args: readonly string[], cwd: string) => Promise<MergedPrGhOutcome>;
+declare function parseMergedPrs(stdout: string): MergedPr[];
+/** A repo with no origin has nowhere to hold a PR; otherwise `gh` answers, and its failure rejects. */
+declare const mergedPrReader: (gh: MergedPrGh) => MergedPrReader;
+declare const readMergedPrs: MergedPrReader;
+
+/**
+ * CC-282: park a finished agent's worktree. The tree is removed and the branch kept, so
+ * `agent resume` re-creates it at the same path (CC-140). Parking never deletes a branch: in a
+ * repo with no remote the local branch is the only copy of the work.
+ */
+/** A process and its working directory. */
+interface CwdProcess {
+    pid: number;
+    cwd: string;
+}
+/** Lists every process's cwd; throws when it cannot, which parking treats as a refusal. */
+type CwdLister = () => Promise<CwdProcess[]>;
+/** Runs `lsof`, answering its exit status; rejects only when it could not run to an exit. */
+type LsofRunner = () => Promise<{
+    stdout: string;
+    status: number;
+}>;
+/**
+ * `lsof -Fpn` prints `p<pid>` then `n<path>` per process. It exits 1 with no output when nothing
+ * matches, and also when warnings accompany partial output, which still lists real processes.
+ */
+declare const lsofCwdsWith: (run: LsofRunner) => CwdLister;
+declare const lsofCwds: CwdLister;
+type ParkTreeResult = {
+    ok: true;
+    head: string;
+    branch?: string;
+    containedIn?: string;
+    mergedPr?: number;
+} | {
+    ok: false;
+    reason: string;
+};
+/**
+ * Refuse a tree that would lose anything; otherwise remove it without --force and keep the branch.
+ * HEAD may sit on the allocated branch or another local one (a successor or adopted tree on the PR
+ * branch); origin must hold it under that name or any other, or a merged PR's head must, or with no
+ * origin the kept local branch is the copy. `recheck` runs right before the removal, so a spawn or
+ * resume that started meanwhile is caught.
+ */
+declare function parkWorktree(target: ParkTarget, recheck: () => string | undefined,
+/** Set for an untracked detached agent: the lister that finds a process still in the tree. */
+listCwds?: CwdLister,
+/** Set by the host: GitHub's merged PRs, for a squash-merged branch origin deleted. */
+mergedPr?: MergedPrReader): Promise<ParkTreeResult>;
+
+interface HeldAllocation {
+    agentId: string;
+    allocation: Allocation;
+}
+/** The host's record of worktree allocations it has not released. */
+interface HeldAllocationStore {
+    /** Keyed by branch, so git can be joined to it. */
+    held(): ReadonlyMap<string, HeldAllocation>;
+    /** Stops the next sweep re-reporting an allocation that is already gone. */
+    forget(agentId: string): void;
+}
+/** Every worktree in `gitRoot` carrying an agent branch, from git itself. */
+declare function agentWorktreesIn(gitRoot: string, list: GitLister): Promise<{
+    worktree: string;
+    branch: string;
+}[]>;
+interface SweepOptions {
+    store: HeldAllocationStore;
+    /** Repositories to scan beyond the ones the store names; catches a tree nothing on record points at. */
+    roots?: readonly string[];
+    list?: GitLister;
+    now?: () => number;
+}
+declare const porcelain: GitLister;
+/**
+ * Every agent worktree this machine is holding, classified. `roster` is passed in rather than
+ * read here: the log lives behind the broker, and a sweep that could not run without one would be
+ * useless in exactly the situation it is for.
+ */
+declare function sweepWorktrees(roster: readonly AgentIdentity[], options: SweepOptions): Promise<SweptWorktree[]>;
+interface ReclaimOptions {
+    store: HeldAllocationStore;
+    /** The worktree strategy the host built; it does the removal. */
+    strategy: IsolationStrategy;
+    force?: boolean;
+}
+/**
+ * Destroy one swept worktree and its branch, and forget the allocation. Refuses anything not
+ * `reclaimable` unless forced, so the classification is the guard rather than advice, and re-checks
+ * the work before acting on it (TP-640).
+ */
+declare function reclaim(entry: SweptWorktree, { store, strategy, force }: ReclaimOptions): Promise<{
+    ok: boolean;
+    reason?: string;
+}>;
+
+/**
+ * CC-284: the words a seat counts worktrees in (CC-276 A4). The sweep's statuses answer
+ * "what may prune do"; these answer "how much headroom does this repo have", so a seat
+ * quotes one line instead of hand-counting held versus reclaimable rows.
+ */
+type WorktreeState = "active" | "parkable" | "reviewer-scratch" | "non-seat" | "stale";
+interface StateRow {
+    state: WorktreeState;
+    branch: string;
+    worktree: string;
+    /** The sweep status behind the state, absent for a non-seat tree the sweep never sees. */
+    status?: SweptWorktree["status"];
+    detail: string;
+}
+interface RepoHeadroom {
+    gitRoot: string;
+    active: number;
+    parkable: number;
+    nonSeat: number;
+    budget: number;
+    free: number;
+    /** CC-1040: live reviewer trees, counted against their own pool rather than `active`. */
+    reviewers: number;
+    reviewerBudget: number;
+    reviewerFree: number;
+    /** Null when the volume could not be read, e.g. a repo deleted under a never-retired agent. */
+    freeDiskBytes: number | null;
+    rows: StateRow[];
+}
+declare const LOW_DISK_BYTES: number;
+declare function rowState(entry: SweptWorktree): WorktreeState;
+declare function stateRow(entry: SweptWorktree): StateRow;
+declare function nonSeatRow(tree: {
+    path: string;
+    branch?: string;
+}): StateRow;
+/**
+ * Free slots are what the budget leaves after the trees that cannot be parked. A live reviewer
+ * tree is charged to the reviewer pool, classified by directory name as the broker does.
+ */
+declare function repoHeadroom(gitRoot: string, rows: StateRow[], budget: number, reviewerBudget: number, freeDiskBytes: number | null): RepoHeadroom;
+declare const repoSummary: (r: RepoHeadroom) => string;
+/** A repo the sweep found may be gone; unknown free space is reported, never fatal. */
+declare function volumeFreeBytes(dir: string): number | null;
+declare function lowDiskWarning(gitRoot: string, freeDiskBytes: number | null): string | undefined;
+declare function formatRows(rows: StateRow[]): string[];
+
+export { type Allocation, type CwdLister, type CwdProcess, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type HeldAllocation, type HeldAllocationStore, type HeldTree, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, LOW_DISK_BYTES, type LivePeer, type LsofRunner, type MergedPr, type MergedPrGh, type MergedPrGhOutcome, type MergedPrReader, type OwnershipConflict, type OwnershipRule, type ParkTarget, type ParkTreeResult, type PoolBudgets, type PoolUse, type ReclaimOptions, type ReleaseOptions, type RepoHeadroom, type StateRow, type SweepOptions, type TenancyVerdict, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeState, type WorktreeStrategyOptions, adopterBlocker, agentWorktreesIn, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, formatRows, getAgentOwnershipSummary, getOwner, getOwners, heldBy, inspectForRelease, isAtOrUnder, isReviewerSpawn, isReviewerTreeName, isWarning, liveBlocker, lowDiskWarning, lsofCwds, lsofCwdsWith, matchPattern, mergeAllocations, mergedPrReader, nonSeatRow, noneStrategy, occupantOf, parkBlocker, parkTenancyBlocker, parkWorktree, parkable, parseMergedPrs, porcelain, readMergedPrs, reattachWorktree, reclaim, recordRefusal, recreateWorktree, refusalOf, refusalsIn, repoHeadroom, repoSummary, rowState, stateRow, sweepWorktrees, tenantsOf, toolsetStrategy, treeHoldersOf, unsavedWork, volumeFreeBytes, warn, worktreeTenancy };
 
 // ./dist/ports.d.ts
 /**
