@@ -25,10 +25,10 @@ interface MergedPr {
 }
 
 /** A squash merge on a lockfile repo: the selector refuses a two-parent merge and a repo with no supported lockfile. */
-function setUp(extra: Record<string, string> = {}): MergedPr {
+function setUp(extra: Record<string, string> = {}, atBase: Record<string, string> = {}): MergedPr {
   seedRepo(clone, {});
   const [base = "", merge = ""] = withHistory(clone, [
-    { message: "base", files: { "pnpm-lock.yaml": "lockfileVersion: 9\n", "src/a.ts": "export const a = 1;\n" } },
+    { message: "base", files: { "pnpm-lock.yaml": "lockfileVersion: 9\n", "src/a.ts": "export const a = 1;\n", ...atBase } },
     { message: "squash", files: { "src/x.ts": "export const x = 2;\n", "src/x.test.ts": "it('x', () => {});\n", ...extra } },
   ]);
   return { base, merge };
@@ -183,16 +183,85 @@ describe("exportImplementTaskCases", () => {
     expect(suite.cases).toEqual([caseHash(written)]);
   });
 
+  it("a candidate whose screen throws is dropped and the next one fills the class", async () => {
+    const pr = setUp();
+    const fake = fakeScreen();
+    const seen: number[] = [];
+    const screen = async (source: ImplementTaskSource) => {
+      seen.push(source.pr);
+      if (seen.length === 1) throw new Error("install failed at an old commit");
+      return fake.screen(source);
+    };
+
+    const manifest = await exportImplementTaskCases(optionsFor([row(pr, 1), row(pr, 2)], { screen }));
+
+    expect(seen).toHaveLength(2);
+    expect(manifest.dropped).toEqual([{ repo: "HJewkes/titan-platform", pr: seen[0], cls: "local-fix", reason: "screen-error:install failed at an old commit" }]);
+    expect(manifest.counts["local-fix"]).toEqual({ kept: 1, screened: 2, unscreened: 0, shortfall: 0 });
+    expect(readdirSync(join(out, "cases"))).toHaveLength(1);
+  });
+
+  it("a candidate whose facts cannot be read is dropped unscreened and the next one is screened", async () => {
+    const pr = setUp();
+    const fake = fakeScreen();
+    const rows = [row(pr, 1, { merge_commit: "f".repeat(40) }), row(pr, 2)];
+
+    const manifest = await exportImplementTaskCases(optionsFor(rows, { screen: fake.screen }));
+
+    expect(fake.calls).toEqual([2]);
+    expect(manifest.dropped).toEqual([{ repo: "HJewkes/titan-platform", pr: 1, cls: "local-fix", reason: expect.stringMatching(/^screen-error:/) }]);
+  });
+
+  it("a candidate whose fix-proof plan fails is dropped unscreened with the plan's message", async () => {
+    const pr = setUp({}, { ".github/fix-proof.json": "not json" });
+    const fake = fakeScreen();
+
+    const manifest = await exportImplementTaskCases(optionsFor([row(pr, 1)], { screen: fake.screen }));
+
+    expect(fake.calls).toEqual([]);
+    expect(manifest.dropped).toEqual([{ repo: "HJewkes/titan-platform", pr: 1, cls: "local-fix", reason: expect.stringMatching(/^screen-error:fix-proof plan for /) }]);
+  });
+
+  it("a failed candidate with a private brief is excluded, not listed", async () => {
+    const pr = setUp();
+    const rows = [row(pr, 1, { merge_commit: "f".repeat(40), brief_text: `Budget per active-work/${PRIVATE_SLUG}/brief.md` })];
+
+    const manifest = await exportImplementTaskCases(optionsFor(rows, { screen: fakeScreen().screen }));
+
+    expect(manifest.dropped).toEqual([]);
+    expect(manifest.excluded).toEqual({ "private-marker": 1 });
+  });
+
   it("scratch is gone after a throwing screen", async () => {
     const pr = setUp();
     const screen = async () => {
       mkdirSync(join(out, ".scratch", "owner", "repo"), { recursive: true });
-      throw new Error("disk full");
+      throw new Error("install failed");
     };
 
-    await expect(exportImplementTaskCases(optionsFor([row(pr, 1)], { screen }))).rejects.toThrow("disk full");
+    const manifest = await exportImplementTaskCases(optionsFor([row(pr, 1)], { screen }));
+
+    expect(manifest.dropped).toHaveLength(1);
+    expect(existsSync(join(out, ".scratch"))).toBe(false);
+  });
+
+  it("scratch is gone after the run itself aborts", async () => {
+    const pr = setUp();
+    const screen = async () => {
+      mkdirSync(join(out, ".scratch", "owner", "repo"), { recursive: true });
+      return "keep";
+    };
+    const log = () => {
+      throw new Error("stderr closed");
+    };
+
+    await expect(exportImplementTaskCases(optionsFor([row(pr, 1)], { screen, log }))).rejects.toThrow("stderr closed");
 
     expect(existsSync(join(out, ".scratch"))).toBe(false);
+  });
+
+  it("aborts on an unreadable corpus", async () => {
+    await expect(exportImplementTaskCases(optionsFor([], { corpus: join(root, "missing.jsonl") }))).rejects.toThrow(/ENOENT/);
   });
 
   it("records the corpus digest, later fix PRs and skips by reason in the manifest", async () => {
@@ -223,6 +292,20 @@ describe("selectExportPool", () => {
     const pool = await selectExportPool(optionsFor([row(pr, 1), row(pr, 2), row(pr, 3)], { maxCandidates: 2 }));
 
     expect(pool.byClass["local-fix"]?.map((source) => source.repo)).toEqual(["HJewkes/titan-platform", "HJewkes/titan-platform"]);
+  });
+
+  it("prefixes a bare corpus repo with the owner option", async () => {
+    const pr = setUp();
+    const asked: string[] = [];
+    const cloneFor = (repo: string) => {
+      asked.push(repo);
+      return clone;
+    };
+
+    const pool = await selectExportPool(optionsFor([row(pr, 1)], { cloneFor, owner: "someone-else" }));
+
+    expect(pool.byClass["local-fix"]?.map((source) => source.repo)).toEqual(["someone-else/titan-platform"]);
+    expect(asked).toContain("someone-else/titan-platform");
   });
 
   it("leaves out a repo with no clone and names it", async () => {

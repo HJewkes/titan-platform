@@ -7,11 +7,11 @@ import { localCloneGit, type BundleGit } from "../review-pr/bundle.js";
 import { SuiteSpecSchema, type EvalCase, type SuiteSpec } from "../spec/index.js";
 import { cloneFacts } from "./clone-facts.js";
 import { screenCase } from "./screen.js";
-import { briefOf, parseCorpusV3, selectCandidates, type CorpusV3Row } from "./select.js";
+import { briefOf, parseCorpusV3, selectCandidates, type CandidateFacts, type CorpusV3Row, type TestChange } from "./select.js";
 import { IMPLEMENT_TASK_UNIT, planHiddenTests, writeImplementTaskCases, type ImplementTaskSource } from "./write-case.js";
 
 // The corpus names repos bare; the screen and the case's input need owner/name.
-const CORPUS_OWNER = "HJewkes";
+const DEFAULT_OWNER = "HJewkes";
 
 export interface ExportOptions {
   /** Path to `cases.v3.classified.jsonl`; its sha256 goes in the manifest. */
@@ -20,6 +20,8 @@ export interface ExportOptions {
   policy: ExclusionPolicy;
   /** The local clone for `owner/repo`. An allowlisted repo with none is left out and named in `reposWithoutClone`. */
   cloneFor(repo: string): string | undefined;
+  /** Prefixes a bare corpus repo name; defaults to the engineering repos' owner. */
+  owner?: string;
   classes: readonly string[];
   perClass: number;
   seed: string;
@@ -31,10 +33,13 @@ export interface ExportOptions {
   log?: (line: string) => void;
 }
 
-type Candidate = CorpusV3Row & { source: ImplementTaskSource };
+type Dropped = { repo: string; pr: number; cls: string; reason: string };
+type Candidate = CorpusV3Row & { source: ImplementTaskSource; failure: string | undefined };
 
 interface ExportPool {
   byClass: Record<string, ImplementTaskSource[]>;
+  /** Candidates whose facts or plan could not be read: lost to one old commit, not to the run. */
+  dropped: Dropped[];
   /** Counts by reason: a skipped row may belong to a private repo, so its id stays out of the manifest. */
   skipped: Record<string, number>;
   excluded: Record<string, number>;
@@ -58,7 +63,7 @@ interface ExportManifest {
   perClass: number;
   counts: Record<string, ClassCount>;
   skipped: Record<string, number>;
-  dropped: { repo: string; pr: number; cls: string; reason: string }[];
+  dropped: Dropped[];
   excluded: Record<string, number>;
   reposWithoutClone: string[];
   /** Keyed `repo#pr`, listed and not screened: their tests are not in this round's hidden set. */
@@ -67,10 +72,12 @@ interface ExportManifest {
 }
 
 const prKey = (source: ImplementTaskSource): string => `${source.repo}#${source.pr}`;
-const qualified = (repo: string): string => (repo.includes("/") ? repo : `${CORPUS_OWNER}/${repo}`);
+const qualified = (options: Pick<ExportOptions, "owner">, repo: string): string => (repo.includes("/") ? repo : `${options.owner ?? DEFAULT_OWNER}/${repo}`);
+const screenError = (error: unknown): string => `screen-error:${error instanceof Error ? error.message : String(error)}`;
 
-function sourceOf(row: CorpusV3Row): ImplementTaskSource {
-  return { repo: qualified(row.repo), pr: row.pr_number, baseSha: row.base_commit, mergeSha: row.merge_commit, brief: briefOf(row), taskInitiative: row.task?.initiative ?? null, cls: row.class };
+function sourceOf(row: CorpusV3Row, options: Pick<ExportOptions, "owner">): ImplementTaskSource {
+  const commits = { baseSha: row.base_commit, mergeSha: row.merge_commit };
+  return { repo: qualified(options, row.repo), pr: row.pr_number, ...commits, brief: briefOf(row), taskInitiative: row.task?.initiative ?? null, cls: row.class };
 }
 
 function countBy<T extends string>(reasons: readonly T[]): Record<string, number> {
@@ -79,28 +86,56 @@ function countBy<T extends string>(reasons: readonly T[]): Record<string, number
   return counts;
 }
 
-function portFor(options: Pick<ExportOptions, "cloneFor">, repo: string): BundleGit | undefined {
-  const clone = options.cloneFor(qualified(repo));
+function portFor(options: Pick<ExportOptions, "cloneFor" | "owner">, repo: string): BundleGit | undefined {
+  const clone = options.cloneFor(qualified(options, repo));
   return clone === undefined ? undefined : localCloneGit(clone);
 }
 
-function requirePort(options: Pick<ExportOptions, "cloneFor">, repo: string): BundleGit {
+function requirePort(options: Pick<ExportOptions, "cloneFor" | "owner">, repo: string): BundleGit {
   const port = portFor(options, repo);
   if (port === undefined) throw new Error(`no local clone for ${repo}`);
   return port;
 }
 
-/** The body holds the plan as well as the brief, so a private task id in a test path drops here, ahead of a long screen, and not as the writer's refusal after it. */
-async function filterCandidates(rows: readonly CorpusV3Row[], options: ExportOptions) {
+/** Records a row's failed fact and answers so the selector keeps the row, since it has no skip reason for a failure and aborts on a throw. */
+function recordingFailures(facts: CandidateFacts, failures: Map<string, string>): CandidateFacts {
+  const guard = <T>(ask: (row: CorpusV3Row) => Promise<T>, whenFailed: T) => async (row: CorpusV3Row): Promise<T> => {
+    try {
+      return await ask(row);
+    } catch (error) {
+      failures.set(row.case_id, screenError(error));
+      return whenFailed;
+    }
+  };
+  return {
+    hasSupportedLock: guard((row) => facts.hasSupportedLock(row), true),
+    mergeParents: guard((row) => facts.mergeParents(row), 1),
+    testChange: guard<TestChange>((row) => facts.testChange(row), "tests-and-source"),
+  };
+}
+
+async function planOrFailure(source: ImplementTaskSource, row: CorpusV3Row, options: ExportOptions) {
+  try {
+    return { plan: await planHiddenTests(requirePort(options, row.repo), source.baseSha, source.mergeSha), failure: undefined };
+  } catch (error) {
+    return { plan: undefined, failure: screenError(error) };
+  }
+}
+
+/** The body holds the plan as well as the brief, so a private task id in a test path drops here, ahead of a long screen, and not as the writer's refusal after it. A failed row is still filtered, so a private one is counted and never listed. */
+async function filterCandidates(rows: readonly CorpusV3Row[], failures: ReadonlyMap<string, string>, options: ExportOptions) {
   const subjects = [];
   for (const row of rows) {
-    const source = sourceOf(row);
-    const plan = await planHiddenTests(requirePort(options, row.repo), source.baseSha, source.mergeSha);
-    const candidate: Candidate = { ...row, source };
+    const source = sourceOf(row, options);
+    const known = failures.get(row.case_id);
+    const { plan, failure } = known === undefined ? await planOrFailure(source, row, options) : { plan: undefined, failure: known };
+    const candidate: Candidate = { ...row, source, failure };
     subjects.push({ id: row.case_id, repo: source.repo, taskInitiative: source.taskInitiative, body: { source, plan }, candidate });
   }
   const { kept, excluded } = filterPrivate(subjects, options.policy);
-  return { kept: kept.map((subject) => subject.candidate), excluded: { ...excluded } };
+  const candidates = kept.map((subject) => subject.candidate);
+  const dropped = candidates.flatMap(({ source, failure }) => (failure === undefined ? [] : [{ repo: source.repo, pr: source.pr, cls: source.cls, reason: failure }]));
+  return { kept: candidates.filter((row) => row.failure === undefined), dropped, excluded: { ...excluded } };
 }
 
 /** Everything short of a build: selection, private filtering and the corpus digest. Runs no install, build or test. */
@@ -108,21 +143,30 @@ export async function selectExportPool(options: ExportOptions): Promise<ExportPo
   const text = readFileSync(options.corpus);
   const reposWithoutClone = options.policy.repos.filter((repo) => portFor(options, repo) === undefined);
   const repos = options.policy.repos.filter((repo) => !reposWithoutClone.includes(repo));
-  const facts = cloneFacts((row) => requirePort(options, row.repo));
+  const failures = new Map<string, string>();
+  const facts = recordingFailures(cloneFacts((row) => requirePort(options, row.repo)), failures);
   const selection = await selectCandidates(parseCorpusV3(text.toString("utf8")), { repos, classes: options.classes, seed: options.seed }, facts);
-  const { kept, excluded } = await filterCandidates(Object.values(selection.byClass).flat(), options);
+  const { kept, dropped, excluded } = await filterCandidates(Object.values(selection.byClass).flat(), failures, options);
   const byClass: ExportPool["byClass"] = {};
   for (const cls of options.classes) {
     byClass[cls] = kept.filter((row) => row.class === cls).slice(0, options.maxCandidates).map((row) => row.source);
   }
   const later = kept.filter((row) => row.follow_up_fixes.length > 0).map((row) => [prKey(row.source), row.follow_up_fixes] as const);
-  return { byClass, skipped: countBy(selection.skipped.map((skip) => skip.reason)), excluded, reposWithoutClone, laterFixPrs: Object.fromEntries(later), corpusSha256: sha256Hex(text) };
+  return { byClass, dropped, skipped: countBy(selection.skipped.map((skip) => skip.reason)), excluded, reposWithoutClone, laterFixPrs: Object.fromEntries(later), corpusSha256: sha256Hex(text) };
 }
 
 interface Screened {
   kept: ImplementTaskSource[];
   counts: Record<string, ClassCount>;
   dropped: ExportManifest["dropped"];
+}
+
+async function verdictOf(screen: NonNullable<ExportOptions["screen"]>, source: ImplementTaskSource): Promise<string> {
+  try {
+    return await screen(source);
+  } catch (error) {
+    return screenError(error);
+  }
 }
 
 /** One at a time and one class at a time: a screen is two installs and two builds, and stopping at quota is the point. */
@@ -134,7 +178,7 @@ async function screenToQuota(pool: ExportPool, options: ExportOptions, screen: N
     for (const source of candidates) {
       if (kept >= options.perClass) break;
       const started = Date.now();
-      const verdict = await screen(source);
+      const verdict = await verdictOf(screen, source);
       screened += 1;
       log(`${prKey(source)} ${cls}: ${verdict} (${Math.round((Date.now() - started) / 1000)}s)`);
       if (verdict === "keep") {
@@ -184,7 +228,7 @@ async function writeOutput(pool: ExportPool, screened: Screened, options: Export
     perClass: options.perClass,
     counts: screened.counts,
     skipped,
-    dropped: screened.dropped,
+    dropped: [...pool.dropped, ...screened.dropped],
     excluded: mergeCounts(pool.excluded, excluded),
     reposWithoutClone,
     laterFixPrs,
