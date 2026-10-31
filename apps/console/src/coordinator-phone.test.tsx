@@ -28,6 +28,7 @@ const SNAPSHOT: Snapshot = {
   calls: {
     [snapshotKey("coord.pools", {})]: successEnvelope({ date: "2031-03-04", from: "2031-03-04T07:00:00.000Z", to: "2031-03-05T07:00:00.000Z", accounts: [], gaps: [] }),
     [snapshotKey("coord.cards", {})]: successEnvelope(CARDS),
+    [snapshotKey("coord.shipped", {})]: successEnvelope({ date: "2031-03-04", built: false, stale: false, digest: null, merged: [] }),
   },
 };
 

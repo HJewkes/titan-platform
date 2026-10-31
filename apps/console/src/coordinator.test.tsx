@@ -44,7 +44,7 @@ function snapshot(calls: Record<string, Snapshot["calls"][string]>): Snapshot {
 }
 
 const answering = (day: { date?: string }, pools: Snapshot["calls"][string], cards: Snapshot["calls"][string]): Snapshot =>
-  snapshot({ [snapshotKey("coord.pools", day)]: pools, [snapshotKey("coord.cards", day)]: cards });
+  snapshot({ [snapshotKey("coord.pools", day)]: pools, [snapshotKey("coord.cards", day)]: cards, [snapshotKey("coord.shipped", day)]: successEnvelope({ date: DATE, built: false, stale: false, digest: null, merged: [] }) });
 
 describe("the coordinator page", () => {
   it("draws one meter per account with its reserve, target and guard markers, for the day the query names", async () => {
