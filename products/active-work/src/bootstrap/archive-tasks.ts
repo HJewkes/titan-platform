@@ -24,7 +24,7 @@ export interface ArchiveStaleTasksOptions {
   now: Date;
 }
 
-export interface ArchiveStaleTasksResult extends LoadedTasks {
+interface ArchiveStaleTasksResult extends LoadedTasks {
   /** Ids moved to `tasks/archive/` (sorted). */
   archivedIds: string[];
 }
