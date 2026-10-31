@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { checkAgainstJsonSchema } from "./json-schema.js";
 
-const schemaFor = (schema: z.ZodType) => toRecord(z.toJSONSchema(schema));
-const toRecord = (value: unknown) => value as Record<string, unknown>;
+const schemaFor = (schema: z.ZodType) => z.toJSONSchema(schema);
 
 describe("checkAgainstJsonSchema", () => {
   it("accepts a payload matching a zod-derived object schema", () => {

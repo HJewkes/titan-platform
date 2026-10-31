@@ -14,8 +14,9 @@ export function checkAgainstJsonSchema(schema: JsonSchema, value: unknown, path 
 }
 
 function collect(schema: JsonSchema, value: unknown, path: string, issues: string[]): void {
-  if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf)) {
-    checkUnion((schema.anyOf ?? schema.oneOf) as JsonSchema[], value, path, issues);
+  const branches = Array.isArray(schema.anyOf) ? schema.anyOf : schema.oneOf;
+  if (Array.isArray(branches)) {
+    checkUnion(branches.map(asSchema), value, path, issues);
     return;
   }
   if ("const" in schema && !Object.is(schema.const, value)) {
@@ -31,8 +32,8 @@ function collect(schema: JsonSchema, value: unknown, path: string, issues: strin
     issues.push(`${path}: expected ${schema.type}, received ${describe(value)}`);
     return;
   }
-  if (schema.type === "object") checkObject(schema, value as Record<string, unknown>, path, issues);
-  if (schema.type === "array") checkArray(schema, value as unknown[], path, issues);
+  if (schema.type === "object" && isObject(value)) checkObject(schema, value, path, issues);
+  if (schema.type === "array" && Array.isArray(value)) checkArray(schema, value, path, issues);
 }
 
 function checkUnion(branches: JsonSchema[], value: unknown, path: string, issues: string[]): void {
@@ -41,9 +42,10 @@ function checkUnion(branches: JsonSchema[], value: unknown, path: string, issues
 }
 
 function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: string, issues: string[]): void {
-  const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
-  for (const key of (schema.required ?? []) as string[]) {
-    if (!(key in value)) issues.push(`${path}.${key}: required`);
+  const properties = asSchema(schema.properties);
+  const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
+  for (const key of required) {
+    if ((typeof key === "string" || typeof key === "number") && !(key in value)) issues.push(`${path}.${key}: required`);
   }
   if (schema.additionalProperties === false) {
     for (const key of Object.keys(value)) {
@@ -51,20 +53,20 @@ function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: s
     }
   }
   for (const [key, sub] of Object.entries(properties)) {
-    if (key in value) collect(sub, value[key], `${path}.${key}`, issues);
+    if (key in value) collect(asSchema(sub), value[key], `${path}.${key}`, issues);
   }
 }
 
 function checkArray(schema: JsonSchema, value: unknown[], path: string, issues: string[]): void {
-  const items = schema.items as JsonSchema | undefined;
-  if (!items) return;
+  if (!isObject(schema.items)) return;
+  const items = schema.items;
   value.forEach((entry, index) => collect(items, entry, `${path}[${index}]`, issues));
 }
 
 function matchesType(type: string, value: unknown): boolean {
   switch (type) {
     case "object":
-      return typeof value === "object" && value !== null && !Array.isArray(value);
+      return isObject(value);
     case "array":
       return Array.isArray(value);
     case "integer":
@@ -76,6 +78,14 @@ function matchesType(type: string, value: unknown): boolean {
     default:
       return typeof value === type;
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asSchema(value: unknown): JsonSchema {
+  return isObject(value) ? value : {};
 }
 
 function describe(value: unknown): string {

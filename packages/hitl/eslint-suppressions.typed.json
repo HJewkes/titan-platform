@@ -9,27 +9,9 @@
       "count": 2
     }
   },
-  "packages/hitl/src/gate-brief.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 7
-    }
-  },
   "packages/hitl/src/gate.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/hitl/src/json-schema.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/hitl/src/json-schema.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 6
     }
   },
   "packages/hitl/src/resolver-policy.test.ts": {
@@ -37,27 +19,19 @@
       "count": 1
     }
   },
-  "packages/hitl/src/resolver-policy.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 9
-    }
-  },
   "packages/hitl/src/sqlite-store.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 1
     }
   },
   "packages/hitl/src/sqlite-store.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
+      "count": 7
     }
   },
   "packages/hitl/src/store.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 14
+      "count": 5
     }
   }
 }

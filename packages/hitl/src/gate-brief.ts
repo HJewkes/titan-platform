@@ -42,7 +42,7 @@ interface BriefAnchorCheck {
  * With `anchors`, an evidenceRef written as an anchor (`head/<path>#L10-L20`) must hold at its pinned commit; free text stays legal.
  */
 export function snapshotBrief(gateId: string, raw: unknown, required: boolean, anchors?: BriefAnchorCheck): Readonly<GateBriefSnapshot> {
-  const { summary, evidenceRef, questions } = (raw ?? {}) as Record<string, unknown>;
+  const { summary, evidenceRef, questions } = asRecord(raw);
   const issues = [
     ...lineIssues("summary", summary, MAX_SUMMARY, required),
     ...lineIssues("evidenceRef", evidenceRef, MAX_EVIDENCE_REF, required),
@@ -52,9 +52,9 @@ export function snapshotBrief(gateId: string, raw: unknown, required: boolean, a
   if (questionIssue) issues.push(questionIssue);
   if (issues.length > 0) throw new GateBriefInvalid(gateId, issues);
   return Object.freeze({
-    summary: summary as string | undefined,
-    evidenceRef: evidenceRef as string | undefined,
-    questions: questions === undefined ? undefined : copyQuestions(questions as GateQuestion[]),
+    summary: typeof summary === "string" ? summary : undefined,
+    evidenceRef: typeof evidenceRef === "string" ? evidenceRef : undefined,
+    questions: Array.isArray(questions) ? copyQuestions(questions) : undefined,
   });
 }
 
@@ -78,7 +78,7 @@ function questionsIssue(value: unknown): string | undefined {
   if (value.length < 1 || value.length > MAX_QUESTIONS) return `ask 1 to ${MAX_QUESTIONS} questions (got ${value.length})`;
   const ids = new Set<string>();
   for (const [index, raw] of value.entries()) {
-    const question = (raw ?? {}) as Record<string, unknown>;
+    const question = asRecord(raw);
     const where = `question ${index + 1}`;
     if (typeof question.id !== "string" || !ID_PATTERN.test(question.id)) return `${where}: ${ID_RULE}`;
     if (ids.has(question.id)) return `${where}: duplicate question id "${question.id}"`;
@@ -102,10 +102,10 @@ function optionsIssue(options: unknown): string | undefined {
   const ids = new Set<string>();
   let recommended = 0;
   for (const [index, raw] of options.entries()) {
-    const option = (raw ?? {}) as Record<string, unknown>;
+    const option = asRecord(raw);
     const issue = optionIssue(option, ids);
     if (issue) return `option ${index + 1}: ${issue}`;
-    ids.add(option.id as string);
+    if (typeof option.id === "string") ids.add(option.id);
     if (option.recommended === true) recommended++;
   }
   return recommended > 1 ? "mark at most one option as recommended" : undefined;
@@ -120,15 +120,29 @@ function optionIssue(option: Record<string, unknown>, seen: ReadonlySet<string>)
   return undefined;
 }
 
-/** Keeps only the declared fields, so nothing a caller attached rides along into the row. */
-function copyQuestions(questions: readonly GateQuestion[]): GateQuestion[] {
-  return questions.map((question) => ({
-    id: question.id,
-    question: question.question,
-    options: question.options.map(copyOption),
-  }));
+/** Keeps only the declared fields, so nothing a caller attached rides along into the row. Runs after `questionsIssue` has accepted the shape. */
+function copyQuestions(questions: readonly unknown[]): GateQuestion[] {
+  return questions.map((raw) => {
+    const question = asRecord(raw);
+    const options: readonly unknown[] = Array.isArray(question.options) ? question.options : [];
+    return { id: text(question.id), question: text(question.question), options: options.map(copyOption) };
+  });
 }
 
-function copyOption(option: GateQuestionOption): GateQuestionOption {
-  return option.recommended === true ? { id: option.id, label: option.label, recommended: true } : { id: option.id, label: option.label };
+function copyOption(raw: unknown): GateQuestionOption {
+  const option = asRecord(raw);
+  const base = { id: text(option.id), label: text(option.label) };
+  return option.recommended === true ? { ...base, recommended: true } : base;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
