@@ -54,7 +54,8 @@ type AwaitingRun = { verdict: "awaiting"; awaitedSha: string };
 
 /**
  * The base tip when it is a later commit containing `redSha` whose required runs are still going with none failed, so a
- * fix that merged after the red may yet clear it (TP-4273). Undefined with no base or rules, a settled or red tip, or a
+ * fix that merged after the red may yet clear it (TP-4273). A required context with no run yet counts as running, as
+ * after a push whose runs are queued but not yet reported (TP-4653). Undefined with no base or rules, a settled or red tip, or a
  * tip off the red's line; a read that fails throws and the caller keeps the red.
  */
 async function runningDescendant(read: StaleRedRead, redSha: string, rules: MainRules | undefined): Promise<string | undefined> {
@@ -62,7 +63,7 @@ async function runningDescendant(read: StaleRedRead, redSha: string, rules: Main
   const tip = await read.port.getHeadSha(read.repo, await read.base());
   if (tip === null || tip === redSha) return undefined;
   const { findings } = judgeMain(tip, await read.port.checkRuns(read.repo, tip), rules);
-  if (!findings.some((finding) => finding.kind === "pending") || findings.some((finding) => finding.kind === "failed")) return undefined;
+  if (!findings.some((finding) => finding.kind === "pending" || finding.kind === "missing") || findings.some((finding) => finding.kind === "failed")) return undefined;
   return (await contains(read.port, read.repo, tip, redSha)) ? tip : undefined;
 }
 
