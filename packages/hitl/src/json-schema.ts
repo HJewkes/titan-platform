@@ -8,15 +8,25 @@ import type { JsonSchema } from "./types.js";
  * boundary check, not the type guarantee.
  */
 export function checkAgainstJsonSchema(schema: JsonSchema, value: unknown, path = "$"): string[] {
+  return collectIssues(schema, value, path);
+}
+
+function collectIssues(schema: unknown, value: unknown, path: string): string[] {
   const issues: string[] = [];
   collect(schema, value, path, issues);
   return issues;
 }
 
-function collect(schema: JsonSchema, value: unknown, path: string, issues: string[]): void {
+/** A schema that cannot be read is an issue, never an open schema: a stored schema is untrusted data and an unreadable one must refuse the resolve. */
+function collect(schema: unknown, value: unknown, path: string, issues: string[]): void {
+  if (schema === true) return;
+  if (!isObject(schema)) {
+    issues.push(`${path}: schema is malformed`);
+    return;
+  }
   const branches = Array.isArray(schema.anyOf) ? schema.anyOf : schema.oneOf;
   if (Array.isArray(branches)) {
-    checkUnion(branches.map(asSchema), value, path, issues);
+    checkUnion(branches, value, path, issues);
     return;
   }
   if ("const" in schema && !Object.is(schema.const, value)) {
@@ -36,16 +46,19 @@ function collect(schema: JsonSchema, value: unknown, path: string, issues: strin
   if (schema.type === "array" && Array.isArray(value)) checkArray(schema, value, path, issues);
 }
 
-function checkUnion(branches: JsonSchema[], value: unknown, path: string, issues: string[]): void {
-  const matched = branches.some((branch) => checkAgainstJsonSchema(branch, value, path).length === 0);
+function checkUnion(branches: unknown[], value: unknown, path: string, issues: string[]): void {
+  const matched = branches.some((branch) => collectIssues(branch, value, path).length === 0);
   if (!matched) issues.push(`${path}: matched none of the ${branches.length} allowed shapes`);
 }
 
 function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: string, issues: string[]): void {
-  const properties = asSchema(schema.properties);
-  const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
-  for (const key of required) {
-    if ((typeof key === "string" || typeof key === "number") && !(key in value)) issues.push(`${path}.${key}: required`);
+  const properties = schema.properties ?? {};
+  if (!isObject(properties)) {
+    issues.push(`${path}: schema is malformed`);
+    return;
+  }
+  for (const key of requiredKeys(schema.required, path, issues)) {
+    if (!(key in value)) issues.push(`${path}.${key}: required`);
   }
   if (schema.additionalProperties === false) {
     for (const key of Object.keys(value)) {
@@ -53,13 +66,13 @@ function checkObject(schema: JsonSchema, value: Record<string, unknown>, path: s
     }
   }
   for (const [key, sub] of Object.entries(properties)) {
-    if (key in value) collect(asSchema(sub), value[key], `${path}.${key}`, issues);
+    if (key in value) collect(sub, value[key], `${path}.${key}`, issues);
   }
 }
 
 function checkArray(schema: JsonSchema, value: unknown[], path: string, issues: string[]): void {
-  if (!isObject(schema.items)) return;
-  const items = schema.items;
+  const items: unknown = schema.items;
+  if (!items) return;
   value.forEach((entry, index) => collect(items, entry, `${path}[${index}]`, issues));
 }
 
@@ -84,8 +97,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asSchema(value: unknown): JsonSchema {
-  return isObject(value) ? value : {};
+function requiredKeys(required: unknown, path: string, issues: string[]): Array<string | number> {
+  if (required === undefined || required === null) return [];
+  if (!Array.isArray(required)) {
+    issues.push(`${path}: schema is malformed`);
+    return [];
+  }
+  const keys: Array<string | number> = [];
+  for (const key of required) {
+    if (typeof key === "string" || typeof key === "number") keys.push(key);
+    else issues.push(`${path}: schema is malformed`);
+  }
+  return keys;
 }
 
 function describe(value: unknown): string {

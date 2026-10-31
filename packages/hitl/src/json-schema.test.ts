@@ -62,4 +62,27 @@ describe("checkAgainstJsonSchema", () => {
   it("passes a schema with no type constraint", () => {
     expect(checkAgainstJsonSchema({}, "anything")).toEqual([]);
   });
+
+  describe("a schema that cannot be read", () => {
+    const malformed: Array<[string, Record<string, unknown>]> = [
+      ["a false union branch", { anyOf: [false] }],
+      ["a non-object union branch", { anyOf: ["x", { type: "string" }] }],
+      ["a false property schema", { type: "object", properties: { admin: false } }],
+      ["a string property schema", { type: "object", properties: { n: "number" } }],
+      ["a non-object properties map", { type: "object", properties: "bad" }],
+      ["a null required entry", { type: "object", required: [null] }],
+      ["an object required entry", { type: "object", required: [{}] }],
+      ["a non-array required list", { type: "object", required: "name" }],
+      ["a string items schema", { type: "array", items: "number" }],
+    ];
+
+    it.each(malformed)("refuses the payload for %s", (_label, schema) => {
+      const payload = schema.type === "array" ? [1] : schema.type === "object" ? { admin: true, n: "str" } : 42;
+      expect(checkAgainstJsonSchema(schema, payload)).not.toEqual([]);
+    });
+
+    it("still accepts a true schema", () => {
+      expect(checkAgainstJsonSchema({ type: "object", properties: { ok: true } }, { ok: 1 })).toEqual([]);
+    });
+  });
 });
