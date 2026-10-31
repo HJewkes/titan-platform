@@ -9,7 +9,10 @@ describe("createQueryStore drop timer", () => {
   afterEach(() => vi.useRealTimers());
 
   it("settles a re-watched query that an earlier unwatch timer would have dropped", async () => {
-    const source: DataSource = { call: vi.fn(async () => ({ ok: true as const, data: "fresh" })) } as unknown as DataSource;
+    const source: DataSource = {
+      call: vi.fn(async () => ({ ok: true as const, data: "fresh" })),
+      subscribe: () => ({ close() {} }),
+    };
     const store = createQueryStore(source);
     const args = { id: "n1" };
 

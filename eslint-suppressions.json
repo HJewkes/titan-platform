@@ -271,16 +271,6 @@
       "count": 1
     }
   },
-  "packages/react-app/src/hooks/hooks.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "packages/react-app/src/hooks/query-store.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/react-app/src/hooks/query-store.ts": {
     "titan/max-function-lines": {
       "count": 1
