@@ -224,6 +224,18 @@ describe('task.add related list', () => {
     });
   });
 
+  it('a near-identical title found by the scan is tagged as a possible duplicate', async () => {
+    await withNeighbours(async (ctx, { open }) => {
+      const filed = await run<Filed & { tags?: string[] }>(ctx, 'task.add', {
+        slug: SLUG,
+        title: 'Build the parquet exporter',
+        done_when: DONE_WHEN,
+      });
+
+      expect(filed.tags).toContain(`possible-dup:${open}`);
+    });
+  });
+
   it('a corrupt graph file cannot touch the list, because the add never opens it', async () => {
     await withNeighbours(async (ctx, { open }) => {
       await fs.mkdir(path.join(ctx.activeRoot, '.miner'), { recursive: true });
