@@ -17,7 +17,7 @@ import type { AgentRunConfig } from "./types.js";
 const OAUTH_ENV: NodeJS.ProcessEnv = { CLAUDE_CODE_OAUTH_TOKEN: "sk-oauth", PATH: "/usr/bin" };
 
 function config<T>(overrides: Partial<AgentRunConfig<T>> = {}): AgentRunConfig<T> {
-  return { prompt: "do the thing", cwd: "/tmp/work", maxTurns: 5, maxBudgetUsd: 1, ...overrides } as AgentRunConfig<T>;
+  return { prompt: "do the thing", cwd: "/tmp/work", maxTurns: 5, maxBudgetUsd: 1, ...overrides };
 }
 
 function deps(query: AgentRunDeps["query"]): AgentRunDeps {
@@ -59,10 +59,10 @@ describe("runAgent options", () => {
   it("hands the SDK a scrubbed environment, not the caller's", async () => {
     const fake = fakeQuery([initMessage(), successResult()]);
     await runAgent(config(), { query: fake.run, env: { ...OAUTH_ENV, CLAUDECODE: "1", ANTHROPIC_API_KEY: "sk-ant" } });
-    const env = fake.lastOptions?.env as Record<string, string>;
-    expect(env.CLAUDECODE).toBeUndefined();
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-oauth");
+    const env = fake.lastOptions?.env;
+    expect(env).not.toHaveProperty("CLAUDECODE");
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(env).toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN", "sk-oauth");
   });
 
   it("forwards subagents, MCP servers and tool lists untouched", async () => {
@@ -154,7 +154,7 @@ describe("runAgent failures", () => {
     ];
     const result = await runAgent(config(), deps(fakeQuery(messages).run));
     expect(result).toMatchObject({ ok: false, failure: { kind: "rate_limited" } });
-    expect(result.ok === false && (result.failure as { retryAt?: Date }).retryAt?.getTime()).toBe(resetsAt);
+    expect(result).toMatchObject({ failure: { retryAt: new Date(resetsAt) } });
   });
 
   it("rejects structured output that does not match the caller's schema", async () => {

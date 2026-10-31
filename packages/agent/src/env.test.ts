@@ -77,7 +77,7 @@ describe("assertAuthEnvOk", () => {
   });
 
   it("rejects a leaked API key on the subscription path", () => {
-    expect(() => assertAuthEnvOk({ ...OAUTH, ANTHROPIC_API_KEY: "sk-ant" } as Record<string, string>)).toThrow(
+    expect(() => assertAuthEnvOk({ ...OAUTH, ANTHROPIC_API_KEY: "sk-ant" })).toThrow(
       /survived the scrub/,
     );
   });
@@ -92,11 +92,11 @@ describe("assertAuthEnvOk", () => {
 
   it("carries a hint on the leaked-key error", () => {
     try {
-      assertAuthEnvOk({ ...OAUTH, ANTHROPIC_API_KEY: "sk-ant" } as Record<string, string>);
+      assertAuthEnvOk({ ...OAUTH, ANTHROPIC_API_KEY: "sk-ant" });
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(AuthMisconfiguredError);
-      expect((error as AuthMisconfiguredError).hint).toMatch(/allowApiKeyBilling/);
+      expect(error).toMatchObject({ hint: expect.stringMatching(/allowApiKeyBilling/) });
     }
   });
 });

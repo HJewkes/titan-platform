@@ -445,6 +445,8 @@ declare const DEFAULT_BUDGET_MS: number;
 type Side = "base" | "head";
 /** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
 declare const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>>;
+/** The report names a side writes: the base's pair, or `head`, `head-2`, ... for each of the head's runs. */
+declare function reportNames(side: Side, headRuns?: number): readonly string[];
 interface ExecSideOptions {
     /** The git checkout holding both commits. */
     repo: string;
@@ -462,6 +464,8 @@ interface ExecSideOptions {
      * or carried files start outlives the run or can write the runner's files. The head side ignores it.
      */
     sandboxUser?: string;
+    /** How many times the head side runs vitest after one install and build, an integer from 1 to 5; default 1. The base side ignores it. */
+    headRuns?: number;
 }
 /** Builds and tests one side of the proof and writes its encoded reports to out; a failure writes error markers, never throws. */
 declare function execSide(options: ExecSideOptions): Promise<void>;
@@ -598,10 +602,11 @@ interface JudgeOptions {
     budgetMs?: number;
     exec?: Exec;
 }
+declare function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classification;
 /**
  * Classifies the exec sides' encoded reports against a plan it derives from git itself and returns the one fix-proof/v1 line.
  * It runs no code from either commit: every command it spawns is git, so a PR head cannot reach the verdict it prints.
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecHeadMutantsOptions, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type FixProofUnverified, HEAD_OUTCOMES, type HeadFailure, type HeadMutantRun, type HeadMutantsReport, type HeadMutation, type HeadOutcome, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_HEAD_FAILURES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, type ProofReadInput, type ProofStanding, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReducedHeadRun, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyHeadRun, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, endsReview, errorLine, execHeadMutants, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, needsTestsSeat, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, proofStanding, provedByMutants, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecHeadMutantsOptions, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type FixProofUnverified, HEAD_OUTCOMES, type HeadFailure, type HeadMutantRun, type HeadMutantsReport, type HeadMutation, type HeadOutcome, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_HEAD_FAILURES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, type ProofReadInput, type ProofStanding, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReducedHeadRun, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyDecoded, classifyHeadRun, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, endsReview, errorLine, execHeadMutants, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, needsTestsSeat, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, proofStanding, provedByMutants, reportNames, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };

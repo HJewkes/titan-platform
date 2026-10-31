@@ -73,7 +73,7 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   dispatchedReviewer: AgentIdentity;
   seatGrants: string[];
   /** The `sh-carry` step's answer for this head, with the head it asked about; absent means no carry was probed. `remerge` is the `sh-remerge` answer behind a remerge rule. */
-  carry?: { fromHead: string; head: string; result: CarryResult; rule?: CarryRule; remerge?: RemergeResult };
+  carry?: { fromHead: string; head: string; result?: CarryResult; rule?: CarryRule; remerge?: RemergeResult };
   /** The run policy's visual globs, so the evidence comment records the same decision `decide` reaches. */
   visualPaths?: string[];
   /** The seat's baseline check and files, so a visual head that changes no baseline can clear on that check. */
@@ -172,7 +172,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
-  if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
+  if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta));
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }

@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
-  EXECUTION_CAPABILITIES,
   type CapabilityAssessment,
-  type ClaudeCodeRunRequest,
   type CodexRunRequest,
   type ExecutionCapability,
   type HarnessAdapter,
@@ -10,18 +9,17 @@ import {
   type HarnessRunResult,
   type LimitCapability,
 } from "./harness-contracts.js";
+import { capabilityRecord } from "./capability-record.js";
 import { dispatchHarnessRun } from "./preflight.js";
 
+const verdictSchema = z.object({ verdict: z.string() });
 const SUPPORTED: CapabilityAssessment = { status: "supported", evidence: "fake adapter contract" };
 
 function descriptor(
   overrides: Partial<Record<ExecutionCapability, CapabilityAssessment>> = {},
   limits: readonly LimitCapability[] = defaultLimits(),
 ): HarnessCapabilityDescriptor<"codex"> {
-  const capabilities = Object.fromEntries(EXECUTION_CAPABILITIES.map((capability) => [capability, SUPPORTED])) as Record<
-    ExecutionCapability,
-    CapabilityAssessment
-  >;
+  const capabilities = capabilityRecord(() => SUPPORTED);
   return { harness: "codex", adapter: { name: "fake-codex", version: "1" }, capabilities: { ...capabilities, ...overrides }, limits };
 }
 
@@ -102,7 +100,7 @@ describe("dispatchHarnessRun preflight", () => {
   it("reuses one adapter across text and differently typed structured requests", async () => {
     const fake = fakeAdapter();
     const textResult = await dispatchHarnessRun(request(), fake.adapter);
-    const parse = vi.fn((value: unknown) => value as { verdict: string });
+    const parse = vi.fn((value: unknown) => verdictSchema.parse(value));
     const structuredRequest: CodexRunRequest<{ verdict: string }> = {
       ...request(),
       native: { outputSchema: { jsonSchema: { type: "object" }, parse } },
@@ -137,7 +135,8 @@ describe("dispatchHarnessRun preflight", () => {
     "rejects malformed wallTimeMs %s without invoking the adapter",
     async (wallTimeMs) => {
       const fake = fakeAdapter();
-      const result = await dispatchHarnessRun(request({ wallTimeMs: wallTimeMs as number }), fake.adapter);
+      const malformed = { ...request(), wallTimeMs };
+      const result = await Reflect.apply(dispatchHarnessRun, undefined, [malformed, fake.adapter]);
       expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: /wallTimeMs/ } });
       expect(fake.run).not.toHaveBeenCalled();
     },
@@ -201,8 +200,8 @@ describe("dispatchHarnessRun preflight", () => {
     "rejects Claude-only native field %s on an untyped Codex request",
     async (field) => {
       const fake = fakeAdapter();
-      const untyped = request({ native: { [field]: true } as never });
-      const result = await dispatchHarnessRun(untyped, fake.adapter);
+      const untyped = { ...request(), native: { [field]: true } };
+      const result = await Reflect.apply(dispatchHarnessRun, undefined, [untyped, fake.adapter]);
       expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: new RegExp(field) } });
       expect(fake.run).not.toHaveBeenCalled();
     },
@@ -219,8 +218,8 @@ describe("dispatchHarnessRun preflight", () => {
     ["native", []],
   ])("rejects malformed Codex native option %s before launch", async (field, value) => {
     const fake = fakeAdapter();
-    const overrides = field === "native" ? { native: value as never } : { native: { [field]: value } as never };
-    const result = await dispatchHarnessRun(request(overrides), fake.adapter);
+    const native = field === "native" ? value : { [field]: value };
+    const result = await Reflect.apply(dispatchHarnessRun, undefined, [{ ...request(), native }, fake.adapter]);
     expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: new RegExp(field) } });
     expect(fake.run).not.toHaveBeenCalled();
   });
@@ -241,8 +240,8 @@ describe("dispatchHarnessRun preflight", () => {
       target: { kind: "fresh", namespace: "local" },
       wallTimeMs: 30_000,
       native: { [field]: value },
-    } as unknown as ClaudeCodeRunRequest;
-    const result = await dispatchHarnessRun(claudeRequest, fake.adapter);
+    };
+    const result = await Reflect.apply(dispatchHarnessRun, undefined, [claudeRequest, fake.adapter]);
     expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: new RegExp(field) } });
     expect(fake.run).not.toHaveBeenCalled();
   });
@@ -264,7 +263,7 @@ describe("dispatchHarnessRun preflight", () => {
 
   it("rejects an adapter whose descriptor names another harness", async () => {
     const fake = fakeAdapter();
-    fake.adapter.descriptor = { ...fake.adapter.descriptor, harness: "claude-code" } as unknown as HarnessCapabilityDescriptor<"codex">;
+    fake.adapter.descriptor = Object.assign({ ...fake.adapter.descriptor }, { harness: "claude-code" });
     const result = await dispatchHarnessRun(request(), fake.adapter);
     expect(result).toMatchObject({ ok: false, failure: { kind: "harness_mismatch", reason: /adapter harness/ } });
     expect(fake.run).not.toHaveBeenCalled();

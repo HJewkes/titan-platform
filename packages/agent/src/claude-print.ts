@@ -5,7 +5,8 @@ import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toJSONSchema, type ZodType } from "zod";
 import { terminateProcessGroup } from "./codex-process.js";
 import { classifyResult, usageFromResult } from "./failures.js";
-import { CLAUDE_PRINT_UNSUPPORTED_OPTIONS, EXECUTION_CAPABILITIES, type HarnessCapabilityDescriptor } from "./harness-contracts.js";
+import { CLAUDE_PRINT_UNSUPPORTED_OPTIONS, type HarnessCapabilityDescriptor } from "./harness-contracts.js";
+import { capabilityRecord } from "./capability-record.js";
 import type { AgentFailure, AgentInit, AgentRunConfig, AgentRunResult } from "./types.js";
 
 /** SIGTERM alone has been ignored by the CLI in the repo-review pipeline, so SIGKILL follows. */
@@ -15,9 +16,9 @@ const EMPTY_MCP_CONFIG = '{"mcpServers":{}}';
 const LOGIN_FAILURE = /not logged in|please run \/login|invalid api key/i;
 
 export function claudePrintCapabilities(): HarnessCapabilityDescriptor<"claude-print"> {
-  const capabilities = Object.fromEntries(EXECUTION_CAPABILITIES.map(capability => [capability, {
+  const capabilities = capabilityRecord(() => ({
     status: "unsupported", reason: "claude -p runs with no tools, hooks, MCP or resume",
-  }])) as HarnessCapabilityDescriptor<"claude-print">["capabilities"];
+  }));
   capabilities.fresh_run = { status: "supported", evidence: "spawns one claude -p per call" };
   capabilities.structured_output = { status: "supported", evidence: "--json-schema, then a local zod parse" };
   capabilities.external_cancellation = { status: "supported", evidence: "abort kills the child process group" };
@@ -159,6 +160,9 @@ function settle<T>(outcome: ChildOutcome, config: AgentRunConfig<T>, durationMs:
   return { ok: true, output: output.value, sessionId, usage, init: initFrom(result) };
 }
 
+/** What the CLI's stdout is trusted for; its JSON is not schema-checked, so optional fields stay optional. */
+type LooseResult = { subtype: string; is_error?: boolean; result?: string; errors?: readonly string[]; modelUsage?: Record<string, unknown> };
+
 function parseResult(stdout: string): SDKResultMessage | undefined {
   try {
     const parsed: unknown = JSON.parse(stdout);
@@ -175,14 +179,14 @@ function exitFailure(outcome: ChildOutcome, what: string): AgentFailure {
   return { kind: "runtime_error", reason: `claude -p exited with ${exit} and ${what}${stderr ? `: ${stderr}` : ""}`, raw: outcome };
 }
 
-function loginFailure(result: SDKResultMessage): AgentFailure | undefined {
-  const text = result.subtype === "success" ? result.result : (result.errors ?? []).join("\n");
+function loginFailure(result: LooseResult): AgentFailure | undefined {
+  const text = result.subtype === "success" ? (result.result ?? "") : (result.errors ?? []).join("\n");
   if (!result.is_error || !LOGIN_FAILURE.test(text)) return undefined;
   return { kind: "auth_misconfigured", reason: text, hint: "run `claude` once interactively and /login", raw: result };
 }
 
 /** The tool-less CLI hits its turn cap only on a structured-output retry, which a fresh call usually clears, so it is retryable. */
-function maxTurnsFailure(result: SDKResultMessage, config: AgentRunConfig<unknown>): AgentFailure | undefined {
+function maxTurnsFailure(result: LooseResult, config: AgentRunConfig<unknown>): AgentFailure | undefined {
   if (result.subtype !== "error_max_turns") return undefined;
   const text = (result.errors ?? []).join("\n") || "max turns reached";
   return { kind: "runtime_error", reason: `claude -p reached --max-turns ${claudePrintMaxTurns(config)}: ${text}`, raw: result };
@@ -207,7 +211,7 @@ function parseJson(text: string): unknown {
 }
 
 /** `--output-format json` carries no init message, so only the model is known, from `modelUsage`. */
-function initFrom(result: SDKResultMessage): AgentInit {
+function initFrom(result: LooseResult): AgentInit {
   const models = Object.keys(result.modelUsage ?? {});
   return { apiKeySource: undefined, model: models.length === 1 ? models[0] : undefined, tools: [], permissionMode: undefined, claudeCodeVersion: undefined };
 }

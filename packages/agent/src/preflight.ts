@@ -62,11 +62,10 @@ const CLAUDE_SETTING_SOURCES = ["user", "project", "local"];
 function invalidNativeOptions(request: { harness: Harness; native?: unknown }): HarnessRunFailure | undefined {
   if (request.native === undefined) return undefined;
   if (!record(request.native)) return invalid("native options must be an object");
-  const native: object = request.native;
+  const options = request.native;
   const forbidden = request.harness === "codex" ? CLAUDE_ONLY : CODEX_ONLY;
-  const field = forbidden.find((name) => name in native);
+  const field = forbidden.find((name) => name in options);
   if (field) return invalid(`${field} is not a ${request.harness} native option`);
-  const options = native as Record<string, unknown>;
   return request.harness === "codex" ? invalidCodexOptions(options) : invalidClaudeOptions(options);
 }
 
@@ -80,7 +79,7 @@ function invalidCodexOptions(options: Record<string, unknown>): HarnessRunFailur
     ["approvalPolicy", options.approvalPolicy, CODEX_APPROVAL_POLICIES],
   ] as const;
   for (const [name, value, allowed] of enums) {
-    if (value !== undefined && !allowed.includes(value as never)) return invalid(`${name} is not a recognized Codex value`);
+    if (value !== undefined && !allowed.some((candidate) => candidate === value)) return invalid(`${name} is not a recognized Codex value`);
   }
   if (options.outputSchema === undefined) return undefined;
   if (!record(options.outputSchema)) return invalid("Codex outputSchema must be an object");
@@ -91,7 +90,7 @@ function invalidCodexOptions(options: Record<string, unknown>): HarnessRunFailur
 function invalidClaudeOptions(options: Record<string, unknown>): HarnessRunFailure | undefined {
   const invalidModel = optionalNonempty("model", options.model);
   if (invalidModel) return invalidModel;
-  if (options.permissionMode !== undefined && !CLAUDE_PERMISSION_MODES.includes(options.permissionMode as never)) {
+  if (options.permissionMode !== undefined && !CLAUDE_PERMISSION_MODES.some((mode) => mode === options.permissionMode)) {
     return invalid("permissionMode is not a recognized Claude Code value");
   }
   for (const name of ["allowedTools", "disallowedTools"] as const) {
@@ -143,8 +142,10 @@ function checkCapabilities<H extends Harness, T>(
   request: HarnessRunRequestFor<H, T>,
   descriptor: HarnessCapabilityDescriptor<H>,
 ): HarnessRunFailure | undefined {
+  // A foreign adapter may omit a capability its type promises; absence reads as unverified.
+  const declared: Partial<Record<ExecutionCapability, CapabilityAssessment>> = descriptor.capabilities;
   for (const capability of requiredCapabilities(request)) {
-    const assessment = descriptor.capabilities[capability] ?? {
+    const assessment = declared[capability] ?? {
       status: "unverified",
       reason: "adapter did not declare this capability",
     };

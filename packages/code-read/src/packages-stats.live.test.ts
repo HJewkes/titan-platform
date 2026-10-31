@@ -48,7 +48,7 @@ async function live(args: object): Promise<Stats> {
 function exported(snapshotId: number): MemorySnapshot {
   const { snapshot: info, nodes, edges, findings, rules } = loadReadModel(repo.store, snapshotId, { rules: RULES });
   const metrics = repo.store.listMetrics(snapshotId);
-  return JSON.parse(JSON.stringify({ info, nodes, edges, metrics, findings, rules })) as MemorySnapshot;
+  return structuredClone({ info, nodes: [...nodes], edges: [...edges], metrics, findings: [...findings], rules: [...rules] });
 }
 
 function staticStats(args: object): Stats {

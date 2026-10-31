@@ -1,19 +1,4 @@
 {
-  "packages/code-read/src/changes.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/contract-lock.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 17
-    }
-  },
-  "packages/code-read/src/finding-get.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/code-read/src/findings.live.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -24,42 +9,12 @@
       "count": 1
     }
   },
-  "packages/code-read/src/hotspots.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/code-read/src/live.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "packages/code-read/src/memory-source.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/node-lenses.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/overview.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/packages-stats.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/paths-impact.live.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/query/contract.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -79,32 +34,14 @@
       "count": 1
     }
   },
-  "packages/code-read/src/query/paths-impact.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/code-read/src/query/query.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/code-read/src/query/resolver.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "packages/code-read/src/register.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/code-read/src/surfaces.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   }
 }

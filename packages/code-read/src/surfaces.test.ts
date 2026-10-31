@@ -39,7 +39,8 @@ const RULES: CheckRule[] = [
 
 let repo: FixtureRepo;
 let stateDir: string;
-let daemon: DaemonHandle;
+let daemon: DaemonHandle | undefined;
+let port = 0;
 const registry = createRegistry<SurfaceContext>();
 
 beforeAll(async () => {
@@ -57,6 +58,7 @@ beforeAll(async () => {
     toolPrefix: "codewatch__",
     logger: silentLogger,
   });
+  port = daemon.port;
 }, 60_000);
 
 afterAll(async () => {
@@ -72,13 +74,19 @@ async function inProcess(name: CommandName, args: unknown): Promise<JsonEnvelope
   return envelope;
 }
 
-async function overRpc(name: CommandName, args: unknown): Promise<JsonEnvelope<unknown>> {
-  const response = await fetch(`http://127.0.0.1:${daemon.port}/rpc/${name}`, {
+async function overRpc(name: CommandName, args: unknown): Promise<unknown> {
+  const response = await fetch(`http://127.0.0.1:${port}/rpc/${name}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-titan-client": "test" },
     body: JSON.stringify(args),
   });
-  return (await response.json()) as JsonEnvelope<unknown>;
+  return response.json();
+}
+
+function firstText(content: unknown): string {
+  const first: unknown = Array.isArray(content) ? content[0] : undefined;
+  if (typeof first === "object" && first !== null && "text" in first && typeof first.text === "string") return first.text;
+  throw new Error("the MCP tool result has no text content");
 }
 
 describe("the same commands on every surface", () => {
@@ -91,19 +99,18 @@ describe("the same commands on every surface", () => {
 
   it.each(CALLS)("%s %j answers identically as an MCP tool", async (name, args) => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), MCP_TRANSPORT));
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), MCP_TRANSPORT));
     const tool = `codewatch__${name.replaceAll(".", "__")}`;
 
     const result = await client.callTool({ name: tool, arguments: args });
     await client.close();
 
-    const [content] = result.content as { type: string; text: string }[];
-    expect(JSON.parse(content!.text)).toEqual(await inProcess(name, args));
+    expect(JSON.parse(firstText(result.content))).toEqual(await inProcess(name, args));
   });
 
   it("lists every command as an MCP tool until the registry can filter surfaces", async () => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), MCP_TRANSPORT));
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), MCP_TRANSPORT));
 
     const { tools } = await client.listTools();
     await client.close();
@@ -112,7 +119,7 @@ describe("the same commands on every surface", () => {
   });
 
   it("answers bad arguments over /rpc with HTTP 400 and DATAERR", async () => {
-    const response = await fetch(`http://127.0.0.1:${daemon.port}/rpc/snapshot.list`, {
+    const response = await fetch(`http://127.0.0.1:${port}/rpc/snapshot.list`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-titan-client": "test" },
       body: JSON.stringify({ limit: "many" }),

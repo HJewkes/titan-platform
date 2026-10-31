@@ -43,7 +43,7 @@ function exported(): MemorySnapshot {
   const { snapshot: info, nodes, edges, findings, rules } = loadReadModel(repo.store, snapshotId, { rules: RULES });
   const metrics = repo.store.listMetrics(snapshotId);
   const sources = { "src/walk.ts": { lines: WALK.trimEnd().split("\n") } };
-  return JSON.parse(JSON.stringify({ info, nodes, edges, metrics, findings, rules, sources })) as MemorySnapshot;
+  return structuredClone({ info, nodes: [...nodes], edges: [...edges], metrics, findings: [...findings], rules: [...rules], sources });
 }
 
 // Where the text came from differs by construction; everything an agent reads off the excerpt must not.

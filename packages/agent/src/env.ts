@@ -83,7 +83,7 @@ export function prepareEnv(
     for (const key of STRIPPED_AUTH_VARS) delete out[key];
   }
 
-  out.CLAUDE_CODE_MAX_RETRIES ??= DEFAULT_MAX_RETRIES;
+  if (!Object.hasOwn(out, "CLAUDE_CODE_MAX_RETRIES")) out.CLAUDE_CODE_MAX_RETRIES = DEFAULT_MAX_RETRIES;
   return out;
 }
 

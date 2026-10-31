@@ -21,6 +21,16 @@ export type Side = "base" | "head";
 /** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
 export const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>> = { base: ["base", "base-rerun"], head: ["head"] };
 
+export const MAX_HEAD_RUNS = 5;
+
+/** The report names a side writes: the base's pair, or `head`, `head-2`, ... for each of the head's runs. */
+export function reportNames(side: Side, headRuns = 1): readonly string[] {
+  if (side === "base") return SIDE_REPORTS.base;
+  return Array.from({ length: headRuns }, (_, index) => (index === 0 ? "head" : `head-${index + 1}`));
+}
+
+const validHeadRuns = (runs: number) => Number.isInteger(runs) && runs >= 1 && runs <= MAX_HEAD_RUNS;
+
 export interface ExecSideOptions {
   /** The git checkout holding both commits. */
   repo: string;
@@ -38,6 +48,8 @@ export interface ExecSideOptions {
    * or carried files start outlives the run or can write the runner's files. The head side ignores it.
    */
   sandboxUser?: string;
+  /** How many times the head side runs vitest after one install and build, an integer from 1 to 5; default 1. The base side ignores it. */
+  headRuns?: number;
 }
 
 export async function addTree(ctx: Context, name: string, sha: string): Promise<string> {
@@ -172,13 +184,19 @@ export async function withSandbox<T>(ctx: Context, tree: string, user: string, b
   }
 }
 
-async function runSide(ctx: Context, shas: Shas, side: Side, sandboxUser?: string): Promise<string[]> {
+async function runHeadTests(ctx: Context, tree: string, plan: FixProofPlan, command: string, runs: number): Promise<string[]> {
+  const reports: string[] = [];
+  for (const name of reportNames("head", runs)) reports.push(await runTests(ctx, tree, plan, command, name));
+  return reports;
+}
+
+async function runSide(ctx: Context, shas: Shas, side: Side, headRuns: number, sandboxUser?: string): Promise<string[]> {
   const plan = await planDiff(ctx, shas);
-  if (plan.tests.length === 0) return SIDE_REPORTS[side].map(() => encodeError("no tests planned"));
+  if (plan.tests.length === 0) return reportNames(side, headRuns).map(() => encodeError("no tests planned"));
   const tree = await addTree(ctx, side, shas[side]);
   // The base builds before any head file lands in its tree, so nothing the PR carries runs during its install or build.
   const command = await prepare(ctx, tree, side, plan.config);
-  if (side === "head") return [await runTests(ctx, tree, plan, command, "head")];
+  if (side === "head") return runHeadTests(ctx, tree, plan, command, headRuns);
   await overlay(ctx, tree, shas.head, plan);
   const test = (name: string) => runTests(ctx, tree, plan, command, name, sandboxUser);
   const both = async () => [await test("base"), await test("base-rerun")];
@@ -187,11 +205,15 @@ async function runSide(ctx: Context, shas: Shas, side: Side, sandboxUser?: strin
 
 /** Builds and tests one side of the proof and writes its encoded reports to out; a failure writes error markers, never throws. */
 export async function execSide(options: ExecSideOptions): Promise<void> {
-  const names = SIDE_REPORTS[options.side];
-  const reports = await withContext(
-    { ...options, budgetMs: options.budgetMs ?? DEFAULT_BUDGET_MS },
-    (ctx, shas) => runSide(ctx, shas, options.side, options.sandboxUser),
-    (_shas, error) => names.map(() => encodeError(error)),
+  const headRuns = options.headRuns ?? 1;
+  const names = reportNames(options.side, validHeadRuns(headRuns) ? headRuns : 1);
+  const reports = await (validHeadRuns(headRuns)
+    ? withContext(
+        { ...options, budgetMs: options.budgetMs ?? DEFAULT_BUDGET_MS },
+        (ctx, shas) => runSide(ctx, shas, options.side, headRuns, options.sandboxUser),
+        (_shas, error) => names.map(() => encodeError(error)),
+      )
+    : Promise.resolve(names.map(() => encodeError(`headRuns must be an integer from 1 to ${MAX_HEAD_RUNS}, got ${headRuns}`)))
   ).catch((error: unknown) => names.map(() => encodeError(`${options.side}: cleanup failed: ${messageOf(error)}`)));
   try {
     fs.mkdirSync(options.out, { recursive: true });

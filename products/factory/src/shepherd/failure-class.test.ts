@@ -1,6 +1,8 @@
 import { StepFailedError, WorkflowCancelledError, type WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { classifyingFailures, failureClassOf, withFailureClass } from "./failure-class.js";
+import { partialFake } from "@titan-design/test-kit";
+import { errorMessage } from "../narrow.js";
 
 describe("failureClassOf", () => {
   it("files a ci-wait timeout as ci-timeout", () => {
@@ -43,7 +45,7 @@ describe("withFailureClass", () => {
 });
 
 describe("classifyingFailures", () => {
-  const ctx = {} as WorkflowContext;
+  const ctx = partialFake<WorkflowContext>();
 
   it("prefixes a failed step's message and keeps the error's identity", async () => {
     const thrown = new StepFailedError("land-rules", 0, "acme/widgets@main requires no status checks");
@@ -65,6 +67,6 @@ describe("classifyingFailures", () => {
   it("turns a thrown non-Error into a classified Error", async () => {
     const caught = await classifyingFailures(() => Promise.reject("boom"))(ctx).catch((error: unknown) => error);
 
-    expect((caught as Error).message).toBe("[other] boom");
+    expect(errorMessage(caught)).toBe("[other] boom");
   });
 });

@@ -79,27 +79,7 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/approval-carry.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/await-verdict.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/carry-merge.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 4
-    }
-  },
   "products/factory/src/shepherd/carry-merge.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/cleanup.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
     }
@@ -114,18 +94,8 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/conflict-check.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/exit-notice.ts": {
     "titan/max-line-length": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/external-review.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 2
     }
   },
@@ -154,29 +124,9 @@
       "count": 2
     }
   },
-  "products/factory/src/shepherd/freeze-policy.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
-    }
-  },
-  "products/factory/src/shepherd/freeze.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/g10-rehold.ts": {
     "titan/max-line-length": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/g10-release-workflow.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/g10-release.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 3
     }
   },
   "products/factory/src/shepherd/g10-release.ts": {
@@ -189,29 +139,14 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/head-moved.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/hold-slot-rows.ts": {
     "titan/max-line-length": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/hold.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
   "products/factory/src/shepherd/hold.ts": {
     "titan/max-line-length": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/ledger-replay.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/factory/src/shepherd/main-red.ts": {
@@ -225,9 +160,6 @@
     }
   },
   "products/factory/src/shepherd/merge-facts.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 13
-    },
     "titan/no-internal-module-mock": {
       "count": 1
     }
@@ -235,21 +167,6 @@
   "products/factory/src/shepherd/merge-facts.ts": {
     "titan/max-line-length": {
       "count": 3
-    }
-  },
-  "products/factory/src/shepherd/merge-state-unsettled.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/merge-up-carry.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/no-progress.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/factory/src/shepherd/observe.ts": {
@@ -272,11 +189,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/park.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/park.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -288,9 +200,6 @@
     }
   },
   "products/factory/src/shepherd/policy.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    },
     "titan/no-internal-module-mock": {
       "count": 1
     }
@@ -315,11 +224,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/publish-review.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/release.ts": {
     "titan/max-line-length": {
       "count": 2
@@ -330,24 +234,9 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/restart-replay.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/resync.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 3
-    }
-  },
   "products/factory/src/shepherd/resync.ts": {
     "titan/max-line-length": {
       "count": 2
-    }
-  },
-  "products/factory/src/shepherd/review-cause.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
     }
   },
   "products/factory/src/shepherd/review-cause.ts": {
@@ -390,11 +279,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/review.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 11
-    }
-  },
   "products/factory/src/shepherd/review.ts": {
     "titan/max-line-length": {
       "count": 12
@@ -415,11 +299,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/seat-fix-first.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/slo-queries.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -427,11 +306,6 @@
   },
   "products/factory/src/shepherd/spawn-profile.test.ts": {
     "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/stage-times.test.ts": {
-    "titan/no-chained-type-assertions": {
       "count": 1
     }
   },
@@ -450,19 +324,9 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/structural-pass.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/take-verdict.ts": {
     "titan/max-line-length": {
       "count": 7
-    }
-  },
-  "products/factory/src/shepherd/task-ref.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/factory/src/shepherd/train-shadow-stats.ts": {
@@ -475,19 +339,9 @@
       "count": 3
     }
   },
-  "products/factory/src/shepherd/train.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/tree-carry.ts": {
     "titan/max-line-length": {
       "count": 1
-    }
-  },
-  "products/factory/src/shepherd/view.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 2
     }
   },
   "products/factory/src/shepherd/view.ts": {

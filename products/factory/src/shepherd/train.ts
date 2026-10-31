@@ -53,7 +53,7 @@ export class MergeTrain {
   }
 
   holder(repo: RepoSlug): TrainHolder | undefined {
-    const row = this.db.prepare("SELECT * FROM shepherd_train WHERE repo = ?").get(repoKey(repo)) as Row | undefined;
+    const row = this.db.prepare<[string], Row>("SELECT * FROM shepherd_train WHERE repo = ?").get(repoKey(repo));
     return row && { repo: row.repo, runId: row.run_id, pr: row.pr, since: row.since };
   }
 

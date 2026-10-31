@@ -127,7 +127,7 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
 
 /** A run's hold and release events, plus its repo's freeze and thaw events, oldest first. */
 export function eventsFor(db: Db, runId: string, repo: string): ShepherdEvent[] {
-  const rows = db.prepare("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase()) as EventRow[];
+  const rows = db.prepare<[string, string], EventRow>("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase());
   return rows.map(fromRow);
 }
 
@@ -138,7 +138,7 @@ export function latestChangeId(db: Db, runId: string): number {
 
 /** Every event at or after `since` (an ISO time), oldest first; what stats reads to attribute hold time. */
 export function eventsSince(db: Db, since = ""): ShepherdEvent[] {
-  return (db.prepare("SELECT * FROM shepherd_event WHERE at >= ? ORDER BY id").all(since) as EventRow[]).map(fromRow);
+  return db.prepare<[string], EventRow>("SELECT * FROM shepherd_event WHERE at >= ? ORDER BY id").all(since).map(fromRow);
 }
 
 function fromRow(row: EventRow): ShepherdEvent {

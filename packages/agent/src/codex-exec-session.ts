@@ -3,7 +3,7 @@ import { conversationItemRef } from "@titan-design/agent-protocol";
 import type { ConversationIdentity, ExecutionIdentity, TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
 import { priceCodexUsage, type CodexPriceRow } from "./codex-prices.js";
 import type { CodexProcessExit, SupervisedCodexProcess } from "./codex-process.js";
-import type { CodexRunRequest, HarnessRunFailure, HarnessRunProgress, HarnessRunResult } from "./harness-contracts.js";
+import type { CodexRunRequest, HarnessRunFailure, HarnessRunResult } from "./harness-contracts.js";
 
 export const DEFAULT_CODEX_KILL_GRACE_MS = 2_000;
 
@@ -249,7 +249,7 @@ class CodexExecSession<T> {
   private emit(progress: ProgressPayload): void {
     if (!this.request.onProgress || this.streamError) return;
     try {
-      this.request.onProgress({ ...progress, harness: "codex", atMs: this.now() } as HarnessRunProgress);
+      this.request.onProgress({ ...progress, harness: "codex", atMs: this.now() });
     } catch (error) {
       this.streamError = { kind: "runtime_error", reason: `Codex progress callback failed: ${messageOf(error)}`, native: error };
       this.terminate();

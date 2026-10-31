@@ -1,3 +1,4 @@
+import { isOneOf } from "../narrow.js"
 /** GitHub's `mergeable_state` values; a value GitHub adds later is read as `unknown`. */
 export const MERGEABLE_STATES = ["clean", "blocked", "behind", "unstable", "dirty", "unknown", "draft", "has_hooks"] as const;
 export type MergeableState = (typeof MERGEABLE_STATES)[number];
@@ -48,7 +49,7 @@ export function routeFor(run: RunState, state: MergeableState, outcome: ReviewOu
 
 export function mergeableState(raw: string, draft: boolean): MergeableState {
   if (draft) return "draft";
-  return (MERGEABLE_STATES as readonly string[]).includes(raw) ? (raw as MergeableState) : "unknown";
+  return isOneOf(MERGEABLE_STATES, raw) ? raw : "unknown";
 }
 
 /** Stuck rounds at one task before the owner is asked. */

@@ -6,6 +6,7 @@ import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
 import type { VisualBaselines } from "./visual-gate.js";
+import { errorMessage } from "../narrow.js";
 
 export { isRepo as isRepoKey } from "@titan-design/github";
 
@@ -185,7 +186,7 @@ export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<R
 function narrowest(seats: Seat[]): Seat {
   if (seats.length === 1) return seats[0]!;
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
-  const paths = Object.assign({}, ...seats.map((s) => s.paths)) as Record<string, string>;
+  const paths = Object.fromEntries(seats.flatMap((s) => Object.entries(s.paths)));
   const visualPaths = sharedVisualPaths(seats);
   const visualBaselines = visualPaths && sharedVisualBaselines(seats);
   const visual = { ...(visualPaths && { visualPaths }), ...(visualBaselines && { visualBaselines }) };
@@ -320,7 +321,7 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
   try {
     parsed = schema.safeParse(frontmatter(readFileSync(path, "utf8")));
   } catch (error) {
-    throw new SeatBookInvalid(`unreadable ${kind} ${path}: ${(error as Error).message}`);
+    throw new SeatBookInvalid(`unreadable ${kind} ${path}: ${errorMessage(error)}`);
   }
   if (!parsed.success) throw new SeatBookInvalid(`invalid ${kind} ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
   return parsed.data;

@@ -7,6 +7,7 @@ import { failureOf } from "./error-class.js";
 import { openOrRead } from "./snapshot-reads.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
 import { clearGreenMainCiGates, type ClearedMainGate } from "./main-ci-cleared.js";
+import { errorStatus } from "../narrow.js";
 
 /** How often `titan-factory serve` checks the PRs of runs waiting on a gate. */
 export const GONE_SWEEP_MS = 5 * 60_000;
@@ -66,8 +67,10 @@ const MergeLanded = z.looseObject({ done: z.literal(true) });
 
 class UnreadablePr extends Error {}
 
+const NOT_FOUND = Symbol("not found");
+
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
-const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
+const isNotFound = (error: unknown): boolean => errorStatus(error) === 404;
 
 /** All the gone walk reads, so an owner op that holds only the store and the port can end a run too. */
 type GoneReads = Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer" | "now">;
@@ -77,14 +80,12 @@ async function goneReason(services: GoneReads, runId: string): Promise<string | 
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
   const target = `${registration.repo}#${registration.pr}`;
-  let notFound = false;
-  const pr = await openOrRead(services.port, services.snapshot, registration.repo, registration.pr).catch((error: unknown) => {
+  const pr = await openOrRead(services.port, services.snapshot, registration.repo, registration.pr).catch((error: unknown): typeof NOT_FOUND => {
     if (!isNotFound(error)) throw new UnreadablePr(failureOf(error));
-    notFound = true;
-    return undefined;
+    return NOT_FOUND;
   });
-  if (notFound) return `${DELETED_ELSEWHERE}${target} answered 404, so the PR or its repo is gone`;
-  if (!pr || pr.state === "open") return undefined;
+  if (pr === NOT_FOUND) return `${DELETED_ELSEWHERE}${target} answered 404, so the PR or its repo is gone`;
+  if (pr.state === "open") return undefined;
   return pr.merged ? `${LANDED_ELSEWHERE}${target} was merged outside Shepherd` : `${CLOSED_ELSEWHERE}${target} was closed outside Shepherd`;
 }
 

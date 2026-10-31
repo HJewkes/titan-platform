@@ -2,6 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { holdClassOf } from "./g10-release.js";
 import { checkHoldReason } from "./hold-reason.js";
 import { mergedAt } from "./stats.js";
+import { isRecord } from "../narrow.js";
 
 /** One `merged` row of a seat's `dispatch.jsonl`, its time read as an instant. */
 export interface MergedRow {
@@ -97,7 +98,7 @@ function instantOf(ts: unknown): number | undefined {
 function parseLine(line: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(line);
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+    return isRecord(value) ? value : undefined;
   } catch {
     return undefined;
   }

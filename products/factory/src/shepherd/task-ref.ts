@@ -1,4 +1,5 @@
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
+import { errorMessage } from "../narrow.js";
 
 type TaskIndex = { "task.list": { args: { all_initiatives: true; status: "all" }; result: { tasks: { id: string; slug: string }[] } } };
 
@@ -12,7 +13,7 @@ export async function qualifyTask(task: string, options: { origin: string; fetch
   try {
     ({ tasks } = await client.call("task.list", { all_initiatives: true, status: "all" }));
   } catch (error) {
-    throw new Error(`could not resolve task ${task} to an initiative (${(error as Error).message}); ${EXPECTED_FORM}`);
+    throw new Error(`could not resolve task ${task} to an initiative (${errorMessage(error)}); ${EXPECTED_FORM}`);
   }
   const slugs = [...new Set(tasks.filter((candidate) => candidate.id === task).map((candidate) => candidate.slug))];
   if (slugs.length === 1) return `${slugs[0]}/${task}`;

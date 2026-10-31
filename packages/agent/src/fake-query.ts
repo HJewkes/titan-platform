@@ -1,5 +1,12 @@
 import type { ModelUsage, Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { partialFake } from "@titan-design/test-kit";
 import type { AgentRunDeps } from "./run.js";
+
+type InitMessage = Extract<SDKMessage, { type: "system"; subtype: "init" }>;
+type AssistantMessage = Extract<SDKMessage, { type: "assistant" }>;
+type RateLimitMessage = Extract<SDKMessage, { type: "rate_limit_event" }>;
+export type SuccessMessage = Extract<SDKMessage, { type: "result"; subtype: "success" }>;
+type ErrorMessage = Exclude<Extract<SDKMessage, { type: "result" }>, SuccessMessage>;
 
 /**
  * Hand-built SDK message sequences so the run loop is testable without a
@@ -9,8 +16,8 @@ import type { AgentRunDeps } from "./run.js";
 
 export const SESSION_ID = "sess-1";
 
-export function initMessage(overrides: Record<string, unknown> = {}): SDKMessage {
-  return {
+export function initMessage(overrides: Partial<InitMessage> = {}): InitMessage {
+  return partialFake<InitMessage>({
     type: "system",
     subtype: "init",
     apiKeySource: "none",
@@ -24,29 +31,29 @@ export function initMessage(overrides: Record<string, unknown> = {}): SDKMessage
     output_style: "default",
     skills: [],
     plugins: [],
-    uuid: "uuid-init",
+    uuid: "00000000-0000-4000-8000-000000000001",
     session_id: SESSION_ID,
     ...overrides,
-  } as unknown as SDKMessage;
+  });
 }
 
 export function assistantMessage(text: string): SDKMessage {
-  return {
+  return partialFake<AssistantMessage>({
     type: "assistant",
-    message: { role: "assistant", content: [{ type: "text", text }] },
+    message: partialFake<AssistantMessage["message"]>({ role: "assistant", content: [partialFake<AssistantMessage["message"]["content"][number]>({ type: "text", text })] }),
     parent_tool_use_id: null,
-    uuid: `uuid-${text.slice(0, 8)}`,
+    uuid: "00000000-0000-4000-8000-000000000002",
     session_id: SESSION_ID,
-  } as unknown as SDKMessage;
+  });
 }
 
 export function rateLimitEvent(resetsAt: number): SDKMessage {
-  return {
+  return partialFake<RateLimitMessage>({
     type: "rate_limit_event",
     rate_limit_info: { status: "rejected", resetsAt, rateLimitType: "five_hour" },
-    uuid: "uuid-rate-limit",
+    uuid: "00000000-0000-4000-8000-000000000003",
     session_id: SESSION_ID,
-  } as unknown as SDKMessage;
+  });
 }
 
 export function modelUsage(costUSD: number): ModelUsage {
@@ -62,8 +69,8 @@ export function modelUsage(costUSD: number): ModelUsage {
   };
 }
 
-export function successResult(overrides: Record<string, unknown> = {}): SDKMessage {
-  return {
+export function successResult(overrides: Partial<SuccessMessage> = {}): SuccessMessage {
+  return partialFake<SuccessMessage>({
     type: "result",
     subtype: "success",
     duration_ms: 1200,
@@ -73,32 +80,34 @@ export function successResult(overrides: Record<string, unknown> = {}): SDKMessa
     result: "done",
     stop_reason: "end_turn",
     total_cost_usd: 0.25,
-    usage: {},
+    usage: partialFake<SuccessMessage["usage"]>(),
     modelUsage: { "claude-opus-5": modelUsage(0.25) },
     permission_denials: [],
-    uuid: "uuid-result",
+    uuid: "00000000-0000-4000-8000-000000000004",
     session_id: SESSION_ID,
     ...overrides,
-  } as unknown as SDKMessage;
+  });
 }
 
-export function errorResult(subtype: string, errors: string[] = []): SDKMessage {
-  return {
+export function errorResult(subtype: string, errors: string[] = []): ErrorMessage {
+  const message = partialFake<ErrorMessage>({
     type: "result",
-    subtype,
+    subtype: "error_during_execution",
     duration_ms: 800,
     duration_api_ms: 500,
     is_error: true,
     num_turns: 2,
     stop_reason: null,
     total_cost_usd: 0.1,
-    usage: {},
+    usage: partialFake<ErrorMessage["usage"]>(),
     modelUsage: { "claude-opus-5": modelUsage(0.1) },
     permission_denials: [],
     errors,
-    uuid: "uuid-result",
+    uuid: "00000000-0000-4000-8000-000000000004",
     session_id: SESSION_ID,
-  } as unknown as SDKMessage;
+  });
+  // Assigned at run time so a test can probe a subtype newer than the SDK types know.
+  return Object.assign(message, { subtype });
 }
 
 export interface FakeQueryOptions {
@@ -119,11 +128,11 @@ export interface FakeQuery {
 }
 
 export function fakeQuery(messages: SDKMessage[], options: FakeQueryOptions = {}): FakeQuery {
-  const state: FakeQuery = { run: null as never, yielded: [], closed: false, lastOptions: undefined };
+  const state: FakeQuery = { run: runQuery, yielded: [], closed: false, lastOptions: undefined };
 
-  state.run = ((params: { prompt: string | AsyncIterable<unknown>; options?: Record<string, unknown> }) => {
+  function runQuery(params: Parameters<NonNullable<AgentRunDeps["query"]>>[0]): Query {
     state.lastOptions = params.options;
-    const signal = (params.options?.abortController as AbortController | undefined)?.signal;
+    const signal = params.options?.abortController?.signal;
 
     async function* generate(): AsyncGenerator<SDKMessage, void> {
       for (const [index, message] of messages.entries()) {
@@ -136,12 +145,18 @@ export function fakeQuery(messages: SDKMessage[], options: FakeQueryOptions = {}
       if (options.throwAtEnd) throw options.throwAtEnd;
     }
 
-    const generator = generate() as Query;
-    generator.close = () => {
-      state.closed = true;
-    };
-    return generator;
-  }) as NonNullable<AgentRunDeps["query"]>;
+    const generator = generate();
+    const query: Query = partialFake<Query>({
+      next: (...args) => generator.next(...args),
+      return: (value) => generator.return(value),
+      throw: (error) => generator.throw(error),
+      [Symbol.asyncIterator]: () => query,
+      close: () => {
+        state.closed = true;
+      },
+    });
+    return query;
+  }
 
   return state;
 }

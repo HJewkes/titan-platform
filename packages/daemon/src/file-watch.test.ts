@@ -239,15 +239,25 @@ describe("watchTree", () => {
   });
 
   it("never fires once closed, even with a change already pending", async () => {
-    const counter = { count: 0 };
-    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
-    await writeFile(path.join(root, "pending.md"), "hello");
-    await sleep(DEBOUNCE_MS / 2);
+    // Fake timers hold the debounce pending until close(); a real sleep shorter than the
+    // debounce lets a loaded event loop expire it first and fire legitimately.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const counter = { count: 0 };
+      watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+      for (let attempt = 0; vi.getTimerCount() === 0 && attempt < 100; attempt++) {
+        await writeFile(path.join(root, `pending-${attempt}.md`), "hello");
+        await realDelay(50);
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
 
-    watcher.close();
-    await sleep(DEBOUNCE_MS * 5);
+      watcher.close();
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
 
-    expect(counter.count).toBe(0);
+      expect(counter.count).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears its pending debounce timer on close instead of leaving it to expire", { timeout: 15_000 }, async () => {

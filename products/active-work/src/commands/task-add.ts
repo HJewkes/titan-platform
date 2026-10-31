@@ -30,6 +30,7 @@ import {
   quietOr,
   type TaskOrLine,
 } from './_task-quiet.js';
+import { warnRelatedTasks } from './_task-related.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -139,7 +140,7 @@ export default defineCommand<Args, TaskOrLine>({
     // Touch activeRoot so it's resolved before locking.
     const activeRoot = getActiveRoot();
     if (args.deliverable !== undefined) await assertKnownDeliverables(activeRoot, args.deliverable);
-    return withFileLock(getLockPath(args.slug), async () => {
+    const filed = await withFileLock(getLockPath(args.slug), async () => {
       const brief = await loadBrief(args.slug);
       const existing = await loadExistingTasks(args.slug);
       const n = allocateTaskNumber(brief, existing);
@@ -152,7 +153,9 @@ export default defineCommand<Args, TaskOrLine>({
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);
-      return quietOr(args.quiet, ctx, task, () => `${id} created`);
+      return { task, existing };
     });
+    await warnRelatedTasks(ctx, args.slug, filed.task, filed.existing);
+    return quietOr(args.quiet, ctx, filed.task, () => `${filed.task.id} created`);
   },
 });

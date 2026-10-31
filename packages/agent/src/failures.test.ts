@@ -1,18 +1,18 @@
-import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { errorResult, modelUsage, successResult } from "./fake-query.js";
+import { errorResult, modelUsage, successResult, type SuccessMessage } from "./fake-query.js";
 import { classifyResult, sumModelCost, usageFromResult } from "./failures.js";
 
-const asResult = (message: unknown) => message as SDKResultMessage;
+const retryAtOf = (failure: ReturnType<typeof classifyResult>) => (failure?.kind === "rate_limited" ? failure.retryAt : undefined);
 
 describe("classifyResult", () => {
   it("returns undefined for a clean success", () => {
-    expect(classifyResult(asResult(successResult()))).toBeUndefined();
+    expect(classifyResult(successResult())).toBeUndefined();
   });
 
   it("maps a refusal stop_reason to refusal, not success", () => {
     const result = successResult({ stop_reason: "refusal", result: "I can't help with that" });
-    expect(classifyResult(asResult(result))).toMatchObject({ kind: "refusal", reason: "I can't help with that" });
+    expect(classifyResult(result)).toMatchObject({ kind: "refusal", reason: "I can't help with that" });
   });
 
   it.each([
@@ -20,7 +20,7 @@ describe("classifyResult", () => {
     ["error_max_budget_usd", "budget_exceeded"],
     ["error_max_structured_output_retries", "schema_invalid"],
   ])("maps %s to %s", (subtype, kind) => {
-    expect(classifyResult(asResult(errorResult(subtype)))?.kind).toBe(kind);
+    expect(classifyResult(errorResult(subtype))?.kind).toBe(kind);
   });
 
   it.each([
@@ -30,49 +30,49 @@ describe("classifyResult", () => {
     "rate-limited by the upstream provider",
     "This is a burst limit, not your usage limit",
   ])("reads rate-limit phrasing out of an execution error: %s", (text) => {
-    expect(classifyResult(asResult(errorResult("error_during_execution", [text])))?.kind).toBe("rate_limited");
+    expect(classifyResult(errorResult("error_during_execution", [text]))?.kind).toBe("rate_limited");
   });
 
   it("leaves an unrecognised execution error as runtime_error", () => {
-    const failure = classifyResult(asResult(errorResult("error_during_execution", ["ENOENT: no such file"])));
+    const failure = classifyResult(errorResult("error_during_execution", ["ENOENT: no such file"]));
     expect(failure).toMatchObject({ kind: "runtime_error", reason: "ENOENT: no such file" });
   });
 
   it("classifies an API error reported under the success subtype", () => {
     const result = successResult({ is_error: true, result: "429 Too Many Requests" });
-    expect(classifyResult(asResult(result))?.kind).toBe("rate_limited");
+    expect(classifyResult(result)?.kind).toBe("rate_limited");
   });
 
   it("prefers the stream's rate_limit_event reset time over anything in the prose", () => {
     const resetsAt = Date.UTC(2026, 8, 8, 12, 0, 0);
-    const failure = classifyResult(asResult(errorResult("error_during_execution", ["429, retry after 30 seconds"])), {
+    const failure = classifyResult(errorResult("error_during_execution", ["429, retry after 30 seconds"]), {
       now: 0,
       rateLimitResetsAt: resetsAt,
     });
     expect(failure).toMatchObject({ kind: "rate_limited" });
-    expect((failure as { retryAt?: Date }).retryAt?.getTime()).toBe(resetsAt);
+    expect(retryAtOf(failure)?.getTime()).toBe(resetsAt);
   });
 
   it("falls back to a relative retry hint measured from the supplied clock", () => {
-    const failure = classifyResult(asResult(errorResult("error_during_execution", ["429: retry after 30 seconds"])), {
+    const failure = classifyResult(errorResult("error_during_execution", ["429: retry after 30 seconds"]), {
       now: 1_000,
     });
-    expect((failure as { retryAt?: Date }).retryAt?.getTime()).toBe(31_000);
+    expect(retryAtOf(failure)?.getTime()).toBe(31_000);
   });
 
   it("falls back to an absolute timestamp in the message", () => {
     const errors = ["rate limit hit, resets at 2026-09-08T12:00:00Z"];
-    const failure = classifyResult(asResult(errorResult("error_during_execution", errors)));
-    expect((failure as { retryAt?: Date }).retryAt?.toISOString()).toBe("2026-09-08T12:00:00.000Z");
+    const failure = classifyResult(errorResult("error_during_execution", errors));
+    expect(retryAtOf(failure)?.toISOString()).toBe("2026-09-08T12:00:00.000Z");
   });
 
   it("leaves retryAt unset when nothing in the message says when", () => {
-    const failure = classifyResult(asResult(errorResult("error_during_execution", ["You've hit your weekly limit"])));
+    const failure = classifyResult(errorResult("error_during_execution", ["You've hit your weekly limit"]));
     expect(failure).not.toHaveProperty("retryAt");
   });
 
   it("reports an unknown subtype as a runtime error rather than throwing", () => {
-    expect(classifyResult(asResult(errorResult("error_from_a_newer_cli")))).toMatchObject({
+    expect(classifyResult(errorResult("error_from_a_newer_cli"))).toMatchObject({
       kind: "runtime_error",
       reason: expect.stringContaining("error_from_a_newer_cli"),
     });
@@ -81,7 +81,7 @@ describe("classifyResult", () => {
 
 describe("usageFromResult", () => {
   it("reads the SDK's cumulative cost when it is present", () => {
-    const usage = usageFromResult(asResult(successResult({ total_cost_usd: 1.5 })), 900);
+    const usage = usageFromResult(successResult({ total_cost_usd: 1.5 }), 900);
     expect(usage).toMatchObject({ totalCostUsd: 1.5, turns: 3, durationMs: 900 });
   });
 
@@ -90,16 +90,16 @@ describe("usageFromResult", () => {
       total_cost_usd: 0,
       modelUsage: { "claude-opus-5": modelUsage(0.4), "claude-haiku-4-5": modelUsage(0.1) },
     });
-    expect(usageFromResult(asResult(result), 10).totalCostUsd).toBeCloseTo(0.5);
+    expect(usageFromResult(result, 10).totalCostUsd).toBeCloseTo(0.5);
   });
 
   it("keeps the 5m and 1h cache write split from the raw usage", () => {
-    const result = successResult({ usage: { cache_creation: { ephemeral_5m_input_tokens: 40, ephemeral_1h_input_tokens: 700 } } });
-    expect(usageFromResult(asResult(result), 10).cacheCreation).toEqual({ ephemeral5m: 40, ephemeral1h: 700 });
+    const result = successResult({ usage: partialFake<SuccessMessage["usage"]>({ cache_creation: { ephemeral_5m_input_tokens: 40, ephemeral_1h_input_tokens: 700 } }) });
+    expect(usageFromResult(result, 10).cacheCreation).toEqual({ ephemeral5m: 40, ephemeral1h: 700 });
   });
 
   it("leaves cacheCreation absent when the raw usage has no split", () => {
-    expect(usageFromResult(asResult(successResult()), 10)).not.toHaveProperty("cacheCreation");
+    expect(usageFromResult(successResult(), 10)).not.toHaveProperty("cacheCreation");
   });
 
   it("reports zeroes when there is no result at all", () => {
