@@ -59,7 +59,7 @@ export async function loadExistingTasks(slug: string): Promise<Task[]> {
   return tasks;
 }
 
-export interface TaskScan {
+interface TaskScan {
   tasks: Task[];
   /** One message per task file that failed to parse or validate, naming the file. */
   skipped: string[];

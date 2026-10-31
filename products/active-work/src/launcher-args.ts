@@ -92,9 +92,9 @@ export const ADHOC_FLAGS = ['--adhoc', '--ad-hoc'];
 /** Opt out of Remote Control for one launch; `--no-remote-control` is the long alias. */
 export const NO_RC_FLAGS = ['--no-rc', '--no-remote-control'];
 
-export const PROFILE_FLAG = '--profile';
+const PROFILE_FLAG = '--profile';
 
-export interface ProfileFlag {
+interface ProfileFlag {
   /** The `--profile <name>` / `--profile=<name>` value; the last one given wins. */
   profile?: string;
   /** `args` with every `--profile` occurrence (and its value) removed. */
