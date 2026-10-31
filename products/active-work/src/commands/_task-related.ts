@@ -10,7 +10,7 @@ import { readerGate } from '../session-index/reader-gate.js';
 import { taskRef } from '../workspace-index/refs.js';
 import { warn } from './_categories.js';
 
-export const RELATED_TASK_LIMIT = 3;
+const RELATED_TASK_LIMIT = 3;
 export const RELATED_DEADLINE_MS = 1000;
 
 // Most hits are done or belong to another initiative, because the initiative is
@@ -19,7 +19,7 @@ const RELATED_OVERFETCH = 30;
 
 export type RelatedPort = (input: RelatedInput) => Promise<RelatedResult>;
 
-export interface RelatedTaskDeps {
+interface RelatedTaskDeps {
   related?: RelatedPort;
   deadlineMs?: number;
 }
