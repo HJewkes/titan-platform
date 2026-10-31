@@ -1,7 +1,0 @@
-{
-  "packages/react-app/src/hooks/hooks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  }
-}

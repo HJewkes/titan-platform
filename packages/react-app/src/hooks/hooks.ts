@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { CommandMap, SseMessage } from "@titan-design/rpc-protocol";
-import { snapshotKey, type CommandName, type LiveStatus, type RpcError } from "@titan-design/rpc-client";
+import { snapshotKey, type CommandName, type LiveStatus } from "@titan-design/rpc-client";
 import { useRpcRuntime } from "./provider.js";
+import type { QueryState } from "./query-store.js";
 
-interface QueryControls {
-  /** True while a call is in flight, including a refetch that keeps the previous data. */
-  isFetching: boolean;
-  refetch(): void;
-}
-
-/** A failed refetch keeps the last good data beside the error. */
-export type QueryResult<R> = QueryControls &
-  (
-    | { status: "loading"; data: undefined; error: undefined }
-    | { status: "success"; data: R; error: undefined }
-    | { status: "error"; data: R | undefined; error: RpcError }
-  );
+export type QueryResult<R> = QueryState<R> & { refetch(): void };
 
 /** Args may be left out only when the command accepts an empty object. */
 export type QueryArgs<A> = Record<string, never> extends A ? [args?: A] : [args: A];
@@ -50,7 +39,7 @@ function useQuery(name: string, args?: unknown): QueryResult<unknown> {
   const read = useCallback(() => queries.state(key), [queries, key]);
   const state = useSyncExternalStore(watch, read, read);
   const refetch = useCallback(() => queries.refetch(key), [queries, key]);
-  return useMemo(() => ({ ...state, refetch }) as QueryResult<unknown>, [state, refetch]);
+  return useMemo((): QueryResult<unknown> => ({ ...state, refetch }), [state, refetch]);
 }
 
 function useEvents(onEvent?: (message: SseMessage) => void): LiveStatus {
