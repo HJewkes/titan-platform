@@ -27,6 +27,8 @@ interface SqliteExecutionLedgerOptions {
     table?: string;
     /** Trusted ledger clock, distinct from a caller-supplied event timestamp. */
     now?: () => string;
+    /** Receives one line per stored row `listRecoverable` skips; defaults to `console.warn`. */
+    warn?: (line: string) => void;
 }
 
 /** Immediate transactions commit a validated snapshot and its immutable receipt together. */
@@ -35,16 +37,22 @@ declare class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedge
     private readonly snapshot;
     private readonly eventTable;
     private readonly now;
+    private readonly warn;
+    private readonly recordSchema;
+    private readonly transitionSchema;
     constructor(db: Db, options?: SqliteExecutionLedgerOptions);
     get(executionId: string): ExecutionRecord<TResult> | undefined;
     findByRequestKey(requestKey: string): ExecutionRecord<TResult> | undefined;
     listRecoverable(limit?: number): ExecutionRecord<TResult>[];
+    /** Recovery must reach every other execution, so one unreadable row is logged and skipped rather than thrown. */
+    private recoverableRecord;
     events(executionId: string): ExecutionTransition<TResult>[];
     apply(transition: ExecutionTransition<TResult>): ApplyExecutionTransitionResult<TResult>;
     private applyInside;
     private validateLiveTransition;
     private save;
     private decode;
+    private parseRecord;
 }
 
 export { type ApplyExecutionTransitionResult, DEFAULT_EXECUTION_TABLE, type ExecutionLedger, SqliteExecutionLedger, type SqliteExecutionLedgerOptions, executionLedgerDdl, executionLedgerMigration };

@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../src/commands/index.js';
@@ -13,11 +14,11 @@ import type { CommandContext } from '../../src/registry/types.js';
 import type { Task } from '../../src/schemas/task.js';
 import type { RelatedHit, RelatedResult } from '../../src/search/related.js';
 import { withEmptyActiveRoot } from '../setup/test-helpers.js';
-import { refreshInto } from '../workspace-index/fixture.js';
 
 const SLUG = 'rel-test';
 const QUERY = { terms: [], expression: '' };
 const DONE_WHEN = 'the exporter writes every row and a test proves it';
+const SLOW_SCORE_MS = 50;
 
 function task(id: string, status: 'open' | 'done' = 'open'): Task {
   return { id, title: `Title of ${id}`, priority: 1, status, created: '2026-10-01', updated: '2026-10-01', done_at: null } as Task;
@@ -128,7 +129,7 @@ describe('warnRelatedTasks', () => {
     expect(await warningsFor(returning([hit('RT-1'), hit('RT-1')]), [task('RT-1')])).toHaveLength(1);
   });
 
-  it('queries on the title and done_when, boosted to this initiative, for tasks only', async () => {
+  it('queries on the title and done_when, scoped to this initiative', async () => {
     const related = returning([]);
     const ctx = context();
 
@@ -138,7 +139,6 @@ describe('warnRelatedTasks', () => {
       expect.objectContaining({
         text: `Title of RT-99\n${DONE_WHEN}`,
         initiative: SLUG,
-        classes: ['tasks'],
       }),
     );
   });
@@ -158,7 +158,7 @@ async function fileExporterTask(ctx: CommandContext, title: string): Promise<Fil
   return run(ctx, 'task.add', { slug: SLUG, title, done_when: DONE_WHEN });
 }
 
-async function withIndexedNeighbours(
+async function withNeighbours(
   fn: (ctx: CommandContext, ids: { open: string; closed: string }) => Promise<void>,
 ): Promise<void> {
   await withEmptyActiveRoot(async (root) => {
@@ -167,15 +167,13 @@ async function withIndexedNeighbours(
     const open = await fileExporterTask(setup, 'Build the parquet exporter');
     const closed = await fileExporterTask(setup, 'Retry the parquet exporter');
     await run(setup, 'task.done', { slug: SLUG, id: closed.id });
-    const graph = await refreshInto(path.join(root, '.miner', 'graph.sqlite3'), root);
-    graph.db.close();
     await fn({ ...setup, warnings: [], caller: 'agent' }, { open: open.id, closed: closed.id });
   });
 }
 
 describe('task.add related list', () => {
-  it('lists an open neighbour from a real index and skips the done one', async () => {
-    await withIndexedNeighbours(async (ctx, { open, closed }) => {
+  it('lists an open neighbour filed moments ago and skips the done one, with no index', async () => {
+    await withNeighbours(async (ctx, { open, closed }) => {
       const filed = await fileExporterTask(ctx, 'Harden the parquet exporter');
 
       const warnings = ctx.warnings.join('\n');
@@ -186,7 +184,7 @@ describe('task.add related list', () => {
   });
 
   it('with --quiet on a human surface the result stays the one line', async () => {
-    await withIndexedNeighbours(async (ctx) => {
+    await withNeighbours(async (ctx) => {
       const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
       const human: CommandContext = { ...ctx, format: 'human' };
 
@@ -203,20 +201,49 @@ describe('task.add related list', () => {
     });
   });
 
-  it('files with no warning when the root has no index', async () => {
-    await withEmptyActiveRoot(async (root) => {
-      const ctx: CommandContext = {
-        activeRoot: root,
-        warnings: [],
-        format: 'json',
-        caller: 'agent',
-      };
-      await run(ctx, 'new', { slug: SLUG, title: 'Related' });
+  it('an injected slow search abandons at the deadline and the task stays filed', async () => {
+    await withNeighbours(async (ctx) => {
+      const filed = await fileExporterTask(ctx, 'Harden the parquet exporter');
+      const tasks = Array.from({ length: 100 }, (_, n) => task(`RT-${n}`));
+      let clock = 0;
+      const score = vi.fn(() => {
+        clock += SLOW_SCORE_MS;
+        return 1;
+      });
+      const warned: CommandContext = { ...ctx, warnings: [] };
 
-      const filed = await fileExporterTask(ctx, 'Build the parquet exporter');
+      await warnRelatedTasks(warned, SLUG, task(filed.id), tasks, {
+        scan: { score, now: () => clock },
+      });
 
-      expect(filed.id).toBeTruthy();
-      expect(ctx.warnings).toEqual([]);
+      expect(clock).toBeLessThanOrEqual(RELATED_DEADLINE_MS);
+      expect(score.mock.calls.length).toBeLessThan(tasks.length);
+      expect(warned.warnings).toEqual([]);
+      const listed = await run<{ tasks: Filed[] }>(ctx, 'task.list', { slug: SLUG });
+      expect(listed.tasks.map(({ id }) => id)).toContain(filed.id);
+    });
+  });
+
+  it('a near-identical title found by the scan is tagged as a possible duplicate', async () => {
+    await withNeighbours(async (ctx, { open }) => {
+      const filed = await run<Filed & { tags?: string[] }>(ctx, 'task.add', {
+        slug: SLUG,
+        title: 'Build the parquet exporter',
+        done_when: DONE_WHEN,
+      });
+
+      expect(filed.tags).toContain(`possible-dup:${open}`);
+    });
+  });
+
+  it('a corrupt graph file cannot touch the list, because the add never opens it', async () => {
+    await withNeighbours(async (ctx, { open }) => {
+      await fs.mkdir(path.join(ctx.activeRoot, '.miner'), { recursive: true });
+      await fs.writeFile(path.join(ctx.activeRoot, '.miner', 'graph.sqlite3'), 'not a database');
+
+      await fileExporterTask(ctx, 'Harden the parquet exporter');
+
+      expect(ctx.warnings.join('\n')).toContain(open);
     });
   });
 });

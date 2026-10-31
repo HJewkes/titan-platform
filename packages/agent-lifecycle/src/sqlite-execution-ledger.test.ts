@@ -192,6 +192,11 @@ describe("listRecoverable query", () => {
   const oldRecords = (db: ReturnType<typeof setup>["db"], limit: number) =>
     column(db.prepare(notInSql("agent_execution")).all(limit), "record").map(record => JSON.parse(record));
 
+  function storedRecord(id: string, phase: string): Record<string, unknown> {
+    return { execution: { executionId: id }, harness: "codex", requestKey: `key-${id}`, target: { kind: "fresh", namespace: "host" },
+      phase, revision: 1, ownerGeneration: 0, preparedAt: start, lastObservedAt: start };
+  }
+
   function seed(db: ReturnType<typeof setup>["db"], perPhase: number): void {
     const insert = db.prepare(`INSERT INTO agent_execution
       (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
@@ -201,7 +206,7 @@ describe("listRecoverable query", () => {
       const count = isTerminalExecutionPhase(phase) ? perPhase : 3;
       for (let i = 0; i < count; i++, n++) {
         const id = `exec-${String(n).padStart(5, "0")}`;
-        insert.run(id, `key-${id}`, phase, 1, null, 0, null, `2026-09-11T00:${String(n % 60).padStart(2, "0")}:00.000Z`, start, JSON.stringify({ id, phase }));
+        insert.run(id, `key-${id}`, phase, 1, null, 0, null, `2026-09-11T00:${String(n % 60).padStart(2, "0")}:00.000Z`, start, JSON.stringify(storedRecord(id, phase)));
       }
     }
   }
@@ -233,7 +238,7 @@ describe("listRecoverable query", () => {
       const { db, ledger } = setup();
       try {
         db.prepare(`INSERT INTO agent_execution (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
-          VALUES ('only','only',?,1,NULL,0,NULL,?,?,?)`).run(phase, start, start, JSON.stringify({ phase }));
+          VALUES ('only','only',?,1,NULL,0,NULL,?,?,?)`).run(phase, start, start, JSON.stringify(storedRecord("only", phase)));
         const expected = oldRecords(db, 100);
         expect(ledger.listRecoverable()).toEqual(expected);
         expect(ledger.listRecoverable()).toHaveLength(isTerminalExecutionPhase(phase) ? 0 : 1);
