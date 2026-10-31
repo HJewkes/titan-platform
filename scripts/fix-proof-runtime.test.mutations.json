@@ -7,6 +7,7 @@
       "find": "return sorter.isTest(path) || sorter.isCarry(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
       "replace": "return sorter.isTest(path) || sorter.isSpec(path) || sorter.isChangeset(path);",
       "kills": [
+        ".github/fix-proof.json runtime globs Z8's test-support files still read test-only under the repo config",
         ".github/fix-proof.json runtime globs a typed-lint burn-down of tests plus its eslint-suppressions baseline prune reads test-only"
       ]
     }
