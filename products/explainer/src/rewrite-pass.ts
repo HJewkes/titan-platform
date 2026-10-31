@@ -5,7 +5,7 @@ import { wordsOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { spokenText } from "./lint-register.js";
 import { guardBeat, rewrittenBeat, splitOverlong, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
-import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
+import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
@@ -108,8 +108,8 @@ export interface RewriteResult {
 }
 
 const TARGETS: ReadonlySet<string> = new Set(REWRITE_TARGET_ROWS);
-const targetRows = (rows: readonly L0Result[]): TargetRow[] =>
-  rows.filter((row) => TARGETS.has(row.check_id)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass }));
+const targetRows = (rows: readonly L0Result[], ids: readonly string[] = REWRITE_TARGET_ROWS): TargetRow[] =>
+  rows.filter((row) => ids.includes(row.check_id)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass }));
 
 const failingTargets = (rows: readonly L0Result[]): number => targetRows(rows).filter((row) => !row.pass).length;
 const failingErrors = (rows: readonly L0Result[]): number => rows.filter((row) => row.severity === "error" && !row.pass).length;
@@ -118,13 +118,8 @@ const failingErrors = (rows: readonly L0Result[]): number => rows.filter((row) =
 const rowDistance = ({ pass, value, threshold }: TargetRow): number =>
   pass ? 0 : threshold === 0 ? Math.abs(value) : Math.abs(value - threshold) / threshold;
 
-// The plan directs stock phrases on their own (TP-4695), so a chapter that only cuts them must count as closer to band.
-// The row passes wherever the status table makes it report-only or dropped, so there it adds nothing.
-const AIMED: ReadonlySet<string> = new Set([...REWRITE_TARGET_ROWS, "register:phrases"]);
-
-/** The target rows' and the phrases row's summed distance to band: zero only when all of them pass. */
-export const bandDistance = (rows: readonly L0Result[]): number =>
-  rows.filter((row) => AIMED.has(row.check_id)).reduce((sum, row) => sum + rowDistance(row), 0);
+/** The aimed rows' summed distance to band: zero only when all of them pass. */
+export const bandDistance = (rows: readonly L0Result[]): number => targetRows(rows, REWRITE_AIMED_ROWS).reduce((sum, row) => sum + rowDistance(row), 0);
 
 /**
  * The register rows outside the targets that a chapter must not turn red (TP-3817 D5): each row whose status in

@@ -15,6 +15,12 @@ export const REWRITE_TARGET_ROWS = [
   "register:sentence-cv",
 ] as const;
 
+/**
+ * The rows a chapter's distance to band sums: the targets, and phrases, which the plan directs on its own (TP-4695).
+ * A row the status table makes report-only or dropped always passes, so there it adds nothing.
+ */
+export const REWRITE_AIMED_ROWS: readonly string[] = [...REWRITE_TARGET_ROWS, "register:phrases"];
+
 /** Round 1 reshapes the script; round 2 fixes the numbers and triads round 1 left or made, and reshapes beats still under the mean floor (TP-3817 S0, S13). */
 export const MAX_REWRITE_ROUNDS = 2;
 export type RewriteRound = 1 | 2;
