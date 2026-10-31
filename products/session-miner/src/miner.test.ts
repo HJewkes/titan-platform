@@ -96,6 +96,20 @@ describe("session-miner commands", () => {
     expect(templates.envelope.data![0]).toMatchObject({ occurrenceCount: 2 });
     expect(templates.envelope.data![0]!.maskedSignature).toContain("TypeError");
   });
+
+  it("drain refuses a malformed stored snapshot", async () => {
+    await run(refresh, {});
+    const malformed = JSON.stringify({ version: 1, partitions: [{ partition: "tool_result" }] });
+    const db = ctx.graph().db;
+    db.prepare("INSERT INTO clusterer_snapshot (id, snapshot, saved_at) VALUES (1, ?, ?)").run(malformed, "2026-07-01T00:00:00Z");
+
+    const refused = await run(drainIngest, {});
+
+    expect(refused.envelope.ok).toBe(false);
+    expect(refused.envelope.error).toContain("invalid clusterer snapshot");
+    expect(db.prepare("SELECT snapshot FROM clusterer_snapshot WHERE id = 1").get()).toEqual({ snapshot: malformed });
+    expect(db.prepare("SELECT count(*) AS n FROM template").get()).toEqual({ n: 0 });
+  });
 });
 
 describe("cli", () => {

@@ -66,10 +66,14 @@ function failedLine(entry: PlanEntry): LineResult {
   return { index, slug, id, result: 'failed', changes: [], error };
 }
 
-async function applyPlan(entries: PlanEntry[], dryRun: boolean): Promise<Line[]> {
+async function applyPlan(
+  entries: PlanEntry[],
+  dryRun: boolean,
+  caller: CommandContext['caller'],
+): Promise<Line[]> {
   // Tag-only plans skip the whole-root read, so a malformed file elsewhere cannot block them.
   const edges = hasEdgeOps(entries) ? await loadEdgeIndex() : undefined;
-  const run = { date: today(), dryRun, edges };
+  const run = { date: today(), dryRun, edges, caller };
   const lines = entries.filter((entry) => entry.error !== undefined).map(failedLine);
   for (const [slug, tasks] of groupPlan(entries)) {
     lines.push(...(await applySlug(slug, tasks, run)));
@@ -142,7 +146,7 @@ export default defineCommand<Args, z.infer<typeof ResultSchema>>({
     const { entries, unknownKeys } = parsePlan(await readPlan(cwd, args.plan));
     warnUnknownKeys(ctx, unknownKeys);
     const summary = summarize(
-      await applyPlan(entries, args.dry_run === true),
+      await applyPlan(entries, args.dry_run === true, ctx.caller),
       args.dry_run === true,
     );
     if (args.report !== undefined) await writeReport(cwd, args.report, summary.results);

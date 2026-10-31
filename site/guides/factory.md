@@ -152,8 +152,8 @@ stays out of the repo.
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
-- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory` and
-  `stackRestack`. All three keys are optional, and an unknown one fails the load. Keys match in any case. The
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
+  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. The
   reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
   `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
   spawn, as the seat book is.
@@ -180,6 +180,13 @@ stays out of the repo.
   the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
   deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
   and keeps the branch with a caveat while any of them is still based on it.
+- `statusContexts: ["<context>"]` names commit-status contexts that count as the repo's CI beside
+  its GitHub Actions check runs, for a repo whose CI posts a commit status instead of running
+  Actions (TP-4645). Land's `ci-wait`, its no-required-checks rule and `sh-main-ci` read each
+  context as a check run: `success` is green, `pending` holds, `failure` or `error` is red, and a
+  context with no status yet holds until the wait times out. A failed status read fails that poll,
+  so it is read again rather than judged. A repo without the key reads only its check runs, as
+  before. The list is re-read on every check-run read.
 - `shepherd.redSeat` says where serve's [main CI watch](/guides/shepherd#main-ci-watch) sends a
   red-main event: `{ "repos": { "acme/widgets": "widgets-coord" }, "fallback": "ops-coord" }`.
   The repo's entry wins (keys match in any case), then `fallback`, and either one wins over the
@@ -854,6 +861,18 @@ and so does a `fix-proof` run from GitHub Actions at the head. The review then r
 check's result line once, without waiting, so a `NO_REPRO` line ends the review as
 `NO_REPRO`. A `fix-proof` run still going reads as unverified. The review carries nothing
 across merge-ups.
+
+## `shepherd brief` {#shepherd-brief}
+
+```sh
+titan-factory shepherd brief owner/repo#N [--format md|round-section] [--images <dir>]
+```
+
+Prints the owner section for a PR that waits on its `approve-merge` gate: what it does, why it reaches the owner, pros and cons from the reviewer's owner brief, a recommendation, and what yes and no do. It reads the PR through the GitHub port (view, files, checks at the head), the run, pending gate, latest verdict and owner brief from Shepherd's store, and the task title and done_when from active-work. It writes nothing to GitHub or Shepherd.
+
+- `--format md` (the default) prints the markdown section. `--format round-section` prints `{ section, question }`, a round@2 section and its pick-one question for the review harness.
+- `--images <dir>` reads `<dir>/pr-<n>/manifest.json` for a UI PR and adds before and after variants. A missing manifest, `rendered: false`, a shot missing its before or its after, or a manifest captured at another head gives a stated reason and no images; an after-only set is never shown.
+- A PR that is not registered, or has no pending `approve-merge` gate, exits 66 with the reason. An unreadable task is stated in the section instead of failing it.
 
 ## `digest run`
 

@@ -1,7 +1,7 @@
 {
   "packages/agent-lifecycle/src/sqlite-execution-ledger.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 1
     }
   }
 }

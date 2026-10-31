@@ -53,6 +53,24 @@ titan-evals review-pr cases --corpus corpus.jsonl --repo owner/repo=<clone> \
   `cases/*.json`, `suite.json` (sorted case hashes plus the checks in `src/review-pr/checks.ts`)
   and `manifest.json` (counts by kind, skipped rows by reason, excluded cases by reason).
 
+`titan-evals implement-task export` builds the private cases for the `implement-task` unit from the classified
+corpus (`cases.v3.classified.jsonl`). It selects candidates, drops private ones, then screens each class in seeded order
+(a build and test at the base and merge commits) until `--per-class` cases are kept or the pool ends.
+
+```sh
+titan-evals implement-task export --corpus cases.v3.classified.jsonl --repos-root <dir of clones> \
+  --active-work-root <dir> --out <dir outside every repo> --selftest
+```
+
+- `--repo owner/repo=<clone>` (repeatable) and `--repos-root` locate clones; `--owner` (default `HJewkes`) prefixes
+  bare corpus repo names. `--classes`, `--per-class` (default 8) and `--seed` shape the draw.
+- `--max-candidates <n>` caps each class's pool, so a first run screens a known few.
+- `--dry-run` runs selection and filtering only and prints pool counts to stderr: no install, build or test, and no
+  `--out` needed.
+- `--selftest` runs the private exclusion self-test first and aborts the run if it fails.
+- It refuses an `--out` inside a git work tree or one that is not empty, and writes `cases/*.json`, `suite.json` and
+  `manifest.json` only after screening ends.
+
 `titan-evals history build` is the history corpus builder (TP-949). It makes no `gh` or
 GraphQL call; mirrors fetch over git smart HTTP unless `--no-fetch` is given.
 
