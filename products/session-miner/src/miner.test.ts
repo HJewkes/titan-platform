@@ -4,6 +4,7 @@ import path from "node:path";
 import { invokeCommand } from "@titan-design/registry";
 import { MIGRATION_TABLE_NAME, SchemaTooNewError } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { PRICE_TABLE_VERSION } from "@titan-design/session-analytics";
 import { runCli } from "./cli.js";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
@@ -103,7 +104,7 @@ describe("cli", () => {
     const io = { stdout: (t: string) => out.push(t), stderr: () => undefined, env: {} };
     const code = await runCli(["--json", "--state", config.stateDir, "--corpus", config.corpusRoot, "refresh", "--limit", "1"], io);
     expect(code).toBe(0);
-    const envelope = JSON.parse(out.join("")) as { ok: boolean; data: { indexed: number } };
+    const envelope = z.object({ ok: z.boolean(), data: z.object({ indexed: z.number() }) }).parse(JSON.parse(out.join("")));
     expect(envelope).toMatchObject({ ok: true, data: { indexed: 1 } });
     expect(await runCli(["--state", config.stateDir, "session", "show", "missing"], io)).toBe(66);
     expect(await runCli(["definitely-not-a-command"], io)).toBe(64);
@@ -120,9 +121,9 @@ describe("daemon", () => {
         headers: { "content-type": "application/json", "x-titan-client": "test" },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { ok: boolean; data: { sessions: number } };
+      const body = z.object({ ok: z.boolean(), data: z.object({ sessions: z.number() }) }).parse(await res.json());
       expect(body).toMatchObject({ ok: true, data: { sessions: 1 } });
-      const health = (await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json()) as { sessions?: number };
+      const health = z.object({ sessions: z.number().optional() }).parse(await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json());
       expect(health.sessions).toBe(1);
       const bad = await fetch(`http://127.0.0.1:${handle.port}/rpc/search`, { method: "POST", headers: { "content-type": "application/json", "x-titan-client": "test" }, body: JSON.stringify({ limit: 5 }) });
       expect(bad.status).toBe(400);

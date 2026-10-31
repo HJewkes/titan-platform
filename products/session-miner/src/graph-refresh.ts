@@ -3,6 +3,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { EXIT } from "@titan-design/registry";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
+import { errnoCode } from "./rows.js";
 
 /** sysexits' EX_TEMPFAIL: another run holds the lock, so this one did nothing and the next tick retries. */
 export const EXIT_LOCKED = 75;
@@ -25,10 +27,10 @@ export type GraphRefreshResult =
   | { outcome: "locked"; holderPid: number | null; exitCode: typeof EXIT_LOCKED }
   | { outcome: "refresh-failed" | "corrupt" | "ok"; error?: string; health?: GraphHealth; exitCode: number };
 
-interface LockHolder {
-  pid: number;
-  startedAt: string;
-}
+const lockHolder = z.object({ pid: z.number(), startedAt: z.string() });
+type LockHolder = z.output<typeof lockHolder>;
+const quickCheckRow = z.object({ quick_check: z.string() });
+const newestRow = z.object({ n: z.number(), newest: z.string().nullable() });
 
 /**
  * One scheduled pass over a graph: take the lock without waiting, run the owner's refresh, then
@@ -75,9 +77,9 @@ export function checkGraph(dbPath: string): GraphHealth {
   let db: Db | undefined;
   try {
     db = openDatabase(dbPath, { readonly: true });
-    const rows = db.pragma("quick_check") as { quick_check: string }[];
+    const rows = z.array(quickCheckRow).parse(db.pragma("quick_check"));
     const quickCheck = rows.map((r) => r.quick_check).join("; ");
-    const newest = db.prepare("SELECT count(*) AS n, max(started_at) AS newest FROM session").get() as { n: number; newest: string | null };
+    const newest = newestRow.parse(db.prepare("SELECT count(*) AS n, max(started_at) AS newest FROM session").get());
     return { quickCheck, sessions: newest.n, newestSessionAt: newest.newest };
   } catch (err) {
     return { quickCheck: err instanceof Error ? err.message : String(err), sessions: 0, newestSessionAt: null };
@@ -94,7 +96,7 @@ export function tryLock(lockPath: string): "acquired" | LockHolder | null {
       writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }), { flag: "wx" });
       return "acquired";
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (errnoCode(err) !== "EEXIST") throw err;
     }
     const holder = readHolder(lockPath);
     if (holder && isRunning(holder.pid)) return holder;
@@ -105,7 +107,7 @@ export function tryLock(lockPath: string): "acquired" | LockHolder | null {
 
 function readHolder(lockPath: string): LockHolder | null {
   try {
-    return JSON.parse(readFileSync(lockPath, "utf8")) as LockHolder;
+    return lockHolder.parse(JSON.parse(readFileSync(lockPath, "utf8")));
   } catch {
     return null;
   }
@@ -116,7 +118,7 @@ function isRunning(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    return errnoCode(err) === "EPERM";
   }
 }
 
