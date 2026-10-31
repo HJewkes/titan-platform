@@ -1,4 +1,3 @@
-import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 // Imported by scripts/f11-rate-sample.mjs under Node's type stripping, which does not map `.js` specifiers to `.ts`
 // files, so this module imports only types.
 import type { UsageWindow } from "./usage-meter.js";
@@ -20,14 +19,18 @@ export type RateRecord = { at: string } & Record<Resource, RateBucket>;
 
 /** Throws on a body without both buckets, so the sampler skips that minute rather than write half a record. */
 export function rateRecord(body: unknown, at: Date): RateRecord {
-  const resources = isObjectLike(body) && isObjectLike(body.resources) ? body.resources : {};
+  const resources = isRecord(body) && isRecord(body.resources) ? body.resources : {};
   return { at: at.toISOString(), core: bucket(resources.core, "core"), graphql: bucket(resources.graphql, "graphql") };
 }
 
 function bucket(value: unknown, name: Resource): RateBucket {
-  const { used, limit, reset } = isObjectLike(value) ? value : {};
+  const { used, limit, reset } = isRecord(value) ? value : {};
   if (!isCount(used) || !isCount(limit) || !isCount(reset)) throw new Error(`rate_limit answer has no ${name} bucket`);
   return { used, limit, reset };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function isCount(value: unknown): value is number {
