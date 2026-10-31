@@ -23,6 +23,7 @@ Domain-free building blocks. No titan dependencies.
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
 | [`fix-proof`](/reference/fix-proof) | Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
+| [`narrow`](/reference/narrow) | Narrow unknown values: isRecord, isObjectLike and errorCode for parsed JSON and caught errors, with no runtime dependencies | none |
 | [`openai-account`](/reference/openai-account) | Read-only Codex account state: login status, rollout quota readings, freshness and admission | `anthropic-account` |
 | [`owner-proof`](/reference/owner-proof) | Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema | none |
 | [`review-burden`](/reference/review-burden) | Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser | `fix-proof` |

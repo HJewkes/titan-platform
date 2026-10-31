@@ -1,4 +1,5 @@
 import { gunzipSync, gzipSync } from "node:zlib";
+import { isRecord } from "@titan-design/narrow";
 
 /** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
 export const MAX_ENCODED_BYTES = 900_000;
@@ -17,10 +18,6 @@ export interface DecodeOptions {
 }
 
 type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function pick(source: UnknownRecord, keys: readonly string[]): UnknownRecord {
   return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));

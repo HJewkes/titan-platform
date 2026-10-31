@@ -41,6 +41,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@titan-design/narrow": "workspace:^"
+  },
   "devDependencies": {
     "@titan-design/test-kit": "workspace:*"
   }

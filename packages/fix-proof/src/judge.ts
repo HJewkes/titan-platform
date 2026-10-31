@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/narrow";
 import { loadsOnlyCarried } from "./carried-closure.js";
 import { classifyReports, type Classification } from "./classify.js";
 import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
@@ -36,10 +37,6 @@ export interface JudgeOptions {
 }
 
 class ReportError extends Error {}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function rooted(decoded: DecodedReport, name: string): unknown {
   if (!decoded.ok) throw new ReportError(decoded.reported ? decoded.error : `${name}: ${decoded.error}`);

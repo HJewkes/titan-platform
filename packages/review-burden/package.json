@@ -31,7 +31,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@titan-design/fix-proof": "workspace:^"
+    "@titan-design/fix-proof": "workspace:^",
+    "@titan-design/narrow": "workspace:^"
   },
   "scripts": {
     "build": "tsup",

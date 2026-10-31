@@ -346,6 +346,9 @@ importers:
 
   packages/anthropic-account:
     dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
       zod:
         specifier: ^4.0.0
         version: 4.5.4
@@ -357,6 +360,10 @@ importers:
         version: 3.0.0
 
   packages/authority:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -563,6 +570,10 @@ importers:
         version: 3.8.1
 
   packages/eslint-plugin:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@types/estree':
         specifier: ^1.0.9
@@ -574,6 +585,10 @@ importers:
   packages/evidence: {}
 
   packages/fix-proof:
+    dependencies:
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -667,6 +682,8 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+
+  packages/narrow: {}
 
   packages/openai-account:
     dependencies:
@@ -804,6 +821,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/narrow':
+        specifier: workspace:^
+        version: link:../narrow
 
   packages/review-panel:
     dependencies:

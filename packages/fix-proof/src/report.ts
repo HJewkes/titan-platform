@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/narrow";
 import { relativeToRoot } from "./paths.js";
 
 /** `skipped` is a test the file chose not to run (`skip`, `skipIf`, `todo`) in a file that did not fail; anything else unrun is `other`. */
@@ -21,10 +22,6 @@ export interface FileRun {
 export type ReadReport = { ok: true; files: Map<string, FileRun> } | { ok: false; error: string };
 
 type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function testName(result: UnknownRecord): string | null {
   if (typeof result.fullName === "string") return result.fullName;

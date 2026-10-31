@@ -52,6 +52,10 @@
         "link": "/reference/locator"
       },
       {
+        "text": "narrow",
+        "link": "/reference/narrow"
+      },
+      {
         "text": "openai-account",
         "link": "/reference/openai-account"
       },

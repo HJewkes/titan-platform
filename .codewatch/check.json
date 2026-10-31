@@ -24,7 +24,8 @@
           "packages/test-kit",
           "packages/owner-proof",
           "packages/openai-account",
-          "packages/review-burden"
+          "packages/review-burden",
+          "packages/narrow"
         ],
         "1": [
           "packages/retrieval",
@@ -111,7 +112,8 @@
           "packages/test-kit",
           "packages/owner-proof",
           "packages/openai-account",
-          "packages/review-burden"
+          "packages/review-burden",
+          "packages/narrow"
         ],
         [
           "packages/retrieval",

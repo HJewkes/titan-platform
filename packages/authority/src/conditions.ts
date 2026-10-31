@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/narrow";
 import type { ConditionKind, MergeConditionKind, QuestionConditionKind } from "./vocabulary.js";
 
 export interface AgentIdentity {
@@ -260,10 +261,6 @@ function conditionHolds(condition: ConditionKind, facts: ConditionFacts): boolea
   if (isMergeCondition(condition)) return holds(MERGE_CHECKS[condition], facts.merge);
   if (isQuestionCondition(condition)) return holds(QUESTION_CHECKS[condition], facts.question);
   return false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const LEAF_TYPES = new Set(["string", "number", "boolean", "undefined"]);

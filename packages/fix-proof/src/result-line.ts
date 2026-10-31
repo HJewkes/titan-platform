@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/narrow";
 import { TEST_CLASSES, VERDICTS, type Classification, type TestClass, type TestOutcome, type Verdict } from "./classify.js";
 import { MUTANT_OUTCOMES, MUTANT_VERDICTS, type MutantResult, type MutantsResult } from "./mutant-classify.js";
 import type { FixProofPlan } from "./plan.js";
@@ -202,10 +203,6 @@ class InvalidResultError extends Error {}
 function assertValidResult(value: unknown): asserts value is FixProofResult {
   const invalid = validate(value);
   if (invalid !== null) throw new InvalidResultError(invalid);
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function checkKeys(value: UnknownRecord, required: readonly string[], optional: readonly string[], at: string): string | null {
