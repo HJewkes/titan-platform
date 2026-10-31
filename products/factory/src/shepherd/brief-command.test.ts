@@ -53,16 +53,26 @@ async function parked(policy?: object): Promise<World> {
   return { ...fixture, host, runId, brief };
 }
 
-/** The run's status read with a recorded MERGE verdict step, as the await-verdict step stores it. */
-function withVerdict(w: World, head: string): void {
+/** One verdict step result, as the await-verdict step stores it; the step id's second segment is its head. */
+function verdictStep(stepId: string, verdict: "MERGE" | "FIX_FIRST", reviewer: string, completedAt: string) {
+  const head = stepId.split(":")[1];
+  const result = { kind: "verdict", verdict, head, reviewer: { agentId: reviewer }, ownerBrief: OWNER_BRIEF };
+  return { stepId, iteration: 0, agentId: null, signal: null, completedAt, data: { result } };
+}
+
+/** The run's status read with these verdict steps recorded. */
+function withSteps(w: World, steps: ReturnType<typeof verdictStep>[]): void {
   const status = w.host.runtime.status.bind(w.host.runtime);
   vi.spyOn(w.host.runtime, "status").mockImplementation((id) => {
     const run = status(id);
     if (!run || id !== w.runId) return run;
-    const result = { kind: "verdict", verdict: "MERGE", head, reviewer: { agentId: "rv-demo" }, ownerBrief: OWNER_BRIEF };
-    const step = { stepId: `sh-await-verdict:${head}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-02T00:00:00.000Z", data: { result } };
-    return { ...run, stepResults: { ...run.stepResults, [step.stepId]: step } };
+    return { ...run, stepResults: { ...run.stepResults, ...Object.fromEntries(steps.map((step) => [step.stepId, step])) } };
   });
+}
+
+/** The run's status read with a recorded MERGE verdict step at this head. */
+function withVerdict(w: World, head: string): void {
+  withSteps(w, [verdictStep(`sh-await-verdict:${head}`, "MERGE", "rv-demo", "2026-01-02T00:00:00.000Z")]);
 }
 
 describe("shepherd.brief", () => {
@@ -95,6 +105,35 @@ describe("shepherd.brief", () => {
     if (data?.format !== "round-section") throw new Error(`expected round-section, got ${JSON.stringify(envelope)}`);
     expect(SectionSchema.parse(data.section).context).toContain("#### Why it reaches you");
     expect(QuestionSchema.parse(data.question)).toMatchObject({ kind: "pick-one", recommendation: { answer: "Approve merge", by: "rv-demo" } });
+  });
+
+  it("recommends changes when a panel member gave FIX_FIRST at the head beside a later MERGE", async () => {
+    const w = await parked();
+    w.fake.setRuns(H1, [successRun("validate", 1), successRun("dag-check", 2)]);
+    withSteps(w, [
+      verdictStep(`sh-await-verdict:${H1}`, "MERGE", "rv-demo", "2026-01-01T00:00:00.000Z"),
+      verdictStep(`sh-await-verdict:${H1}:correctness`, "FIX_FIRST", "rv-correctness", "2026-01-02T00:00:00.000Z"),
+      verdictStep(`sh-await-verdict:${H1}:adversary`, "MERGE", "rv-adversary", "2026-01-03T00:00:00.000Z"),
+    ]);
+
+    const envelope = await w.brief({ format: "round-section" });
+
+    const data = envelope.data;
+    if (data?.format !== "round-section") throw new Error(`expected round-section, got ${JSON.stringify(envelope)}`);
+    expect(data.question.recommendation).toMatchObject({ answer: "Changes needed", by: "rv-correctness" });
+  });
+
+  it("reads CI as pending, not green, when a required check has no run at the head", async () => {
+    const w = await parked();
+    w.fake.onGetPr = (pr) => w.fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("optional-lint", 2)]);
+    withVerdict(w, H1);
+
+    const envelope = await w.brief({ format: "round-section" });
+
+    const data = envelope.data;
+    if (data?.format !== "round-section") throw new Error(`expected round-section, got ${JSON.stringify(envelope)}`);
+    expect(data.section.context).toContain("CI pending at head");
+    expect(data.question.recommendation?.answer).toBe("Defer");
   });
 
   it("says no reviewer has read the head when the run recorded no verdict", async () => {

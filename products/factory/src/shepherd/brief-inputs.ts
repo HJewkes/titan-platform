@@ -3,14 +3,16 @@
  * latest verdict with the reviewer's owner brief from Shepherd's own state. Reads only; the owner section is built from
  * these facts by `buildOwnerSection`.
  */
-import type { CheckRun, GitHubPort, PrFile, PullRequest } from "@titan-design/github";
+import type { GitHubPort, PrFile, PullRequest } from "@titan-design/github";
 import { OwnerBriefSchema, type OwnerBrief } from "@titan-design/review-panel";
 import { EXIT } from "@titan-design/registry";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { landGate } from "../coordinator-evidence.js";
+import { checksAt } from "../coordinator-evidence-read.js";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
+import { fixFirstAt, verdictAt } from "../verdict-at.js";
 import { coded } from "./register-args.js";
 import { runPolicyCeiling, type OwnerGateReason } from "./policy.js";
 import type { ShepherdServices } from "./services.js";
@@ -39,7 +41,7 @@ export interface BriefFacts {
   ownerGateReason?: OwnerGateReason;
   /** The pending land approve-merge gate: the policy rule that opened it, the reason it gave, and the head it asks about. */
   gate: { rule: { table: string; rowId: string }; reason: string; head: string };
-  /** The newest verdict the run recorded, at whatever head it read. */
+  /** The verdict at the PR head as Shepherd judges it, else the newest one at an older head. */
   verdict?: { verdict: "MERGE" | "FIX_FIRST"; head: string; reviewer: string; ownerBrief?: OwnerBrief };
 }
 
@@ -51,27 +53,48 @@ const VerdictStep = z.looseObject({
   ownerBrief: OwnerBriefSchema.nullable().optional(),
 });
 
-/** The newest `sh-await-verdict` step result that recorded a verdict; a wait that ended in `none` records none. */
-export function latestVerdict(run: WorkflowRun): BriefFacts["verdict"] {
-  const steps = Object.values(run.stepResults)
+type Verdict = NonNullable<BriefFacts["verdict"]>;
+
+function verdictRecords(run: WorkflowRun): Array<Verdict & { stepId: string; completedAt: string }> {
+  return Object.values(run.stepResults)
     .filter((result) => stepIdMatches("sh-await-verdict", result.stepId))
-    .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
-  for (const step of steps) {
-    const parsed = VerdictStep.safeParse((step.data as { result?: unknown } | undefined)?.result);
-    if (parsed.success) {
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+    .flatMap((step) => {
+      const parsed = VerdictStep.safeParse((step.data as { result?: unknown } | undefined)?.result);
+      if (!parsed.success) return [];
       const { verdict, head, reviewer, ownerBrief } = parsed.data;
-      return { verdict, head, reviewer: reviewer.agentId, ...(ownerBrief && { ownerBrief }) };
-    }
-  }
-  return undefined;
+      return [{ stepId: step.stepId, completedAt: step.completedAt, verdict, head, reviewer: reviewer.agentId, ...(ownerBrief && { ownerBrief }) }];
+    });
 }
 
-const FAILED = new Set(["failure", "cancelled", "timed_out", "action_required", "startup_failure"]);
+const strip = ({ verdict, head, reviewer, ownerBrief }: Verdict): Verdict => ({ verdict, head, reviewer, ...(ownerBrief && { ownerBrief }) });
 
-/** Red on any failed check at the head, green only when every check there has completed. */
-export function ciState(runs: readonly CheckRun[]): BriefFacts["ci"] {
-  if (runs.some((run) => run.status === "completed" && run.conclusion !== null && FAILED.has(run.conclusion))) return "red";
-  return runs.length > 0 && runs.every((run) => run.status === "completed") ? "green" : "pending";
+/**
+ * The verdict the brief reports for the PR head, judged by Shepherd's own `fixFirstAt` and `verdictAt`, so the brief never
+ * reads MERGE where the merge path would refuse: any FIX_FIRST at the head wins, MERGE needs every record there to agree,
+ * and a head with neither falls back to the newest verdict at another head, which the section reports as a stale review.
+ */
+export function verdictForHead(run: WorkflowRun, prHead: string): BriefFacts["verdict"] {
+  const records = verdictRecords(run);
+  const atHead = records.filter((record) => record.head === prHead);
+  if (fixFirstAt(run, prHead)) {
+    const fixFirst = atHead.find((record) => record.verdict === "FIX_FIRST");
+    return strip(fixFirst ?? { verdict: "FIX_FIRST", head: prHead, reviewer: "shepherd" });
+  }
+  const merge = verdictAt(run, prHead);
+  if (merge) {
+    const base = atHead.find((record) => record.stepId === merge.step);
+    return strip(base ?? { verdict: "MERGE", head: prHead, reviewer: merge.reviewer });
+  }
+  const older = records.find((record) => record.head !== prHead);
+  return older && strip(older);
+}
+
+/** Shepherd's own read of the base's required contexts at the head; unreadable required checks are never green. */
+async function ciAtHead(port: GitHubPort, repo: string, base: string, head: string): Promise<BriefFacts["ci"]> {
+  const { state } = await checksAt(port, repo, base, head);
+  if (state === "failing") return "red";
+  return state === "green" ? "green" : "pending";
 }
 
 function pendingLandGate(host: FactoryHost, run: WorkflowRun, repo: string, pr: number): NonNullable<ReturnType<typeof landGate>> {
@@ -98,8 +121,8 @@ const sum = (files: readonly PrFile[], key: "additions" | "deletions"): number =
 
 async function readPr(port: GitHubPort, repo: string, number: number): Promise<{ pr: PullRequest; files: PrFile[]; ci: BriefFacts["ci"] }> {
   const pr = await port.getPr(repo, number);
-  const [files, runs] = await Promise.all([port.listPrFiles(repo, number), port.latestCheckRuns(repo, pr.headSha)]);
-  return { pr, files, ci: ciState(runs) };
+  const [files, ci] = await Promise.all([port.listPrFiles(repo, number), ciAtHead(port, repo, pr.baseRef, pr.headSha)]);
+  return { pr, files, ci };
 }
 
 export async function readBriefFacts(host: FactoryHost, services: ShepherdServices, target: { repo: string; pr: number }): Promise<BriefFacts> {
@@ -108,7 +131,7 @@ export async function readBriefFacts(host: FactoryHost, services: ShepherdServic
   const land = pendingLandGate(host, run, target.repo, target.pr);
   const { pr, files, ci } = await readPr(services.port, target.repo, target.pr);
   const policy = runPolicyCeiling(run.params.policy);
-  const verdict = latestVerdict(run);
+  const verdict = verdictForHead(run, pr.headSha);
   const ui = policy.ownerGateReason === "gate-2-visual" || visualMatches(files.map((file) => file.path), policy.visualPaths ?? []).length > 0;
   const [table = "", rowId = ""] = land.rule.split("/");
   return {

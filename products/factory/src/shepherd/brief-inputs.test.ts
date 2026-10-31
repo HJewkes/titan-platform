@@ -1,9 +1,7 @@
 import { partialFake } from "@titan-design/test-kit";
-import type { CheckRun } from "@titan-design/github";
-import { successRun } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { ciState, latestVerdict } from "./brief-inputs.js";
+import { verdictForHead } from "./brief-inputs.js";
 import { summaryOf } from "./brief-render.js";
 
 const BRIEF = { what: "w", why: "y", pros: ["p"], cons: ["c"], doorType: "two-way" } as const;
@@ -15,35 +13,43 @@ function runWith(steps: Record<string, { at: string; result: unknown }>): Workfl
 
 const verdict = (head: string, kind: "MERGE" | "FIX_FIRST", ownerBrief?: unknown) => ({ kind: "verdict", verdict: kind, head, reviewer: { agentId: "rv" }, ...(ownerBrief !== undefined && { ownerBrief }) });
 
-describe("latestVerdict", () => {
-  it("takes the newest verdict step and carries its owner brief", () => {
+describe("verdictForHead", () => {
+  it("falls back to the newest verdict at an older head and carries its owner brief", () => {
     const run = runWith({ "sh-await-verdict:aaa": { at: "2026-01-01T00:00:00Z", result: verdict("aaa", "FIX_FIRST") }, "sh-await-verdict:bbb": { at: "2026-01-02T00:00:00Z", result: verdict("bbb", "MERGE", BRIEF) } });
 
-    expect(latestVerdict(run)).toEqual({ verdict: "MERGE", head: "bbb", reviewer: "rv", ownerBrief: BRIEF });
+    expect(verdictForHead(run, "ccc")).toEqual({ verdict: "MERGE", head: "bbb", reviewer: "rv", ownerBrief: BRIEF });
   });
 
   it("skips a wait that ended with no verdict", () => {
     const run = runWith({ "sh-await-verdict:aaa": { at: "2026-01-01T00:00:00Z", result: verdict("aaa", "MERGE") }, "sh-await-verdict:bbb": { at: "2026-01-02T00:00:00Z", result: { kind: "none" } } });
 
-    expect(latestVerdict(run)).toMatchObject({ head: "aaa" });
+    expect(verdictForHead(run, "ccc")).toMatchObject({ head: "aaa" });
   });
 
   it("reads no verdict from a run with none", () => {
-    expect(latestVerdict(runWith({}))).toBeUndefined();
-  });
-});
-
-describe("ciState", () => {
-  const running: CheckRun = { ...successRun("validate", 3), status: "in_progress", conclusion: null };
-
-  it("is green only when every check completed without failing", () => {
-    expect(ciState([successRun("a", 1), successRun("b", 2)])).toBe("green");
-    expect(ciState([successRun("a", 1), running])).toBe("pending");
-    expect(ciState([])).toBe("pending");
+    expect(verdictForHead(runWith({}), "aaa")).toBeUndefined();
   });
 
-  it("is red when any check failed, even beside a running one", () => {
-    expect(ciState([successRun("a", 1, undefined, "failure"), running])).toBe("red");
+  it("reports a panel member's FIX_FIRST at the head even when a later member gave MERGE there", () => {
+    const run = runWith({
+      "sh-await-verdict:hhh": { at: "2026-01-01T00:00:00Z", result: verdict("hhh", "MERGE", BRIEF) },
+      "sh-await-verdict:hhh:correctness": { at: "2026-01-02T00:00:00Z", result: { ...verdict("hhh", "FIX_FIRST", BRIEF), reviewer: { agentId: "rv-correctness" } } },
+      "sh-await-verdict:hhh:adversary": { at: "2026-01-03T00:00:00Z", result: verdict("hhh", "MERGE", BRIEF) },
+    });
+
+    expect(verdictForHead(run, "hhh")).toMatchObject({ verdict: "FIX_FIRST", head: "hhh", reviewer: "rv-correctness" });
+  });
+
+  it("does not report a newer MERGE at the head as reviewed when the head's own step is missing", () => {
+    const run = runWith({ "sh-await-verdict:ggg": { at: "2026-01-01T00:00:00Z", result: verdict("ggg", "MERGE") }, "sh-await-verdict:hhh:adversary": { at: "2026-01-02T00:00:00Z", result: verdict("hhh", "MERGE") } });
+
+    expect(verdictForHead(run, "hhh")).toMatchObject({ verdict: "MERGE", head: "ggg" });
+  });
+
+  it("reports MERGE at the head when every record there agrees", () => {
+    const run = runWith({ "sh-await-verdict:hhh": { at: "2026-01-01T00:00:00Z", result: verdict("hhh", "MERGE", BRIEF) }, "sh-await-verdict:hhh:adversary": { at: "2026-01-02T00:00:00Z", result: verdict("hhh", "MERGE") } });
+
+    expect(verdictForHead(run, "hhh")).toEqual({ verdict: "MERGE", head: "hhh", reviewer: "rv", ownerBrief: BRIEF });
   });
 });
 
