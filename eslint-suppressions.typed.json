@@ -319,26 +319,6 @@
       "count": 1
     }
   },
-  "packages/chat-protocol/src/agents/graph.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/chat-protocol/src/agents/layout.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "packages/chat-protocol/src/agents/sparks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 8
-    }
-  },
-  "packages/chat-protocol/src/ai-sdk.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/code-graph/src/aliases.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 3

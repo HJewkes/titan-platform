@@ -88,11 +88,6 @@
       "count": 2
     }
   },
-  "packages/chat-protocol/src/ai-sdk.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 1
-    }
-  },
   "packages/code-graph/src/analysis/dashboard-health.ts": {
     "titan/max-line-length": {
       "count": 2

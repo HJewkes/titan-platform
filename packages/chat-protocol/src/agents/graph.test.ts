@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { foldAgentGraph } from "./graph.js";
 import { agentGraph, type AgentRosterEntry, type BrokerEvent } from "./types.js";
@@ -47,7 +48,7 @@ describe("foldAgentGraph", () => {
   });
 
   it("uses the roster id for a node the roster knows", () => {
-    const result = graph([spawn("root", "a")], [{ name: "a", id: "sess-a" } as AgentRosterEntry]);
+    const result = graph([spawn("root", "a")], [partialFake<AgentRosterEntry>({ name: "a", id: "sess-a" })]);
     expect(result.nodes.find((n) => n.name === "a")).toMatchObject({ id: "sess-a", rosterId: "sess-a" });
   });
 
