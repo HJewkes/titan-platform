@@ -114,7 +114,6 @@ graph TD
   agentLifecycle --> storeSqlite
   agentSurface --> rpcProtocol
   anthropicAccount --> rpcProtocol
-  authority --> rpcProtocol
   autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
@@ -140,7 +139,6 @@ graph TD
   egressScan --> fixProof
   egressScan --> worktree
   eslintPlugin --> rpcProtocol
-  fixProof --> rpcProtocol
   graphLayout --> codeGraph
   health --> rpcProtocol
   health --> storeSqlite
@@ -345,7 +343,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
