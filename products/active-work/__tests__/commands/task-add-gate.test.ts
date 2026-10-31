@@ -89,16 +89,25 @@ describe('task.add done_when gate', () => {
 
 describe('task.add --draft', () => {
   const draft = { slug: 'gate-test', title: 'Sketch the idea', draft: true };
+  type Row = { id: string; status: string; tags?: string[]; done_when?: string };
 
   it('an agent caller with --draft files a draft and no done_when', async () => {
     await withInitiative(async (root) => {
-      const task = (await run('task.add', draft, root, 'agent')) as { id: string; status: string; done_when?: string };
-      expect(task.status).toBe('draft');
+      const task = (await run('task.add', draft, root, 'agent')) as Row;
+      expect(task.tags).toContain('draft');
       expect(task.done_when).toBeUndefined();
     });
   });
 
-  it('an agent caller without --draft is still refused', async () => {
+  it('a draft is written as an open task so a reader that knows only open and done parses it', async () => {
+    await withInitiative(async (root) => {
+      const task = (await run('task.add', { ...draft, tags: ['x'] }, root, 'agent')) as Row;
+      expect(task.status).toBe('open');
+      expect(task.tags).toEqual(['x', 'draft']);
+    });
+  });
+
+  it('an agent caller without --draft is still refused, naming --draft', async () => {
     await withInitiative(async (root) => {
       await expect(run('task.add', { slug: 'gate-test', title: 'Sketch the idea' }, root, 'agent')).rejects.toThrow(
         /--draft/,
@@ -106,10 +115,11 @@ describe('task.add --draft', () => {
     });
   });
 
-  it('a human caller without --draft files an open task', async () => {
+  it('a human caller without --draft files an untagged open task', async () => {
     await withInitiative(async (root) => {
-      const task = (await run('task.add', { slug: 'gate-test', title: 'T' }, root)) as { status: string };
+      const task = (await run('task.add', { slug: 'gate-test', title: 'T' }, root)) as Row;
       expect(task.status).toBe('open');
+      expect(task.tags).toBeUndefined();
     });
   });
 
@@ -131,42 +141,24 @@ describe('task.add --draft', () => {
   it('task list still shows a draft', async () => {
     await withInitiative(async (root) => {
       await run('task.add', draft, root, 'agent');
-      const listed = (await run('task.list', { slug: 'gate-test', status: 'all' }, root)) as unknown as {
+      const listed = (await run('task.list', { slug: 'gate-test' }, root)) as unknown as {
         tasks: { title: string }[];
       };
       expect(listed.tasks.map((t) => t.title)).toContain('Sketch the idea');
     });
   });
 
-  it('task edit --status open promotes a draft', async () => {
+  it('task edit --remove-tag draft promotes a draft into the bootstrap', async () => {
     await withInitiative(async (root) => {
-      const { id } = await run('task.add', draft, root, 'agent');
-      const edited = (await run('task.edit', { slug: 'gate-test', id, field: 'status', value: 'open' }, root)) as {
-        status: string;
-      };
-      expect(edited.status).toBe('open');
-    });
-  });
-
-  it('is refused under a registry with no draft row, naming the allowed statuses', async () => {
-    await withInitiative(async (root) => {
-      const dir = path.join(root, 'titan-platform');
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(
-        path.join(dir, 'categories.yml'),
-        [
-          'kind: [epic]',
-          'status:',
-          '  - { id: open, closed: false, dispatchable: true }',
-          '  - { id: done, closed: true, dispatchable: false }',
-          '  - { id: wont-do, closed: true, dispatchable: false }',
-          '  - { id: icebox, closed: false, dispatchable: false }',
-          'cos: []',
-          'area: []',
-          '',
-        ].join('\n'),
-      );
-      await expect(run('task.add', draft, root, 'agent')).rejects.toThrow(/Unknown status: draft \(allowed: open, done, wont-do, icebox\)/);
+      const { id } = await run('task.add', { ...draft, title: 'Promoted title' }, root, 'agent');
+      await run('task.edit', { slug: 'gate-test', id, remove_tag: 'draft' }, root);
+      const { prompt } = await assembleBootstrap({
+        activeRoot: root,
+        slug: 'gate-test',
+        now: new Date(),
+        includeLiveStatus: false,
+      });
+      expect(prompt).toContain('Promoted title');
     });
   });
 });

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { isDraft } from '../tasks/draft.js';
 import path from 'node:path';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
@@ -449,7 +450,7 @@ function renderTopTasks(
   slug: string,
   facetTags?: string[],
 ): { body: string; count: number } {
-  const openTasks = tasks.filter((t) => t.status === 'open').sort(compareTasksByPriority);
+  const openTasks = tasks.filter((t) => t.status === 'open' && !isDraft(t)).sort(compareTasksByPriority);
   if (openTasks.length === 0) {
     return { body: '_No open tasks._', count: 0 };
   }
@@ -1416,7 +1417,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
       siblings = [];
     }
   }
-  const openSorted = tasks.filter((t) => t.status === 'open').sort(compareTasksByPriority);
+  const openSorted = tasks.filter((t) => t.status === 'open' && !isDraft(t)).sort(compareTasksByPriority);
   const topTask = selectFacetTasks(openSorted, facet?.tags).tasks[0];
   const topTaskTitle = topTask?.title;
 

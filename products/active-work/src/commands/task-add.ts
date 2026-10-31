@@ -14,6 +14,7 @@ import {
 import { writeYaml } from '../utils/yaml-io.js';
 import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
+import { DRAFT_TAG } from '../tasks/draft.js';
 import { ValidationError } from '../errors.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { doneWhenProblem } from './_done-when-gate.js';
@@ -85,12 +86,12 @@ function newTask(args: Args, id: string, priority: number): Task {
     severity: args.severity,
     estimate: args.estimate,
     done_when: args.done_when,
-    status: args.draft ? 'draft' : 'open',
+    status: 'open',
     kind: args.kind,
     cos: args.cos,
     area: args.area,
     due: args.due,
-    tags: args.tags,
+    tags: args.draft ? [...new Set([...(args.tags ?? []), DRAFT_TAG])] : args.tags,
     notes: args.notes,
     created: nowIso(),
     updated: today(),
@@ -130,7 +131,7 @@ export default defineCommand<Args, TaskOrLine>({
       },
       draft: {
         long: '--draft',
-        description: 'File as a draft without a done_when; not dispatched until promoted to open',
+        description: 'File as a draft without a done_when; tagged draft, hidden from the bootstrap; promote with task edit --remove-tag draft',
       },
       ...CATEGORY_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
@@ -153,7 +154,7 @@ export default defineCommand<Args, TaskOrLine>({
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
       const task = newTask(args, id, args.priority ?? nextPriority(existing));
-      await assertCategories(activeRoot, task, changedCategoryFields({ ...args, status: task.status }));
+      await assertCategories(activeRoot, task, changedCategoryFields(args));
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);

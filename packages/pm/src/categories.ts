@@ -50,7 +50,6 @@ export type CategoryAxis = "kind" | "status" | "cos" | "area";
 export const BUILT_IN_STATUSES: readonly StatusEntry[] = [
   { id: "open", closed: false, dispatchable: true },
   { id: "done", closed: true, dispatchable: false },
-  { id: "draft", closed: false, dispatchable: false },
 ];
 
 export function categoriesPath(activeRoot: string): string {

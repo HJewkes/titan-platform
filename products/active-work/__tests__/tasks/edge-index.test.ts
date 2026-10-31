@@ -142,7 +142,7 @@ describe('task edit with edges', () => {
   it('refuses a status outside the built-in set', async () => {
     await inSeededRoot(async (root) => {
       await expect(edit(root, 'H-1', { field: 'status', value: 'closed' })).rejects.toThrow(
-        'Unknown status: closed (allowed: open, done, draft)',
+        'Unknown status: closed (allowed: open, done)',
       );
     });
   });
