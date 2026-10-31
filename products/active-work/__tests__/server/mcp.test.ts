@@ -95,6 +95,18 @@ describe('invokeTool', () => {
     }
   });
 
+  it('refuses task.add with no done_when as a validation error', async () => {
+    await withTempActiveRoot(async () => {
+      const out = await invokeTool('active__task__add', { slug: 'any', title: 'T' });
+      expect(out.isError).toBe(true);
+      expect(out.envelope.ok).toBe(false);
+      if (!out.envelope.ok) {
+        expect(out.envelope.error).toMatch(/done_when is missing/);
+        expect(out.envelope.code).toBe(65);
+      }
+    });
+  });
+
   it('returns isError:true with a clear message for invalid args', async () => {
     await withTempActiveRoot(async () => {
       // task.add requires `slug` and `title`; pass neither.

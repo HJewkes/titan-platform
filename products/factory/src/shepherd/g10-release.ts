@@ -138,7 +138,7 @@ function heldRun(store: ShepherdStore, runId: string): G10Run & { holdReason: st
 
 async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
   const input = G10ReleaseInput.parse(raw);
-  const prHead = (await deps.port.getPr(input.repo as RepoSlug, input.pr)).headSha;
+  const prHead = (await deps.port.getPr(input.repo, input.pr)).headSha;
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
   const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);
