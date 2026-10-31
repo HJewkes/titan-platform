@@ -106,7 +106,7 @@ interface EnlargeProps {
 }
 
 /** The image at least as wide as the screen, scrolling sideways when it is wider; Escape or Close leaves. */
-function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
+export function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
   const image = useRef<HTMLImageElement>(null);
   const onLoad = useLoadRender();
   useEscapeKey(onClose);
