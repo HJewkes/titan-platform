@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fetchingGitBehind, gitBehind, type GitBehind } from "./deploy-behind.js";
-import type { HeldWanted } from "./deploy-health.js";
+import { deploySummary, type HeldWanted } from "./deploy-health.js";
 import { deployWatch, type DeployWatchPorts } from "./deploy-watch.js";
 import { gitBehindMain } from "./test-support/git-line.js";
 
@@ -43,12 +43,33 @@ describe("serve's deploy block reads origin/main and the pacer's held target", (
     expect(watch.status()).toMatchObject({ behind: 31, behindMinutes: 100, originLag: { merges: 31, asked: 1 }, alarm: true });
   });
 
-  it("counts a held wanted target as waiting since its firstAt even when git shows no lag", async () => {
-    const watch = deployWatch(ports(commitsAgo(), { sha: WANTED, firstAt: new Date(NOW - 70 * MINUTE).toISOString() }));
+  it("counts a held wanted target as waiting since its firstAt even when git shows no lag, and alarms once its cap has passed", async () => {
+    const watch = deployWatch(ports(commitsAgo(), { sha: WANTED, firstAt: new Date(NOW - 95 * MINUTE).toISOString() }));
 
     await watch.tick();
 
-    expect(watch.status()).toMatchObject({ behind: 1, behindMinutes: 70, alarm: true });
+    expect(watch.status()).toMatchObject({ behind: 1, behindMinutes: 95, alarm: true, capAt: new Date(NOW - 5 * MINUTE).toISOString() });
+  });
+
+  it("holds the alarm for the pacer's cap when a commit merged in an earlier target's quiet window makes main 95 min ahead", async () => {
+    const firstAt = new Date(NOW - 60 * MINUTE).toISOString();
+    const watch = deployWatch(ports(commitsAgo(95, 30), { sha: WANTED, firstAt }));
+
+    await watch.tick();
+
+    const status = watch.status()!;
+    expect(status).toMatchObject({ originLag: { merges: 2, minutes: 95 }, alarm: false, capAt: new Date(NOW + 30 * MINUTE).toISOString() });
+    expect(deploySummary(status)).toContain("ahead (95 min), cap 20:45Z");
+    expect(deploySummary(status)).not.toContain("ALARM");
+  });
+
+  it("alarms for a commit held 95 min when no target is held", async () => {
+    const watch = deployWatch(ports(commitsAgo(95, 30)));
+
+    await watch.tick();
+
+    expect(watch.status()).toMatchObject({ alarm: true });
+    expect(watch.status()!.capAt).toBeUndefined();
   });
 
   it("reads behind 0 when the wanted target is the running build", async () => {
