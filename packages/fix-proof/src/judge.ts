@@ -53,7 +53,7 @@ function classifyAgainst(plan: FixProofPlan, base: unknown, head: unknown): Clas
   return classifyReports({ selected: plan.tests, base: { root: REPORT_ROOT, report: base }, head: { root: REPORT_ROOT, report: head } });
 }
 
-function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classification {
+export function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classification {
   if (plan.tests.length === 0) return { verdict: "no-tests", tests: [], files: [] };
   try {
     const base = rooted(decodeReport(reports.base), "base");
