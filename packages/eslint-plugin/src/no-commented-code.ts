@@ -1,5 +1,6 @@
 import type { Rule } from "eslint";
 import type { Comment } from "estree";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 type ParserLike = {
   parse?: (text: string, options: object) => unknown;
@@ -57,16 +58,12 @@ function isCodeStatement(statement: Statement, endsWithSemicolon: boolean): bool
   return endsWithSemicolon || !isBareKeyword(statement);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isStatement(value: unknown): value is Statement {
-  return isRecord(value) && typeof value.type === "string";
+  return isObjectLike(value) && typeof value.type === "string";
 }
 
 function memberBody(node: unknown): unknown {
-  return isRecord(node) ? node.body : undefined;
+  return isObjectLike(node) ? node.body : undefined;
 }
 
 function statementsOf(node: unknown): Body | null {

@@ -110,6 +110,7 @@ graph TD
   agentDispatch --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  anthropicAccount --> rpcProtocol
   autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
@@ -132,6 +133,7 @@ graph TD
   dispatchLedger --> storeSqlite
   egressScan --> fixProof
   egressScan --> worktree
+  eslintPlugin --> rpcProtocol
   graphLayout --> codeGraph
   health --> storeSqlite
   hitl --> authority
@@ -152,6 +154,7 @@ graph TD
   retrieval --> embed
   retrieval --> storeSqlite
   reviewBurden --> fixProof
+  reviewBurden --> rpcProtocol
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
@@ -326,7 +329,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
