@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
+import { reportedOnlyRowsAt } from "./writing-statuses.js";
 
 // A port of the script-tells harness (TP-3765: measure.py and derived.py). The regexes, the sentence split and
 // the per-1k rates are copied as written there, so a value here is comparable with the research bands. Python's
@@ -83,12 +84,14 @@ const phrasesRegExp = (): RegExp => {
 /** The over-represented phrases the `phrases` row counts, in order. */
 export const phraseSpans = (text: string): TextSpan[] => spans(phrasesRegExp(), text);
 
-const DEVICE_PATTERNS = { "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TAIL, semicolons: SEMICOLON, lets: LETS } as const;
+const DEVICE_PATTERNS = {
+  "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TAIL, semicolons: SEMICOLON, lets: LETS, "neg-synthetic": NEG_SYNTHETIC,
+} as const;
 
-/** The style devices a rewrite must not add, each a register row that caps near zero. */
+/** The style devices a rewrite must not add, each a register row with a cap and no floor. */
 export type DeviceMetric = keyof typeof DEVICE_PATTERNS;
 
-export const DEVICE_METRICS: readonly DeviceMetric[] = ["colon-reveals", "not-x-tails", "semicolons", "lets"];
+export const DEVICE_METRICS: readonly DeviceMetric[] = ["colon-reveals", "not-x-tails", "semicolons", "lets", "neg-synthetic"];
 
 /** The matches of one device row, in order; their count is the row's count for the same text. */
 export const deviceSpans = (metric: DeviceMetric, text: string): TextSpan[] => spans(DEVICE_PATTERNS[metric], text);
@@ -164,9 +167,6 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   downtoners: { max: 3.6 },
 };
 
-/** Rows reported against their band but never warned on: downtoners' length-matched effect is unconfirmed (TP-4306). */
-const REPORTED_ONLY_METRICS: ReadonlySet<RegisterMetric> = new Set(["downtoners"]);
-
 /** A beat may speak one number; the rest belong on screen (TP-3813). A beat over this is "crowded". */
 export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
 
@@ -193,10 +193,14 @@ export function endsOnShortest(spoken: string): boolean {
 
 const below = (value: number, band: Band): boolean => band.min !== undefined && value < band.min;
 
-function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
+/**
+ * A row whose status in `doctrine/writing-check.json` is report-only or drop at the script's own length bucket is
+ * reported against its band but never warns: it does not separate AI from human text at that length (TP-4662).
+ */
+function registerRow(metric: RegisterMetric, s: SpokenText, reportedOnly: ReadonlySet<string>): L0Result {
   const band = REGISTER_BANDS[metric];
   const value = REGISTER_MEASURES[metric](s);
-  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS && !REPORTED_ONLY_METRICS.has(metric);
+  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS && !reportedOnly.has(metric);
   const pass = !judged || (!below(value, band) && value <= band.max);
   const threshold = value !== undefined && below(value, band) ? (band.min ?? band.max) : band.max;
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
@@ -228,5 +232,6 @@ function shortestLastRow(beats: readonly { id: string; spoken: string }[]): L0Re
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed), shortestLastRow(script.beats)];
+  const reportedOnly = reportedOnlyRowsAt(parsed.words.length);
+  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed, reportedOnly)), numbersPerBeatRow(script.beats, parsed), shortestLastRow(script.beats)];
 };

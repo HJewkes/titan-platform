@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-helpers.js";
 import { runL0 } from "./eval-l0.js";
 import { REGISTER_BANDS, registerCheck, spokenText } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import { MAX_REWRITE_ROUNDS, planRegisterEdits, type BeatDirective } from "./rewrite-plan.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+
+// These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
+usePreCalibrationStatuses();
 
 // Short, number-free, list-free sentences about an invented parcel desk: the raw stuff of a choppy script.
 const CHOPPY = [

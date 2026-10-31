@@ -93,7 +93,7 @@ rules:
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
-    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research; downtoners is reported only until a second corpus confirms it. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag."
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research. Each row's status (gate, warning, report-only or drop) lives in doctrine/writing-check.json per length bucket (TP-4662); a row that is report-only or dropped at the script's own bucket reports its value without warning, and the rewrite pass neither targets nor protects it for human-ness. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag."
     l0:
       severity: warning
       status: implemented
