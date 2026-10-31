@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reviewer ignores its base agent's branch name",
+      "file": "packages/agent-dispatch/src/isolation/held-branches.ts",
+      "find": "if (base !== undefined) named.push(`agent-chat/${base}`);",
+      "replace": "",
+      "kills": ["heldBranches holds reviewer tc-x-1-a-review on the base agent's branch"]
+    },
+    {
+      "name": "branches repeat across routes",
+      "file": "packages/agent-dispatch/src/isolation/held-branches.ts",
+      "find": "candidates.map((c) => [`${c.gitRoot}\\0${c.branch}`, c])",
+      "replace": "candidates.map((c, i) => [i, c])",
+      "kills": ["heldBranches lists a branch once however many routes name it"]
+    },
+    {
+      "name": "allocated branch dropped",
+      "file": "packages/agent-dispatch/src/isolation/held-branches.ts",
+      "find": "...(target ? [target.branch] : [])",
+      "replace": "",
+      "kills": ["heldBranches holds an attempt-suffixed agent on both its name's branch and its allocated branch"]
+    },
+    {
+      "name": "reviewer name pattern drops the numbered form",
+      "file": "packages/agent-dispatch/src/isolation/held-branches.ts",
+      "find": "|r\\d+)$/;",
+      "replace": ")$/;",
+      "kills": ["reviewedAgentName reads tc-x-1-a-r1 as a reviewer of tc-x-1-a"]
+    }
+  ]
+}
