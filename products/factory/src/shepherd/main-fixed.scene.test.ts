@@ -6,7 +6,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef } from "./freeze.js";
-import { MAIN_FIXED_MERGE_UPS } from "./freeze-hold.js";
+import { MAIN_FIXED_MERGE_UPS } from "./main-fixed.js";
 import type { ShepherdPhases, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -142,15 +142,18 @@ describe("a ci-red head whose red came with a stale merge ref (TP-4650)", () => 
     expect(resultOf(w, runId, "sh-freeze-hold:0")).toMatchObject({ result: { hold: false } });
   });
 
-  it("wakes the fixer once the run has spent its main-fixed merge-ups on heads that stay red", async () => {
+  it("wakes the fixer once, then waits for its head, after the run has spent its main-fixed merge-ups", async () => {
     const w = world({ red: LINT_STEP, ciBase: { validate: "cancelled" }, tip: {}, updatesRed: true });
     const runId = start(w);
 
-    await vi.waitFor(() => expect(w.wakes.length).toBeGreaterThan(0));
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("await-new-head:0"));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
+    expect(w.host.runtime.status(runId)?.currentStep).toBe("await-new-head:0");
+    expect(w.wakes).toHaveLength(1);
     expect(w.wakes[0]).toMatchObject({ kind: "ci-red", round: MAIN_FIXED_MERGE_UPS });
     expect(mergeUps(w, runId)).toHaveLength(MAIN_FIXED_MERGE_UPS);
-    expect(resultOf(w, runId, `sh-freeze-hold:${MAIN_FIXED_MERGE_UPS}`)).toMatchObject({ result: { hold: true, baseRed: { mainFixed: MAIN_TIP } } });
+    expect(resultOf(w, runId, `sh-freeze-hold:${MAIN_FIXED_MERGE_UPS}`)).toMatchObject({ result: { hold: false } });
   });
 
   it("wakes the fixer as before while main is still red past the merge ref's base", async () => {

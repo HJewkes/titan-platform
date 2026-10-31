@@ -27,6 +27,8 @@ export interface AwaitHeadTarget {
   untilGreen?: boolean;
   /** The red check names the wait was entered with; with an `inheritedRed` hook, a red the base turns out to own also ends the wait. */
   failing?: string[];
+  /** The run has made its main-fixed merge-ups, so the `inheritedRed` hook weighs the red as the run's own hold would. */
+  mainFixedSpent?: boolean;
 }
 
 /**

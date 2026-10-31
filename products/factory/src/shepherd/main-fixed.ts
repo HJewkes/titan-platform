@@ -2,6 +2,21 @@ import { isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan
 import { failingNotIn, type FailureReader } from "./failing-step.js";
 import { actionsRunsAt, judgeMain, readMainRules, type MainRules } from "./main-verdict.js";
 
+/** The most main-fixed merge-ups one run makes before it wakes the fixer, so a busy base cannot merge up a red head forever. */
+export const MAIN_FIXED_MERGE_UPS = 2;
+/** Main-fixed merge-ups per run; replaying the run's recorded hold steps in order rebuilds the count after a restart. */
+const mergeUps = new WeakMap<object, number>();
+
+/**
+ * True once `run` has made its main-fixed merge-ups. Every caller of the hold decision passes this in, so the run's
+ * own hold and the await-new-head hook read one answer: a spent run is never held as main-fixed.
+ */
+export const mainFixedSpent = (run: object): boolean => (mergeUps.get(run) ?? 0) >= MAIN_FIXED_MERGE_UPS;
+
+export function countMainFixedMergeUp(run: object): void {
+  mergeUps.set(run, (mergeUps.get(run) ?? 0) + 1);
+}
+
 /** The most first-parent base commits read back from the base head toward the CI base, looking for a green one. */
 const GREEN_WALK = 20;
 /** The most first-parent base commits read back from the CI base, looking for a finished run of each failing check. */

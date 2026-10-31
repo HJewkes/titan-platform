@@ -23,11 +23,11 @@
       "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) merges main up with no fixer woken and no repair spent once main went green past its last same red"]
     },
     {
-      "name": "main-fixed merge-ups never run out",
-      "file": "products/factory/src/shepherd/freeze-hold.ts",
-      "find": "  if (made >= MAIN_FIXED_MERGE_UPS) return true;\n",
+      "name": "the await-new-head hook ignores a spent main-fixed budget",
+      "file": "products/factory/src/shepherd/inherited-red.ts",
+      "find": "...(target.mainFixedSpent === true && { mainFixedSpent: true })",
       "replace": "",
-      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer once the run has spent its main-fixed merge-ups on heads that stay red"]
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer once, then waits for its head, after the run has spent its main-fixed merge-ups"]
     },
     {
       "name": "a red main tip reads as green",
