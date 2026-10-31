@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { assertPromotable } from './_done-when-gate.js';
+import { assertPromotable } from './_draft-promotion.js';
 import { readEdges } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';

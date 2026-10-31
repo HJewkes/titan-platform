@@ -15,7 +15,7 @@ import { getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { nowIso } from '../utils/today.js';
 import { readYaml, writeYaml } from '../utils/yaml-io.js';
-import { promotionProblem } from './_done-when-gate.js';
+import { promotionProblem } from './_draft-promotion.js';
 import type { CommandContext } from '../registry/index.js';
 import { patchChange, type PatchEdit } from './task-edit.js';
 import { isEdgeOp, type ApplyOp, type EdgeOp, type PlanEntry } from './_task-apply-plan.js';
