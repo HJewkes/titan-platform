@@ -286,10 +286,7 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
  */
 export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed" | "nonSourceNoRepro">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
-  const gate = await gateOf(deps.port, deps.store, input.runId);
-  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
-  if (!gate.open) return { kind: "skipped", reason: gate.reason };
-  return openRead(deps, input, gate, timing, signal);
+  return readThrough(await gateOf(deps.port, deps.store, input.runId), deps, input, timing, signal);
 }
 
 /**
@@ -297,10 +294,7 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
  * head branch opens the gate as it does for a registered run, and so does a fix-proof run from Actions at the head.
  */
 export async function readPrFixProof(port: GitHubPort, target: { repo: string; pr: number; head: string }, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const gate = await prGateOf(port, target);
-  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
-  if (!gate.open) return { kind: "skipped", reason: gate.reason };
-  return openRead({ port }, { repo: target.repo, head: target.head }, gate, timing, signal);
+  return readThrough(await prGateOf(port, target), { port }, { repo: target.repo, head: target.head }, timing, signal);
 }
 
 /** A registration's kind never reaches here, so the gate reads as correctness: no proceed flag is configured to read it. */
@@ -315,6 +309,12 @@ async function prGateOf(port: GitHubPort, { repo, pr, head }: { repo: string; pr
 }
 
 type ReadDeps = Pick<ShepherdDeps, "port" | "noReproProceed" | "nonSourceNoRepro">;
+
+async function readThrough(gate: Gate, deps: ReadDeps, input: FixProofInput, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
+  if (!gate.open) return { kind: "skipped", reason: gate.reason };
+  return openRead(deps, input, gate, timing, signal);
+}
 
 async function openRead(deps: ReadDeps, input: FixProofInput, gate: OpenGate, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const binding = await bindingOf(deps.port, input.repo, gate.pr, input.base);
