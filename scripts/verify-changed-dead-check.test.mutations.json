@@ -14,19 +14,19 @@
     {
       "name": "verify:changed stops planning dead:check",
       "file": "scripts/verify-changed.mjs",
-      "find": "    deadCheckCommand(changed, workspace, base),\n",
+      "find": "    deadCheckCommand(changed, workspace, base, indexedFiles),\n",
       "replace": "",
       "kills": [
         "verify:changed dead:check step indexes only the touched graph-root packages and checks baseline growth against the base"
       ]
     },
     {
-      "name": "the dead:check step skips the baseline growth check",
+      "name": "dead:check runs past the local file budget",
       "file": "scripts/verify-changed.mjs",
-      "find": "`--paths=${dirs.join(\",\")}`], env: { BASE_REF: base } };\n",
-      "replace": "`--paths=${dirs.join(\",\")}`] };\n",
+      "find": "  if (files > DEAD_CHECK_MAX_FILES) {\n",
+      "replace": "  if (files > DEAD_CHECK_MAX_FILES * 100) {\n",
       "kills": [
-        "verify:changed dead:check step indexes only the touched graph-root packages and checks baseline growth against the base"
+        "verify:changed dead:check step defers to CI when the touched packages hold more files than the local budget"
       ]
     },
     {

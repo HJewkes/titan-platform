@@ -145,14 +145,22 @@ export function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
  * The graph-root members a change touches. A non-entry module's importers sit in its own package, since other
  * packages import through the manifest entries, so indexing just these members judges their exports as CI does.
  */
-export function deadCheckDirs(changed, workspace) {
+function deadCheckDirs(changed, workspace) {
   const touched = workspace.filter((member) => GRAPH_ROOT.test(member.dir) && changed.some((path) => path.startsWith(member.dir)));
   return touched.map((member) => member.dir.replace(/\/$/, "")).sort();
 }
 
-function deadCheckCommand(changed, workspace, base) {
+// products/active-work's 525 indexed files take about 55 s; the largest products take minutes, so CI owns them.
+const DEAD_CHECK_MAX_FILES = 600;
+const INDEXED_EXT = /\.(?:[cm]?[jt]sx?|py)$/;
+
+function deadCheckCommand(changed, workspace, base, indexedFiles) {
   const dirs = deadCheckDirs(changed, workspace);
   if (dirs.length === 0) return null;
+  const files = indexedFiles(dirs);
+  if (files > DEAD_CHECK_MAX_FILES) {
+    return { label: `dead:check: ${files} files in ${dirs.join(", ")} exceed the ${DEAD_CHECK_MAX_FILES}-file local budget, deferred to CI`, deferred: true };
+  }
   return { label: "dead:check", cmd: "node", args: ["scripts/dead-code-check.mjs", `--paths=${dirs.join(",")}`], env: { BASE_REF: base } };
 }
 
@@ -183,7 +191,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm index-version:check", disposition: "local", label: "index-version:check" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
-  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages (deadCheckDirs)" },
+  { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages, and defers past a 600-file budget to CI" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
   { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
@@ -194,7 +202,7 @@ export const CI_COVERAGE = [
  * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
  * build, which produces the code-graph dist it reads.
  */
-export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES }) {
+export function planCommands({ base, changed, workspace, hasTimeout, spool, flakeClasses = NO_FLAKE_CLASSES, indexedFiles = () => 0 }) {
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
@@ -211,7 +219,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     pnpmRun("docs:build"),
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
-    deadCheckCommand(changed, workspace, base),
+    deadCheckCommand(changed, workspace, base, indexedFiles),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
 }
@@ -231,6 +239,10 @@ function timingSpool() {
   const home = process.env.TITAN_TEST_TIMING_HOME || join(homedir(), ".local/share/titan-test-timing");
   return process.env.TITAN_TEST_TIMING_SPOOL || join(home, "spool");
 }
+
+// The files under `dirs` the indexer would read, tracked or not.
+const indexedFiles = (dirs) =>
+  gitLines(["ls-files", "--cached", "--other", "--exclude-standard", "--", ...dirs]).filter((path) => INDEXED_EXT.test(path)).length;
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
@@ -293,7 +305,7 @@ async function runStep(step, changed) {
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH) });
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
   let failed = false;
   for (const step of plan) {

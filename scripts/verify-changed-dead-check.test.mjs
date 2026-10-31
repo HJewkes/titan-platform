@@ -15,8 +15,8 @@ const WORKSPACE = [
   { dir: "deploy/hub/", name: "hub", deps: [] },
 ];
 
-const deadCheckStep = (changed) =>
-  planCommands({ base: "origin/base", changed, workspace: WORKSPACE, hasTimeout: true }).find((step) => step.label === "dead:check");
+const deadCheckStep = (changed, indexedFiles = () => 10) =>
+  planCommands({ base: "origin/base", changed, workspace: WORKSPACE, hasTimeout: true, indexedFiles }).find((step) => step.label.startsWith("dead:check"));
 
 describe("verify:changed dead:check step", () => {
   it("indexes only the touched graph-root packages and checks baseline growth against the base", () => {
@@ -24,6 +24,13 @@ describe("verify:changed dead:check step", () => {
 
     expect(step.args).toEqual(["scripts/dead-code-check.mjs", "--paths=packages/a,products/c"]);
     expect(step.env).toEqual({ BASE_REF: "origin/base" });
+  });
+
+  it("defers to CI when the touched packages hold more files than the local budget", () => {
+    const sized = (files) => deadCheckStep(["packages/a/src/x.ts"], () => files);
+
+    expect(sized(600).args).toEqual(["scripts/dead-code-check.mjs", "--paths=packages/a"]);
+    expect(sized(601)).toEqual({ label: "dead:check: 601 files in packages/a exceed the 600-file local budget, deferred to CI", deferred: true });
   });
 
   it("is skipped when no graph-root package changed", () => {

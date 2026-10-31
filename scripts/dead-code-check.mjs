@@ -291,7 +291,8 @@ async function indexGraph(workDir, dirs = TIERS) {
   const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
   try {
     const paths = dirs.map((sub) => path.join(ROOT, sub)).filter((p) => existsSync(p));
-    const r = await graph.indexPaths(store, { paths, ref: "head", computeChurn: false });
+    // Dead exports read nodes, edges and roles only; skipping metrics trims a scoped verify:changed run.
+    const r = await graph.indexPaths(store, { paths, ref: "head", computeChurn: false, computeMetrics: false });
     console.error(`indexed head: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges`);
     const nodes = graph.listNodes(store, r.snapshotId, { includeSymbols: true });
     return { nodes, edges: graph.listEdges(store, r.snapshotId, { includeReferences: true }) };
