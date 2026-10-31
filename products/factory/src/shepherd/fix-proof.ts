@@ -17,6 +17,7 @@ import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./wo
 
 export { FIX_PROOF_CHECK };
 export type { FixProofUnverified };
+export type { FixProofRead, PollTiming };
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
@@ -62,7 +63,7 @@ export const FixProofReadSchema = z.discriminatedUnion("kind", [
 
 /** `base` binds the read to that base instead of the PR's live one: the base a merge is being decided on (TP-4259). */
 const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1), base: z.string().min(1).optional() });
-type FixProofInput = z.infer<typeof FixProofInputSchema>;
+type FixProofInput = Omit<z.infer<typeof FixProofInputSchema>, "runId">;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
@@ -289,6 +290,34 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
   const gate = await gateOf(deps.port, deps.store, input.runId);
   if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
+  return openRead(deps, input, gate, timing, signal);
+}
+
+/**
+ * TP-4635: the read of a PR that no Shepherd run registered, as `titan-factory review` takes it. With no registered kind, a fix/
+ * head branch opens the gate as it does for a registered run, and so does a fix-proof run from Actions at the head.
+ */
+export async function readPrFixProof(port: GitHubPort, target: { repo: string; pr: number; head: string }, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+  const gate = await prGateOf(port, target);
+  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
+  if (!gate.open) return { kind: "skipped", reason: gate.reason };
+  return openRead({ port }, { repo: target.repo, head: target.head }, gate, timing, signal);
+}
+
+/** A registration's kind never reaches here, so the gate reads as correctness: no proceed flag is configured to read it. */
+async function prGateOf(port: GitHubPort, { repo, pr, head }: { repo: string; pr: number; head: string }): Promise<Gate> {
+  try {
+    const [{ headRef }, runs] = await Promise.all([port.getPr(repo, pr), port.checkRuns(repo, head)]);
+    if (headRef.startsWith(FIX_BRANCH_PREFIX) || runs.some(isFixProofRun(head))) return { open: true, pr, kind: "correctness" };
+    return { open: false, reason: `head branch ${headRef} is not a ${FIX_BRANCH_PREFIX} branch and no ${FIX_PROOF_CHECK} run is at this head` };
+  } catch (error) {
+    return { unreadable: `the PR's head branch or check runs are unreadable: ${failureOf(error)}` };
+  }
+}
+
+type ReadDeps = Pick<ShepherdDeps, "port" | "noReproProceed" | "nonSourceNoRepro">;
+
+async function openRead(deps: ReadDeps, input: FixProofInput, gate: OpenGate, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const binding = await bindingOf(deps.port, input.repo, gate.pr, input.base);
   try {
     const read = await gatedRead(deps, input, gate, binding, timing, signal);

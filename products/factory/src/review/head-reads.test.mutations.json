@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the run-free proof read always skips",
+      "file": "products/factory/src/review/head-reads.ts",
+      "find": "readPrFixProof(port, target, { now: Date.now, sleep, timeoutMs: 0 }, new AbortController().signal)",
+      "replace": "Promise.resolve({ kind: \"skipped\" as const, reason: \"no Shepherd run\" })",
+      "kills": ["the review CLI's run-free fix-proof read reads a bug-fix PR whose fix-proof check printed a NO_REPRO line as no-repro, with no Shepherd run"]
+    },
+    {
+      "name": "no required checks reads as pending",
+      "file": "products/factory/src/review/head-reads.ts",
+      "find": "return { state: headRunsState(await port.checkRuns(repo, head), head), source: \"head-check-runs\" };",
+      "replace": "return { state: \"pending\", source: \"head-check-runs\" };",
+      "kills": ["the review CLI's CI read reads a repo with no required checks as green once every check run at the head passed, and names that source"]
+    },
+    {
+      "name": "a red head run is not failing",
+      "file": "products/factory/src/review/head-reads.ts",
+      "find": "if (atHead.some((run) => run.status === \"completed\" && !isPassing(run))) return \"failing\";",
+      "replace": "",
+      "kills": ["the review CLI's CI read reads a repo with no required checks as failing from its head's check runs"]
+    },
+    {
+      "name": "a head with no runs reads green",
+      "file": "products/factory/src/review/head-reads.ts",
+      "find": "atHead.length > 0 && atHead.every(isPassing)",
+      "replace": "atHead.every(isPassing)",
+      "kills": ["the review CLI's CI read reads a repo with no required checks as pending from its head's check runs"]
+    },
+    {
+      "name": "the CLI output leaves out the CI source",
+      "file": "products/factory/src/review/format.ts",
+      "find": "`CI: ${ci.state}, from ${CI_SOURCE_TEXT[ci.source]}`",
+      "replace": "`CI: ${ci.state}`",
+      "kills": ["the review CLI's CI read reads a repo with no required checks as green once every check run at the head passed, and names that source"]
+    }
+  ]
+}

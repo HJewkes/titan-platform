@@ -9,7 +9,7 @@ import { configPath, loadConfig, type ReviewConfig } from "../config.js";
 import { classRulesFor, panelPolicyFor } from "../shepherd/review-panel-plan.js";
 import { reviewCheckoutRoot } from "../shepherd/review-checkout.js";
 import { configuredRoles } from "../shepherd/reviewer-roles.js";
-import { membersOf, type ReviewReport } from "./format.js";
+import { membersOf, type CiRead, type ReviewReport } from "./format.js";
 import { reviewParkingMigration, sqliteParking } from "./parking.js";
 import { reviewPorts, type ReviewPortsConfig } from "./ports.js";
 import { headOf, type PrTarget } from "./pr-facts.js";
@@ -42,14 +42,18 @@ function timingOf({ sessionStartTimeoutMs, verdictTimeoutMs }: ReviewConfig) {
   return { ...(sessionStartTimeoutMs !== undefined && { startDeadlineMs: sessionStartTimeoutMs }), ...(verdictTimeoutMs !== undefined && { verdictDeadlineMs: verdictTimeoutMs }) };
 }
 
+type CiReads = Map<string, CiRead>;
+const ciKey = ({ repo, pr, head }: ReviewTarget): string => `${repo}#${pr}@${head}`;
+
 /** The workflow's request: the brief carries only the checkout root, since no Shepherd run holds a kind, a proof or earlier findings. */
-function serviceOver(runner: ReviewRunner, port: Pick<GitHubPort, "getPr">, checkoutRoot: string, close: () => void): ReviewService {
+function serviceOver(runner: ReviewRunner, port: Pick<GitHubPort, "getPr">, checkoutRoot: string, ciReads: CiReads, close: () => void): ReviewService {
   return {
     headOf: (target, head) => headOf(port, target, head),
     review: async (target) => {
       const runId = runner.start({ target, brief: { checkoutRoot } });
       const outcome = await runner.outcome(runId);
-      return { runId, outcome, members: membersOf(runner.runtime.status(runId) ?? { stepResults: {} }) };
+      const ci = ciReads.get(ciKey(target));
+      return { runId, outcome, members: membersOf(runner.runtime.status(runId) ?? { stepResults: {} }), ...(ci !== undefined && { ci }) };
     },
     resolve: (fingerprint) => runner.resolve(fingerprint),
     close,
@@ -63,10 +67,12 @@ export function configuredReviewService(env: NodeJS.ProcessEnv, factoryDb: strin
   const port = githubPort(octokitWire({ client: sharedOctokit() }));
   const checkoutRoot = reviewCheckoutRoot();
   const roles = configuredRoles(shepherd.review);
-  const ports = reviewPorts({ shepherd, checkoutRoot, parking: sqliteParking(db), port });
+  const ciReads: CiReads = new Map();
+  const onCi = (target: ReviewTarget, ci: CiRead) => void ciReads.set(ciKey(target), ci);
+  const ports = reviewPorts({ shepherd, checkoutRoot, parking: sqliteParking(db), port, onCi });
   const policy = { plan: { panel: panelPolicyFor(roles), rules: classRulesFor(roles) }, timing: timingOf(shepherd.review) };
   const runner = reviewRunner({ ports, policy, runtime: { db, gates: new SqliteGateStore(db, { migrate: false }) } });
-  return serviceOver(runner, port, checkoutRoot, () => {
+  return serviceOver(runner, port, checkoutRoot, ciReads, () => {
     runner.runtime.shutdown();
     db.close();
   });
