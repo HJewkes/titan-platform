@@ -33,7 +33,7 @@ export {
 } from "./options.js";
 export { parkWorktree, type ParkOptions, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingObservation, type ParkLocalBackingCandidate, type ParkLocalBackingReader } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
-export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
+export { describeRefusal, inspectForRelease, type IgnoredFilesPolicy, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {
   DEFAULT_SETUP_TIMEOUT_MS,
   NPMRC_FILE,
