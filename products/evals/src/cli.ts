@@ -7,6 +7,7 @@ import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
 import { historyCommand } from "./history/command.js";
 import { defaultPolicy, selfTest } from "./private/exclusion.js";
 import { buildReviewPrCases } from "./review-pr/build-cases.js";
+import { exportImplementTaskCases, selectExportPool } from "./implement-task/export.js";
 import { localCloneGit } from "./review-pr/bundle.js";
 import { validateSpec } from "./validate.js";
 
@@ -157,6 +158,93 @@ function reviewPrCommand(onResult: (code: number) => void): Command {
   return new Command("review-pr").description("The review-pr unit's private case builder").addCommand(cases).exitOverride();
 }
 
+interface ImplementTaskExportFlags {
+  corpus: string;
+  repo: Map<string, string>;
+  reposRoot?: string;
+  owner: string;
+  activeWorkRoot: string;
+  out?: string;
+  classes: string;
+  perClass: number;
+  seed: string;
+  maxCandidates?: number;
+  dryRun?: boolean;
+  selftest?: boolean;
+}
+
+const positiveInt = (value: string): number => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new InvalidArgumentError("expected a positive integer");
+  return parsed;
+};
+
+function cloneLookup(flags: ImplementTaskExportFlags): (repo: string) => string | undefined {
+  return (repo) => {
+    const explicit = flags.repo.get(repo);
+    if (explicit !== undefined) return explicit;
+    const guess = flags.reposRoot === undefined ? undefined : join(flags.reposRoot, repo.slice(repo.lastIndexOf("/") + 1));
+    return guess !== undefined && existsSync(guess) ? guess : undefined;
+  };
+}
+
+async function runImplementTaskExport(flags: ImplementTaskExportFlags): Promise<void> {
+  const policy = defaultPolicy(flags.activeWorkRoot);
+  if (flags.selftest) {
+    const result = selfTest(policy);
+    console.error(JSON.stringify({ selftest: result }));
+    if (!result.ok) throw new Error("the private exclusion self-test failed; no case was written");
+  }
+  const options = {
+    corpus: flags.corpus,
+    outDir: flags.out ?? "",
+    policy,
+    cloneFor: cloneLookup(flags),
+    owner: flags.owner,
+    classes: flags.classes.split(",").map((name) => name.trim()).filter((name) => name !== ""),
+    perClass: flags.perClass,
+    seed: flags.seed,
+    maxCandidates: flags.maxCandidates,
+  };
+  if (flags.dryRun) {
+    const pool = await selectExportPool(options);
+    const counts = Object.fromEntries(Object.entries(pool.byClass).map(([cls, sources]) => [cls, sources.length]));
+    console.error(JSON.stringify({ dryRun: { counts, dropped: pool.dropped.length, skipped: pool.skipped, excluded: pool.excluded, reposWithoutClone: pool.reposWithoutClone } }));
+    return;
+  }
+  if (flags.out === undefined) throw new Error("--out is required unless --dry-run");
+  console.error(JSON.stringify(await exportImplementTaskCases(options)));
+}
+
+function implementTaskCommand(onResult: (code: number) => void): Command {
+  const exportCases = new Command("export")
+    .description("Screen and write private implement-task cases from the classified corpus")
+    .requiredOption("--corpus <jsonl>", "cases.v3.classified.jsonl; its sha256 goes in the manifest")
+    .option("--repo <owner/repo=dir>", "a local clone for a repo; repeatable", collectClone, new Map<string, string>())
+    .option("--repos-root <dir>", "find a repo with no --repo at <dir>/<repo name>")
+    .option("--owner <name>", "prefixes a bare corpus repo name", "HJewkes")
+    .requiredOption("--active-work-root <dir>", "the active-work root the private markers are read from")
+    .option("--out <dir>", "an empty dir outside every git work tree; required unless --dry-run")
+    .option("--classes <list>", "comma-separated task classes", "local-fix,feature-slice")
+    .option("--per-class <n>", "kept cases per class", positiveInt, 8)
+    .option("--seed <text>", "seeds the candidate order", "implement-task")
+    .option("--max-candidates <n>", "caps each class's pool after filtering", positiveInt)
+    .option("--dry-run", "select and filter only; no install, build or test")
+    .option("--selftest", "run the private exclusion self-test first and abort if it fails")
+    .exitOverride()
+    .action(async (flags: ImplementTaskExportFlags) => {
+      try {
+        await runImplementTaskExport(flags);
+        onResult(EXIT.OK);
+      } catch (error) {
+        if (error instanceof CommanderError) throw error;
+        console.error(`implement-task export: ${error instanceof Error ? error.message : String(error)}`);
+        onResult(EXIT.FAILURE);
+      }
+    });
+  return new Command("implement-task").description("The implement-task unit's private case builder").addCommand(exportCases).exitOverride();
+}
+
 export function buildProgram(onResult: (code: number) => void = () => undefined): Command {
   return new Command("titan-evals")
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
@@ -164,6 +252,7 @@ export function buildProgram(onResult: (code: number) => void = () => undefined)
     .addCommand(corpusCommand(onResult))
     .addCommand(historyCommand(onResult))
     .addCommand(reviewPrCommand(onResult))
+    .addCommand(implementTaskCommand(onResult))
     .exitOverride()
     .showHelpAfterError();
 }
