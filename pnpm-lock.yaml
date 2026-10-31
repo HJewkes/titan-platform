@@ -501,6 +501,9 @@ importers:
         specifier: ^4.12.18
         version: 4.13.7
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4

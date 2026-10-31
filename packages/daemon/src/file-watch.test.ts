@@ -30,11 +30,12 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * bug). Retrying keeps the assertion about our debounce rather than about OS delivery.
  */
 async function writeUntilChanged(dir: string, counter: { count: number }): Promise<void> {
+  const unchanged = (): boolean => counter.count === 0;
   const deadline = Date.now() + 10_000;
   for (let attempt = 0; counter.count === 0 && Date.now() < deadline; attempt++) {
     await writeFile(path.join(dir, `note-${attempt}.md`), "hello");
     const window = Date.now() + 300;
-    while (counter.count === 0 && Date.now() < window) await sleep(5);
+    while (unchanged() && Date.now() < window) await sleep(5);
   }
   if (counter.count === 0) throw new Error(`no change fired for ${dir}`);
 }

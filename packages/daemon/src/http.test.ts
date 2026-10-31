@@ -27,7 +27,8 @@ function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
 const CLI_HEADERS = { "content-type": "application/json", "x-titan-client": "test-cli" };
 
 async function postRpc(app: Hono, name: string, body?: string, init: RequestInit = {}): Promise<Response> {
-  const headers = { ...CLI_HEADERS, ...(init.headers as Record<string, string> | undefined) };
+  const headers = new Headers(CLI_HEADERS);
+  new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   return app.request(`/rpc/${name}`, { method: "POST", body, ...init, headers });
 }
 
@@ -47,10 +48,9 @@ describe("/health", () => {
   it("reports version, port, and the product's health extension", async () => {
     const app = buildApp({ health: () => ({ index: { pending: true } }) });
 
-    const body = (await (await app.request("/health")).json()) as Record<string, unknown>;
+    const body: unknown = await (await app.request("/health")).json();
 
-    expect(body).toMatchObject({ ok: true, version: "1.2.3", port: 7400, index: { pending: true } });
-    expect(typeof body.uptime_ms).toBe("number");
+    expect(body).toMatchObject({ ok: true, version: "1.2.3", port: 7400, index: { pending: true }, uptime_ms: expect.any(Number) });
   });
 });
 
@@ -88,9 +88,8 @@ describe("POST /rpc/:name", () => {
     const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: 42 }));
 
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { ok: boolean; code: number; error: string };
-    expect(body).toMatchObject({ ok: false, code: 65 });
-    expect(body.error).toContain("Invalid arguments");
+    const body: unknown = await res.json();
+    expect(body).toMatchObject({ ok: false, code: 65, error: expect.stringContaining("Invalid arguments") });
   });
 
   it("answers 500 with the thrown error's code", async () => {
