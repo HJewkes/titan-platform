@@ -68,6 +68,22 @@ describe("retireMerged", () => {
     expect(retire).toHaveBeenCalledWith("id-cc-impl");
   });
 
+  it("treats a closed, unmerged PR as done: parks on its head, then retires", async () => {
+    const closed: PrState = { ...merged, state: "CLOSED" };
+    const { port, park, retire } = setup({ readPr: async () => closed });
+
+    expect(await retireMerged(port)).toEqual([
+      {
+        action: "retired",
+        name: "cc-impl",
+        pr: "example/repo#7",
+        parked: true,
+      },
+    ]);
+    expect(park).toHaveBeenCalledWith("id-cc-impl", closed.head);
+    expect(retire).toHaveBeenCalledWith("id-cc-impl");
+  });
+
   it("reports nothing for an open PR, a failed read or a report with no PR", async () => {
     for (const over of [
       { readPr: async () => ({ ...merged, state: "OPEN" as const }) },

@@ -307,6 +307,21 @@ describe("retireFinished stale scope", () => {
   const exited = (name: string, ago: number) =>
     agent(name, { exitedAt: now - ago });
 
+  it.each(["", "  "])(
+    "treats a blank caller or spawner (%j) as absent",
+    async (blank) => {
+      const nameless = exited(blank, STALE_AFTER_MS);
+      nameless.spawnedBy = blank;
+
+      const out = await retireFinished(
+        port([nameless], [], { now: () => now }).port,
+        { stale: true, caller: blank, spawner: blank, dryRun: true }
+      );
+
+      expect(out.plan).toEqual([{ name: blank, action: "retire" }]);
+    }
+  );
+
   it("takes only agents exited over a day ago, machine-wide", async () => {
     const roster = [
       exited("old", STALE_AFTER_MS),
