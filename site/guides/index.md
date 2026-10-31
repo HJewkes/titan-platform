@@ -48,6 +48,8 @@ how it fails.
   pairs from transcripts and score candidate retrievers.
 - **[Code report](/guides/codewatch)** — `apps/codewatch`: index a repo, browse the
   report live, or export one HTML file.
+- **[active-work](/guides/active-work)** — `products/active-work`: the CLI, MCP and daemon
+  surfaces, the tarball smoke test, and the host cutover and rollback script.
 - **[Matrix hub](/guides/hub)** — `deploy/hub`: the Tuwunel and Caddy compose stack the
   human queue runs on.
 
