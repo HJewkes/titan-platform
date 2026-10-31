@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stopped head counts as merged whether or not its run merged",
+      "file": "products/factory/src/shepherd/review-shadow-stats.ts",
+      "find": "addHead(row, shadows, mergedAt(run) !== undefined);",
+      "replace": "addHead(row, shadows, true);",
+      "kills": ["reviewShadowStats counts a loop's early fixer and a stopped head that then merged, per repo and ISO week"]
+    }
+  ]
+}

@@ -32,6 +32,7 @@ import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shep
 import { movedPastOnList, openHeadOnPort } from "./shepherd/review-queue.js";
 import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
 import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
+import { workflowModeOf } from "./shepherd/review-shadow.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { VersionRegistry } from "./shepherd/release-follow.js";
@@ -262,7 +263,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   const under = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, fallbackConfigDirs, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }) };
+  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
   return withHoldAdversary(wiring, holdAdversary(review, config, under));
 }
 

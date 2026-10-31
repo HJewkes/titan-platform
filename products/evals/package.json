@@ -42,6 +42,7 @@
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
+    "@titan-design/review-workflow": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
