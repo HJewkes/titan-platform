@@ -52,8 +52,11 @@ describe("planRegisterEdits: sentence shape", () => {
   });
 
   it("plans a shape that lands the script inside both sentence bands, under the vetted cap", () => {
-    const { directives, projected } = plan(choppy);
-    const after = shapeAfter(choppy, directives);
+    // Beats wordy enough for three sentences or more: a two-sentence beat under the 24-word plan cannot reach the CV floor.
+    const spread = script(Array.from({ length: 24 }, (_, i) => Array.from({ length: 6 + (i % 7) }, (_, j) => CHOPPY[(i + j) % CHOPPY.length]).join(" ")));
+
+    const { directives, projected } = plan(spread);
+    const after = shapeAfter(spread, directives);
 
     expect(after.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
     expect(after.cv).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-cv"].min!);
