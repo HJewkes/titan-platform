@@ -142,13 +142,18 @@ async function runUnit(unit, label, run, log) {
   return code;
 }
 
-/** Runs every unit, `limit` at a time and even after one fails, and returns the worst exit code. */
+/**
+ * Runs every unit, `limit` at a time and even after one fails, and returns the worst exit code. `worst` is read only
+ * after the await: read before it, a clean unit that finished later overwrote a failure, and a stale baseline passed
+ * PR CI and turned main red (TP-4651).
+ */
 export async function runUnits(units, { run, log, limit }) {
   const queue = units.entries();
   let worst = 0;
   const worker = async () => {
     for (const [i, unit] of queue) {
-      worst = Math.max(worst, await runUnit(unit, `lint chunk ${i + 1}/${units.length}`, run, log));
+      const code = await runUnit(unit, `lint chunk ${i + 1}/${units.length}`, run, log);
+      worst = Math.max(worst, code);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, units.length) }, worker));
