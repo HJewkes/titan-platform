@@ -117,6 +117,11 @@ const [runs, statuses] = await Promise.all([port.checkRuns("o/r", sha), port.com
 ciVerdict({ rules, runs, statuses }); // { verdict: "red", reasons: ["lint=failure"] }
 ```
 
+For a repo whose CI posts a commit status instead of running Actions, `statusCheckRuns(statuses,
+sha, contexts)` stands each named context in as a GitHub Actions check run, so `headCheckFindings`
+and every judge built on check runs counts it: `success` passes, `pending` is still running, any
+other state is red, and a context with no status is a queued run that holds the head.
+
 ```
 $ titan-gh ci-wait o/r 1a2b3c4 --timeout 600
 GREEN o/r 1a2b3c4d...   # exit 0; RED exits 1, TIMEOUT exits 2, a usage error or unknown sha exits 64
