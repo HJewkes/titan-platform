@@ -13,8 +13,8 @@ function formatFinding(finding: Finding): string {
   return `${finding.location} ${finding.rule}${term}${kind}`;
 }
 
-function formatCounts(counts: RuleCounts, rules: readonly string[]): string {
-  return rules.map((rule) => `${rule} ${counts[rule as keyof RuleCounts]}`).join(", ");
+function formatCounts(counts: RuleCounts, rules: readonly (keyof RuleCounts)[]): string {
+  return rules.map((rule) => `${rule} ${counts[rule]}`).join(", ");
 }
 
 /**

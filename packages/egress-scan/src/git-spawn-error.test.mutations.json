@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an over-buffer spawn error no longer reads as too large",
+      "file": "packages/egress-scan/src/git.ts",
+      "find": "?.code === \"ENOBUFS\";",
+      "replace": "?.code === \"E2BIG\";",
+      "kills": [
+        "a spawn error while reading patch text reports an over-buffer commit as too large",
+        "a spawn error while reading patch text reports an over-buffer tree as too large"
+      ]
+    },
+    {
+      "name": "any spawn error reads as too large",
+      "file": "packages/egress-scan/src/git.ts",
+      "find": "?.code === \"ENOBUFS\";",
+      "replace": "?.message !== undefined;",
+      "kills": [
+        "a spawn error while reading patch text still fails, but not as too large, on another errno code",
+        "a spawn error while reading patch text still fails, but not as too large, on no code"
+      ]
+    },
+    {
+      "name": "the over-buffer code matches in any case",
+      "file": "packages/egress-scan/src/git.ts",
+      "find": "?.code === \"ENOBUFS\";",
+      "replace": "?.code?.toUpperCase() === \"ENOBUFS\";",
+      "kills": [
+        "a spawn error while reading patch text still fails, but not as too large, on a code in the wrong case"
+      ]
+    }
+  ]
+}
