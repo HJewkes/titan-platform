@@ -31,7 +31,7 @@ const LIVE_EXECUTION_PHASES = EXECUTION_PHASES.filter(phase => !isTerminalExecut
 
 /** `phase IN` lets SQLite use the phase index; `NOT IN` scans every finished execution. */
 export function recoverableSql(snapshot: string): string {
-  return `SELECT record FROM ${snapshot}
+  return `SELECT execution_id,record FROM ${snapshot}
       WHERE phase IN (${LIVE_EXECUTION_PHASES.map(phase => `'${phase}'`).join(",")})
       ORDER BY prepared_at,execution_id LIMIT ?`;
 }
@@ -41,6 +41,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   private readonly snapshot: string;
   private readonly eventTable: string;
   private readonly now: () => string;
+  private readonly warn: (line: string) => void;
   private readonly recordSchema: z.ZodType<ExecutionRecord<TResult>>;
   private readonly transitionSchema: z.ZodType<ExecutionTransition<TResult>>;
 
@@ -49,6 +50,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
     this.snapshot = quoteIdent(table);
     this.eventTable = quoteIdent(`${table}_event`);
     this.now = options.now ?? nowIso;
+    this.warn = options.warn ?? (line => { console.warn(line); });
     // TResult is erased in storage: the ledger cannot validate a result it has no schema for, so the caller owns that contract.
     const result = z.unknown() as z.ZodType<TResult>;
     this.recordSchema = executionRecordSchema(result);
@@ -66,7 +68,17 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
   listRecoverable(limit = 100): ExecutionRecord<TResult>[] {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError("limit must be a positive safe integer");
     const rows = this.db.prepare(recoverableSql(this.snapshot)).all(limit);
-    return rows.map(row => this.parseRecord(textColumn(row, "record")));
+    return rows.flatMap(row => this.recoverableRecord(row));
+  }
+
+  /** Recovery must reach every other execution, so one unreadable row is logged and skipped rather than thrown. */
+  private recoverableRecord(row: unknown): ExecutionRecord<TResult>[] {
+    try { return [this.parseRecord(textColumn(row, "record"))]; }
+    catch (error) {
+      const id = row !== null && typeof row === "object" ? String(Reflect.get(row, "execution_id")) : "unknown";
+      this.warn(`skipping unreadable execution ${id} during recovery: ${message(error).split("\n")[0]}`);
+      return [];
+    }
   }
 
   events(executionId: string): ExecutionTransition<TResult>[] {

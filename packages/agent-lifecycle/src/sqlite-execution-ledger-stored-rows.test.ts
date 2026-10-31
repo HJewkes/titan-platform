@@ -74,4 +74,17 @@ describe("stored ledger rows", () => {
       expect(ledger.get("execution")).toMatchObject({ futureField: { nested: true }, phase: "prepared" });
     } finally { db.close(); }
   });
+
+  it("lists the good recoverable executions and logs one line for a malformed row", () => {
+    const { db, ledger } = preparedLedger();
+    const lines: string[] = [];
+    try {
+      expect(ledger.apply({ ...prepare, executionId: "second", eventId: "prepare-2", requestKey: "request-2", execution: { executionId: "second" } })).toMatchObject({ ok: true });
+      overwriteRecord(db, { ...storedRecord(db), phase: "levitating" });
+      const tolerant = new SqliteExecutionLedger<string>(db, { now: () => start, warn: line => lines.push(line) });
+      expect(tolerant.listRecoverable().map(record => record.execution.executionId)).toEqual(["second"]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatch(/skipping unreadable execution execution during recovery/);
+    } finally { db.close(); }
+  });
 });
