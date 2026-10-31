@@ -130,7 +130,7 @@ describe("titan-evals", () => {
     scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
     writeFileSync(join(scratch, "corpus.jsonl"), "");
     const out = join(scratch, "out");
-    vi.spyOn(exclusion, "selfTest").mockReturnValue({ ok: false } as ReturnType<typeof exclusion.selfTest>);
+    vi.spyOn(exclusion, "selfTest").mockReturnValue({ ok: false, survivors: [], assertMissed: [], privateInitiatives: 0 });
     const errors: string[] = [];
     vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
 
