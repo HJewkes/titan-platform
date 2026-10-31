@@ -43,26 +43,67 @@ function candidates(text: string): { terms: string[]; ids: string[] } {
 }
 
 /**
- * The `limit` rarest terms. Ties keep first appearance, so the same text
- * always derives the same query.
+ * FTS5 computes bm25 for every span a query matches before a class filter can
+ * apply, so a scoped query costs what its terms match across the whole corpus.
+ * On a 2.36M-span graph, OR-ing words like `agent` (DF 495k) into a note query
+ * took 25 bootstrap queries to 23.6 s; keeping only terms under ~1% of the
+ * corpus took them to 1.5 s (TP-1960). Those common words carry almost no bm25
+ * weight anyway, which is why dropping them leaves the ranking nearly intact.
  */
-function rarest(terms: string[], df: DocumentFrequency, limit: number): string[] {
-  if (terms.length <= limit) return terms;
-  const counts = new Map(terms.map((term) => [term, df(term)]));
+export const DF_CAP_FRACTION = 0.01;
+
+/** Below this many spans per term nothing is slow, so a small graph keeps every term. */
+export const DF_CAP_FLOOR = 2000;
+
+/** Fewer terms than this and a query is too narrow to rank; the rarest are kept over the cap. */
+export const MIN_TERMS = 3;
+
+/** The most spans a query term may match, for a corpus of `spans` spans. */
+export function documentFrequencyCap(spans: number): number {
+  return Math.max(DF_CAP_FLOOR, Math.floor(spans * DF_CAP_FRACTION));
+}
+
+export interface TermSelection {
+  /** Most terms to keep. */
+  limit?: number;
+  /** Drop terms matching more spans than this, unless fewer than `MIN_TERMS` would remain. */
+  maxDf?: number;
+}
+
+/** Ties keep first appearance, so the same text always derives the same query. */
+function byRarity(terms: string[], counts: Map<string, number>): string[] {
   return terms
     .map((term, index) => ({ term, index }))
     .sort((a, b) => counts.get(a.term)! - counts.get(b.term)! || a.index - b.index)
-    .slice(0, limit)
     .map((entry) => entry.term);
+}
+
+/**
+ * The rarest terms under the frequency cap, at most `limit` of them.
+ *
+ * When every term is common, the `MIN_TERMS` rarest are kept regardless: a
+ * slower query beats an empty one, and the rarest common words still rank.
+ */
+export function selectTerms(
+  terms: string[],
+  df: DocumentFrequency,
+  { limit = Number.POSITIVE_INFINITY, maxDf = Number.POSITIVE_INFINITY }: TermSelection = {},
+): string[] {
+  if (terms.length <= limit && maxDf === Number.POSITIVE_INFINITY) return terms;
+  const counts = new Map(terms.map((term) => [term, df(term)]));
+  const ordered = byRarity(terms, counts);
+  const underCap = ordered.filter((term) => counts.get(term)! <= maxDf);
+  const kept = underCap.length >= Math.min(MIN_TERMS, terms.length) ? underCap : ordered.slice(0, MIN_TERMS);
+  return kept.slice(0, limit);
 }
 
 export function deriveQuery(
   text: string,
   df: DocumentFrequency,
-  limit = QUERY_TERMS,
+  { limit = QUERY_TERMS, maxDf = Number.POSITIVE_INFINITY }: TermSelection = {},
 ): DerivedQuery {
   const { terms, ids } = candidates(text);
   // Ids are always kept: the `mentions` relation makes them exact hits.
-  const picked = [...rarest(terms, df, limit), ...ids];
+  const picked = [...selectTerms(terms, df, { limit, maxDf }), ...ids];
   return { terms: picked, expression: orExpression(picked) };
 }

@@ -1,6 +1,8 @@
 import { fuseByRRF } from '@titan-design/retrieval';
 import type { LoadedNote } from '../notes/note-file.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
+import { selectTerms } from '../search/derive-query.js';
+import { graphTermStatistics } from '../search/document-frequency.js';
 import { meaningfulTerms, orExpression } from '../search/terms.js';
 
 /**
@@ -111,7 +113,8 @@ export function graphNoteRelevance(dbPath?: string): NoteRelevance {
   return (terms) => {
     const graph = openGraph(dbPath ?? defaultGraphPath());
     try {
-      const expression = orExpression(terms);
+      const { df, maxDf } = graphTermStatistics(graph);
+      const expression = orExpression(selectTerms(terms, df, { maxDf }));
       const titleOf = graph.db.prepare('SELECT title FROM note WHERE note_ref = ? LIMIT 1');
       const seen = new Set<string>();
       const hits: NoteHit[] = [];
@@ -119,7 +122,9 @@ export function graphNoteRelevance(dbPath?: string): NoteRelevance {
         if (seen.has(span.ownerRef)) continue;
         seen.add(span.ownerRef);
         const row = titleOf.get(span.ownerRef) as { title: string } | undefined;
-        // SQLite's bm25() is negative, with better matches more negative.
+        // SQLite's bm25() is negative, with better matches more negative. Divided by
+        // every subject term, not only the capped ones the floor was never measured on:
+        // the dropped common terms carried little bm25, so the total barely moves.
         hits.push({
           ref: span.ownerRef,
           scorePerTerm: -span.rank / terms.length,
