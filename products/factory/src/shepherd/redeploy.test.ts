@@ -97,7 +97,7 @@ describe("sh-redeploy after main CI", () => {
 
     const mergeSha = w.fake.pr(1).mergeSha;
     expect(fake.calls).toEqual([]);
-    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, queued: true, detail: `queued ${mergeSha}; deploys after 15 min with no newer merge, at most 90 min after the first` } } }]);
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, queued: true, detail: `queued ${mergeSha}; deploys after 15 min with no newer merge, at most 45 min after the first` } } }]);
     expect(readWanted("/state", store)).toEqual({ sha: mergeSha, firstAt: AT.toISOString(), lastAt: AT.toISOString() });
   });
 

@@ -48,18 +48,18 @@ describe("serve's deploy block reads origin/main and the pacer's held target", (
 
     await watch.tick();
 
-    expect(watch.status()).toMatchObject({ behind: 1, behindMinutes: 95, alarm: true, capAt: new Date(NOW - 5 * MINUTE).toISOString() });
+    expect(watch.status()).toMatchObject({ behind: 1, behindMinutes: 95, alarm: true, capAt: new Date(NOW - 50 * MINUTE).toISOString() });
   });
 
   it("holds the alarm for the pacer's cap when a commit merged in an earlier target's quiet window makes main 95 min ahead", async () => {
-    const firstAt = new Date(NOW - 60 * MINUTE).toISOString();
+    const firstAt = new Date(NOW - 30 * MINUTE).toISOString();
     const watch = deployWatch(ports(commitsAgo(95, 30), { sha: WANTED, firstAt }));
 
     await watch.tick();
 
     const status = watch.status()!;
-    expect(status).toMatchObject({ originLag: { merges: 2, minutes: 95 }, alarm: false, capAt: new Date(NOW + 30 * MINUTE).toISOString() });
-    expect(deploySummary(status)).toContain("ahead (95 min), cap 20:45Z");
+    expect(status).toMatchObject({ originLag: { merges: 2, minutes: 95 }, alarm: false, capAt: new Date(NOW + 15 * MINUTE).toISOString() });
+    expect(deploySummary(status)).toContain("ahead (95 min), cap 20:30Z");
     expect(deploySummary(status)).not.toContain("ALARM");
   });
 
