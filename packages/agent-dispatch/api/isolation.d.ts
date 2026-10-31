@@ -1,7 +1,8 @@
-import { WorktreeRecord, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety } from '@titan-design/worktree';
+import { WorktreeRecord, GitRunner, ParkIgnoredFilesPolicy, WorktreeAddRunner, SetupRunner, ReleaseProof, WorktreeReleaseSafety, GitLister, SweptWorktree } from '@titan-design/worktree';
+export { GitLister, SweepStatus, SweptWorktree } from '@titan-design/worktree';
 import { h as IsolationName } from '../schema.js';
 import { A as AgentIdentity } from '../types.js';
-import { J as JournalRow } from '../ports.js';
+import { J as JournalRow, N as NamePresence } from '../ports.js';
 
 /**
  * A peer an isolation strategy is allowed to reason about: an agent that is both
@@ -253,6 +254,306 @@ declare const parkable: (target: ParkTarget | undefined) => target is ParkTarget
 /** `tracked` means this broker still watches the agent's process, which a detached agent can have. */
 declare function liveBlocker(agent: AgentIdentity, tracked: boolean): string | undefined;
 
+/** Uncommitted or unpushed work in the agent's tree, or in its branch when the tree is gone. */
+declare function workBlocker(target: ParkTarget, git?: GitRunner): Promise<string | undefined>;
+
+/**
+ * CC-1325: the bulk finished retire keeps an implementer or reviewer while a PR it worked on is open,
+ * Shepherd-registered or not. Shepherd resumes a non-retired implementer warm and starts a cold
+ * successor for a retired one, and a seat re-asks a reviewer by name. Overrides CC-950 for the bulk path only.
+ */
+interface HeldBranch {
+    gitRoot: string;
+    branch: string;
+}
+declare function reviewedAgentName(name: string): string | undefined;
+/** Every branch whose open PR holds `agent`; a branch with no repo to ask is dropped. */
+declare function heldBranches(agent: AgentIdentity, target: ParkTarget | undefined, roster: readonly AgentIdentity[], events: readonly JournalRow[]): HeldBranch[];
+
+/**
+ * CC-323: the skip rules for `agent retire --finished`. Every rule errs towards
+ * skipping: a wrong skip costs a line of output, a wrong retire can lose work.
+ * The retire itself still goes through the host's retire, so its refusals apply too.
+ * CC-1325: it also keeps implementers, Shepherd-registered ones included, and reviewers while their PR is open.
+ */
+interface RetireScope {
+    spawner?: string;
+    prefix?: string;
+    /**
+     * CC-1465: exited over STALE_AFTER_MS ago with no worktree left on disk, machine-wide unless the
+     * other fields narrow it; at most STALE_RETIRE_CAP retires a call. The age and cap are the host's.
+     */
+    stale?: boolean;
+}
+declare const STALE_AFTER_MS: number;
+/** One call's retires, so a backlog drains over passes instead of one long burst under the write lock. */
+declare const STALE_RETIRE_CAP = 200;
+/** One agent in a bulk retire's plan: retired, or skipped for `reason`. */
+interface RetirePlanEntry {
+    name: string;
+    action: "retire" | "skip";
+    reason?: string;
+    /** CC-408: set, with `duplicate`, when another unretired row holds the same name. */
+    agentId?: string;
+    duplicate?: true;
+}
+/** What `retire` answered for one planned agent; `reason` on success is its caveat. */
+interface RetireResult {
+    name: string;
+    ok: boolean;
+    reason?: string;
+}
+/**
+ * CC-904, CC-950 and CC-1325: the reads that keep a finished agent whose PR still needs it. The host
+ * implements them over Shepherd and `gh` and memoizes them for a whole plan, since each read spawns a
+ * process. Each answers why the agent must stay, or undefined; a read that fails answers a skip.
+ */
+interface FinishedHolds {
+    /** A Shepherd run that names the agent or its branch, or an open PR no run has taken. */
+    shepherd(agent: AgentIdentity, target: ParkTarget | undefined): Promise<string | undefined>;
+    /** An open PR on any of the branches that hold the agent. */
+    openPr(candidates: readonly HeldBranch[]): Promise<string | undefined>;
+}
+/** What the bulk form reads from, and retires through, the host. */
+interface FinishedRetirePort {
+    roster(): AgentIdentity[];
+    events(): readonly JournalRow[];
+    /** This broker still watches the agent's process. */
+    tracked(agentId: string): boolean;
+    parking(agentId: string): boolean;
+    current(agentId: string): AgentIdentity | undefined;
+    /** CC-408: liveness from the connected process, since a registry row can say `exited` while it runs. */
+    presence(agent: AgentIdentity): NamePresence;
+    /** CC-1138: why the caller may not retire this agent, keyed on its spawn row's parent id; undefined when it may. */
+    ownership?(agent: AgentIdentity): string | undefined;
+    /** CC-408: by id, so a stale row never resolves to the newest holder of its name. */
+    retire(agentId: string): Promise<{
+        ok: boolean;
+        reason?: string;
+    }>;
+    git?: GitRunner;
+    /** CC-904: the open-PR and Shepherd reads; the host always passes them. */
+    holds?: FinishedHolds;
+    /** Epoch ms the stale scope measures exit age against; defaults to the wall clock. */
+    now?: () => number;
+}
+interface FinishedRetireOutcome {
+    ok: boolean;
+    reason?: string;
+    plan: RetirePlanEntry[];
+    results: RetireResult[];
+}
+declare const SCOPE_REQUIRED = "name --spawner or --prefix; --finished alone would sweep every agent on the machine";
+/** Plan every in-scope agent, then retire the planned ones one at a time; one failure never stops the rest. */
+declare function retireFinished(port: FinishedRetirePort, req: RetireScope & {
+    dryRun?: boolean;
+    caller?: string;
+}): Promise<FinishedRetireOutcome>;
+/** A scope with no field would sweep every agent on the machine, so it matches nothing; `stale` narrows by age instead. */
+declare function inScope(agent: AgentIdentity, scope: RetireScope): boolean;
+declare function connectedBlocker(port: Pick<FinishedRetirePort, "presence">, agent: AgentIdentity): string | undefined;
+
+/**
+ * CC-921: when an opted-in spawner's agent exits after a final `Status:` or `Verdict:`
+ * report, the broker parks its clean, pushed tree and retires it, so seats stop spending
+ * calls on closeout. The park keeps the branch and the retire keeps it too: nothing on this
+ * path deletes a branch. Every check errs towards keeping: a kept tree costs a manual
+ * retire, a wrong retire costs work or a Shepherd fix round.
+ */
+type Outcome$1 = {
+    ok: boolean;
+    reason?: string;
+};
+interface ReportRetirePort {
+    current(agentId: string): AgentIdentity | undefined;
+    roster(): AgentIdentity[];
+    events(): readonly JournalRow[];
+    /** Whether the spawner opted in through `autoRetire.onFinalReport`. */
+    enabledFor(spawner: string): boolean;
+    /** The text of the agent's last report to its spawner in this run, if any. */
+    lastReport(agent: AgentIdentity): string | undefined;
+    /** This broker still watches the agent's process. */
+    tracked(agentId: string): boolean;
+    holds: Pick<FinishedHolds, "shepherd">;
+    /** `agent park` by id: refuses a live-cwd, dirty, off-branch or unpushed tree, and keeps the branch. */
+    park(agentId: string): Promise<Outcome$1>;
+    /** Retire by id with a branch-keeping release. */
+    retire(agentId: string): Promise<Outcome$1>;
+}
+type ReportRetireResult = {
+    action: "off";
+} | {
+    action: "kept";
+    name: string;
+    reason: string;
+} | {
+    action: "retired";
+    name: string;
+    parked: boolean;
+    reason?: string;
+};
+/** Never rejects: a failure is a kept agent with the reason. */
+declare function retireAtReport(port: ReportRetirePort, agentId: string): Promise<ReportRetireResult>;
+declare const NOT_FINISHED = "no final Status: DONE, DONE_WITH_CONCERNS or Verdict report";
+declare const isFinishedReport: (text: string) => boolean;
+
+/**
+ * CC-1039: a spawned non-reviewer agent's tree is parked when the agent exits normally, without
+ * waiting for CI and without CC-921's opt-in, because a clean tree whose HEAD origin holds loses
+ * nothing: the park keeps the branch and `agent resume` re-creates the tree for a fix round. The
+ * `agent park` rules still decide, so a dirty, unpushed or occupied tree stays. A tree a burndown
+ * claim still reads stays too, since parking it would stall the claim.
+ *
+ * CC-976: a reviewer that exited on its final Verdict has its tree parked even when its spawner
+ * never opted into CC-921, because a review tree holds no work. The agent is not retired.
+ * Shepherd's reviewers never message their spawner; Shepherd reads the Verdict from the last
+ * assistant turn of the transcript, often after a lead-in paragraph. So a Verdict line anywhere
+ * in either the last report or the final assistant text counts.
+ */
+interface ParkPort {
+    current(agentId: string): AgentIdentity | undefined;
+    events(): readonly JournalRow[];
+    /** `agent park` by id: refuses a live-cwd, dirty, off-branch or unpushed tree, and keeps the branch. */
+    park(agentId: string): Promise<{
+        ok: boolean;
+        reason?: string;
+    }>;
+}
+interface ImplementerParkPort extends ParkPort {
+    /** `autoPark.onExit`, read per exit. */
+    enabled(): boolean;
+    /** Why a held burndown claim still reads `tree`, or undefined. */
+    treeHold(tree: string): string | undefined;
+}
+interface ReviewerParkPort extends ParkPort {
+    /** The agent's last report to its spawner in this run, if any. */
+    lastReport(agent: AgentIdentity): string | undefined;
+    /** The final assistant text of the agent's transcript, if any. */
+    finalText(agent: AgentIdentity): string | undefined;
+}
+type ParkAtExitResult = {
+    action: "off";
+} | {
+    action: "kept";
+    name: string;
+    reason: string;
+} | {
+    action: "parked";
+    name: string;
+    reason?: string;
+};
+declare const NO_VERDICT = "no final Verdict report";
+declare const isVerdictText: (text: string) => boolean;
+declare function parkImplementerAtExit(port: ImplementerParkPort, agentId: string): Promise<ParkAtExitResult>;
+declare function parkReviewerAtReport(port: ReviewerParkPort, agentId: string): Promise<ParkAtExitResult>;
+
+/**
+ * CC-1678: one PR's state for the broker's merged-PR retire. The read is async, since a blocking
+ * runner would stall every session, and the host decides which budget it spends: `refusal` lets a
+ * cooling lane turn the read away before it reaches GitHub, and `after` is where each call is logged
+ * and a rate limit starts a cooldown.
+ */
+/** A PR's head at the time it was read; what a park backs an agent's branch with. */
+interface PrHead {
+    number: number;
+    headSha: string;
+}
+interface PrState {
+    state: "OPEN" | "MERGED" | "CLOSED";
+    head: PrHead;
+}
+/** Rejects when the state cannot be told, which the sweep treats as a kept agent. */
+type PrStateReader = (pr: string) => Promise<PrState>;
+interface GhOutcome {
+    exitCode: number;
+    stdout: string;
+}
+interface PrStateDeps {
+    /** Why a `gh` read must not start now, or undefined. */
+    refusal(args: readonly string[]): Promise<string | undefined>;
+    gh(args: readonly string[]): Promise<GhOutcome>;
+    /** Runs after every call that started, whatever its exit code. */
+    after(args: readonly string[], outcome: GhOutcome): Promise<void>;
+}
+interface PrTarget {
+    repo: string;
+    pr: number;
+}
+/** `https://github.com/<owner>/<repo>/pull/<n>` or `<owner>/<repo>#<n>`; anything else is not a PR reference. */
+declare function prTarget(pr: string | undefined): PrTarget | undefined;
+/** `PR:` as `owner/repo#n`; a GitHub pull URL is rewritten to that form, and anything else is not a PR. */
+declare function reportPr(report: string): string | null;
+declare function parsePrState(stdout: string, number: number): PrState;
+declare const prStateReader: (deps: PrStateDeps) => PrStateReader;
+
+/**
+ * CC-1678: coordinators retired each exited worker by hand once its PR landed, so the broker does it.
+ * The PR is the one the worker's last report names. Every check errs towards keeping, as CC-921's
+ * do: a kept agent costs a later pass, a wrong retire costs work. Park keeps the branch and refuses
+ * unpushed work, with the PR's head as backing because a merge may have deleted its branch on origin.
+ */
+type Outcome = {
+    ok: boolean;
+    reason?: string;
+};
+declare const MERGED_RETIRE_EVERY_MS: number;
+/** A backlog drains over passes, since an answer already held costs nothing. */
+declare const PR_READS_PER_PASS = 20;
+/** An open PR, or a failed read, is asked about again after this; a terminal state never is. */
+declare const PR_REREAD_MS: number;
+type PrRead = (pr: string) => Promise<PrState | undefined>;
+interface MergedRetirePort extends Pick<FinishedRetirePort, "roster" | "events" | "current" | "tracked" | "parking" | "presence"> {
+    /** The text of the agent's last report to its spawner in this run, if any. */
+    lastReport(agent: AgentIdentity): string | undefined;
+    /** Why a held burndown claim still reads `tree`, or undefined. */
+    treeHold(tree: string): string | undefined;
+    holds: FinishedHolds;
+    readPr: PrRead;
+    /** `agent park` by id, with the process check on and `head` as backing. */
+    park(agentId: string, head: PrHead): Promise<Outcome>;
+    /** Retire by id with a branch-keeping release. */
+    retire(agentId: string): Promise<Outcome>;
+}
+type MergedRetireResult = {
+    action: "kept";
+    name: string;
+    pr: string;
+    reason: string;
+} | {
+    action: "retired";
+    name: string;
+    pr: string;
+    parked: boolean;
+};
+declare const isWorkerProfile: (profile: string) => boolean;
+/** A pass's reader over answers that outlive it, so one PR costs one read however many agents name it. */
+declare function passPrReads(read: PrStateReader, clock?: () => number): () => PrRead;
+/** One sweep; retires one at a time, and one failure never stops the rest. An open PR reports nothing. */
+declare function retireMerged(port: MergedRetirePort): Promise<MergedRetireResult[]>;
+/** Runs `pass` on an unref'd interval, never two at once. Returns its cancel. */
+declare function startMergedRetireSweep(pass: () => Promise<void>, everyMs?: number): () => void;
+
+/**
+ * CC-233: a reviewer profile denies Write and Edit but allows Bash, and shell syntax has too many
+ * write forms (`sed -i`, redirects, `git apply`) for a deny pattern to close. So the supervisor
+ * detects instead: it fingerprints the reviewed tree before launch and again at exit, and tells
+ * the spawner which paths changed. Nothing is reverted; the spawner decides.
+ */
+declare const REVIEWER_TREE_CHANGED = "reviewer-tree-changed";
+/** Each dirty path's status and content hash, plus HEAD, so a commit by the reviewer counts too. */
+interface TreeFingerprint {
+    head: string;
+    entries: Map<string, string>;
+}
+/** Raw stdout, or null when git fails. Untrimmed: porcelain's first column may be a space. */
+type RawGitRunner = (args: readonly string[], cwd: string) => Promise<string | null>;
+declare const runRawGit: RawGitRunner;
+/** Read-only. Undefined when `cwd` is not a git work tree. */
+declare function treeFingerprint(cwd: string, git?: RawGitRunner): Promise<TreeFingerprint | undefined>;
+/** Paths whose status or content differ between the two reads; `HEAD` when the commit moved. */
+declare function treeChange(before: TreeFingerprint, after: TreeFingerprint): string[];
+declare function reviewerDirtyText(name: string, cwd: string, paths: readonly string[]): string;
+
 /** `changes` is plain uncommitted or untracked work; `other` is a failed read or an ignored file kept. */
 interface UnsavedWork {
     kind: "changes" | "other";
@@ -321,7 +622,163 @@ declare function recreateWorktree(record: WorktreeRecord, opts?: WorktreeStrateg
 declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof, ghTimeoutMs?: number): Promise<WorktreeReleaseSafety>;
 declare function createWorktreeStrategy(opts?: WorktreeStrategyOptions): IsolationStrategy;
 
-export { type Allocation, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type HeldTree, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, type LivePeer, type OwnershipConflict, type OwnershipRule, type ParkTarget, type PoolBudgets, type PoolUse, type ReleaseOptions, type TenancyVerdict, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeStrategyOptions, adopterBlocker, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, getAgentOwnershipSummary, getOwner, getOwners, heldBy, inspectForRelease, isAtOrUnder, isReviewerSpawn, isReviewerTreeName, isWarning, liveBlocker, matchPattern, mergeAllocations, noneStrategy, occupantOf, parkBlocker, parkTenancyBlocker, parkable, reattachWorktree, recordRefusal, recreateWorktree, refusalOf, refusalsIn, tenantsOf, toolsetStrategy, treeHoldersOf, unsavedWork, warn, worktreeTenancy };
+interface MergedPr {
+    number: number;
+    headSha: string;
+}
+/** Merged PRs whose head was `branch`; rejects when it cannot tell, which park treats as a refusal. */
+type MergedPrReader = (gitRoot: string, branch: string) => Promise<MergedPr[]>;
+interface MergedPrGhOutcome {
+    exitCode: number;
+    stdout: string;
+}
+/** Runs `gh` in `cwd`. A host whose `gh` needs more than `minimalEnv` (a token, a shim, a PATH entry) passes its own. */
+type MergedPrGh = (args: readonly string[], cwd: string) => Promise<MergedPrGhOutcome>;
+declare function parseMergedPrs(stdout: string): MergedPr[];
+/** A repo with no origin has nowhere to hold a PR; otherwise `gh` answers, and its failure rejects. */
+declare const mergedPrReader: (gh: MergedPrGh) => MergedPrReader;
+declare const readMergedPrs: MergedPrReader;
+
+/**
+ * CC-282: park a finished agent's worktree. The tree is removed and the branch kept, so
+ * `agent resume` re-creates it at the same path (CC-140). Parking never deletes a branch: in a
+ * repo with no remote the local branch is the only copy of the work.
+ */
+/** A process and its working directory. */
+interface CwdProcess {
+    pid: number;
+    cwd: string;
+}
+/** Lists every process's cwd; throws when it cannot, which parking treats as a refusal. */
+type CwdLister = () => Promise<CwdProcess[]>;
+/** Runs `lsof`, answering its exit status; rejects only when it could not run to an exit. */
+type LsofRunner = () => Promise<{
+    stdout: string;
+    status: number;
+}>;
+/**
+ * `lsof -Fpn` prints `p<pid>` then `n<path>` per process. It exits 1 with no output when nothing
+ * matches, and also when warnings accompany partial output, which still lists real processes.
+ */
+declare const lsofCwdsWith: (run: LsofRunner) => CwdLister;
+declare const lsofCwds: CwdLister;
+type ParkTreeResult = {
+    ok: true;
+    head: string;
+    branch?: string;
+    containedIn?: string;
+    mergedPr?: number;
+} | {
+    ok: false;
+    reason: string;
+};
+/**
+ * Refuse a tree that would lose anything; otherwise remove it without --force and keep the branch.
+ * HEAD may sit on the allocated branch or another local one (a successor or adopted tree on the PR
+ * branch); origin must hold it under that name or any other, or a merged PR's head must, or with no
+ * origin the kept local branch is the copy. `recheck` runs right before the removal, so a spawn or
+ * resume that started meanwhile is caught.
+ */
+declare function parkWorktree(target: ParkTarget, recheck: () => string | undefined,
+/** Set for an untracked detached agent: the lister that finds a process still in the tree. */
+listCwds?: CwdLister,
+/** Set by the host: GitHub's merged PRs, for a squash-merged branch origin deleted. */
+mergedPr?: MergedPrReader): Promise<ParkTreeResult>;
+
+interface HeldAllocation {
+    agentId: string;
+    allocation: Allocation;
+}
+/** The host's record of worktree allocations it has not released. */
+interface HeldAllocationStore {
+    /** Keyed by branch, so git can be joined to it. */
+    held(): ReadonlyMap<string, HeldAllocation>;
+    /** Stops the next sweep re-reporting an allocation that is already gone. */
+    forget(agentId: string): void;
+}
+/** Every worktree in `gitRoot` carrying an agent branch, from git itself. */
+declare function agentWorktreesIn(gitRoot: string, list: GitLister): Promise<{
+    worktree: string;
+    branch: string;
+}[]>;
+interface SweepOptions {
+    store: HeldAllocationStore;
+    /** Repositories to scan beyond the ones the store names; catches a tree nothing on record points at. */
+    roots?: readonly string[];
+    list?: GitLister;
+    now?: () => number;
+}
+declare const porcelain: GitLister;
+/**
+ * Every agent worktree this machine is holding, classified. `roster` is passed in rather than
+ * read here: the log lives behind the broker, and a sweep that could not run without one would be
+ * useless in exactly the situation it is for.
+ */
+declare function sweepWorktrees(roster: readonly AgentIdentity[], options: SweepOptions): Promise<SweptWorktree[]>;
+interface ReclaimOptions {
+    store: HeldAllocationStore;
+    /** The worktree strategy the host built; it does the removal. */
+    strategy: IsolationStrategy;
+    force?: boolean;
+}
+/**
+ * Destroy one swept worktree and its branch, and forget the allocation. Refuses anything not
+ * `reclaimable` unless forced, so the classification is the guard rather than advice, and re-checks
+ * the work before acting on it (TP-640).
+ */
+declare function reclaim(entry: SweptWorktree, { store, strategy, force }: ReclaimOptions): Promise<{
+    ok: boolean;
+    reason?: string;
+}>;
+
+/**
+ * CC-284: the words a seat counts worktrees in (CC-276 A4). The sweep's statuses answer
+ * "what may prune do"; these answer "how much headroom does this repo have", so a seat
+ * quotes one line instead of hand-counting held versus reclaimable rows.
+ */
+type WorktreeState = "active" | "parkable" | "reviewer-scratch" | "non-seat" | "stale";
+interface StateRow {
+    state: WorktreeState;
+    branch: string;
+    worktree: string;
+    /** The sweep status behind the state, absent for a non-seat tree the sweep never sees. */
+    status?: SweptWorktree["status"];
+    detail: string;
+}
+interface RepoHeadroom {
+    gitRoot: string;
+    active: number;
+    parkable: number;
+    nonSeat: number;
+    budget: number;
+    free: number;
+    /** CC-1040: live reviewer trees, counted against their own pool rather than `active`. */
+    reviewers: number;
+    reviewerBudget: number;
+    reviewerFree: number;
+    /** Null when the volume could not be read, e.g. a repo deleted under a never-retired agent. */
+    freeDiskBytes: number | null;
+    rows: StateRow[];
+}
+declare const LOW_DISK_BYTES: number;
+declare function rowState(entry: SweptWorktree): WorktreeState;
+declare function stateRow(entry: SweptWorktree): StateRow;
+declare function nonSeatRow(tree: {
+    path: string;
+    branch?: string;
+}): StateRow;
+/**
+ * Free slots are what the budget leaves after the trees that cannot be parked. A live reviewer
+ * tree is charged to the reviewer pool, classified by directory name as the broker does.
+ */
+declare function repoHeadroom(gitRoot: string, rows: StateRow[], budget: number, reviewerBudget: number, freeDiskBytes: number | null): RepoHeadroom;
+declare const repoSummary: (r: RepoHeadroom) => string;
+/** A repo the sweep found may be gone; unknown free space is reported, never fatal. */
+declare function volumeFreeBytes(dir: string): number | null;
+declare function lowDiskWarning(gitRoot: string, freeDiskBytes: number | null): string | undefined;
+declare function formatRows(rows: StateRow[]): string[];
+
+export { type Allocation, type CwdLister, type CwdProcess, DEFAULT_REVIEWER_WORKTREE_BUDGET, type FileOwnershipManifest, type FileOwnershipSummary, type FinishedHolds, type FinishedRetireOutcome, type FinishedRetirePort, type GhOutcome, type HeldAllocation, type HeldAllocationStore, type HeldBranch, type HeldTree, type ImplementerParkPort, type IsolationContext, type IsolationRegistry, type IsolationRegistryOptions, type IsolationStrategy, LOW_DISK_BYTES, type LivePeer, type LsofRunner, MERGED_RETIRE_EVERY_MS, type MergedPr, type MergedPrGh, type MergedPrGhOutcome, type MergedPrReader, type MergedRetirePort, type MergedRetireResult, NOT_FINISHED, NO_VERDICT, type OwnershipConflict, type OwnershipRule, PR_READS_PER_PASS, PR_REREAD_MS, type ParkAtExitResult, type ParkTarget, type ParkTreeResult, type PoolBudgets, type PoolUse, type PrHead, type PrRead, type PrState, type PrStateDeps, type PrStateReader, type PrTarget, REVIEWER_TREE_CHANGED, type RawGitRunner, type ReclaimOptions, type ReleaseOptions, type RepoHeadroom, type ReportRetirePort, type ReportRetireResult, type RetirePlanEntry, type RetireResult, type RetireScope, type ReviewerParkPort, SCOPE_REQUIRED, STALE_AFTER_MS, STALE_RETIRE_CAP, type StateRow, type SweepOptions, type TenancyVerdict, type TreeFingerprint, type TreeHolder, type TreeHolders, type UnsavedWork, WARNING_PREFIX, WorktreeBudgetExhaustedError, type WorktreePool, type WorktreeState, type WorktreeStrategyOptions, adopterBlocker, agentWorktreesIn, allocatedWorktree, buildOwnershipManifest, canonicalPath, checkConflicts, clearRefusal, composite, connectedBlocker, createIsolationRegistry, createWorktreeStrategy, dispatchIgnoredFiles, fileOwnershipStrategy, formatOwnershipBrief, formatRows, getAgentOwnershipSummary, getOwner, getOwners, heldBranches, heldBy, inScope, inspectForRelease, isAtOrUnder, isFinishedReport, isReviewerSpawn, isReviewerTreeName, isVerdictText, isWarning, isWorkerProfile, liveBlocker, lowDiskWarning, lsofCwds, lsofCwdsWith, matchPattern, mergeAllocations, mergedPrReader, nonSeatRow, noneStrategy, occupantOf, parkBlocker, parkImplementerAtExit, parkReviewerAtReport, parkTenancyBlocker, parkWorktree, parkable, parseMergedPrs, parsePrState, passPrReads, porcelain, prStateReader, prTarget, readMergedPrs, reattachWorktree, reclaim, recordRefusal, recreateWorktree, refusalOf, refusalsIn, repoHeadroom, repoSummary, reportPr, retireAtReport, retireFinished, retireMerged, reviewedAgentName, reviewerDirtyText, rowState, runRawGit, startMergedRetireSweep, stateRow, sweepWorktrees, tenantsOf, toolsetStrategy, treeChange, treeFingerprint, treeHoldersOf, unsavedWork, volumeFreeBytes, warn, workBlocker, worktreeTenancy };
 
 // ./dist/ports.d.ts
 /**

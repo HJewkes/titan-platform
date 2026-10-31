@@ -162,6 +162,39 @@ or a park from removing a tree another agent works in.
   park rules over journal rows.
 - `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
   `isReviewerTreeName` classify reviewers by name.
+- `createWorktreeStrategy({ budget, reviewerBudget, treeHolders })` is the worktree strategy
+  over `@titan-design/worktree`. Budgets are readers, called on every spawn; implementer and
+  reviewer trees draw on separate pools (`DEFAULT_REVIEWER_WORKTREE_BUDGET` is 8), and a
+  refusal says who holds them. `reattachWorktree` and `recreateWorktree` bring a removed tree back.
+- `unsavedWork(tree, action)` and `dispatchIgnoredFiles` are the one ignored-file policy for
+  release and park. `inspectForRelease` applies it over the package's commit checks, and it
+  lets go of everything the package does, plus a few more build outputs, an index-only
+  `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `workBlocker(target, git?)` reports uncommitted or unpushed work in a tree, or in its
+  branch when the tree is gone. `heldBranches` lists every branch whose open PR holds an
+  agent, and `reviewedAgentName` maps a reviewer's name to the agent it reviews.
+- `retireFinished(port, scope)` is the bulk `agent retire --finished`: it plans every agent
+  in scope (`spawner`, `prefix` or `stale`; `SCOPE_REQUIRED` refuses an empty scope), then
+  retires the planned ones one at a time through `port.retire`. Every skip rule errs towards
+  keeping. `FinishedRetirePort` supplies the roster, journal, liveness and retire; its
+  `FinishedHolds` supplies the Shepherd and open-PR reads. Each read spawns a process, so
+  the host caches them for a whole plan; the package does not.
+- `retireAtReport(port, agentId)` parks and retires an opted-in spawner's agent after a
+  final `Status:` or `Verdict:` report (`isFinishedReport`). `ReportRetirePort` supplies the
+  opt-in, the last report, the Shepherd hold, `park` and `retire`.
+- `parkImplementerAtExit` parks a non-reviewer's clean, pushed tree when it exits
+  (`ImplementerParkPort` adds the `autoPark.onExit` switch and the burndown `treeHold`).
+  `parkReviewerAtReport` parks a reviewer's tree after a final Verdict found in its last
+  report or final text (`ReviewerParkPort`). Neither retires the agent.
+- `retireMerged(port)` retires exited workers whose reported PR has merged, parking with the
+  PR head as backing. `MergedRetirePort` adds `readPr`, the holds, `park` and `retire`.
+  `passPrReads` caches answers so one PR costs one read per pass, at most
+  `PR_READS_PER_PASS`; `startMergedRetireSweep` runs a pass on an unref'd interval.
+- `prStateReader(deps)` reads a PR's state through `gh`. `PrStateDeps` is the host's budget:
+  `refusal` can turn a read away before it starts, `gh` runs it, and `after` logs every
+  call and starts a cooldown on a rate limit. `prTarget` and `reportPr` parse PR references.
+- `treeFingerprint` and `treeChange` detect a reviewer that wrote to the tree it reviewed;
+  `reviewerDirtyText` words the notice to its spawner.
 
 ## Isolation (`./isolation`)
 
@@ -190,6 +223,13 @@ or a park from removing a tree another agent works in.
   release and park. `inspectForRelease` applies it over the package's commit checks, and it
   lets go of everything the package does, plus a few more build outputs, an index-only
   `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `parkWorktree(target, recheck, listCwds?, mergedPr?)` removes a tree and keeps its branch.
+  `lsofCwds` finds a process still in the tree; `readMergedPrs` backs a squash merge whose head
+  branch origin deleted. It runs `gh` under `minimalEnv`, so a host whose `gh` needs a token or
+  a shim builds its own with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every held tree, and `reclaim(entry, { store, strategy })`
+  re-checks the work before removing one. `HeldAllocationStore` is the host's record of allocations.
+- `rowState`, `repoHeadroom` and `repoSummary` turn a sweep into the state words a seat counts.
 
 ## Routing (`./routing`, `./routing/node`)
 

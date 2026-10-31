@@ -49,6 +49,71 @@ export {
   parkBlocker,
   type ParkTarget,
 } from "./park-rules.js";
+export { workBlocker } from "./work-blocker.js";
+export { heldBranches, reviewedAgentName, type HeldBranch } from "./held-branches.js";
+export {
+  connectedBlocker,
+  inScope,
+  retireFinished,
+  SCOPE_REQUIRED,
+  STALE_AFTER_MS,
+  STALE_RETIRE_CAP,
+  type FinishedHolds,
+  type FinishedRetireOutcome,
+  type FinishedRetirePort,
+  type RetirePlanEntry,
+  type RetireResult,
+  type RetireScope,
+} from "./retire-finished.js";
+export {
+  isFinishedReport,
+  NOT_FINISHED,
+  retireAtReport,
+  type ReportRetirePort,
+  type ReportRetireResult,
+} from "./retire-at-report.js";
+export {
+  isVerdictText,
+  NO_VERDICT,
+  parkImplementerAtExit,
+  parkReviewerAtReport,
+  type ImplementerParkPort,
+  type ParkAtExitResult,
+  type ReviewerParkPort,
+} from "./park-at-exit.js";
+export {
+  parsePrState,
+  prStateReader,
+  prTarget,
+  reportPr,
+  type GhOutcome,
+  type PrHead,
+  type PrState,
+  type PrStateDeps,
+  type PrStateReader,
+  type PrTarget,
+} from "./pr-state.js";
+export {
+  isWorkerProfile,
+  MERGED_RETIRE_EVERY_MS,
+  passPrReads,
+  PR_READS_PER_PASS,
+  PR_REREAD_MS,
+  retireMerged,
+  startMergedRetireSweep,
+  type MergedRetirePort,
+  type MergedRetireResult,
+  type PrRead,
+} from "./retire-merged.js";
+export {
+  REVIEWER_TREE_CHANGED,
+  reviewerDirtyText,
+  runRawGit,
+  treeChange,
+  treeFingerprint,
+  type RawGitRunner,
+  type TreeFingerprint,
+} from "./reviewer-tree-guard.js";
 export { dispatchIgnoredFiles, unsavedWork, type UnsavedWork } from "./unsaved-work.js";
 export {
   DEFAULT_REVIEWER_WORKTREE_BUDGET,
@@ -66,3 +131,48 @@ export {
   recreateWorktree,
   type WorktreeStrategyOptions,
 } from "./worktree.js";
+export {
+  mergedPrReader,
+  parseMergedPrs,
+  readMergedPrs,
+  type MergedPr,
+  type MergedPrGh,
+  type MergedPrGhOutcome,
+  type MergedPrReader,
+} from "./merged-pr.js";
+export {
+  lsofCwds,
+  lsofCwdsWith,
+  parkWorktree,
+  type CwdLister,
+  type CwdProcess,
+  type LsofRunner,
+  type ParkTreeResult,
+} from "./park-tree.js";
+export {
+  agentWorktreesIn,
+  porcelain,
+  reclaim,
+  sweepWorktrees,
+  type GitLister,
+  type HeldAllocation,
+  type HeldAllocationStore,
+  type ReclaimOptions,
+  type SweepOptions,
+  type SweepStatus,
+  type SweptWorktree,
+} from "./sweep.js";
+export {
+  formatRows,
+  LOW_DISK_BYTES,
+  lowDiskWarning,
+  nonSeatRow,
+  repoHeadroom,
+  repoSummary,
+  rowState,
+  stateRow,
+  volumeFreeBytes,
+  type RepoHeadroom,
+  type StateRow,
+  type WorktreeState,
+} from "./worktree-states.js";

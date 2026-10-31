@@ -3,12 +3,13 @@ import { z } from 'zod';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
+import { flipWorkspaceSpans, pendingBackfillSources } from './backfill.js';
 import { rebuildEdges, type EdgeCounts, type NoteFacts } from './edges.js';
 import { readRecord, type WorkspaceRecord } from './read.js';
 import { scanWorkspace, type WorkspaceClass, type WorkspaceFile } from './scan.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { toAbsolute } from './refs.js';
-import { WorkspaceWriter } from './write.js';
+import { spanSourceId, WorkspaceWriter } from './write.js';
 
 /**
  * One pass over the whole active root: every initiative, not one.
@@ -28,10 +29,11 @@ export interface WorkspaceRefreshSummary {
   rows: Record<WorkspaceClass, number>;
   edges: EdgeCounts;
   /**
-   * Fraction of FTS rows with no span behind them, across both halves of the
-   * database.
+   * Fraction of `search_fts` rows with no span behind them. `workspace_fts`
+   * deletes its rows with its spans, so this measures the transcript table,
+   * which also keeps the dead rows of the workspace spans the cutover removed.
    *
-   * It is not zero after a deletion and it cannot be. The kit's FTS5 table is
+   * It is not zero after a deletion and it cannot be. That FTS5 table is
    * `content=''` without `contentless_delete`, so SQLite refuses a plain
    * DELETE and the only supported removal needs the row's original text — which
    * is exactly what a contentless index does not keep. Purging a span therefore
@@ -43,6 +45,8 @@ export interface WorkspaceRefreshSummary {
    * clearing the index and re-streaming every surviving span.
    */
   orphanRatio: number;
+  /** Legacy spans this pass retired by flipping readers to `workspace_span`; 0 on every other pass. */
+  legacySpansRetired: number;
 }
 
 export interface WorkspaceRefreshOptions {
@@ -233,6 +237,36 @@ function countRows(graph: WorkspaceGraph): Record<WorkspaceClass, number> {
   };
 }
 
+interface Changed {
+  file: WorkspaceFile;
+  watermarkId: number;
+}
+
+/**
+ * Which files this pass reads. A file still waiting for the backfill counts as
+ * changed whatever its watermark says, so an interrupted backfill picks up
+ * after the last committed batch: a file already moved is skipped like any
+ * other unchanged file.
+ */
+function classifyFiles(
+  graph: WorkspaceGraph,
+  files: WorkspaceFile[],
+  full: boolean,
+): { changed: Changed[]; unchanged: number } {
+  const pending = pendingBackfillSources(graph.db);
+  const changed: Changed[] = [];
+  let unchanged = 0;
+  graph.db.transaction(() => {
+    for (const file of files) {
+      const row = graph.workspaceFiles.ensure(file.path);
+      const current = isUnchanged(row, file) && !pending.has(spanSourceId(row.sourceId));
+      if (!full && current) unchanged++;
+      else changed.push({ file, watermarkId: row.sourceId });
+    }
+  })();
+  return { changed, unchanged };
+}
+
 /** Bring the workspace half of the graph up to date with the active root. */
 export async function refreshWorkspace(
   graph: WorkspaceGraph,
@@ -243,16 +277,7 @@ export async function refreshWorkspace(
   const files = await scanWorkspace(activeRoot);
   const malformed: { path: string; reason: string }[] = [];
   let indexed = 0;
-  let unchanged = 0;
-
-  const changed: { file: WorkspaceFile; watermarkId: number }[] = [];
-  graph.db.transaction(() => {
-    for (const file of files) {
-      const row = graph.workspaceFiles.ensure(file.path);
-      if (!options.full && isUnchanged(row, file)) unchanged++;
-      else changed.push({ file, watermarkId: row.sourceId });
-    }
-  })();
+  const { changed, unchanged } = classifyFiles(graph, files, options.full ?? false);
 
   for (let start = 0; start < changed.length; start += BATCH) {
     const batch = await Promise.all(
@@ -269,6 +294,9 @@ export async function refreshWorkspace(
   }
 
   const removed = removeVanished(graph, writer, new Set(files.map((f) => f.path)));
+  // Reached only when no batch threw, so every file is in the new table by now.
+  const legacySpansRetired = flipWorkspaceSpans(graph);
+  writer.spansChanged += legacySpansRetired;
   if (writer.spansChanged > 0) clearDocumentFrequency(graph.db.name);
   const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph));
   return {
@@ -280,5 +308,6 @@ export async function refreshWorkspace(
     rows: countRows(graph),
     edges,
     orphanRatio: graph.spans.orphanRatio(),
+    legacySpansRetired,
   };
 }

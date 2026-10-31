@@ -53,6 +53,7 @@ describe('v3ToV4Worktrees unparseable artifacts.yml', () => {
     expect(log).toContain('sample\tSKIPPED');
   });
 
+<<<<<<< HEAD
   it.each([
     ['a scalar', 'just a string\n'],
     ['a list', '- one\n- two\n'],
@@ -67,6 +68,8 @@ describe('v3ToV4Worktrees unparseable artifacts.yml', () => {
     expect(log).toContain('sample\tSKIPPED: artifacts.yml is not a mapping, left untouched');
   });
 
+=======
+>>>>>>> origin/main
   it('still migrates the other initiatives', async () => {
     await writeInitiative('bad', 'branches: [unclosed\n');
     const good = await writeInitiative('good');

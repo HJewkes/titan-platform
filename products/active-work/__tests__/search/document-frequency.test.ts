@@ -11,6 +11,7 @@ import {
   graphTermStatistics,
 } from '../../src/search/document-frequency.js';
 import { openGraph, type SessionGraph } from '../../src/session-index/graph.js';
+import { WORKSPACE_SPAN_SOURCE_BASE } from '../../src/workspace-index/schema.js';
 
 let dir: string;
 let graph: SessionGraph;
@@ -87,10 +88,29 @@ describe('graphDocumentFrequency', () => {
 });
 
 describe('graphTermStatistics', () => {
-  it('caps terms at the floor on a small graph', () => {
+  it('caps a transcript query at the floor on a small graph', () => {
     indexSpans('word', 10);
 
-    expect(graphTermStatistics(graph as never).maxDf).toBe(DF_CAP_FLOOR);
+    expect(graphTermStatistics(graph as never).maxDfFor(['transcripts'])).toBe(DF_CAP_FLOOR);
+  });
+
+  it('caps a query that mixes transcripts with a workspace class', () => {
+    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'transcripts'])).toBe(DF_CAP_FLOOR);
+  });
+
+  it('leaves a workspace query uncapped once the graph is cut over', () => {
+    indexSpans('word', 10);
+
+    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'tasks'])).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('keeps capping a workspace query while legacy workspace spans remain', () => {
+    graph.spans.index(
+      { ownerRef: 'note:a/b.md', field: 'body', sourceId: WORKSPACE_SPAN_SOURCE_BASE, byteOffset: 0, byteLength: 1 },
+      'word',
+    );
+
+    expect(graphTermStatistics(graph as never).maxDfFor(['notes', 'tasks'])).toBe(DF_CAP_FLOOR);
   });
 });
 

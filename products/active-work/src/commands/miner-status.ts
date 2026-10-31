@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly, SCHEMA_VERSION } from '../session-index/graph.js';
 import { staleEpisodeSessions } from '../session-index/episodes.js';
+import { workspaceBackfillStatus } from '../workspace-index/backfill.js';
 import { probeHealth, resolveDaemonPort } from '../server/lifecycle.js';
 import { transcriptRootHost } from '../sessions/transcript-roots.js';
 
@@ -58,6 +59,13 @@ const ResultSchema = z.object({
     rows: z.number(),
     orphanRows: z.number(),
     needsFullRebuild: z.boolean(),
+  }),
+  /** The move of workspace spans into their own table (TP-4680); see `workspaceBackfillStatus`. */
+  workspaceBackfill: z.object({
+    state: z.enum(['pending', 'in_progress', 'complete']),
+    legacySpans: z.number(),
+    workspaceSpans: z.number(),
+    pendingFiles: z.number(),
   }),
   daemon: z
     .object({
@@ -179,6 +187,7 @@ async function emptyStatus(dbPath: string): Promise<Result> {
     episodeBacklog: 0,
     watermark: { lastIndexedAt: null, behindBytes: 0 },
     fts: { rows: 0, orphanRows: 0, needsFullRebuild: false },
+    workspaceBackfill: { state: 'complete', legacySpans: 0, workspaceSpans: 0, pendingFiles: 0 },
     daemon: await daemonState(),
   };
 }
@@ -201,6 +210,7 @@ export default defineCommand<Args, Result>({
             )
             .get(status) as { n: number }
         ).n;
+      const workspaceBackfill = workspaceBackfillStatus(db);
       return {
         dbPath,
         schemaVersion: SCHEMA_VERSION,
@@ -211,7 +221,8 @@ export default defineCommand<Args, Result>({
           facts: scalar(db, 'SELECT COUNT(*) AS n FROM fact'),
           turns: scalar(db, 'SELECT COUNT(*) AS n FROM turn'),
           edges: scalar(db, 'SELECT COUNT(*) AS n FROM edge'),
-          spans: scalar(db, 'SELECT COUNT(*) AS n FROM search_span'),
+          spans:
+            scalar(db, 'SELECT COUNT(*) AS n FROM search_span') + workspaceBackfill.workspaceSpans,
         },
         transcripts: {
           ok: statusCount('ok'),
@@ -235,6 +246,7 @@ export default defineCommand<Args, Result>({
           ),
         },
         fts: ftsState(db),
+        workspaceBackfill,
         daemon: await daemonState(),
       };
     } finally {

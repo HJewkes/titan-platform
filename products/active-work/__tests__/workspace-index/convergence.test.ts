@@ -49,11 +49,11 @@ function dump(graph: WorkspaceGraph): Record<string, unknown[]> {
       'SELECT source_ref, relation, target_ref FROM edge ORDER BY source_ref, relation, target_ref',
     ),
     span: all(
-      'SELECT owner_ref, field, byte_offset, byte_length FROM search_span ORDER BY owner_ref, field, byte_offset',
+      'SELECT owner_ref, field, byte_offset, byte_length FROM workspace_span ORDER BY owner_ref, field, byte_offset',
     ),
     fts: all(
-      `SELECT s.owner_ref, s.field FROM search_fts f
-         JOIN search_span s ON s.span_id = f.rowid
+      `SELECT s.owner_ref, s.field FROM workspace_fts f
+         JOIN workspace_span s ON s.span_id = f.rowid
         ORDER BY s.owner_ref, s.field, s.byte_offset`,
     ),
   };
@@ -153,8 +153,6 @@ describe('workspace index convergence', () => {
 
       resetWorkspaceIndex(graph);
       graph.db.exec("DELETE FROM edge WHERE relation IN ('holds','mentions','shares_tag')");
-      graph.db.exec('DELETE FROM search_span');
-      graph.spans.clearIndex();
       await refreshWorkspace(graph, { activeRoot: root });
 
       expect(dump(graph)).toEqual(before);

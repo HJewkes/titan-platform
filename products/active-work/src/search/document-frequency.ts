@@ -1,6 +1,7 @@
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { documentFrequencyCap, type DocumentFrequency } from './derive-query.js';
 import { orExpression } from './terms.js';
+import { hasLegacyWorkspaceSpans } from './workspace-spans.js';
 
 /**
  * Document frequency off the span index, cheap enough to ask for every term.
@@ -29,11 +30,16 @@ const cache = new Map<string, DatabaseCounts>();
 /** Bounded so a long-lived daemon cannot grow the cache without limit. */
 const CACHE_TERMS = 20_000;
 
-/** The kit's default span FTS table; `spans.search` reads it too, but ranks every match first. */
-const SPAN_FTS = 'search_fts';
+/**
+ * Both span indexes: the frequency of a term is corpus-wide, whichever table a
+ * query then ranks. `spans.search` reads these too, but ranks every match first.
+ */
+const SPAN_INDEXES = [
+  { span: 'search_span', fts: 'search_fts' },
+  { span: 'workspace_span', fts: 'workspace_fts' },
+] as const;
 
-/** Per connection, in `temp`, so a read-only graph can still have one. */
-const SPAN_VOCAB = 'temp.search_fts_vocab';
+type SpanIndex = (typeof SPAN_INDEXES)[number];
 
 /** Drop the cached counts for one database; a pass that indexed spans has made them stale. */
 export function clearDocumentFrequency(dbName: string): void {
@@ -56,15 +62,16 @@ function countsFor(graph: WorkspaceGraph): DatabaseCounts {
  * row; counting the FTS table alone would keep a deleted span in the count.
  */
 export function countMatches(graph: WorkspaceGraph, expression: string, cap: number): number {
-  const row = graph.db
-    .prepare<[string, number], { n: number }>(
-      `SELECT count(*) AS n FROM (
-        SELECT ${SPAN_FTS}.rowid FROM ${SPAN_FTS}
-        JOIN search_span ON search_span.span_id = ${SPAN_FTS}.rowid
-        WHERE ${SPAN_FTS} MATCH ? LIMIT ?)`,
-    )
-    .get(expression, cap);
-  return row?.n ?? 0;
+  const count = ({ span, fts }: SpanIndex): number =>
+    graph.db
+      .prepare<[string, number], { n: number }>(
+        `SELECT count(*) AS n FROM (
+          SELECT ${fts}.rowid FROM ${fts}
+          JOIN ${span} ON ${span}.span_id = ${fts}.rowid
+          WHERE ${fts} MATCH ? LIMIT ?)`,
+      )
+      .get(expression, cap)?.n ?? 0;
+  return Math.min(cap, SPAN_INDEXES.reduce((total, index) => total + count(index), 0));
 }
 
 /** The tokens FTS5's default unicode61 tokenizer makes of a term: diacritics off, split on the rest. */
@@ -73,13 +80,21 @@ export function ftsTokens(term: string): string[] {
   return folded.match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
-/** A phrase matches no more spans than its rarest token, so that token bounds it. */
+/**
+ * A phrase matches no more spans than its rarest token, so that token bounds it.
+ * The vocabulary table is per connection, in `temp`, so a read-only graph can
+ * still have one.
+ */
 function vocabularyBound(graph: WorkspaceGraph, term: string): number {
   const tokens = ftsTokens(term);
   if (tokens.length === 0) return 0;
-  graph.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${SPAN_VOCAB} USING fts5vocab(main, ${SPAN_FTS}, row)`);
-  const lookup = graph.db.prepare<[string], { doc: number }>(`SELECT doc FROM ${SPAN_VOCAB} WHERE term = ?`);
-  return Math.min(...tokens.map((token) => lookup.get(token)?.doc ?? 0));
+  const bound = ({ fts }: SpanIndex): number => {
+    const vocab = `temp.${fts}_vocab`;
+    graph.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${vocab} USING fts5vocab(main, ${fts}, row)`);
+    const lookup = graph.db.prepare<[string], { doc: number }>(`SELECT doc FROM ${vocab} WHERE term = ?`);
+    return Math.min(...tokens.map((token) => lookup.get(token)?.doc ?? 0));
+  };
+  return SPAN_INDEXES.reduce((total, index) => total + bound(index), 0);
 }
 
 function countSpans(graph: WorkspaceGraph, term: string): number {
@@ -109,7 +124,10 @@ function corpusSpans(graph: WorkspaceGraph): number {
   const counts = countsFor(graph);
   if (counts.spans === undefined) {
     const row = graph.db
-      .prepare<[], { n: number | null }>('SELECT max(span_id) AS n FROM search_span')
+      .prepare<[], { n: number | null }>(
+        `SELECT coalesce((SELECT max(span_id) FROM search_span), 0)
+              + coalesce((SELECT max(span_id) FROM workspace_span), 0) AS n`,
+      )
       .get();
     counts.spans = row?.n ?? 0;
   }
@@ -118,10 +136,25 @@ function corpusSpans(graph: WorkspaceGraph): number {
 
 interface TermStatistics {
   df: DocumentFrequency;
-  /** The most spans a query term may match on this graph. */
-  maxDf: number;
+  /** The most spans a term may match in a query over these classes. */
+  maxDfFor: (classes: readonly string[]) => number;
+}
+
+/**
+ * The cap pays for ranking the shared table, whose bm25 runs over every match
+ * before a class filter. A cut-over workspace class ranks only its own small
+ * table, so it keeps its common terms, which measured +0.018 R@10 (TP-4680).
+ */
+function ranksSharedTable(graph: WorkspaceGraph, classes: readonly string[]): boolean {
+  return classes.includes('transcripts') || hasLegacyWorkspaceSpans(graph);
 }
 
 export function graphTermStatistics(graph: WorkspaceGraph): TermStatistics {
-  return { df: graphDocumentFrequency(graph), maxDf: documentFrequencyCap(corpusSpans(graph)) };
+  return {
+    df: graphDocumentFrequency(graph),
+    maxDfFor: (classes) =>
+      ranksSharedTable(graph, classes)
+        ? documentFrequencyCap(corpusSpans(graph))
+        : Number.POSITIVE_INFINITY,
+  };
 }

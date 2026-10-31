@@ -609,6 +609,68 @@ describe('experiment arm and follow-ups (CC-168)', () => {
   });
 });
 
+describe('route decision on the spawn row (CC-1666)', () => {
+  const ROUTE_META = {
+    route_mode: 'on',
+    route_source: 'routed',
+    route_prior: 'implementer',
+    route_reason: 'estimate over one point',
+    route_requested: 'implementer',
+    route_wanted: 'implementer-large',
+    route_workflow: 'build',
+    route_table: 'table-a',
+    route_facts: '{"source":"plan","present":["estimate"]}',
+    route_candidate: 'implementer-large',
+    route_candidate_wanted: 'implementer-xl',
+  };
+
+  function workerWith(extra: Record<string, unknown>): Row[] {
+    const [spawn, attach] = spawnedWorker('coord', 'aaaa1111');
+    return [
+      ...adoptedCoordinator('coord', 'aaaa1111'),
+      { ...spawn, meta: { ...spawn.meta, ...extra } as Record<string, string> },
+      attach,
+    ];
+  }
+
+  it('fills the route columns from route_* meta', () => {
+    writeEvents(workerWith(ROUTE_META));
+
+    expect(resolve().origins[WORKER_SESSION]).toMatchObject({
+      routeMode: 'on',
+      routeSource: 'routed',
+      routePrior: 'implementer',
+      routeReason: 'estimate over one point',
+      routeRequested: 'implementer',
+      routeWanted: 'implementer-large',
+      routeWorkflow: 'build',
+      routeTable: 'table-a',
+      routeFacts: '{"source":"plan","present":["estimate"]}',
+      routeCandidate: 'implementer-large',
+      routeCandidateWanted: 'implementer-xl',
+    });
+  });
+
+  it('leaves the route columns null when the spawn has no route meta', () => {
+    writeEvents(workerWith({}));
+
+    const origin = resolve().origins[WORKER_SESSION];
+
+    expect(origin).toMatchObject({ routeMode: null, routeSource: null, routeFacts: null });
+    expect(origin?.routeCandidateWanted).toBeNull();
+  });
+
+  it('ignores a malformed route value and keeps the valid ones', () => {
+    writeEvents(workerWith({ route_source: { nested: true }, route_mode: 'shadow', route_table: '' }));
+
+    expect(resolve().origins[WORKER_SESSION]).toMatchObject({
+      routeSource: null,
+      routeTable: null,
+      routeMode: 'shadow',
+    });
+  });
+});
+
 describe('a locked events.db (TP-4479)', () => {
   it('fails the origin pass within the short busy timeout instead of waiting 5 s', async () => {
     writeEvents([]);

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { graphNoteRelevance } from '../../src/bootstrap/rank-notes.js';
 import { relatedContext } from '../../src/search/related.js';
 import { meaningfulTerms, orExpression } from '../../src/search/terms.js';
+import { workspaceSpanReader } from '../../src/search/workspace-spans.js';
 import { openGraph } from '../../src/session-index/graph.js';
 import { refreshInto, scaffold } from '../workspace-index/fixture.js';
 
@@ -16,7 +17,7 @@ import { refreshInto, scaffold } from '../workspace-index/fixture.js';
  * FTS5 bm25-ranks every span a query matches before the class filter applies,
  * so a note query whose terms are common in transcripts costs what those terms
  * match corpus-wide. The live graph is 92% transcript spans; this fixture
- * reproduces that shape synthetically: a small workspace plus 150k transcript
+ * reproduces that shape synthetically: a small workspace plus 500k transcript
  * spans that all carry the common words a loop label is full of.
  *
  * Both checks compare against the same query run uncapped on the same graph,
@@ -24,12 +25,14 @@ import { refreshInto, scaffold } from '../workspace-index/fixture.js';
  * absolute ceiling is the done_when's 100 ms with headroom for a loaded runner.
  */
 
-const TRANSCRIPT_SPANS = 150_000;
+// 1M spans took ~36 s to seed and ~60 s overall, past the CI budget; 500k keeps the ratio asserts meaningful.
+const TRANSCRIPT_SPANS = 500_000;
 const COMMON = ['agent', 'now', 'next', 'its', 'work', 'session'];
 const FILLER = ['tool', 'output', 'result', 'call', 'line', 'file', 'read', 'wrote'];
 const LOOP_TEXT = 'agent now next its work session: the alpha lesson for the indexer';
 const CLASSES = ['notes', 'sources', 'tasks', 'sessions'];
 const RUNS = 5;
+const WIDE_OR = [...COMMON, ...FILLER].join(' OR ');
 const CEILING_MS = 100;
 const MIN_SPEEDUP = 3;
 
@@ -84,6 +87,16 @@ function uncappedNoteQuery(): void {
   }
 }
 
+/** The ceiling that fails if workspace search runs against the transcript table. */
+function workspaceOrQuery(): number {
+  const graph = openGraph(dbPath);
+  try {
+    return workspaceSpanReader(graph).search(WIDE_OR, 300, { ownerPrefix: 'note:' }).length;
+  } finally {
+    graph.db.close();
+  }
+}
+
 beforeAll(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-latency-'));
   root = path.join(dir, 'active');
@@ -120,7 +133,22 @@ describe('class-scoped search on a transcript-heavy graph', () => {
       expect(uncapped / ms, cls).toBeGreaterThan(MIN_SPEEDUP);
     }
     const notes = await relatedContext({ text: LOOP_TEXT, classes: ['notes'], dbPath, activeRoot: root });
-    expect(notes.query.terms).not.toContain('agent');
+    expect(notes.query.terms).toContain('agent');
     expect(notes.hits.map((hit) => hit.ref)).toContain('note:alpha/2026-09-02-alpha-lesson.md');
+  }, 60_000);
+
+  it('answers a 14-term OR on the workspace table under the ceiling while the transcript table is far slower', async () => {
+    const wide = await medianMs(workspaceOrQuery);
+    const onTranscripts = await medianMs(() => {
+      const graph = openGraph(dbPath);
+      try {
+        graph.spans.search(WIDE_OR, 300, { ownerPrefix: 'note:' });
+      } finally {
+        graph.db.close();
+      }
+    });
+
+    expect(wide).toBeLessThan(CEILING_MS);
+    expect(onTranscripts / wide).toBeGreaterThan(MIN_SPEEDUP);
   }, 60_000);
 });
