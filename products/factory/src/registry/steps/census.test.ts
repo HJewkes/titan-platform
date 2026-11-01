@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { factoryWorkflows } from "../../workflows.js";
+import { entryProblems, type StepEntry } from "../entry.js";
 import { entryFor } from "../registry.js";
 import { factoryRegistry } from "./index.js";
+import { shepherdSteps } from "./shepherd.js";
 
 const declarations = factoryWorkflows.flatMap((definition) => definition.steps.map((step) => ({ workflow: definition.name, ...step })));
 
@@ -36,5 +38,12 @@ describe("factory step census", () => {
     expect(agents.sort()).toEqual(AGENT_STEPS);
     const owners = factoryRegistry.entries.filter((entry) => entry.kind === "OWNER");
     expect(owners.filter((entry) => entry.op !== "assisted" && entry.op !== "authorize")).toEqual([]);
+  });
+
+  it("no registry entry is pending review", () => {
+    const reviewed: StepEntry = { ...shepherdSteps[0]! };
+    const unreviewed = Object.assign(reviewed, { effect: { class: "pending", reason: "not yet reviewed" } as object });
+    expect(entryProblems(unreviewed)).toMatch(/class/);
+    expect(factoryRegistry.entries.filter((entry) => entryProblems(entry) !== undefined)).toEqual([]);
   });
 });
