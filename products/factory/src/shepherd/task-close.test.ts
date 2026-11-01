@@ -2,8 +2,9 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { runCleanup, type TaskClose } from "./cleanup.js";
+import { runCleanup } from "./cleanup.js";
 import { activeWorkTasks } from "./cleanup-ports.js";
+import type { TaskClose } from "./ports.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput } from "./store.js";

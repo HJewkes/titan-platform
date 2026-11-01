@@ -7,7 +7,7 @@ import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { CleanupResult, type CleanupPorts } from "./cleanup.js";
+import { CleanupResult } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import { MainCiReads } from "./main-watch.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -21,6 +21,7 @@ import { expectBrief } from "../test-support/brief.js";
 import { callCommand } from "../test-support/shepherd.js";
 import { OWNER } from "../test-support/resolver.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
+import type { CleanupPorts } from "./ports.js";
 
 const MERGE = fakeSha("merge");
 const OTHER_APP = 999;

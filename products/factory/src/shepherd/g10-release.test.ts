@@ -11,7 +11,6 @@ import type { CiSnapshot } from "../workflows/land.js";
 import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { LineageRow } from "./reviewer-lineage.js";
-import type { RosterReader } from "./roster.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import { readPath } from "../narrow.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -19,6 +18,7 @@ import { z } from "zod";
 import { fakeLocator } from "../test-support/fakes.js";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { RoutedStepInput } from "@titan-design/workflow";
+import type { RosterReader } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("head-1");

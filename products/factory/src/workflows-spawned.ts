@@ -1,10 +1,9 @@
 import { join } from "node:path";
 import { factoryStateDir, type FactoryConfig } from "./config.js";
 import { agentChatAgents } from "./shepherd/agents.js";
-import type { RosterReader } from "./shepherd/roster.js";
-import type { SpawnGate } from "./shepherd/spawn-gate.js";
 import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
 import { DEFAULT_DIAGNOSIS_PROFILE, readLogTail, type DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import type { RosterReader, SpawnGate } from "./shepherd/ports.js";
 
 /** The ports of the agents the route wiring spawns on its own, each through the shared roster and spawn gate. */
 

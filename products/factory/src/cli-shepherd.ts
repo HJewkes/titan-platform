@@ -26,9 +26,9 @@ import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/forma
 import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
-import type { ReviewSlots } from "./shepherd/review-slots.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { errorMessage } from "./narrow.js";
+import type { ReviewSlots } from "./shepherd/ports.js";
 
 interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;

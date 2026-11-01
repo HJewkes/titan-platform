@@ -5,53 +5,16 @@ import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
-import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
-import { closesTask, otherOpenOnTask, type TaskClose } from "./task-close.js";
+import { closesTask, otherOpenOnTask } from "./task-close.js";
+import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose, TaskSlicing } from "./ports.js";
 
-export type { TaskClose } from "./task-close.js";
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
 export const SH_CLEANUP_GRACE_MS = 3 * 60_000;
 export const SH_CLEANUP_RETRY_MS = 10 * 60_000;
 export const SH_CLEANUP_GIVE_UP_MS = 60 * 60_000;
 export const SH_CLEANUP_POLL_MS = 30_000;
-
-export interface CleanupAgent {
-  name: string;
-  presence: Presence;
-  status: string;
-}
-
-export interface CleanupAgents {
-  roster(): Promise<readonly CleanupAgent[]>;
-  /** Drops any cached roster, so the next `roster()` reads the broker. */
-  invalidate(): void;
-  /** Never forced: a forced retire discards work the agent's worktree still holds. */
-  retire(name: string): Promise<void>;
-}
-
-export type TaskState = "open" | "done" | "missing";
-
-/** What tells an unsliced PR whether it may close its task: the task's tags and notes, and its plan's text when it has one. */
-export interface TaskSlicing {
-  tags: readonly string[];
-  notes: string;
-  plan: string | undefined;
-}
-
-export interface CleanupTasks {
-  state(initiative: string, id: string): Promise<TaskState>;
-  slicing(initiative: string, id: string): Promise<TaskSlicing>;
-  done(initiative: string, id: string): Promise<void>;
-  /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
-  appendNote(initiative: string, id: string, line: string): Promise<void>;
-}
-
-export interface CleanupPorts {
-  agents: CleanupAgents;
-  tasks: CleanupTasks;
-}
 
 export interface CleanupDeps {
   port: GitHubPort;

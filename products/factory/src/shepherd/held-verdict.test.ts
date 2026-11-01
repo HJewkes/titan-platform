@@ -4,13 +4,13 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { HeldWake } from "./held-wake.js";
 import { heldVerdictMarker, postHeldVerdict } from "./held-verdict.js";
 import type { ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const FINDINGS = "1. The retry loop never ends when the broker answers 429.";
 const FIX_FIRST_TEXT = `${FINDINGS}\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\n`;

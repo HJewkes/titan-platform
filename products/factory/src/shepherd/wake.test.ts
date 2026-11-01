@@ -29,9 +29,9 @@ import { WAKE_STEPS, wakeRoutes, type ImplementerAgents, type WakeStepResult, ty
 import { wakePhase } from "./wake-phase.js";
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
