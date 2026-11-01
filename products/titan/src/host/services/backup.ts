@@ -2,6 +2,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { renderCalendarTimer, renderOneshotService } from "../../systemd/render.js";
 
 export const BACKUP_SERVICE = "titan-host-backup.service";
+export const BACKUP_TIMER = "titan-host-backup.timer";
 
 /** The built bin is `dist/bin.js`; the script ships beside `dist/` in the same checkout. */
 export const backupScriptPath = (titanBin: string): string => join(dirname(titanBin), "..", "scripts", "host-backup.sh");
