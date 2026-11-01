@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "a review costs the flat four cores again",
-      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "file": "products/factory/src/shepherd/spawn-limits.ts",
       "find": "  reviewLoad: 0.05,\n",
       "replace": "  reviewLoad: 4,\n",
       "kills": ["admission reads measured headroom admits a review with ten more just started when the measured cores leave room"]
