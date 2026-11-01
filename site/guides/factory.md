@@ -737,6 +737,16 @@ The steps, in order (`products/factory/src/workflows/land.ts` and `land-pr.ts`):
 6. `merge` squashes the exact approved head. A head anyone else pushed asks again.
 7. `post-merge` runs the configured chore, if any, and records its exit code and output tail.
 
+## Steps
+
+The steps of `land-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
+
 ## `gate resolve` {#gate-resolve}
 
 ```sh
