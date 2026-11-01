@@ -212,7 +212,18 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   if (deps.taskClose === "last-slice-only") return pr === undefined ? "unread" : settleLastSliceOnly(deps, registration, input, landing, wait);
   if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined, registration.lastSlice), tasks);
   if (pr === undefined) return "unread";
-  return onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
+  return onOpenTask(registration.task, wait, noteThenCloseIfLast(tasks, registration.slice, landing, registration.lastSlice), tasks);
+}
+
+/** Noting the slice first lets the close read it: the last unlanded slice closes the task, any other leaves it open. */
+function noteThenCloseIfLast(tasks: CleanupTasks, slice: string, landing: string, lastSlice = false): (initiative: string, id: string) => Promise<string> {
+  return async (initiative, id) => {
+    await noteSlice(tasks, slice, landing)(initiative, id);
+    if (heldOpenBy(await tasks.slicing(initiative, id), lastSlice) !== ALL_SLICES_LANDED) return "noted";
+    await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+    await tasks.done(initiative, id);
+    return "done";
+  };
 }
 
 const noteSlice = (tasks: CleanupTasks, slice: string, landing: string) => (initiative: string, id: string) => tasks.appendNote(initiative, id, `${slice} landed in ${landing}`).then(() => "noted");
@@ -250,6 +261,7 @@ function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolea
 }
 
 const EPIC_TAG = "epic";
+const ALL_SLICES_LANDED = "it is sliced, and every slice is noted landed";
 
 /** Tags a task carries when its work lands in several PRs without a plan's slices block (TP-4698). */
 const SLICE_TAGS = ["slices", "multi-slice"];
@@ -264,7 +276,7 @@ function heldOpenBy({ tags, notes, plan }: TaskSlicing, lastSlice = false): stri
     if (slices === undefined) return "its plan has a burndown-slices block that does not read";
     const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
     const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
-    return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
+    return unlanded.length === 0 ? ALL_SLICES_LANDED : `it has slices ${unlanded.join(", ")}`;
   }
   const sliceTag = lastSlice ? undefined : SLICE_TAGS.find((tag) => tags.includes(tag));
   if (sliceTag !== undefined) return `it is tagged ${sliceTag}`;
