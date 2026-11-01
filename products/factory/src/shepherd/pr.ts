@@ -142,8 +142,7 @@ function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verd
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run), stalled: fixPrStall(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
   const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };
-  const movedBase = { mergeBaseFirst: mergeMainFirst(run.target.repo), recheckMovedBase: staleGreenCheck(run.target.repo, run.target.pr) };
-  return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer(), ...movedBase };
+  return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer(), mergeBaseFirst: mergeMainFirst(run.target.repo), recheckMovedBase: staleGreenCheck(run.target.repo, run.target.pr) };
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
