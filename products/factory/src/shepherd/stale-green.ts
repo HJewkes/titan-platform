@@ -33,8 +33,12 @@ function buildUnit(path: string): string | null {
 /** Pure: the units both sides changed, and any build config main changed. Empty means the pair may land back to back. */
 export function sharedWithMain(prFiles: readonly string[], delta: readonly string[]): string[] {
   const units = new Set(prFiles.map(buildUnit));
-  const shared = delta.filter((path) => BUILD_CONFIG.test(path)).concat(delta.map(buildUnit).filter((unit) => unit !== null && units.has(unit)) as string[]);
-  return [...new Set(shared)];
+  const sharedBy = (path: string): string[] => {
+    if (BUILD_CONFIG.test(path)) return [path];
+    const unit = buildUnit(path);
+    return unit !== null && units.has(unit) ? [unit] : [];
+  };
+  return [...new Set(delta.flatMap(sharedBy))];
 }
 
 /** Main's delta runs from the head's fork point, so it may name commits the green already saw: that costs a run, never a stale land. */
