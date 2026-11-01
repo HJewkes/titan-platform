@@ -7,6 +7,7 @@ import { checkAreas, loadAreas } from "./areas.mjs";
 import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
+  checkBotTokenReaders,
   checkLayersMatchTiers,
   checkNoFileDependencies,
   checkNoNpmToken,
@@ -77,6 +78,16 @@ function undeclaredImportRoot() {
     writeFileSync(join(root, "packages", dir, "package.json"), JSON.stringify(pkg));
   }
   writeFileSync(join(root, "packages/a/src/x.test.ts"), 'import { b } from "@titan-design/b";\nimport { c } from "@titan-design/c";\n');
+  return root;
+}
+
+function botTokenReaderRoot() {
+  const root = tempRoot("structure-bot-token-");
+  const src = join(root, "products", "factory", "src");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(join(src, "bot-identity.ts"), "import { parseGitHubToken } from \"@titan-design/github\";\n");
+  writeFileSync(join(src, "sneaky.ts"), "import { parseGitHubToken } from \"@titan-design/github\";\n");
+  writeFileSync(join(src, "mention.ts"), "// parseGitHubToken is named only in this comment\n");
   return root;
 }
 
@@ -222,6 +233,12 @@ const cases = [
     message: "`products/explainer` script `align` runs python, pip, uv or another Python runner.",
   },
   {
+    rule: "TP-3412 only bot-identity reads the bot token file or imports its reader",
+    check: checkBotTokenReaders,
+    root: botTokenReaderRoot,
+    message: "`products/factory/src/sneaky.ts` reads the bot token file or imports its reader. Only `products/factory/src/bot-identity.ts` may",
+  },
+  {
     rule: "R10 no lint rule at warn severity",
     check: checkNoWarnSeverity,
     root: () => fixture("warn-severity"),
@@ -297,6 +314,15 @@ describe("R59 Python invocations in scripts", () => {
   it.each(["tsup", "vitest run python-fixtures", "node scripts/pipeline.mjs"])("allows script %s", (command) => {
     const root = pythonRoot("structure-py-ok-", { scripts: { build: command } });
     expect(checkNoPython(root)).toEqual([]);
+  });
+});
+
+describe("TP-3412 the token path counts as a read", () => {
+  it("rejects a module that imports the code-fixed path constant", () => {
+    const root = botTokenReaderRoot();
+    writeFileSync(join(root, "products/factory/src/sneaky.ts"), "export {};\n");
+    writeFileSync(join(root, "products/factory/src/pathy.ts"), "import { BOT_TOKEN_PATH } from \"./bot-token-path.js\";\n");
+    expect(checkBotTokenReaders(root)).toEqual([expect.stringContaining("products/factory/src/pathy.ts")]);
   });
 });
 
