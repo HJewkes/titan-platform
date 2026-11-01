@@ -11,6 +11,7 @@ export const BRIEF_GATES = ["off", "shadow", "on"] as const;
 const tunableFields = {
   ceiling_five_hour: points.optional(),
   reserve_seven_day: points.optional(),
+  /** @deprecated The pace controller replaces it (TP-2425). Still parsed and resolved until agent-chat drops its reader. */
   per_day_points: points.optional(),
   sonnet_band_points: points.optional(),
   dispatch_seven_day_points: points.optional(),
@@ -50,7 +51,9 @@ export const seatSchema = z.strictObject({
   pool: z.string().min(1).optional(),
   overflow_pool: z.string().min(1).optional(),
   pools: names.optional(),
+  /** @deprecated The pace controller replaces it (TP-2425). Still parsed and resolved. */
   per_run_points: points.optional(),
+  /** @deprecated The pace controller replaces it (TP-2425). Still parsed and resolved. */
   per_day_points: points.optional(),
   implementers: z.number().int().nonnegative().optional(),
   hand_reserve: z.number().int().nonnegative().optional(),
@@ -87,6 +90,7 @@ export const paceSchema = z.strictObject({
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 export const overrideSchema = z.strictObject({
   ...tunableFields,
+  /** @deprecated The pace controller replaces it (TP-2425). Still parsed and resolved. */
   per_day_points: points.nullable().optional(),
   pools: names.optional(),
   profiles: names.optional(),

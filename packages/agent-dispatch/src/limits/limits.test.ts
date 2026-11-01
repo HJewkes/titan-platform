@@ -252,6 +252,47 @@ describe("checkLimits", () => {
     const findings = checkLimits(parseLimits(today), { now: BEFORE_EXPIRY, knownProfiles: ["bd-reviewer"] });
     expect(findings.map((f) => f.kind)).toContain("unknown_profile");
   });
+
+  it("reports one deprecated_key per per_day_points and per_run_points in the old fixture, and still resolves them", () => {
+    const parsed = parseLimits(today);
+    const messages = checkLimits(parsed, { now: BEFORE_EXPIRY })
+      .filter((f) => f.kind === "deprecated_key")
+      .map((f) => f.message);
+
+    expect(messages).toHaveLength(6);
+    for (const path of ["pools.owner.per_day_points", "pools.agents.per_day_points", "pools.spare.per_day_points", "pools.server.per_day_points", "seats.coord-a.per_run_points", "seats.coord-a.per_day_points"]) {
+      expect(messages.some((m) => m.startsWith(`${path} `))).toBe(true);
+    }
+    expect(open(today, { pool: "owner", now: BEFORE_EXPIRY }).per_day_points).toBe(30);
+  });
+
+  it("reports deprecated keys on defaults, profiles, profile pools, seats and a null override", () => {
+    const raw = minimal({
+      defaults: { per_day_points: 5 },
+      profiles: { p: { per_day_points: 6, pools: { main: { per_day_points: 7 } } } },
+      seats: { s: { per_run_points: 8 } },
+      overrides: [{ per_day_points: null, until: "2026-10-10T18:00:00Z", decision: "lift" }],
+    });
+    const paths = checkLimits(parseLimits(raw), { now: BEFORE_EXPIRY })
+      .filter((f) => f.kind === "deprecated_key")
+      .map((f) => f.message.split(" ")[0] === "override" ? `override ${f.message.split(" ")[1]}` : f.message.split(" ")[0]);
+
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "defaults.per_day_points",
+        "profiles.p.per_day_points",
+        "profiles.p.pools.main.per_day_points",
+        "seats.s.per_run_points",
+        "override lift.per_day_points",
+      ]),
+    );
+    expect(paths).toHaveLength(5);
+  });
+
+  it("reports no deprecated key on a block without per_* fields", () => {
+    const findings = checkLimits(parseLimits(minimal()), { now: BEFORE_EXPIRY });
+    expect(findings.filter((f) => f.kind === "deprecated_key")).toEqual([]);
+  });
 });
 
 describe("capacity, shepherd and seat slot keys", () => {

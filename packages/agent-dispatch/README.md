@@ -142,6 +142,9 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
   malformed `pace` is dropped into `ignoredSections`, reported as `invalid_pace`, and closes
   no pool. Version stays 1, but a reader older than this release refuses a block that
   carries `pace` and closes every pool, so upgrade readers before writing it.
+- `per_run_points` and `per_day_points` are deprecated in favour of the pace controller. They
+  still parse and resolve unchanged, and `checkLimits` reports one `deprecated_key` finding
+  per occurrence, naming its path.
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
