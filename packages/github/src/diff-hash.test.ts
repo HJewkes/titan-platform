@@ -51,6 +51,15 @@ describe("serialiseDiff", () => {
 const pin = (over: Partial<ExactDiffPin>): ExactDiffPin => ({ kind: "exact", head: A, base: B, main: B, full: "full", core: "core", ...over });
 
 describe("diffCarry", () => {
+  it("carries an equal full hash from any head without asking for a merge-up proof", async () => {
+    const mergeUp = vi.fn();
+
+    const result = await diffCarry(pin({}), pin({ head: B, base: A }), mergeUp);
+
+    expect(result).toEqual({ carries: true, by: "equal-full" });
+    expect(mergeUp).not.toHaveBeenCalled();
+  });
+
   it("never asks for a merge-up proof when the reviewed lines changed", async () => {
     const mergeUp = vi.fn();
 

@@ -69,17 +69,12 @@ describe("gitDiffPin", () => {
     const seed = git("rev-parse", "HEAD");
     const head = commitOn("topic", seed, { "a.txt": numbered({ 3: "", 10: "topic", 17: "  indented" }), "z.txt": "z\n" });
     const hardened = await pin(head);
-    const hostile = path.join(root, "hostile.gitconfig");
-    fs.writeFileSync(hostile, HOSTILE_GITCONFIG);
-    vi.stubEnv("GIT_CONFIG_GLOBAL", hostile);
-    vi.stubEnv("GIT_CONFIG_COUNT", "1");
-    vi.stubEnv("GIT_CONFIG_KEY_0", "diff.context");
-    vi.stubEnv("GIT_CONFIG_VALUE_0", "9");
+    stubHostileGitconfig();
 
     const plain = execFileSync("git", ["-C", clone, "diff", "--no-ext-diff", seed, head], { encoding: "utf8" });
     const underHostile = await pin(head);
 
-    expect(plain).toContain("z.txt z.txt"); // the hostile config does change an unhardened diff
+    expect(plain).toMatch(/Binary files a\.txt and a\.txt differ/); // the hostile config does change an unhardened diff
     expect(underHostile).toEqual(hardened);
   });
 
@@ -195,6 +190,22 @@ describe("Q13's two exclusions", () => {
     expect(first.kind === "exact" && second.kind === "exact" && first.full === second.full).toBe(true);
   });
 });
+
+/**
+ * A global gitconfig and a `GIT_CONFIG_COUNT` injection, each with an attributes file that turns text into binary,
+ * which no diff flag undoes: only the hardened environment keeps them out.
+ */
+function stubHostileGitconfig(): void {
+  const write = (name: string, text: string) => {
+    fs.writeFileSync(path.join(root, name), text);
+    return path.join(root, name);
+  };
+  const globalAttributes = write("global.attributes", "a.txt -diff\n");
+  vi.stubEnv("GIT_CONFIG_GLOBAL", write("hostile.gitconfig", `${HOSTILE_GITCONFIG}[core]\n\tattributesFile = ${globalAttributes}\n`));
+  vi.stubEnv("GIT_CONFIG_COUNT", "1");
+  vi.stubEnv("GIT_CONFIG_KEY_0", "core.attributesFile");
+  vi.stubEnv("GIT_CONFIG_VALUE_0", write("injected.attributes", "*.txt -diff\n"));
+}
 
 // Each key would change a plain `git diff`; the hardened environment and the §2.3 flags must leave the pin as it was.
 const HOSTILE_GITCONFIG = `[diff]

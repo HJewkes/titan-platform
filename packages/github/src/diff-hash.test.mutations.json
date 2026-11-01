@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "exclusion 1 carries only at the same head",
+      "file": "packages/github/src/diff-hash.ts",
+      "find": "if (reviewed.full === current.full) return",
+      "replace": "if (reviewed.full === current.full && reviewed.head === current.head) return",
+      "kills": ["diffCarry carries an equal full hash from any head without asking for a merge-up proof"]
+    }
+  ]
+}
