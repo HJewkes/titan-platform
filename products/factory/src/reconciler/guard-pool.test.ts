@@ -13,7 +13,7 @@ const RETRY_AFTER_S = 61;
 
 type ReadKind = "head" | "ancestry" | "ls-remote";
 type Call = { kind: ReadKind };
-type Answer = PoolAnswer & { value?: string | null };
+type Answer = PoolAnswer & { sha?: string; ancestry?: Ancestry };
 
 const RATE_LIMITED: Answer = { status: 429, headers: { "retry-after": String(RETRY_AFTER_S) } };
 const UNAUTHORIZED: Answer = { status: 401, headers: {}, message: "Bad credentials" };
@@ -26,31 +26,26 @@ function rig(answers: Partial<Record<ReadKind, Answer>>) {
   advanceEpoch(db, { ...KEY, expectedEpoch: 0, head: STORED, by: "bootstrap", at: AT });
   const sent: ReadKind[] = [];
   const authFailed: string[] = [];
-  const send = async (call: Call): Promise<Answer> => (sent.push(call.kind), answers[call.kind] ?? { status: 200, headers: {}, value: valueOf(call.kind) });
+  const send = async (call: Call): Promise<Answer> => (sent.push(call.kind), answers[call.kind] ?? { status: 200, headers: {}, sha: READ, ancestry: "behind" });
   const pool = githubApiPool<Call, Answer>({ identity: "synthetic-bot", send, clock, state: memoryPoolStateStore(), probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)), onAuthFailed: (identity) => void authFailed.push(identity) });
   const sleeps: number[] = [];
   const deps: GuardDeps = {
     db,
-    readHead: () => read(pool, "head", asHead),
-    ancestry: () => read(pool, "ancestry", asAncestry),
-    lsRemote: () => read(pool, "ls-remote", asSha),
+    readHead: () => read(pool, "head", (answer) => answer.sha ?? ""),
+    ancestry: () => read(pool, "ancestry", (answer) => answer.ancestry ?? "missing"),
+    lsRemote: () => read(pool, "ls-remote", (answer) => answer.sha ?? null),
     sleep: async (ms) => void sleeps.push(ms),
     now: () => new Date(AT),
   };
   return { clock, db, deps, sent, sleeps, authFailed, pool };
 }
 
-const valueOf = (kind: ReadKind): string => (kind === "ancestry" ? "behind" : READ);
-const asHead = (value: string | null | undefined): string => value ?? "";
-const asAncestry = (value: string | null | undefined): Ancestry => (value ?? "behind") as Ancestry;
-const asSha = (value: string | null | undefined): string | null => value ?? null;
-
 /** As the reconciler's claim does: a refused call is `Unavailable` with its reset, and any other answer without a value throws. */
-async function read<T>(pool: GithubApiPool<Call, Answer>, kind: ReadKind, convert: (value: string | null | undefined) => T): Promise<T | Unavailable> {
+async function read<T>(pool: GithubApiPool<Call, Answer>, kind: ReadKind, pick: (answer: Answer) => T): Promise<T | Unavailable> {
   const answer = await pool.run(3, "core-read", { kind });
   if (isPoolUnavailable(answer)) return { kind: "unavailable", resetAt: new Date(answer.unavailable.resetAt).toISOString() };
   if (answer.status !== 200) throw new Error(`${kind} answered status ${answer.status ?? "none"}`);
-  return convert(answer.value);
+  return pick(answer);
 }
 
 describe("head guard over the github-api pool (TP-3424)", () => {
