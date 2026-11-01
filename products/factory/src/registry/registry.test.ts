@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineStep, type BaseEntry, type FactEntry, type StepEntry } from "./entry.js";
 import { createRegistry, entryFor, pinClassOf, schemaHash } from "./registry.js";
+import { abandonsOrphan } from "./steps/index.js";
 
 function base(overrides: Partial<BaseEntry> = {}): BaseEntry {
   return defineStep({ name: "check-ci", op: "seed", kind: "software", effect: { class: "read" }, callSites: ["check-ci"], version: { bump: 0 }, ...overrides });
@@ -78,5 +79,15 @@ describe("step registry entries", () => {
     expect(entryFor(registry, "ci-wait:2")?.name).toBe("ci-wait");
     expect(entryFor(registry, "ci-wait-long:1")?.name).toBe("ci-wait-long");
     expect(entryFor(registry, "unregistered")).toBeUndefined();
+  });
+});
+
+describe("abandonsOrphan", () => {
+  it("allows dropping the read-only land and observe steps, matched by family", () => {
+    expect(["ci-wait:r3:17", "land-rules:r4", "base-check:r4:0", "sh-observe:456a09"].filter(abandonsOrphan)).toHaveLength(4);
+  });
+
+  it("refuses steps that write, and ids no entry covers", () => {
+    expect(["merge:r4:0", "update-branch:r3:16", "rerun:2", "approve-merge", "sh-landed", "ci-wait-long:1"].filter(abandonsOrphan)).toEqual([]);
   });
 });
