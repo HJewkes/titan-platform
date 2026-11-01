@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { LimitsBlockMissingError, loadLimits } from "@titan-design/agent-dispatch/limits/node";
-import type { SpawnLimits } from "./spawn-gate.js";
+import type { SpawnLimits } from "./spawn-limits.js";
 
 const logged = new Set<string>();
 

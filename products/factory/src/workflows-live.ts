@@ -6,7 +6,7 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.j
 import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import type { AgentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
-import type { SpawnLimits } from "./shepherd/spawn-gate.js";
+import type { SpawnLimits } from "./shepherd/spawn-limits.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 
 /** The parts of the route wiring that read a live config row per use instead of once at start. */

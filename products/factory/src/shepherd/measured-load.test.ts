@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, type MachineReadings } from "./spawn-gate.js";
+import { admitSpawn, spawnGate } from "./spawn-gate.js";
+import { DEFAULT_SPAWN_LIMITS, type MachineReadings } from "./spawn-limits.js";
 import type { ReviewAsk } from "./ports.js";
 
 const limits = DEFAULT_SPAWN_LIMITS;
