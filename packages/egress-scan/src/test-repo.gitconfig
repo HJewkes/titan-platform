@@ -1,0 +1,4 @@
+# The global config for test-repo.ts: a file, because git drops GIT_CONFIG_COUNT and -c pairs when it starts
+# receive-pack in a local bare repository, and only the global file still reaches it there.
+[receive]
+	autogc = false
