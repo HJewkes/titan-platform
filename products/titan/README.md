@@ -15,7 +15,7 @@ node products/titan/dist/bin.js health cost --window 24h [--json]
 node products/titan/dist/bin.js health import <stopgap.jsonl> [--target factory]
 node products/titan/dist/bin.js host doctor [--json]
 node products/titan/dist/bin.js host services list [--json]
-node products/titan/dist/bin.js host services install --dry-run
+node products/titan/dist/bin.js host services install [--dry-run]
 node products/titan/dist/bin.js config report [--json] [--to <https console origin> --token-file <path>]
 ```
 
@@ -37,8 +37,11 @@ its systemd units), `delegate` (another installer owns it, whose commands the dr
 backup renders; no darwin row does, so no launchd plist is ever produced.
 `titan host services install --dry-run` prints each rendered unit with its target path under
 `$XDG_CONFIG_HOME/systemd/user`, any legacy `restic-nightly` unit found there, and the
-`systemctl --user` commands to run. It runs nothing and writes nothing. Without `--dry-run` it
-exits 2: installing stays the owner's job.
+`systemctl --user` commands to run; with `--dry-run` it runs nothing and writes nothing. Without
+`--dry-run` it installs the rendered units: it disables a legacy `restic-nightly.timer` when
+present, writes the units, runs `daemon-reload` and enables `titan-host-backup.timer`, stopping
+at the first failing step (exit 1, step named on stderr). If a step after the legacy disable
+fails, no backup timer is enabled until you re-enable one by hand. Run it yourself.
 
 The backup unit runs `scripts/host-backup.sh` from this checkout. The script sources
 `$XDG_CONFIG_HOME/titan/backup.env` (default `~/.config`; or `$TITAN_BACKUP_ENV`) as bash:
@@ -80,6 +83,6 @@ Reference: [titan](https://hjewkes.github.io/titan-platform/reference/titan).
 | `src/host/inventory.ts` | the inventory paths, their categories and platforms, and the stat-only rows |
 | `src/config/report.ts` | `titan config report`: the per-host surface facts and the `config.report` deposit client |
 | `src/host/services/catalog.ts` | the per-platform job catalog and `planServices` |
-| `src/host/services/cli-services.ts` | `titan host services list` and `install --dry-run` |
+| `src/host/services/cli-services.ts` | `titan host services list` and `install [--dry-run]` |
 | `src/host/ports.ts` | the exec, readFile, stat, list and which ports, and the real ones |
 | `src/health/self-cost.ts` | the `self` row from `process.cpuUsage()` and `process.resourceUsage()` |

@@ -12,8 +12,7 @@ import { isSandboxed, sudoStub } from "./sandbox.test-helpers.js";
 afterEach(removeRepos);
 
 const ok = (file: string, args: string[]) => spawnSync(file, args, { stdio: "ignore" }).status === 0;
-// sandboxCommand passes the user as setpriv's --regid too, so the user needs a same-named group: Debian's nobody has only nogroup.
-const SYSTEM_USER = ["nobody", "daemon"].find((user) => ok("id", ["-u", user]) && ok("getent", ["group", user]));
+const SYSTEM_USER = ok("id", ["-u", "nobody"]) ? "nobody" : undefined;
 const REAL_SANDBOX =
   process.platform === "linux" && SYSTEM_USER !== undefined && ok("sudo", ["-n", "true"]) && ok("sh", ["-c", "command -v unshare setpriv timeout"]);
 
@@ -56,7 +55,8 @@ describe("run() with a sandbox user keeps head code away from judge.git", { time
     scratch = "";
   });
 
-  it("run() sandboxes both sides, and judge.git's dir is runner-owned 0700 and never chowned", async () => {
+  // The gid lookup is the real system one, so the user must be an account this host has.
+  it.skipIf(SYSTEM_USER === undefined)("run() sandboxes both sides, and judge.git's dir is runner-owned 0700 and never chowned", async () => {
     enterScratch(os.tmpdir());
     const repo = makeRepo({}, scratch);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
@@ -69,7 +69,7 @@ describe("run() with a sandbox user keeps head code away from judge.git", { time
       return stub.exec(file, args, options);
     };
 
-    await run({ repo: repo.dir, base: repo.base, head, exec, sandboxUser: "fix-proof-sandbox" });
+    await run({ repo: repo.dir, base: repo.base, head, exec, sandboxUser: SYSTEM_USER });
 
     expect([...sandboxedIn].sort()).toEqual(["base", "head"]);
     expect(seen.map(({ stat }) => ({ others: stat.mode & 0o077, uid: stat.uid }))).toEqual([{ others: 0, uid: process.getuid?.() }]);

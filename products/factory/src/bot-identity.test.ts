@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { octokitClient, sharedRateBudget, type GhExecOptions, type GitExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { BOT_CAPABILITY, BOT_LOGIN, botAccess, botTokenPathIn, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand } from "./run-command.js";
 
 /** Built, not written out, so no source line carries a token-shaped literal. */
 const SENTINEL = `ghp_${"SYNTHETICsentinel".padEnd(36, "0")}`;

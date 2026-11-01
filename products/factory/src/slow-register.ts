@@ -1,6 +1,6 @@
 import type { Logger } from "@titan-design/daemon";
 import type { AnyCommand } from "@titan-design/registry";
-import type { FactoryContext } from "./registry.js";
+import type { FactoryContext } from "./context.js";
 
 const SLOW_REGISTER_MS = 5000;
 

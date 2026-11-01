@@ -9,7 +9,6 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -18,6 +17,7 @@ import { timelineEntries, watchRow } from "./view.js";
 import { WAKE_STEP, wakeRoutes, type ImplementerAgents } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
 import { readPath } from "../narrow.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
 const SCRATCH = mkdtempSync(join(tmpdir(), "tp1751-held-"));

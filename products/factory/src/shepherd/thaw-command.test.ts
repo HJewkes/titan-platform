@@ -4,7 +4,7 @@ import { EXIT } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";

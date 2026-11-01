@@ -6,7 +6,6 @@ import { H1, REPO } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { codeRoute, sleep } from "../workflows/land.js";
 import { THAW_STALL_ROUNDS } from "../workflows/land-settle.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef, recheckedFrozen } from "./freeze.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
@@ -14,6 +13,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const RED_SHA = fakeSha("stall-red");
 const SEAT = "demo-seat";

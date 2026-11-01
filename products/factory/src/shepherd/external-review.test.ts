@@ -10,7 +10,8 @@ import { FINDINGS_SEPARATOR, type ReviewerAgent, type ReviewerDispatch, type Rev
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, reviewWait } from "./review-wait.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
-import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { DamagedTranscriptError } from "./seat-evidence.js";
+import { acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 import { readPath } from "../narrow.js";
 import { fakeLocator } from "../test-support/fakes.js";
 

@@ -3,7 +3,7 @@ import { EXIT, defineCommand } from "@titan-design/registry";
 import type { StepRoute, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";

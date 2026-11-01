@@ -64,14 +64,64 @@ describe("titan host services install", () => {
     expect(stdout).not.toContain("would write");
     expect(stdout).toContain("backup: deferred TP-1558");
   });
+});
 
-  it("refuses with exit 2 and writes nothing without --dry-run", async () => {
-    const { code, home, stdout, stderr } = await services(["install"]);
+describe("titan host services install (real)", () => {
+  async function install(options: { legacy: boolean; failing?: string }) {
+    const home = mkdtempSync(join(tmpdir(), "titan-services-"));
+    homes.push(home);
+    const calls: string[] = [];
+    const stubPorts: HostPorts = {
+      ...ports(),
+      stat: async (path) => (options.legacy && path.endsWith("restic-nightly.timer") ? "file" : null),
+      exec: async (command, args) => {
+        const line = [command, ...args].join(" ");
+        calls.push(line);
+        return { code: options.failing && line.includes(options.failing) ? 1 : 0, stdout: "", stderr: options.failing ? "boom" : "" };
+      },
+    };
+    const err: string[] = [];
+    const code = await runCli(["host", "services", "install"], {
+      stdout: () => undefined,
+      stderr: (t) => err.push(t),
+      env: {},
+      home,
+      platform: "linux",
+      titanBin: "/opt/titan/products/titan/dist/bin.js",
+      hostPorts: stubPorts,
+      writeUnit: async (path) => void calls.push(`write ${path.split("/").pop()}`),
+    });
+    return { code, calls, stderr: err.join("") };
+  }
 
-    expect(code).toBe(2);
-    expect(stdout).toBe("");
-    expect(stderr).toMatch(/only supports --dry-run/);
-    expect(readdirSync(home)).toEqual([]);
+  it("disables the legacy timer, then writes units, reloads and enables", async () => {
+    const { code, calls } = await install({ legacy: true });
+
+    expect(code).toBe(0);
+    expect(calls).toEqual([
+      "systemctl --user disable --now restic-nightly.timer",
+      "write titan-host-backup.service",
+      "write titan-host-backup.timer",
+      "systemctl --user daemon-reload",
+      "systemctl --user enable --now titan-host-backup.timer",
+    ]);
+  });
+
+  it("makes no disable call when the legacy timer is absent", async () => {
+    const { code, calls } = await install({ legacy: false });
+
+    expect(code).toBe(0);
+    expect(calls.some((call) => call.includes("disable"))).toBe(false);
+    expect(calls.at(-1)).toBe("systemctl --user enable --now titan-host-backup.timer");
+  });
+
+  it("enables and writes nothing when the legacy disable fails", async () => {
+    const { code, calls, stderr } = await install({ legacy: true, failing: "disable" });
+
+    expect(code).toBe(1);
+    expect(calls).toEqual(["systemctl --user disable --now restic-nightly.timer"]);
+    expect(stderr).toContain("systemctl --user disable --now restic-nightly.timer");
+    expect(stderr).toContain("boom");
   });
 });
 

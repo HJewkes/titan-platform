@@ -5,7 +5,7 @@ import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
@@ -38,12 +38,10 @@ import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { watchCommand } from "./watch-command.js";
-import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
+import { timelineEntries, type PrTimeline } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
-
-/** Transitional, for workflows.ts until TP-2466 b repoints it. */
-export type { ShepherdServices } from "./services.js";
 
 export interface Registered {
   runId: string;

@@ -1,4 +1,4 @@
-import type { WatchRow } from "../shepherd/view.js";
+import type { WatchRow } from "../shepherd/view-schema.js";
 import type { FlowStats } from "./model.js";
 
 /** One broker agent's life, as the roster reads it. `endedAt` is absent while the agent is live; an exited agent without one cannot be measured. */

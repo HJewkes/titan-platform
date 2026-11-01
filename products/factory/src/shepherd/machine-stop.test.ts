@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { awaitLift, machineStopWatch, stopReason } from "./machine-stop.js";
-import type { MachineReadings } from "./spawn-gate.js";
+import type { MachineReadings } from "./spawn-limits.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 
 const CLEAR: MachineReadings = { load5: 1, pressureLevel: 1, freeMemoryPct: 50 };

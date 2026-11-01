@@ -1,12 +1,12 @@
 // superseded-at:M3 (D-M3-19: M3's merge queue must carry merge-order.json, TP-3147)
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { blockers, orderDriving, orderWaiting, withinTtl, type OrderWait, type Reservation } from "./merge-order.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { MergeOrderServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const ClearReason = z.string().trim().min(1, "a clear needs a non-empty --reason").max(500);
 const OrderArgs = z.discriminatedUnion("action", [

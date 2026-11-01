@@ -4,7 +4,7 @@ import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 
 export interface BuildSurfaceArgs {

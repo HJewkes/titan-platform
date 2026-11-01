@@ -8,7 +8,7 @@ import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
-import { MAX_NOTE_CHARS } from "../gate-answer-check.js";
+import { MAX_NOTE_CHARS } from "../note-limits.js";
 import { sendBackOffer } from "./owner-send-back.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";

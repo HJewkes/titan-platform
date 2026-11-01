@@ -10,7 +10,6 @@ import { gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS, autoPassComment, autoPassesOf } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, noteReviewerAccount, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
 import { freshNoVerdictState, noteReviewerStep } from "./no-verdict-round.js";
@@ -23,6 +22,7 @@ import { countRound, type Routed } from "./routed.js";
 import type { ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("demotion-head");

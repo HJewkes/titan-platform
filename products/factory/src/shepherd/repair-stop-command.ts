@@ -1,6 +1,6 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { parseStopRef, type RepairStop, type RepairStopTarget } from "./repair-stop.js";
 import { isRepoKey } from "./seats.js";
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import { alarmNote, gateAlarm } from "./gate-alarm.js";
 import { ALARM_NOTE_FILE, syncAlarmNote } from "./run.js";
 

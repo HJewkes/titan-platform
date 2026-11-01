@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { emptyModel } from "../test-support/digest.js";
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

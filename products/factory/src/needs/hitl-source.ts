@@ -1,6 +1,6 @@
 import type { GateRecord, GateStore } from "@titan-design/hitl";
 import { cardLint, type ClosedStatus, type OwnerItem, type QueueSource, type ResolveResult } from "@titan-design/owner-queue";
-import { resolveCommand } from "../registry.js";
+import { resolveCommand } from "../resolve-command.js";
 import { cardFields, consequenceOf, gateStepOf } from "./gate-card.js";
 import { pollTail } from "./poll-tail.js";
 import { summaryOf } from "./queue-read-error.js";

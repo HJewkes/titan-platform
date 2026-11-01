@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the pace windows default to the old 60 s and 15 s",
-      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "file": "products/factory/src/shepherd/spawn-limits.ts",
       "find": "  windowMs: 0,\n  headroomIntervalMs: 0,\n",
       "replace": "  windowMs: 60_000,\n  headroomIntervalMs: 15_000,\n",
       "kills": [

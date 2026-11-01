@@ -7,13 +7,13 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, outsideActions, spaceUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { sendSeatDigests, type SeatState } from "./seat-digest.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("head2");
 const GONE = "no agent of impl-a's lineage is on the roster, so no checkout is known to start a successor in";

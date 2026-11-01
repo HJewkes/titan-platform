@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { digestReads, fileSeatDigestMemory, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const HEAD = "a".repeat(40);
 const SEATS: Record<string, string> = { "acme/widgets": "widgets-coord", "acme/gears": "gears-coord" };

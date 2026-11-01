@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { eventsSince } from "./events.js";
 import { formatShepherd } from "./format.js";
@@ -13,7 +13,7 @@ import { MergeOrder, type MergeOrderRules, type Reservation } from "./merge-orde
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { MergeOrderServices } from "./services.js";
 import { shepherdStoreRef } from "./store.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const REPO = "demo/repo";
 const SHARED = "docs/shared.md";

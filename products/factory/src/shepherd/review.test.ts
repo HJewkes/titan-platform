@@ -39,7 +39,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued, reviewWait } from "./review-wait.js";
-import { SpawnDeferred, spawnGate, type SpawnGate } from "./spawn-gate.js";
+import { SpawnDeferred, spawnGate } from "./spawn-gate.js";
 import { busyRuns } from "../restart-drain.js";
 import { gateQueuedRun } from "../serve-holds.js";
 import type { ShepherdServices } from "./services.js";
@@ -55,6 +55,7 @@ import { fakeLocator } from "../test-support/fakes.js";
 import { readPath } from "../narrow.js";
 import { z } from "zod";
 import { mergeEvidenceAt } from "./policy.js";
+import type { SpawnGate } from "./ports.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);

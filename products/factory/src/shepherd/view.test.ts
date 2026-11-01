@@ -1,13 +1,14 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { resolveCommand } from "../registry.js";
+import { resolveCommand } from "../resolve-command.js";
 import { clearCiWaitHead, noteCiWaitHead } from "../workflows/ci-wait-head.js";
 import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { PhaseSchema, PrTimelineSchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { TimelineEntrySchema } from "./view-schema.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { GateRecord } from "@titan-design/hitl";
 

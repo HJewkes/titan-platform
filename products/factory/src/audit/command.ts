@@ -5,7 +5,7 @@ import { parse } from "yaml";
 import type { Verbs } from "../cli.js";
 import { EXIT } from "../exit-codes.js";
 import { untilSettledOrGated, type FactoryHost } from "../host.js";
-import { resolveCommand } from "../registry.js";
+import { resolveCommand } from "../resolve-command.js";
 import { AUDIT_WORKFLOW } from "./workflow.js";
 import { errorMessage, readPath } from "../narrow.js";
 

@@ -10,7 +10,7 @@ import { removeReviewCheckout } from "../shepherd/review-checkout.js";
 import { agentChatReviewerDispatch } from "../shepherd/reviewer-dispatch.js";
 import { transcriptReviewerReader } from "../shepherd/reviewer-reader.js";
 import { configuredRoles } from "../shepherd/reviewer-roles.js";
-import { DEFAULT_SPAWN_LIMITS } from "../shepherd/spawn-gate.js";
+import { DEFAULT_SPAWN_LIMITS } from "../shepherd/spawn-limits.js";
 import { boundCheckout, loadSeatBook } from "../shepherd/seats.js";
 import type { CiRead } from "./format.js";
 import { ghLineSource } from "./gh-line-source.js";

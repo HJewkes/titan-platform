@@ -7,11 +7,12 @@ import { agentChatAgents } from "./agents.js";
 import { fixersOver } from "./main-red.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
-import type { RosterReader } from "./roster.js";
-import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
-import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
+import { movedPastOnList, spawnQueuePosition } from "./review-queue.js";
+import { admitSpawn, spawnGate, SpawnDeferred, type CheckoutDisk } from "./spawn-gate.js";
+import { DEFAULT_SPAWN_LIMITS, type MachineReadings, type SpawnLimits } from "./spawn-limits.js";
 import { implementersOver } from "./wake.js";
 import { partialFake } from "@titan-design/test-kit";
+import type { ReviewAsk, RosterReader } from "./ports.js";
 
 /** A configured cost of four cores per unabsorbed review, which the accounting below reads; the measured default is in measured-load.test.ts. */
 const limits: SpawnLimits = { ...DEFAULT_SPAWN_LIMITS, reviewLoad: 4 };

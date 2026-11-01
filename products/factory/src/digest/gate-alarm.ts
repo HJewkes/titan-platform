@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 
 const MEDIAN_ALARM_HOURS = 24;
 const GATE_ALARM_HOURS = 72;
