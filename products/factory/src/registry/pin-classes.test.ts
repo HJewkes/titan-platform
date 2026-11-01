@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { markerTableMigration } from "../markers/marker-table.js";
 import { PIN_CLASSES } from "./pin-classes.js";
@@ -19,9 +20,9 @@ function insertPinClass(db: Db, pinClass: string): void {
 
 /** The classes the table's CHECK lists, read back from the schema SQLite stored. */
 function checkSet(db: Db): string[] {
-  const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'factory_marker'").get() as { sql: string };
+  const { sql } = z.object({ sql: z.string() }).parse(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'factory_marker'").get());
   const list = /pin_class IN \(([^)]*)\)/.exec(sql)?.[1] ?? "";
-  return [...list.matchAll(/'([^']+)'/g)].map((match) => match[1] as string).sort();
+  return [...list.matchAll(/'([^']+)'/g)].map((match) => match[1] ?? "").sort();
 }
 
 describe("pin-class rule file", () => {

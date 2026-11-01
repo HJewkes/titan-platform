@@ -33,8 +33,9 @@ describe("step registry entries", () => {
   });
 
   it("an entry's pin class comes from the rule file, and an entry cannot declare one", () => {
-    const registry = createRegistry([factEntry()]);
-    expect(pinClassOf(registry.entries[0] as FactEntry, { visual: false })).toBe("tree");
+    const entry = factEntry();
+    expect(createRegistry([entry]).entries).toEqual([entry]);
+    expect(pinClassOf(entry, { visual: false })).toBe("tree");
     expect(() => createRegistry([loose(factEntry(), { pinClass: "diff" })])).toThrow(/pinClass/);
     expect(() => createRegistry([loose(base(), { pinClass: "diff" })])).toThrow(/pinClass/);
   });
