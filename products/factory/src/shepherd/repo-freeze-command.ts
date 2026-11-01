@@ -1,6 +1,6 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import type { Freeze, FreezeStore } from "./freeze.js";
 import { RepoArg, coded } from "./register-args.js";
 import type { RepoFreeze, RepoFreezes } from "./repo-freeze.js";

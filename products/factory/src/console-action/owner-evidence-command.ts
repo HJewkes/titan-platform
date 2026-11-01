@@ -1,6 +1,6 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { ownerEvidence, type OwnerEvidence } from "./owner-evidence.js";
 
 const fail = (message: string, code: number): Error => Object.assign(new Error(message), { code });

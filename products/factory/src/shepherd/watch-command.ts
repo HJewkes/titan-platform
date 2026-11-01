@@ -1,7 +1,7 @@
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { EXIT } from "../exit-codes.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { ShepherdStore } from "./store.js";
 import { WATCH_EVENTS, WatchEventSchema, type PrWatch } from "./watch-list.js";

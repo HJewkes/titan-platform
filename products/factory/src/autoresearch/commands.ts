@@ -17,7 +17,7 @@ import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import type { ArConfig } from "./config.js";
 import { ideaDiff, type IdeaDiff } from "./diff-read.js";
 import { appendOwnerIdea } from "./inbox.js";

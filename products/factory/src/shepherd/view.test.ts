@@ -1,6 +1,6 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { resolveCommand } from "../registry.js";
+import { resolveCommand } from "../resolve-command.js";
 import { clearCiWaitHead, noteCiWaitHead } from "../workflows/ci-wait-head.js";
 import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";

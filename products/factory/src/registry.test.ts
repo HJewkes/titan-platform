@@ -3,7 +3,8 @@ import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-desi
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
-import { createFactoryRegistry, parsePrRef, type FactoryContext } from "./registry.js";
+import type { FactoryContext } from "./context.js";
+import { createFactoryRegistry, parsePrRef } from "./registry.js";
 import { TOOL_PREFIX } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { callCommand } from "./test-support/shepherd.js";
