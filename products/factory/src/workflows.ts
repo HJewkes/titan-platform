@@ -27,6 +27,7 @@ import { adversaryGuard } from "./shepherd/adversary-guard.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents, installedHeadless } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
+import { readShepherdLimits } from "./shepherd/limits-read.js";
 import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
 import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
 import { movedPastOnList, openHeadOnPort } from "./shepherd/review-queue.js";
@@ -292,6 +293,11 @@ export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Part
   return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)) };
 }
 
+/** The limits the production spawn gate reads: the startup factory values, the live factory rows, then the host's `limits.shepherd`, each read afresh. */
+export function gateLimits(config: ConfigRef, env: NodeJS.ProcessEnv): () => Partial<SpawnLimits> {
+  return liveSpawnLimits(configuredSpawnLimits(config.get().shepherd), config, () => readShepherdLimits(env));
+}
+
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
 /** The post-merge chore wrapper, built beside bin.js as its own entry. */
@@ -309,7 +315,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const repos: UnseatedRepos = () => loadConfig(configPath(env)).shepherd?.repos ?? {};
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const limits = liveSpawnLimits(configuredSpawnLimits(shepherd), config);
+  const limits = gateLimits(config, env);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
   const client = sharedOctokit();
   const port = withStatusChecks(overrides.port ?? githubPort(octokitWire({ client })), configuredStatusContexts(() => config.get().shepherd?.repos));

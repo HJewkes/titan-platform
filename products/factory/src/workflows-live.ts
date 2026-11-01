@@ -100,8 +100,11 @@ export function withHoldAdversary<W extends object>(wiring: W, adversary: HoldAd
   };
 }
 
-/** The live rows of the spawn limits; a row the reloaded file leaves out falls back to its default, not its startup value. */
-export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef): () => Partial<SpawnLimits> {
+/**
+ * The live rows of the spawn limits; a row the reloaded file leaves out falls back to its default, not its startup value.
+ * `host` is read on every call and wins over both, so the host's `limits.shepherd` edits apply without a restart.
+ */
+export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef, host: () => Partial<SpawnLimits> = () => ({})): () => Partial<SpawnLimits> {
   const reads = {
     load5: liveField(config, "shepherd.spawnGate.load5"),
     buildLoad5: liveField(config, "shepherd.spawnGate.buildLoad5"),
@@ -110,7 +113,7 @@ export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef
     maxConcurrentReviews: liveField(config, "shepherd.review.maxConcurrent"),
   };
   const fixed = Object.fromEntries(Object.entries(startup).filter(([key]) => !(key in reads)));
-  return () => ({ ...fixed, ...Object.fromEntries(Object.entries(reads).flatMap(([key, read]) => { const value = read(); return value === undefined ? [] : [[key, value]]; })) });
+  return () => ({ ...fixed, ...Object.fromEntries(Object.entries(reads).flatMap(([key, read]) => { const value = read(); return value === undefined ? [] : [[key, value]]; })), ...host() });
 }
 
 /** Read through the live config at each evidence step, so a threshold edit applies at the next head without a restart; repo keys match in any case. */
