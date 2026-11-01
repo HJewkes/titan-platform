@@ -136,6 +136,12 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
   It returns the source layer of every field. A seat cap only tightens.
 - `checkLimits(parsed, { now, knownConfigDirs?, knownProfiles? })` reports expired
   overrides, closed scopes, unknown pools, profiles and config dirs, and clamps.
+- An optional top-level `pace` block (`mode` off, shadow or on; `buffer_points` >= 0;
+  `finish_hours_before_reset` 0-168) configures the pace controller. `resolvePace(parsed)`
+  returns `{ present: false }` or the block filled from `PACE_DEFAULTS` (shadow, 3, 24). A
+  malformed `pace` is dropped into `ignoredSections`, reported as `invalid_pace`, and closes
+  no pool. Version stays 1, but a reader older than this release refuses a block that
+  carries `pace` and closes every pool, so upgrade readers before writing it.
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.

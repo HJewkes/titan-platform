@@ -106,6 +106,17 @@ declare const shepherdSchema: z.ZodObject<{
         max_concurrent: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+declare const PACE_MODES: readonly ["off", "shadow", "on"];
+/** The pace controller's mode and tuning. Omitted fields take `PACE_DEFAULTS` through `resolvePace`. */
+declare const paceSchema: z.ZodObject<{
+    mode: z.ZodEnum<{
+        off: "off";
+        shadow: "shadow";
+        on: "on";
+    }>;
+    buffer_points: z.ZodOptional<z.ZodNumber>;
+    finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 declare const overrideSchema: z.ZodObject<{
     per_day_points: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -220,10 +231,21 @@ declare const limitsSchema: z.ZodObject<{
             max_concurrent: z.ZodOptional<z.ZodNumber>;
         }, z.core.$strict>>;
     }, z.core.$strict>>;
+    pace: z.ZodOptional<z.ZodObject<{
+        mode: z.ZodEnum<{
+            off: "off";
+            shadow: "shadow";
+            on: "on";
+        }>;
+        buffer_points: z.ZodOptional<z.ZodNumber>;
+        finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 type Limits = z.infer<typeof limitsSchema>;
 type CapacityLimits = z.infer<typeof capacitySchema>;
 type ShepherdLimits = z.infer<typeof shepherdSchema>;
+type PaceLimits = z.infer<typeof paceSchema>;
+type PaceMode = (typeof PACE_MODES)[number];
 type BriefGate = (typeof BRIEF_GATES)[number];
 type LimitsDefaults = z.infer<typeof defaultsSchema>;
 type PoolLimits = z.infer<typeof poolSchema>;
@@ -238,7 +260,7 @@ declare class LimitsConfigError extends Error {
 }
 type LimitsBlock = Limits & Required<Pick<Limits, "funds" | "profiles" | "seats" | "overrides">>;
 /** Host-wide sections that bind no pool, so a bad one is dropped rather than closing anything. */
-type LimitsSection = "capacity" | "shepherd";
+type LimitsSection = "capacity" | "shepherd" | "pace";
 interface IgnoredEntry {
     index: number;
     reason: string;
@@ -258,4 +280,4 @@ interface ParsedLimits {
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
 declare function parseLimits(raw: unknown): ParsedLimits;
 
-export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, BRIEF_GATES as a, type Limits as b, type LimitsBlock as c, LimitsConfigError as d, type LimitsDefaults as e, type LimitsOverride as f, type LimitsSection as g, type PoolLimits as h, type ProfileLimits as i, type ShepherdLimits as j, capacitySchema as k, grantSchema as l, liftSchema as m, limitsSchema as n, overrideSchema as o, parseLimits as p, poolSchema as q, profileSchema as r, seatSchema as s, shepherdSchema as t };
+export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, type PaceLimits as a, BRIEF_GATES as b, type Limits as c, type LimitsBlock as d, LimitsConfigError as e, type LimitsDefaults as f, type LimitsOverride as g, type LimitsSection as h, PACE_MODES as i, type PaceMode as j, type PoolLimits as k, type ProfileLimits as l, type ShepherdLimits as m, capacitySchema as n, grantSchema as o, liftSchema as p, limitsSchema as q, overrideSchema as r, paceSchema as s, parseLimits as t, poolSchema as u, profileSchema as v, seatSchema as w, shepherdSchema as x };
