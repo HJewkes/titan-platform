@@ -79,18 +79,19 @@ function splitOverrides(entries: unknown[] | undefined) {
   return { valid, ignored };
 }
 
+const SECTIONS: readonly LimitsSection[] = ["capacity", "shepherd", "pace"];
 const sectionSchemas = { capacity: capacitySchema, shepherd: shepherdSchema, pace: paceSchema } as const;
 
 function splitSections(raw: Partial<Record<LimitsSection, unknown>>) {
-  const kept: Record<string, unknown> = {};
+  const kept: Pick<Limits, LimitsSection> = {};
   const ignored: Partial<Record<LimitsSection, string>> = {};
-  for (const [name, schema] of Object.entries(sectionSchemas)) {
-    const section = name as LimitsSection;
+  for (const section of SECTIONS) {
+    const schema = sectionSchemas[section];
     const result = schema.optional().safeParse(raw[section]);
     if (!result.success) ignored[section] = z.prettifyError(result.error);
-    else if (result.data !== undefined) kept[section] = result.data;
+    else if (result.data !== undefined) Object.assign(kept, { [section]: result.data });
   }
-  return { kept: kept as Pick<Limits, LimitsSection>, ignored };
+  return { kept, ignored };
 }
 
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
