@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { Exec } from "@titan-design/fix-proof";
 import { filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
 import { localCloneGit, type BundleGit } from "../review-pr/bundle.js";
-import { buildCorrectedRef, fixTests, indexCorpus, laterFixCandidates, type FixSource } from "./later-fix.js";
+import { buildCorrectedRef, fixTests, laterFixCandidates, type FixSource, type indexCorpus } from "./later-fix.js";
 import { screenLaterFix } from "./later-fix-screen.js";
 import type { screenCase } from "./screen.js";
 import type { CorpusV3Row } from "./select.js";
@@ -12,7 +12,7 @@ import { implementCaseId, type ImplementTaskSource, type LaterFixAttachment } fr
 /** Which corpus links to follow: title-matched follow-ups, file-overlap fixes within 14 days, or both. */
 export type LaterFixSource = FixSource | "both";
 
-export interface LaterFixContext {
+interface LaterFixContext {
   index: ReturnType<typeof indexCorpus>;
   fixSource: LaterFixSource;
   outDir: string;
