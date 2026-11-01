@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { UNIT_NAME, unitPath } from "./service.js";
-import type { CommandResult, ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import type { ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
 const DEPLOY_CHECKOUT = `${HOME}/.local/share/titan-factory/deploy/titan-platform`;

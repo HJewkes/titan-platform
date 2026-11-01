@@ -13,8 +13,7 @@ import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
 import { awaitingTranscript, rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
-
-export { DamagedTranscriptError } from "./seat-evidence.js";
+import type { SeatReader } from "./seat-reader.js";
 import { fixFirstFindings, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
@@ -64,11 +63,6 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
 export function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
-
-/** A `ReviewerReader` whose seat read can take the roster its caller already holds, so a check reads the roster once. */
-export type SeatReader = Omit<ReviewerReader, "readSeat"> & {
-  readSeat?: (input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]) => Promise<readonly ReviewerMessage[]>;
-};
 
 /**
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until

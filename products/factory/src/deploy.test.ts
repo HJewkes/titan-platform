@@ -10,7 +10,7 @@ import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions,
 import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
-import type { CommandResult } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
 
 const CHECKOUT = "/srv/repo";
 const STATE = "/xdg/state/titan-factory";
