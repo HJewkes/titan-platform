@@ -6,7 +6,8 @@ import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-desi
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
+import { EXIT, formatResume, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { configDeprecations } from "./config.js";
 import { openFactoryHost } from "./host.js";
 import { DEPRECATED_INTERVAL } from "./reconciler/config.js";

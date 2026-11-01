@@ -1,6 +1,6 @@
 import { consoleLogger } from "@titan-design/daemon";
 import type { Command } from "commander";
-import type { CliDeps, Verbs } from "./cli.js";
+import type { CliDeps, Verbs } from "./cli-types.js";
 import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";

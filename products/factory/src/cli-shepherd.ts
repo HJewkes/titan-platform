@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";

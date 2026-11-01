@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { ArLadderView, ArRunView, Outcome } from "@titan-design/autoresearch";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it } from "vitest";
-import { EXIT, runCli, type CliDeps } from "../cli.js";
+import { EXIT, runCli } from "../cli.js";
+import type { CliDeps } from "../cli-types.js";
 import { formatView } from "./cli.js";
 
 const dirs: string[] = [];

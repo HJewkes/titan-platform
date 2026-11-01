@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ReviewTarget } from "@titan-design/review-panel";
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "../cli.js";
+import type { CliIo, Verbs } from "../cli-types.js";
 import { exitCodeOf, formatResolved, formatReview, resolveExitCode, reviewJson, type ReviewReport } from "./format.js";
 import { parseTarget, type PrTarget } from "./pr-facts.js";
 import { configuredReviewService, type ReviewService } from "./service.js";
