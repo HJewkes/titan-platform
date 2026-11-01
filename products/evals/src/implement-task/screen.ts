@@ -19,6 +19,8 @@ interface ScreenOptions {
   /** The local clone of `owner/repo`; it is only read, and a screen's worktrees go in a scratch clone of it. */
   cloneFor(repo: string): string | undefined;
   exec?: Exec;
+  /** Sees the plan and judged runs behind the verdict, for a caller that grades them by a stricter rule. */
+  onRuns?(plan: FixProofPlan, runs: HeadRuns): void;
 }
 
 // With no files the run has no report to read: an error marker from execSide, or a report that did not decode.
@@ -89,7 +91,9 @@ async function screen(source: ImplementTaskSource, options: ScreenOptions, exec:
   // No sandboxUser: these are accepted merges, so the base side runs nothing the head side would not.
   await execSide({ ...side, side: "base" });
   await execSide({ ...side, side: "head", headRuns: HEAD_REPORTS.length });
-  return screenVerdict(classifyRuns(plan, out));
+  const runs = classifyRuns(plan, out);
+  options.onRuns?.(plan, runs);
+  return screenVerdict(runs);
 }
 
 /** Builds and tests one accepted merge in a scratch clone under `<out>/.scratch`; any failure drops the case, so one bad commit never stops an export. */
