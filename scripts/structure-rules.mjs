@@ -163,6 +163,14 @@ export function checkTurboBuildContract(root) {
   return messages;
 }
 
+/** R54: turbo hashes the root's workspace dependencies into every task, so one edit to any of them would miss the whole cache. */
+export function checkRootHasNoWorkspaceDependencies(root) {
+  const pkg = readJson(join(root, "package.json"));
+  return DEPENDENCY_FIELDS.flatMap((field) => Object.entries(pkg[field] ?? {}))
+    .filter(([, spec]) => spec.startsWith("workspace:"))
+    .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path instead.`);
+}
+
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
   return level === "warn" || level === 1;

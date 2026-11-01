@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "release PR runs stay in the pull request sample",
+      "file": "scripts/ci-timing.mjs",
+      "find": "event !== \"pull_request\" || run.headBranch !== options.releaseBranch",
+      "replace": "true",
+      "kills": [
+        "ci timing release PR sample keeps a release PR run out of the pull request stats"
+      ]
+    },
+    {
+      "name": "the release sample keeps the event gh reports",
+      "file": "scripts/ci-timing.mjs",
+      "find": "({ ...run, event, ...JSON.parse(",
+      "replace": "({ ...run, ...JSON.parse(",
+      "kills": [
+        "ci timing release PR sample counts a release PR run under its own event"
+      ]
+    },
+    {
+      "name": "the release sample lists no branch",
+      "file": "scripts/ci-timing.mjs",
+      "find": "if (event === \"release_pr\") args.push(\"--branch\", options.releaseBranch);",
+      "replace": "",
+      "kills": [
+        "ci timing release PR sample lists the release sample as pull request runs on the release branch"
+      ]
+    }
+  ]
+}
