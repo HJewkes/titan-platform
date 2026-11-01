@@ -19,6 +19,8 @@ export interface RunOptions {
   head: string;
   budgetMs?: number;
   exec?: Exec;
+  /** Runs each side's head-controlled commands as this user, as `execSide` does, so head code cannot open the judge's snapshot. */
+  sandboxUser?: string;
 }
 
 type Repos = Record<"base" | "head" | "judge", string>;
@@ -43,13 +45,14 @@ async function runSides(options: RunOptions, work: string): Promise<string> {
   const remaining = () => Math.max(1, deadline - Date.now());
   const { shas, repos } = await snapshots(options, work, deadline);
   const side = { exec: options.exec, ...shas };
+  const sandbox = options.sandboxUser === undefined ? {} : { sandboxUser: options.sandboxUser };
   const baseOut = path.join(work, "out", "base");
   // The base side finishes and removes its tree before the head side builds, as it does in its own CI job.
-  await execSide({ ...side, repo: repos.base, side: "base", out: baseOut, budgetMs: remaining() });
+  await execSide({ ...side, repo: repos.base, side: "base", out: baseOut, budgetMs: remaining(), ...sandbox });
   // Read now: the head side runs PR code as this user, which could otherwise rewrite the base reports before the judge.
   const reports: JudgeReports = { base: readReport(baseOut, "base"), baseRerun: readReport(baseOut, "base-rerun") };
   const headOut = path.join(work, "out", "head");
-  await execSide({ ...side, repo: repos.head, side: "head", out: headOut, budgetMs: remaining() });
+  await execSide({ ...side, repo: repos.head, side: "head", out: headOut, budgetMs: remaining(), ...sandbox });
   reports.head = readReport(headOut, "head");
   // The judge keeps its own budget so a side that ran out of time still gets its timeout reported.
   return judge({ ...side, repo: repos.judge, reports, budgetMs: DEFAULT_JUDGE_BUDGET_MS });
@@ -61,6 +64,7 @@ async function runSides(options: RunOptions, work: string): Promise<string> {
  * caller's repo or the judge's. Failures become a verdict error line, never a throw.
  */
 export async function run(options: RunOptions): Promise<string> {
+  // mkdtemp makes it 0700 and the runner's; it is never chowned, so a sandboxed side cannot reach judge.git inside it.
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-reports-"));
   try {
     return await runSides(options, work);

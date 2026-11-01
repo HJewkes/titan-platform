@@ -480,6 +480,8 @@ interface RunOptions {
     head: string;
     budgetMs?: number;
     exec?: Exec;
+    /** Runs each side's head-controlled commands as this user, as `execSide` does, so head code cannot open the judge's snapshot. */
+    sandboxUser?: string;
 }
 /**
  * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
