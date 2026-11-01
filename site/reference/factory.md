@@ -55,7 +55,7 @@ To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. O
 commands install it:
 
 ```sh
-pnpm factory:install                  # install, build, link titan-factory into ~/.local/bin
+pnpm factory:install                  # install, build, link titan-factory and titan-miner into ~/.local/bin
 titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
 
