@@ -79,6 +79,7 @@ export type CheckFinding = { kind: "missing"; name: string } | { kind: "pending"
 /**
  * Only runs from an allowed app at the head count, as in authority's MRG-AU-RV. Every counted run
  * must be green, superseded or not, and each required context needs a completed run concluding success.
+ * Callers that ignore concurrency cancels pre-filter the runs with `withoutSupersededCancels`.
  * An empty result means the head is green.
  */
 export function headCheckFindings({ headSha, contexts, runs, requiredApps }: HeadChecksInput): CheckFinding[] {
