@@ -224,7 +224,7 @@ describe("the dag-check hold log", () => {
     const lines = readFileSync(holdLogPath(lockDir), "utf8").trim().split("\n");
     expect(lines).toHaveLength(1);
     const line = JSON.parse(lines[0]);
-    expect(line).toMatchObject({ check: "dead:check", pid: process.pid, aheadAtJoin: 0, exit: 1 });
+    expect(line).toMatchObject({ check: "dead:check", pid: process.pid, owner: ownerKey(process.cwd()), aheadAtJoin: 0, exit: 1 });
     expect(line.joinedAt).toBeLessThanOrEqual(line.acquiredAt);
     expect(line.acquiredAt).toBeLessThanOrEqual(line.releasedAt);
   });
