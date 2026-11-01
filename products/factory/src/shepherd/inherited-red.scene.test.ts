@@ -4,13 +4,13 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 /** tp#1499's shape: a head red on `validate` from main's max-line-length error, read while main's own run was pending. */
 const HEAD = fakeSha("a64fb24e");

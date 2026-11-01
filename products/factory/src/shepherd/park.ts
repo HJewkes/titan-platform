@@ -5,12 +5,12 @@ import type { StepDeclaration } from "../definition.js";
 import { redactForEvidence } from "../redact.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { isOwnReviewer } from "./cleanup.js";
 import { liveRetry, rosterPresence, unrefWait, type LiveRetry, type ParkAttempt } from "./park-retry.js";
 import type { ShepherdDeps } from "./phases.js";
-import { agentChatRoster, type RosterReader } from "./roster.js";
+import { agentChatRoster } from "./roster.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
 export const PARK_STEP = "sh-park";
 export const PARK_STEPS: readonly StepDeclaration[] = [{ id: PARK_STEP, kind: "dispatch" }];

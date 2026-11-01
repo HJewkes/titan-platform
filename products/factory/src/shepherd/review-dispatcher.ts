@@ -1,12 +1,5 @@
-import type { ReviewAsk, WaitingReview } from "./review-queue.js";
-
-/** How a queued review starts once admitted: `running` reads the reviewers for the gate, then `launch` starts the agent. */
-export interface ReviewStart {
-  running: () => Promise<readonly number[]>;
-  launch: () => Promise<void>;
-  /** The waiting step's signal: aborting it takes the review out of the queue, so a cancelled run never launches a reviewer. */
-  signal?: AbortSignal;
-}
+import type { WaitingReview } from "./review-queue.js";
+import type { ReviewAsk, ReviewStart } from "./ports.js";
 
 /** The queued review's pull request moved to a new head or closed before its turn, so it never started. */
 export class ReviewSuperseded extends Error {

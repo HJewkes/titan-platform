@@ -1,7 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { partialFake } from "@titan-design/test-kit";
-import type { RosterReader } from "./roster.js";
+import type { RosterReader } from "./ports.js";
 
 const dispatch = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@titan-design/agent-dispatch", async (original) => ({ ...(await original<object>()), dispatchToAgentChat: dispatch }));

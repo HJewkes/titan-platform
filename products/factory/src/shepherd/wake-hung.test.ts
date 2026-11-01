@@ -6,13 +6,13 @@ import type { RoutedStepInput } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { wakeRoutes, type ImplementerAgents, type WakeStepResult } from "./wake.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");

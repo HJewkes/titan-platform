@@ -6,13 +6,13 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { WAIT_DEMOTIONS } from "./freeze-wait.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
 import type { ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("held-fix");
 /** Would merge on its own, so only the hold keeps a reviewed head unmerged. */

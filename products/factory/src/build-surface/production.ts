@@ -11,13 +11,12 @@ import { agentChatImplementerRunner, type ImplementerRunner } from "../agent-cha
 import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { agentChatAgents } from "../shepherd/agents.js";
 import { activeWorkFixTasks, activeWorkOrigin } from "../shepherd/cleanup-ports.js";
-import type { RosterReader } from "../shepherd/roster.js";
-import type { SpawnGate } from "../shepherd/spawn-gate.js";
 import { postRpc } from "../cli-shepherd-rpc.js";
 import { FACTORY_PORT } from "../serve.js";
 import { sleep } from "../workflows/deadline.js";
 import type { BuildSurfacePorts, CommandRequest, CommandRun, ShepherdPort } from "./ports.js";
 import type { LandState } from "./schemas.js";
+import type { RosterReader, SpawnGate } from "../shepherd/ports.js";
 
 /** Gate runs can be long; this only stops a command that hangs for good. */
 const COMMAND_TIMEOUT_MS = 2 * 60 * 60_000;

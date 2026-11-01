@@ -6,7 +6,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
-import { liveRoute, type ExitNoticePorts, type FallbackSeat } from "./exit-notice.js";
+import { liveRoute } from "./exit-notice.js";
 import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
@@ -17,6 +17,7 @@ import { rowsWithRuns, runFinished } from "./watch-rows.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
 import type { DigestPacer, DigestPacing, PendingItems } from "./seat-digest-pace.js";
 import { digestWatches, watchedKeys, type DigestWatches } from "./watch-list.js";
+import type { ExitNoticePorts, FallbackSeat } from "./ports.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
 export const SEAT_DIGEST_MS = 60_000;

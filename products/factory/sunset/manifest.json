@@ -1814,6 +1814,18 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ports.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ports.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/presence.ts",
    "fate": "kept",
    "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
@@ -2243,13 +2255,6 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-schemas.ts",
-   "fate": "survives",
-   "task": "D-M2-07",
-   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
-  },
-  {
-   "repo": "titan-platform",
-   "path": "products/factory/src/shepherd/review-slots.ts",
    "fate": "survives",
    "task": "D-M2-07",
    "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"

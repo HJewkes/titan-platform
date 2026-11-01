@@ -6,9 +6,10 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import { liveRoute, runSeat, toldDetail, type ExitNoticePorts } from "./exit-notice.js";
+import { liveRoute, runSeat, toldDetail } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 /**
  * Only owner approvals open an owner gate: approve-merge under an owner-gate or visual policy, one-way items, and holds

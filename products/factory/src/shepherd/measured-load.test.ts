@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ReviewAsk } from "./review-queue.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, type MachineReadings } from "./spawn-gate.js";
+import type { ReviewAsk } from "./ports.js";
 
 const limits = DEFAULT_SPAWN_LIMITS;
 /** A 48-core host with 13 cores busy, as sampled on 2026-10-29. */
