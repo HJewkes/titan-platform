@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { classifyReports, spawnExec, type Classification, type Exec, type FixProofPlan } from "@titan-design/fix-proof";
+import { partialFake } from "@titan-design/test-kit";
 import { gitIn } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { localCloneGit } from "../review-pr/bundle.js";
@@ -66,7 +67,7 @@ describe("laterFixVerdict", () => {
 });
 
 const caseSource: ImplementTaskSource = { repo: "owner/widgets", pr: 3, baseSha: "b".repeat(40), mergeSha: "m".repeat(40), brief: "Add x.", taskInitiative: null, cls: "local-fix" };
-const planOf = (tests: string[]): FixProofPlan => ({ tests, carried: [], overlayRemovals: [] }) as unknown as FixProofPlan;
+const planOf = (tests: string[]): FixProofPlan => partialFake<FixProofPlan>({ tests });
 
 function fakeScreen(runs: HeadRuns, plan = planOf([FILE])): { screen: typeof screenCase; calls: { source: ImplementTaskSource; clone: string | undefined }[] } {
   const calls: { source: ImplementTaskSource; clone: string | undefined }[] = [];
