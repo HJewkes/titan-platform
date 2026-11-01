@@ -1,5 +1,5 @@
-import { G as Grant, L as Lift, P as ParsedLimits } from '../parse.js';
-export { I as IgnoredEntry, a as Limits, b as LimitsBlock, c as LimitsConfigError, d as LimitsDefaults, e as LimitsOverride, f as PoolLimits, g as ProfileLimits, S as SeatLimits, h as grantSchema, l as liftSchema, i as limitsSchema, o as overrideSchema, p as parseLimits, j as poolSchema, k as profileSchema, s as seatSchema } from '../parse.js';
+import { B as BriefGate, P as ParsedLimits, G as Grant, L as Lift } from '../parse.js';
+export { a as BRIEF_GATES, C as CapacityLimits, I as IgnoredEntry, b as Limits, c as LimitsBlock, d as LimitsConfigError, e as LimitsDefaults, f as LimitsOverride, g as LimitsSection, h as PoolLimits, i as ProfileLimits, S as SeatLimits, j as ShepherdLimits, k as capacitySchema, l as grantSchema, m as liftSchema, n as limitsSchema, o as overrideSchema, p as parseLimits, q as poolSchema, r as profileSchema, s as seatSchema, t as shepherdSchema } from '../parse.js';
 import { z } from 'zod';
 
 /**
@@ -25,6 +25,34 @@ declare const LIMIT_BOUNDS: Partial<Record<LayeredField | "per_run_points", {
     min: number;
     max: number;
 }>>;
+
+/** `unset` leaves the product's own default in force; the limits block names no code default for these. */
+type SettingSource = "capacity" | "shepherd" | "seat" | "unset";
+interface ResolvedSetting<T> {
+    value: T | null;
+    source: SettingSource;
+}
+interface ResolvedCapacity {
+    max_agents: ResolvedSetting<number>;
+    reserve_slots: ResolvedSetting<number>;
+    max_worktrees_per_repo: ResolvedSetting<number>;
+    reserve_worktrees: ResolvedSetting<number>;
+    hand_reserve: ResolvedSetting<number>;
+    brief_gate: ResolvedSetting<BriefGate>;
+}
+interface ResolvedShepherd {
+    spawn_gate: {
+        load5: ResolvedSetting<number>;
+        build_load5: ResolvedSetting<number>;
+    };
+    review: {
+        max_concurrent: ResolvedSetting<number>;
+    };
+}
+/** The host's agent and worktree slots, plus the seat's own hand reserve and brief gate when a seat is named. */
+declare function resolveCapacity(parsed: ParsedLimits, seat?: string): ResolvedCapacity;
+/** Shepherd's spawn gate and review cap; an unset field keeps Shepherd's own config value. */
+declare function resolveShepherd(parsed: ParsedLimits): ResolvedShepherd;
 
 type LimitLayer = "code" | "defaults" | "pool" | "profile" | "profile_pool" | "override" | "grant" | "seat";
 type ResolvedField = LayeredField | "per_run_points";
@@ -71,7 +99,7 @@ type ResolveResult = {
 /** Resolves one pool for one spawn. Pure: `now` and the grants come in, nothing is read. */
 declare function resolveLimits(parsed: ParsedLimits, input: ResolveInput): ResolveResult;
 
-type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped";
+type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "ignored_section" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped";
 interface LimitsFinding {
     kind: LimitsFindingKind;
     message: string;
@@ -619,11 +647,13 @@ declare function liftQuestion(input: {
 /** The grant a yes writes: the lifted ceiling until the window resets. A no, or no answer, holds. */
 declare function grantFromAnswer(question: LiftQuestion, answer: LiftAnswer): Grant | null;
 
-export { BOOKKEEPING_REASON, CAP_KINDS, type CheckOptions, type ContradictionReport, type FiveHourReading, Grant, LIMIT_BOUNDS, LIMIT_DEFAULTS, type LayeredField, type LedgerOnlyClaim, Lift, type LiftAnswer, type LiftQuestion, type LimitLayer, type LimitsBinding, type LimitsBlockerRef, type LimitsClaim, type LimitsClock, type LimitsFinding, type LimitsFindingKind, type LimitsGateReading, type LimitsLedger, type LimitsPlanInput, type LimitsPoolInput, type LimitsPoolReading, type LimitsPrStatus, type LimitsRefusal, type LimitsReport, type LimitsRole, type LimitsRoleInput, type LimitsSeatInput, type LimitsShepherdInput, type LimitsShepherdRun, type LimitsWorktreesInput, ParsedLimits, type PoolReport, type RefusalBlocker, type RefusalKindReport, type ResolveInput, type ResolveResult, type ResolvedField, type ResolvedLimits, type RoleReport, type SeatReport, type ShepherdReport, type SupplyReport, type WorktreesReport, checkLimits, grantFromAnswer, liftKey, liftQuestion, limitsBindingSchema, limitsReport, limitsReportSchema, resolveLimits, seatReportSchema, shepherdReportSchema };
+export { BOOKKEEPING_REASON, BriefGate, CAP_KINDS, type CheckOptions, type ContradictionReport, type FiveHourReading, Grant, LIMIT_BOUNDS, LIMIT_DEFAULTS, type LayeredField, type LedgerOnlyClaim, Lift, type LiftAnswer, type LiftQuestion, type LimitLayer, type LimitsBinding, type LimitsBlockerRef, type LimitsClaim, type LimitsClock, type LimitsFinding, type LimitsFindingKind, type LimitsGateReading, type LimitsLedger, type LimitsPlanInput, type LimitsPoolInput, type LimitsPoolReading, type LimitsPrStatus, type LimitsRefusal, type LimitsReport, type LimitsRole, type LimitsRoleInput, type LimitsSeatInput, type LimitsShepherdInput, type LimitsShepherdRun, type LimitsWorktreesInput, ParsedLimits, type PoolReport, type RefusalBlocker, type RefusalKindReport, type ResolveInput, type ResolveResult, type ResolvedCapacity, type ResolvedField, type ResolvedLimits, type ResolvedSetting, type ResolvedShepherd, type RoleReport, type SeatReport, type SettingSource, type ShepherdReport, type SupplyReport, type WorktreesReport, checkLimits, grantFromAnswer, liftKey, liftQuestion, limitsBindingSchema, limitsReport, limitsReportSchema, resolveCapacity, resolveLimits, resolveShepherd, seatReportSchema, shepherdReportSchema };
 
 // ./dist/parse.d.ts
 import { z } from 'zod';
 
+/** Matches agent-chat's burndown `BRIEF_GATES`; the two must change together. */
+declare const BRIEF_GATES: readonly ["off", "shadow", "on"];
 declare const liftSchema: z.ZodObject<{
     ceiling_five_hour: z.ZodNumber;
     ask: z.ZodLiteral<"owner">;
@@ -682,6 +712,28 @@ declare const seatSchema: z.ZodObject<{
     per_run_points: z.ZodOptional<z.ZodNumber>;
     per_day_points: z.ZodOptional<z.ZodNumber>;
     implementers: z.ZodOptional<z.ZodNumber>;
+    hand_reserve: z.ZodOptional<z.ZodNumber>;
+    brief_gate: z.ZodOptional<z.ZodEnum<{
+        off: "off";
+        shadow: "shadow";
+        on: "on";
+    }>>;
+}, z.core.$strict>;
+/** Host-wide agent and worktree slots. Each field is optional so the product's own default stands when unset. */
+declare const capacitySchema: z.ZodObject<{
+    max_agents: z.ZodOptional<z.ZodNumber>;
+    reserve_slots: z.ZodOptional<z.ZodNumber>;
+    max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+    reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+declare const shepherdSchema: z.ZodObject<{
+    spawn_gate: z.ZodOptional<z.ZodObject<{
+        load5: z.ZodOptional<z.ZodNumber>;
+        build_load5: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
+    review: z.ZodOptional<z.ZodObject<{
+        max_concurrent: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 declare const overrideSchema: z.ZodObject<{
@@ -761,6 +813,12 @@ declare const limitsSchema: z.ZodObject<{
         per_run_points: z.ZodOptional<z.ZodNumber>;
         per_day_points: z.ZodOptional<z.ZodNumber>;
         implementers: z.ZodOptional<z.ZodNumber>;
+        hand_reserve: z.ZodOptional<z.ZodNumber>;
+        brief_gate: z.ZodOptional<z.ZodEnum<{
+            off: "off";
+            shadow: "shadow";
+            on: "on";
+        }>>;
     }, z.core.$strict>>>;
     overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
         per_day_points: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -776,8 +834,26 @@ declare const limitsSchema: z.ZodObject<{
         dispatch_five_hour_points: z.ZodOptional<z.ZodNumber>;
         pick_margin_five_hour: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>>;
+    capacity: z.ZodOptional<z.ZodObject<{
+        max_agents: z.ZodOptional<z.ZodNumber>;
+        reserve_slots: z.ZodOptional<z.ZodNumber>;
+        max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+        reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
+    shepherd: z.ZodOptional<z.ZodObject<{
+        spawn_gate: z.ZodOptional<z.ZodObject<{
+            load5: z.ZodOptional<z.ZodNumber>;
+            build_load5: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+        review: z.ZodOptional<z.ZodObject<{
+            max_concurrent: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 type Limits = z.infer<typeof limitsSchema>;
+type CapacityLimits = z.infer<typeof capacitySchema>;
+type ShepherdLimits = z.infer<typeof shepherdSchema>;
+type BriefGate = (typeof BRIEF_GATES)[number];
 type LimitsDefaults = z.infer<typeof defaultsSchema>;
 type PoolLimits = z.infer<typeof poolSchema>;
 type ProfileLimits = z.infer<typeof profileSchema>;
@@ -790,6 +866,8 @@ declare class LimitsConfigError extends Error {
     readonly name = "LimitsConfigError";
 }
 type LimitsBlock = Limits & Required<Pick<Limits, "funds" | "profiles" | "seats" | "overrides">>;
+/** Host-wide sections that bind no pool, so a bad one is dropped rather than closing anything. */
+type LimitsSection = "capacity" | "shepherd";
 interface IgnoredEntry {
     index: number;
     reason: string;
@@ -804,8 +882,9 @@ interface ParsedLimits {
     closedProfiles: Record<string, string>;
     closedSeats: Record<string, string>;
     ignoredOverrides: IgnoredEntry[];
+    ignoredSections: Partial<Record<LimitsSection, string>>;
 }
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
 declare function parseLimits(raw: unknown): ParsedLimits;
 
-export { type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, type Limits as a, type LimitsBlock as b, LimitsConfigError as c, type LimitsDefaults as d, type LimitsOverride as e, type PoolLimits as f, type ProfileLimits as g, grantSchema as h, limitsSchema as i, poolSchema as j, profileSchema as k, liftSchema as l, overrideSchema as o, parseLimits as p, seatSchema as s };
+export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, BRIEF_GATES as a, type Limits as b, type LimitsBlock as c, LimitsConfigError as d, type LimitsDefaults as e, type LimitsOverride as f, type LimitsSection as g, type PoolLimits as h, type ProfileLimits as i, type ShepherdLimits as j, capacitySchema as k, grantSchema as l, liftSchema as m, limitsSchema as n, overrideSchema as o, parseLimits as p, poolSchema as q, profileSchema as r, seatSchema as s, shepherdSchema as t };

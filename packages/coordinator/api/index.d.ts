@@ -796,6 +796,12 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             per_run_points: z.ZodOptional<z.ZodNumber>;
             per_day_points: z.ZodOptional<z.ZodNumber>;
             implementers: z.ZodOptional<z.ZodNumber>;
+            hand_reserve: z.ZodOptional<z.ZodNumber>;
+            brief_gate: z.ZodOptional<z.ZodEnum<{
+                off: "off";
+                shadow: "shadow";
+                on: "on";
+            }>>;
         }, z.core.$strict>>>;
         overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
             per_day_points: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -811,6 +817,21 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             dispatch_five_hour_points: z.ZodOptional<z.ZodNumber>;
             pick_margin_five_hour: z.ZodOptional<z.ZodNumber>;
         }, z.core.$strict>>>;
+        capacity: z.ZodOptional<z.ZodObject<{
+            max_agents: z.ZodOptional<z.ZodNumber>;
+            reserve_slots: z.ZodOptional<z.ZodNumber>;
+            max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+            reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+        shepherd: z.ZodOptional<z.ZodObject<{
+            spawn_gate: z.ZodOptional<z.ZodObject<{
+                load5: z.ZodOptional<z.ZodNumber>;
+                build_load5: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>>;
+            review: z.ZodOptional<z.ZodObject<{
+                max_concurrent: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
     policy: z.ZodObject<{
         hard_stops: z.ZodArray<z.ZodEnum<{

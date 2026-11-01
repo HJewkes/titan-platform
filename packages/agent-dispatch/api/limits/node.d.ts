@@ -23,6 +23,8 @@ export { type GrantsFile, loadLimits, readGrants };
 // ./dist/parse.d.ts
 import { z } from 'zod';
 
+/** Matches agent-chat's burndown `BRIEF_GATES`; the two must change together. */
+declare const BRIEF_GATES: readonly ["off", "shadow", "on"];
 declare const liftSchema: z.ZodObject<{
     ceiling_five_hour: z.ZodNumber;
     ask: z.ZodLiteral<"owner">;
@@ -81,6 +83,28 @@ declare const seatSchema: z.ZodObject<{
     per_run_points: z.ZodOptional<z.ZodNumber>;
     per_day_points: z.ZodOptional<z.ZodNumber>;
     implementers: z.ZodOptional<z.ZodNumber>;
+    hand_reserve: z.ZodOptional<z.ZodNumber>;
+    brief_gate: z.ZodOptional<z.ZodEnum<{
+        off: "off";
+        shadow: "shadow";
+        on: "on";
+    }>>;
+}, z.core.$strict>;
+/** Host-wide agent and worktree slots. Each field is optional so the product's own default stands when unset. */
+declare const capacitySchema: z.ZodObject<{
+    max_agents: z.ZodOptional<z.ZodNumber>;
+    reserve_slots: z.ZodOptional<z.ZodNumber>;
+    max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+    reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+declare const shepherdSchema: z.ZodObject<{
+    spawn_gate: z.ZodOptional<z.ZodObject<{
+        load5: z.ZodOptional<z.ZodNumber>;
+        build_load5: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
+    review: z.ZodOptional<z.ZodObject<{
+        max_concurrent: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 declare const overrideSchema: z.ZodObject<{
@@ -160,6 +184,12 @@ declare const limitsSchema: z.ZodObject<{
         per_run_points: z.ZodOptional<z.ZodNumber>;
         per_day_points: z.ZodOptional<z.ZodNumber>;
         implementers: z.ZodOptional<z.ZodNumber>;
+        hand_reserve: z.ZodOptional<z.ZodNumber>;
+        brief_gate: z.ZodOptional<z.ZodEnum<{
+            off: "off";
+            shadow: "shadow";
+            on: "on";
+        }>>;
     }, z.core.$strict>>>;
     overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
         per_day_points: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -175,8 +205,26 @@ declare const limitsSchema: z.ZodObject<{
         dispatch_five_hour_points: z.ZodOptional<z.ZodNumber>;
         pick_margin_five_hour: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>>;
+    capacity: z.ZodOptional<z.ZodObject<{
+        max_agents: z.ZodOptional<z.ZodNumber>;
+        reserve_slots: z.ZodOptional<z.ZodNumber>;
+        max_worktrees_per_repo: z.ZodOptional<z.ZodNumber>;
+        reserve_worktrees: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
+    shepherd: z.ZodOptional<z.ZodObject<{
+        spawn_gate: z.ZodOptional<z.ZodObject<{
+            load5: z.ZodOptional<z.ZodNumber>;
+            build_load5: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+        review: z.ZodOptional<z.ZodObject<{
+            max_concurrent: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 type Limits = z.infer<typeof limitsSchema>;
+type CapacityLimits = z.infer<typeof capacitySchema>;
+type ShepherdLimits = z.infer<typeof shepherdSchema>;
+type BriefGate = (typeof BRIEF_GATES)[number];
 type LimitsDefaults = z.infer<typeof defaultsSchema>;
 type PoolLimits = z.infer<typeof poolSchema>;
 type ProfileLimits = z.infer<typeof profileSchema>;
@@ -189,6 +237,8 @@ declare class LimitsConfigError extends Error {
     readonly name = "LimitsConfigError";
 }
 type LimitsBlock = Limits & Required<Pick<Limits, "funds" | "profiles" | "seats" | "overrides">>;
+/** Host-wide sections that bind no pool, so a bad one is dropped rather than closing anything. */
+type LimitsSection = "capacity" | "shepherd";
 interface IgnoredEntry {
     index: number;
     reason: string;
@@ -203,8 +253,9 @@ interface ParsedLimits {
     closedProfiles: Record<string, string>;
     closedSeats: Record<string, string>;
     ignoredOverrides: IgnoredEntry[];
+    ignoredSections: Partial<Record<LimitsSection, string>>;
 }
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
 declare function parseLimits(raw: unknown): ParsedLimits;
 
-export { type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, type Limits as a, type LimitsBlock as b, LimitsConfigError as c, type LimitsDefaults as d, type LimitsOverride as e, type PoolLimits as f, type ProfileLimits as g, grantSchema as h, limitsSchema as i, poolSchema as j, profileSchema as k, liftSchema as l, overrideSchema as o, parseLimits as p, seatSchema as s };
+export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, BRIEF_GATES as a, type Limits as b, type LimitsBlock as c, LimitsConfigError as d, type LimitsDefaults as e, type LimitsOverride as f, type LimitsSection as g, type PoolLimits as h, type ProfileLimits as i, type ShepherdLimits as j, capacitySchema as k, grantSchema as l, liftSchema as m, limitsSchema as n, overrideSchema as o, parseLimits as p, poolSchema as q, profileSchema as r, seatSchema as s, shepherdSchema as t };

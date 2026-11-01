@@ -128,6 +128,12 @@ the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or m
   envelope (wrong `version`, not an object) throws `LimitsConfigError`.
 - Seat caps are a separate stop: `per_run_points` is added and `per_day_points` only ever
   lowers the pool's.
+- Optional `capacity` and `shepherd` sections hold host slots and Shepherd's spawn gate and
+  review cap; a seat may add `hand_reserve` and `brief_gate` (`off`, `shadow` or `on`).
+  `resolveCapacity(parsed, seat?)` and `resolveShepherd(parsed)` return each field as
+  `{ value, source }`, with `source: "unset"` and a `null` value when the block leaves the
+  product default in force. A malformed `capacity` or `shepherd` section is dropped into
+  `ignoredSections`, reported as `ignored_section`, and closes no pool.
 - `liftQuestion` asks once per pool per five-hour window when a pool with a `lift` reaches
   its ceiling. `grantFromAnswer` turns a yes into a grant until that window resets. The
   resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
