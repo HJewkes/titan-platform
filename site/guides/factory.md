@@ -70,7 +70,7 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 registrations. Nothing else is written.
 
 A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
-`[ci-timeout]`, `[gh-api-5xx]`, `[land-rules]`, `[update-branch]` or `[other]`.
+`[ci-timeout]`, `[gh-api-5xx]`, `[gh-rate-limit]`, `[land-rules]`, `[update-branch]` or `[other]`.
 `titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
 classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
 
