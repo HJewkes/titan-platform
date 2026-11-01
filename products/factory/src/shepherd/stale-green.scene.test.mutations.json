@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "land takes every moved-base green as it stands",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "  return !(await options.recheckMovedBase?.(ctx, { headSha: ci.headSha, base: ci.baseRef ?? state.rules.base }));",
+      "replace": "  return true;",
+      "kills": [
+        "two PRs green at one main tip, the second importing a symbol the first moved never lands the second on its stale green: the typecheck runs on the merge and its red stays off main"
+      ]
+    },
+    {
+      "name": "shepherd-pr never wires the check into land",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": ", recheckMovedBase: staleGreenCheck(run.target.repo, run.target.pr) };",
+      "replace": " };",
+      "kills": [
+        "two PRs green at one main tip, the second importing a symbol the first moved never lands the second on its stale green: the typecheck runs on the merge and its red stays off main"
+      ]
+    },
+    {
+      "name": "a failed read of main's delta lands unjudged",
+      "file": "products/factory/src/shepherd/stale-green.ts",
+      "find": "return { recheck: true, unread: error instanceof Error ? error.message : String(error) };",
+      "replace": "return { recheck: false, unread: error instanceof Error ? error.message : String(error) };",
+      "kills": [
+        "two PRs green at one main tip, the second importing a symbol the first moved re-checks when main's delta cannot be read, rather than landing unjudged"
+      ]
+    },
+    {
+      "name": "every moved base is re-checked, disjoint or not",
+      "file": "products/factory/src/shepherd/stale-green.ts",
+      "find": "return { recheck: shared.length > 0, shared };",
+      "replace": "return { recheck: true, shared };",
+      "kills": [
+        "green heads the moved base cannot break land with no extra CI lands a disjoint pair's second PR at its own head"
+      ]
+    }
+  ]
+}

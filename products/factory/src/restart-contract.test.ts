@@ -101,6 +101,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-conflict-base": `${RECORD}: the base sha at a conflict and whether the head merged the last one`,
   "sh-stale-base": `${READ}: whether a red ran on a base the PR left or that no longer exists`,
   "sh-merge-main": `${READ}: whether main changed a guard file or turned green since the PR's merge base`,
+  "sh-stale-green": `${READ}: whether main's delta since the head's fork shares a unit with the PR`,
   "sh-freeze-hold": `${WRITE}: holds the run behind a freeze`,
   "sh-freeze-wait": `${READ}: waits for the freeze to thaw`,
   "sh-base-wait": `${READ}: waits for the base to move`,
