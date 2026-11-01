@@ -1,8 +1,7 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import type { PinClass } from "../registry/pin-classes.js";
 import { asText, getBlob, insertBlobRow, refuseSecrets, stageBlob, type BlobStore, type StagedBlob } from "./blob-store.js";
-
-type PinClass = "tree" | "diff" | "observed" | "item" | "landed";
 
 interface MarkerIdentity {
   item: string;

@@ -36,6 +36,11 @@ describe("classifyPr", () => {
     }
   });
 
+  it("A17: a pin-class change is a rule-file change, so it takes the adversarial class", () => {
+    const result = classifyPr(facts(["products/factory/src/registry/pin-classes.ts", "products/factory/src/registry/pin-classes.test.ts"]));
+    expect(result).toMatchObject({ class: "g10", touches: expect.arrayContaining(["authority"]) });
+  });
+
   it("classifies tp#747's required-checks policy files as authority and policy", () => {
     const result = classifyPr(facts(["products/factory/src/required-checks-policy.ts", "products/factory/src/required-checks-policy.test.ts"]));
     expect(result).toEqual({ class: "g10", touches: ["authority", "policy"] });
