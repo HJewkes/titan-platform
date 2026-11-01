@@ -36,6 +36,31 @@ async function sandboxedBase(options: StubOptions) {
   return { calls: stub.calls, reports: readReports(out, ["base", "base-rerun"]) };
 }
 
+const HEAD_SCRIPTS = ["pnpm install", "sh build.sh", "report()"];
+
+function scriptOf(call: { args: readonly string[] } | undefined): string {
+  const args = call?.args ?? [];
+  return args[args.lastIndexOf("-c") + 1] ?? "";
+}
+
+const runsHeadCodeUnsandboxed = (call: { file: string; args: readonly string[] }) =>
+  call.file === "sh" && HEAD_SCRIPTS.some((script) => scriptOf(call).includes(script));
+
+// The install is answered here, so the test needs no registry; build and vitest run for real through the stub.
+async function sandboxedHead(options: StubOptions) {
+  const stub = sudoStub(options);
+  const exec: Exec = async (file, args, execOptions) => {
+    if (!(isSandboxed({ file, args }) && scriptOf({ args }).includes("pnpm install"))) return stub.exec(file, args, execOptions);
+    stub.calls.push({ file, args });
+    return { status: 0, stdout: "", stderr: "" };
+  };
+  const repo = makeRepo({ build: "sh build.sh" }, os.tmpdir(), { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n", "build.sh": "true\n" });
+  const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+  const out = outDir();
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "fix-proof-sandbox" });
+  return { calls: stub.calls, out };
+}
+
 function readReports(out: string, names: readonly string[]) {
   return names.map((name) => decodeReport(fs.readFileSync(path.join(out, `${name}.report`), "utf-8")));
 }
@@ -327,15 +352,36 @@ describe("execSide", { timeout: 120_000 }, () => {
     expect(calls.some((call) => call.file === "sudo" && !call.args.includes("-R"))).toBe(false);
   });
 
-  it("head side ignores the sandbox user", async () => {
-    const { calls, exec } = sudoStub();
-    const repo = makeRepo();
-    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
-    const out = outDir();
+  it("head side with a sandbox user runs its install, build and vitest through the sandbox after chowning the tree", async () => {
+    const { calls, out } = await sandboxedHead({});
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "fix-proof-sandbox" });
-
-    expect(calls.some((call) => call.file === "sudo")).toBe(false);
+    const chownTree = calls.findIndex((call) => call.file === "sudo" && call.args.includes("find"));
+    const sandboxed = calls.flatMap((call, index) => (isSandboxed(call) ? [index] : []));
+    expect(chownTree).toBeGreaterThanOrEqual(0);
+    expect(chownTree).toBeLessThan(sandboxed[0] ?? -1);
+    const scripts = sandboxed.map((index) => scriptOf(calls[index]));
+    expect(scripts).toEqual([expect.stringContaining("pnpm install"), expect.stringContaining("sh build.sh"), expect.stringContaining("report()")]);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
+    expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
     expect(readReports(out, ["head"])[0]?.ok).toBe(true);
+  });
+
+  it("head sandbox setup failure writes a head marker, and nothing from the head runs unsandboxed", async () => {
+    const { calls, out } = await sandboxedHead({ failing: (args) => args.includes("find") });
+
+    expect(readReports(out, ["head"])[0]).toEqual({ ok: false, error: expect.stringMatching(/^head: sandbox setup failed/), reported: true });
+    expect(calls.some(isSandboxed)).toBe(false);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
+  });
+
+  it.each([
+    ["root", 0],
+    ["the runner's own uid", process.getuid?.() ?? -1],
+  ])("a head sandbox user that resolves to %s fails closed before any head code runs", async (_who, uid) => {
+    const { calls, out } = await sandboxedHead({ uid });
+
+    expect(readReports(out, ["head"])[0]).toEqual({ ok: false, error: expect.stringMatching(/^head: sandbox setup failed .*uid/), reported: true });
+    expect(calls.some((call) => call.file === "sudo" && !call.args.includes("-R"))).toBe(false);
+    expect(calls.some(runsHeadCodeUnsandboxed)).toBe(false);
   });
 });
