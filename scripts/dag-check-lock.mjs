@@ -427,7 +427,8 @@ export async function acquire({
   const park = { key, stamp: ticketStamp(ticket), handoff };
   const wait = { ahead: null };
   try {
-    const hold = await waitForTurn(lockDir, ticket, wait, { slots, check, timeoutMs, pollMs, logEveryMs, log });
+    const turn = await waitForTurn(lockDir, ticket, wait, { slots, check, timeoutMs, pollMs, logEveryMs, log });
+    const hold = { ...turn, owner: key };
     return handoff ? { ...hold, park } : hold;
   } catch (err) {
     if (err instanceof LockTimeoutError) {

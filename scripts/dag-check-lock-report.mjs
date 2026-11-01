@@ -13,9 +13,13 @@ export function parseSince(text) {
   return Number(count) * UNIT_MS[unit];
 }
 
-// The hold log does not name the owner, so a hold cannot be matched to one worktree. Any hold acquired between two of an
-// owner's busy lines counts as the lock making progress and ends that owner's streak.
-function longestStreak(busyTimes, holdTimes) {
+// Hold lines written before holds carried an owner have none, so they cannot be matched to a worktree and count against every owner's streak.
+function endsStreak(hold, owner) {
+  return hold.owner === undefined || hold.owner === owner;
+}
+
+function longestStreak(busyTimes, holds, owner) {
+  const holdTimes = holds.filter((hold) => endsStreak(hold, owner)).map((hold) => hold.acquiredAt);
   let longest = 0;
   let run = 0;
   let previous = null;
@@ -31,7 +35,7 @@ function longestStreak(busyTimes, holdTimes) {
 /** One row per owner with a busy line since `since`: its longest streak, busy total and the window's hold count. */
 export function buildReport(lockDir, since) {
   const busy = readBusy(lockDir).filter((line) => line.at >= since);
-  const holdTimes = readHolds(lockDir).filter((hold) => hold.acquiredAt >= since).map((hold) => hold.acquiredAt);
+  const holds = readHolds(lockDir).filter((hold) => hold.acquiredAt >= since);
   const byOwner = new Map();
   for (const line of busy) {
     const owner = String(line.owner ?? "unknown");
@@ -39,9 +43,9 @@ export function buildReport(lockDir, since) {
   }
   return [...byOwner].map(([owner, times]) => ({
     owner,
-    longestStreak: longestStreak(times.sort((a, b) => a - b), holdTimes),
+    longestStreak: longestStreak(times.sort((a, b) => a - b), holds, owner),
     busy: times.length,
-    holds: holdTimes.length,
+    holds: holds.length,
   }));
 }
 

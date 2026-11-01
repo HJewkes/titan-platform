@@ -21,23 +21,37 @@ function busy(dir, owner, at) {
   appendFileSync(busyLogPath(dir), `${JSON.stringify({ at, owner, check: "dag:check", ahead: 0, reason: "timeout" })}\n`);
 }
 
-function hold(dir, acquiredAt) {
-  appendFileSync(holdLogPath(dir), `${JSON.stringify({ acquiredAt, releasedAt: acquiredAt + 1, exit: 0 })}\n`);
+function hold(dir, acquiredAt, owner) {
+  const line = { acquiredAt, releasedAt: acquiredAt + 1, exit: 0, ...(owner ? { owner } : {}) };
+  appendFileSync(holdLogPath(dir), `${JSON.stringify(line)}\n`);
+}
+
+function rowsByOwner(dir, since) {
+  return Object.fromEntries(buildReport(dir, since).map((row) => [row.owner, row]));
 }
 
 describe("buildReport", () => {
-  it("counts each owner's streak separately and resets it at a hold", () => {
+  it("resets a streak only at the owner's own hold", () => {
     const dir = lockDir();
     const now = Date.now();
     [10, 20, 30].forEach((seconds) => busy(dir, "aaa", now - HOUR + seconds * 1000));
     busy(dir, "bbb", now - HOUR + 15_000);
-    hold(dir, now - HOUR + 25_000);
+    hold(dir, now - HOUR + 25_000, "aaa");
     busy(dir, "bbb", now - HOUR + 40_000);
 
-    const rows = Object.fromEntries(buildReport(dir, now - 2 * HOUR).map((row) => [row.owner, row]));
+    const rows = rowsByOwner(dir, now - 2 * HOUR);
 
     expect(rows.aaa).toMatchObject({ longestStreak: 2, busy: 3, holds: 1 });
-    expect(rows.bbb).toMatchObject({ longestStreak: 1, busy: 2, holds: 1 });
+    expect(rows.bbb).toMatchObject({ longestStreak: 2, busy: 2, holds: 1 });
+  });
+
+  it("lets a hold without an owner end every owner's streak", () => {
+    const dir = lockDir();
+    const now = Date.now();
+    [10, 20, 30].forEach((seconds) => busy(dir, "aaa", now - HOUR + seconds * 1000));
+    hold(dir, now - HOUR + 25_000);
+
+    expect(rowsByOwner(dir, now - 2 * HOUR).aaa).toMatchObject({ longestStreak: 2, busy: 3, holds: 1 });
   });
 
   it("leaves out lines older than the window", () => {
