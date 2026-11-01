@@ -32,7 +32,7 @@ async function sandboxedBase(options: StubOptions) {
   const repo = makeRepo();
   const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
   const out = outDir();
-  await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec: stub.exec, sandboxUser: "fix-proof-sandbox" });
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec: stub.exec, sandboxUser: "nobody" });
   return { calls: stub.calls, reports: readReports(out, ["base", "base-rerun"]) };
 }
 
@@ -57,7 +57,7 @@ async function sandboxedHead(options: StubOptions) {
   const repo = makeRepo({ build: "sh build.sh" }, os.tmpdir(), { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n", "build.sh": "true\n" });
   const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
   const out = outDir();
-  await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "fix-proof-sandbox" });
+  await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "nobody" });
   return { calls: stub.calls, out };
 }
 
@@ -285,7 +285,7 @@ describe("execSide", { timeout: 120_000 }, () => {
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox", budgetMs: 120_000 });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "nobody", budgetMs: 120_000 });
 
     const chownTree = calls.findIndex((call) => call.file === "sudo" && call.args.includes("find"));
     const vitest = calls.flatMap((call, index) => (isSandboxed(call) ? [index] : []));
@@ -307,7 +307,7 @@ describe("execSide", { timeout: 120_000 }, () => {
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
-    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox" });
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "nobody" });
 
     readReports(out, ["base", "base-rerun"]).forEach((report) =>
       expect(report).toEqual({ ok: false, error: expect.stringMatching(/^base: sandbox setup failed/), reported: true }),

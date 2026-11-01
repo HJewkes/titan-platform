@@ -190,7 +190,7 @@ describe("execMutants", { timeout: 120_000 }, () => {
   it("with a sandbox user, every build and vitest call after the overlay runs in the sandbox", async () => {
     const { calls, exec } = sudoStub();
 
-    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "fix-proof-sandbox", fakeRunner: true });
+    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "nobody", fakeRunner: true });
 
     const isVitest = (args: readonly string[]) => args.includes("--reporter=json");
     const isBuild = (args: readonly string[]) => args.some((arg) => arg.startsWith(DIST_BUILD));
