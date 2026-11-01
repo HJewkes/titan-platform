@@ -43,7 +43,6 @@ import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed
 import { wakeRoutes } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type WakeRun } from "./gates.js";
-import type { PrTarget } from "./run-state.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
 import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
@@ -71,7 +70,6 @@ export { SHEPHERD_STEPS };
 interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, StaleBaseRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
-  target: PrTarget;
   state: LandPrState;
   /** The review taken at each green head this run saw; a head is reviewed once. */
   reviews: Map<string, Verdict>;
