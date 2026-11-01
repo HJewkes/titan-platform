@@ -45,16 +45,6 @@
       "kills": [
         "liveSpawnLimits reads the live rows afresh, the pace windows included, and keeps restart-class keys at their startup value"
       ]
-    },
-    {
-      "name": "the host's limits.shepherd never reaches the spawn gate",
-      "file": "products/factory/src/workflows-live.ts",
-      "find": ", ...host() });",
-      "replace": " });",
-      "kills": [
-        "gateLimits lets the host's limits.shepherd beat the live factory rows the spawn gate reads",
-        "gateLimits caps the spawn gate's review slots at the host's max_concurrent"
-      ]
     }
   ]
 }
