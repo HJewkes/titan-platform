@@ -832,6 +832,15 @@ declare const coordinatorConfigSchema: z.ZodObject<{
                 max_concurrent: z.ZodOptional<z.ZodNumber>;
             }, z.core.$strict>>;
         }, z.core.$strict>>;
+        pace: z.ZodOptional<z.ZodObject<{
+            mode: z.ZodEnum<{
+                off: "off";
+                shadow: "shadow";
+                on: "on";
+            }>;
+            buffer_points: z.ZodOptional<z.ZodNumber>;
+            finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
     policy: z.ZodObject<{
         hard_stops: z.ZodArray<z.ZodEnum<{
