@@ -2,7 +2,7 @@
 // delta for one PR, with no step, no write and no evidence record, so the threshold can be set from real PRs first.
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { HEAD } from "./await-verdict.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { PrArg, RepoArg, coded } from "./register-args.js";

@@ -1,6 +1,6 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { RepoArg, coded } from "./register-args.js";
 

@@ -5,7 +5,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
-import { resolveCommand } from "../registry.js";
+import { resolveCommand } from "../resolve-command.js";
 import { liveRoute } from "./exit-notice.js";
 import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";

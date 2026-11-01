@@ -4,7 +4,7 @@ import { configPath, loadConfig } from "../config.js";
 import type { GateRecord } from "@titan-design/hitl";
 import { ownerQueueSources } from "../needs/command.js";
 import { collectNeeds } from "../needs/merged.js";
-import type { GateSummary } from "../registry.js";
+import type { GateSummary } from "../context.js";
 import type { WatchRow } from "../shepherd/view.js";
 import type { DigestSources, GateFact } from "./collect.js";
 import type { GateReader } from "../needs/hitl-source.js";

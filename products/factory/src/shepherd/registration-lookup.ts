@@ -1,6 +1,6 @@
 import type { RepoSlug } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import type { Registration, ShepherdStore } from "./store.js";
 

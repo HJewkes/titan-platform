@@ -9,7 +9,7 @@ import type { StepResult, WorkflowRun, WorkflowStatus } from "@titan-design/work
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { arConfigFixture } from "../test-support/autoresearch.js";
 import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./commands.js";
 import { ideaDiff } from "./diff-read.js";

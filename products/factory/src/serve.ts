@@ -33,10 +33,10 @@ import { serveHealth } from "./serve-health.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
-import type { NeedsSources } from "./needs/rpc.js";
+import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
-import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
+import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/services.js";
@@ -59,7 +59,7 @@ import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/r
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
 import { readPath } from "./narrow.js";
 
-export type { FactoryContext } from "./registry.js";
+export type { FactoryContext } from "./context.js";
 export { factoryHealth } from "./serve-health.js";
 
 export const FACTORY_PORT = 7410;

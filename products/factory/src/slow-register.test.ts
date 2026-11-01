@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCommand } from "@titan-design/registry";
-import type { FactoryContext } from "./registry.js";
+import type { FactoryContext } from "./context.js";
 import { logSlowRegister } from "./slow-register.js";
 import { partialFake } from "@titan-design/test-kit";
 

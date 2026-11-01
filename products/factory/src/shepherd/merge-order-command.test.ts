@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { eventsSince } from "./events.js";
 import { formatShepherd } from "./format.js";
