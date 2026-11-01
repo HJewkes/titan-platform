@@ -45,6 +45,8 @@ export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.
 export { defangCiSkip, formatSquashMessage } from "./squash-message.js";
 export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
 export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";
+export type { RateLimitFacts } from "./rate-limit-marker.js";
+export { parseRateLimitMarker, rateLimitMarker } from "./rate-limit-marker.js";
 export { parseGitHubToken } from "./github-token.js";
 export type {
   GithubApiPool,

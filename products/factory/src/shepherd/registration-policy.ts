@@ -3,7 +3,7 @@ import { z } from "zod";
 import { step } from "../workflows/land.js";
 import type { ShepherdStore } from "./store.js";
 import { PlanApprovalSchema, type PlanApproval } from "./plan-approval.js";
-import { EffectivePolicySchema, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, stricterPolicy, type EffectivePolicy } from "./policy-schema.js";
 
 /** A step recorded before approvals existed, or one whose approvals no longer parse, reads as none, so the guard gates. */
 const RegistrationPolicyResult = z.looseObject({

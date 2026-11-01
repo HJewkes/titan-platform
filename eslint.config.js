@@ -1,5 +1,5 @@
 import js from "@eslint/js";
-import { recommended as titan } from "@titan-design/eslint-plugin";
+import { recommended as titan } from "./packages/eslint-plugin/dist/index.js";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";

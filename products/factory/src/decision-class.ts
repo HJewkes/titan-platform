@@ -1,4 +1,5 @@
-import { OWNER_GATE_REASONS, SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { OWNER_GATE_REASONS } from "./shepherd/policy-schema.js";
 import type { Escalation } from "./shepherd/route-table.js";
 
 type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];

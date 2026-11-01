@@ -8,7 +8,8 @@ import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskSlicing, TaskState } from "./ports.js";
 
