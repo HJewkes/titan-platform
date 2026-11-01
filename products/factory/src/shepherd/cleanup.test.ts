@@ -238,6 +238,15 @@ describe("sh-cleanup task", () => {
       expect(w.tasks.notes).toEqual([`demo/TP-1: S3 landed in ${REPO}#1 at ${fakeSha("merge")}`, `demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
     });
 
+    it("leaves an epic-tagged task open when its last slice merges", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { ...sliced(`${landed("S1")}\n${landed("S2")}`), tags: ["epic"] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
     it("only notes a middle slice while others are unlanded", async () => {
       const w = world({ registration: { ...base, slice: "S2" }, slicing: sliced(landed("S1")) });
 

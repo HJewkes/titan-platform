@@ -17,7 +17,8 @@ export function heldOpenBy({ tags, notes, plan }: TaskSlicing, lastSlice = false
     if (slices === undefined) return "its plan has a burndown-slices block that does not read";
     const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
     const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
-    return unlanded.length === 0 ? ALL_SLICES_LANDED : `it has slices ${unlanded.join(", ")}`;
+    if (unlanded.length > 0) return `it has slices ${unlanded.join(", ")}`;
+    return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : ALL_SLICES_LANDED;
   }
   const sliceTag = lastSlice ? undefined : SLICE_TAGS.find((tag) => tags.includes(tag));
   if (sliceTag !== undefined) return `it is tagged ${sliceTag}`;
