@@ -249,6 +249,9 @@ function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolea
 
 const EPIC_TAG = "epic";
 
+/** Tags a task carries when its work lands in several PRs without a plan's slices block (TP-4698). */
+const SLICE_TAGS = ["slices", "multi-slice"];
+
 /** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
 function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
   if (plan !== undefined && hasSlicesBlock(plan)) {
@@ -258,6 +261,8 @@ function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
     const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
     return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
   }
+  const sliceTag = SLICE_TAGS.find((tag) => tags.includes(tag));
+  if (sliceTag !== undefined) return `it is tagged ${sliceTag}`;
   return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
 }
 

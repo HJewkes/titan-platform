@@ -106,6 +106,31 @@ describe("sh-cleanup task", () => {
     expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged epic`]);
   });
 
+  it.each(["slices", "multi-slice"])("leaves a parent tagged %s open when one slice PR merges with no plan", async (tag) => {
+    const w = world({ slicing: { ...NO_SLICING, tags: [tag] } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("left-open");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged ${tag}`]);
+  });
+
+  it("closes a single-slice task that carries only unrelated tags", async () => {
+    const w = world({ slicing: { ...NO_SLICING, tags: ["factory", "lite"] } });
+
+    expect((await w.run()).task).toBe("done");
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+  });
+
+  it("closes nothing when the registered initiative does not hold the task id, whatever another initiative holds", async () => {
+    const w = world({ task: "missing" });
+
+    expect((await w.run()).task).toBe("missing");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([]);
+  });
+
   it("leaves a task open when its plan's slices block does not read", async () => {
     const w = world({ slicing: { ...NO_SLICING, plan: "```burndown-slices\n[{ \"n\": \n```\n" } });
 
