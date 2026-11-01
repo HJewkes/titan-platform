@@ -362,16 +362,17 @@ const fileReport = (status: string, failure?: string): Report => ({
 });
 
 /** What a real screen judges for F1: an assertion failure on the accepted merge and a pass on the corrected reference. */
-const reproducing = (): Classification =>
-  classifyReports({ selected: [BUG_TEST], base: { root: "/", report: { testResults: [fileReport("failed", "AssertionError: expected 2 to be 3")] } }, head: { root: "/", report: { testResults: [fileReport("passed")] } } });
+const judged = (base: Report): Classification =>
+  classifyReports({ selected: [BUG_TEST], base: { root: "/", report: { testResults: [base] } }, head: { root: "/", report: { testResults: [fileReport("passed")] } } });
+const reproducing = (): Classification => judged(fileReport("failed", "AssertionError: expected 2 to be 3"));
 
 /** Plans from the clone it is handed, as the real screen does, and reports F1's judged runs. */
-function fakeLaterScreen(): { screen: typeof screenCase; calls: ImplementTaskSource[] } {
+function fakeLaterScreen(judge: () => Classification = reproducing): { screen: typeof screenCase; calls: ImplementTaskSource[] } {
   const calls: ImplementTaskSource[] = [];
   const screen: typeof screenCase = async (source, screenOptions) => {
     calls.push(source);
     const plan = await planHiddenTests(localCloneGit(screenOptions.cloneFor(source.repo) ?? ""), source.baseSha, source.mergeSha);
-    const run = reproducing();
+    const run = judge();
     screenOptions.onRuns?.(plan, [run, run, run] satisfies HeadRuns);
     return "keep";
   };
@@ -414,6 +415,18 @@ describe("exportImplementTaskCases with later fixes", { timeout: 60_000 }, () =>
     expect(calls.some(([file, ...args]) => file === "git" && args.includes("clone"))).toBe(true);
     expect(calls.flat()).not.toContain("gh");
     expect(calls.filter((args) => args[1] === "-C" && args[2] === clone)).toEqual([]);
+  });
+
+  it("a fix whose test already passes on the accepted merge is rejected passes-on-accepted and writes no file", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen(() => judged(fileReport("passed")));
+
+    const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history, { follow_up_fixes: [11] }), { screen: fakeScreen().screen, laterFixScreen: later.screen }));
+
+    const written = writtenCase();
+    expect(manifest.laterFix?.rejected).toEqual([{ caseId: written.id, pr: 11, fixSource: "follow-up", reason: "passes-on-accepted" }]);
+    expect(written.expected).not.toHaveProperty("laterFixTests");
+    expect(existsSync(join(out, "hidden", written.id, "fix-11"))).toBe(false);
   });
 
   it("with later fixes off, writes the case without later-fix tests and screens no fix", async () => {
