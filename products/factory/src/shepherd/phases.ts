@@ -9,8 +9,7 @@ import type { ShepherdStoreRef } from "./store.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
-import type { VisualPacketPorts } from "./visual-packet-trigger.js";
-import type { DiagnosisPorts } from "./no-verdict-diagnosis.js";
+import type { DiagnosisPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
 
 /** Which PR, which head, and which land round a phase acts for. */

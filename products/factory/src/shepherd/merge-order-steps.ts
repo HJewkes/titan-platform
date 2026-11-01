@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { PrTarget } from "./gates.js";
-import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
+import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
 import { stillOpen } from "./merge-order-guard.js";
 import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";

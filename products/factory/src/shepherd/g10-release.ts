@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
-import type { TakeRecheck } from "./hold.js";
+import type { TakeRecheck } from "./hold-timing.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./signoffs.js";
