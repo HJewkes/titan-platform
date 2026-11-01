@@ -49,10 +49,12 @@ the `fix-proof` bin does the git and vitest work.
   to `<dir>`. The base side installs and builds before any head file is overlaid. The install,
   build and test defaults follow the tree's lockfile: pnpm for `pnpm-lock.yaml`, npm for a lone
   `package-lock.json`. With
-  `--sandbox-user <name>`, each base-side vitest run goes through `sudo -n` into a fresh PID
-  namespace as that user, with `no_new_privs` and no capabilities, so no process a head test
-  starts outlives the run or writes the runner's files. A sandbox that cannot be set up writes
-  error markers; vitest never falls back to an unsandboxed run. The head side ignores the flag.
+  `--sandbox-user <name>`, every command the head controls goes through `sudo -n` into a fresh
+  PID namespace as that user, with `no_new_privs` and no capabilities: each base-side vitest run,
+  and the head side's install, build and vitest. No process head code starts outlives the run or
+  writes the runner's files. A sandbox that cannot be set up writes error markers; nothing falls
+  back to an unsandboxed run. The user needs a group of the same name, and the toolchain must sit
+  on a path it can read.
 - `fix-proof exec --side mutants --out <dir> ...` writes one `mutants.report` for a diff of
   test material alone that adds a `*.mutations.json` spec. It builds the merge base, overlays the
   head's tests and carried files, runs the specs' test files once as a baseline, then applies each
@@ -69,11 +71,13 @@ the `fix-proof` bin does the git and vitest work.
   the reports under a byte cap and prints one result line, with `mutants` read from
   `--mutants-report`. It spawns nothing but git. `dist/judge.js` is the same command on its own;
   it cannot run `exec` or `run`.
-- `fix-proof run --base <mergeBase> --head <sha>` runs both sides and the judge in one process,
+- `fix-proof run [--sandbox-user <name>] --base <mergeBase> --head <sha>` runs both sides and the judge in one process,
   for local use. Each side and the judge read their own bare snapshot of the two commits, fetched
   before either side runs, and the base reports are read before the head side starts, so head code
-  cannot plant config, filters or objects in the caller's repo or the judge's. The head side still
-  runs as the caller's uid and could reach the judge's snapshot on purpose. `execSide()`,
+  cannot plant config, filters or objects in the caller's repo or the judge's. `--sandbox-user`
+  sandboxes both sides as `exec` does; the snapshots sit in one runner-owned 0700 dir that is never
+  handed to the sandbox, so head code cannot open `judge.git`. Without `--sandbox-user`, the head
+  side runs as the caller. `execSide()`,
   `judge()` and `run()` are the same as functions. `execSide({ side: "head", headRuns: 3 })` installs and
   builds once, then runs vitest up to 5 times and writes `head.report`, `head-2.report`, ...;
   `classifyDecoded(plan, reports)` classifies one decoded report set without the judge's result line.
