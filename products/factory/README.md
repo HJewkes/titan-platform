@@ -874,6 +874,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 | `src/markers/marker-table.ts` | The v9.1 marker table (migration 49), shadow-only: no live writer or reader yet, and `workflow_run.step_results` stays authoritative. One row per (item, fact, pin class, pin); version and digests are columns, and the highest id at an identity is current. Triggers refuse UPDATE, DELETE and REPLACE, and refuse any marker for an item that has a reverted `landed` marker. Read values and outputs live in `factory_marker_blob` (inline up to 256 KB, a file path above); `factory_marker_root` holds the eval rows that GC keeps as roots |
+| `src/markers/marker-store.ts`, `src/markers/blob-store.ts` | The marker table's store, still with no caller. `writeMarker` appends a row and puts every read value and the output through `putBlob` by content address: up to 256 KB inline, larger as a file `<db dir>/marker-blobs/<hex digest>` written by temp file and rename, the same content stored once. Each write passes the capability guard first, and a store with no guard refuses. `readMarkerValues` names the blobs that are gone instead of throwing |
 
 ## GitHub event sources config
 

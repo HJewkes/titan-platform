@@ -28,7 +28,7 @@ export interface StagedBlob {
 
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 
-export function digestOf(bytes: Uint8Array): string {
+function digestOf(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 

@@ -1,9 +1,9 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { getBlob, insertBlobRow, refuseSecrets, stageBlob, type BlobStore, type StagedBlob } from "./blob-store.js";
 
-export type PinClass = "tree" | "diff" | "observed" | "item" | "landed";
+type PinClass = "tree" | "diff" | "observed" | "item" | "landed";
 
-export interface MarkerIdentity {
+interface MarkerIdentity {
   item: string;
   fact: string;
   pinClass: PinClass;
@@ -27,13 +27,13 @@ export interface MarkerInput extends MarkerIdentity {
   writtenAt: string;
 }
 
-export interface MarkerRead {
+interface MarkerRead {
   name: string;
   digest: string;
   bytes: number;
 }
 
-export interface MarkerRow extends MarkerIdentity {
+interface MarkerRow extends MarkerIdentity {
   id: number;
   pinSeq: number | null;
   expiresAt: string | null;
@@ -50,7 +50,7 @@ export interface MarkerRow extends MarkerIdentity {
   writtenAt: string;
 }
 
-export type MarkerValues = { reads: Map<string, Buffer>; output?: Buffer } | { missing: string[] };
+type MarkerValues = { reads: Map<string, Buffer>; output?: Buffer } | { missing: string[] };
 
 /**
  * Appends one marker. Every read value and the output pass the capability guard first, large values reach their files
