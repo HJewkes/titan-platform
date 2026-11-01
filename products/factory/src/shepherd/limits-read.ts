@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { loadLimits } from "@titan-design/agent-dispatch/limits/node";
+import { LimitsBlockMissingError, loadLimits } from "@titan-design/agent-dispatch/limits/node";
 import type { SpawnLimits } from "./spawn-gate.js";
 
 const logged = new Set<string>();
@@ -32,7 +32,7 @@ export function readShepherdLimits(env: NodeJS.ProcessEnv): Partial<SpawnLimits>
     return Object.fromEntries(Object.entries(keys).filter(([, value]) => value !== undefined));
   } catch (error) {
     // A file with no limits block is a host that has not set any.
-    if (error instanceof Error && error.message.endsWith("has no limits block")) return {};
+    if (error instanceof LimitsBlockMissingError) return {};
     logOnce(`limits in ${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     return {};
   }

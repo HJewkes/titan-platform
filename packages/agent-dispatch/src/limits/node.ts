@@ -15,6 +15,9 @@ const grantsEnvelope = z.object({
   asked: z.array(z.string()).optional(),
 });
 
+/** The file parsed but has no property under the requested key: a host that has set no limits. */
+export class LimitsBlockMissingError extends LimitsConfigError {}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -42,7 +45,7 @@ export function loadLimits(path: string, options: { key?: string } = {}): Parsed
   const json = readJson(path);
   if (options.key === undefined) return parseLimits(json);
   const block = typeof json === "object" && json !== null ? Reflect.get(json, options.key) : undefined;
-  if (block === undefined) throw new LimitsConfigError(`${path} has no ${options.key} block`);
+  if (block === undefined) throw new LimitsBlockMissingError(`${path} has no ${options.key} block`);
   return parseLimits(block);
 }
 
