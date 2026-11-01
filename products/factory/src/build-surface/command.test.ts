@@ -77,4 +77,24 @@ describe("titan-factory build-surface", () => {
     expect(code).toBe(69);
     expect(err).toMatch(/build-surface start would write in-process/);
   });
+
+  it("refuses to abandon a run in-process when this factory cannot read its PR", async () => {
+    const db = join(tempDir(), "factory.sqlite3");
+    const first = await cli(["build-surface", "start", DEMO_REPO, "--spec", specFile(), ...NO_SERVE], db);
+    const runId = /run (\S+) build-surface/.exec(first.out)![1]!;
+
+    const { code, err } = await cli(["build-surface", "abandon", runId, "--reason", "merged by hand", ...NO_SERVE], db);
+
+    expect(code).toBe(1);
+    expect(err).toContain("no GitHub port");
+  });
+
+  it("refuses to abandon a run it cannot find", async () => {
+    const db = join(tempDir(), "factory.sqlite3");
+
+    const { code, err } = await cli(["build-surface", "abandon", "nope", "--reason", "x", ...NO_SERVE], db);
+
+    expect(code).toBe(1);
+    expect(err).toContain("no build-surface run nope");
+  });
 });

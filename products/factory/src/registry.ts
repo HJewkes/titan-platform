@@ -6,6 +6,7 @@ import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegi
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./autoresearch/commands.js";
+import { buildSurfaceAbandonCommand } from "./build-surface/abandon.js";
 import { buildSurfaceStartCommand } from "./build-surface/start.js";
 import type { ArConfig } from "./autoresearch/config.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
@@ -195,7 +196,7 @@ function autoresearchContext(config: ArConfig | undefined): Pick<FactoryContext,
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  const own = [land, buildSurfaceStartCommand, status, gates, gatesReview, ownerOpPreview, gateOwnerEvidence];
+  const own = [land, buildSurfaceStartCommand, buildSurfaceAbandonCommand, status, gates, gatesReview, ownerOpPreview, gateOwnerEvidence];
   const commands = [...own, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
   for (const cmd of commands) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
