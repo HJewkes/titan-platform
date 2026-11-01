@@ -5,13 +5,15 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { getBlob, putBlob, type BlobStore } from "./blob-store.js";
-import { collectMarkerBlobs } from "./gc.js";
+import { collectMarkerBlobs, DEFAULT_RETAIN_LANDED_DAYS } from "./gc.js";
 import { readMarkerValues, writeMarker, type MarkerInput } from "./marker-store.js";
 import { INLINE_LIMIT_BYTES, markerTableMigration } from "./marker-table.js";
 
 const LANDED_AT = "2026-11-01T12:00:00.000Z";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const afterDays = (days: number): Date => new Date(Date.parse(LANDED_AT) + days * DAY_MS);
+const PAST_RETENTION = DEFAULT_RETAIN_LANDED_DAYS + 1;
+const INSIDE_RETENTION = DEFAULT_RETAIN_LANDED_DAYS - 1;
 const OPEN = "o/r#1";
 const CLOSED = "o/r#2";
 
@@ -78,7 +80,7 @@ describe("collectMarkerBlobs", () => {
     land(CLOSED);
     db.prepare("INSERT INTO factory_marker_root (marker_id, kind, reason, added_at) VALUES (?, 'eval', 'synthetic eval', ?)").run(evaluated, LANDED_AT);
 
-    const result = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(91) });
+    const result = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(PAST_RETENTION) });
 
     expect(result).toMatchObject({ kept: 2, deleted: 0 });
     expect(readMarkerValues(db, store, evaluated)).not.toHaveProperty("missing");
@@ -88,8 +90,8 @@ describe("collectMarkerBlobs", () => {
     const id = write({ item: CLOSED, reads: [{ name: "conclusion", bytes: text("success") }], output: text("ok") });
     land(CLOSED);
 
-    const inside = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(89) });
-    const past = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(91) });
+    const inside = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(INSIDE_RETENTION) });
+    const past = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(PAST_RETENTION) });
 
     expect(inside).toMatchObject({ kept: 2, deleted: 0 });
     expect(past).toMatchObject({ kept: 0, deleted: 2 });
@@ -103,7 +105,7 @@ describe("collectMarkerBlobs", () => {
     const orphan = digestOf(large(0x7a)).slice("sha256:".length);
     writeFileSync(join(store.blobDir, orphan), large(0x7a));
 
-    const result = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(91) });
+    const result = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(PAST_RETENTION) });
 
     expect(result).toEqual({ kept: 0, deleted: 1, filesDeleted: 2 });
     expect(files()).toEqual([]);
@@ -115,7 +117,7 @@ describe("collectMarkerBlobs", () => {
     write({ item: CLOSED, reads: [{ name: "log", bytes: shared }], output: text("closed-only") });
     land(CLOSED);
 
-    const result = collectMarkerBlobs(db, store, { openItems: new Set([OPEN]), now: afterDays(91) });
+    const result = collectMarkerBlobs(db, store, { openItems: new Set([OPEN]), now: afterDays(PAST_RETENTION) });
 
     expect(result).toEqual({ kept: 1, deleted: 1, filesDeleted: 0 });
     expect(getBlob(db, store, digestOf(shared))).toEqual(shared);

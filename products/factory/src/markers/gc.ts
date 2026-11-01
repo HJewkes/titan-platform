@@ -9,14 +9,14 @@ export const DEFAULT_RETAIN_LANDED_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BLOB_FILE_NAME = /^[0-9a-f]{64}$/;
 
-export interface CollectOptions {
+interface CollectOptions {
   /** Items the caller counts as open; there is no work-item table here, so the caller decides (plan O2). */
   openItems: ReadonlySet<string>;
   retainLandedDays?: number;
   now: Date;
 }
 
-export interface CollectResult {
+interface CollectResult {
   kept: number;
   deleted: number;
   filesDeleted: number;
