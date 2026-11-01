@@ -19,7 +19,7 @@ interface RunOptions {
 }
 
 /** A runner prints this line on stderr when it stops waiting on host load and starts real work; the rung's timeout counts from it. */
-export const WORK_STARTED = "ar-work-started";
+const WORK_STARTED = "ar-work-started";
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 const DEFAULT_GRACE_MS = 5_000;
