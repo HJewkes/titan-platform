@@ -6,7 +6,39 @@
       "file": "products/factory/src/registry/steps/index.ts",
       "find": "effect.class === \"read\";",
       "replace": "effect.class === \"read\" && false;",
-      "kills": ["restart contract a dispatch step's orphan is dropped exactly when its registry effect class is read"]
+      "kills": [
+        "restart contract a dispatch step's orphan is dropped exactly when its registry effect class is read"
+      ]
+    },
+    {
+      "name": "merge-settle back to pending",
+      "file": "products/factory/src/registry/steps/core.ts",
+      "find": "step(\"merge-settle\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"merge-settle\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
+      "kills": [
+        "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
+        "TP-3106 S3 READ review a restart whose replay diverged before merge-settle drops its orphan and the run continues, not parks"
+      ]
+    },
+    {
+      "name": "bs-await-land back to pending",
+      "file": "products/factory/src/registry/steps/build-surface.ts",
+      "find": "step(\"bs-await-land\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"bs-await-land\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
+      "kills": [
+        "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
+        "TP-3106 S3 READ review a restart whose replay diverged before bs-await-land drops its orphan and the run continues, not parks"
+      ]
+    },
+    {
+      "name": "audit-inventory-data back to pending",
+      "file": "products/factory/src/registry/steps/audit.ts",
+      "find": "step(\"audit-inventory-data\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"audit-inventory-data\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
+      "kills": [
+        "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
+        "TP-3106 S3 READ review a restart whose replay diverged before audit-inventory-data drops its orphan and the run continues, not parks"
+      ]
     }
   ]
 }
