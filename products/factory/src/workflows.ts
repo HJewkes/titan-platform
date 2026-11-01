@@ -286,11 +286,16 @@ function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> 
   return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
 }
 
-/** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`, with the host's `limits.shepherd` winning; a key left out keeps its default. */
-export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv = process.env): Partial<SpawnLimits> {
+/** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`; a key left out keeps its default. */
+export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Partial<SpawnLimits> {
   const review = shepherd?.review;
   const fromReview = { reviewMinFreeBytes: review?.minFreeBytes, reviewMinFreeInodesPct: review?.minFreeInodesPct, maxConcurrentReviews: review?.maxConcurrent };
-  return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)), ...readShepherdLimits(env) };
+  return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)) };
+}
+
+/** The limits the production spawn gate reads: the startup factory values, the live factory rows, then the host's `limits.shepherd`, each read afresh. */
+export function gateLimits(config: ConfigRef, env: NodeJS.ProcessEnv): () => Partial<SpawnLimits> {
+  return liveSpawnLimits(configuredSpawnLimits(config.get().shepherd), config, () => readShepherdLimits(env));
 }
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
@@ -310,7 +315,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const repos: UnseatedRepos = () => loadConfig(configPath(env)).shepherd?.repos ?? {};
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const limits = liveSpawnLimits(configuredSpawnLimits(shepherd, env), config);
+  const limits = gateLimits(config, env);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
   const client = sharedOctokit();
   const port = withStatusChecks(overrides.port ?? githubPort(octokitWire({ client })), configuredStatusContexts(() => config.get().shepherd?.repos));

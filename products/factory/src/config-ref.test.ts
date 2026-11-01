@@ -6,7 +6,7 @@ import { EDITABLE_FIELDS, type EditableField } from "@titan-design/coordinator";
 import { CONFIG_PATH, formatResultLine } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
 import { silentLogger } from "@titan-design/daemon";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { configPath } from "./config.js";
 import { LIVE_FIELDS, configRef } from "./config-ref.js";
@@ -16,7 +16,8 @@ import { FIX_PROOF_CHECK } from "./shepherd/fix-proof.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import { shepherdStoreRef } from "./shepherd/store.js";
 import { SpawnDeferred, spawnGate } from "./shepherd/spawn-gate.js";
-import { configuredRoutes, configuredSpawnLimits } from "./workflows.js";
+import { resetLimitsReadLog } from "./shepherd/limits-read.js";
+import { configuredRoutes, configuredSpawnLimits, gateLimits } from "./workflows.js";
 import { liveSpawnLimits } from "./workflows-live.js";
 
 const REPO = "octo/demo";
@@ -240,6 +241,58 @@ describe("liveSpawnLimits", () => {
     expect(() => gate.admit("impl-a")).toThrow(SpawnDeferred);
     load5 = 20;
     expect(() => gate.admit("impl-a")).not.toThrow();
+  });
+});
+
+describe("gateLimits", () => {
+  const hostHome = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+    const home = join(env.XDG_CONFIG_HOME ?? "", "agent-chat");
+    mkdirSync(home);
+    resetLimitsReadLog();
+    return { ...env, AGENT_CHAT_HOME: home };
+  };
+  const writeHost = (env: NodeJS.ProcessEnv, shepherd: unknown) => writeFileSync(join(env.AGENT_CHAT_HOME ?? "", "config.json"), JSON.stringify({ limits: { version: 1, pools: {}, shepherd } }));
+
+  it("lets the host's limits.shepherd beat the live factory rows the spawn gate reads", () => {
+    const env = hostHome(configHome());
+    writeConfig(env, { shepherd: { spawnGate: { load5: 30, buildLoad5: 12 }, agentChatBin: "/opt/agent-chat", review: { profile: "rv", maxConcurrent: 8 } } });
+    writeHost(env, { review: { max_concurrent: 5 }, spawn_gate: { load5: 40 } });
+
+    expect(gateLimits(configRef(configPath(env)), env)()).toEqual({ load5: 40, buildLoad5: 12, maxConcurrentReviews: 5 });
+  });
+
+  it("applies an edit to the host's limits.shepherd at the next read, without a restart", () => {
+    const env = hostHome(configHome());
+    writeConfig(env, { shepherd: { agentChatBin: "/opt/agent-chat", review: { profile: "rv", maxConcurrent: 8 } } });
+    const limits = gateLimits(configRef(configPath(env)), env);
+    expect(limits()).toEqual({ maxConcurrentReviews: 8 });
+
+    writeHost(env, { review: { max_concurrent: 5 } });
+
+    expect(limits()).toEqual({ maxConcurrentReviews: 5 });
+  });
+
+  it("keeps the factory values and logs once when the host's block is malformed", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const env = hostHome(configHome());
+    writeConfig(env, { shepherd: { agentChatBin: "/opt/agent-chat", review: { profile: "rv", maxConcurrent: 8 } } });
+    writeHost(env, { review: { max_concurrent: "many" } });
+    const limits = gateLimits(configRef(configPath(env)), env);
+
+    expect([limits(), limits()]).toEqual([{ maxConcurrentReviews: 8 }, { maxConcurrentReviews: 8 }]);
+    expect(log).toHaveBeenCalledTimes(1);
+    log.mockRestore();
+  });
+
+  it("caps the spawn gate's review slots at the host's max_concurrent", () => {
+    const env = hostHome(configHome());
+    writeConfig(env, { shepherd: { agentChatBin: "/opt/agent-chat", review: { profile: "rv", maxConcurrent: 8 } } });
+    writeHost(env, { review: { max_concurrent: 5 } });
+    const gate = spawnGate({ limits: gateLimits(configRef(configPath(env)), env), read: () => ({ load5: 0, pressureLevel: 1, freeMemoryPct: 90 }), log: () => undefined });
+
+    gate.noteReviewers({ running: [] });
+
+    expect(gate.reviewSlots()?.cap).toBe(5);
   });
 });
 
