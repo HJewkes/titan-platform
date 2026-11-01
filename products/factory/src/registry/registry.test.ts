@@ -4,7 +4,7 @@ import { defineStep, type BaseEntry, type FactEntry, type StepEntry } from "./en
 import { openFactoryHost } from "../host.js";
 import { defineWorkflow } from "../definition.js";
 import { createRegistry, entryFor, pinClassOf, schemaHash } from "./registry.js";
-import { abandonsOrphan } from "./steps/index.js";
+import { abandonsOrphan, factoryRegistry } from "./steps/index.js";
 
 function base(overrides: Partial<BaseEntry> = {}): BaseEntry {
   return defineStep({ name: "check-ci", op: "seed", kind: "software", effect: { class: "read" }, callSites: ["check-ci"], version: { bump: 0 }, ...overrides });
@@ -99,6 +99,6 @@ describe("registered recipes", () => {
     const unregistered = defineWorkflow({ name: "stray", steps: [{ id: "invented-step", kind: "seed" }], run: async () => undefined });
     const routes = Object.assign([], { database: { extraMigrations: [], bind: () => () => undefined } });
 
-    expect(() => openFactoryHost({ dbPath: ":memory:", workflows: [unregistered], routes })).toThrow(/stray.*no registry entry: invented-step/);
+    expect(() => openFactoryHost({ dbPath: ":memory:", workflows: [unregistered], routes, registry: factoryRegistry })).toThrow(/stray.*no registry entry: invented-step/);
   });
 });
