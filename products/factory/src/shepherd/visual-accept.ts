@@ -13,7 +13,7 @@ import { askAtHead } from "./stale-gates.js";
 const OFFER_STEP = "sh-visual-accept-offer";
 export const VISUAL_ACCEPT_GATE = "sh-visual-accept";
 export const VISUAL_ACCEPT_STEPS: readonly StepDeclaration[] = [
-  { id: OFFER_STEP, kind: "dispatch", orphanSafe: true },
+  { id: OFFER_STEP, kind: "dispatch" },
   { id: VISUAL_ACCEPT_GATE, kind: "assisted" },
 ];
 

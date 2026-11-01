@@ -32,7 +32,8 @@ import type { ArConfig } from "./autoresearch/config.js";
 import { composeRoutes } from "./compose-routes.js";
 import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
-import { assertDistinctStepIds, dispatchStepIds, guardedContext, orphanSafe, type WorkflowDefinition } from "./definition.js";
+import { abandonsOrphan } from "./registry/steps/index.js";
+import { assertDistinctStepIds, dispatchStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -162,7 +163,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
   for (const definition of [...options.workflows, ...(options.routes.workflows ?? [])]) {
     assertDistinctStepIds(definition);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
-    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan: orphanSafe(definition), strictReplay: true });
+    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan, strictReplay: true });
   }
   return runtime;
 }

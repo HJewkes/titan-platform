@@ -27,12 +27,12 @@ export const MAX_CI_CYCLES = 20;
 
 /** Every step the land core calls; a workflow that uses `land` spreads these into its own declaration. */
 export const LAND_STEPS: readonly StepDeclaration[] = [
-  { id: "land-rules", kind: "dispatch", orphanSafe: true },
-  { id: "ci-wait", kind: "dispatch", orphanSafe: true },
+  { id: "land-rules", kind: "dispatch" },
+  { id: "ci-wait", kind: "dispatch" },
   { id: "ci-orphan-rerun", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
-  { id: "base-check", kind: "dispatch", orphanSafe: true },
+  { id: "base-check", kind: "dispatch" },
   { id: "base-wait", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
