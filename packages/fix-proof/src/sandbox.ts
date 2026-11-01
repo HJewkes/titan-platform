@@ -8,10 +8,10 @@ export const SANDBOX_USER_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;
 const KILL_AFTER_S = 5;
 
 /** Resolves a user's primary gid, or null when the account is unknown. */
-export type GidLookup = (user: string) => string | null;
+type GidLookup = (user: string) => string | null;
 
 /** Asks the system's own `id`, because the primary group's name need not match the user's (Debian's nobody is in nogroup). */
-export const systemGid: GidLookup = (user) => {
+const systemGid: GidLookup = (user) => {
   const result = spawnSync("id", ["-g", "--", user], { encoding: "utf-8" });
   const gid = result.status === 0 ? result.stdout.trim() : "";
   return /^\d+$/.test(gid) ? gid : null;
