@@ -1,5 +1,5 @@
 import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
-import type { TaskSlicing } from "./cleanup.js";
+import type { TaskSlicing } from "./ports.js";
 
 const EPIC_TAG = "epic";
 export const ALL_SLICES_LANDED = "it is sliced, and every slice is noted landed";

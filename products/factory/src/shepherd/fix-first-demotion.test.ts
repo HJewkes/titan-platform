@@ -11,7 +11,6 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -19,8 +18,8 @@ import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
 import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
-import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));

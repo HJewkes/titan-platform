@@ -425,7 +425,6 @@
   "products/factory/src/shepherd/reviewer-reader.ts#finishedTurnMessages",
   "products/factory/src/shepherd/reviewer-reader.ts#TranscriptReviewerReaderOptions",
   "products/factory/src/shepherd/roster.ts#ROSTER_TIMEOUT_MS",
-  "products/factory/src/shepherd/roster.ts#RosterRead",
   "products/factory/src/shepherd/roster.ts#RosterReaderOptions",
   "products/factory/src/shepherd/route-table.ts#Escalation",
   "products/factory/src/shepherd/route-table.ts#MainCiRoute",

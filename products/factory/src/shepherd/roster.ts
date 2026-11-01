@@ -1,19 +1,9 @@
 import { listAgentLineage, listAgents, type AgentLineage, type AgentRow } from "@titan-design/agent-dispatch";
+import type { RosterRead, RosterReader } from "./ports.js";
 
 /** How long one `agent ls --json` answers every caller in the serve process. */
 export const ROSTER_TTL_MS = 12_000;
 export const ROSTER_TIMEOUT_MS = 90_000;
-
-/** `unknown` carries the read's own error, so a caller can still tell a broker that is down from a refusal. */
-export type RosterRead<T = readonly AgentRow[]> = { kind: "known"; rows: T } | { kind: "unknown"; error: unknown };
-
-export interface RosterReader<T = readonly AgentRow[]> {
-  read(): Promise<RosterRead<T>>;
-  /** The rows of a known read; an unknown read throws its error, so it is never mistaken for an empty roster. */
-  rows(): Promise<T>;
-  /** Drops the cached rows and any read in flight, so the next caller sees the broker after a spawn, resume or retire. */
-  invalidate(): void;
-}
 
 export interface RosterReaderOptions {
   now?: () => number;

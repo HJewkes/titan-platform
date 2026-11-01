@@ -6,9 +6,10 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, ciRedFailing, sentBackGate, type GateRun } from "./gates.js";
-import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts, type HeldNotice } from "./exit-notice.js";
+import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type HeldNotice } from "./exit-notice.js";
 import { HELD_VERDICT_STEPS, commentHeldVerdict, heldFindings, heldVerdictRoute } from "./held-verdict.js";
 import { seatOrGate } from "./gate-route.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
 /** The steps `afterFixerExit` and `afterHeldWake` record: the flake check, a held verdict's PR comment, then the seat notice. */

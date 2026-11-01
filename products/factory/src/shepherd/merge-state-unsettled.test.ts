@@ -8,7 +8,6 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.j
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { OBSERVE_STEP } from "./observe.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
@@ -19,6 +18,7 @@ import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { readPath } from "../narrow.js";
 import { z } from "zod";
 import { fakeLocator } from "../test-support/fakes.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("unsettled-head2");
 const MINUTE = 60_000;

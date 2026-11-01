@@ -1,7 +1,7 @@
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import type { SpawnGate } from "./shepherd/spawn-gate.js";
 import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
+import type { SpawnGate } from "./shepherd/ports.js";
 
 const ENV = { XDG_STATE_HOME: "/state" };
 const gate = partialFake<SpawnGate>();

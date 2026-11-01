@@ -4,13 +4,13 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef } from "./freeze.js";
 import { MAIN_FIXED_MERGE_UPS } from "./main-fixed.js";
 import type { ShepherdPhases, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 /**
  * A head red on `validate` from lint that its merge ref inherited from main at CI_BASE, where main's own `validate` was

@@ -12,7 +12,6 @@ import { sleep } from "../workflows/land.js";
 import type { SpawnRequest } from "./agents.js";
 import { demotionOffForTest } from "../test-support/gate-demotions.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
 import { DEFAULT_DIAGNOSIS_PROFILE, DIAGNOSIS_SPAWN_ATTEMPTS, diagnosisName, spawnDiagnosis, type DiagnosisPorts, type DiagnosisTiming } from "./no-verdict-diagnosis.js";
@@ -25,6 +24,7 @@ import type { Escalated } from "./route-table.js";
 import { countRound, type Routed } from "./routed.js";
 import { SpawnDeferred, spawnGate } from "./spawn-gate.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("diagnosis-head");

@@ -6,11 +6,11 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import type { EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const FIXER_HEADS = [fakeSha("conflict-implementer"), fakeSha("conflict-fresh")];
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "repo-seat" };

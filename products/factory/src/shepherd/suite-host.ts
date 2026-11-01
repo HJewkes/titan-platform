@@ -2,12 +2,7 @@ import { accessSync, constants } from "node:fs";
 import { hostname } from "node:os";
 import { delimiter, join } from "node:path";
 import { CI_REVIEWER_TEST_RULE } from "@titan-design/review-panel";
-
-/** The test rule each brief carries, chosen by the host serve runs on, since its reviewers and fixers run there too. */
-export interface SuiteRules {
-  fixer: string;
-  reviewer: string;
-}
+import type { SuiteRules } from "./ports.js";
 
 const BASEMENT_HOST = "basement";
 const SUITE_BIN = "basement-suite";

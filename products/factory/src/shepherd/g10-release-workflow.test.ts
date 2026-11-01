@@ -20,9 +20,9 @@ import type { Presence } from "./presence.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
-import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { fakeLocator } from "../test-support/fakes.js";
+import type { RosterReader } from "./ports.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
