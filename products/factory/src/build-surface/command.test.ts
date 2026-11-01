@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runCli, type CliIo } from "../cli.js";
+import { runCli } from "../cli.js";
+import type { CliIo } from "../cli-types.js";
 import { DEMO_REPO, demoSpec, fakeBuild, stubbedRoutes } from "../test-support/build-surface.js";
 import { buildSurfaceWorkflow } from "./workflow.js";
 

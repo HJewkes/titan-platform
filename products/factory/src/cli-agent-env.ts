@@ -1,4 +1,4 @@
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { unansweredMessage } from "./cli-shepherd-rpc.js";
 import { EXIT } from "./exit-codes.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";

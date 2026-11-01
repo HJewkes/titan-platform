@@ -1,5 +1,5 @@
 import { InvalidArgumentError, type Command } from "commander";
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { callerOf } from "./cli-options.js";
 import { parsePrRef } from "./registry.js";
 import type { ShepherdCommandName } from "./shepherd/commands.js";

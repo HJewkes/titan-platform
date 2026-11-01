@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { EXIT } from "./exit-codes.js";

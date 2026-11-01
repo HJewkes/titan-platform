@@ -3,7 +3,7 @@ import { AUTORESEARCH_WORKFLOW, type ArRunSummary, type ArRunView } from "@titan
 import { EXIT as RPC_EXIT, inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError, type Command } from "commander";
 import { z } from "zod";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { formatResume, routesOf } from "../cli-host-verbs.js";
 import { parsePort } from "../cli-options.js";
 import { postRpc, unansweredMessage } from "../cli-shepherd-rpc.js";

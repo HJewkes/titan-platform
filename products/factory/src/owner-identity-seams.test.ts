@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { CliDeps } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import type { FactoryServerOptions } from "./serve.js";
 import { sourceProgram } from "./shepherd/gate-resolve-closure.test-helpers.js";
 

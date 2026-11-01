@@ -7,7 +7,8 @@ import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigrati
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { z } from "zod";
-import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { EXIT, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { defineWorkflow, dispatchStepIds } from "./definition.js";
 import { gateAskMigration } from "./gate-ask-store.js";
 import { gateBatchMigration } from "./gate-batch-store.js";
