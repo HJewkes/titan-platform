@@ -1,12 +1,9 @@
-import { ITEM_KINDS, LENSES, type OwnerItem, type QueueSource } from "@titan-design/owner-queue";
+import { ITEM_KINDS, LENSES, type OwnerItem } from "@titan-design/owner-queue";
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext, NeedsSources } from "../context.js";
 import { ownerQueueSources } from "./command.js";
 import { collectNeeds } from "./merged.js";
-
-/** The owner-queue adapters a needs read merges; `personal` asks the active-work source for charter-personal initiatives too. */
-export type NeedsSources = (options: { personal: boolean }) => readonly QueueSource[] | Promise<readonly QueueSource[]>;
 
 const needsFilterSchema = z.object({
   kind: z.enum(ITEM_KINDS).optional(),

@@ -9,7 +9,7 @@ import { landGate } from "../coordinator-evidence.js";
 import { deployPausedHealth, runningDeployer } from "../deploy-pause.js";
 import { systemPauseClearPorts } from "../deploy-ports.js";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";

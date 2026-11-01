@@ -1,7 +1,7 @@
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { headGateAsks } from "./stale-gates.js";
 import type { WatchRow } from "./view.js";
 

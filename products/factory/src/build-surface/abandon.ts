@@ -3,7 +3,7 @@ import { defineCommand } from "@titan-design/registry";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 
 interface AbandonArgs {

@@ -1,7 +1,7 @@
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { activeWorkDocTasks } from "../doc/task-source.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { readBriefFacts } from "./brief-inputs.js";
 import { BRIEF_FORMATS, renderBrief, type BriefOutput, type RenderPorts } from "./brief-render.js";
 import { activeWorkOrigin } from "./cleanup-ports.js";

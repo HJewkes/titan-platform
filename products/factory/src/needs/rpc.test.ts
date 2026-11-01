@@ -10,7 +10,7 @@ import { sources10_05 } from "../test-support/needs-10-05.js";
 import { decisionTask } from "../test-support/owner-queue-10-05.js";
 import { decisionTaskItem } from "./active-work-source.js";
 import { runNeeds } from "./command.js";
-import type { NeedsSources } from "./rpc.js";
+import type { NeedsSources } from "../context.js";
 import { z } from "zod";
 
 const dirs: string[] = [];

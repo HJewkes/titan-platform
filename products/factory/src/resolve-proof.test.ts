@@ -17,7 +17,7 @@ import { rootStat, useOwnerKeyDir } from "./test-support/owner-edges.js";
 import { REPO as SHEPHERD_REPO } from "./test-support/land.js";
 import { callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { partialFake } from "@titan-design/test-kit";
-import type { FactoryContext } from "./registry.js";
+import type { FactoryContext } from "./context.js";
 
 const REPO = "example-org/example-repo";
 const AUD = "factory.test";

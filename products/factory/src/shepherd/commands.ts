@@ -5,7 +5,7 @@ import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
