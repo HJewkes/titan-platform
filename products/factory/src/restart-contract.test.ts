@@ -24,6 +24,17 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = Object.fromEntries
   factoryRegistry.entries.flatMap((entry) => (entry.op === "dispatch" && entry.effect.class !== "read" ? [[entry.name, entry.effect.reason]] : [])),
 );
 
+/**
+ * An oracle that does not come from the registry: the write and record steps the pre-registry list named (the 86 that
+ * are not reads), so reclassifying one as `read` fails here instead of silently dropping its orphan on restart.
+ * Reclassifying a reviewed read as an effect (TP-3106 S3, S4) adds its id.
+ */
+const PINNED_PARKING_STEPS: readonly string[] = [
+  "audit-gaps", "audit-inventory-code", "audit-plan", "audit-propose", "audit-publish", "audit-purpose", "bs-branch", "bs-deploy", "bs-extract", "bs-file-task", "bs-fix", "bs-implement", "bs-pr", "bs-preview", "bs-review", "bs-shepherd", "ci-orphan-rerun", "merge", "merge-policy", "post-merge", "rerun", "sh-account-hold", "sh-approval-carry", "sh-approval-carry:fix", "sh-approval-carry:own", "sh-approval-carry:set", "sh-auto-pass", "sh-await-verdict", "sh-carry", "sh-carry-scope", "sh-carry-seat", "sh-ci-unread", "sh-cleanup", "sh-conflict-base", "sh-correct-verdict", "sh-exit-notice", "sh-file-fix-task", "sh-fix-pr-stall", "sh-fix-proof-waive", "sh-fix-proof-waived", "sh-freeze", "sh-freeze-hold", "sh-g10-rehold", "sh-g10-release", "sh-head-origin", "sh-held-check", "sh-held-verdict", "sh-landed", "sh-late-verdict", "sh-main-rerun", "sh-merge-evidence", "sh-merge-up", "sh-no-reviewer-hold", "sh-no-verdict-diagnosis", "sh-order-expire", "sh-order-reserve", "sh-order-unreserve", "sh-order-wait", "sh-override", "sh-park", "sh-policy", "sh-publish-review", "sh-redeploy", "sh-remerge", "sh-repair", "sh-restack", "sh-review", "sh-review-intent", "sh-review-panel", "sh-review-refused", "sh-review-scope", "sh-review-shadow", "sh-scope-check", "sh-seat-notice", "sh-seat-recheck", "sh-spawn-fixer", "sh-stack-children", "sh-stopped", "sh-thaw", "sh-train-leave", "sh-unfreeze", "sh-visual-packet", "sh-wake-fix-first", "sh-wake-fix-proof", "sh-wake-implementer", "update-branch",
+];
+
+const PINNED_IRREVERSIBLE_STEPS: readonly string[] = ["bs-deploy", "merge", "sh-cleanup", "sh-publish-review", "sh-redeploy"];
+
 const home = mkdtempSync(join(tmpdir(), "restart-contract-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
@@ -61,6 +72,12 @@ describe("restart contract", () => {
     const dropped = dispatchIds.filter((id) => entryFor(factoryRegistry, id)?.effect.class === "read");
     expect([...new Set(dispatchIds.filter(abandonsOrphan))].sort()).toEqual([...new Set(dropped)].sort());
     expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  it("every pinned write or record step is an effect, and no other step is", () => {
+    const effects = factoryRegistry.entries.filter((e) => e.op === "dispatch" && (e.effect.class === "effect" || e.effect.class === "irreversible"));
+    expect(effects.map((e) => e.name).sort()).toEqual([...PINNED_PARKING_STEPS].sort());
+    expect(effects.filter((e) => e.effect.class === "irreversible").map((e) => e.name).sort()).toEqual([...PINNED_IRREVERSIBLE_STEPS]);
   });
 
   it("gives every exception a reason of its own, beyond the shared category", () => {
