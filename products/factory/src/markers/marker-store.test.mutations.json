@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the inline limit moves down a byte",
+      "file": "products/factory/src/markers/blob-store.ts",
+      "find": "bytes.byteLength <= INLINE_LIMIT_BYTES",
+      "replace": "bytes.byteLength < INLINE_LIMIT_BYTES",
+      "kills": [
+        "blob tiers a 256 KB read value is stored inline, and 256 KB + 1 byte goes to a file out of line"
+      ]
+    },
+    {
+      "name": "a marker write skips the capability guard",
+      "file": "products/factory/src/markers/blob-store.ts",
+      "find": "  store.capabilities.refuse(Buffer.from(bytes).toString(\"utf8\"), where);",
+      "replace": "  void where;",
+      "kills": [
+        "capability guard a read value carrying a refused capability is refused before any blob is written"
+      ]
+    },
+    {
+      "name": "a store with no guard writes freely",
+      "file": "products/factory/src/markers/blob-store.ts",
+      "find": "if (!store.capabilities) throw new Error(`${where}: refused, the store has no capability guard`);\n  store.capabilities.refuse(",
+      "replace": "store.capabilities?.refuse(",
+      "kills": [
+        "capability guard a write is refused when the store has no capability guard, and nothing is written"
+      ]
+    }
+  ]
+}
