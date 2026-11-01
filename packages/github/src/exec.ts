@@ -23,8 +23,10 @@ export class GhError extends Error {
     readonly args: readonly string[],
     readonly result: GhResult,
     private readonly httpStatus?: number,
+    /** A `rateLimitMarker`, put first so a caller that bounds the text it keeps still has it. */
+    readonly rateLimit = "",
   ) {
-    super(`gh ${args.slice(0, 4).join(" ")} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`);
+    super(`${rateLimit ? `${rateLimit} ` : ""}gh ${args.slice(0, 4).join(" ")} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`);
     this.name = "GhError";
   }
 
