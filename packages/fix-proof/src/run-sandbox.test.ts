@@ -72,12 +72,9 @@ describe("run() with a sandbox user keeps head code away from judge.git", { time
     await run({ repo: repo.dir, base: repo.base, head, exec, sandboxUser: "fix-proof-sandbox" });
 
     expect([...sandboxedIn].sort()).toEqual(["base", "head"]);
-    expect(seen).toHaveLength(1);
-    const [{ dir, stat }] = seen as [{ dir: string; stat: fs.Stats }];
-    expect(stat.mode & 0o077).toBe(0);
-    expect(stat.uid).toBe(process.getuid?.());
+    expect(seen.map(({ stat }) => ({ others: stat.mode & 0o077, uid: stat.uid }))).toEqual([{ others: 0, uid: process.getuid?.() }]);
     const sudoArgs = stub.calls.filter((call) => call.file === "sudo").flatMap((call) => call.args);
-    expect(sudoArgs.filter((arg) => arg.includes(dir))).toEqual([]);
+    expect(sudoArgs.filter((arg) => seen.some(({ dir }) => arg.includes(dir)))).toEqual([]);
   });
 
   describe.skipIf(!REAL_SANDBOX)("as a real second uid", () => {
