@@ -10,7 +10,8 @@ import { deployHeld } from "./deploy-hold-gate.js";
 import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
-import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import { restartService, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
 export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts {

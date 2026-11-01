@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -10,24 +9,13 @@ import { configPath, loadConfig } from "./config.js";
 import type { Listener, PortOwnerReaders, ProcessInfo } from "./port-owner.js";
 import type { CheckPorts } from "./service-check.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
-import type { CommandResult, ServicePorts } from "./service-control.js";
+import { runCommand, type CommandResult } from "./run-command.js";
+import type { ServicePorts } from "./service-control.js";
 import type { TickStatusRead } from "./tick-status.js";
 
-const COMMAND_TIMEOUT_MS = 30_000;
 const NOT_FOUND = 127;
 /** A loaded serve answers /health in 0.5-5 s; the daemon's 500 ms default read that as a dead pid (TP-2417). */
 export const SERVICE_CHECK_HEALTH_TIMEOUT_MS = 6_000;
-
-/** Resolves with the exit code instead of rejecting, and with undefined when the binary is not on PATH. */
-export function runCommand(file: string, args: readonly string[], env?: Readonly<Record<string, string>>): Promise<CommandResult | undefined> {
-  return new Promise((resolve) => {
-    execFile(file, [...args], { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS, ...(env ? { env: { ...process.env, ...env } } : {}) }, (error, stdout, stderr) => {
-      if (error?.code === "ENOENT") return resolve(undefined);
-      const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-      resolve({ code, stdout, stderr: stderr || error?.message || "" });
-    });
-  });
-}
 
 function isExecutableFile(path: string): boolean {
   try {
