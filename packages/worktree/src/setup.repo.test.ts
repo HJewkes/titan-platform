@@ -1124,9 +1124,7 @@ describe(".npmrc during worktree setup", () => {
   });
 });
 
-const EGRESS_HOOK = path.resolve(
-  "node_modules/@titan-design/egress-scan/hooks/pre-push"
-);
+const EGRESS_HOOK = path.resolve("packages/egress-scan/hooks/pre-push");
 
 /** Stands in for the scanner: records that the hook reached it, then allows the push. */
 const STUB_SCANNER =
