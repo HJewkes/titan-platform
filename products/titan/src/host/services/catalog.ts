@@ -12,7 +12,7 @@ interface CatalogRow {
   detail: string;
   /** The host-job task a deferred row waits on. */
   task?: string;
-  /** Commands the owner runs for a delegated row; titan runs none of them. */
+  /** Commands for a row: the owner runs a delegated row's; titan runs a rendered row's on install. */
   commands?: string[];
   /** Hand-written units a rendered row replaces once installed. */
   legacyUnits?: string[];

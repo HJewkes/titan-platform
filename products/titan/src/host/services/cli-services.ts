@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { HostPorts } from "../ports.js";
 import { planServices, type PlannedService, type ServicesPlan } from "./catalog.js";
+import { installRendered, writeUnitFile, type UnitWriter } from "./install.js";
 
 export interface ServicesIo {
   stdout: (text: string) => void;
@@ -11,10 +12,10 @@ export interface ServicesIo {
   platform: NodeJS.Platform;
   titanBin: string;
   ports: HostPorts;
+  writeUnit?: UnitWriter;
 }
 
-/** Exit 2: installing stays the owner's job until adopting the legacy units has its own task. */
-const EXIT_REFUSED = 2;
+const EXIT_FAILED = 1;
 
 export function registerServices(host: Command, io: ServicesIo): void {
   const services = host.command("services").description("List the host-owned scheduled jobs and where each is installed from");
@@ -29,16 +30,29 @@ export function registerServices(host: Command, io: ServicesIo): void {
     });
   services
     .command("install")
-    .description("Print the units and commands that would install each job; writes nothing")
+    .description("Install the rendered jobs, disabling any legacy timer first; --dry-run only prints")
     .option("--dry-run", "print what would be written and run")
     .action(async (opts: { dryRun?: boolean }) => {
-      if (!opts.dryRun) {
-        io.stderr("titan: host services install only supports --dry-run; installing stays the owner's job\n");
-        io.setExitCode(EXIT_REFUSED);
+      const planned = await plan();
+      if (opts.dryRun) {
+        io.stdout(renderDryRun(planned));
         return;
       }
-      io.stdout(renderDryRun(await plan()));
+      await installAll(planned, io);
     });
+}
+
+async function installAll(plan: ServicesPlan, io: ServicesIo): Promise<void> {
+  for (const row of plan.services.filter((service) => service.source === "render")) {
+    const result = await installRendered(row, io.ports, io.writeUnit ?? writeUnitFile);
+    if (result.ok) {
+      io.stdout(`${row.id}: installed\n`);
+      continue;
+    }
+    io.stderr(`titan: host services install ${row.id} failed at "${result.step}": ${result.detail}\n`);
+    io.setExitCode(EXIT_FAILED);
+    return;
+  }
 }
 
 const source = (row: PlannedService): string => (row.task ? `${row.source} ${row.task}` : row.source);
