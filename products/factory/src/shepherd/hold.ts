@@ -11,7 +11,7 @@ import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
-import { CARRYING_KINDS } from "./carry-merge.js";
+import { CARRYING_KINDS } from "./carry-kinds.js";
 import { namesPr, type ReviewerAgent, type ReviewerReader } from "@titan-design/review-panel";
 
 export class MergeHeldError extends Error {

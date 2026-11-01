@@ -6,7 +6,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { WakeRequest } from "./phases.js";
 
 const HELD_VERDICT_STEP = "sh-held-verdict";

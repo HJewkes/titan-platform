@@ -4,7 +4,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { isFixersPr, type FreezeStore } from "./freeze.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import type { GateRun, PrTarget } from "./gates.js";
+import type { GateRun, PrTarget } from "./run-state.js";
 import type { ShepherdDeps } from "./phases.js";
 
 const FIX_PR_STALL_STEP = "sh-fix-pr-stall";

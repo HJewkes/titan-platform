@@ -8,7 +8,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { VisualPacketPorts } from "./spawn-ports.js";
 import { landGateHead } from "./approval-carry.js";
-import type { PrTarget } from "./gates.js";
+import type { PrTarget } from "./run-state.js";
 import type { OwnerGateReason } from "./policy-schema.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { visualAcceptHead } from "./visual-accept.js";

@@ -7,7 +7,8 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
 import { liveRoute, runSeat, toldDetail } from "./exit-notice.js";
-import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
+import { awaitNewHead, sentBackGate } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 import type { ExitNoticePorts } from "./ports.js";
 

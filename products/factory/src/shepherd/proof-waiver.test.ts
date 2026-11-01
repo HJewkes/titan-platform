@@ -18,7 +18,7 @@ import { sleep } from "../workflows/land.js";
 import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK } from "./fix-proof.js";
 import { SEAT_NOTICE_STEPS, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";

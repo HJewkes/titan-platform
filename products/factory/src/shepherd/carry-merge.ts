@@ -20,6 +20,7 @@ import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 import { SET_CARRY_STEP, setCarryRoute } from "./approved-set-carry.js";
+import { CARRYING_KINDS } from "./carry-kinds.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
@@ -36,9 +37,6 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
   { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
-
-/** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
-export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
 
 /**
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
