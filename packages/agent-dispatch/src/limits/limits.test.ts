@@ -5,7 +5,9 @@ import {
   checkLimits,
   limitsSchema,
   parseLimits,
+  resolveCapacity,
   resolveLimits,
+  resolveShepherd,
   type ResolveInput,
   type ResolvedLimits,
 } from "./index.js";
@@ -249,5 +251,69 @@ describe("checkLimits", () => {
   it("reports a band fallback to a profile not in the known list", () => {
     const findings = checkLimits(parseLimits(today), { now: BEFORE_EXPIRY, knownProfiles: ["bd-reviewer"] });
     expect(findings.map((f) => f.kind)).toContain("unknown_profile");
+  });
+});
+
+describe("capacity, shepherd and seat slot keys", () => {
+  const slotted = (extra: Record<string, unknown> = {}) =>
+    minimal({
+      capacity: { max_agents: 30, reserve_slots: 2 },
+      shepherd: { spawn_gate: { load5: 16, build_load5: 12 }, review: { max_concurrent: 5 } },
+      seats: { "coord-a": { hand_reserve: 2, brief_gate: "shadow" } },
+      ...extra,
+    });
+
+  it("parse as part of a version 1 block", () => {
+    expect(limitsSchema.safeParse(slotted()).success).toBe(true);
+    expect(parseLimits(slotted()).limits.capacity?.max_agents).toBe(30);
+  });
+
+  it("resolve capacity and the seat's hand reserve with their source", () => {
+    const capacity = resolveCapacity(parseLimits(slotted()), "coord-a");
+
+    expect(capacity.max_agents).toEqual({ value: 30, source: "capacity" });
+    expect(capacity.hand_reserve).toEqual({ value: 2, source: "seat" });
+    expect(capacity.brief_gate).toEqual({ value: "shadow", source: "seat" });
+    expect(capacity.max_worktrees_per_repo).toEqual({ value: null, source: "unset" });
+  });
+
+  it("leave every field unset when the block has no such sections", () => {
+    const capacity = resolveCapacity(parseLimits(minimal()), "coord-a");
+    const shepherd = resolveShepherd(parseLimits(minimal()));
+
+    expect(Object.values(capacity).every((s) => s.source === "unset")).toBe(true);
+    expect(shepherd.review.max_concurrent).toEqual({ value: null, source: "unset" });
+  });
+
+  it("resolve Shepherd's review cap and spawn gate", () => {
+    const shepherd = resolveShepherd(parseLimits(slotted()));
+
+    expect(shepherd.review.max_concurrent).toEqual({ value: 5, source: "shepherd" });
+    expect(shepherd.spawn_gate.load5).toEqual({ value: 16, source: "shepherd" });
+    expect(shepherd.spawn_gate.build_load5.value).toBe(12);
+  });
+
+  it("drop a malformed capacity section with a finding and keep every pool open", () => {
+    const raw = { ...today, capacity: { max_agents: -1 } };
+    const parsed = parseLimits(raw);
+
+    expect(resolveCapacity(parsed).max_agents).toEqual({ value: null, source: "unset" });
+    for (const pool of Object.keys(today.pools)) {
+      expect(resolveLimits(parsed, { pool, now: BEFORE_EXPIRY }).open).toBe(true);
+    }
+    expect(checkLimits(parsed, { now: BEFORE_EXPIRY }).map((f) => f.kind)).toContain("ignored_section");
+  });
+
+  it("drop a malformed shepherd section without touching a valid capacity section", () => {
+    const parsed = parseLimits(slotted({ shepherd: { review: { max_concurrent: "five" } } }));
+
+    expect(parsed.ignoredSections.shepherd).toBeDefined();
+    expect(resolveShepherd(parsed).review.max_concurrent.source).toBe("unset");
+    expect(resolveCapacity(parsed).max_agents.value).toBe(30);
+  });
+
+  it("close a seat whose brief gate is not a known mode", () => {
+    const parsed = parseLimits(slotted({ seats: { "coord-a": { brief_gate: "always" } } }));
+    expect(resolveLimits(parsed, { pool: "p", seat: "coord-a", now: BEFORE_EXPIRY }).open).toBe(false);
   });
 });
