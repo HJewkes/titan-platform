@@ -82,8 +82,15 @@ export function closureVerdict(base: ClosureLock, head: ClosureLock, attestation
   });
 }
 
+interface CheckInput {
+  base: ClosureLock | undefined;
+  committed: ClosureLock;
+  computed: ClosureLock;
+  attestations: readonly Attestation[];
+}
+
 /** The whole check: the committed lock must equal the computed one, then pass the verdict against the base. */
-export function checkClosures(input: { base: ClosureLock | undefined; committed: ClosureLock; computed: ClosureLock; attestations: readonly Attestation[] }): { failures: string[]; notices: string[] } {
+export function checkClosures(input: CheckInput): { failures: string[]; notices: string[] } {
   const stale = JSON.stringify(input.committed) === JSON.stringify(input.computed) ? [] : ["closure.lock.json is stale; run `pnpm registry:closure --write`"];
   if (!input.base) return { failures: stale, notices: ["no base closure lock; every step passes this once"] };
   return { failures: [...stale, ...closureVerdict(input.base, input.committed, input.attestations)], notices: [] };
