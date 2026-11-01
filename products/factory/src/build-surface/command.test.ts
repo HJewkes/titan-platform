@@ -77,4 +77,26 @@ describe("titan-factory build-surface", () => {
     expect(code).toBe(69);
     expect(err).toMatch(/build-surface start would write in-process/);
   });
+
+  it("abandons a paused run in-process under --force and reports its cancelled gates", async () => {
+    const db = join(tempDir(), "factory.sqlite3");
+    const first = await cli(["build-surface", "start", DEMO_REPO, "--spec", specFile(), ...NO_SERVE], db);
+    const runId = /run (\S+) build-surface/.exec(first.out)![1]!;
+
+    const { code, out } = await cli(["build-surface", "abandon", runId, "--reason", "merged by hand", "--force", ...NO_SERVE], db);
+    const status = await cli(["build-surface", "status", DEMO_REPO, ...NO_SERVE], db);
+
+    expect(code).toBe(0);
+    expect(out).toContain(`run ${runId} abandoned: cancelled gates ${runId}/deploy-approve:shell`);
+    expect(status.out).toContain("cancelled");
+  });
+
+  it("refuses to abandon a run it cannot find", async () => {
+    const db = join(tempDir(), "factory.sqlite3");
+
+    const { code, err } = await cli(["build-surface", "abandon", "nope", "--reason", "x", "--force", ...NO_SERVE], db);
+
+    expect(code).toBe(1);
+    expect(err).toContain("no build-surface run nope");
+  });
 });

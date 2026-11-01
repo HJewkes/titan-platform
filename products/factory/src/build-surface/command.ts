@@ -13,6 +13,7 @@ import { untilSettledOrGated, type FactoryHost } from "../host.js";
 import type { RunSummary } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
+import { AbandonRefused, abandonBuildSurface, type Abandoned } from "./abandon.js";
 import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 import { parseBuildSpec } from "./spec.js";
 import { buildSurfaceRuns, startBuildSurface, type BuildSurfaceArgs, type BuildSurfaceStarted } from "./start.js";
@@ -84,6 +85,42 @@ async function statusVerb(verbs: Verbs, repo: string, opts: { port: number }): P
   });
 }
 
+interface AbandonOpts {
+  reason: string;
+  force?: boolean;
+  port: number;
+}
+
+function reportAbandoned(io: CliIo, abandoned: Abandoned): number {
+  const gates = abandoned.cancelledGates.length === 0 ? "no open gates" : `cancelled gates ${abandoned.cancelledGates.join(", ")}`;
+  io.stdout(`run ${abandoned.runId} abandoned: ${gates}\n`);
+  return EXIT.OK;
+}
+
+async function abandonOnServer(io: CliIo, run: string, opts: AbandonOpts): Promise<number> {
+  const envelope = await postRpc<Abandoned>(opts.port, "factory.build-surface.abandon", { runId: run, reason: opts.reason, force: opts.force === true });
+  if (!envelope.ok) return (io.stderr(`error: ${envelope.error}\n`), EXIT.FAILURE);
+  return reportAbandoned(io, envelope.data);
+}
+
+async function abandonInProcess(verbs: Verbs, run: string, opts: AbandonOpts): Promise<void> {
+  await verbs.withHost(async (host, routes) => {
+    try {
+      return reportAbandoned(verbs.io, await abandonBuildSurface(host, routes.shepherd?.port, { runId: run, reason: opts.reason, force: opts.force === true }));
+    } catch (err) {
+      if (!(err instanceof AbandonRefused)) throw err;
+      return (verbs.io.stderr(`error: ${err.message}\n`), EXIT.FAILURE);
+    }
+  });
+}
+
+async function abandonVerb(verbs: Verbs, run: string, opts: AbandonOpts): Promise<void> {
+  const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
+  if (probe.state === "up") return verbs.setExit(await abandonOnServer(verbs.io, run, opts));
+  if (refusedInProcess(verbs, probe, opts.port, "build-surface abandon")) return;
+  await abandonInProcess(verbs, run, opts);
+}
+
 export function registerBuildSurface(program: Command, verbs: Verbs): void {
   const group = program.command("build-surface").description("the repo-agnostic build-surface workflow: slices from a build spec, gated, reviewed, landed and deployed");
   group
@@ -97,4 +134,11 @@ export function registerBuildSurface(program: Command, verbs: Verbs): void {
     .description("the build-surface runs for owner/repo: status, current step and why a finished one failed")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((repo: string, opts: { port: number }) => statusVerb(verbs, repo, opts));
+  group
+    .command("abandon <run>")
+    .description("end a build-surface run whose PR was merged outside Shepherd, cancelling its open gates with the reason; refused while a PR it opened is still open")
+    .requiredOption("--reason <text>", "why the run ends; recorded as the cancel reason of the run and its gates")
+    .option("--force", "abandon although a PR the run opened is still open")
+    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+    .action((run: string, opts: AbandonOpts) => abandonVerb(verbs, run, opts));
 }

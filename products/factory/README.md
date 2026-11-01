@@ -539,10 +539,13 @@ workflow itself names no repo.
 ```
 titan-factory build-surface start owner/repo --spec docs/BUILD-SPEC.md
 titan-factory build-surface status owner/repo
+titan-factory build-surface abandon <run> --reason "PR merged by hand"
 ```
 
 `start` checks the spec, then hands the run to serve if one answers (`factory.build-surface.start`), else drives
 it in-process until it waits on a human. A repo has at most one unfinished run; a second start returns it.
+`abandon` (`factory.build-surface.abandon`) ends a run whose PR was merged or closed outside Shepherd: it cancels the run's
+open gates with the reason, answering none of them. It refuses while a PR the run opened is still open unless `--force`.
 Start an in-process run on the agent-chat broker's host: an off-host spawn is refused worktree isolation, and the Mac's config pins an old agent-chat.
 
 `bs-plan` reads the spec. Slices run in waves through `mapItems`, at most `concurrency` at a time, and a slice
