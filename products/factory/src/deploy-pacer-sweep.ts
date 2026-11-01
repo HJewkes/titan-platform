@@ -9,8 +9,7 @@ import { readDeployHolds } from "./deploy-pause.js";
 import { readDeployWindow, readLastDeploy } from "./deploy-ports.js";
 import { nodeMorningHoldPorts, syncMorningHold, type MorningHoldAction } from "./morning-deploy-hold.js";
 import { morningQueuesDir } from "./needs/morning-source.js";
-import type { CommandResult } from "./service-control.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand, type CommandResult } from "./run-command.js";
 import {
   DEPLOY_NOW_LABEL,
   nodeWantedStore,

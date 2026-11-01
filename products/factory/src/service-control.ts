@@ -4,13 +4,8 @@ import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";
 import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
+import type { CommandResult } from "./run-command.js";
 import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, unreadableRefusal, type PlistOptions } from "./service.js";
-
-export interface CommandResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
 
 /** Every effect a service verb has on the machine; tests pass fakes, so none of them reaches launchd or systemd. */
 export interface ServicePorts {

@@ -7,7 +7,7 @@ import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";
-import type { CommandResult } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
 import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window.js";
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
 import type { PauseClearPorts } from "./owner-ops/pause-clear.js";
