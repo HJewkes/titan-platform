@@ -1,17 +1,7 @@
 import type { MergeFacts } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
 import { oneLine } from "../gate-brief.js";
-
-/** A check that diffs rendered output against committed baselines: a rendered change must change a file under `paths`. */
-export interface VisualBaselines {
-  check: string;
-  paths: string[];
-}
-
-export interface VisualPolicy {
-  visualPaths: readonly string[] | undefined;
-  visualBaselines: VisualBaselines | undefined;
-}
+import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 
 const SHOWN_VISUAL_PATHS = 10;
 const MAX_SHOWN_PATH = 200;

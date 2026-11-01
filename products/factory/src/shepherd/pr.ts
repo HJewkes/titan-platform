@@ -17,7 +17,7 @@ import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { ciPolicyAt, ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
-import { checkedBaseTap, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { checkedBaseTap, shepherdLandOptions } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
@@ -77,7 +77,7 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
   /** Every MERGE the run took, by head; clearing `reviews` for a re-ask never clears it, so a MERGE head is never reviewed again. */
   merged: Map<string, Verdict>;
   /** The run param narrowed by every registration read so far; it only ever tightens. */
-  policy: EffectivePolicy;
+  policy: ShepherdPrParams["policy"];
   policyReads: number;
   carryScopeReads: number;
   release: boolean;

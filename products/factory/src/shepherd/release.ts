@@ -11,7 +11,7 @@ import type { FixTasks } from "./main-red.js";
 import { isGithubPath } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { publishReview } from "./publish-review.js";
-import type { EffectivePolicy, MergeMode } from "./policy.js";
+import type { EffectivePolicy, MergeMode } from "./policy-schema.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
 import { readPath } from "../narrow.js";

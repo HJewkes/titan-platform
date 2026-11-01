@@ -16,7 +16,7 @@ import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, write
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
-import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
+import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 import type { KindMove } from "./register-kind.js";
 
