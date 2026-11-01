@@ -6,7 +6,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
 import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
-import type { EffectivePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import type { ReviewerReader } from "@titan-design/review-panel";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStore } from "./store.js";
 import { partialFake } from "@titan-design/test-kit";

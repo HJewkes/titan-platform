@@ -8,7 +8,8 @@ import { mergeOrderGuard } from "./merge-order-guard.js";
 import { MergeOrder, type MergeOrderRules } from "./merge-order.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 

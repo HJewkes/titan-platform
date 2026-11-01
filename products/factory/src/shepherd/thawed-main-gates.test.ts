@@ -10,7 +10,8 @@ import { appendEvent, eventsSince, gateCancelKindMigration, reclassMarkMigration
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { resyncShepherd } from "./resync.js";
 import { shepherdStoreRef } from "./store.js";
 

@@ -61,7 +61,7 @@ import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
 import { configuredStatusContexts, withStatusChecks } from "./shepherd/status-checks.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
-import { proofWaiverMigration } from "./shepherd/proof-waiver.js";
+import { proofWaiverMigration } from "./shepherd/proof-waiver-table.js";
 import { planApprovalMigration } from "./shepherd/plan-approval.js";
 import { repoFreezeMigration } from "./shepherd/repo-freeze.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
@@ -85,8 +85,7 @@ import { localBasementSuite, suiteRules } from "./shepherd/suite-host.js";
 import type { ShepherdServices, ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
-import type { VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
-import type { DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import type { DiagnosisPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
 import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 

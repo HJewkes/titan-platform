@@ -2,7 +2,8 @@ import type { GitHubPort } from "@titan-design/github";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import { advisoryGuard, type IsAdvisory } from "./advisory.js";
 import { isFixersPr, repoFrozenReason, type FreezeGuard, type FreezeStore } from "./freeze.js";
-import { firstReason, heldCheck, type HeldCheck } from "./hold.js";
+import { firstReason, heldCheck } from "./hold.js";
+import type { HeldCheck } from "./hold-timing.js";
 import { releaseGuard } from "./release.js";
 import type { ShepherdStore } from "./store.js";
 
