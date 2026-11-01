@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "note ranking searches the transcript table",
+      "file": "products/active-work/src/bootstrap/rank-notes.ts",
+      "find": "      const spans = workspaceSpanReader(graph);",
+      "replace": "      const spans = graph.spans;",
+      "kills": [
+        "class-scoped search on a transcript-heavy graph answers a note-scoped query under the ceiling and well under the uncapped query"
+      ]
+    },
+    {
+      "name": "the workspace selector always returns the transcript table",
+      "file": "products/active-work/src/search/workspace-spans.ts",
+      "find": "  return hasLegacyWorkspaceSpans(graph) ? graph.spans : graph.workspaceSpans;",
+      "replace": "  return graph.spans;",
+      "kills": [
+        "class-scoped search on a transcript-heavy graph answers a 14-term OR on the workspace table under the ceiling while the transcript table is far slower"
+      ]
+    }
+  ]
+}

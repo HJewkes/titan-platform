@@ -21,7 +21,7 @@ export function parseBrokerLog(lines: Iterable<string>): BrokerEntry[] {
 function parseObject(text: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : null;
   } catch {
     return null;
   }

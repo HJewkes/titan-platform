@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import YAML from 'yaml';
 import { atomicWrite } from './fs-atomic.js';
 
@@ -45,8 +46,14 @@ async function readManifest(initiativeDir: string): Promise<Record<string, strin
   } catch {
     return {};
   }
-  if (!parsed || typeof parsed !== 'object') return {};
-  return parsed as Record<string, string>;
+  if (!isRecord(parsed)) return {};
+  // Per entry, not all-or-nothing: the manifest is rewritten on each CLI write, so
+  // one bad value must not cost every other file its recorded hash.
+  return Object.fromEntries(
+    Object.entries(parsed).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
 }
 
 /** Manifest of `relPath -> sha256(content)` for every tracked artifact that has been CLI-written. */

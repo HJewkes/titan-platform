@@ -22,12 +22,14 @@ export function validateCorrelations(correlations: unknown): ExecutionCorrelatio
   if (!record(correlations)) fail("invalid_transition", "correlations must be an object");
   const entries = Object.entries(correlations);
   if (entries.length > MAX_CORRELATIONS) fail("invalid_transition", `correlations may hold at most ${MAX_CORRELATIONS} keys`);
+  const checked: Array<[string, string]> = [];
   for (const [key, value] of entries) {
     if (!CORRELATION_KEY_PATTERN.test(key)) fail("invalid_transition", `correlation key ${JSON.stringify(key)} must be <prefix>.<name>`);
     nonempty(`correlations[${key}]`, value);
     if (value.length > MAX_CORRELATION_VALUE_LENGTH) {
       fail("invalid_transition", `correlations[${key}] exceeds ${MAX_CORRELATION_VALUE_LENGTH} characters`);
     }
+    checked.push([key, value]);
   }
-  return Object.freeze(Object.fromEntries(entries) as Record<string, string>);
+  return Object.freeze(Object.fromEntries(checked));
 }

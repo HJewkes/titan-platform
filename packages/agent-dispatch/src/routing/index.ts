@@ -1,0 +1,56 @@
+export {
+  CLASSES,
+  IMPLEMENTER_LADDER,
+  MERGE_LADDER,
+  PATH_LISTS,
+  PLAN_LADDER,
+  PRIORS,
+  REVIEW_LADDER,
+  TABLE_VERSION,
+  parseWorkflowTable,
+  type Implementer,
+  type PathList,
+  type Prior,
+  type PriorRule,
+  type Profile,
+  type ShapeClass,
+  type TableRead,
+  type WorkflowRow,
+  type WorkflowTable,
+} from "./table.js";
+export { classifyTask, profileFor, unitsOf, type Classified, type TaskFacts } from "./classify.js";
+export {
+  DISPATCHABLE,
+  PRIOR_ROUTINGS,
+  planFacts,
+  priorRoute,
+  type PlanFacts,
+  type PriorRouter,
+  type PriorRouting,
+  type Routed,
+} from "./prior.js";
+export {
+  FACT_NAMES,
+  FACT_SOURCES,
+  ROUTE_META_KEYS,
+  ROUTE_SOURCES,
+  routeMeta,
+  type FactName,
+  type FactSource,
+  type FactsNote,
+  type RouteDecision,
+  type RouteMetaKey,
+  type RouteSource,
+} from "./meta.js";
+export {
+  AUTO_FALLBACK,
+  AUTO_PROFILE,
+  DEFAULT_KEEP_ROLES,
+  implementerFamily,
+  inFamily,
+  routeSpawn,
+  type ImplementerFamily,
+  type RouteInput,
+  type RouteTable,
+} from "./route.js";
+export { summarizeRoutes, type RouteRow, type RouteSummary } from "./summary.js";

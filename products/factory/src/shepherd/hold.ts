@@ -5,26 +5,18 @@ import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
+import { HOLD_POLL_MS, type HeldCheck, type HoldTiming, type TakeRecheck } from "./hold-timing.js";
 import { provablyIndependent, type Lineage } from "./lineage.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
-import { CARRYING_KINDS } from "./carry-merge.js";
+import { CARRYING_KINDS } from "./carry-kinds.js";
 import { namesPr, type ReviewerAgent, type ReviewerReader } from "@titan-design/review-panel";
-
-export const HOLD_POLL_MS = 10_000;
 
 export class MergeHeldError extends Error {
   override readonly name = "MergeHeldError";
 }
-
-/**
- * Why a merge of `repo#pr` at `sha` must wait, read fresh; a PR merged or closed elsewhere has nothing left to wait for; any
- * other state, unknown included, keeps the hold. A hold satisfied at `sha` passes only while `sha` is still the head; no
- * `sha` means the head as read now.
- */
-export type HeldCheck = (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
 
 /** The open PR's head now; undefined for a PR merged or closed elsewhere. */
 type OpenHeadRead = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
@@ -158,12 +150,6 @@ export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: 
   };
 }
 
-export interface HoldTiming {
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs?: number;
-  now?: () => number;
-}
-
 /** What the merge step answers after a wait: no merge, so land reads CI again, since the base or the head may have moved while it was held. */
 export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
@@ -197,9 +183,6 @@ type ReviewAsked = (repo: RepoSlug, pr: number, sha: string) => boolean;
 
 /** True once after the merge guard itself re-held the PR, which no CI read of the run has seen yet. */
 export type TakeRehold = (repo: RepoSlug, pr: number) => boolean;
-
-/** True once when the run's g10 release at `sha` must be asked again, which only the run's own CI read can do. */
-export type TakeRecheck = (repo: RepoSlug, pr: number, sha: string) => boolean;
 
 interface HoldReads {
   held: HeldCheck;

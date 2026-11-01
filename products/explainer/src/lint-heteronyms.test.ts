@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { l0HardPass, L0_CHECKS, runL0 } from "./eval-l0.js";
-import { heteronymCheck } from "./lint-heteronyms.js";
+import { heteronymCheck, unsettledHeteronyms } from "./lint-heteronyms.js";
 import { GOOD_BEATS, lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 // The positive control says "refuses" and "row", both heteronyms; declared here, it is the clean baseline.
@@ -71,6 +71,11 @@ describe("Q-V10 heteronym declarations", () => {
   it("binds a declaration to its own occurrence, so a second bare one is flagged", () => {
     // Catches: a declaration keyed by word alone, covering every occurrence in the line.
     expect(heteronyms(withSpoken("w3", "The desk [read](=past) the label, then read it again."))?.pass).toBe(false);
+  });
+
+  it("places a heteronym by counting the numbers before it as words", () => {
+    // Catches: a place that skips digits, pointing a model counting the line's words one word early per number.
+    expect(unsettledHeteronyms("The run took about 18 minutes")).toEqual([{ word: "minutes", readings: ["time", "tiny"], position: 6 }]);
   });
 
   it("runs among the L0 checks and fails the hard pass", () => {

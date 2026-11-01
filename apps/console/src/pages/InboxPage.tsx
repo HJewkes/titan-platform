@@ -4,12 +4,16 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import type { MergeWait } from "../../server/inbox-op.js";
 import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
-import { open, parseRoute } from "../router.js";
+import { open, parseRoute, type Route } from "../router.js";
 import { GateStripView } from "./GateStrip.js";
 import { openExternal } from "./homeLinks.js";
+import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
+import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
+import { ShipLineageLine } from "./ShipLineage.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
+import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -114,24 +118,28 @@ function followEvidence(evidence: string): void {
   else openExternal(evidence);
 }
 
-/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs. */
-export function InboxPage(): ReactNode {
-  const inbox = useQuery("inbox.list");
+/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs; `#/inbox/<id>` focuses one item. */
+export function InboxPage({ route }: { route?: Route }): ReactNode {
+  // A link may name a planning item, which only the planning read lists.
+  const inbox = useQuery("inbox.list", route?.id === undefined ? {} : PLANNING_READ);
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
   // A snapshot exported before TP-4044 carries no nudges.
-  const { items, gaps, fyiCount, derived, nudges = [] } = inbox.data;
+  const { items, gaps, fyiCount, derived, nudges = [], planningCount } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
-    <VStack gap={6}>
-      <GapBanners gaps={gaps} />
-      {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
-      {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-      {planning.length > 0 ? <PlanningSection items={planning} /> : null}
-      <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
-    </VStack>
+    <InboxFocusProvider value={route?.id}>
+      <VStack gap={6}>
+        <FocusNotice items={items} focusId={route?.id} gapped={gaps.length > 0} />
+        <GapBanners gaps={gaps} />
+        {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
+        <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
+        {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
+        {planningCount > 0 ? <PlanningSection count={planningCount} startOpen={holdsFocus(planning, route?.id)} renderRows={(rows) => <InboxRows items={rows} />} /> : null}
+        <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
+      </VStack>
+    </InboxFocusProvider>
   );
 }
 
@@ -145,8 +153,25 @@ function BlockingSection({ items, quiet, gapped }: { items: readonly InboxItem[]
   return (
     <Section testID="inbox-blocking">
       <SectionHeader title={`Blocking (${items.length})`} subtitle="Newest first" />
-      <SectionContent>{items.length === 0 ? empty : <InboxRows items={items} />}</SectionContent>
+      <SectionContent>{items.length === 0 ? empty : <BlockingRows items={items} />}</SectionContent>
     </Section>
+  );
+}
+
+/** Aged blockers still block, so they stay open on the page, listed after the fresh ones under their own heading. */
+function BlockingRows({ items }: { items: readonly InboxItem[] }): ReactNode {
+  const aged = items.filter((item) => item.aged === true);
+  const fresh = items.filter((item) => item.aged !== true);
+  return (
+    <VStack gap={4}>
+      {fresh.length > 0 ? <InboxRows items={fresh} /> : null}
+      {aged.length > 0 ? (
+        <VStack gap={3} testID="inbox-blocking-aged">
+          <Typography variant="subtitle2" color="secondary">{`Older than 4 days (${aged.length})`}</Typography>
+          <InboxRows items={aged} />
+        </VStack>
+      ) : null}
+    </VStack>
   );
 }
 
@@ -184,7 +209,7 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
           </HStack>
           <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
           <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
-          <Link color="primary" onPress={() => open(parseRoute(row.link))}>
+          <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open(parseRoute(row.link))}>
             {DERIVED_LINK[row.kind]}
           </Link>
         </VStack>
@@ -193,29 +218,13 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
   );
 }
 
-/** Planning can run to hundreds of rows, so it opens only when asked. */
-function PlanningSection({ items }: { items: readonly InboxItem[] }): ReactNode {
-  const [isOpen, setOpen] = useState(false);
-  return (
-    <Section testID="inbox-planning">
-      <SectionHeader title={`Planning (${items.length})`} subtitle="Answered at each item's source" />
-      <SectionContent>
-        <VStack gap={3}>
-          <Button variant="outline" size="sm" onPress={() => setOpen(!isOpen)}>
-            <ButtonText>{isOpen ? "Hide planning" : `Show ${items.length} planning items`}</ButtonText>
-          </Button>
-          {isOpen ? <InboxRows items={items} /> : null}
-        </VStack>
-      </SectionContent>
-    </Section>
-  );
-}
-
 function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {
   return (
     <VStack gap={3}>
       {items.map((item) => (
-        <InboxRow key={item.id} item={item} />
+        <FocusTarget key={item.id} itemId={item.id}>
+          <InboxRow item={item} />
+        </FocusTarget>
       ))}
     </VStack>
   );
@@ -224,20 +233,24 @@ function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {
 function InboxRow({ item }: { item: InboxItem }): ReactNode {
   const badge = badgeOf(item);
   const recommendation = recommendationOf(item);
+  const focused = useIsFocused(item.id);
   return (
-    <Card variant="outline" testID={`inbox-row-${item.id}`}>
+    <Card variant={focused ? "accent" : "outline"} testID={`inbox-row-${item.id}`}>
       <CardContent>
         <VStack gap={2}>
           <Typography variant="subtitle2">{item.summary}</Typography>
           <HStack gap={2} align="center" wrap>
+            {focused ? <FocusBadge /> : null}
             <Badge color={badge.color} variant="subtle" size="sm">
               <BadgeText>{badge.label}</BadgeText>
             </Badge>
             <Typography variant="caption" color="secondary">{ageOf(item.openedAt)}</Typography>
+            {item.questionCount !== undefined ? <Pill variant="subtle" size="xs">{`${item.questionCount} questions`}</Pill> : null}
             {recommendation !== undefined ? <Pill variant="subtle" size="xs">{`Recommend: ${recommendation}`}</Pill> : null}
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
+          <MergeLineage item={item} />
           {item.gates !== undefined ? <GateStripView strip={item.gates} /> : null}
           <RowAction item={item} />
         </VStack>
@@ -297,14 +310,30 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
   const suffix = choice.decision ?? choice.waitFor;
   return (
     <HStack gap={2} align="center" wrap>
-      <Button {...(choice.decision !== undefined && { variant: "outline" as const })} size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${suffix === undefined ? "" : `-${suffix}`}`}>
+      <Button {...(choice.decision !== undefined && { variant: "outline" as const })} size="sm" className={PHONE_TAP} onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${suffix === undefined ? "" : `-${suffix}`}`}>
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
       {confirming ? (
-        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
+        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <ReadBackWithLineage item={item} prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
       ) : null}
     </HStack>
+  );
+}
+
+/** A merge gate always shows its lineage; one the server attached none to reads "lineage unknown", never blank. */
+function MergeLineage({ item }: { item: InboxItem }): ReactNode {
+  const { action } = item;
+  return action.kind === "resolve-gate" && action.decision === "merge" ? <ShipLineageLine lineage={item.lineage} /> : null;
+}
+
+/** The sheet repeats the row's lineage beside the read-back, since staleness is what the owner weighs before approving a merge. */
+function ReadBackWithLineage({ item, prepared }: { item: InboxItem; prepared: InboxReady }): ReactNode {
+  return (
+    <VStack gap={2}>
+      <MergeLineage item={item} />
+      <InboxReadBack prepared={prepared} />
+    </VStack>
   );
 }
 
@@ -312,7 +341,7 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
 function EvidenceLink({ evidence }: { evidence: string }): ReactNode {
   if (!/^(#|https?:\/\/)/.test(evidence)) return <Typography variant="mono">{evidence}</Typography>;
   return (
-    <Link color="primary" onPress={() => followEvidence(evidence)}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => followEvidence(evidence)}>
       {evidence.startsWith("#") ? "Open evidence" : evidence}
     </Link>
   );
@@ -324,7 +353,7 @@ function TerminalAction({ item, reason }: { item: InboxItem; reason: string }): 
   return (
     <VStack gap={2}>
       <HStack gap={2} align="center" wrap>
-        <Button variant="outline" size="sm" onPress={() => setShown(!shown)} testID={`inbox-terminal-${item.id}`}>
+        <Button variant="outline" size="sm" className={PHONE_TAP} onPress={() => setShown(!shown)} testID={`inbox-terminal-${item.id}`}>
           <ButtonText>Run on terminal</ButtonText>
         </Button>
         {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
@@ -353,7 +382,7 @@ export function CopyButton({ command }: { command: string }): ReactNode {
     setCopied(true);
   };
   return (
-    <Button variant="ghost" size="sm" onPress={() => void copy()}>
+    <Button variant="ghost" size="sm" className={PHONE_TAP} onPress={() => void copy()}>
       <ButtonText>{copied ? "Copied" : "Copy command"}</ButtonText>
     </Button>
   );

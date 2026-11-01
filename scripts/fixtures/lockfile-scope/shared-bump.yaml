@@ -1,0 +1,82 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.4.0
+      vitest:
+        specifier: ^3.0.0
+        version: 3.0.0(tinyspy@3.0.0)
+
+  packages/leaf:
+    dependencies:
+      chalk:
+        specifier: ^4.1.0
+        version: 4.1.2
+
+  packages/mid:
+    dependencies:
+      '@fx/store':
+        specifier: workspace:*
+        version: link:../store
+      left-pad:
+        specifier: ^1.3.0
+        version: 1.3.0
+
+  packages/store: {}
+
+  products/factory:
+    dependencies:
+      '@fx/mid':
+        specifier: workspace:*
+        version: link:../../packages/mid
+      chalk:
+        specifier: ^4.1.0
+        version: 4.1.2
+
+packages:
+
+  ansi-styles@4.3.1:
+    resolution: {integrity: sha512-fixture-ansi-styles-4.3.1}
+
+  chalk@4.1.2:
+    resolution: {integrity: sha512-fixture-chalk-4.1.2}
+
+  left-pad@1.3.0:
+    resolution: {integrity: sha512-fixture-left-pad-1.3.0}
+
+  tinyspy@3.0.0:
+    resolution: {integrity: sha512-fixture-tinyspy-3.0.0}
+
+  typescript@5.4.0:
+    resolution: {integrity: sha512-fixture-typescript-5.4.0}
+
+  vitest@3.0.0:
+    resolution: {integrity: sha512-fixture-vitest-3.0.0}
+    peerDependencies:
+      tinyspy: ^3.0.0
+
+snapshots:
+
+  ansi-styles@4.3.1: {}
+
+  chalk@4.1.2:
+    dependencies:
+      ansi-styles: 4.3.1
+
+  left-pad@1.3.0: {}
+
+  tinyspy@3.0.0: {}
+
+  typescript@5.4.0: {}
+
+  vitest@3.0.0(tinyspy@3.0.0):
+    dependencies:
+      tinyspy: 3.0.0

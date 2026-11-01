@@ -2,9 +2,10 @@
 // the head under fixed caps (visual-delta-measure.ts), and the public API, token and harness paths it touches.
 // Under mode `on` the merge decides on it (visual-threshold-gate.ts); under `shadow` it is recorded only.
 import type { GitHubPort, PrFile } from "@titan-design/github";
+import { DEFAULT_PIXEL_TOLERANCE } from "@titan-design/png-delta";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import { measurePairs, type MeasureTarget, type Pair, type PairMeasure } from "./visual-delta-measure.js";
-import { DEFAULT_PIXEL_TOLERANCE, componentOf } from "./visual-delta.js";
+import { componentOf } from "./visual-delta.js";
 import { caseFoldedMatcher, visualMatches } from "./visual-gate.js";
 
 import type { VisualThreshold } from "./visual-threshold.js";

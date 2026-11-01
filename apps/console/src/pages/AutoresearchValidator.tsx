@@ -20,6 +20,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArRunView, ArValidator } from "../../server/autoresearch-view.js";
 import { shortSha } from "./autoresearch-format.js";
+import { PHONE_TAP } from "./phone.js";
 
 type Look = ArValidator["looks"][number];
 
@@ -43,7 +44,7 @@ export function AutoresearchValidator({ run }: { run: ArRunView }): ReactNode {
           <Alert status="info" message={REPORT_ONLY} />
           <Accordion allowMultiple>
             <AccordionItem>
-              <AccordionButton>{`Validator · ${looks}`}</AccordionButton>
+              <AccordionButton className={PHONE_TAP}>{`Validator · ${looks}`}</AccordionButton>
               <AccordionPanel>
                 {validator === undefined ? <EmptyState title="validator not reporting yet" /> : <LooksTable primary={run.target.metric.primary} looks={validator.looks} />}
               </AccordionPanel>

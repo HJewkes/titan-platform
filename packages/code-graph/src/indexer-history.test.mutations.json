@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "aggregateChurn counts commits as authors",
+      "file": "packages/code-graph/src/history/churn.ts",
+      "find": "    setAdd(authors, e.filePath, e.author);\n",
+      "replace": "    setAdd(authors, e.filePath, e.commit);\n",
+      "kills": [
+        "indexPaths with git-history metrics records churn_30d/_commits/_authors per indexed file"
+      ]
+    }
+  ]
+}

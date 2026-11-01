@@ -4,7 +4,6 @@ import {
   type ExecutionOwnerFence,
   type ExecutionRecord,
   type ExecutionTerminal,
-  type ExecutionTransition,
 } from "@titan-design/agent-protocol";
 import type { Harness, HarnessRunProgress, HarnessRunResult } from "./harness-contracts.js";
 import { terminalFromHarnessResult } from "./durable-result.js";
@@ -80,7 +79,7 @@ class Dispatcher<H extends Harness> implements DurableHarnessDispatcher<H> {
     const live = this.startLive(input.executionId, recordFence(prepared), controller, input.request.signal);
     this.live.set(input.executionId, live);
     const completion = this.runAdapter(input, live);
-    live.completion = completion as Promise<DurableSettlement<unknown, H>>;
+    live.completion = completion;
     completion.catch(() => undefined);
     return { executionId: input.executionId, requestKey: input.requestKey, runnerRef: input.executionId, completion };
   }
@@ -328,7 +327,7 @@ class Dispatcher<H extends Harness> implements DurableHarnessDispatcher<H> {
       eventId: this.eventId(),
       expectedRevision: current.revision,
       occurredAt: this.iso(),
-    } as ExecutionTransition<StoredSuccess<H>>);
+    });
   }
 
   private apply(executionId: string, fields: TransitionFields<H>): DurableHarnessRecord<H> {

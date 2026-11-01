@@ -7,7 +7,7 @@ import { HEAD } from "./await-verdict.js";
 import type { CarryTarget } from "./carry-merge.js";
 import { changedPathsBetween } from "./changed-paths.js";
 import type { ShepherdPhases, VisualSetCarry } from "./phases.js";
-import type { OwnerGateReason } from "./policy.js";
+import type { OwnerGateReason } from "./policy-schema.js";
 import { isRepoKey } from "./seats.js";
 import type { VisualAcceptRun } from "./visual-accept.js";
 import { CarryRefusal, carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, reasonOf, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";

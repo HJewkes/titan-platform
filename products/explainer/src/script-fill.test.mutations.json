@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every filled beat counts as a cue fault",
+      "file": "products/explainer/src/script-fill.ts",
+      "find": "const failed = [...new Set(failures.map((f) => f.beat))];",
+      "replace": "const failed = [...byId.keys()];",
+      "kills": [
+        "the script stage's template fill on its own draft faults a metrics-panel beat of 7 labels through its list fallback, and passes one of 4 as that fallback"
+      ]
+    }
+  ]
+}

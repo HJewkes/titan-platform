@@ -6,6 +6,7 @@ import type { Lexicon } from "@titan-design/speech-vet";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { toVtt } from "../render/captions.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { SpeechBand } from "../beat-schema.js";
 import type { ScriptV1 } from "../script-schema.js";
@@ -100,6 +101,19 @@ describe("tts stage: duration truing and absolute words", () => {
       { beat: B2, word: "seven", start: 10.5, end: 11 },
       { beat: B2, word: "eight", start: 11, end: 11.5 },
     ]);
+  });
+
+  it("times a declared heteronym as its plain word, so words.json and the captions carry no markup", async () => {
+    // Catches: realigning the raw spoken line, which put "[minutes](=time)." into words.json and captions.vtt.
+    const script = twoBeats();
+    const declared = { ...script, beats: script.beats.map((b) => (b.id === B2 ? { ...b, spoken: "about eighteen [minutes](=time)." } : b)) };
+    const { store, input, takesDir } = harness(declared);
+
+    const outcome = await runTtsStage(input, SPEECH, { engine: scriptedVoice().engine, takesDir });
+
+    const words = WordsSchema(store.readText(outcome.outputs.words!)).absolute.filter((w) => w.beat === B2);
+    expect(words.map((w) => w.word)).toEqual(["about", "eighteen", "minutes."]);
+    expect(toVtt(words.map((w) => ({ text: w.word, startS: w.start, endS: w.end })))).toContain("about eighteen minutes.");
   });
 
   it("keeps the planned length when the voice fits inside it, and rounds a longer one up to a whole frame", () => {

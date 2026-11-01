@@ -1,0 +1,25 @@
+You'd think adding a cache would help, and sometimes it does, but we'll see a case where it doesn't.
+We tried it with sixteen shards and it wasn't any better, which surprised everyone in the room.
+It's got four parts, and we'll walk through them slowly, so don't worry if you're lost right now.
+Here's the thing I got wrong the first time, and it took me three days to notice.
+I don't think that's the whole story, because you can't see the retries from where we're standing.
+You'd think adding a cache would help, and sometimes it does, but we'll see a case where it doesn't.
+I don't think that's the whole story, because you can't see the retries from where we're standing.
+We tried it with sixteen shards and it wasn't any better, which surprised everyone in the room.
+So you've got a queue, and we're going to look at why it backs up when the workers get slow.
+Now, if you look at the graph, we see the line bend at around ninety percent, and that's where it gets weird.
+Now, if you look at the graph, we see the line bend at around ninety percent, and that's where it gets weird.
+We tried it with sixteen shards and it wasn't any better, which surprised everyone in the room.
+It's got four parts, and we'll walk through them slowly, so don't worry if you're lost right now.
+It's got four parts, and we'll walk through them slowly, so don't worry if you're lost right now.
+Here's the thing I got wrong the first time, and it took me three days to notice.
+Let's say you've got twelve workers and each one takes about forty milliseconds, so we can do the math together.
+Let's say you've got twelve workers and each one takes about forty milliseconds, so we can do the math together.
+So you've got a queue, and we're going to look at why it backs up when the workers get slow.
+It's got four parts, and we'll walk through them slowly, so don't worry if you're lost right now.
+Now, if you look at the graph, we see the line bend at around ninety percent, and that's where it gets weird.
+Let's go back to the example, because I think you'll find it's easier once we draw it out.
+Let's say you've got twelve workers and each one takes about forty milliseconds, so we can do the math together.
+Let's go back to the example, because I think you'll find it's easier once we draw it out.
+We tried it with sixteen shards and it wasn't any better, which surprised everyone in the room.
+Let's go back to the example, because I think you'll find it's easier once we draw it out.

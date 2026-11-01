@@ -275,6 +275,26 @@ The plan is read from the recorded intent, so a run whose intent was recorded wi
 (before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
 restart onto `on`.
 
+### Review workflow shadow {#review-workflow-shadow}
+
+`shepherd.review.workflow` in the factory config moves Shepherd's review onto
+`@titan-design/review-workflow` in phases. It takes `off`, `shadow`, `on:preflight` or `on`,
+and an absent key means `off`.
+
+| Value | What a head's review does |
+| --- | --- |
+| `off` | Shepherd's own review, unchanged |
+| `shadow` | The same review. `sh-review-intent` records `workflow: "shadow"`, and after each round `sh-review-shadow:<head>` records the workflow's preflight `decision`, the round's failure `classes` and the policy action it `would` take |
+| `on:preflight`, `on` | Not built yet; each runs as `off`, and serve logs why at startup |
+
+The shadow is computed from the round's own records (the fix-proof read, the intent's class,
+the dispatch and the verdict) and the installed-profile check, so it starts no session. Each
+round spends one step of its class's retry-policy row, so a timeout reads `late-read`, then
+`retry`, then `fixer(timeout)`. A run whose intent was recorded under `off`, or before the
+key existed, replays with no shadow step. `titan-factory shepherd stats --review-shadow`
+counts the would-actions per repo and ISO week, with the heads sent to the fixer by round 2
+and the heads it would have stopped that then merged.
+
 ### Fix-round re-review {#fix-round-rereview}
 
 `shepherd.review.scopedRereview` takes `off`, `shadow` or `on`, and an absent key means `off`.
@@ -325,7 +345,9 @@ Actions run on the commit must pass, so an API failure never thaws a red main.
 A task that is already done is left alone, so a replay after a restart closes nothing twice and adds no
 second note. If active-work cannot be reached, the step gives up after an hour, records `task <initiative>/<id> not
 closed: <error class>` as a caveat on its result, and the run still completes. A slice registration only
-notes the landing and leaves its task open for the seat to close after live evidence.
+notes the landing and leaves its task open for the seat to close after live evidence. A task whose plan has a
+slices block with slices unlanded, or that is tagged `epic`, `slices` or `multi-slice`, is left open too, with a note
+saying why; a task id the registered initiative does not hold is never closed.
 
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
@@ -472,7 +494,8 @@ is green on every required context (TP-4319). It cancels the gate with a reason 
 `main green: ` and names the green commit, the merge base and each required run; the run records
 that reason as the gate's answer and goes on to cleanup, and a gate-cancel event on the run keeps the
 same text. While that tip is red or still running, does not contain the merge, or the base has no
-required contexts, the gate stays open. A coordinator may also abandon a gate
+required contexts, the gate stays open. A coordinator may acknowledge the same gate on the same
+read before the sweep reaches it (owner decision 551, TP-4285). A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
 The same check supersedes a gate
@@ -613,6 +636,15 @@ their own: the store records exhaustion per account for reviews and fixers alike
 kept. A successor never holds for an account. When every account is exhausted, or the store
 cannot be read, it spawns under the first. A resume keeps the agent's own account. A red main's
 fixer picks its account the same way (TP-3962).
+
+The broker can refuse a spawn before it starts, with code `reviewer_account_limit`, when the
+account's five_hour usage is at its ceiling. The account-limit store has not marked that account,
+so the pick above still names it. A reviewer, a successor or a red main's fixer refused this way
+is spawned again on each later account in the rotation, once per account and in order, within
+the one spawn-gate admission (TP-4507). For a reviewer, the rotation is `review.configDir` and
+then `review.fallbackConfigDirs`. Each fallback logs the account the agent spawned on. When the
+last account refuses too, the review waits as for any busy refusal. No other refusal moves the
+spawn: not a full agent pool, not a held name, not a spawn-gate deferral, not a seat budget stop.
 
 A woken fixer or successor can exit because its account ran out of usage. When its session ends
 on Claude Code's own usage-limit notice, the same record a review reads, Shepherd marks the
@@ -889,10 +921,19 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
-  error's `[<class>] ` prefix; an older error without one is classified from its text. A
-  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
+  class as the error's `[<class>] ` prefix; an older error without one is classified from its
+  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
+  secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
+
+  Neither class fails a run on its first answer. A step that may run again after a restart
+  (its route's `onRestart` is `repeat`) is retried on a `gh-api-5xx` after 5 s, 20 s and 60 s.
+  On a `gh-rate-limit` it is retried only when the refused call was a `GET` or `HEAD`, so a
+  write is never sent twice. It then waits until `retry-after`, or `x-ratelimit-reset` plus
+  5 s, or 60 s when GitHub names neither, and at most 61 min a wait. After two waits the next
+  limit fails the run. The waits are recorded as `ghRetries` on the step's result.
 
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
@@ -1127,10 +1168,12 @@ a measured diff. Each repo has its own key (`owner/name`, matched in any case):
 }
 ```
 
-The merge evidence step reads the key live at every head and records the result on the
+The merge evidence step reads the key at every head and records the result on the
 evidence record as `visualDelta`. The record also stores the mode, threshold and tolerance
 that judged the head, so a later config change applies from the next evidence read and
-never to a head already decided.
+never to a head already decided. A running `titan-factory serve` notices an edit to the
+config file at the next read, with no restart; an edit that fails to load leaves the last
+good config in force and logs one warning.
 
 **Modes.**
 
@@ -1820,6 +1863,11 @@ waiting again: ci-wait:0 timed out after 2700000 ms, waiting on mergeable_state 
 A 5xx with no earlier read that answered has no head to return, so it still fails at the first
 timeout.
 
+A repo whose CI posts a commit status instead of running Actions names those contexts in
+`shepherd.repos.<repo>.statusContexts` ([factory config](/guides/factory)). Each one then waits like
+a check run: a pending or not yet posted status holds the wait, as a queued job does, and a
+failure or error status is red.
+
 GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
 never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
 ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow
@@ -1850,6 +1898,7 @@ closed is skipped.
 | `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved and merged as is | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate with exactly `{"decision":"retry"}` (recorded with its agent name), and abandon it only once the PR is merged or closed |
 | `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again. A coordinator may answer exactly `{"decision":"await-new-head"}` while the PR is open at the gate's head, and `abandon` once the PR is merged or closed (owner decision 529); a coordinator never gives `waive-proof` |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
+| `main-ci-timeout` | no completed main CI run contains the merge within the wait | `{"decision":"acknowledged","mergeSha":"…"}`. A coordinator may acknowledge it once the base branch's tip contains the merge sha and is green on every required context; a base with no required contexts is no evidence (owner decision 551). The gone sweep clears it on the same read |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 
@@ -1910,6 +1959,130 @@ allows a merge; it only gates one:
 
 The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
 review. A coordinator never resolves any of these gates.
+
+**Plan approvals (TP-4284, owner decision 551).** The owner decides WHAT at plan time, and
+Shepherd records that answer as a `shepherd_plan_approval` row for a task and repo. The only
+write is a `plan-approval` console action record, recorded as the console's owner-remote, the
+same binding as the `waive-proof` tap. No CLI, MCP or port path writes it, and a read ignores
+any row another actor wrote. The scope follows the gate: a `ci-policy` approval names the
+CI-policy keys the owner was told the PR weakens and pins each file the PR changes to its git
+blob sha at head (`null` when the file is absent at head). A `skill` or `visual` approval names
+exact paths. Each approval is claimed by exactly one run. A registration claims its task's
+unclaimed approvals when it is created. A console write claims the approval for the task's one
+live registration, and leaves it unclaimed when there are none or several. Re-registering a run
+under another task never claims, so a PR cannot borrow another PR's approval.
+
+Each `sh-policy` read before a merge decision re-reads the approvals the run claimed, and three
+guard rows honour them. Each row clears only when one approval of its gate covers the head:
+
+- `skill-path` clears when a `skill` approval names every changed skill path.
+- `visual-path` (the glob row) clears when a `visual` approval names every changed path that
+  matches the seat's `visualPaths`.
+- `ci-policy-weakened` clears when a `ci-policy` approval holds the reviewer's weakened keys and
+  pins every path the PR changes at head, rename sources included, to the blob it has there. On
+  a weakened line the evidence step reads each changed path's blob at head into the record's
+  `headBlobs`, up to 20 paths. A failed read or more paths leaves the field out, and a record
+  without it never clears. A pinned path the PR does not change is ignored.
+
+The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
+to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in
+front of the owner. A PR that mixes code with an approved policy edit still gates. The visual
+threshold, `files-unread`, `github-path` and `ci-policy-malformed` rows never consult
+approvals. An allow that rests on an approval names its plan round. A gate the run holds an
+approval of that gate for says "unplanned change".
+
+**Asking at plan time (TP-4360).** `titan-factory shepherd plan-round <plan>` drafts the round
+that asks those questions. It reads one PR's planned file list and prints a questions-only
+`round.json` whose `planApprovals` bind one question per WHAT gate the guard would hold at
+merge. It only drafts: it reaches no serve, store or console, so the owner's approve pick stays
+the one path to a row. The coordinator files it:
+
+```
+titan-factory shepherd plan-round <plan.md> | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+`<plan>` is a JSON file, `-` for stdin, or a markdown plan holding exactly one fenced block whose
+info string is `plan-round`; zero or two fences are refused. The block names one PR:
+
+```json
+{
+  "task": "titan-platform/TP-1234-s2",
+  "repo": "owner/name",
+  "summary": "Add a merge-lint entry",
+  "files": [
+    { "path": ".github/merge-lint.json", "content": "...the exact final bytes...\n" },
+    { "path": ".github/old.yml", "absent": true }
+  ],
+  "ciPolicyKeys": ["other"],
+  "why": { ".github/merge-lint.json": "plan section R7 agreed this entry" }
+}
+```
+
+List every path the PR changes, rename sources included. Each gate is predicted with the
+guard's own predicate:
+
+- **`ci-policy`** when a path is under `.github/` and `ciPolicyKeys` is non-empty, or when
+  `"ciPolicy": true` binds a weakening outside `.github/`, such as package.json scripts. The
+  scope pins every planned file to the `git hash-object` sha of its `content`, or `null` when
+  `absent`. `ciPolicyKeys: []` says the PR weakens nothing and asks no question; a `.github/` plan
+  with no `ciPolicyKeys` at all is refused. So is a policy plan with a file that has neither
+  `content` nor `absent`, because the approval must pin everything the PR merges: split the
+  policy edit into its own PR. More than 20 files is refused too. The owner sees each pinned
+  file's changed lines against `--base` (default `origin/main`, read in `--checkout`, default the
+  current directory), drawn by the same differ as the D21 card.
+- **`skill`** for the planned paths the skill-path row matches, case folded. The scope is those
+  paths; their content may still change.
+- **`visual`** for the planned paths matching the `visual_paths` of the seat that owns `repo`,
+  less tests and markdown, as the visual-path row reads them.
+
+With no gate predicted it prints nothing, writes "no WHAT gate predicted; file no round" to
+stderr and exits 0. A refusal exits 65 and prints no round. The authority table
+(`packages/authority/src/table.json`) is noted on stderr and never bound: no plan approval covers
+it yet, so its owner sign-off stays at merge. A release is not a file-list fact, and the
+`release-merge` grant already moves it to plan time. `--round <n>` and `--supersedes <round id>`
+set the round's number and the console round it replaces.
+
+A registration claims every unclaimed approval of its task. Give each PR of a multi-PR task its
+own plan round with a slice task such as `titan-platform/TP-1234-s2`, and register that PR with
+the same `--task`. Two PRs under one task string fail closed: the first to register claims both
+approvals, and the second gates.
+
+**Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
+pin, so a policy plan carries the final content of every file in its PR, and the implementer
+writes those files byte-for-byte. Skill and visual approvals pin paths, not content: only an
+unplanned path drifts them. Before pushing and before registering, the implementer runs:
+
+```
+titan-factory shepherd plan-round <plan.md> --verify HEAD
+```
+
+`--verify <ref>` prints no round. It reads `git diff --name-status -M <base>...<ref>` in
+`--checkout` and exits 1, with one `drift:` line per problem on stderr, when the ref changes a
+path the plan does not list (a rename's source included), when a pinned file's blob at the ref
+differs from its pin (the line names the path and both blob prefixes), or when a file pinned
+`absent` exists at the ref. A skill-only or visual-only plan passes a planned file whose content
+changed. It exits 0 when the ref stays inside the plan, and 65 for a plan that would be refused.
+An implementer whose verify fails stops and tells the coordinator, rather than editing the files
+until it passes.
+
+Every `drift:` line ends with the re-ask. The coordinator adds any unplanned path to the block,
+drops the block's inline `content` and `absent` fields, and drafts the next round from the head:
+
+```
+titan-factory shepherd plan-round <plan.md> --pin-from <head sha> --round <n+1> --supersedes plan-<task>-r<n> | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+`--pin-from <ref>` pins each planned file to `git rev-parse <ref>:<path>`, or `null` where the
+ref has no such path, and shows the owner that ref's bytes against `--base`. It refuses a block
+that still gives a file `content` or `absent` inline, since the ref's bytes are the new answer,
+and it does not combine with `--verify`. The owner approves the new diff, the console write
+claims it for the task's one live registration, and the next `sh-policy` read honours it. The
+superseded round is withdrawn while it is still open; a row its owner already approved stays,
+and it does not cover the new head, so it is harmless. A drift found only at merge gates at
+`ci-policy-weakened` or `skill-path` with "unplanned change", and an open approve-merge gate is
+re-decided only by a new head or base, so verify before review keeps the owner off the merge
+path. When main moves under a pinned file, verify against the updated head and re-ask the same
+way.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so

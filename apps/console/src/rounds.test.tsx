@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
-import { App } from "./App.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
 afterEach(() => {
@@ -35,14 +35,9 @@ async function recorded(): Promise<Snapshot> {
   };
 }
 
-async function renderConsole(hash: string, snapshot?: Snapshot): Promise<void> {
+async function renderConsole(hash: string, snapshot?: Snapshot, { inApp = false } = {}): Promise<void> {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot ?? (await recorded())), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const question = (id: string): HTMLElement => screen.getByTestId(`round-question-${id}`);
@@ -121,7 +116,7 @@ describe("the rounds list", () => {
   });
 
   it("opens a round from its row", async () => {
-    await renderConsole("#/rounds");
+    await renderConsole("#/rounds", undefined, { inApp: true });
     fireEvent.click(within(await screen.findByTestId("round-row-kiln-schedule-r2")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/rounds/kiln-schedule-r2"));
     expect(await screen.findByText("Which ramp should the calculator propose by default?")).toBeTruthy();

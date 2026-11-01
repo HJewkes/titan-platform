@@ -1,7 +1,8 @@
 import { GATE_DEMOTIONS, autoPassStepId, recordAutoPass, type GateDemotions } from "./auto-pass.js";
 import { hasReviewerFixFirst, trailSummary, type FixFirstTrail } from "./fix-first-trail.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import { awaitNewHead, type GateRun } from "./gates.js";
+import { awaitNewHead } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import { LeaveLand } from "./leave-land.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";

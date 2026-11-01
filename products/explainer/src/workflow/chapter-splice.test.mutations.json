@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no splice after the last round",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "const answered = keptReply.stripped !== undefined;",
+      "replace": "const answered = false;",
+      "kills": [
+        "a chapter splice of a rejected repair reply a rejected reply's chapter that clears its rows is spliced into the kept script"
+      ]
+    },
+    {
+      "name": "a splice that ties the kept rows is accepted",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "better: makesProgress",
+      "replace": "better: (after, before) => after.length <= before.length",
+      "kills": [
+        "a chapter splice of a rejected repair reply a splice that only moves failures to another beat of its chapter is refused"
+      ]
+    },
+    {
+      "name": "a start no reply improved is spliced into",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "const answered = keptReply.stripped !== undefined;",
+      "replace": "const answered = true;",
+      "kills": [
+        "a chapter splice of a rejected repair reply a start no reply improved takes no splice, so a code-made start never becomes the answer"
+      ]
+    }
+  ]
+}

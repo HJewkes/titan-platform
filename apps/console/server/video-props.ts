@@ -8,7 +8,9 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { z } from "zod";
+import { appDirs } from "@titan-design/app-paths";
 import { EXIT } from "@titan-design/registry";
+import { editsStamp, stampedMemo } from "./video-edits-cache.js";
 import { failure } from "./active-work.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
 import { readNotes, renderSha256 } from "./video-notes.js";
@@ -222,8 +224,10 @@ export function videoPropsCommands(catalog: VideoCatalog = videoCatalog({ roots:
   };
 }
 
-/** The owner's save and the saved edits; neither is cached, since a save changes both the ledger and its runs. */
+/** The owner's save is never cached; the saved edits are kept until the ledger, the run state or the CLI release changes. */
 function editCommands(catalog: VideoCatalog, explainerBin: string | undefined, now: () => Date) {
+  const dataDir = appDirs("explainer").data;
+  const cachedEdits = stampedMemo((): Promise<string> => editsStamp(dataDir), (mp4Sha) => listEdits(explainerBin, mp4Sha), (read) => read.gaps.length === 0);
   return {
     "videos.edit": ownerWriteCommand({
       name: "videos.edit",
@@ -242,7 +246,7 @@ function editCommands(catalog: VideoCatalog, explainerBin: string | undefined, n
       description: "The saved edits drafted over this render, from `explainer edit list`, each with its linked run's status",
       args: z.object({ videoId: z.string() }),
       result: z.object({ edits: z.array(editRow), gaps: z.array(z.string()) }),
-      run: async ({ videoId }) => listEdits(explainerBin, await renderSha256(await locate(catalog, videoId))),
+      run: async ({ videoId }) => cachedEdits(await renderSha256(await locate(catalog, videoId))),
     }),
   };
 }

@@ -61,6 +61,11 @@ export interface AgentRow {
   predecessor?: string | null;
   /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
   retired?: boolean;
+  /**
+   * When the agent's session exited, as an ISO string; null while it has not. Absent from an agent-chat that
+   * predates it, which proves nothing about when, or whether, the agent exited.
+   */
+  exitedAt?: string | null;
 }
 
 /**
@@ -200,8 +205,8 @@ const REQUIRED_FIELDS: Record<RequiredKey, FieldCheck> = {
 
 function hasRequiredFields(value: unknown): value is RawRow {
   if (typeof value !== "object" || value === null) return false;
-  const row = value as Record<string, unknown>;
-  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(row[key]));
+  const row: object = value;
+  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(Reflect.get(row, key)));
 }
 
 /** An optional field with the wrong type is dropped rather than costing the whole row. */
@@ -229,6 +234,7 @@ function toAgentRow(value: unknown): AgentRow | undefined {
     ...optionalField(value, "teleportFrom", isStringOrNull),
     ...optionalField(value, "predecessor", isStringOrNull),
     ...optionalField(value, "retired", isBoolean),
+    ...optionalField(value, "exitedAt", isStringOrNull),
   };
 }
 

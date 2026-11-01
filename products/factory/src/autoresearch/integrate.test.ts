@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { seedRepoWithOrigin, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { execDatedGit, mergeOnto } from "./integrate.js";
 
@@ -11,32 +12,19 @@ const AT = "2026-10-21T00:00:00Z";
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
-async function commitOn(work: string, from: string, files: Record<string, string>, message: string): Promise<string> {
-  await git(work, "checkout", "--quiet", "--detach", from);
-  for (const [path, text] of Object.entries(files)) writeFileSync(join(work, path), text);
-  await git(work, "add", "--all");
-  await git(work, "commit", "--quiet", "-m", message);
-  return git(work, "rev-parse", "HEAD");
-}
-
 /** An integration tree with a bare `origin`: the round's new head, a winner that merges cleanly and one that conflicts. */
 async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "ar-integrate-"));
   roots.push(root);
   const [bare, work] = [join(root, "origin.git"), join(root, "work")];
-  mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
-  writeFileSync(join(work, "a.txt"), "a\n");
-  writeFileSync(join(work, "b.txt"), "b\n");
-  await git(work, "add", "--all");
-  await git(work, "commit", "--quiet", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", work, bare);
-  await git(work, "remote", "add", "origin", bare);
+  seedRepoWithOrigin(work, bare, { "a.txt": "a\n", "b.txt": "b\n" });
   const pin = await git(work, "rev-parse", "HEAD");
-  const base = await commitOn(work, pin, { "a.txt": "a first\n" }, "first winner");
-  const clean = await commitOn(work, pin, { "b.txt": "b later\n" }, "later winner");
-  const clash = await commitOn(work, pin, { "a.txt": "a later\n" }, "clashing winner");
-  return { bare, work, pin, base, clean, clash };
+  const [base, clean, clash] = withHistory(work, [
+    { branch: "first", from: "main", files: { "a.txt": "a first\n" }, message: "first winner" },
+    { branch: "later", from: "main", files: { "b.txt": "b later\n" }, message: "later winner" },
+    { branch: "clash", from: "main", files: { "a.txt": "a later\n" }, message: "clashing winner" },
+  ]);
+  return { bare, work, pin, base: base!, clean: clean!, clash: clash! };
 }
 
 const remoteRefs = (bare: string) => git(bare, "for-each-ref", "--format=%(refname) %(objectname)");

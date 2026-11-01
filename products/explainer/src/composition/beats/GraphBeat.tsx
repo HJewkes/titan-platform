@@ -1,6 +1,6 @@
 import { MOTION, useBeatTime } from "@titan-design/react-ui/motion";
 import { AxisOrigin, axisShare, marksOrigin, type AxisFrame } from "./chart-frame.js";
-import { enter, progressAt } from "./stage/entrance.js";
+import { enter, progressAt, rise } from "./stage/entrance.js";
 
 /**
  * Port of the daily spike's GraphBeat.tsx (SOURCE_REV 6a09ca2) without its own Beat. Every point is highlighted on
@@ -40,7 +40,7 @@ function barHeight(t: number, index: number, value: number, axis: { floor: numbe
 function GraphBar({ point, height, lit }: { point: GraphPoint; height: number; lit: number }) {
   return (
     <div className="beat-graph-col">
-      <span className="beat-graph-value" data-reveal={point.id} style={{ opacity: lit }}>{point.value}</span>
+      <span className="beat-graph-value" data-reveal={point.id} style={rise(lit, 8)}>{point.value}</span>
       <div className="beat-graph-bar" style={{ height, ...(point.colour === undefined ? {} : { background: point.colour }) }} />
     </div>
   );

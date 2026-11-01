@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { EXIT } from "@titan-design/registry";
-import { LIST_PRICE_CAVEAT, type CostReportOptions } from "@titan-design/session-analytics";
+import { LIST_PRICE_CAVEAT, type CostReportOptions, type ErrorClass } from "@titan-design/session-analytics";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { MinerConfig } from "../config.js";
 import { defineInsight, localDay, refuseSessionScope } from "./define.js";
 import { answerRoundTrips, type RoundTripsReport } from "./round-trips.js";
-import { answerToolErrors, type ErrorClass, type ToolErrorsReport } from "./tool-errors.js";
+import { answerToolErrors, type ToolErrorsReport } from "./tool-errors.js";
 
 const GRAPH_MEASURES = ["sleep_blocks", "graphql_ratelimit_errors", "wrong_tool_name", "classifier_merge_denials"] as const;
 /** Daily counts from Q5, by the error class each one counts. */

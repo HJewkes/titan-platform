@@ -1,0 +1,7 @@
+{
+  "packages/session-graph/src/normalized-index.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

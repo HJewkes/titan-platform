@@ -96,6 +96,28 @@ describe('sessions command', () => {
     });
   });
 
+  it('scans past lines whose cwd or message has the wrong shape', async () => {
+    await writeJsonl({
+      projectDir: '-odd-shapes',
+      sessionId: 'odd',
+      lines: [
+        { type: 'system', cwd: 42 },
+        { type: 'system', cwd: '' },
+        { type: 'system', cwd: '/tmp/odd' },
+        { type: 'user', message: 'a bare string' },
+        { type: 'user', message: ['an', 'array'] },
+        { type: 'user', message: { content: 'the real ask' } },
+      ],
+    });
+
+    await withEmptyActiveRoot(async () => {
+      const result = await runSessions({});
+      expect(result.sessions).toEqual([
+        expect.objectContaining({ session_id: 'odd', cwd: '/tmp/odd', summary: 'the real ask' }),
+      ]);
+    });
+  });
+
   it('honors the limit option', async () => {
     for (let i = 0; i < 5; i++) {
       await writeJsonl({

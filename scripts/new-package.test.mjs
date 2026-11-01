@@ -1,15 +1,27 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { parseArgs, regenerateCapabilities, registerLayer, stampPackageDir, stampReferencePage } from "./new-package.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
+const scratchRoots = [];
+
+function scratchRoot() {
+  const root = mkdtempSync(join(tmpdir(), "new-package-"));
+  scratchRoots.push(root);
+  return root;
+}
+
+afterAll(() => {
+  for (const root of scratchRoots) rmSync(root, { recursive: true, force: true });
+});
+
 /** A root with only the two paths stampReferencePage touches: the template and the pages. */
 function fakeRoot() {
-  const root = mkdtempSync(join(tmpdir(), "new-package-"));
+  const root = scratchRoot();
   mkdirSync(join(root, "templates"), { recursive: true });
   mkdirSync(join(root, "site", "reference"), { recursive: true });
   cpSync(join(REPO, "templates", "reference-page.md"), join(root, "templates", "reference-page.md"));
@@ -132,7 +144,7 @@ describe("stamping the reference page the docs build demands", () => {
 
 describe("stamping the package directory", () => {
   it("gives the new package a CAPABILITY.md naming it, so the capability catalog can list it", () => {
-    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    const root = scratchRoot();
     cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
     const { dest } = stampPackageDir(root, { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" });
     const capability = readFileSync(join(dest, "CAPABILITY.md"), "utf8");
@@ -141,7 +153,7 @@ describe("stamping the package directory", () => {
   });
 
   it("stamps a product private and unpublishable", () => {
-    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    const root = scratchRoot();
     cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
     const { dest } = stampPackageDir(root, { name: "beacon", tier: "product", description: "signals a thing", task: "TP-99" });
     const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"));
@@ -151,7 +163,7 @@ describe("stamping the package directory", () => {
   });
 
   it("leaves a package-tier package public, as the template has it", () => {
-    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    const root = scratchRoot();
     cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
     const { dest } = stampPackageDir(root, { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" });
     const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"));
@@ -162,7 +174,7 @@ describe("stamping the package directory", () => {
 
 describe("regenerating the capability catalog for a package that has never been built", () => {
   it("writes the catalog listing the package and leaves its API snapshot for the first build", () => {
-    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    const root = scratchRoot();
     cpSync(join(REPO, "scripts"), join(root, "scripts"), { recursive: true });
     cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
     for (const dir of ["products", "apps", ".codewatch", join("site", "guides")]) mkdirSync(join(root, dir), { recursive: true });

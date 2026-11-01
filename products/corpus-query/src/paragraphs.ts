@@ -1,4 +1,4 @@
-import { parseHeader } from "./header.js";
+import { parseFrontMatter, parseHeader } from "./header.js";
 
 export interface ParagraphSpan {
   /** Zero-based position among the document's paragraphs. */
@@ -13,7 +13,8 @@ const BREAK = /\r?\n(?:[ \t]*\r?\n)+/g;
 
 /** Paragraphs of the body, split on blank lines, with byte ranges into the whole file. */
 export function splitParagraphs(text: string): ParagraphSpan[] {
-  const { bodyStart } = parseHeader(text);
+  const front = parseFrontMatter(text);
+  const { bodyStart } = front.bodyStart > 0 ? front : parseHeader(text);
   const spans: ParagraphSpan[] = [];
   let charPos = bodyStart;
   let bytePos = Buffer.byteLength(text.slice(0, bodyStart));

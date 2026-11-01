@@ -42,17 +42,14 @@ export interface QaGate {
   inspect: QaInspect;
 }
 
-/**
- * Whether the caption checks fail the qa stage. Reported until the owner commits to WCAG 2.2 AA, which makes captions
- * (WCAG 1.2.2 Level A) a hard gate; flipping this line is the whole switch.
- */
+/** Whether the caption checks fail the qa stage. Reported: decision 551 holds WCAG 2.2 AA but keeps captions optional. */
 export const CAPTIONS_GATE = false;
-/** Whether an on-screen fact the narration never says fails the qa stage (WCAG 1.2.5 AA); waits on the same answer. */
-export const NARRATION_FACTS_GATE = false;
-/** Whether the photosensitive flash check (WCAG 2.3.1 Level A) fails the qa stage; reported until the owner commits to WCAG 2.2 AA. */
-export const FLASH_GATE = false;
-/** Whether text or chart marks under the contrast thresholds, or series told apart by colour alone, fail; same answer. */
-export const CONTRAST_GATE = false;
+/** Whether an on-screen fact the narration never says fails the qa stage (WCAG 1.2.5 AA, decision 551). */
+export const NARRATION_FACTS_GATE = true;
+/** Whether the photosensitive flash check (WCAG 2.3.1 Level A) fails the qa stage; gated under decision 551. */
+export const FLASH_GATE = true;
+/** Whether text or chart marks under the contrast thresholds, or series told apart by colour alone, fail; decision 551. */
+export const CONTRAST_GATE = true;
 
 /**
  * WCAG 2.2 AA contrast (content standards CH-19, CH-20): 4.5:1 for text (1.4.3), 3:1 for large text, and 3:1 for a

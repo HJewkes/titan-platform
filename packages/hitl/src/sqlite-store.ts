@@ -104,8 +104,8 @@ function ruleTriggerDdl(db: Db, name: string, delegates = hasDelegateTriggers(db
 
 /** Once `gateDelegateMigration` has run, a later rule or resolver migration keeps the delegate-aware form rather than narrow it back. */
 function hasDelegateTriggers(db: Db, name: string): boolean {
-  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(`${name}_rule_resolver`) as { sql: string } | undefined;
-  return row?.sql.includes("'$.delegates'") ?? false;
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(`${name}_rule_resolver`);
+  return typeof row === "object" && row !== null && "sql" in row && typeof row.sql === "string" && row.sql.includes("'$.delegates'");
 }
 
 /** The classes a rule-bound row admits: its resolvers, and with delegates on, the delegate classes its rule names as a JSON array. */
@@ -290,9 +290,7 @@ export class SqliteGateStore extends BaseGateStore {
   }
 
   protected read(id: string): GateRecord | undefined {
-    const row = this.db.prepare(`SELECT * FROM ${quoteIdent(this.table)} WHERE id = ?`).get(id) as
-      | RawGateRow
-      | undefined;
+    const row = this.db.prepare<[string], RawGateRow>(`SELECT * FROM ${quoteIdent(this.table)} WHERE id = ?`).get(id);
     return row ? toRecord(row) : undefined;
   }
 
@@ -321,8 +319,8 @@ export class SqliteGateStore extends BaseGateStore {
 
   protected readByStatus(status: GateStatus): GateRecord[] {
     const rows = this.db
-      .prepare(`SELECT * FROM ${quoteIdent(this.table)} WHERE status = ? ORDER BY created_at`)
-      .all(status) as RawGateRow[];
+      .prepare<[GateStatus], RawGateRow>(`SELECT * FROM ${quoteIdent(this.table)} WHERE status = ? ORDER BY created_at`)
+      .all(status);
     return rows.map(toRecord);
   }
 }
@@ -348,7 +346,7 @@ function columns(record: GateRecord): unknown[] {
   return [
     record.id,
     record.prompt,
-    record.schema ? JSON.stringify(record.schema) : null,
+    toJson(record.schema),
     record.status,
     toJson(record.payload),
     record.reason ?? null,

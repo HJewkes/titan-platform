@@ -1,7 +1,7 @@
 import type { StepResult } from "@titan-design/workflow";
 import { CI_WAIT_ATTEMPTS } from "../workflows/land-budget.js";
 import { EVENT_KINDS, SHEPHERD_ACTOR } from "./events.js";
-import type { TimelineEntry } from "./view.js";
+import type { TimelineEntry } from "./view-schema.js";
 
 /** The stored event kinds, plus `ci-timeout`, which is read from a timed-out `ci-wait` record rather than stored. */
 export const TIMELINE_EVENT_KINDS = [...EVENT_KINDS, "ci-timeout"] as const;

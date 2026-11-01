@@ -163,7 +163,7 @@ function batch(asks: Ask[], max: number): Ask[][] {
  * sign-off in a prompt or option and an option shared by two pick-ones, so blank text takes
  * the fallback and the question id is appended until the text is none of those.
  */
-function field(text: string, fallback: string, questionId: string, used = new Set<string>()): string {
+export function field(text: string, fallback: string, questionId: string, used = new Set<string>()): string {
   let shown = text.trim() === "" ? fallback : text.trim();
   while (used.has(shown) || isBlanketSignOff(shown)) shown = `${shown} (${questionId})`;
   used.add(shown);
@@ -264,15 +264,20 @@ function render(asks: Ask[], round: number, options: OwnerRoundOptions): OwnerRo
   return { manifest, bindings: rendered.map((each) => each.binding) };
 }
 
+function rawId(raw: unknown): string {
+  if (typeof raw !== "object" || raw === null || !("id" in raw)) return "";
+  return raw.id == null ? "" : String(raw.id);
+}
+
 /** Inputs are parsed here, so a value only its TypeScript type vouches for never reaches a round. */
-function admit(items: readonly OwnerItem[]): { asked: OwnerItem[]; skipped: OwnerRounds["skipped"] } {
+function admit(items: readonly unknown[]): { asked: OwnerItem[]; skipped: OwnerRounds["skipped"] } {
   const skipped: OwnerRounds["skipped"] = [];
   const asked: OwnerItem[] = [];
   for (const raw of items) {
     const parsed = ownerItemSchema.safeParse(raw);
     const reason = parsed.success ? skipReason(parsed.data) : "invalid";
     if (reason === null) asked.push(parsed.data!);
-    else skipped.push({ id: String(raw?.id ?? ""), reason });
+    else skipped.push({ id: rawId(raw), reason });
   }
   return { asked, skipped };
 }

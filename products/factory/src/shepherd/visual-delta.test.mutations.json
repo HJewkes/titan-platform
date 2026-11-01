@@ -2,39 +2,18 @@
   "v": 1,
   "mutations": [
     {
-      "name": "antialiased pixels count as changed",
-      "file": "products/factory/src/shepherd/visual-delta.ts",
-      "find": "    includeAA: false,",
-      "replace": "    includeAA: true,",
-      "kills": ["snapshotShare does not count an antialiased edge whose shade shifts"]
-    },
-    {
-      "name": "the share divides by the whole image, not the content box",
-      "file": "products/factory/src/shepherd/visual-delta.ts",
-      "find": "const area = box ? box.width * box.height : before.width * before.height;",
-      "replace": "const area = before.width * before.height;",
-      "kills": ["snapshotShare divides by the content box, so one changed pixel of a 10×10 square in a 100×100 frame is 0.01"]
-    },
-    {
-      "name": "a size change reads as no change",
-      "file": "products/factory/src/shepherd/visual-delta.ts",
-      "find": "before.height !== after.height) return 1;",
-      "replace": "before.height !== after.height) return 0;",
-      "kills": ["snapshotShare gives 1 when the dimensions differ"]
-    },
-    {
-      "name": "the pixel tolerance option is ignored",
-      "file": "products/factory/src/shepherd/visual-delta.ts",
-      "find": "threshold: opts.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE,",
-      "replace": "threshold: DEFAULT_PIXEL_TOLERANCE,",
-      "kills": ["snapshotShare counts a change the default pixel tolerance would let pass when the tolerance is tighter"]
-    },
-    {
       "name": "a story shot keeps its story suffix",
       "file": "products/factory/src/shepherd/visual-delta.ts",
       "find": "if (story > 0) return name.slice(0, story);",
       "replace": "if (story > 0) return name;",
       "kills": ["componentOf names a story shot by its story title"]
+    },
+    {
+      "name": "the factory measure imports pngjs again",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "import { setImmediate as nextTurn } from \"node:timers/promises\";\n",
+      "replace": "import { setImmediate as nextTurn } from \"node:timers/promises\";\nimport \"pngjs\";\n",
+      "kills": ["factory runtime code never imports pngjs, so untrusted snapshots only reach the bounded decoder"]
     }
   ]
 }

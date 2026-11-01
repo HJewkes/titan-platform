@@ -15,8 +15,8 @@ import type { ReconcilerHealth } from "./serve-reconciler.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import type { IngressStatus } from "./ingress/listen.js";
 import type { OwnerKeys } from "./owner-keys.js";
-import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
-import { heldRun } from "./serve-holds.js";
+import { busyRuns, heldSkipped, type HoldPredicate, type QueuedPredicate } from "./restart-drain.js";
+import { gateQueuedRun, heldRun } from "./serve-holds.js";
 import { serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { divergedPrClosed, divergedRestarts, type DivergedRestart } from "./shepherd/diverged-sweep.js";
@@ -56,7 +56,7 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: H
   const { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot, reconciler } = inputs;
   const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
   return {
-    ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd), divergedRestarts(options.routes.shepherd)),
+    ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd), divergedRestarts(options.routes.shepherd), gateQueuedRun(options.routes.shepherd)),
     github: github.status(),
     ...(options.sources && { sources: { ...options.sources(), lastPassAt: passStamp.read(), reconciler } }),
     ...(options.githubApi && { githubApi: options.githubApi() }),
@@ -80,20 +80,21 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: H
 
 /** Without `routeFor`, `busy` cannot see park-routed steps. Finished runs are counted, not listed, so a probe never parses every one (TP-2419); recovery_required
  * runs are listed by id, so a deploy's watch can tell a run its restart interrupted, one on a closed PR, or one strict replay parked for the diverged sweep,
- * from one that broke after it. Only restarts whose successor run exists are listed (TP-3889). */
+ * from one that broke after it. Only restarts whose successor run exists are listed (TP-3889). A review spawn the gate still queues is not busy (TP-4474). */
 export function factoryHealth(
   host: FactoryHost,
   routeFor: RoutedRunner["routeFor"] = () => undefined,
   isHeld?: HoldPredicate,
   prClosed: ReadonlySet<string> = new Set(),
   restarts: readonly DivergedRestart[] = [],
+  isQueued?: QueuedPredicate,
 ): Record<string, unknown> {
   const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   const parked = host.runtime.list(["recovery_required"]);
   const recoveryRequired = parked.map((run) => run.id);
-  const busy = busyRuns(running, routeFor, isHeld);
+  const busy = busyRuns(running, routeFor, isHeld, isQueued);
   return {
     runs,
     recoveryRequired,

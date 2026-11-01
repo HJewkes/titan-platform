@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer check holds no low-contrast rows",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (!isHeldRule(kind)) return [];",
+      "replace": "if (!isHeldRule(kind) || kind === \"low-contrast\") return [];",
+      "kills": [
+        "the layer check's contrast rows the build check and qa's low-contrast gate agree on the same element",
+        "the layer check's contrast rows holds text faint in two samples in a row, as qa does",
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    },
+    {
+      "name": "the contrast hint drops the colours and ratio",
+      "file": "products/explainer/src/build/layer-text.ts",
+      "find": "if (contrast === undefined) return RULE_FIX[row.rule];",
+      "replace": "return RULE_FIX[row.rule];",
+      "kills": [
+        "the layer check's contrast rows tells the rebuild the text, its colour on its ground, the ratio and the on-accent fix"
+      ]
+    },
+    {
+      "name": "the layer check holds contrast errors only, as qa's held gate does",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "[...errors, ...info.filter(({ kind }) => kind === \"low-contrast\")]",
+      "replace": "errors",
+      "kills": [
+        "the layer check's contrast rows text under contrast on one sample between qa's 2 Hz ticks gets a rebuild"
+      ]
+    },
+    {
+      "name": "the layer check reads qa's 2 Hz sweep at phase 0 only",
+      "file": "products/explainer/src/qa/layer-contrast.ts",
+      "find": "const SWEEP_PHASES_S = [0, 0.1, 0.2, 0.3, 0.4] as const;",
+      "replace": "const SWEEP_PHASES_S = [0] as const;",
+      "kills": [
+        "the layer check's contrast rows text under contrast on one sample between qa's 2 Hz ticks gets a rebuild",
+        "the layer check's contrast rows an off-frame box held at some 2 Hz phase is refused at any beat start"
+      ]
+    }
+  ]
+}

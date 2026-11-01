@@ -3,9 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig, type MinerConfig } from "../config.js";
 import { createMinerContext, type MinerContext } from "../context.js";
+import { countRow } from "../rows.js";
 import { drainIngest } from "./drain.js";
 import { playbookAdd, playbookRecall, playbookReflect, playbookStatus, type BulletView, type ReflectResponse } from "./playbook.js";
 import { refresh } from "./refresh.js";
@@ -110,7 +112,7 @@ describe("playbook over the CLI", () => {
     expect(await runCli([...argv, "playbook", "add", "Pin npm to 11 in release jobs", "--tag", "ci", "--tag", "release"], io)).toBe(0);
     out.length = 0;
     expect(await runCli([...argv, "playbook", "recall", "npm release"], io)).toBe(0);
-    const envelope = JSON.parse(out.join("")) as { ok: boolean; data: { bullets: BulletView[] } };
+    const envelope = z.object({ ok: z.boolean(), data: z.object({ bullets: z.array(z.unknown()) }) }).parse(JSON.parse(out.join("")));
     expect(envelope.data.bullets[0]).toMatchObject({ content: "Pin npm to 11 in release jobs", tags: ["ci", "release"] });
   });
 });
@@ -171,7 +173,7 @@ describe("playbook.reflect", () => {
     await run(refresh, {});
     const countRows = () => {
       const g = ctx.graph();
-      const q = (sql: string) => (g.db.prepare(sql).get() as { n: number }).n;
+      const q = (sql: string) => countRow.parse(g.db.prepare(sql).get()).n;
       return { facts: q("SELECT COUNT(*) AS n FROM fact"), edges: q("SELECT COUNT(*) AS n FROM edge"), sessions: q("SELECT COUNT(*) AS n FROM session") };
     };
     const before = countRows();

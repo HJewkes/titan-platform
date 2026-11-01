@@ -17,8 +17,9 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
 import { ConversationTurns, TouchedFiles, type Timeline } from "./SessionTurns.js";
-import { GRAPH_STATE, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type SessionRow } from "./SessionFormat.js";
+import { GRAPH_STATE, migrationHint, NoneText, RefLinks, formatCost, formatDuration, formatTokens, spanMs, usageTokens, type SessionRow } from "./SessionFormat.js";
 
 type TimelineResult = ConsoleCommands["sessions.timeline"]["result"];
 type TimelineOk = Extract<TimelineResult, { status: "ok" }>;
@@ -51,7 +52,7 @@ function Loaded({ result, query }: { result: TimelineResult; query: string | und
   if (result.status === "degraded") {
     const { reason, detail } = result.degraded;
     if (reason === "transcript-missing") return <Degraded session={result.session} sessionId={result.sessionId} message={TRANSCRIPT_GONE} />;
-    return <Degraded session={null} sessionId={result.sessionId} message={`The session graph is ${GRAPH_STATE[reason]}, and no transcript for this session is on disk. ${detail}`} />;
+    return <Degraded session={null} sessionId={result.sessionId} message={`The session graph is ${GRAPH_STATE[reason]}, and no transcript for this session is on disk.${migrationHint(result.degraded)} ${detail}`} />;
   }
   const openTurn = Number(new URLSearchParams(query ?? "").get("turn") ?? 0);
   return (
@@ -75,7 +76,9 @@ function Degraded({ session, sessionId, message }: { session: SessionRow | null;
 function Trail({ sessionId }: { sessionId: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "sessions" })}>Sessions</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "sessions" })}>
+        Sessions
+      </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{sessionId}</BreadcrumbItem>
     </Breadcrumbs>
   );
@@ -142,7 +145,9 @@ function Records({ result, openTurn }: { result: TimelineOk; openTurn: number })
       <Tabs index={tab} onChange={setTab}>
         <TabList>
           {labels.map((label) => (
-            <Tab key={label}>{label}</Tab>
+            <Tab key={label} className={PHONE_TAP}>
+              {label}
+            </Tab>
           ))}
         </TabList>
       </Tabs>

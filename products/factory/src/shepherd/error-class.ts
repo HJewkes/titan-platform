@@ -1,3 +1,4 @@
+import { errorStatus } from "../narrow.js"
 /** A name is set by whoever threw, so only an identifier-shaped one is echoed. */
 const ERROR_CLASS_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** A GitHub token, a JWT head or a long hex run can still be identifier-shaped, so these never pass as a class name. */
@@ -21,7 +22,7 @@ const isHttpStatus = (status: unknown): status is number => typeof status === "n
 /** The HTTP status when the error carries one, otherwise its class name; never any of its text. */
 export function failureOf(error: unknown): string {
   try {
-    const status: unknown = (error as { status?: unknown } | null)?.status;
+    const status = errorStatus(error);
     if (isHttpStatus(status)) return `HTTP ${status}`;
   } catch {
     return errorClass(error);

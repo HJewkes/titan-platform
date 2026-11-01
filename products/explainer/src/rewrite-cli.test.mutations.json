@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "explainer rewrite writes no rewritten script",
+      "file": "products/explainer/src/rewrite-cli.ts",
+      "find": "  writeFileSync(flags.out, `${JSON.stringify(rewritten, null, 2)}\\n`);\n",
+      "replace": "",
+      "kills": [
+        "explainer rewrite writes the rewritten script and its report, prints the row deltas and exits 0 when every target row passes"
+      ]
+    }
+  ]
+}

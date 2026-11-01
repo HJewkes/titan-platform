@@ -11,6 +11,7 @@ import { RECENT_WRITE_MS, type RecoverTarget } from '../../src/sessions/recover-
 import wrap from '../../src/commands/wrap.js';
 import { RECOVERED_FIRST_LINE } from '../../src/sessions/recovered-body.js';
 import type { CommandContext } from '../../src/registry/index.js';
+import { resetRunners, setGitRunner } from '../../src/utils/git-gh.js';
 import { parseFrontmatter } from '../../src/utils/gray-matter-io.js';
 import { withTempActiveRoot } from '../setup/test-helpers.js';
 import {
@@ -32,10 +33,13 @@ const RUNNING = '0c0c0c0c-1111-4222-8333-444444444444';
 let claudeHome: string;
 
 beforeEach(() => {
+  // wrap sweeps git state for process.cwd(), which is this whole repo; no repo answering keeps it instant.
+  setGitRunner(() => Promise.resolve({ code: 1, stdout: '', stderr: '' }));
   claudeHome = mkdtempSync(path.join(os.tmpdir(), 'aw-recover-claude-'));
 });
 
 afterEach(() => {
+  resetRunners();
   mirrorRoots.length = 0;
   rmSync(claudeHome, { recursive: true, force: true });
 });

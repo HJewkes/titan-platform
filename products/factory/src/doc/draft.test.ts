@@ -15,10 +15,10 @@ function stepInput(): RoutedStepInput {
 }
 
 function fakeRunner(outcome: StepRunOutcome) {
-  const seen: { options?: AgentRunnerOptions; inputs: RoutedStepInput[] } = { inputs: [] };
+  const seen: { options?: AgentRunnerOptions; inputs: Parameters<LegacyStepRunner["run"]>[0][] } = { inputs: [] };
   const runnerFor = (options: AgentRunnerOptions): LegacyStepRunner => {
     seen.options = options;
-    return { run: async (input) => (seen.inputs.push(input as RoutedStepInput), outcome) };
+    return { run: async (input) => (seen.inputs.push(input), outcome) };
   };
   return { runnerFor, seen };
 }

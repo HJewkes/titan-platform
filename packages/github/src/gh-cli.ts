@@ -127,7 +127,7 @@ export function redactedError(error: unknown, secrets: readonly string[]): Error
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
     const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
-    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }
@@ -212,7 +212,7 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
 }
 
 async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
-  const body = await api.get<{ protected?: unknown }>(`repos/${repo}/branches/${branch}`);
+  const body = await api.get<{ protected?: unknown } | undefined>(`repos/${repo}/branches/${branch}`);
   if (typeof body?.protected !== "boolean") throw new Error("the branch answered no boolean protected flag, so whether it is protected is unknown");
   return body.protected;
 }

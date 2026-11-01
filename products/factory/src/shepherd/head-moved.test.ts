@@ -12,11 +12,14 @@ import { sleep } from "../workflows/land.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
 import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
+import { readPath } from "../narrow.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => {
@@ -154,7 +157,7 @@ async function guardGatedAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHu
 
 function mergePolicyHeads(host: FactoryHost, runId: string): string[] {
   const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("merge-policy"));
-  return results.map((result) => (JSON.parse(result.output ?? "{}") as { result: { headSha: string } }).result.headSha);
+  return results.map((result) => String(readPath(JSON.parse(result.output ?? "{}"), "result", "headSha")));
 }
 
 describe("a pending approve-merge gate whose pull request head moved", () => {
@@ -680,7 +683,7 @@ describe("seatPolicyHead", () => {
   }
 
   function runWith(...results: StepResult[]): WorkflowRun {
-    return { stepResults: Object.fromEntries(results.map((result) => [`${result.stepId}:0`, result])) } as unknown as WorkflowRun;
+    return partialFake<WorkflowRun>({ stepResults: Object.fromEntries(results.map((result) => [`${result.stepId}:0`, result])) });
   }
 
   const seatGate = { outcome: "gate", headSha: GATED, rule: { table: "shepherd-seat" } };

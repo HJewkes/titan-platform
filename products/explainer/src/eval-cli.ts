@@ -22,6 +22,8 @@ import { parseCoverage, withCoverage } from "./lint-coverage.js";
 import { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVet } from "./speech-vet-gate.js";
 import { localSentenceVet } from "./speech-vet-local.js";
 import { readTiming } from "./timing.js";
+import { writingCalibrateCommand } from "./writing-calibrate-cli.js";
+import { writingCommand } from "./writing-check-cli.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
 
@@ -172,7 +174,9 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(itemsCommand(deps, onResult))
     .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
-    .addCommand(calibrateCommand(onResult));
+    .addCommand(calibrateCommand(onResult))
+    .addCommand(writingCalibrateCommand(onResult))
+    .addCommand(writingCommand(deps, onResult));
   const program = new Command("explainer").exitOverride().enablePositionalOptions().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });

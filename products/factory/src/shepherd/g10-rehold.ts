@@ -4,7 +4,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { adversaryRehold, ownReholdAt, type PrAt } from "./adversary-anchor.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
 import { carry, type CarryOptions, type CarryResult } from "./tree-carry.js";

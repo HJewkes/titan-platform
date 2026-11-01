@@ -4,6 +4,9 @@ import { ANCHOR_SPEC_PATTERN } from "../anchor-grid.js";
 /** When one slot element lands, in seconds from the beat's start: its cue word, resolved by compileTimeline. */
 const RevealSchema = z.object({ target: z.string().min(1), part: z.enum(["left", "right"]).optional(), atS: z.number().min(0) });
 
+/** When a cue names an element again after it landed (or an edge, or a claim), in beat seconds: the view lights it. */
+const EmphasisSchema = z.object({ target: z.string().min(1), atS: z.number().min(0) });
+
 /** The fill's page hints (template-fill FillHints); none of them is a slot. */
 const HintsSchema = z.object({
   placeholder: z.literal(true).optional(),
@@ -18,7 +21,7 @@ const ChapterSchema = z
   .refine((c) => c.n <= c.of, { message: "a chapter's n must not pass its of" });
 
 // The page reads only what it renders; compileTimeline (TP-2990) owns the rest of timeline.json.
-// reveals, chips, hints, headline and chapter feed a stage beat's chrome and entrances; a page beat ignores them.
+// reveals, emphases, chips, hints, headline and chapter feed a stage beat's chrome and entrances; a page beat ignores them.
 const TimelineBeatSchema = z
   .object({
     id: z.string().min(1),
@@ -28,6 +31,7 @@ const TimelineBeatSchema = z
     cues: z.record(z.string(), z.number().min(0)).optional(),
     slots: z.unknown(),
     reveals: z.array(RevealSchema).optional(),
+    emphases: z.array(EmphasisSchema).optional(),
     chips: z.array(z.object({ kind: z.string().min(1), text: z.string().min(1) })).optional(),
     hints: HintsSchema.optional(),
     headline: z.string().min(1).optional(),
@@ -40,6 +44,9 @@ const TimelineBeatSchema = z
   })
   .refine((b) => (b.reveals ?? []).every((r) => r.atS <= b.durationS + 1e-9), {
     message: "every reveal must land within its beat's durationS",
+  })
+  .refine((b) => (b.emphases ?? []).every((e) => e.atS <= b.durationS + 1e-9), {
+    message: "every emphasis must land within its beat's durationS",
   })
   .refine((b) => (b.layer === "custom") === (b.module !== undefined), { message: "a custom-layer beat names its module, and only such a beat does" });
 

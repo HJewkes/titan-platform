@@ -54,9 +54,26 @@ let g2p: G2p | undefined;
 // Built on first use: loading the G2P lexicon takes about a second, so only a run that reads a headline pays it.
 const g2pTags: Tagger = (text) => (g2p ??= misakiEnglish()).tokens(text).map((token) => token.tag);
 
-/** A finite verb after the first token: a subject and its verb. A topic label has none, and a bare imperative's verb comes first. */
+/**
+ * Simple past forms that are never also a participle or a common noun, so a word after the first that is one is a
+ * finite verb whatever the tagger reads: misaki tags "drew" NNP in "Daily video drew most merges". "made", "led" and
+ * "found" are left out, since a topic label uses them as participles ("Labels made at the desk").
+ */
+const IRREGULAR_PAST: ReadonlySet<string> = new Set([
+  "arose", "ate", "awoke", "became", "began", "came", "chose", "did", "drank", "drew", "flew", "forgave", "forgot", "froze",
+  "gave", "grew", "hid", "knew", "overtook", "ran", "rang", "redrew", "rewrote", "rode", "sang", "shook", "shrank", "swam",
+  "swore", "took", "threw", "tore", "underwent", "went", "withdrew", "woke", "wore", "wrote",
+]);
+
+const saysIrregularPast = (headline: string): boolean =>
+  wordsOf(headline).slice(1).some((word) => IRREGULAR_PAST.has(word.toLowerCase().replace(/[^a-z]/g, "")));
+
+/**
+ * A finite verb after the first token: a subject and its verb. A topic label has none, and a bare imperative's verb
+ * comes first. An irregular past the tagger misreads counts as one too.
+ */
 export const hasSubjectAndVerb = (headline: string, tag: Tagger = g2pTags): boolean =>
-  tag(headline).some((each, i) => i > 0 && FINITE_VERB_TAGS.has(each));
+  tag(headline).some((each, i) => i > 0 && FINITE_VERB_TAGS.has(each)) || saysIrregularPast(headline);
 
 export type AssertionDefect = "over-ten-words" | "no-subject-verb" | "written-after-narration";
 

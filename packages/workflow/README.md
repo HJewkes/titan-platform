@@ -378,6 +378,13 @@ existing table needs `workflowDefinitionVersionMigration(n)` once. Until then
 unpinned runs keep working, and starting a pinned run throws
 `WorkflowStoreSchemaOutdated` rather than dropping the pin.
 
+## Reading one workflow's runs
+
+`runtime.listByWorkflow(name, statuses)` loads only that workflow's runs, so a
+reader of one workflow does not parse every other run's step results. A fresh
+`workflowMigration` table has the `(workflow_name, status)` index it uses; an
+existing table needs `workflowNameIndexMigration(n)` once.
+
 ## Ownership and cancellation
 
 Each live runtime claims a workflow with a leased owner generation and advances

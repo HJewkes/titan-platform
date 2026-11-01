@@ -1,0 +1,14 @@
+{
+  "durationS": 3,
+  "beats": [
+    {
+      "id": "four-tiles", "kind": "stat", "startS": 0, "durationS": 3, "headline": "Four synthetic tiles with a prefix each",
+      "slots": { "figures": [
+        { "id": "figures-1", "label": "Spend", "prefix": "$", "value": 1261 },
+        { "id": "figures-2", "label": "Per unit", "prefix": "$", "value": 13.41 },
+        { "id": "figures-3", "label": "Table", "prefix": "v", "value": 1 },
+        { "id": "figures-4", "label": "Shipped", "value": 4821 }
+      ] }
+    }
+  ]
+}

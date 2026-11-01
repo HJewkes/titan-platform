@@ -18,6 +18,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArRunView, ArSnapshot, ArSync } from "../../server/autoresearch-view.js";
 import { ExternalLink } from "./SessionFormat.js";
+import { PHONE_TAP_ANCHORS } from "./phone.js";
 import { pullUrl, shortSha } from "./autoresearch-format.js";
 
 const STATE_TONE: Record<ArSync["state"], PillTone> = { open: "neutral", merged: "success", closed: "error" };
@@ -34,7 +35,7 @@ export function AutoresearchSnapshots({ run }: { run: ArRunView }): ReactNode {
     <Section testID="autoresearch-snapshots">
       <SectionHeader title="Snapshots" subtitle="Ratchet snapshots cut as PRs, and each sync of the open one" />
       <SectionContent>
-        <VStack gap={3}>
+        <VStack gap={3} className={PHONE_TAP_ANCHORS}>
           {snapshotPending === null ? null : (
             <Alert status="info" testID="autoresearch-snapshot-pending" message={`A ${snapshotPending.trigger} snapshot is waiting for the open snapshot PR to settle`} />
           )}

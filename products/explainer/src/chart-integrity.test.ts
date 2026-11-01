@@ -152,11 +152,11 @@ describe("series are never told apart by colour alone (CH-20, WCAG 1.4.1)", () =
     expect(flagged).toEqual([false, false, false]);
   });
 
-  it("reports the colour-only lint at resolve without gating", () => {
+  it("gates resolve on the colour-only lint", () => {
     // Arrange / Act
     const check = chartGate(bars({ legend: true }), "colour-only-series");
 
     // Assert
-    expect(check).toEqual({ name: "colour-only-series", gate: false, pass: true, detail: "no chart tells its series apart by colour alone" });
+    expect(check).toEqual({ name: "colour-only-series", gate: true, pass: true, detail: "no chart tells its series apart by colour alone" });
   });
 });

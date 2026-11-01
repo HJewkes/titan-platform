@@ -15,10 +15,11 @@ export function lineSourceFromTexts(texts: Readonly<Record<string, string>>): Li
   const cache = new Map<string, string[]>();
   return {
     lines(path) {
-      if (!Object.hasOwn(texts, path)) return undefined;
+      const text = Object.hasOwn(texts, path) ? texts[path] : undefined;
+      if (text === undefined) return undefined;
       let lines = cache.get(path);
       if (!lines) {
-        lines = splitLines(texts[path] as string);
+        lines = splitLines(text);
         cache.set(path, lines);
       }
       return lines;

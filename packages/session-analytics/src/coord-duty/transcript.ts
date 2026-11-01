@@ -1,3 +1,5 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
+
 export interface ToolUse {
   name: string;
   input: Record<string, unknown>;
@@ -147,10 +149,6 @@ function messageOf(record: JsonRecord): JsonRecord {
 function stringField(record: JsonRecord, key: string): string {
   const value = record[key];
   return typeof value === "string" ? value : "";
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function escapeRegExp(text: string): string {

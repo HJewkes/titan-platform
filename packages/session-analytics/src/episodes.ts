@@ -294,9 +294,9 @@ const EPISODE_INBOUNDS_SQL = `
   WHERE copy_rank = 1`;
 
 export function readEpisodeInput(db: Db, sessionId: string, spawned: boolean): EpisodeInput {
-  const requests = db.prepare(EPISODE_REQUESTS_SQL).all({ sessionId }) as EpisodeRequest[];
-  const inbounds = db.prepare(EPISODE_INBOUNDS_SQL).all(sessionId) as EpisodeInbound[];
-  const signals = db.prepare(EPISODE_SIGNALS_SQL).all(sessionId) as EpisodeSignal[];
+  const requests = db.prepare<[object], EpisodeRequest>(EPISODE_REQUESTS_SQL).all({ sessionId });
+  const inbounds = db.prepare<[string], EpisodeInbound>(EPISODE_INBOUNDS_SQL).all(sessionId);
+  const signals = db.prepare<[string], EpisodeSignal>(EPISODE_SIGNALS_SQL).all(sessionId);
   return { requests, inbounds, signals, spawned };
 }
 
@@ -347,14 +347,14 @@ const SCOPED_LAST_MAIN_REQUESTS = `
 export type LastMainRequest = { sessionId: string; lastRequestAt: string };
 
 export function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
-  if (!ids) return db.prepare(ALL_LAST_MAIN_REQUESTS).all() as LastMainRequest[];
-  return db.prepare(SCOPED_LAST_MAIN_REQUESTS).all({ ids: JSON.stringify(ids) }) as LastMainRequest[];
+  if (!ids) return db.prepare<[], LastMainRequest>(ALL_LAST_MAIN_REQUESTS).all();
+  return db.prepare<[object], LastMainRequest>(SCOPED_LAST_MAIN_REQUESTS).all({ ids: JSON.stringify(ids) });
 }
 
 const EPISODE_ENDS = `SELECT session_id AS sessionId, heuristic, MAX(ended_at) AS endedAt FROM "${EPISODE_TABLE}" GROUP BY session_id, heuristic`;
 
 export function episodeEnds(db: Db): Map<string, number> {
-  const rows = db.prepare(EPISODE_ENDS).all() as { sessionId: string; heuristic: Heuristic; endedAt: string }[];
+  const rows = db.prepare<[], { sessionId: string; heuristic: Heuristic; endedAt: string }>(EPISODE_ENDS).all();
   return new Map(rows.map((row) => [endKey(row.sessionId, row.heuristic), Date.parse(row.endedAt)]));
 }
 

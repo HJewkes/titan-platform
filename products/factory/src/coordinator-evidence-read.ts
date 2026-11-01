@@ -1,9 +1,10 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, withoutSupersededCancels, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
   AWAIT_NEW_HEAD,
+  MAIN_CI_TIMEOUT,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
@@ -24,10 +25,11 @@ import {
 import type { FactoryHost } from "./host.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { readRequiredChecks } from "./required-checks.js";
-import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
+import { actionsRunsAt } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling } from "./shepherd/policy.js";
+import { stricterPolicy, type EffectivePolicy } from "./shepherd/policy-schema.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -103,8 +105,9 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   const runs = await port.checkRuns(repo, head);
   if (headCheckFindings({ headSha: head, contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length > 0) return undefined;
   const required = contexts.map((name) => runs.find((run) => run.name === name && run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID && run.conclusion === "success"));
-  if (required.some((run) => run === undefined)) return undefined;
-  return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
+  const found = required.filter((run) => run !== undefined);
+  if (found.length !== required.length) return undefined;
+  return { base, required: contexts, runs: found.map(runFact) };
 }
 
 type ChecksState = "green" | "failing" | "pending" | "unreadable";
@@ -120,9 +123,10 @@ export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { state: findings.length > 0 ? "pending" : "green", failing: [] };
 }
 
+/** A main-ci-timeout gate asks the question Shepherd's own clear answers, so it needs the same required contexts. */
 function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> | undefined {
   const main = mainGate(gate);
-  return main && mainGreenAt(sources, gate.id, main, { required: false });
+  return main && mainGreenAt(sources, gate.id, main, { required: stepOf(gate.id) === MAIN_CI_TIMEOUT });
 }
 
 export type MainGreenEvidence = Extract<CoordinatorEvidence, { kind: "main-green" }>;

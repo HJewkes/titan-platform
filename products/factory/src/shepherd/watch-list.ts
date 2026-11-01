@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 /**
  * A seat's watch on one PR (TP-4208): while it stands, the run's `on` events are prompt-class in the seat digest, so the

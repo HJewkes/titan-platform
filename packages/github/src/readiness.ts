@@ -1,5 +1,5 @@
 import type { ApprovedHeadWalk } from "./approved-head-walk.js";
-import { isPassing, isSucceeded } from "./checks.js";
+import { isConcluded, isPassing, isSucceeded } from "./checks.js";
 import type { CheckRun, PullRequest, RequiredChecks } from "./port.js";
 
 /** The GitHub Actions app; on this owner's repos every required check comes from it. */
@@ -79,11 +79,12 @@ export type CheckFinding = { kind: "missing"; name: string } | { kind: "pending"
 /**
  * Only runs from an allowed app at the head count, as in authority's MRG-AU-RV. Every counted run
  * must be green, superseded or not, and each required context needs a completed run concluding success.
+ * Callers that ignore concurrency cancels pre-filter the runs with `withoutSupersededCancels`.
  * An empty result means the head is green.
  */
 export function headCheckFindings({ headSha, contexts, runs, requiredApps }: HeadChecksInput): CheckFinding[] {
   const counted = runs.filter((run) => run.headSha === headSha && run.appId !== null && requiredApps.includes(run.appId));
-  const nonGreen = counted.filter((run) => !isPassing(run)).map((run): CheckFinding => ({ kind: run.status === "completed" ? "failed" : "pending", run }));
+  const nonGreen = counted.filter((run) => !isPassing(run)).map((run): CheckFinding => ({ kind: isConcluded(run) ? "failed" : "pending", run }));
   return [...contexts.flatMap((name) => requiredFindings(name, counted)), ...nonGreen];
 }
 

@@ -1,5 +1,6 @@
 import type { Rule } from "eslint";
 import type { Comment } from "estree";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 type ParserLike = {
   parse?: (text: string, options: object) => unknown;
@@ -57,21 +58,33 @@ function isCodeStatement(statement: Statement, endsWithSemicolon: boolean): bool
   return endsWithSemicolon || !isBareKeyword(statement);
 }
 
+function isStatement(value: unknown): value is Statement {
+  return isObjectLike(value) && typeof value.type === "string";
+}
+
+function memberBody(node: unknown): unknown {
+  return isObjectLike(node) ? node.body : undefined;
+}
+
+function statementsOf(node: unknown): Body | null {
+  const list = memberBody(node);
+  return Array.isArray(list) ? list.filter(isStatement) : null;
+}
+
 function parseBody(parser: ParserLike, text: string, options: object): Body | null {
   try {
     const result = parser.parseForESLint ? parser.parseForESLint(text, options).ast : parser.parse?.(text, options);
-    return (result as { body?: Body } | undefined)?.body ?? null;
+    return statementsOf(result);
   } catch {
     return null;
   }
 }
 
-type Wrapped = { body?: { body?: Wrapped[] } };
-
 // The wrapper is a function around a loop, so `return`, `await`, `continue` and `break` all parse.
 function unwrap(body: Body): Body {
-  const loop = (body[0] as Wrapped | undefined)?.body?.body?.[0];
-  return (loop?.body?.body ?? []) as unknown as Body;
+  const wrapperStatements = memberBody(memberBody(body[0]));
+  const loop = Array.isArray(wrapperStatements) ? wrapperStatements[0] : undefined;
+  return statementsOf(memberBody(loop)) ?? [];
 }
 
 // Module first so `import` parses; the wrapper lets statements that need a function or loop parse.
@@ -98,7 +111,7 @@ function groupLineComments(comments: Comment[], isAlone: (comment: Comment) => b
     const last = groups.at(-1);
     const previous = last?.at(-1);
     const adjacent = previous?.loc && comment.loc && previous.loc.end.line + 1 === comment.loc.start.line;
-    const joins = adjacent && [previous, comment].every((c) => c?.type === "Line" && c && isAlone(c));
+    const joins = adjacent && [previous, comment].every((c) => c.type === "Line" && isAlone(c));
     if (last && joins) last.push(comment);
     else groups.push([comment]);
   }

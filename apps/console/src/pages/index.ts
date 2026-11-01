@@ -4,6 +4,7 @@ import { viewFor } from "../views.js";
 import { AgentsRoute } from "./AgentsPage.js";
 import { AutoresearchView } from "./AutoresearchPage.js";
 import { ConfigPage } from "./ConfigPage.js";
+import { CoordinatorPage } from "./CoordinatorPage.js";
 import { HomePage } from "./HomePage.js";
 import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
@@ -41,6 +42,7 @@ interface Shelled {
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
 const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage, { query: route.query }));
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
+const CoordinatorView: PageComponent = ({ route }) => createElement(CoordinatorPage, { query: route.query });
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
 const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
@@ -58,6 +60,7 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   sessions: { list: WIDE, detail: WIDE, render: SessionsRoute },
   knowledge: { list: WIDE, detail: NARROW, render: KnowledgePage },
   agents: { list: WIDE, detail: WIDE, render: AgentsRoute },
+  coordinator: { list: WIDE, render: CoordinatorView },
   rounds: { list: WIDE, detail: OWNS_LAYOUT, render: RoundsView },
   reviews: { list: WIDE, detail: NARROW, render: ReviewsView },
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },

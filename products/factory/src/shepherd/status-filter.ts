@@ -1,5 +1,5 @@
 import { PhaseSchema, type Phase } from "./step-phase.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 /** The phases a run never leaves; `--active` drops them. */
 const TERMINAL_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);

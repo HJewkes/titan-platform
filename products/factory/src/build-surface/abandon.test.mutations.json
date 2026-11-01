@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an open PR no longer stops an abandon",
+      "file": "products/factory/src/build-surface/abandon.ts",
+      "find": "if (read.state === \"open\") throw",
+      "replace": "if (read.state === \"never\") throw",
+      "kills": [
+        "abandoning a build-surface run refuses while the PR is open, names its state, and changes nothing"
+      ]
+    }
+  ]
+}

@@ -76,8 +76,15 @@ export function assertSchemaVersion(db: Db, knownVersion: number): void {
 /** Reads without creating the table, so a read-only connection can ask. */
 function storedSchemaVersion(db: Db): number | undefined {
   if (!hasTable(db, MIGRATION_TABLE_NAME)) return undefined;
-  const row = db.prepare(`SELECT MAX(version) AS version FROM ${MIGRATION_TABLE_NAME}`).get() as { version: number | null };
-  return row.version ?? undefined;
+  const row = db.prepare<[], { version: number | null }>(`SELECT MAX(version) AS version FROM ${MIGRATION_TABLE_NAME}`).get();
+  return row?.version ?? undefined;
+}
+
+/** Parse a JSON column that the kit wrote as an object; anything else means the row was not written by the kit. */
+export function parseJsonObject(json: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(json);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("expected a JSON object in a kit column");
+  return Object.fromEntries(Object.entries(value));
 }
 
 /** ISO-8601 with milliseconds, the timestamp shape every kit table stores. */
@@ -94,7 +101,7 @@ export function hasTable(db: Db, table: string): boolean {
 }
 
 export function hasColumn(db: Db, table: string, column: string): boolean {
-  const cols = db.prepare(`PRAGMA table_info(${quoteIdent(table)})`).all() as { name: string }[];
+  const cols = db.prepare<[], { name: string }>(`PRAGMA table_info(${quoteIdent(table)})`).all();
   return cols.some((c) => c.name === column);
 }
 

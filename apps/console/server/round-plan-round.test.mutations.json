@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any answer to a bound question records an approval",
+      "file": "apps/console/server/round-plan-approval.ts",
+      "find": "if (answer?.pick !== approve) return [];",
+      "replace": "if (answer === undefined) return [];",
+      "kills": [
+        "a plan round built by owner-queue records one plan approval per approve pick, with the ask's task, repo, gate and scope, and none for Revise"
+      ]
+    },
+    {
+      "name": "the recorded action drops the scope",
+      "file": "apps/console/server/round-plan-approval.ts",
+      "find": "round: roundId, gate, scope };",
+      "replace": "round: roundId, gate };",
+      "kills": [
+        "a plan round built by owner-queue records one plan approval per approve pick, with the ask's task, repo, gate and scope, and none for Revise"
+      ]
+    },
+    {
+      "name": "the parsed round loses its planApprovals",
+      "file": "apps/console/server/round-schema.ts",
+      "find": "...(planApprovals !== undefined && { planApprovals }) };",
+      "replace": "};",
+      "kills": [
+        "a plan round built by owner-queue records one plan approval per approve pick, with the ask's task, repo, gate and scope, and none for Revise"
+      ]
+    }
+  ]
+}

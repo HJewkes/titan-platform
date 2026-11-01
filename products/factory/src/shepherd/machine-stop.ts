@@ -1,4 +1,4 @@
-import { DEFAULT_SPAWN_LIMITS, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
+import { DEFAULT_SPAWN_LIMITS, type MachineReadings, type SpawnLimits } from "./spawn-limits.js";
 import { DEFAULT_HOLD_WAIT_MS, type PollTiming } from "./review-wait.js";
 
 type StopLimits = Pick<SpawnLimits, "load5" | "pressureLevel" | "freeMemoryPct">;

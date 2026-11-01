@@ -26,12 +26,13 @@ export function brokenWorker() {
   return { calls, worker };
 }
 
-/** The stored inputs of a one-beat script whose beat resolves to a custom layer. */
-export function customBeatInputs(dataDir: string): Record<string, string> {
+/** The stored inputs of a one-beat script whose beat resolves to a custom layer, with `visualPatch` over its visual. */
+export function customBeatInputs(dataDir: string, visualPatch: Record<string, unknown> = {}): Record<string, string> {
   const db = openState(dataDir);
   try {
     const store = new ArtifactStore(dataDir, db);
-    const texts = { script: JSON.stringify(resolveScript([["b1", "WHAT", CUSTOM]])), facts: FACTS };
+    const beat = { ...CUSTOM, visual: { ...CUSTOM.visual, ...visualPatch } };
+    const texts = { script: JSON.stringify(resolveScript([["b1", "WHAT", beat]])), facts: FACTS };
     return Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, store.putText(text, name, { runId: "input", stage: "input" })]));
   } finally {
     db.close();

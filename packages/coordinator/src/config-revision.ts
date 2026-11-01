@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { isObjectLike, isRecord } from "@titan-design/rpc-protocol/narrow";
 import { checkCoordinatorConfig, coordinatorConfigSchema } from "./coordinator-config.js";
 import type { CoordinatorConfig, CoordinatorConfigError } from "./coordinator-config.js";
 
@@ -43,14 +44,6 @@ export type ChainError = { rev: number; code: "invalid" | "sequence" | "parent" 
 export type ChainResult = { ok: true; head: ConfigRevision } | { ok: false; errors: ChainError[] };
 
 const UNSAFE_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-
-function isContainer(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return isContainer(value) && !Array.isArray(value);
-}
 
 // Sorted keys make the digest independent of the order a writer emitted them in.
 function canonicalJson(value: unknown): string {
@@ -121,10 +114,10 @@ export function applyEdit(doc: CoordinatorConfig, path: string, value: unknown):
   const copy: unknown = structuredClone(doc);
   let node = copy;
   for (const key of keys.slice(0, -1)) {
-    node = isContainer(node) ? node[key] : undefined;
+    node = isObjectLike(node) ? node[key] : undefined;
     if (node === undefined || node === null) return refuse(path, `${key} is absent; an edit never creates a parent`);
   }
-  if (!isContainer(node)) return refuse(path, "the parent of the edited field is not an object");
+  if (!isObjectLike(node)) return refuse(path, "the parent of the edited field is not an object");
   node[keys[keys.length - 1]!] = structuredClone(value);
   const checked = checkCoordinatorConfig(copy);
   return checked.ok ? { ok: true, document: checked.config } : checked;

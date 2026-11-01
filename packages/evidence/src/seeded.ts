@@ -2,7 +2,7 @@
 function hashSeed(seed: string | number): number {
   let h = 0x811c9dc5;
   for (const ch of String(seed)) {
-    h ^= ch.codePointAt(0) as number;
+    h ^= ch.codePointAt(0) ?? 0;
     h = Math.imul(h, 0x01000193);
   }
   return h >>> 0;

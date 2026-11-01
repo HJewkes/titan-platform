@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a fetch mark is created but never advanced, so the run reads as unfetched",
+      "file": "packages/test-timing/src/ingest.ts",
+      "find": "  marks.advance(fetchKey(databaseId, attempt), { lastOffset: artifacts });\n",
+      "replace": "",
+      "kills": ["gh run fetch marks records a run attempt as fetched, even one with no artifacts, and keeps attempts apart"]
+    },
+    {
+      "name": "a repeated ingest archives the record again",
+      "file": "packages/test-timing/src/ingest.ts",
+      "find": "  if (hasRun(db, run.id)) return { runId: run.id, inserted: false, files: 0 };\n",
+      "replace": "",
+      "kills": ["ingestRecord writes no second checksum line when a run is ingested again"]
+    },
+    {
+      "name": "a pre-header record keeps the run's latest attempt instead of its own",
+      "file": "packages/test-timing/src/ingest.ts",
+      "find": "{ ...meta, attempt: parsed.attempt }",
+      "replace": "meta",
+      "kills": ["ingestGhArtifact gives a pre-header record a header from the run metadata and the artifact's own attempt and shard"]
+    }
+  ]
+}

@@ -24,6 +24,8 @@ export interface StepUsage {
   cacheWrite1hTokens?: number;
   /** The one model the step ran on; absent when several did or none was reported. */
   model?: string;
+  /** The largest prompt any request of the step sent, in tokens; absent when the runner did not report it. */
+  peakContextTokens?: number;
   /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
   costUnknown?: true;
 }

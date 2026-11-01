@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a cached scan is reused whatever its directories' mtimes say",
+      "file": "products/active-work/src/workspace-index/inventory-cache.ts",
+      "find": "if (hit && hit.stamp === stamp && now()",
+      "replace": "if (hit && now()",
+      "kills": ["inventory cache a new file in tasks/ shows in the count on the next call"]
+    },
+    {
+      "name": "the stamp leaves out tasks/",
+      "file": "products/active-work/src/workspace-index/inventory-cache.ts",
+      "find": "const STAMP_DIRS = ['.', 'tasks', ",
+      "replace": "const STAMP_DIRS = ['.', ",
+      "kills": ["inventory cache a new file in tasks/ shows in the count on the next call"]
+    },
+    {
+      "name": "a cached scan never expires",
+      "file": "products/active-work/src/workspace-index/inventory-cache.ts",
+      "find": " && now() - hit.scannedAt < ttlMs) return hit.files;",
+      "replace": ") return hit.files;",
+      "kills": ["inventory cache an in-place edit shows once the TTL window expires"]
+    },
+    {
+      "name": "a scan is still fresh at exactly the TTL",
+      "file": "products/active-work/src/workspace-index/inventory-cache.ts",
+      "find": "hit.scannedAt < ttlMs",
+      "replace": "hit.scannedAt <= ttlMs",
+      "kills": ["inventory cache an in-place edit shows once the TTL window expires"]
+    },
+    {
+      "name": "every call rescans every initiative",
+      "file": "products/active-work/src/workspace-index/inventory-cache.ts",
+      "find": "< ttlMs) return hit.files;",
+      "replace": "< ttlMs) void hit.files;",
+      "kills": [
+        "inventory cache rescans only the changed initiative and leaves an unchanged one alone within the TTL"
+      ]
+    }
+  ]
+}

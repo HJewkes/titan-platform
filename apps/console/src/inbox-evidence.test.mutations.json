@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sheet cuts a long row",
+      "file": "apps/console/src/pages/InboxEvidence.tsx",
+      "find": "`${side} L${n}: ${text}`",
+      "replace": "`${side} L${n}: ${text.slice(0, 160)}`",
+      "kills": [
+        "the inbox confirm sheet on an owner-at-head merge gate shows every changed row whole, a 300-character one included, with nothing that clamps or cuts it"
+      ]
+    },
+    {
+      "name": "the sheet clamps the evidence text",
+      "file": "apps/console/src/pages/InboxEvidence.tsx",
+      "find": "const PRE = \"whitespace-pre-wrap",
+      "replace": "const PRE = \"line-clamp-6 whitespace-pre-wrap",
+      "kills": [
+        "the inbox confirm sheet on an owner-at-head merge gate shows every changed row whole, a 300-character one included, with nothing that clamps or cuts it"
+      ]
+    },
+    {
+      "name": "the headline is the last labelled line, not the evidence's reading",
+      "file": "apps/console/src/pages/InboxEvidence.tsx",
+      "find": "`CI policy: ${reading(section.ciPolicy)}`",
+      "replace": "`CI policy: ${reading(section.labelledLines!.at(-1)!.reading)}`",
+      "kills": [
+        "the inbox confirm sheet on an owner-at-head merge gate heads the section with the evidence's own CI-policy reading and lists every labelled line it folds"
+      ]
+    }
+  ]
+}

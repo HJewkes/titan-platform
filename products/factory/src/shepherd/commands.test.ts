@@ -11,8 +11,9 @@ import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions
 import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
-import type { Waiting } from "./waiting.js";
+import { PrTimelineSchema, type PrTimeline } from "./view.js";
+import { WatchRowSchema, type WatchRow } from "./view-schema.js";
+import type { Waiting } from "./waiting-schema.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));

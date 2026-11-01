@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT } from "@titan-design/registry";
-import { importRoundCli, roundsImportArgs, roundsWithdrawArgs } from "./cli-rounds.js";
+import { importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
 import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsCommands } from "./rounds-commands.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
+import { runConsoleCli, type CliRun } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // Synthetic: the round@2 fixture round-import.test.ts imports.
@@ -34,15 +35,28 @@ afterEach(async () => {
 
 const roundsDirEntries = () => readdir(path.join(state, "rounds")).catch(() => []);
 
-/** Runs the real bin, the way the factory sweep will. */
-function runCli(args: string[], verb = "import"): Promise<{ code: number; stdout: string; stderr: string }> {
+const consoleEnv = () => ({ TITAN_CONSOLE_PORT: String(PORT), TITAN_CONSOLE_STATE: state, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_ROUNDS_DIR: "" });
+
+/** Runs the real bin, the way the factory sweep will; one smoke per verb, the other cases run in process. */
+function runCli(args: string[], verb = "import"): Promise<CliRun> {
   const consoleDir = path.join(import.meta.dirname, "..");
-  const env = { ...process.env, TITAN_CONSOLE_PORT: String(PORT), TITAN_CONSOLE_STATE: state, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_ROUNDS_DIR: "" };
+  const env = { ...process.env, ...consoleEnv() };
   return new Promise((resolve) => {
     execFile(process.execPath, ["--import", "tsx", "server/cli.ts", "rounds", verb, ...args], { cwd: consoleDir, env }, (err, stdout, stderr) =>
       resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr }),
     );
   });
+}
+
+/** The verb's parse and handler in process, as cli.ts routes `rounds import` and `rounds withdraw`. */
+function runInProcess(args: string[], verb = "import"): Promise<CliRun> {
+  const argv = ["rounds", verb, ...args];
+  const config = resolveConfig(consoleEnv(), root);
+  const imported = roundsImportArgs(argv);
+  const withdrawn = roundsWithdrawArgs(argv);
+  if (imported !== null) return runConsoleCli(() => importRoundCli(config, imported));
+  if (withdrawn !== null) return runConsoleCli(() => withdrawRoundCli(config, withdrawn));
+  throw new Error(`not a rounds import or withdraw: ${argv.join(" ")}`);
 }
 
 describe("titan-console rounds import", () => {
@@ -54,7 +68,7 @@ describe("titan-console rounds import", () => {
   });
 
   it("prints exactly one JSON object with --json", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli(["--json", FIXTURE]);
+    const result = await runInProcess(["--json", FIXTURE]);
 
     expect(result.code).toBe(0);
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
@@ -62,14 +76,14 @@ describe("titan-console rounds import", () => {
   });
 
   it("records --seat as the round's asker and prints it", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli(["--seat", "sample-seat", FIXTURE]);
+    const result = await runInProcess(["--seat", "sample-seat", FIXTURE]);
 
     expect(result).toEqual({ code: 0, stdout: `${ID}\nframes: 4\nfeedback: copied\nasked by: sample-seat\nhttp://127.0.0.1:${PORT}/#/rounds/${ID}\n`, stderr: "" });
     expect(JSON.parse(await readFile(path.join(state, "rounds", ID, "asker.json"), "utf8"))).toMatchObject({ schema: "titan-console/asker@1", seat: "sample-seat", initiative: null });
   });
 
   it("refuses a --seat that is not an agent-chat name before anything lands", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli(["--seat", "Not A Seat", FIXTURE]);
+    const result = await runInProcess(["--seat", "Not A Seat", FIXTURE]);
 
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.stderr).toMatch(/^import refused: seat "Not A Seat"/);
@@ -80,7 +94,7 @@ describe("titan-console rounds import", () => {
     const link = path.join(root, "linked-round");
     await symlink(FIXTURE, link);
 
-    const result = await runCli([link]);
+    const result = await runInProcess([link]);
 
     expect(result.code).toBe(EXIT.NOINPUT);
     expect(result.stdout).toBe("");
@@ -92,10 +106,10 @@ describe("titan-console rounds import", () => {
 
 describe("titan-console rounds withdraw", () => {
   it("withdraws an imported round and prints exactly one JSON object with --json", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    await runCli([FIXTURE]);
+    await runInProcess([FIXTURE]);
     await rm(path.join(state, "rounds", ID, "feedback.json"));
 
-    const result = await runCli([ID, "--reason", "closed", "--json"], "withdraw");
+    const result = await runInProcess([ID, "--reason", "closed", "--json"], "withdraw");
 
     expect(result.code).toBe(0);
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
@@ -104,7 +118,7 @@ describe("titan-console rounds withdraw", () => {
   });
 
   it("keeps an answered round and says so", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    await runCli([FIXTURE]);
+    await runInProcess([FIXTURE]);
 
     const result = await runCli([ID, "--reason", "answered-elsewhere"], "withdraw");
 
@@ -112,9 +126,9 @@ describe("titan-console rounds withdraw", () => {
   });
 
   it("refuses an unknown reason on stderr with a usage exit and nothing on stdout", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    await runCli([FIXTURE]);
+    await runInProcess([FIXTURE]);
 
-    const result = await runCli([ID, "--reason", "stale"], "withdraw");
+    const result = await runInProcess([ID, "--reason", "stale"], "withdraw");
 
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.stdout).toBe("");

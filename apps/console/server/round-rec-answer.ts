@@ -49,7 +49,7 @@ export function roundsAnswerRecCommands({ dir }: RoundsSource, submit: SubmitPip
   return {
     "rounds.answer-rec": ownerWriteCommand({
       name: "rounds.answer-rec",
-      description: "Answer every question of one round with its recommendation, through rounds.submit, marked answered-by-rec; refused when a question has none or is a Ship",
+      description: "Answer every question of one round with its recommendation, through rounds.submit, marked answered-by-rec; refused when a question has none, is a Ship or records a plan approval",
       args: answerRecArgs,
       result: submitResult,
       ownerWrite: true,

@@ -100,6 +100,29 @@ describe("finding store", () => {
     expect(listVerdicts(store, id)).toEqual([verdict(key, "h1")]);
   });
 
+  it("skips a stored finding that is not a Finding instead of returning it or throwing", () => {
+    const { id } = snapshotWithVerdict("a", "h1");
+    store.db.prepare("UPDATE finding SET attrs = ?").run(JSON.stringify({ path: "iv/gmm.py" }));
+
+    expect(listFindings(store, id)).toEqual([]);
+  });
+
+  it("keeps a stored finding's keys it does not know about", () => {
+    const { id, key } = snapshotWithVerdict("a", "h1");
+    const newer = { ...fbt(47, "robust"), addedLater: true };
+    store.db.prepare("UPDATE finding SET attrs = ?").run(JSON.stringify(newer));
+
+    expect(listFindings(store, id)).toEqual([{ key, finding: newer, excerptHash: "h1" }]);
+  });
+
+  it("reads a verdict whose stored attrs lost their citations or dropped list", () => {
+    const { id, key } = snapshotWithVerdict("a", "h1");
+    const attrs = JSON.stringify({ citations: [{ path: "iv/gmm.py" }], dropped: "none" });
+    store.db.prepare("UPDATE verdict SET attrs = ?").run(attrs);
+
+    expect(listVerdicts(store, id)).toEqual([{ ...verdict(key, "h1"), citations: [] }]);
+  });
+
   it("drops a pruned snapshot's findings and verdicts and keeps the other's", () => {
     const old = snapshotWithVerdict("old", "h1");
     const kept = snapshotWithVerdict("new", "h1");

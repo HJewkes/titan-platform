@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { parsePort } from "./cli-options.js";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
@@ -9,6 +10,7 @@ import { MANAGED_PLATFORMS, runServiceVerb, type ServiceIo, type ServicePorts } 
 import { SERVICE_CHECK_HEALTH_TIMEOUT_MS } from "./service-ports.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
+import { readPath } from "./narrow.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. `stale CLI` alone is advisory: it leaves the check ok. */
 type Cause = "unreadable" | "not loaded" | "socket down" | "restarting" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
@@ -122,7 +124,7 @@ async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean)
 }
 
 function runningSha(health: Record<string, unknown> | null): string | undefined {
-  const sha = typeof health?.build === "object" && health.build !== null ? (health.build as Record<string, unknown>).sha : undefined;
+  const sha = readPath(health, "build", "sha");
   return typeof sha === "string" ? sha : undefined;
 }
 
@@ -176,11 +178,9 @@ interface DeployWait {
   until: string | null;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
 function deployWaitOf(health: Record<string, unknown> | null): DeployWait | undefined {
   const pending = health?.deployPending;
-  if (!isRecord(pending) || !isRecord(pending.waiting)) return undefined;
+  if (!isObjectLike(pending) || !isObjectLike(pending.waiting)) return undefined;
   const { sha } = pending;
   const { why, until } = pending.waiting;
   if (typeof sha !== "string" || typeof why !== "string") return undefined;

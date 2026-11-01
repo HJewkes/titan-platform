@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a deposit with no unblocks line still blocks",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "item.personal || !statesWhatItUnblocks(item)",
+      "replace": "item.personal",
+      "kills": [
+        "a deposit's unblocks line files a live seat's ask with no unblocks line as planning"
+      ]
+    }
+  ]
+}

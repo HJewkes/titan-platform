@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the deadline check never fires",
+      "file": "products/active-work/src/bootstrap/loop-context.ts",
+      "find": "if (now() - startedAt >= budgetMs) {",
+      "replace": "if (false) {",
+      "kills": [
+        "relatedForLoops wall-clock budget stops querying once the budget is spent and records a budget degradation",
+        "relatedForLoops wall-clock budget honours a caller-supplied budget"
+      ]
+    },
+    {
+      "name": "the default budget is ignored",
+      "file": "products/active-work/src/bootstrap/loop-context.ts",
+      "find": "input.budgetMs ?? LOOP_RETRIEVAL_BUDGET_MS",
+      "replace": "input.budgetMs ?? Number.POSITIVE_INFINITY",
+      "kills": [
+        "relatedForLoops wall-clock budget stops querying once the budget is spent and records a budget degradation"
+      ]
+    },
+    {
+      "name": "the budget degradation is not recorded",
+      "file": "products/active-work/src/bootstrap/loop-context.ts",
+      "find": "          addDegraded(context, [budgetDegradation(budgetMs)]);\n",
+      "replace": "",
+      "kills": [
+        "relatedForLoops wall-clock budget stops querying once the budget is spent and records a budget degradation",
+        "relatedForLoops wall-clock budget honours a caller-supplied budget"
+      ]
+    }
+  ]
+}

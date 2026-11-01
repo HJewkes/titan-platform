@@ -69,11 +69,10 @@ async function runFullPipeline(): Promise<{
   return { observations, result }
 }
 
-function toProfileCategory(category: string): string | undefined {
+function toProfileCategory(category: string): ProfileCategory | undefined {
   if (category === "error-handling") return "errorHandling"
   if (category === "control-flow") return "patterns"
-  if (PROFILE_CATEGORIES.includes(category as ProfileCategory)) return category
-  return undefined
+  return PROFILE_CATEGORIES.find((c) => c === category)
 }
 
 function profileFromCategories(
@@ -127,8 +126,8 @@ function buildProfileFromFeatures(
       categoryMap[profileCategory] = {}
     }
 
-    categoryMap[profileCategory]![ruleName] = {
-      convention: feature.convention as string | number | boolean | string[],
+    categoryMap[profileCategory][ruleName] = {
+      convention: feature.convention,
       confidence: feature.confidence,
       stability: feature.stability,
     }
@@ -209,7 +208,6 @@ describe("Profile roundtrip integration", () => {
   it("all profile categories have valid StyleRule entries", () => {
     for (const category of PROFILE_CATEGORIES) {
       const section = profile[category]
-      if (!section) continue
       for (const [, rule] of Object.entries(section)) {
         expect(rule.convention).toBeDefined()
         expect(rule.confidence).toBeGreaterThanOrEqual(0)

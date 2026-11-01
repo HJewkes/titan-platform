@@ -69,7 +69,10 @@ blobs screened down to 1 that was worth clustering.
 
 **Snapshot across restarts.** `clusterer.snapshot()` captures every tree with its learned
 wildcards and cluster-to-template bindings; `Clusterer.fromSnapshot(snapshot)` restores
-them. Storing the snapshot and the occurrences is the caller's job. A chunked sequence of
+them. Storing the snapshot and the occurrences is the caller's job. Read a stored snapshot
+back through `parseClustererSnapshot(value)`, which throws on a wrong shape or version and
+keeps unknown keys; do not fall back to a fresh `Clusterer`, since that rebinds template
+ids. A chunked sequence of
 runs converges on the same templates and ids as one all-at-once run over the same input
 order.
 

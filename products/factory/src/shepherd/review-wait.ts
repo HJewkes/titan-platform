@@ -1,5 +1,6 @@
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { errorClass, failureOf } from "./error-class.js";
+import { ReviewSuperseded } from "./review-dispatcher.js";
 
 const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
 
@@ -29,6 +30,38 @@ export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal
       if (!(error instanceof ReviewerBrokerDown)) throw error;
     }
     await timing.sleep(timing.pollMs, signal);
+  }
+}
+
+/** Each wait for an unreachable broker doubles from the step's poll, up to this. */
+const BROKER_DOWN_LONGEST_WAIT_MS = 2 * 60_000;
+/** A boot race or a broker restart clears well inside this; a broker still unreachable after it is an outage the seat must hear of (TP-4641). */
+export const DEFAULT_BROKER_DOWN_WAIT_MS = 15 * 60_000;
+
+/** The broker stayed unreachable for the whole wait; the message is built from the budget alone, since it becomes a stored hold reason. */
+export class ReviewerBrokerStillDown extends Error {
+  override readonly name = "ReviewerBrokerStillDown";
+
+  constructor(cause: ReviewerBrokerDown, budgetMs: number) {
+    super(`broker unavailable (no broker answered for ${minutes(budgetMs)})`, { cause });
+  }
+}
+
+export type BrokerDownTiming = PollTiming & { brokerDownWaitMs: number };
+
+/** Waits out a broker that is down, doubling each wait, until `brokerDownWaitMs` has passed; any other failure is the caller's to handle. */
+export async function whileBrokerBooting<T>(timing: BrokerDownTiming, signal: AbortSignal, ask: () => Promise<T>): Promise<T> {
+  const startedAt = timing.now();
+  for (let wait = timing.pollMs; ; wait = Math.min(wait * 2, BROKER_DOWN_LONGEST_WAIT_MS)) {
+    signal.throwIfAborted();
+    try {
+      return await ask();
+    } catch (error) {
+      if (!(error instanceof ReviewerBrokerDown)) throw error;
+      const left = timing.brokerDownWaitMs - (timing.now() - startedAt);
+      if (left <= 0) throw new ReviewerBrokerStillDown(error, timing.brokerDownWaitMs);
+      await timing.sleep(Math.min(wait, left), signal);
+    }
   }
 }
 
@@ -75,7 +108,7 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
   override readonly name: string = "ReviewerMachineHold";
 }
 
-/** The factory's own spawn gate deferred the start; it admits oldest-first, so the queue's head must ask again within a window or the opening is lost. */
+/** The factory's own spawn gate deferred a start that is not queued, so it asks again after the gate's window rather than a doubling wait. */
 export class ReviewerSpawnQueued extends ReviewerMachineHold {
   override readonly name = "ReviewerSpawnQueued";
 }
@@ -98,10 +131,18 @@ export type BusyWaits = { busyWaits?: string[] };
 /** The broker stayed busy past the wait, so no reviewer ran and the review never began. */
 export type NotStarted = { kind: "none"; reason: string; notStarted: true } & BusyWaits;
 
+/** What a resync answers a review step whose pull request moved: no reviewer, and the run reads the PR again for its new head. */
+type Superseded = { kind: "none"; reason: string };
+
 export const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { busyWaits: waits } : {});
 
-/** A still-busy broker started nobody, so the step says so rather than reading as a review that ran; any other throw stays a refusal. */
-export function notStarted(error: unknown, waits: string[]): NotStarted {
+/**
+ * A still-busy broker, or a queued review its pull request moved past, started nobody, so the step says so rather than reading as
+ * a review that ran; any other throw stays a refusal.
+ */
+export function notStarted(error: unknown, waits: string[]): NotStarted | Superseded {
+  if (error instanceof ReviewSuperseded && error.moved) return { kind: "none", reason: `superseded: the pull request moved from head ${error.moved.from} to ${error.moved.to}` };
+  if (error instanceof ReviewSuperseded) return { kind: "none", reason: `the reviewer dispatch was dropped: ${error.message}`, notStarted: true, ...busyWaits(waits) };
   if (!(error instanceof ReviewerStillBusy)) throw error;
   return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true, ...busyWaits(waits) };
 }

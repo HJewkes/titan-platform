@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
-import type { TakeRecheck } from "./hold.js";
+import type { TakeRecheck } from "./hold-timing.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./signoffs.js";
@@ -138,7 +138,7 @@ function heldRun(store: ShepherdStore, runId: string): G10Run & { holdReason: st
 
 async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
   const input = G10ReleaseInput.parse(raw);
-  const prHead = (await deps.port.getPr(input.repo as RepoSlug, input.pr)).headSha;
+  const prHead = (await deps.port.getPr(input.repo, input.pr)).headSha;
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
   const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);

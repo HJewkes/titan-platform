@@ -53,11 +53,8 @@ describe("usage dedupe", () => {
   // TP-266: session_model_usage is recomputed from the request table, which dedupes on requestId.
   it("counts one request for an API response written as three assistant lines", async () => {
     await refreshCorpus(graph, [transcript]);
-    const usage = graph.db.prepare("SELECT request_count, output_tokens FROM session_model_usage").get() as {
-      request_count: number;
-      output_tokens: number;
-    };
-    expect(usage.request_count).toBe(1);
-    expect(usage.output_tokens).toBe(7);
+    const usage = graph.db.prepare<[], { request_count: number; output_tokens: number }>("SELECT request_count, output_tokens FROM session_model_usage").get();
+    expect(usage?.request_count).toBe(1);
+    expect(usage?.output_tokens).toBe(7);
   });
 });

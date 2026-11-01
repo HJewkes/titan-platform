@@ -3,7 +3,7 @@ import path from "node:path";
 import { runEditCli, type DetachedSpawn, type EditCliDeps } from "./edit-cli.js";
 import { runVideo, type RunOutcome } from "./host.js";
 import type { RunReport } from "./report.js";
-import { fakeRender, fakeHost, fakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, fakeRender, fakeHost, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 
@@ -15,11 +15,26 @@ interface Base {
   mp4Sha: string;
 }
 
-/** A finished base run, an edit file drafted over it, and `explainer edit` on the fixture's data dir; `fx` is read per call. */
-export function editHarness(fx: () => Fixture) {
-  async function baseRun(extra: Parameters<typeof fakeHost>[3] = {}, model = fakeScriptModel()): Promise<Base> {
-    const result = await runVideo({ spine: fx().spine, facts: fx().facts }, fakeHost(fx(), model, fakeRender(), extra));
+/**
+ * A finished base run, an edit file drafted over it, and `explainer edit` on the fixture's data dir. `baseRun` sets the
+ * test's fixture through `setFx`: a copy of the file's seeded default run, or a fresh fixture when the run needs its own
+ * fakes. A file using it calls `dropSeeds` in `afterAll`.
+ */
+export function editHarness(fx: () => Fixture, setFx: (next: Fixture) => void) {
+  async function baseRun(extra?: Parameters<typeof fakeHost>[3], model?: ReturnType<typeof fakeScriptModel>): Promise<Base> {
+    const result = extra || model ? await ownRun(extra, model) : await seededBase();
     return { result, scriptSha: out(result.report, "rewrite").script!, mp4Sha: out(result.report, "render").mp4! };
+  }
+
+  async function seededBase(): Promise<RunOutcome> {
+    const seed = await seededRun();
+    setFx(cloneFixture(seed));
+    return seed.result;
+  }
+
+  function ownRun(extra: Parameters<typeof fakeHost>[3] = {}, model = fakeScriptModel()): Promise<RunOutcome> {
+    setFx(fixture());
+    return runVideo({ spine: fx().spine, facts: fx().facts }, fakeHost(fx(), model, fakeRender(), extra));
   }
 
   function editFile(base: Base, beats: Record<string, unknown>, name = "edit.json"): string {

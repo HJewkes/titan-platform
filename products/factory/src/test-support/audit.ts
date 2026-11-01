@@ -2,6 +2,8 @@ import type { MetricSpec } from "@titan-design/health/metrics";
 import type { AuditAgentRequest, AuditPorts } from "../audit/ports.js";
 import type { AuditInput } from "../audit/schemas.js";
 
+const ESTIMATES = [1, 2, 3] as const;
+
 /** The Shepherd hand audit's headline counts: the gold the workflow must reproduce within 10 percent. */
 export const HAND_AUDIT_COUNTS = { proposed: 44, Y: 20, P: 16, N: 8, slices: 12, questions: { yes: 4, partly: 6, no: 5 }, reports: 9 } as const;
 
@@ -75,7 +77,7 @@ function gapSlices(metrics: readonly MetricSpec[]) {
   return Array.from({ length: 11 }, (_, i) => ({
     title: `Slice ${i + 1}`,
     done_when: `Slice ${i + 1} records its metric`,
-    estimate: ((i % 3) + 1) as 1 | 2 | 3,
+    estimate: ESTIMATES[i % ESTIMATES.length]!,
     metrics: gaps.filter((_, at) => at % 11 === i),
     unblocks: [1 + i],
   }));

@@ -9,13 +9,15 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { timelineEntries, watchRow } from "./view.js";
-import { WAKE_STEP, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { WAKE_STEP, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { wakePhase } from "./wake-phase.js";
+import { readPath } from "../narrow.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
 const SCRATCH = mkdtempSync(join(tmpdir(), "tp1751-held-"));
@@ -84,7 +86,7 @@ function seen({ host, store }: World, runId: string) {
   const run = host.runtime.status(runId)!;
   const wakeStep = Object.values(run.stepResults).find((result) => result.stepId.startsWith(WAKE_STEP))!;
   const entry = timelineEntries(run, []).find((item) => "stepId" in item && item.stepId === wakeStep.stepId);
-  return { record: (wakeStep.data as { result: unknown }).result, entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
+  return { record: readPath(wakeStep.data, "result"), entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
 }
 
 describe("what the watch view shows after a wake no fixer took", () => {
@@ -97,7 +99,7 @@ describe("what the watch view shows after a wake no fixer took", () => {
     await waitingForHead(w.host, runId);
 
     const { record, entry, nextAction } = seen(w, runId);
-    expect(record).toEqual({ kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } });
+    expect(record).toMatchObject({ kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } });
     expect(entry).toMatchObject({ kind: "wake", outcome: "unhandled", held: REFUSAL });
     expect(nextAction).toBe(`no fixer could start (${REFUSAL}); the seat was told, waiting for a new head`);
   });

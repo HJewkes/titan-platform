@@ -45,6 +45,40 @@ describe("retireEndedFixers", () => {
     expect(notes).toEqual([expect.objectContaining({ outcome: "left", detail: expect.stringContaining("uncommitted") })]);
   });
 
+  it("retires a fixer whose worktree is already gone, so the next sweep skips it", async () => {
+    const rows: Record<string, Presence> = { "fix-widget-b09ac37": "detached" };
+    const calls: string[] = [];
+    const ports: FixerRetirePorts = {
+      roster: async () => Object.entries(rows).map(([name, presence]) => ({ name, presence })),
+      park: async (name) => {
+        calls.push(`park ${name}`);
+        throw new Error("agent-chat refused agent park: Not parked: /tmp/tree is not on disk; nothing to park");
+      },
+      retire: async (name) => {
+        calls.push(`retire ${name}`);
+        delete rows[name];
+      },
+    };
+
+    const first = await retireEndedFixers(ports, []);
+    const second = await retireEndedFixers(ports, []);
+
+    expect(first).toEqual([expect.objectContaining({ fixer: "fix-widget-b09ac37", outcome: "retired" })]);
+    expect(second).toEqual([]);
+    expect(calls).toEqual(["park fix-widget-b09ac37", "retire fix-widget-b09ac37"]);
+  });
+
+  it("keeps retrying a fixer whose park is refused for another reason", async () => {
+    const { ports, calls } = rig({ "fix-widget-b09ac37": "detached" }, { "fix-widget-b09ac37": "Not parked: the tree has unpushed commits" });
+
+    const first = await retireEndedFixers(ports, []);
+    const second = await retireEndedFixers(ports, []);
+
+    expect(first).toEqual([expect.objectContaining({ outcome: "left" })]);
+    expect(second).toEqual([expect.objectContaining({ outcome: "left" })]);
+    expect(calls).toEqual(["park fix-widget-b09ac37", "park fix-widget-b09ac37"]);
+  });
+
   it("never touches a fixer that is still running", async () => {
     const { ports, calls } = rig({ "fix-widget-b09ac37": "live", "fix-widget-c09ac37": "exiting" });
 

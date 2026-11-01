@@ -32,6 +32,8 @@ export interface EvidenceRecord {
   ciPolicy?: CiPolicy;
   /** On a weakened line, every changed line of the changed `.github/` files, shown or counted, for the D21 card. */
   ciPolicyChanges?: CiPolicyFileChange[];
+  /** On a weakened line, each changed path's git blob sha at head (null: absent there), for a CI-policy plan approval's pins. */
+  headBlobs?: Record<string, string | null>;
   proofUnverified?: string;
   proofBase?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
@@ -48,6 +50,7 @@ interface RecordObserved {
   merge: MergeFacts;
   runs: CheckRun[];
   ciPolicyChanges?: CiPolicyFileChange[];
+  headBlobs?: Record<string, string | null>;
 }
 
 type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier };
@@ -58,7 +61,12 @@ const proofFields = (input: RecordInput): Pick<EvidenceRecord, "proofUnverified"
   ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
 });
 
-export function evidenceRecord(input: RecordInput, { pr, merge, runs, ciPolicyChanges }: RecordObserved, decision: GateDecision, { ciPolicy, riskTier, visualDelta }: RecordExtras): EvidenceRecord {
+export function evidenceRecord(
+  input: RecordInput,
+  { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
+  decision: GateDecision,
+  { ciPolicy, riskTier, visualDelta }: RecordExtras,
+): EvidenceRecord {
   return {
     runId: input.runId,
     repo: input.repo,
@@ -74,6 +82,7 @@ export function evidenceRecord(input: RecordInput, { pr, merge, runs, ciPolicyCh
     ...(merge.carry && { carry: merge.carry }),
     ...(ciPolicy && { ciPolicy }),
     ...(ciPolicyChanges && { ciPolicyChanges }),
+    ...(headBlobs && { headBlobs }),
     ...proofFields(input),
     riskTier,
     ...(visualDelta && { visualDelta }),

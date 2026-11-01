@@ -161,6 +161,14 @@ async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiat
 
 const TASK_PREFIX = /^task_prefix:\s*["']?([A-Z][A-Z0-9]*)["']?\s*$/m;
 
+/** Initiatives whose brief claims this task-id prefix, so one task can be read without listing every initiative's tasks. */
+export async function slugsForPrefix(activeWork: ActiveWork, prefix: string): Promise<string[]> {
+  const list = await activeWork.read("list");
+  const slugs = list.sections.flatMap((section) => section.items.map((item) => item.slug));
+  const prefixes = await Promise.all(slugs.map((slug) => taskPrefixOf(activeWork, slug)));
+  return slugs.filter((_, index) => prefixes[index] === prefix);
+}
+
 /** active-work's `list` does not carry the prefix, so it comes from the brief's frontmatter; an unreadable brief has none. */
 async function taskPrefixOf(activeWork: ActiveWork, slug: string): Promise<string | undefined> {
   const brief = await activeWork.read("source.read", { slug, path: "brief.md" }).catch(() => null);

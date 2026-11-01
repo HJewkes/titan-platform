@@ -8,6 +8,15 @@ import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
 
 export const MACHINE_SEED = path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-seed.db");
 
+/**
+ * Snapshots a seeded graph keeps for the next run. CI's cache holds one tree's head and its baseline. The machine seed
+ * is shared by every worktree and overwritten by whichever run finishes last, so it keeps several recent trees: the
+ * indexer reuses whichever matches the tree best, and a worktree's own last run survives a few runs elsewhere (TP-4398).
+ */
+export function seedKeep(seedPath) {
+  return seedPath === MACHINE_SEED ? 8 : 2;
+}
+
 /** True when this run owns the machine seed: no explicit --seed-db (CI keeps its own cache) and no opt-out. */
 export function usesMachineSeed(argv, env) {
   return !argv.includes("--seed-db") && !env.DAG_CHECK_NO_SEED;

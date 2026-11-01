@@ -12,10 +12,12 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { SpawnRequest } from "./agents.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
-import { isVisualGate, packetDirFor, visualPacket, type PacketInput, type VisualPacketMode, type VisualPacketPorts } from "./visual-packet-trigger.js";
+import { isVisualGate, packetDirFor, visualPacket, type PacketInput } from "./visual-packet-trigger.js";
+import type { VisualPacketMode, VisualPacketPorts } from "./spawn-ports.js";
 
 const H2 = fakeSha("visual-next-head");
 const VISUAL: EffectivePolicy = { ...OWNER_GATE_POLICY, ownerGateReason: "gate-2-visual", seat: "design-seat" };

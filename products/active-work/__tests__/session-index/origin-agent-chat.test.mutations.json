@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the resolver drops the route source",
+      "file": "products/active-work/src/session-index/origin-agent-chat.ts",
+      "find": "routeSource: str(meta.route_source),",
+      "replace": "routeSource: null,",
+      "kills": [
+        "route decision on the spawn row (CC-1666) fills the route columns from route_* meta"
+      ]
+    },
+    {
+      "name": "the resolver reads route_facts from the wrong key",
+      "file": "products/active-work/src/session-index/origin-agent-chat.ts",
+      "find": "routeFacts: str(meta.route_facts),",
+      "replace": "routeFacts: str(meta.route_fact),",
+      "kills": [
+        "route decision on the spawn row (CC-1666) fills the route columns from route_* meta"
+      ]
+    },
+    {
+      "name": "the resolver stringifies a non-string route value",
+      "file": "products/active-work/src/session-index/origin-agent-chat.ts",
+      "find": "string | null =>\n    typeof value === 'string' && value !== '' ? value : null;",
+      "replace": "string | null =>\n    value === undefined || value === null ? null : String(value);",
+      "kills": [
+        "route decision on the spawn row (CC-1666) ignores a malformed route value and keeps the valid ones"
+      ]
+    }
+  ]
+}

@@ -21,29 +21,21 @@ const valueOf = (metrics: readonly GraphMetric[], id: string, name: string) =>
 describe("function-level accretion", () => {
   let repo: TestRepo;
 
-  async function writeBoth(contents: string): Promise<void> {
-    await repo.write("src/a.ts", contents);
-    await repo.write("src/c.ts", contents);
-  }
+  const both = (contents: string) => ({ "src/a.ts": contents, "src/c.ts": contents });
 
   // Every case only reads history, so one repo serves them all. Building it per case spent most of each case's
   // timeout on git child processes, which a loaded full suite slows past the limit (TP-3953).
   beforeAll(async () => {
     repo = await makeTestRepo();
-    await writeBoth(source("", 1, 1));
-    repo.commit("seed", { date: daysAgo(30) });
-    await writeBoth(source("", 2, 1));
-    repo.commit("TP-1: first pass at f", { date: daysAgo(5.5) });
-    await writeBoth(source(HEADER, 2, 1));
-    repo.commit("chore: add a header above every function", { date: daysAgo(4.5) });
-    await writeBoth(source(HEADER, 3, 1));
-    repo.commit("TP-2 tweak f", { date: daysAgo(3.5) });
-    await writeBoth(source(HEADER, 4, 1));
-    repo.commit("TP-1 follow-up on f", { date: daysAgo(2.5) });
-    await writeBoth(source(HEADER, 4, 2));
-    repo.commit("TP-3 touch g", { date: daysAgo(1.5) });
-    repo.git(["mv", "src/c.ts", "src/b.ts"]);
-    repo.commit("rename", { date: daysAgo(0.25) });
+    repo.history([
+      { message: "seed", date: daysAgo(30), files: both(source("", 1, 1)) },
+      { message: "TP-1: first pass at f", date: daysAgo(5.5), files: both(source("", 2, 1)) },
+      { message: "chore: add a header above every function", date: daysAgo(4.5), files: both(source(HEADER, 2, 1)) },
+      { message: "TP-2 tweak f", date: daysAgo(3.5), files: both(source(HEADER, 3, 1)) },
+      { message: "TP-1 follow-up on f", date: daysAgo(2.5), files: both(source(HEADER, 4, 1)) },
+      { message: "TP-3 touch g", date: daysAgo(1.5), files: both(source(HEADER, 4, 2)) },
+      { message: "rename", date: daysAgo(0.25), files: { "src/c.ts": null, "src/b.ts": source(HEADER, 4, 2) } },
+    ]);
   });
 
   afterAll(async () => {

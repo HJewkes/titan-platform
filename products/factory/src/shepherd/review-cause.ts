@@ -1,6 +1,7 @@
 import type { StepResult, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { stepIdMatches } from "../definition.js";
-import { CARRYING_KINDS } from "./carry-merge.js";
+import { CARRYING_KINDS } from "./carry-kinds.js";
 import { isCorrectionFailure } from "./correct-verdict.js";
 import type { Verdict, WakeRequest } from "./phases.js";
 import type { ReviewOutcome } from "./route-table.js";
@@ -47,7 +48,7 @@ export interface CauseFacts {
   carry?: CarryProbe;
 }
 
-const record = (result: unknown): Record<string, unknown> => (typeof result === "object" && result !== null ? (result as Record<string, unknown>) : {});
+const record = (result: unknown): Record<string, unknown> => (isObjectLike(result) ? result : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const nullableText = (value: unknown): string | null => text(value) ?? null;
 
@@ -148,7 +149,7 @@ export function tapped(ctx: WorkflowContext, tap: (stepId: string, result: unkno
     get: (target, key) => {
       if (key === "dispatch") return dispatch;
       const value: unknown = Reflect.get(target, key, target);
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      return typeof value === "function" ? value.bind(target) : value;
     },
   });
 }

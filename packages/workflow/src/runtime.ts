@@ -228,6 +228,10 @@ export class WorkflowRuntime {
   list(statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
     return this.store.listByStatus(statuses);
   }
+  /** One workflow's runs, read by name so no other workflow's step results are loaded. */
+  listByWorkflow(workflowName: string, statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
+    return this.store.listByWorkflow(workflowName, statuses);
+  }
 
   async wait(runId: string): Promise<WorkflowRun> {
     await this.live.get(runId)?.done;
@@ -300,7 +304,7 @@ export class WorkflowRuntime {
         controller.abort(error);
       }
     }, Math.max(1, Math.floor(this.leaseMs / 3)));
-    timer.unref?.();
+    timer.unref();
     return timer;
   }
 

@@ -99,8 +99,36 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
-export type { HandoffRecord } from "./events-db.js";
-export { EVENTS_TABLE_DDL, HANDOFFS_SQL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readHandoffs, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
+export type { HandoffRecord, WorkerReportRecord, WorkerSessionRecord } from "./events-db.js";
+export {
+  EVENTS_TABLE_DDL,
+  HANDOFFS_SQL,
+  LAST_PROMPTS_SQL,
+  SPAWNS_SQL,
+  VERDICTS_SQL,
+  eventsDbCommand,
+  readHandoffs,
+  readLastPrompts,
+  readSpawnerMessages,
+  readSpawns,
+  readVerdicts,
+  readWorkerReports,
+  readWorkerSessions,
+} from "./events-db.js";
+export type { ErrorClass } from "./tool-error-class.js";
+export { ERROR_CLASSES, classifyError } from "./tool-error-class.js";
+export type { FollowUpClass } from "./follow-up-class.js";
+export { FOLLOW_UP_CLASSES, classifyFollowUp } from "./follow-up-class.js";
+export type { FrictionCluster, FrictionLine, FrictionSource } from "./friction-lines.js";
+export { FRICTION_CLUSTERS, NON_FRICTION, clusterOf, extractConcerns, extractFriction, lineCluster } from "./friction-lines.js";
+export type { CiState, ContractReport, ProposedItem, ReportStatus } from "./report-contract.js";
+export { CI_STATES, DROP_REASONS, REPORT_STATUSES, parseReport } from "./report-contract.js";
+export type { LogSignal, LogSignalKind } from "./transcript-friction.js";
+export { followUpSignals, transcriptSignals } from "./transcript-friction.js";
+export type { AgentLog, Agreement, AgreementRow, AgreementSummary, LogClusterRow } from "./friction-agreement.js";
+export type { FrictionClusterRow, FrictionDailyReport, FrictionRow, LogSide, ReportSide } from "./friction-daily.js";
+export { frictionDailyReport } from "./friction-daily.js";
+export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
 export { readAgentSessions } from "./cost-report-queries.js";
@@ -145,6 +173,8 @@ export { REVIEW_FILL_COMPARISON, SUCCESSOR_REWORK_COMPARISON, compareWindows } f
 export { renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText } from "./render-guardrails.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { EstimateBand, RouteAgreement, RouteOutcomeGroup, RouteOutcomesOptions } from "./route-outcomes.js";
+export { routeOutcomes } from "./route-outcomes.js";
 export type { PrDiff, PrFeatures } from "./task-actuals-pr.js";
 export { listMergedPrRefs, parsePrRef, prFeaturesFor } from "./task-actuals-pr.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
@@ -161,3 +191,5 @@ export { seatOf } from "./coord-duty/transcript.js";
 export type { Outcome, Trigger } from "./coord-duty/turn-signals.js";
 export type { DispatchRecord, ScorecardJournalInput, ScorecardJournalRowId, ScorecardRow } from "./scorecard-rows.js";
 export { MIN_COST_COVERAGE, NOT_MEASURED, readDispatchJournal, scorecardJournalRows, scorecardRowText } from "./scorecard-rows.js";
+export type { Divergence, DivergenceGroup, PrefixReuse, PrefixReuseOptions, PrefixRow } from "./prefix-reuse.js";
+export { firstDivergence, prefixReuse } from "./prefix-reuse.js";

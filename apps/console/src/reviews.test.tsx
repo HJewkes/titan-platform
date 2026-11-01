@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ReviewSummary, getReview } from "../server/reviews.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -67,21 +67,16 @@ function snapshotOf(detail: ReviewDetail): Snapshot {
   };
 }
 
-function renderConsole(hash: string, detail: ReviewDetail = DETAIL): void {
+function renderConsole(hash: string, detail: ReviewDetail = DETAIL, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshotOf(detail)), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const findingIds = (): string[] => screen.getAllByTestId(/^finding-[A-Z]/).map((row) => row.getAttribute("data-testid")!.replace("finding-", ""));
 
 describe("the reviews list", () => {
   it("orders reviews newest first by last run, with a never-run review last", async () => {
-    renderConsole("#/reviews");
+    renderConsole("#/reviews", DETAIL, { inApp: true });
     await screen.findByTestId("review-row-acme-tool");
     const rows = screen.getAllByTestId(/^review-row-/).map((row) => row.getAttribute("data-testid"));
     expect(rows).toEqual(["review-row-acme-tool", "review-row-widget-kit", "review-row-orbit-cli"]);

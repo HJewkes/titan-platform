@@ -1,4 +1,4 @@
-import { spokenWordIndex, type ScriptBeat } from "../script-schema.js";
+import { plainWords, spokenWordIndex, type ScriptBeat } from "../script-schema.js";
 import type { Reveal } from "./types.js";
 
 // Ports of the spike sample builder's label conventions (TP-4115 S6b, S7, S9), so a daily script fills the same rows.
@@ -55,7 +55,7 @@ const norm = (word: string): string => word.toLowerCase().replace(/[^a-z0-9%]/g,
 
 /** The first spoken word with a letter or digit in it: where an element with no cue of its own lands. */
 export function firstWord(beat: Pick<ScriptBeat, "spoken">): string {
-  return beat.spoken.split(/\s+/).find((word) => norm(word) !== "") ?? beat.spoken;
+  return plainWords(beat.spoken).find((word) => norm(word) !== "") ?? beat.spoken;
 }
 
 /** Each `<field>-<n>` cue target's first cue word, by n: any field, as the sample builder reads them. */
@@ -82,7 +82,7 @@ export const itemReveals = (beat: Pick<ScriptBeat, "spoken" | "visual">, field: 
 /** Whether the earliest reveal lands past 30 % of the spoken words; a cue the beat never speaks is ignored. */
 export function lateFirstCue(beat: Pick<ScriptBeat, "id" | "spoken">, reveals: readonly Reveal[]): boolean {
   const index = spokenWordIndex(beat);
-  const words = beat.spoken.split(/\s+/).length;
+  const words = plainWords(beat.spoken).length;
   const firsts = reveals.flatMap(({ atCue }) => {
     try {
       return [index(atCue)];

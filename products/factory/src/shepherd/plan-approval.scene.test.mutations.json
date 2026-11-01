@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sh-policy read drops the run's claimed plan approvals",
+      "file": "products/factory/src/shepherd/registration-policy.ts",
+      "find": "if (policy) run.policy = { ...stricterPolicy(policy, run.policy), ...(approved && { approved }) };",
+      "replace": "if (policy) run.policy = stricterPolicy(policy, run.policy);",
+      "kills": [
+        "a PR whose only guard row is ci-policy-weakened, a merge-lint entry merges with no owner gate under a console-written approval pinning that file's head blob",
+        "a PR that adds a repo skill merges with no owner gate under a console-written approval of that skill path",
+        "a PR that changes a seat's visual path merges with no owner gate under a console-written approval of that path"
+      ]
+    },
+    {
+      "name": "a CI-policy approval covers by path alone, ignoring the pinned blob",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "pinned.has(path) && Object.hasOwn(blobs, path) && blobs[path] === pinned.get(path)",
+      "replace": "pinned.has(path)",
+      "kills": [
+        "a PR whose only guard row is ci-policy-weakened, a merge-lint entry gates at the same head when the approval pins a different blob"
+      ]
+    },
+    {
+      "name": "the skill-path row never consults the run's approvals",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (skills.length > 0 && !honour.coversPaths(\"skill\", skills))",
+      "replace": "if (skills.length > 0)",
+      "kills": [
+        "a PR that adds a repo skill merges with no owner gate under a console-written approval of that skill path"
+      ]
+    },
+    {
+      "name": "the visual-path glob row never consults the run's approvals",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (visual.length === 0 || honour.coversPaths(\"visual\", visual)) return undefined;",
+      "replace": "if (visual.length === 0) return undefined;",
+      "kills": [
+        "a PR that changes a seat's visual path merges with no owner gate under a console-written approval of that path"
+      ]
+    },
+    {
+      "name": "a failed head read records the file as absent at head",
+      "file": "products/factory/src/shepherd/head-blobs.ts",
+      "find": "(await port.getFile(repo, path, head))?.blobSha ?? null",
+      "replace": "(await port.getFile(repo, path, head).catch(() => null))?.blobSha ?? null",
+      "kills": [
+        "a weakened PR whose approval pins a deleted workflow as absent gates when the deleted file's head read fails, rather than reading it as absent"
+      ]
+    }
+  ]
+}

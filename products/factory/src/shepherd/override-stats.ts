@@ -1,5 +1,6 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { inRange, isoWeek } from "./stats.js";
 
 /**
@@ -32,7 +33,7 @@ const stepName = (key: string): string => key.split(":")[0]!;
 
 const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
-  return typeof wrapped === "object" && wrapped !== null ? (wrapped as Record<string, unknown>) : {};
+  return isObjectLike(wrapped) ? wrapped : {};
 };
 
 const overrideOf = (result: StepResult): OwnerOverride | undefined => {

@@ -1,0 +1,56 @@
+{
+  "pattern": "A panel of fixed height around a label that wraps, so the label runs past the panel's bottom once it settles",
+  "qa": [
+    "content-overflow"
+  ],
+  "elements": [
+    "north",
+    "south"
+  ],
+  "packet": {
+    "beat_id": "shelves",
+    "spoken": "The north shelf holds returned parcels. The south shelf holds the parcels waiting for a van.",
+    "cues": [
+      {
+        "action": "V6",
+        "target": "north",
+        "atCue": "north"
+      },
+      {
+        "action": "V6",
+        "target": "south",
+        "atCue": "south"
+      },
+      {
+        "action": "V6",
+        "target": "south",
+        "atCue": "waiting"
+      }
+    ],
+    "planned_s": 7,
+    "band": "story"
+  },
+  "module": [
+    "import { useBeatTime, useCue } from \"@titan-design/react-ui/motion\";",
+    "",
+    "const clamp = (x: number) => Math.max(0, Math.min(1, x));",
+    "",
+    "export default function Shelves() {",
+    "  const { t } = useBeatTime();",
+    "  const cues = { north: useCue(\"north\"), south: useCue(\"south\"), waiting: useCue(\"waiting\") };",
+    "  const pulse = (at: number) => (t < at ? 0 : clamp(1 - (t - at)));",
+    "  const panel = (p: number) => ({ flex: 1, height: 160, padding: 40, boxSizing: \"border-box\", borderRadius: 24, border: \"3px solid var(--color-border-prominent)\", background: \"var(--color-background-subtle)\", boxShadow: `inset 0 0 0 ${Math.round(p * 10)}px var(--color-brand-primary-solid)` }) as const;",
+    "  const text = { margin: 0, width: 300, fontSize: 52, fontWeight: 700, color: \"var(--color-text-primary)\" } as const;",
+    "  return (",
+    "    <div style={{ position: \"absolute\", inset: 0, display: \"flex\", gap: 40, padding: 60, alignItems: \"flex-start\", boxSizing: \"border-box\" }}>",
+    "      <div id=\"north\" style={panel(pulse(cues.north))}>",
+    "        <p style={text}>Returned</p>",
+    "      </div>",
+    "      <div id=\"south\" style={panel(Math.max(pulse(cues.south), pulse(cues.waiting)))}>",
+    "        <p style={text}>Parcels for the van</p>",
+    "      </div>",
+    "    </div>",
+    "  );",
+    "}"
+  ]
+}

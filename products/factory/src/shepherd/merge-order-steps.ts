@@ -4,16 +4,17 @@ import type { StepRoute, WorkflowContext, WorkflowRun } from "@titan-design/work
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
-import type { PrTarget } from "./gates.js";
-import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
+import type { OrderRun, PrTarget } from "./run-state.js";
+import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
 import { stillOpen } from "./merge-order-guard.js";
-import { blockers, orderDriving, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
+import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
+import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
 
-const RESERVE_STEP = "sh-order-reserve";
-const WAIT_STEP = "sh-order-wait";
+export const RESERVE_STEP = "sh-order-reserve";
+const WAIT_STEP = ORDER_WAIT_STEP;
 const UNRESERVE_STEP = "sh-order-unreserve";
 export const EXPIRE_STEP = "sh-order-expire";
 export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT_STEP, UNRESERVE_STEP, EXPIRE_STEP].map((id) => ({ id, kind: "dispatch" }));
@@ -21,11 +22,14 @@ export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT
 interface OrderInput extends PrTarget {
   runId: string;
   headSha: string;
+  /** Taken again at a landable head after a fix round released it (TP-4497), not at a conflict. */
+  retake?: boolean;
 }
 
 const ReserveResult = z.looseObject({ reserved: z.boolean(), ahead: z.array(z.string()) });
 type Reserved = z.infer<typeof ReserveResult>;
-const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean() });
+/** `bounded` marks a wait the merging stall limit ended, which the merge guard reads (TP-4569). */
+const WaitResult = z.looseObject({ waitedBehind: z.array(z.number()), moved: z.boolean(), bounded: z.literal(true).optional() });
 type Waited = z.infer<typeof WaitResult>;
 const ReleaseResult = z.looseObject({ released: z.boolean() });
 
@@ -58,7 +62,7 @@ type PeerPaths = () => Promise<{ paths: string[]; unread?: string }>;
  * lets three runs wait on each other in a ring until the TTL, so a peer counts only when the guard would let it merge.
  */
 async function heldByOrder(deps: MergeOrderStepDeps, repo: RepoSlug, runId: string, read: PeerPaths, reservations: readonly Reservation[], rule: MergeOrderRule): Promise<boolean> {
-  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), orderDriving(deps.order(), deps.holds()));
+  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), orderDriving(deps.order(), deps.holds()), orderWaiting(deps.order()));
   if (live({ repo, runId, paths: [], unread: true }).length === 0) return false;
   const theirs = await read();
   for (const blocker of live({ repo, runId, paths: theirs.paths, unread: theirs.unread !== undefined })) {
@@ -99,7 +103,8 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   if (read.unread !== undefined || !baseSha) return NOT_RESERVED;
   const ahead = await mergingAhead(deps, input, read.paths, rule);
   const since = new Date(deps.now()).toISOString();
-  deps.order().reserve({ ...input, baseSha, paths: read.paths, ahead, since, reason: `conflict at ${input.headSha}` });
+  const reason = input.retake ? `landable again at ${input.headSha}` : `conflict at ${input.headSha}`;
+  deps.order().reserve({ ...input, baseSha, paths: read.paths, ahead, since, reason });
   return { reserved: true, ahead };
 }
 
@@ -119,6 +124,15 @@ async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: rea
   return prs;
 }
 
+/**
+ * TP-4434: a conflicted PR queued behind a reservation held through a long review round sat in `merging` until the TTL,
+ * so a wait past the merging stall limit gives up its turn and wakes the fixer at the base as it stands.
+ */
+function waitedOut(deps: MergeOrderStepDeps, input: OrderInput): boolean {
+  const own = deps.order().list(input.repo).find((reservation) => reservation.runId === input.runId);
+  return own !== undefined && deps.now() - Date.parse(own.since) >= MERGING_STALL_LIMIT_MS;
+}
+
 /** The open PRs the reserving run still waits on: earlier live overlapping reservations, then the runs it let merge first. */
 async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<number[]> {
   const rule = deps.rules(input.repo);
@@ -126,7 +140,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const reservations = order.list(input.repo);
   const own = reservations.find((reservation) => reservation.runId === input.runId);
   if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now())) return [];
-  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()));
+  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()), orderWaiting(order));
   const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
   for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOpen(deps.port, input.repo, pr)) open.push(pr);
@@ -146,6 +160,7 @@ async function waitTurn(deps: MergeOrderStepDeps, input: OrderInput, signal: Abo
   for (;;) {
     signal.throwIfAborted();
     if (await headMoved(deps.port, input)) return { waitedBehind: [...waitedBehind], moved: true };
+    if (waitedOut(deps, input)) return { waitedBehind: [...waitedBehind], moved: false, bounded: true };
     const behind = await waitingOn(deps, input);
     if (behind.length === 0) return { waitedBehind: [...waitedBehind], moved: false };
     behind.forEach((pr) => waitedBehind.add(pr));
@@ -168,17 +183,11 @@ export function replayingWithout(ctx: WorkflowContext, stepId: string): boolean 
   return next !== undefined && !stepIdMatches(stepId, next);
 }
 
-export interface OrderRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
-  orderSteps: number;
-  /** Set by a recorded reservation and cleared by its release or expiry, so a replay rebuilds it. */
-  reserved?: boolean;
-}
-
 /**
  * TP-4098 (D1): a conflicted PR reserves its paths, waits for the overlapping PRs already merging and any earlier
  * reservation, then gets its one conflict wake at the base they leave. A push during the wait lands the next round.
+ * TP-4497: it is kept through the conflict fixer's work and the resolved head's round, and released once no fixer works
+ * on the conflict or that round ends unmerged.
  */
 export async function orderedConflict(run: OrderRun, headSha: string, wake: () => Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
   if (replayingWithout(run.ctx, RESERVE_STEP)) return wake();
@@ -193,6 +202,46 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
 /** The run's reservation ends with the run; liveness at read time covers a run that stops without reaching this. */
 export async function releaseOrder(run: OrderRun): Promise<void> {
   if (replayingWithout(run.ctx, UNRESERVE_STEP)) return;
-  await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
+  await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps++}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
   run.reserved = false;
+}
+
+/** A run leaving its land step unmerged has no landable head, so it holds no reservation until it reaches one again. */
+export async function releaseUnlandable(run: OrderRun): Promise<void> {
+  if (!run.reserved) return;
+  await releaseOrder(run);
+  run.retake = true;
+}
+
+/** A conflict that leaves a resolved head to land keeps the reservation through the land round it ended (TP-4497). */
+export async function resolvedConflict(run: OrderRun, left: Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
+  const read = await left;
+  run.resolving = read === undefined;
+  return read;
+}
+
+/** A land round that ends unmerged releases the reservation, unless a conflict inside it left a resolved head to land. */
+export async function endOrderRound(run: OrderRun, outcome: LandOutcome | undefined): Promise<void> {
+  if (outcome?.kind !== "merged" && !run.resolving) await releaseUnlandable(run);
+}
+
+/** Runs `wait`, which no fixer works through, holding no reservation. */
+export async function unreserved<T>(run: OrderRun, wait: () => Promise<T>): Promise<T> {
+  await releaseUnlandable(run);
+  return wait();
+}
+
+/** A wake's outcome; one no fixer took leaves nobody resolving a conflict, so the reservation ends with it. */
+export async function releasedUnlessWoken<T extends { kind: string }>(run: OrderRun, outcome: Promise<T>): Promise<T> {
+  const read = await outcome;
+  if (read.kind !== "woken") await releaseUnlandable(run);
+  return read;
+}
+
+/** A run whose reservation a fix round released takes it again, once, when a head reaches the merge decision. */
+export async function retakeOrder(run: OrderRun, headSha: string): Promise<void> {
+  if (!run.retake || run.reserved || replayingWithout(run.ctx, RESERVE_STEP)) return;
+  const input: OrderInput = { ...run.target, runId: run.ctx.runId, headSha, retake: true };
+  run.retake = false;
+  run.reserved = (await step(run.ctx, `${RESERVE_STEP}:${run.orderSteps++}`, input, ReserveResult)).reserved;
 }

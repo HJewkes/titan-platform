@@ -3,8 +3,8 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
-import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
-import type { GateRun } from "./gates.js";
+import { codeRoute, step } from "../workflows/land.js";
+import type { ConflictBaseRun } from "./run-state.js";
 import type { ShepherdDeps } from "./phases.js";
 
 const CONFLICT_BASE_STEP = "sh-conflict-base";
@@ -40,13 +40,6 @@ function isNewConflict(lastBase: string | undefined, read: ConflictBase): boolea
 
 export function conflictBaseRoute(deps: Pick<ShepherdDeps, "port" | "now">): StepRoute {
   return codeRoute(CONFLICT_BASE_STEP, deps.now, (input: ConflictBaseInput) => readConflictBase(deps.port, input));
-}
-
-export interface ConflictBaseRun extends Pick<GateRun, "ctx" | "target"> {
-  lastCi?: CiSnapshot;
-  /** The base sha read at the last conflict; replaying the recorded step results rebuilds it. */
-  conflictBase?: string;
-  conflictBaseReads: number;
 }
 
 /**

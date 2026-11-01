@@ -9,12 +9,13 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { REPORT_MAX_CHARS, exitCause, noticeText, sendExitNotice, type ExitNoticePorts, type LastReport } from "./exit-notice.js";
+import { REPORT_MAX_CHARS, exitCause, noticeText, sendExitNotice } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeEvidence, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { HeldWake } from "./held-wake.js";
+import type { ExitNoticePorts, LastReport } from "./ports.js";
 
 const H2 = fakeSha("head2");
 const ASKED_AT = Date.parse("2026-10-08T11:38:40Z");

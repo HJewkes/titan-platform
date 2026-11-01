@@ -67,4 +67,17 @@ describe(".github/fix-proof.json runtime globs", () => {
 
     expect(reading).toEqual({ testOnly: true });
   });
+
+  // TP-4656: tp#3025 read as a source diff only for its baseline prune, so its mutation specs never ran.
+  it("a typed-lint burn-down of tests plus its eslint-suppressions baseline prune reads test-only", () => {
+    const reading = readingOf(
+      "A\t.changeset/typed-lint-tests.md",
+      "M\tproducts/factory/eslint-suppressions.typed.json",
+      "M\tpackages/egress-scan/eslint-suppressions.json",
+      "M\tproducts/factory/src/shepherd/review.test.ts",
+      "A\tproducts/factory/src/shepherd/review.test.mutations.json",
+    );
+
+    expect(reading).toEqual({ testOnly: true });
+  });
 });

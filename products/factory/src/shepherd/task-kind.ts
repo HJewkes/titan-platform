@@ -1,5 +1,13 @@
 import type { TestOnlyDiff } from "./test-only-diff.js";
 
+type KindGuard = typeof kindMoveRefusal;
+
+/** The guard a register applies, and the PR's diff facts it reads them with. */
+export interface KindMove {
+  guard: KindGuard;
+  diff: TestOnlyDiff | undefined;
+}
+
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "test-only", "unknown"] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];

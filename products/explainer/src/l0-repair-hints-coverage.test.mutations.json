@@ -36,6 +36,15 @@
       "kills": [
         "the Q-W1 hint names the early STAKE beat and the two things it must say, and that edit passes the check"
       ]
+    },
+    {
+      "name": "repairHint returns the table hint without naming the row's beats",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "return hint ? namingRowBeats(hint(script, row, facts, spine, coverage)?.trim() ?? \"\", row) : undefined;",
+      "replace": "return hint?.(script, row, facts, spine, coverage);",
+      "kills": [
+        "repair hint coverage gives every error-severity check in the rules registry a hint that names the beats its row fails"
+      ]
     }
   ]
 }

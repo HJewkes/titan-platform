@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { isDraft } from '../tasks/draft.js';
 import path from 'node:path';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
@@ -45,6 +46,7 @@ import {
   resolveLocalRepoPath,
   resolveOrgRepo,
 } from '../utils/git-gh.js';
+import { parseGhPrList, type GhPrList, type GhPrListEntry as GhPrEntry } from '../utils/gh-pr-wire.js';
 import { mapConcurrent } from '../utils/map-concurrent.js';
 import { today, nowIso } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
@@ -121,6 +123,11 @@ export interface BootstrapInput {
    */
   archivedTaskIds?: string[];
   /**
+   * Tasks the caller already parsed (minus any it archived). When supplied the
+   * task directory is not read again.
+   */
+  loadedTasks?: LoadedTasks;
+  /**
    * When `true`, frame the session as ad-hoc work related to the workstream
    * rather than a continuation of its handoff / top task. The same context is
    * rendered, but the opening and closing directives tell the session to treat
@@ -165,6 +172,8 @@ export interface BootstrapInput {
   hitLog?: HitLogWriter;
   /** Facet alias the session opened through; scopes tasks and loops to its tags (TP-326). */
   facet?: BootstrapFacet;
+  /** Millisecond clock (DI) for `timings_ms`. Defaults to `performance.now`. */
+  clock?: () => number;
 }
 
 export interface BootstrapMetadata {
@@ -183,6 +192,17 @@ export interface BootstrapMetadata {
   retrieval_degraded?: string[];
   /** Facet alias the session opened through; absent for a plain slug. */
   facet?: string;
+  /** Per-phase wall time; metadata only, never rendered into the prompt. */
+  timings_ms?: BootstrapTimings & { archive?: number; total?: number };
+}
+
+/** Milliseconds each assembly phase took; `loop_queries` counts the loop retrievals run. */
+interface BootstrapTimings {
+  load: number;
+  live_status: number;
+  rank_notes: number;
+  loop_retrieval: number;
+  loop_queries: number;
 }
 
 export interface BootstrapOutput {
@@ -449,7 +469,7 @@ function renderTopTasks(
   slug: string,
   facetTags?: string[],
 ): { body: string; count: number } {
-  const openTasks = tasks.filter((t) => t.status === 'open').sort(compareTasksByPriority);
+  const openTasks = tasks.filter((t) => t.status === 'open' && !isDraft(t)).sort(compareTasksByPriority);
   if (openTasks.length === 0) {
     return { body: '_No open tasks._', count: 0 };
   }
@@ -680,7 +700,7 @@ function renderInitClosing(slug: string, briefPath: string): string {
   return [
     `This is an init session. Start by asking the user what this initiative is and why it exists, then replace the placeholder body of ${briefPath} (below its frontmatter) with a \`Why\` section and what done looks like. Change frontmatter only through \`active-work set ${slug} <field> <value>\`, for example \`ship_target\` or \`owner\` if the user gives them.`,
     `Ask whether a worktree, repo or project directory already exists for this work. In practice it often will not, since this is usually run from a fresh terminal at the start of new work. If one does, register it with \`active-work worktree set ${slug} <path>\`, and record a branch worth tracking with \`active-work artifact add-branch ${slug} --repo <repo> --name <branch>\`.`,
-    `If the user has documents or notes that belong with the initiative, file them with \`active-work source add ${slug} <file>\`. File the first tasks with \`active-work task add ${slug} --title <title>\`.`,
+    `If the user has documents or notes that belong with the initiative, file them with \`active-work source add ${slug} <file>\`. File the first tasks with \`active-work task add ${slug} --title <title> --done-when <what done looks like, 40+ chars>\`.`,
     `Close out with \`active-work wrap ${slug}\`; the default \`canonical\` track is correct for a first session.`,
   ].join(' ');
 }
@@ -864,15 +884,6 @@ const BULK_PR_LIMIT = 200;
 
 type BranchPr = NonNullable<LiveBranchStatus['pr']>;
 
-interface GhPrEntry {
-  headRefName?: string;
-  number?: number;
-  state?: string;
-  title?: string;
-  url?: string;
-  statusCheckRollup?: Array<{ conclusion?: string; state?: string }>;
-}
-
 /**
  * Open PRs of one repo by head branch, newest first per head as `gh` lists
  * them. `complete` is false when the list hit its limit, so a head missing
@@ -926,31 +937,34 @@ async function fetchBranchPrs(branches: BranchEntry[]): Promise<Array<BranchPr |
 async function listRepoPrs(orgRepo: string): Promise<RepoPrIndex | null> {
   const fields = 'headRefName,number,state,title,url,statusCheckRollup';
   const args = ['pr', 'list', '--repo', orgRepo, '--json', fields];
-  const entries = await runGhPrList([...args, '--limit', String(BULK_PR_LIMIT)]);
-  if (!entries) return null;
+  const list = await runGhPrList([...args, '--limit', String(BULK_PR_LIMIT)]);
+  if (!list) return null;
   const byHead = new Map<string, GhPrEntry>();
-  for (const entry of entries) {
+  for (const entry of list.entries) {
     const head = entry.headRefName;
     if (typeof head === 'string' && !byHead.has(head)) byHead.set(head, entry);
   }
-  return { byHead, complete: entries.length < BULK_PR_LIMIT };
+  return { byHead, complete: list.total < BULK_PR_LIMIT };
 }
 
 async function fetchPrForHead(orgRepo: string, head: string): Promise<BranchPr | null> {
   const fields = 'number,state,title,url,statusCheckRollup';
   const args = ['pr', 'list', '--head', head, '--repo', orgRepo, '--json', fields];
-  const entries = await runGhPrList([...args, '--limit', '1']);
-  const first = entries?.[0];
+  const list = await runGhPrList([...args, '--limit', '1']);
+  const first = list?.entries[0];
   return first ? toBranchPr(first) : null;
 }
 
-/** PR lookup is best-effort: any failure reads as "no answer". */
-async function runGhPrList(args: string[]): Promise<GhPrEntry[] | null> {
+/** PR lookup is best-effort: any failure reads as "no answer", and a bad element is skipped. */
+async function runGhPrList(args: string[]): Promise<GhPrList | null> {
   try {
     const res = await getGhRunner()('gh', args);
     if (res.code !== 0) return null;
-    const parsed = JSON.parse(res.stdout) as unknown;
-    return Array.isArray(parsed) ? (parsed as GhPrEntry[]) : null;
+    const list = parseGhPrList(res.stdout);
+    if (list && list.skipped > 0) {
+      process.stderr.write(`bootstrap: skipped ${list.skipped} malformed gh pr list entries\n`);
+    }
+    return list;
   } catch {
     return null;
   }
@@ -1313,6 +1327,25 @@ async function retrievalDegradations(input: RenderedHits, hitLog: HitLogWriter):
   return degraded;
 }
 
+async function renderArtifactsBody(args: {
+  artifacts: Artifacts;
+  slug: string;
+  includeLiveStatus: boolean;
+  fetcher: LiveStatusFetcher;
+}): Promise<string | null> {
+  const { artifacts, slug, includeLiveStatus, fetcher } = args;
+  if (!includeLiveStatus || artifacts.branches.length === 0) {
+    return renderStaticArtifacts(artifacts, slug);
+  }
+  try {
+    const statuses = await fetcher(artifacts.branches);
+    return renderLiveArtifacts(artifacts, statuses, slug);
+  } catch {
+    // Live fetch failed entirely — degrade to static rendering.
+    return renderStaticArtifacts(artifacts, slug);
+  }
+}
+
 /**
  * Build the bootstrap prompt for `slug`.
  *
@@ -1330,6 +1363,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     includeLiveStatus = true,
     liveStatusFetcher,
     archivedTaskIds,
+    loadedTasks: preloadedTasks,
     adhoc = false,
     init = false,
     detectSiblings = true,
@@ -1340,20 +1374,38 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     loopRetriever,
     hitLog = fileHitLog(),
     facet,
+    clock = () => performance.now(),
   } = input;
 
+  const loadStart = clock();
   const initiativeDir = path.join(activeRoot, slug);
   const { frontmatter: brief, body: briefBody } = await loadBrief(initiativeDir, slug);
 
   const [loaded, loadedTasks, loadedArtifacts, notes] = await Promise.all([
     loadSessionsNewestFirst(initiativeDir),
-    loadTasks(initiativeDir),
+    preloadedTasks ?? loadTasks(initiativeDir),
     loadArtifacts(initiativeDir),
     loadNotesFromDir(initiativeDir),
   ]);
   const { sessions, malformed } = loaded;
   const { tasks, malformed: malformedTasks } = loadedTasks;
   const { artifacts, error: artifactsError } = loadedArtifacts;
+  const loadMs = clock() - loadStart;
+
+  // Started now so the gh/git round trips overlap note ranking and loop
+  // retrieval; awaited only where artifacts render. Never rejects, so the
+  // handler is attached from the start.
+  const liveStart = clock();
+  let liveStatusMs = 0;
+  const artifactsBodyPending = renderArtifactsBody({
+    artifacts,
+    slug,
+    includeLiveStatus,
+    fetcher: liveStatusFetcher ?? defaultLiveStatusFetcher,
+  }).then((body) => {
+    liveStatusMs = clock() - liveStart;
+    return body;
+  });
 
   // `mergedPrs` is deliberately unsupplied: derivation must stay offline
   // because bootstrap runs it on every launch.
@@ -1382,20 +1434,6 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     now,
     slug,
   );
-  let artifactsBody: string | null = null;
-  if (!includeLiveStatus || artifacts.branches.length === 0) {
-    artifactsBody = renderStaticArtifacts(artifacts, slug);
-  } else {
-    const fetcher = liveStatusFetcher ?? defaultLiveStatusFetcher;
-    try {
-      const statuses = await fetcher(artifacts.branches);
-      artifactsBody = renderLiveArtifacts(artifacts, statuses, slug);
-    } catch {
-      // Live fetch failed entirely — degrade to static rendering.
-      artifactsBody = renderStaticArtifacts(artifacts, slug);
-    }
-  }
-
   const timeSinceHuman = narrativeSession
     ? formatTimeSince(new Date(narrativeSession.frontmatter.ended), now)
     : undefined;
@@ -1416,7 +1454,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
       siblings = [];
     }
   }
-  const openSorted = tasks.filter((t) => t.status === 'open').sort(compareTasksByPriority);
+  const openSorted = tasks.filter((t) => t.status === 'open' && !isDraft(t)).sort(compareTasksByPriority);
   const topTask = selectFacetTasks(openSorted, facet?.tags).tasks[0];
   const topTaskTitle = topTask?.title;
 
@@ -1429,6 +1467,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     ...(topTask !== undefined ? { topTaskId: topTask.id, topTaskTitle: topTask.title } : {}),
   });
   // Only the live graph needs catching up; a stale one still ranks, just without the newest writes.
+  const rankStart = clock();
   if (noteRelevance === undefined) await indexFreshness.ensure(READ_FRESH_BUDGET_MS);
   const noteRanking = rankNotes({
     notes: notes.notes,
@@ -1436,6 +1475,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     subject,
     ...(noteRelevance ? { relevance: noteRelevance } : {}),
   });
+  const rankNotesMs = clock() - rankStart;
 
   const { loops: shownLoops, hidden: hiddenLoops } = selectFacetLoops(
     openLoops,
@@ -1444,6 +1484,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
   );
   // Fails open like the ranking above: no index or no match renders the loops as before.
   const loopLabels = shownLoops.map(loopLabel);
+  const loopStart = clock();
   const loopContext = await relatedForLoops({
     loops: shownLoops,
     labels: loopLabels,
@@ -1451,6 +1492,7 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     shown: shownNoteRefs(noteRanking, slug),
     ...(loopRetriever ? { retriever: loopRetriever } : {}),
   });
+  const loopRetrievalMs = clock() - loopStart;
   const retrievalDegraded = await retrievalDegradations(
     { slug, loops: shownLoops, labels: loopLabels, loopContext, noteRanking, subject },
     hitLog,
@@ -1526,8 +1568,9 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     sections.push(
       `# Open artifacts\n_${artifactsPath} exists but could not be read (${artifactsError}). Branch and stash context is MISSING from this bootstrap — do not treat the working tree as clean. Run \`active-work doctor\`._`,
     );
-  } else if (artifactsBody) {
-    sections.push(`# Open artifacts\n${artifactsBody}`);
+  } else {
+    const artifactsBody = await artifactsBodyPending;
+    if (artifactsBody) sections.push(`# Open artifacts\n${artifactsBody}`);
   }
 
   const bootstrapAt = nowIso();
@@ -1575,6 +1618,13 @@ export async function assembleBootstrap(input: BootstrapInput): Promise<Bootstra
     metadata.retrieval_degraded = retrievalDegraded;
   }
   if (facet) metadata.facet = facet.name;
+  metadata.timings_ms = {
+    load: loadMs,
+    live_status: liveStatusMs,
+    rank_notes: rankNotesMs,
+    loop_retrieval: loopRetrievalMs,
+    loop_queries: shownLoops.length,
+  };
 
   return { prompt, metadata };
 }

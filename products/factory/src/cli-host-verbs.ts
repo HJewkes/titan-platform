@@ -1,13 +1,13 @@
 import { consoleLogger } from "@titan-design/daemon";
 import type { Command } from "commander";
-import type { CliDeps, Verbs } from "./cli.js";
+import type { CliDeps, Verbs } from "./cli-types.js";
 import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { EXIT } from "./exit-codes.js";
 import { resolveGate } from "./gate-resolve.js";
 import type { FactoryRoutes, PendingGate, ResumeReport } from "./host.js";
-import { resolveCommand } from "./registry.js";
+import { resolveCommand } from "./resolve-command.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 
 export const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);

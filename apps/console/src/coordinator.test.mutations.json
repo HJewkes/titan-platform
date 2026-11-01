@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the page drops the date the query names",
+      "file": "apps/console/src/pages/CoordinatorPage.tsx",
+      "find": "const day = date === undefined ? {} : { date };",
+      "replace": "const day = {};",
+      "kills": [
+        "the coordinator page draws one meter per account with its reserve, target and guard markers, for the day the query names"
+      ]
+    },
+    {
+      "name": "a failed pools read hides the cards too",
+      "file": "apps/console/src/pages/CoordinatorPage.tsx",
+      "find": "      <CoordinatorCards day={day} />",
+      "replace": "      {null}",
+      "kills": [
+        "the coordinator page confines a failed pools read to one alert in its own section and still draws the cards"
+      ]
+    },
+    {
+      "name": "an unreported cost reads as zero dollars",
+      "file": "apps/console/src/pages/CoordinatorCards.tsx",
+      "find": "(costUsd === null ? \"n/a\" :",
+      "replace": "(costUsd === null ? \"$0.00\" :",
+      "kills": [
+        "the coordinator page shows a coordinator whose agents reported no cost as n/a, not as $0.00"
+      ]
+    },
+    {
+      "name": "the unattributed PRs are not shown",
+      "file": "apps/console/src/pages/CoordinatorCards.tsx",
+      "find": "{result.unattributed.length === 0 ? null : <UnattributedCard prs={result.unattributed} />}",
+      "replace": "{null}",
+      "kills": [
+        "the coordinator page gives each coordinator a card with its seat, agents, cost and merged PRs, and groups the unowned PRs apart",
+        "the coordinator page while loading or degraded says why every PR is unattributed when events.db cannot be read"
+      ]
+    },
+    {
+      "name": "a pools gap is shown raw, with no word on what it leaves unknown",
+      "file": "apps/console/src/pages/CoordinatorPools.tsx",
+      "find": "return GAP_MEANINGS.find(([prefix]) => gap.startsWith(prefix))?.[1] ?? gap;",
+      "replace": "return gap;",
+      "kills": [
+        "the coordinator page while loading or degraded explains in words what a missing pace.json leaves unknown, and keeps the account's own error"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a drop that opens a new failing row is kept",
+      "file": "products/explainer/src/orphan-cues.ts",
+      "find": " || !noNewFailure(failing(next), failing(kept))",
+      "replace": "",
+      "kills": [
+        "orphan cue targets before the plan check a drop that opens a Q-D17 cue gap is refused, so the repair re-aims the cue"
+      ]
+    },
+    {
+      "name": "a beat whose every cue is orphaned loses them all",
+      "file": "products/explainer/src/orphan-cues.ts",
+      "find": "if (drop.length === script.beats.find((beat) => beat.id === id)!.visual.cues.length) continue;",
+      "replace": "",
+      "kills": [
+        "orphan cue targets before the plan check a beat whose every cue is orphaned keeps them for the repair"
+      ]
+    }
+  ]
+}

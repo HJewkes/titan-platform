@@ -1,4 +1,4 @@
-import type { ReviewSlots } from "./shepherd/review-slots.js";
+import type { ReviewSlots } from "./shepherd/ports.js";
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 

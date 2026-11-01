@@ -1,11 +1,12 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActiveWork } from "./active-work.js";
 import { fixtureActiveWork } from "./fixtures.js";
 import { closedPort, startFakeDaemon } from "./test-support.js";
-import { fileUpstream, httpUpstream, humanOnlyFrom, probeUpstreams } from "./upstreams.js";
+import { resolveConfig } from "./config.js";
+import { createSources, fileUpstream, httpUpstream, humanOnlyFrom, probeUpstreams } from "./upstreams.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -94,6 +95,26 @@ describe("probing every upstream", () => {
         { id: "work", reachable: true, detail: "Answering" },
         { id: "agents", reachable: false, detail: "No answer from /health" },
       ]);
+    } finally {
+      await daemon.close();
+    }
+  });
+});
+
+describe("the active-work reads createSources builds", () => {
+  it("go upstream once per window, and refresh behind an active-work relay frame", async () => {
+    const asked: string[] = [];
+    const daemon = await startFakeDaemon({ ok: true }, (command) => (asked.push(command), { sections: [], parse_errors: [] }));
+    try {
+      const sources = createSources({ ...resolveConfig({}, dir), activeWorkPort: daemon.port });
+
+      await sources.activeWork.read("list");
+      await sources.activeWork.read("list");
+      expect(asked).toEqual(["list"]);
+
+      sources.invalidation?.emit("active-work");
+      await sources.activeWork.read("list");
+      await vi.waitFor(() => expect(asked).toEqual(["list", "list"]));
     } finally {
       await daemon.close();
     }

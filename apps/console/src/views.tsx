@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, ScaleIcon, StarIcon, TargetIcon, type SideNavItem } from "@titan-design/react-ui";
+import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, ChartIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, ScaleIcon, StarIcon, TargetIcon, type SideNavItem } from "@titan-design/react-ui";
 import { VIEW_KEYS, type ViewKey } from "./router.js";
 
 export interface ViewSpec {
@@ -14,7 +14,7 @@ export interface ViewSpec {
 
 const ICON_SIZE = 20;
 
-/** The rail. Home borrows the activity glyph, Inbox the alert glyph, Rounds the target glyph, Reviews the star glyph, Theater the headphones glyph, Shepherd the scale glyph, Research the award glyph and Config the equal glyph, because react-ui exports no home, inbox, search, play or settings icon. */
+/** The rail. Home borrows the activity glyph, Inbox the alert glyph, Rounds the target glyph, Reviews the star glyph, Theater the headphones glyph, Shepherd the scale glyph, Coordinator the chart glyph, Research the award glyph and Config the equal glyph, because react-ui exports no home, inbox, search, play or settings icon. */
 const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   home: { label: "Home", title: "Home", icon: <ActivityIcon size={ICON_SIZE} /> },
   inbox: { label: "Inbox", title: "Inbox", icon: <AlertTriangleIcon size={ICON_SIZE} /> },
@@ -22,6 +22,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   tasks: { label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} /> },
   sessions: { label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} /> },
   agents: { label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} /> },
+  coordinator: { label: "Coord", title: "Coordinator day", icon: <ChartIcon size={ICON_SIZE} /> },
   knowledge: { label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} /> },
   rounds: { label: "Rounds", title: "Review rounds", icon: <TargetIcon size={ICON_SIZE} /> },
   reviews: { label: "Reviews", title: "Repo reviews", icon: <StarIcon size={ICON_SIZE} /> },

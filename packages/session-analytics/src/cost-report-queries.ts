@@ -78,32 +78,32 @@ const COST_ROWS = `
 
 export function readCostRows(db: Db, window: ReportWindow): CostRow[] {
   type Row = Omit<CostRow, "priced" | "isCold" | "isSidechain"> & { priced: number; isCold: number; isSidechain: number | null };
-  const rows = db.prepare(COST_ROWS).all(window) as Row[];
+  const rows = db.prepare<[object], Row>(COST_ROWS).all(window);
   return rows.map((row) => ({ ...row, priced: row.priced === 1, isCold: row.isCold === 1, isSidechain: row.isSidechain === 1 }));
 }
 
 export function readCompactions(db: Db, window: ReportWindow): CompactionRow[] {
   const sql = `SELECT trigger, mid_loop AS midLoop, dropped_tokens AS droppedTokens FROM compaction WHERE ${IN_WINDOW}`;
-  const rows = db.prepare(sql).all(window) as (Omit<CompactionRow, "midLoop"> & { midLoop: number | null })[];
+  const rows = db.prepare<[object], (Omit<CompactionRow, "midLoop"> & { midLoop: number | null })>(sql).all(window);
   return rows.map((row) => ({ ...row, midLoop: row.midLoop === 1 }));
 }
 
 /** The graph's own price version, which is what `request_cost` priced with; null before any price row exists. */
 export function readPriceTableVersion(db: Db): number | null {
-  return (db.prepare("SELECT MAX(table_version) AS version FROM price").get() as { version: number | null }).version;
+  return db.prepare<[], { version: number | null }>("SELECT MAX(table_version) AS version FROM price").get()?.version ?? null;
 }
 
 /** Indexed transcripts, and those whose audit facet is missing or older than `facetVersion`. */
 export function readCoverage(db: Db, facetVersion: number | null): { transcriptsIndexed: number; facetBacklog: number } {
-  const indexed = db.prepare(`SELECT COUNT(*) AS n FROM "${KIT.watermark}"`).get() as { n: number };
+  const indexed = db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM "${KIT.watermark}"`).get();
   const backlog = db
-    .prepare(
+    .prepare<[object], { n: number }>(
       `SELECT COUNT(*) AS n FROM "${KIT.watermark}" t LEFT JOIN "${FACET_TABLE}" f
          ON f.transcript_id = t.source_id AND f.facet = @facet AND (@version IS NULL OR f.version >= @version)
        WHERE f.transcript_id IS NULL`,
     )
-    .get({ facet: AUDIT_FACET, version: facetVersion }) as { n: number };
-  return { transcriptsIndexed: indexed.n, facetBacklog: backlog.n };
+    .get({ facet: AUDIT_FACET, version: facetVersion });
+  return { transcriptsIndexed: indexed?.n ?? 0, facetBacklog: backlog?.n ?? 0 };
 }
 
 /** An arrival that opens a wake episode: a turn-start record or a mid-loop `queued_command` delivery. */
@@ -153,26 +153,26 @@ const REQUEST_EVENTS = `
   FROM request_dedup d WHERE d.${IN_SESSIONS} AND (@since IS NULL OR d.ts >= @since) AND (@until IS NULL OR d.ts < @until)`;
 
 export function readWakeEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): WakeEventRow[] {
-  const rows = db.prepare(WAKE_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as (Omit<WakeEventRow, "broadcast"> & { broadcast: number })[];
+  const rows = db.prepare<[object], (Omit<WakeEventRow, "broadcast"> & { broadcast: number })>(WAKE_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) });
   return rows.map((row) => ({ ...row, broadcast: row.broadcast === 1 }));
 }
 
 /** The event each request in the window follows, keyed by `request_id`; null before a transcript's first event. */
 export function readRequestEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): Map<string, string | null> {
-  const rows = db.prepare(REQUEST_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as { requestId: string; eventKey: string | null }[];
+  const rows = db.prepare<[object], { requestId: string; eventKey: string | null }>(REQUEST_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) });
   return new Map(rows.map((row) => [row.requestId, row.eventKey]));
 }
 
 export function readAgentNames(db: Db): AgentNameRow[] {
   const sql = `SELECT session_id AS sessionId, agent_name AS agentName, origin_kind AS originKind, profile FROM session_origin WHERE agent_name IS NOT NULL`;
-  return db.prepare(sql).all() as AgentNameRow[];
+  return db.prepare<[], AgentNameRow>(sql).all();
 }
 
 /** Each agent-chat agent id to the sessions it ran as; the broker log names agents by id. */
 export function readAgentSessions(db: Db): Map<string, string[]> {
   const sql = `SELECT agent_id AS agentId, session_id AS sessionId FROM session_origin WHERE agent_id IS NOT NULL`;
   const sessions = new Map<string, string[]>();
-  for (const row of db.prepare(sql).all() as { agentId: string; sessionId: string }[]) sessions.set(row.agentId, [...(sessions.get(row.agentId) ?? []), row.sessionId]);
+  for (const row of db.prepare<[], { agentId: string; sessionId: string }>(sql).all()) sessions.set(row.agentId, [...(sessions.get(row.agentId) ?? []), row.sessionId]);
   return sessions;
 }
 
@@ -196,7 +196,7 @@ function emptyContext(): SessionContext {
 function addSessionRows(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT session_id AS sessionId, start_type AS startType, cwd, seed_prompt AS seedPrompt, account FROM session WHERE ${IN_SESSIONS}`;
   type Row = { sessionId: string; startType: string | null; cwd: string | null; seedPrompt: string | null; account: string | null };
-  for (const row of db.prepare(sql).all({ ids }) as Row[]) {
+  for (const row of db.prepare<[object], Row>(sql).all({ ids })) {
     const context = contexts.get(row.sessionId)!;
     context.cwd = row.cwd;
     context.account = row.account;
@@ -208,7 +208,7 @@ function addSessionRows(db: Db, ids: string, contexts: Map<string, SessionContex
 function addOrigins(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT session_id AS sessionId, depth, parent_name AS parentName, origin_kind AS originKind, profile FROM session_origin WHERE ${IN_SESSIONS}`;
   type Row = { sessionId: string; depth: number | null; parentName: string | null; originKind: string | null; profile: string | null };
-  for (const { sessionId, depth, ...origin } of db.prepare(sql).all({ ids }) as Row[]) {
+  for (const { sessionId, depth, ...origin } of db.prepare<[object], Row>(sql).all({ ids })) {
     contexts.get(sessionId)!.facts.origin = { ...origin, depth: depth ?? 0 };
   }
 }
@@ -217,7 +217,7 @@ function addInbounds(db: Db, ids: string, contexts: Map<string, SessionContext>)
   const sql = `SELECT session_id AS sessionId, cause, SUM(delivery = 'turn_start') AS turnStarts
     FROM (SELECT *, ${INBOUND_COPY_RANK} AS copy_rank FROM inbound WHERE ${IN_SESSIONS})
     WHERE copy_rank = 1 GROUP BY session_id, cause`;
-  for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; cause: string; turnStarts: number }[]) {
+  for (const row of db.prepare<[object], { sessionId: string; cause: string; turnStarts: number }>(sql).all({ ids })) {
     const facts = contexts.get(row.sessionId)!.facts;
     facts.inboundKinds = [...(facts.inboundKinds ?? []), row.cause];
     if (row.cause === "human_typed") facts.humanTurnCount = row.turnStarts;
@@ -233,7 +233,7 @@ export const INBOUND_COPY_RANK =
 
 function addSignals(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT DISTINCT session_id AS sessionId, signal FROM session_signal WHERE ${IN_SESSIONS}`;
-  for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; signal: string }[]) {
+  for (const row of db.prepare<[object], { sessionId: string; signal: string }>(sql).all({ ids })) {
     const facts = contexts.get(row.sessionId)!.facts;
     facts.signalKinds = [...(facts.signalKinds ?? []), row.signal];
   }
@@ -246,7 +246,7 @@ function addTaskInitiatives(db: Db, ids: string, contexts: Map<string, SessionCo
     WHERE e.relation = 'ran' AND e.t_expired IS NULL AND t.initiative IS NOT NULL
       AND e.source_ref IN (SELECT 'session:' || value FROM json_each(@ids))
     GROUP BY e.source_ref, t.initiative`;
-  for (const row of db.prepare(sql).all({ ids }) as ({ sessionId: string } & TaskInitiative)[]) {
+  for (const row of db.prepare<[object], ({ sessionId: string } & TaskInitiative)>(sql).all({ ids })) {
     contexts.get(row.sessionId)!.tasks.push({ initiative: row.initiative, edges: row.edges });
   }
 }
@@ -264,14 +264,14 @@ export const FIRST_COPY = `NOT EXISTS (
 function addLifetimes(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT r.session_id AS sessionId, MIN(r.ts) AS first, MAX(r.ts) AS last FROM request r
     WHERE r.${IN_SESSIONS} AND r.is_sidechain = 0 AND ${FIRST_COPY} GROUP BY r.session_id`;
-  for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; first: string; last: string }[]) {
+  for (const row of db.prepare<[object], { sessionId: string; first: string; last: string }>(sql).all({ ids })) {
     contexts.get(row.sessionId)!.lifetimeMs = Date.parse(row.last) - Date.parse(row.first);
   }
 }
 
 function addEpisodes(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT session_id AS sessionId, heuristic, opened_by AS openedBy FROM "${EPISODE_TABLE}" WHERE ${IN_SESSIONS} ORDER BY session_id, heuristic, episode_index`;
-  for (const { sessionId, ...episode } of db.prepare(sql).all({ ids }) as ({ sessionId: string } & StoredEpisode)[]) {
+  for (const { sessionId, ...episode } of db.prepare<[object], ({ sessionId: string } & StoredEpisode)>(sql).all({ ids })) {
     contexts.get(sessionId)!.episodes.push(episode);
   }
 }

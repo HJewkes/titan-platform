@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
@@ -9,7 +10,8 @@ import { deployHeld } from "./deploy-hold-gate.js";
 import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
-import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import { restartService, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
 export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts {
@@ -91,11 +93,13 @@ const LOCKFILE = "pnpm-lock.yaml";
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
 
+const isDeployRecord = (value: unknown): value is DeployRecord => isObjectLike(value) && typeof value.outcome === "string" && typeof value.target === "string";
+
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
   try {
-    const value = JSON.parse(text) as Partial<DeployRecord> | null;
-    return typeof value?.outcome === "string" && typeof value.target === "string" ? (value as DeployRecord) : undefined;
+    const value: unknown = JSON.parse(text);
+    return isDeployRecord(value) ? value : undefined;
   } catch {
     return undefined;
   }

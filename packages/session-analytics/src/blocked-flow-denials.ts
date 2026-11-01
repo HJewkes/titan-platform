@@ -29,9 +29,13 @@ const BASH_ACTIONS: readonly (readonly [string, RegExp])[] = [
 
 const FILE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
+function commandOf(input: unknown): unknown {
+  return typeof input === "object" && input !== null && "command" in input ? input.command : undefined;
+}
+
 /** Classifies a refused call by what it did; MCP tools keep their own short name. */
 export function classifyDeniedAction(tool: string, input: unknown): string {
-  if (tool === "Bash") return bashAction(String((input as { command?: unknown } | null)?.command ?? ""));
+  if (tool === "Bash") return bashAction(String(commandOf(input) ?? ""));
   if (FILE_TOOLS.has(tool)) return "file-edit";
   if (tool.startsWith("mcp__")) return `mcp:${tool.split("__").at(-1)}`;
   return `tool:${tool}`;
@@ -73,6 +77,6 @@ export function dedupeDenials(denials: readonly DenialRecord[]): DenialRecord[] 
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  const first = (content as { type?: string; text?: string }[]).find((part) => part.type === "text");
-  return first?.text ?? "";
+  const first: unknown = content.find((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "text");
+  return typeof first === "object" && first !== null && "text" in first && typeof first.text === "string" ? first.text : "";
 }

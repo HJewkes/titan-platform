@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { loadReuseBasis } from "./incremental.js";
 import type { CodeGraphStore } from "./store.js";
@@ -22,7 +23,7 @@ function snapshot(id: number, indexVersion: string): SnapshotRow {
 }
 
 function stubStore(fx: Fixture, calls: string[] = []): CodeGraphStore {
-  return {
+  return partialFake<CodeGraphStore>({
     listSnapshots: () => fx.snapshots,
     listFingerprints: (id: number) => {
       calls.push(`fingerprints:${id}`);
@@ -40,7 +41,7 @@ function stubStore(fx: Fixture, calls: string[] = []): CodeGraphStore {
       calls.push(`metrics:${id}`);
       return fx.metrics ?? [];
     },
-  } as unknown as CodeGraphStore;
+  });
 }
 
 const FILE_A: GraphNode = { id: "a.ts", kind: "file", name: "a.ts" };
@@ -73,6 +74,43 @@ describe("loadReuseBasis", () => {
       'edges:2:{"includeReferences":true}',
       "metrics:2",
     ]);
+  });
+
+  it("prefers an older snapshot that shares more files with the tree being indexed", () => {
+    const store = stubStore({
+      snapshots: [snapshot(3, "v"), snapshot(2, "v")],
+      fingerprints: {
+        3: [{ fileId: "a.ts", contentHash: "a2" }, { fileId: "b.ts", contentHash: "b1" }],
+        2: [{ fileId: "a.ts", contentHash: "a1" }, { fileId: "b.ts", contentHash: "b1" }],
+      },
+    });
+    const current = new Map([["a.ts", "a1"], ["b.ts", "b1"]]);
+    expect(loadReuseBasis(store, "v", current)?.snapshotId).toBe(2);
+  });
+
+  it("keeps the newest snapshot when two share as many files", () => {
+    const store = stubStore({
+      snapshots: [snapshot(3, "v"), snapshot(2, "v")],
+      fingerprints: {
+        3: [{ fileId: "a.ts", contentHash: "a2" }, { fileId: "b.ts", contentHash: "b1" }],
+        2: [{ fileId: "a.ts", contentHash: "a1" }, { fileId: "b.ts", contentHash: "b2" }],
+      },
+    });
+    const current = new Map([["a.ts", "a1"], ["b.ts", "b1"]]);
+    expect(loadReuseBasis(store, "v", current)?.snapshotId).toBe(3);
+  });
+
+  it("stops looking once a snapshot matches the tree exactly", () => {
+    const calls: string[] = [];
+    const store = stubStore(
+      {
+        snapshots: [snapshot(3, "v"), snapshot(2, "v")],
+        fingerprints: { 3: [{ fileId: "a.ts", contentHash: "a1" }], 2: [{ fileId: "a.ts", contentHash: "a1" }] },
+      },
+      calls,
+    );
+    expect(loadReuseBasis(store, "v", new Map([["a.ts", "a1"]]))?.snapshotId).toBe(3);
+    expect(calls).not.toContain("fingerprints:2");
   });
 
   it("indexes fingerprints and keeps structural hashes only where present", () => {

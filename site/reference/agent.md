@@ -140,6 +140,13 @@ One `kind` per recovery strategy, so a caller can branch instead of parsing a me
 `classifyResult(resultMessage, options?)` is exported, so a product can map a result message
 it captured itself.
 
+## Launch identity and per-agent TMPDIR
+
+`withoutLaunchIdentity`, `ensureAgentTmpDir`, `removeOwnTmpDir`, `sweepAgentTmpDirs` and
+`reapOwnLaunch` mark an agent launch's processes, give the launch a private 0700 temp dir on
+Linux, and clean both up once the launch has finished. Each removal targets only the exact path
+rebuilt from a validated name and pid. The package README covers the safety rules.
+
 ## Gotchas
 
 **`result.usage` holds the SDK's client-side estimates**, priced from a bundled table. Use

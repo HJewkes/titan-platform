@@ -4,6 +4,7 @@ import type { Question } from "../../server/round-schema.js";
 import { choicesOf } from "./RoundQuestion.js";
 import { ROUND_KEYS, ROUND_KEY_GROUPS, pressed, type RoundKey } from "./round-keys.js";
 import { onControl, typedInto } from "./typed-into.js";
+import { PHONE_TAP } from "./phone.js";
 
 /** Calls `act` on each press of `binding` outside a field; `act` absent, the key is left to the browser. */
 function useRoundKey(binding: RoundKey, act: (() => void) | undefined, skip: (target: EventTarget | null) => boolean = typedInto): void {
@@ -68,7 +69,7 @@ export function RoundKeyLegend(): ReactNode {
   useRoundKey(ROUND_KEYS.legend, toggle);
   return (
     <VStack gap={2}>
-      <Button size="sm" variant="ghost" color="secondary" aria-expanded={shown} onPress={toggle} testID="round-keys-toggle"><ButtonText>Keys</ButtonText></Button>
+      <Button size="sm" variant="ghost" color="secondary" aria-expanded={shown} onPress={toggle} className={PHONE_TAP} testID="round-keys-toggle"><ButtonText>Keys</ButtonText></Button>
       {shown ? <LegendTable /> : null}
     </VStack>
   );

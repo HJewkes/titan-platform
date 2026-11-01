@@ -1,0 +1,27 @@
+{
+  "packages/session-read/src/codex-fixture.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/discover.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/fold.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/line-reader.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/recent-claude.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

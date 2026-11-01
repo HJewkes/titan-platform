@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * kill switch (TP-3802), its listener on serve (TP-3830) and the reconciler's start, for its cadence (TP-3402), may read it
  * now, with serve's bot-only reconciler start (TP-3431). A recipe or service that imports github-sources/ fails here.
  */
-const ALLOWED = ["cli.ts", "ingress/answer.ts", "ingress/listen.ts", "reconciler/service.ts", "serve-health.ts", "serve-ingress.ts", "serve-reconciler.ts", "serve.ts"];
+const ALLOWED = ["cli-types.ts", "cli.ts", "ingress/answer.ts", "ingress/listen.ts", "reconciler/service.ts", "serve-health.ts", "serve-ingress.ts", "serve-reconciler.ts", "serve.ts"];
 
 /** Test support is not a service: the A17 harness builds its feed from the mode resolver. */
 const isTestSupport = (path: string): boolean => path.startsWith("test-support/");

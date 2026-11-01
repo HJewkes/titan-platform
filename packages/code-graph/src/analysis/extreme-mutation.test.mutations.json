@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "runExtremeMutation accepts coverage measured at another commit",
+      "file": "packages/code-graph/src/analysis/extreme-mutation.ts",
+      "find": "  if (measuredAt !== head) throw new Error(",
+      "replace": "  if (measuredAt === null) throw new Error(",
+      "kills": [
+        "runExtremeMutation refuses coverage measured at another commit before running anything"
+      ]
+    }
+  ]
+}

@@ -5,8 +5,7 @@
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { BlobTooLargeError, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { statusOf } from "../required-checks.js";
-import { decodePngBounded, overPixels, type Decoded } from "./png-bounded.js";
-import { snapshotShare } from "./visual-delta.js";
+import { decodePngBounded, overPixels, snapshotShare, type Decoded } from "@titan-design/png-delta";
 
 const MI = 1024 * 1024;
 const DEFAULT_MAX_SNAPSHOTS = 80;

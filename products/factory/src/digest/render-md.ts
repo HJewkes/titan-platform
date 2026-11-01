@@ -1,6 +1,7 @@
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
+import { alarmLine, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { DEFAULT_CAPS, type RankedDigest } from "./rank.js";
 
 export const WORD_LIMIT = DEFAULT_CAPS.words;
@@ -109,7 +110,7 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...decidedLines(d, decidedShown),
     ...section(`Merged (${d.totals.merged})`, d.merged.map((m) => `- ${m.ref}: ${clip(m.title, REASON_WORDS)}`), "Nothing merged."),
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
-    ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
+    ...section("Seats (merged, spawned)", d.seats.map((s) => `- ${s.seat}: ${s.merges}, ${s.spawns}`), "No coordinator merged or spawned."),
     ...section("Spend", spend, "No pool readings."),
     ...autoPassLines(d.autoPassed),
     ...proofFixtureLines(d.proofFixtures, d.generatedAt),
@@ -120,17 +121,33 @@ function body(d: RankedDigest, decidedShown: number): string[] {
   ];
 }
 
-function document(d: RankedDigest, decidedShown: number): string {
-  const lines = [`# Owner digest ${d.slot.date} ${d.slot.hour}:00`, "", deterministicHeadline(d), "", `Since ${d.since}.`, ...body(d, decidedShown)];
+const ALARM_CUT = 3;
+const LINKS_OMITTED = "digest.consoleOrigin unset: alarm links omitted";
+
+/** The alarm line goes straight after the title so the push headline, the first three lines, carries it. */
+function alarmLines(d: RankedDigest, shown: number | undefined): string[] {
+  const alarm = gateAlarm(d.friction, d.ownerGateAlarm ?? []);
+  if (alarm === undefined) return [];
+  return [alarmLine(alarm, d.consoleOrigin === undefined ? undefined : safeConsoleOrigin(d.consoleOrigin), shown), ""];
+}
+
+function withAlarmGap(d: RankedDigest): RankedDigest {
+  const origin = d.consoleOrigin === undefined ? undefined : safeConsoleOrigin(d.consoleOrigin);
+  return origin === undefined && gateAlarm(d.friction, d.ownerGateAlarm ?? []) !== undefined ? { ...d, gaps: [...d.gaps, LINKS_OMITTED] } : d;
+}
+
+function document(d: RankedDigest, decidedShown: number, alarmShown?: number): string {
+  const lines = [`# Owner digest ${d.slot.date} ${d.slot.hour}:00`, "", ...alarmLines(d, alarmShown), deterministicHeadline(d), "", `Since ${d.since}.`, ...body(d, decidedShown)];
   const overflow = d.overflow + (d.decided?.length ?? 0) - decidedShown;
   if (overflow > 0) lines.push("", `and ${overflow} more: \`${FULL_COMMAND}\``);
   return `${lines.join("\n")}\n`;
 }
 
 /** Sections in reading order; anything a cap hid is one closing line that names the command showing it. Decisions drop from the end until the digest fits its word limit. */
-export function renderMarkdown(d: RankedDigest): string {
+export function renderMarkdown(ranked: RankedDigest): string {
+  const d = withAlarmGap(ranked);
   let shown = d.decided?.length ?? 0;
   let markdown = document(d, shown);
   while (shown > 0 && wordCount(markdown) > d.wordLimit) markdown = document(d, --shown);
-  return markdown;
+  return wordCount(markdown) > d.wordLimit ? document(d, shown, ALARM_CUT) : markdown;
 }

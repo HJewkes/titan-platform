@@ -53,5 +53,13 @@ The D-M0-06 sunset manifest lists the paths the redesign replaces:
 `products/factory/src/shepherd/**`, the burndown code and `scripts/seat/**` (the seat tooling, which may live outside this repo). Code on
 those paths is a valid home for new logic only as a carve-out tagged
 `superseded-at:<M>` (the milestone that replaces it) or `survives:<area>` (the area
-that keeps it). An untagged addition there is a review finding: put the logic in one
+that keeps it).
+
+agent-chat `src/**` is old path too, until the fold (TP-626) moves it into packages. The
+areas that survive as product are the exceptions: `src/broker`, `src/leak-guard`,
+`src/agents/seats` and `src/agents/teleport*`. An addition anywhere else in agent-chat
+`src` needs a `superseded-at:<TP-id>` tag (the fold task that replaces it, such as TP-646
+for isolation) or a `survives:<area>` tag. Without one, it is a review finding. The
+manifest's `defaults` give each area's fold task, and CI's sunset check prints a
+`defaulted:` notice for every agent-chat `src` file that only a default covers. An untagged addition there is a review finding: put the logic in one
 of the four homes above.

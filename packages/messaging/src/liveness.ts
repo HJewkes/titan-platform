@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { BlueBubblesConfig } from "./bluebubbles.js";
 import { apiUrl } from "./bluebubbles.js";
 import { isAbortError } from "./send-failure.js";
@@ -51,8 +52,8 @@ export async function fetchWithTimeout(
 }
 
 function readInfo(body: unknown): Liveness {
-  const data = (body as { data?: Record<string, unknown> } | null)?.data;
-  if (!data || typeof data !== "object") {
+  const data = isObjectLike(body) ? body.data : undefined;
+  if (!isObjectLike(data)) {
     return { state: "dark", reason: "bad-response" };
   }
   const version = data.server_version;

@@ -8,11 +8,11 @@ import type { GhGateway } from "./gh-gateway-port.js";
 import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
-import type { ReviewSlots } from "./review-slots.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 import type { VisualThreshold } from "./visual-threshold.js";
+import type { ReviewSlots } from "./ports.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -48,6 +48,8 @@ export interface ShepherdServices extends SnapshotServices {
   mergeOrder?: MergeOrderServices;
   /** `shepherd.visualThreshold` for a repo, which `shepherd visual-delta` measures under; absent means that command refuses. */
   visualThreshold?: (repo: string) => VisualThreshold | undefined;
+  /** Reads a task's title and done_when for `shepherd brief`; absent means the active-work daemon at its loopback origin. */
+  tasks?: (slug: string, id: string) => Promise<{ title: string; done_when: string }>;
 }
 
 export interface MergeOrderServices {

@@ -6,7 +6,18 @@
       "file": "products/explainer/src/spoken-numbers.ts",
       "find": "pass: beats.length === 0, beats })]",
       "replace": "pass: beats.length === 0, beats, severity: \"warning\" })]",
-      "kills": ["Q-V12 spoken digits lists a beat that holds a digit"]
+      "kills": [
+        "Q-V12 spoken digits lists a beat that holds a digit"
+      ]
+    },
+    {
+      "name": "heardForms drops the paired reading",
+      "file": "products/explainer/src/spoken-numbers.ts",
+      "find": "return [...forms, ...joined];",
+      "replace": "return [...forms];",
+      "kills": [
+        "heardForms reads a number said in pairs as one value as well as its parts"
+      ]
     }
   ]
 }

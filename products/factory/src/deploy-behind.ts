@@ -2,8 +2,7 @@ import { DIRTY_SUFFIX, UNKNOWN_BUILD_SHA } from "./build-info.js";
 import { checkoutClosure } from "./checkout-closure.js";
 import { touchedPaths } from "./deploy-closure.js";
 import { runtimeTouched } from "./deploy-range.js";
-import type { CommandResult } from "./service-control.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand, type CommandResult } from "./run-command.js";
 
 /** How far main has moved past the running build, or why git could not say. */
 export type GitBehind = { commitTimes: readonly number[] } | { unknown: string };

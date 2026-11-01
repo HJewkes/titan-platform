@@ -2,6 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { conflictCheckedGates } from "./conflict-check.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const HEAD = fakeSha("conflict-check-head");
 const PROMPT = `Merge PR #1 in octo/demo at head ${HEAD}? CI is green.`;
@@ -12,7 +13,7 @@ class Left extends Error {}
 function wrapped(decision: string, conflicting: number[]) {
   const opened: string[] = [];
   const checked: string[] = [];
-  const assisted: WorkflowContext["assisted"] = async (stepId) => (opened.push(stepId), { data: { decision, headSha: HEAD } } as unknown as StepResult);
+  const assisted: WorkflowContext["assisted"] = async (stepId) => (opened.push(stepId), partialFake<StepResult>({ data: { decision, headSha: HEAD } }));
   const conflicts = async (headSha: string) => conflicting.includes(checked.push(headSha) - 1);
   return { gate: conflictCheckedGates(assisted, conflicts, () => new Left()), opened, checked };
 }

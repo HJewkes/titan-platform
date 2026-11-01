@@ -246,6 +246,28 @@ export function numberForms(mention: string): string[] {
   return values.map((value, i) => (i === values.length - 1 ? `${value}${percent}` : value));
 }
 
+/**
+ * What a listener can hear in a mention: numberForms, plus a number said in pairs as one value as well. "five
+ * thirty-one" is 5 and 31, and also 531; an "and" between two numbers keeps them apart.
+ */
+export function heardForms(mention: string): string[] {
+  const forms = numberForms(mention);
+  if (/\band\b/i.test(mention)) return forms;
+  const joined = forms.slice(1).flatMap((form, i) => (/^[1-9]\d?$/.test(forms[i]!) && /^[1-9]\d$/.test(form) ? [`${forms[i]}${form}`] : []));
+  return [...forms, ...joined];
+}
+
+const NUMBERED_TERM = /^(?:(?:task|pr)\/\S*?[#-]|(?:PR|pull request|ticket|issue)\s+#?|#|TP-)(\d+)(?:\/\S+)?$/i;
+
+/**
+ * The ways a line can say the number a term names an item by, as in a fact id ("task/TP-4103/opened") or a handle
+ * ("PR 2319"): with an id lead the speller reads it in pairs, without one as a plain number.
+ */
+export function termSpellings(term: string): string[] {
+  const digits = NUMBERED_TERM.exec(term.trim())?.[1];
+  return digits === undefined ? [] : [digits, spellPiece(digits), readId(digits, ID_STYLE)];
+}
+
 export const hasSpokenDigits =(spoken: string): boolean => /\d/.test(spoken.replace(MARKUP, ""));
 
 /** Q-V12: a spoken line holds no digit, so the voice is not left to guess how a number is read. */

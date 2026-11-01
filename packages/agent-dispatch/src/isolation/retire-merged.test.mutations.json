@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "retires on an open PR",
+      "file": "packages/agent-dispatch/src/isolation/retire-merged.ts",
+      "find": " || state.state === \"OPEN\"",
+      "replace": "",
+      "kills": ["retireMerged reports nothing for an open PR, a failed read or a report with no PR"]
+    },
+    {
+      "name": "retires through a refused park",
+      "file": "packages/agent-dispatch/src/isolation/retire-merged.ts",
+      "find": "if (parked?.ok === false) return kept(parked.reason ?? \"park refused\");",
+      "replace": "",
+      "kills": ["retireMerged keeps the agent when the park refuses"]
+    },
+    {
+      "name": "retires without the late state check",
+      "file": "packages/agent-dispatch/src/isolation/retire-merged.ts",
+      "find": "if (late) return kept(late);",
+      "replace": "",
+      "kills": ["retireMerged keeps an agent that went live while it was parked"]
+    },
+    {
+      "name": "retires while a Shepherd hold names the agent",
+      "file": "packages/agent-dispatch/src/isolation/retire-merged.ts",
+      "find": "if (byShepherd) return byShepherd;",
+      "replace": "",
+      "kills": ["retireMerged keeps the agent for a Shepherd hold"]
+    },
+    {
+      "name": "a pass reads an answered PR again",
+      "file": "packages/agent-dispatch/src/isolation/retire-merged.ts",
+      "find": "if (held !== undefined && settled(held)) return held.state;",
+      "replace": "",
+      "kills": ["passPrReads reads one PR once however many agents name it, across passes"]
+    }
+  ]
+}

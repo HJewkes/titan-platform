@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { QaGate } from "./qa/gate-profile.js";
 import { fakeQa } from "./qa/qa-fakes.test-helpers.js";
 import { qaGateWith } from "./render/qa-gate.js";
-import { FAKE_HOST, framesOf, pngFrame, sineWav } from "./render/render-fixtures.test-helpers.js";
+import { FAKE_HOST, fitsStage, framesOf, pngFrame, sineWav } from "./render/render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render/render-manifest.js";
 import { defaultRenderDeps, renderVideo, type RenderInput } from "./render/render-video.js";
 import { runRenderCli, type RenderCliDeps } from "./render-cli.js";
@@ -55,7 +55,7 @@ function cliDeps(recorded: Recorded, during: (input: RenderInput) => Promise<voi
   const pageDir = path.join(dir, "page");
   mkdirSync(pageDir, { recursive: true });
   writeFileSync(path.join(pageDir, "index.html"), "<!doctype html>");
-  const fakeBrowser = { ...defaultRenderDeps, captureFrames: framesOf(png), host: async () => FAKE_HOST, now: () => 0, qaGate: qaGateWith(fakeQa()) };
+  const fakeBrowser = { ...defaultRenderDeps, captureFrames: framesOf(png), host: async () => FAKE_HOST, now: () => 0, qaGate: qaGateWith(fakeQa()), stageFit: fitsStage };
   return {
     page: async () => {
       recorded.pages++;

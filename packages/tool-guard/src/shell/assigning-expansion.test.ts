@@ -1,7 +1,4 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
@@ -9,6 +6,7 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const HOME = "/home/you";
 const PUSH = "git push origin HEAD:feat";
@@ -119,23 +117,23 @@ describe("an assigning expansion with an indirect, nested or protected target is
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!zsh)("zsh really turns GLOB_SUBST on through the refused forms (TP-3172)", () => {
-  function globsubstAfter(script: string): boolean {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "assign-expand-"));
-    try {
-      const result = spawnSync("zsh", ["-f", "-c", `${script}; [[ -o globsubst ]] && print on`], { cwd: dir, encoding: "utf8", input: "" });
-      return result.stdout.includes("on");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  it.each([
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("assign-expand-", (_dir, script: string) => ({
+    run: { program: "zsh", args: ["-f", "-c", `${script}; [[ -o globsubst ]] && print on`], input: "" },
+    read: (result) => result.stdout.includes("on"),
+  }));
+  const globsubstAfter = (script: string): boolean => oracle.get(script);
+  const rows = [
     ["a bare subscript", ": ${options[globsubst]::=on}"],
     ["a prefix assignment value", "x=${options[globsubst]::=on} true"],
     ["a redirect target", ": > ${options[globsubst]::=on}"],
     ["a here-string", 'n="options[globsubst]"; : <<< ${(P)n::=on}'],
     ["a nested indirect name", 'n="options[globsubst]"; : ${(P)${n}::=on}'],
-  ])("%s", (_form, script) => {
+  ];
+  for (const script of [...rows.map(([, script = ""]) => script), ": ${WGETRC:=x}"]) oracle.add(script);
+  oracle.beforeAll();
+
+  it.each(rows)("%s", (_form, script) => {
     expect(globsubstAfter(script)).toBe(true);
   });
 

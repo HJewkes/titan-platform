@@ -1,6 +1,7 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import { describe, expect, it } from "vitest";
-import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { EXIT, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { waitForPhase, type WaitOptions } from "./cli-shepherd-wait.js";
 import type { Phase } from "./shepherd/step-phase.js";
 

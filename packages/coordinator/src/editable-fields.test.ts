@@ -15,6 +15,8 @@ describe("EDITABLE_FIELDS", () => {
         ["agent-chat", "worktreeBudget", 1, 64],
         ["factory", "shepherd.spawnGate.load5", 1, 256],
         ["factory", "shepherd.spawnGate.buildLoad5", 1, 256],
+        ["factory", "shepherd.spawnGate.windowMs", 0, 3_600_000],
+        ["factory", "shepherd.spawnGate.headroomIntervalMs", 0, 3_600_000],
         ["factory", "shepherd.review.maxConcurrent", 1, 64],
       ]),
     );
@@ -79,6 +81,8 @@ describe("factory rows", () => {
     expect(live).toEqual([
       "shepherd.spawnGate.load5",
       "shepherd.spawnGate.buildLoad5",
+      "shepherd.spawnGate.windowMs",
+      "shepherd.spawnGate.headroomIntervalMs",
       "shepherd.gateReset.noReproProceed",
       "shepherd.gateReset.nonSourceNoRepro",
       "shepherd.gateReset.heldRepair",

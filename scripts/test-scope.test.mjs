@@ -30,7 +30,7 @@ describe("testScope", () => {
     expect(scope).toEqual({ mode: "scoped", dirs: ["deploy/hub/", "packages/leaf/", "scripts/"] });
   });
 
-  it.each(["pnpm-lock.yaml", "package.json", "vitest.config.ts", ".github/workflows/ci.yml", "scripts/fixtures/x.json"])(
+  it.each(["package.json", "vitest.config.ts", ".github/workflows/ci.yml", "scripts/fixtures/x.json"])(
     "runs everything when %s changes",
     (path) => {
       expect(testScope(["packages/leaf/src/a.ts", path], workspace)).toEqual({ mode: "full", reason: path });
@@ -45,11 +45,18 @@ describe("testScope", () => {
     expect(testScope(["packages/removed/src/a.ts"], workspace).mode).toBe("full");
   });
 
-  it("runs no tests for a diff of changesets, docs and lint suppressions only", () => {
-    const scope = testScope([".changeset/brave-fox.md", "site/guides/intro.md", "README.md", "eslint-suppressions.json"], workspace);
+  it("runs no tests for a diff of changesets and docs only", () => {
+    const scope = testScope([".changeset/brave-fox.md", "site/guides/intro.md", "README.md"], workspace);
 
     expect(scope).toEqual({ mode: "none" });
   });
+
+  it.each(["eslint-suppressions.json", "eslint-suppressions.typed.json", "packages/leaf/eslint-suppressions.typed.json"])(
+    "runs only the root script tests, which guard baselines, when %s changes",
+    (path) => {
+      expect(testScope([path], workspace)).toEqual({ mode: "scoped", dirs: ["scripts/"] });
+    },
+  );
 
   it.each(["CLAUDE.md", "AGENTS.md"])("runs the root script tests for %s, which the structure test reads live", (path) => {
     expect(testScope([path], workspace)).toEqual({ mode: "scoped", dirs: ["scripts/"] });
@@ -87,6 +94,19 @@ describe("scopeForEvent", () => {
     expect(scopeForEvent({ ...pr, HEAD_REF: "changeset-release/main" }, factoryDiff, fixture).mode).toBe("full");
   });
 
+  it("reads the lockfile at the PR's base and head when the diff changes it", () => {
+    const shas = [];
+    const readLock = (...args) => {
+      shas.push(args);
+      return { base: "importers: {}", head: "importers: {}" };
+    };
+
+    const scope = scopeForEvent(pr, () => ["pnpm-lock.yaml", ...factoryDiff()], fixture, readLock);
+
+    expect(shas).toEqual([[pr.BASE_SHA, pr.HEAD_SHA]]);
+    expect(scope).toEqual({ mode: "scoped", dirs: ["products/factory/", "scripts/"] });
+  });
+
   it("runs everything when the diff cannot be read", () => {
     const failing = () => {
       throw new Error("fatal: bad revision");
@@ -104,9 +124,19 @@ describe("vitestArgs", () => {
       "--project",
       "threads",
       "--project",
+      "factory",
+      "--project",
+      "explainer",
+      "--project",
+      "console",
+      "--project",
+      "isolated",
+      "--project",
       "repo",
       "--project",
       "forks",
+      "--project",
+      "perf",
       "--project",
       "active-work",
       "--project",
@@ -128,6 +158,7 @@ describe("vitestArgs", () => {
       "--reporter=default",
       "--reporter=hanging-process",
       "--reporter=./scripts/vitest-file-watchdog.mjs",
+      "--reporter=./scripts/vitest-file-timing.mjs",
     ]);
   });
 });

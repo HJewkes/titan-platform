@@ -77,7 +77,7 @@ describe("resolve stores the template fill's slots", () => {
     const { check } = filledThenChecks({ script: scriptOf(compareBeat(PAIRED, [cue("rows-5", "parcel")])) });
 
     // Assert
-    expect(check("emphasis-target")).toMatchObject({ pass: false, detail: "1 of 1 emphasis cues fail: b1#0 no-element" });
+    expect(check("emphasis-target")).toMatchObject({ pass: false, detail: expect.stringMatching(/^1 of 1 emphasis cues fail: b1#0 rows-5 no-element \(rows-5 names no element of beat spec compare\)\. Hint: point each cue at an element/) });
   });
 });
 

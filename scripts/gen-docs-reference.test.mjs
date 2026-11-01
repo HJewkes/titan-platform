@@ -1,11 +1,23 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MARKED_PAGES, collect, outputs, problems } from "./gen-docs-reference.mjs";
 
+const roots = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function tempRoot(prefix) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  roots.push(root);
+  return root;
+}
+
 function fixtureRoot() {
-  const root = mkdtempSync(join(tmpdir(), "gen-docs-reference-"));
+  const root = tempRoot("gen-docs-reference-");
   mkdirSync(join(root, ".codewatch"));
   const rule = { type: "layered-deps", $tiers: { 0: ["packages/alpha"], product: ["products/beta"] } };
   writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [rule] }));
@@ -46,7 +58,7 @@ const MARKERS = {
 const pkg = (name, deps = {}) => JSON.stringify({ name: `@titan-design/${name}`, version: "1.0.0", dependencies: deps });
 
 function siteRoot(tiers, families) {
-  const root = mkdtempSync(join(tmpdir(), "gen-docs-site-"));
+  const root = tempRoot("gen-docs-site-");
   mkdirSync(join(root, ".codewatch"));
   writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [{ type: "layered-deps", $tiers: tiers }] }));
   for (const dir of ["packages", "products", "apps", "site/reference", "site/guides", "site/.vitepress"]) {

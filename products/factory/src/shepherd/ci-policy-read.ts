@@ -2,6 +2,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { CiPolicy } from "@titan-design/session-read";
 import { statusOf } from "../required-checks.js";
 import { CI_POLICY_UNREAD_PREFIX, ciPolicyChanges, shownLine, type CiPolicyFile, type CiPolicyFileChange } from "./ci-policy-changes.js";
+import { readHeadBlobs } from "./head-blobs.js";
 
 /** Folds case and trailing dots or spaces, which some filesystems ignore, so `.GitHub.` is still `.github`. */
 export function isGithubPath(path: string): boolean {
@@ -46,15 +47,25 @@ interface ClosedRead {
   unread: (string | undefined)[];
 }
 
-/** The facts read closed so far, joined by the D21 file reads; only a weakened line reads files, and only it yields D21 lines. */
-export async function withCiPolicyRead(
-  port: GitHubPort,
-  input: { repo: RepoSlug; head: string; ciPolicy?: CiPolicy },
-  { baseRef, paths, unread }: ClosedRead,
-): Promise<{ unreadFacts?: string[]; ciPolicyChanges?: CiPolicyFileChange[] }> {
-  const weakened = input.ciPolicy?.kind === "weakened";
+interface CiPolicyRead {
+  unreadFacts?: string[];
+  ciPolicyChanges?: CiPolicyFileChange[];
+  headBlobs?: Record<string, string | null>;
+}
+
+/**
+ * The facts read closed so far, joined by the D21 file reads and the head blob of every changed path, which a CI-policy
+ * plan approval is checked against; only a weakened line reads files, and only it yields D21 lines and head blobs.
+ */
+export async function withCiPolicyRead(port: GitHubPort, input: { repo: RepoSlug; head: string; ciPolicy?: CiPolicy }, { baseRef, paths, unread }: ClosedRead): Promise<CiPolicyRead> {
+  if (input.ciPolicy?.kind !== "weakened") return closedFacts(unread);
   const refs = { repo: input.repo, base: baseRef, head: input.head };
-  const policy: { changes?: CiPolicyFileChange[]; unread: string[] } = weakened ? await readCiPolicyChanges(port, refs, paths.filter(isGithubPath)) : { unread: [] };
-  const unreadFacts = [...unread, ...policy.unread].filter((fact) => fact !== undefined);
-  return { ...(unreadFacts.length > 0 && { unreadFacts }), ...(policy.changes && { ciPolicyChanges: policy.changes }) };
+  const [policy, blobs] = await Promise.all([readCiPolicyChanges(port, refs, paths.filter(isGithubPath)), readHeadBlobs(port, input, paths)]);
+  const blobsUnread = "unread" in blobs ? blobs.unread : undefined;
+  return { ...closedFacts([...unread, ...policy.unread, blobsUnread]), ciPolicyChanges: policy.changes, ...("headBlobs" in blobs && { headBlobs: blobs.headBlobs }) };
+}
+
+function closedFacts(unread: readonly (string | undefined)[]): Pick<CiPolicyRead, "unreadFacts"> {
+  const unreadFacts = unread.filter((fact) => fact !== undefined);
+  return unreadFacts.length > 0 ? { unreadFacts } : {};
 }

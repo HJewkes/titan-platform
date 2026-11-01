@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { isRecord, isStringArray } from "./guards.js";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
+import { isStringArray } from "./guards.js";
 
 /** One provider entry. `kind` picks the registry factory; the factory validates the rest. */
 export type TtsProviderConfig = { kind: string } & Readonly<Record<string, unknown>>;

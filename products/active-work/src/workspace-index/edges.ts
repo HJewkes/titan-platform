@@ -142,7 +142,7 @@ const OWNED_REFS = `
 
 /** `initiative:<slug> holds <ref>` — free, from the path, and it makes "which initiatives touch this" answerable. */
 function wantedHolds(graph: WorkspaceGraph): DerivedEdge[] {
-  const rows = graph.db.prepare(OWNED_REFS).all() as Owned[];
+  const rows = graph.db.prepare<[], Owned>(OWNED_REFS).all();
   return rows.map((row) => ({
     sourceRef: initiativeRef(row.initiative),
     relation: RELATIONS.HOLDS,
@@ -163,7 +163,11 @@ function wantedMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): Der
   for (const note of notes) {
     for (const target of extractMentions(note.body, note.initiative, index)) {
       if (target === note.ref) continue;
-      edges.push({ sourceRef: note.ref, relation: RELATIONS.MENTIONS, targetRef: target });
+      edges.push({
+        sourceRef: note.ref,
+        relation: RELATIONS.MENTIONS,
+        targetRef: target,
+      });
     }
   }
   return edges;
@@ -171,7 +175,10 @@ function wantedMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): Der
 
 function buildRefIndex(graph: WorkspaceGraph): RefIndex {
   const column = (sql: string): string[] =>
-    (graph.db.prepare(sql).all() as { value: string }[]).map((row) => row.value);
+    graph.db
+      .prepare<[], { value: string }>(sql)
+      .all()
+      .map((row) => row.value);
   return {
     taskIds: new Set(column('SELECT DISTINCT task_id AS value FROM workspace_task')),
     sessionIds: new Set(column('SELECT DISTINCT session_id AS value FROM session_record')),

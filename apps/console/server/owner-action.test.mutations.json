@@ -31,8 +31,8 @@
     {
       "name": "an already with only the cleared pause reads as unreachable",
       "file": "apps/console/server/owner-action.ts",
-      "find": "(gateId || runId || closedHead || clearedPause)",
-      "replace": "(gateId || runId || closedHead)",
+      "find": "if (outcome === \"already\" && (gateId || runId || name || closedHead || clearedPause || task))",
+      "replace": "if (outcome === \"already\" && (gateId || runId || name || closedHead || task))",
       "kills": [
         "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
       ]
@@ -40,8 +40,8 @@
     {
       "name": "a moved drops the newer pause it names",
       "file": "apps/console/server/owner-action.ts",
-      "find": "currentHead: body.currentHead ?? null, ...(body.currentPause !== undefined && { currentPause: body.currentPause }) };",
-      "replace": "currentHead: body.currentHead ?? null };",
+      "find": "  ...(currentPause !== undefined && { currentPause }),\n",
+      "replace": "",
       "kills": [
         "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
       ]

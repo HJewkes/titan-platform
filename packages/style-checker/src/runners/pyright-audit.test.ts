@@ -66,6 +66,17 @@ describe("runPyrightAudit", () => {
     expect(result.failures[0]!.message.split("; ")).toHaveLength(7);
   });
 
+  it("keeps the other diagnostics when a rule-less error has no range", async () => {
+    const rangeless = { file: join(PROJECT, "broken.py"), severity: "error", message: "Unexpected token" };
+    const cast = { ...missingImport(join(PROJECT, "pkg/core.py")), rule: "reportUnnecessaryCast" };
+    replay(bin, "pyright", { stdout: JSON.stringify({ generalDiagnostics: [rangeless, cast] }), exitCode: 1 });
+
+    const result = await runPyrightAudit(["pkg", "broken.py"], { cwd: PROJECT });
+
+    expect(result.diagnostics.map((d) => d.rule)).toEqual(["pyright/reportUnnecessaryCast"]);
+    expect(result.failures).toEqual([expect.objectContaining({ kind: "file-not-checked", file: "broken.py" })]);
+  });
+
   it("drops diagnostics from rules outside the audit set", async () => {
     const stdout = JSON.stringify({ generalDiagnostics: [missingImport(join(PROJECT, "pkg/helpers.py"))] });
     replay(bin, "pyright", { stdout, exitCode: 0 });

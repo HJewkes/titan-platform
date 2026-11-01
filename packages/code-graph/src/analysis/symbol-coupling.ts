@@ -165,7 +165,8 @@ function finalizePairs(
   const out: SymbolCouplingPair[] = [];
   for (const [key, coImports] of counts) {
     if (coImports < minCoImports) continue;
-    const [aId, bId] = key.split("\t") as [string, string];
+    const [aId, bId] = key.split("\t");
+    if (aId === undefined || bId === undefined) continue;
     const a = parseSymbolId(aId)!;
     const b = parseSymbolId(bId)!;
     out.push({

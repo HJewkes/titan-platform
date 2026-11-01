@@ -88,11 +88,13 @@ The `@titan-design/evidence/stats` subpath scores pass rates and paired comparis
 over-confident at that size.
 
 ```ts
-import { betaBinomialInterval, mcnemar, minimumDetectableEffect, pairedBootstrap, wilson } from "@titan-design/evidence/stats";
+import { aucInterval, betaBinomialInterval, mcnemar, minimumDetectableEffect, pairedBootstrap, rocAuc, wilson } from "@titan-design/evidence/stats";
 
 wilson(7, 10);                       // { estimate: 0.7, lower: 0.397, upper: 0.892 }
 betaBinomialInterval(7, 10);         // Jeffreys prior: { estimate: 0.7, lower: 0.394, upper: 0.907 }
 pairedBootstrap(challenger, champion, { seed: runId }); // interval on mean(challenger[i] - champion[i]); a challenger win reads above 0
+rocAuc(flagged, clean);              // 0.5 is chance, 1 is perfect; a tied pair counts half
+aucInterval(flagged, clean, { seed: runId }); // stratified percentile bootstrap on rocAuc
 mcnemar(2, 10);                      // { method: "exact", statistic: 2, pValue: 0.0386 }
 minimumDetectableEffect({ n: 30, sd: 0.5 }); // 0.256
 ```
@@ -103,6 +105,9 @@ minimumDetectableEffect({ n: 30, sd: 0.5 }); // 0.256
   default. Pass one value per case, so trials of one case are never resampled as if they
   were independent. They draw from `seededRandom`, and the seed defaults to 0, so every
   call is reproducible.
+- `rocAuc` is the Mann-Whitney probability that a positive score outranks a negative one. `aucInterval`
+  resamples the two groups separately; pass `clusters` (one key per score, per group) to resample whole
+  clusters, so correlated texts are not counted as independent.
 - `mcnemar` takes the discordant counts (A passed and B failed, then the reverse). Below
   25 discordant pairs it runs the exact binomial test; from 25 it runs the
   continuity-corrected chi-square. Force either with `method`.

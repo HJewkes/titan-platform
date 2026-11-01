@@ -90,7 +90,7 @@ export function chartIntegrityVerdict(input: CheckInput): { pass: boolean; detai
  */
 export const colourOnlySeries = (ref: string, frame: ChartFrame): boolean => ref === "replot" && seriesCount(ref, frame) > 1 && frame.legend === true;
 
-/** The reported `colour-only-series` lint over the fill the resolve body ran. */
+/** The `colour-only-series` lint over the fill the resolve body ran; it gates resolve under `CONTRAST_GATE`. */
 export function colourOnlySeriesVerdict(input: CheckInput): { pass: boolean; detail: string } {
   const filled = fillAtResolve(input);
   if (filled instanceof FillError) throw new Error("the template fill refused; the template-fill gate names the beats");

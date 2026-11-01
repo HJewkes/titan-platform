@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { LaunchPlan, SurfaceName } from '../types.js'
+import type { LaunchPlan } from '../types.js'
 import type { Launcher } from './command.js'
 import { surfaceFor } from './index.js'
 import { SurfaceRefused, type SurfaceOptions } from './options.js'
@@ -127,9 +127,9 @@ describe('an unknown surface name', () => {
     }
 
     for (const name of ['bogus', 'tmux-pane']) {
-      expect(() => surfaceFor(name as SurfaceName, LAUNCHER, { platform: 'darwin', runAppleScript })).toThrow(
-        SurfaceRefused,
-      )
+      expect(() =>
+        Reflect.apply(surfaceFor, undefined, [name, LAUNCHER, { platform: 'darwin', runAppleScript }]),
+      ).toThrow(SurfaceRefused)
     }
     expect(scripts).toEqual([])
   })

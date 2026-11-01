@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator } from "./allocator.js";
 import { RECLAIM_GRACE_MS } from "./options.js";
@@ -13,8 +14,6 @@ import {
   type SweepOptions,
   type SweepOwner,
 } from "./sweep.js";
-import { seedRepo } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
 vi.setConfig({ testTimeout: 20_000 });
@@ -46,7 +45,9 @@ function makeRepo(): string {
 /** An agent that allocated a worktree and left its allocation record behind. */
 async function abandonedWorktree(repo: string, name = "scout"): Promise<string> {
   const { cwd, ref } = await worktreeStrategy.allocate({ agentName: name, baseCwd: repo });
-  held.push({ gitRoot: repo, branch: ref.branch as string, ...(ref.base ? { base: ref.base } : {}) });
+  const { branch } = ref;
+  if (branch === undefined) throw new Error("allocation has no branch");
+  held.push({ gitRoot: repo, branch, ...(ref.base ? { base: ref.base } : {}) });
   return cwd;
 }
 

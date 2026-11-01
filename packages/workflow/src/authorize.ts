@@ -1,7 +1,8 @@
-import { DEFAULT_TABLE, canResolve, evaluate, type ActorClass, type Decision, type PolicyTable } from "@titan-design/authority";
+import { ACTOR_CLASSES, DEFAULT_TABLE, canResolve, evaluate, type ActorClass, type Decision, type PolicyTable } from "@titan-design/authority";
 import { policyGateId } from "@titan-design/agent-protocol/trace";
 import { nowIso } from "@titan-design/store-sqlite";
 import { waitForGate, type GateInput, type GateRecord, type GateResolver, type GateRule, type GateStore, type JsonSchema, type WaitOptions } from "@titan-design/hitl";
+import { z } from "zod";
 import { briefFields } from "./gate-brief.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import { AuthorityDeniedError, AuthorityRefusedError, workflowStepRequestKey, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
@@ -28,6 +29,23 @@ export type AuthorityOutcome =
   | { verdict: "deny"; ruleId: string | null; reason: string }
   | { verdict: "approved"; ruleId: string; gateId: string; resolvedBy: GateResolver }
   | { verdict: "refused"; ruleId: string; gateId: string; reason: string };
+
+const outcomeSchema = z.discriminatedUnion("verdict", [
+  z.object({ verdict: z.literal("allow"), ruleId: z.string() }),
+  z.object({ verdict: z.literal("deny"), ruleId: z.string().nullable(), reason: z.string() }),
+  z.object({
+    verdict: z.literal("approved"),
+    ruleId: z.string(),
+    gateId: z.string(),
+    resolvedBy: z.object({ class: z.enum(ACTOR_CLASSES), id: z.string(), channel: z.string(), confirmEvent: z.string().optional() }),
+  }),
+  z.object({ verdict: z.literal("refused"), ruleId: z.string(), gateId: z.string(), reason: z.string() }),
+]);
+
+/** Reads back what `authorityStepResult` stored, so a replayed step answers from the record and never from a guess about its shape. */
+export function recordedOutcome(data: Record<string, unknown> | undefined): AuthorityOutcome {
+  return outcomeSchema.parse(data);
+}
 
 type GateDecision = Extract<Decision, { verdict: "gate" }>;
 

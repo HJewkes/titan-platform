@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the frame word row",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "frameWordsCheck, labelEchoCheck",
+      "replace": "labelEchoCheck",
+      "kills": [
+        "Q-D15 words on screen, as qa counts them a beat over 20 on-screen words fails"
+      ]
+    }
+  ]
+}

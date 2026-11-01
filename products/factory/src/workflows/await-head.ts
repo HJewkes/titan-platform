@@ -8,6 +8,7 @@ import { codeRoute, sleep } from "./land.js";
 import { requiredChecksPass } from "./land-ci.js";
 import { portReads, type PrReads, type PrSnapshot } from "./pr-snapshot.js";
 import { headPoll, type PushWatch } from "../shepherd/push-signal.js";
+import { errorStatus } from "../narrow.js";
 
 /** The snapshot's pending cadence: an unchanged head's checks are read no more often than a pending head's in the snapshot. */
 export const CHECKS_RECHECK_MS = 3 * 60_000;
@@ -26,6 +27,8 @@ export interface AwaitHeadTarget {
   untilGreen?: boolean;
   /** The red check names the wait was entered with; with an `inheritedRed` hook, a red the base turns out to own also ends the wait. */
   failing?: string[];
+  /** The run has made its main-fixed merge-ups, so the `inheritedRed` hook weighs the red as the run's own hold would. */
+  mainFixedSpent?: boolean;
 }
 
 /**
@@ -57,7 +60,7 @@ const FATAL_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
 
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a non-Error rejection has none and is transient. */
 function fatalStatus(error: unknown): number | undefined {
-  const status = error instanceof Error ? (error as { status?: unknown }).status : undefined;
+  const status = error instanceof Error ? errorStatus(error) : undefined;
   return typeof status === "number" && FATAL_STATUSES.has(status) ? status : undefined;
 }
 

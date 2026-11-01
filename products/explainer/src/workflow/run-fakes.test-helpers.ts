@@ -1,18 +1,22 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
+import { plainText } from "@titan-design/speech-vet";
 import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-design/workflow";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
+import { emphasisTargets, loadBeatSpecs } from "../beat-load.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import { loadProfiles } from "../profile-load.js";
 import { beatsFor } from "../script-budget.js";
+import { draftFill } from "../script-fill.js";
 import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
+import { FillError } from "../template-fill/fill.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
-import type { RunHost } from "./host.js";
+import { runVideo, type RunHost, type RunOutcome, type RunRequest } from "./host.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
 import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
@@ -128,6 +132,21 @@ function withLeadChapters(script: ScriptV1, ids: readonly string[]): ScriptV1 {
   return { ...script, chapters, beats: script.beats.map((beat) => ({ ...beat, chapter: renamed.get(beat.chapter)! })) };
 }
 
+/**
+ * The lead beats cued again as a model answering the template-fill hint would: a beat that falls back cues the first
+ * element of the kind it draws instead.
+ */
+function onDrawnElements(script: ScriptV1, leads: ReadonlySet<string>): ScriptV1 {
+  const filled = draftFill(script);
+  if (filled instanceof FillError) return script;
+  const specs = loadBeatSpecs();
+  const first = new Map(filled.beats.filter((beat) => beat.fallback && leads.has(beat.id)).map((beat) => [beat.id, emphasisTargets(specs.get(beat.spec)!, beat.slots)[0]]));
+  return { ...script, beats: script.beats.map((beat) => {
+    const target = first.get(beat.id);
+    return target === undefined ? beat : { ...beat, visual: { ...beat.visual, cues: beat.visual.cues.slice(0, 1).map((cue) => ({ ...cue, target })) } };
+  }) };
+}
+
 /** `script` with each lead beat the prompt lists on its chapter's first beat, cued once per target on a word it speaks. */
 function withLeadBeats(written: ScriptV1, prompt: string): ScriptV1 {
   const leads = new Map([...prompt.matchAll(LEAD_LINE)].map(([, chapter, spec, targets]) => [chapter!, { spec: spec!, targets: targets!.split(", ") }]));
@@ -139,7 +158,8 @@ function withLeadBeats(written: ScriptV1, prompt: string): ScriptV1 {
     const cues = lead.targets.map((target) => ({ action: "V6" as const, target: `${target}-1`, atCue: word }));
     return { ...beat, visual: { ...beat.visual, beat: lead.spec, cues } };
   });
-  return { ...script, beats };
+  const leadIds = new Set(beats.filter((beat, i) => beat !== script.beats[i]).map((beat) => beat.id));
+  return onDrawnElements({ ...script, beats }, leadIds);
 }
 
 const PROMPT_RUNTIME = /plannedS sum to about (\d+) s/;
@@ -227,7 +247,8 @@ export function fakeVoice(options: { dropWord?: string } = {}): FakeVoice {
     id: "fake-voice",
     capabilities: { phonemeInput: [], wordTimestamps: true, speedControl: true, voices: [], languages: ["en-US"], sampleRate: FAKE_RATE },
     synthesize: async (input, _voice, synthesis) => {
-      const words = ("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
+      // Like Kokoro's g2p, it hears a `[w](=reading)` declaration as its word.
+      const words = plainText("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
       const unknown = words.map((word, index) => ({ word, index })).filter((w) => w.word === options.dropWord);
       if (unknown.length > 0) throw new TtsUnknownWordsError("fake-voice", unknown);
       spoken.push(words.join(" "));
@@ -249,7 +270,7 @@ export function spokenOf(fx: Fixture, sha: string): string {
 }
 
 /** The fixture's beats run 16-18 s with no cues, so the DIRECTION timing gates would stop every run at qa; these never fire. */
-const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
+export const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
 
 export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
   const rewriter = extra.rewriter ?? fakeRewriter();
@@ -259,6 +280,66 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
   const media = { media: fakeMedia(), qaEngine: fakeQa(), qaTiming: LAX_TIMING };
-  const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null };
+  // Nor a layer text check: the default renders each layer in Chromium.
+  const layers = { beatWorker: null, layerTextCheck: null };
+  const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, ...layers };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
+}
+
+interface SeededRun {
+  /** The seed's own fixture: read it, never run in it; `cloneFixture` gives a test its own copy. */
+  fx: Fixture;
+  model: FakeScriptModel;
+  render: FakeRender;
+  host: RunHost & Fakes;
+  result: RunOutcome;
+}
+
+const seeds = new Map<string, Promise<SeededRun>>();
+
+/**
+ * One run on the default fakes per `request`, made on first call and shared by every later call in the test file, so
+ * tests that only read a default run, or start from one, skip the pipeline. A test that asserts first-run cache misses
+ * makes its own run.
+ */
+export function seededRun(request: Omit<RunRequest, "spine" | "facts"> = {}): Promise<SeededRun> {
+  const key = JSON.stringify(request);
+  let seed = seeds.get(key);
+  if (!seed) {
+    seed = seedRun(request);
+    seeds.set(key, seed);
+  }
+  return seed;
+}
+
+async function seedRun(request: Omit<RunRequest, "spine" | "facts">): Promise<SeededRun> {
+  const fx = fixture();
+  const model = fakeScriptModel();
+  const render = fakeRender();
+  const host = fakeHost(fx, model, render);
+  const result = await runVideo({ spine: fx.spine, facts: fx.facts, ...request }, host);
+  return { fx, model, render, host, result };
+}
+
+/** Removes every seed's fixture; a file that seeds calls it in `afterAll`. */
+export async function dropSeeds(): Promise<void> {
+  const all = await Promise.all(seeds.values());
+  seeds.clear();
+  for (const seed of all) seed.fx.cleanup();
+}
+
+/**
+ * A copy of the seed's fixture with its data dir, sqlite state and artifacts, mtimes kept so cache freshness reads
+ * the same, and its bridge pointed at the copy's own theater.
+ */
+export function cloneFixture(seed: Pick<SeededRun, "fx">): Fixture {
+  const from = path.dirname(seed.fx.dataDir);
+  const root = mkdtempSync(path.join(tmpdir(), "explainer-run-"));
+  cpSync(from, root, { recursive: true, preserveTimestamps: true });
+  const at = (file: string) => path.join(root, path.relative(from, file));
+  const fx = { dataDir: at(seed.fx.dataDir), page: at(seed.fx.page), theater: at(seed.fx.theater), spine: at(seed.fx.spine), facts: at(seed.fx.facts) };
+  const bridgeFile = path.join(fx.dataDir, "bridge.json");
+  const bridge = JSON.parse(readFileSync(bridgeFile, "utf8"));
+  writeFileSync(bridgeFile, JSON.stringify({ ...bridge, theater: { ...bridge.theater, dir: fx.theater } }));
+  return { ...fx, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }

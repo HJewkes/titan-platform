@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { QaGate } from "../qa/gate-profile.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 import { qaGateWith, QaRefused, type RenderQaGate } from "./qa-gate.js";
-import { FAKE_HOST, framesOf, pngFrame, timelineOf } from "./render-fixtures.test-helpers.js";
+import { FAKE_HOST, fitsStage, framesOf, pngFrame, timelineOf } from "./render-fixtures.test-helpers.js";
 import { defaultRenderDeps, renderVideo, type RenderDeps, type RenderInput } from "./render-video.js";
 
 const GATE: QaGate = { sha: "d".repeat(64), gate: ["text-overlap"], inspect: {} };
@@ -31,7 +31,7 @@ function deps(qa = fakeQa()): RenderDeps {
     return gate(...args);
   };
   return {
-    ...defaultRenderDeps, host: async () => FAKE_HOST, now: () => 0, qaGate: counted,
+    ...defaultRenderDeps, host: async () => FAKE_HOST, now: () => 0, qaGate: counted, stageFit: fitsStage,
     captureFrames: (options, sink) => {
       captures += 1;
       return frames(options, sink);

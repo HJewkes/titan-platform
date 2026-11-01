@@ -61,7 +61,7 @@ function stateFromOAuth(oauth: OAuth, now: number): LoginState {
 function readOAuthField(credentials: unknown): unknown {
   if (typeof credentials !== "object" || credentials === null) return undefined;
   if (!Object.hasOwn(credentials, "claudeAiOauth")) return undefined;
-  return (credentials as Record<string, unknown>).claudeAiOauth;
+  return Reflect.get(credentials, "claudeAiOauth");
 }
 
 function assertFiniteNow(now: number): void {

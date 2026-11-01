@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a writer gives up at once on a held initiative lock",
+      "file": "products/active-work/src/utils/fs-atomic.ts",
+      "find": "        retries: Math.ceil(timeoutMs / RETRY_MIN_MS),\n",
+      "replace": "        retries: 0,\n",
+      "kills": [
+        "task edit under concurrent writers keeps every --append line when 12 processes queue behind a held lock"
+      ]
+    }
+  ]
+}

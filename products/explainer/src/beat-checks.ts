@@ -35,7 +35,7 @@ function emphasis({ type, slots: ref, emphasis: contract }: BeatSpec): BeatIssue
   if (!contract || !isSlotRef(ref)) return [];
   return contract.targets
     .filter((field) => !isTargetField(ref, field))
-    .map((field) => issue("emphasis-target", type, `emphasis target ${field} is not a list of elements with ids in slots ${ref}`));
+    .map((field) => issue("emphasis-target", type, `emphasis target ${field} is not a list of elements with ids, or one line of text, in slots ${ref}`));
 }
 
 const BEAT_CHECKS: BeatCheck[] = [named, slots, duration, recipe, emphasis];

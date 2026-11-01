@@ -23,6 +23,13 @@ const ResultSchema = z.object({
   sessions: z.array(SessionEntrySchema),
 });
 
+/** Transcript lines carry many more keys; only the ones read here are checked. */
+const CwdLineSchema = z.looseObject({ cwd: z.string().min(1) });
+const UserLineSchema = z.looseObject({
+  type: z.literal('user'),
+  message: z.looseObject({ content: z.unknown() }),
+});
+
 type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
 type SessionEntry = z.infer<typeof SessionEntrySchema>;
@@ -90,11 +97,8 @@ async function lightScanCwd(filePath: string): Promise<string | null> {
     for await (const line of rl) {
       if (!line.includes('"cwd"')) continue;
       try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        const cwd = parsed.cwd;
-        if (typeof cwd === 'string' && cwd.length > 0) {
-          return cwd;
-        }
+        const parsed = CwdLineSchema.safeParse(JSON.parse(line));
+        if (parsed.success) return parsed.data.cwd;
       } catch {
         // ignore malformed line; keep scanning
       }
@@ -137,11 +141,9 @@ function isPathPrefix(parent: string, child: string): boolean {
 
 function extractFirstUserText(line: string): string | null {
   try {
-    const parsed = JSON.parse(line) as Record<string, unknown>;
-    if (parsed.type !== 'user') return null;
-    const message = parsed.message as Record<string, unknown> | undefined;
-    if (!message) return null;
-    const content = message.content;
+    const parsed = UserLineSchema.safeParse(JSON.parse(line));
+    if (!parsed.success) return null;
+    const content = parsed.data.message.content;
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
       for (const part of content) {

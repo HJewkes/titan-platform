@@ -9,7 +9,7 @@ const HEAD = "a".repeat(40);
 
 function run(id: string, steps: Record<string, Record<string, unknown>>, at = T0): WorkflowRun {
   const stepResults = Object.fromEntries(Object.entries(steps).map(([key, data]) => [key, { stepId: key, iteration: 0, agentId: null, signal: null, completedAt: iso(at), data: { result: data } }]));
-  return { id, workflowName: "shepherd-pr", params: { repo: REPO }, status: "completed", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: iso(T0), completedAt: null, error: null } as WorkflowRun;
+  return { id, workflowName: "shepherd-pr", params: { repo: REPO }, status: "completed", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: iso(T0), completedAt: null, error: null };
 }
 
 const merge = { kind: "verdict", verdict: "MERGE" };

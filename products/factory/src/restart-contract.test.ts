@@ -3,8 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
-import { afterAll, describe, expect, it } from "vitest";
-import { dispatchStepIds, orphanSafe } from "./definition.js";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { DROPPED_STEPS, PARKING_STEPS } from "./restart-contract.fixture.js";
+import { defineWorkflow, dispatchStepIds } from "./definition.js";
+import { openFactoryHost } from "./host.js";
+import { entryFor } from "./registry/registry.js";
+import { auditSteps } from "./registry/steps/audit.js";
+import { buildSurfaceSteps } from "./registry/steps/build-surface.js";
+import { coreSteps } from "./registry/steps/core.js";
+import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
 import { configuredRoutes, factoryWorkflows } from "./workflows.js";
 
 /**
@@ -13,113 +20,16 @@ import { configuredRoutes, factoryWorkflows } from "./workflows.js";
  */
 const PARK_ROUTES_WITHOUT_RECONCILE: Readonly<Record<string, string>> = {};
 
-const WRITE = "writes outside the run";
-const RECORD = "records a fact a replay must read back, never recompute";
-const READ = "read or wait whose result chose the branch taken; not yet reviewed for orphanSafe";
-
 /**
  * Dispatch steps a replay that diverged before reaching them parks rather than drops. Dropping the orphan of a write
  * loses the record that the write happened; dropping a recorded fact lets a replay decide again on moved state.
+ * The registry holds the classification; this is its non-read dispatch entries, until the list is deleted at D-M3-19.
  */
-const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
-  "update-branch": `${WRITE}: updates the PR branch on GitHub`,
-  "update-backoff": `${READ}: a sleep between update tries`,
-  "base-wait": `${READ}: waits for the PR's base to be retargeted`,
-  merge: `${WRITE}: merges the PR on GitHub`,
-  "merge-policy": `${RECORD}: the merge policy in force at the merge`,
-  "merge-settle": `${READ}: waits for the merge to settle`,
-  "await-new-head": `${READ}: waits for a push to the PR head`,
-  "post-merge": `${WRITE}: runs the configured post-merge chore`,
-  snapshot: `${READ}: the PR snapshot the run branched on`,
-  rerun: `${WRITE}: re-runs failed CI jobs on GitHub`,
-  "ci-orphan-rerun": `${WRITE}: re-runs a CI job left open under a completed workflow run`,
-  "sh-await-pr": `${READ}: waits for the registered PR to exist`,
-  "sh-policy": `${RECORD}: the policy the run was registered with`,
-  "sh-train-leave": `${WRITE}: takes the run out of the merge train`,
-  "sh-order-reserve": `${WRITE}: reserves a conflicted PR's paths in the merge order`,
-  "sh-order-wait": `${WRITE}: leaves the merge train, then waits for the PRs merging ahead of the reservation`,
-  "sh-order-unreserve": `${WRITE}: deletes the run's merge-order reservation`,
-  "sh-order-expire": `${WRITE}: deletes the run's reservation past its TTL and logs order-expired, once`,
-  "sh-wake-implementer": `${WRITE}: messages the implementer agent`,
-  "sh-await-new-head": `${READ}: waits for the implementer's new head`,
-  "sh-wake-fix-first": `${RECORD}: counts FIX_FIRST rounds`,
-  "sh-repair": `${RECORD}: counts fixer wakes against the repair budget`,
-  "sh-wake-fix-proof": `${RECORD}: counts fix-proof wakes against the bounce cap`,
-  "sh-flake-check": `${READ}: whether failures fall outside the diff`,
-  "sh-exit-notice": `${WRITE}: sends the exit notice`,
-  "sh-auto-pass": `${WRITE}: posts the audit comment for an owner gate a demotion rule passed`,
-  "sh-park": `${WRITE}: parks the implementer's worktree`,
-  "sh-fix-proof": `${READ}: waits for the fixer's proof`,
-  "sh-review-intent": `${WRITE}: posts the review intent through the broker`,
-  "sh-review": `${WRITE}: dispatches a reviewer agent`,
-  "sh-await-verdict": `${RECORD}: the reviewer's verdict at a head`,
-  "sh-late-verdict": `${RECORD}: a timed-out reviewer's verdict read once more`,
-  "sh-correct-verdict": `${RECORD}: a corrected verdict`,
-  "sh-seat-recheck": `${RECORD}: the seat check over a held MERGE`,
-  "sh-merge-evidence": `${RECORD}: the merge evidence the merge relied on`,
-  "sh-carry": `${RECORD}: a verdict carried across an unchanged tree`,
-  "sh-publish-review": `${WRITE}: publishes the review check on GitHub`,
-  "sh-account-hold": `${WRITE}: holds the run for account headroom`,
-  "sh-account-wait": `${READ}: waits for account headroom`,
-  "sh-review-request": `${READ}: whether Shepherd's own review was asked for`,
-  "sh-review-stop": `${READ}: whether the review was stopped`,
-  "sh-review-panel": `${RECORD}: the panel's aggregate verdict`,
-  "sh-fix-proof-waive": `${WRITE}: stores the owner's fix-proof waiver for a head`,
-  "sh-fix-proof-waived": `${RECORD}: whether the owner waived a head's fix-proof`,
-  "sh-no-reviewer-hold": `${WRITE}: holds the run and alerts when no reviewer is wired`,
-  "sh-no-reviewer-wait": `${READ}: waits for the no-reviewer hold to release`,
-  "sh-no-verdict-diagnosis": `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`,
-  "sh-carry-scope": `${RECORD}: the scope an approval carried over`,
-  "sh-carry-seat": `${RECORD}: the seat an approval carried under`,
-  "sh-review-scope": `${RECORD}: the fix diff a fix-round re-review may read as scoped`,
-  "sh-scope-check": `${RECORD}: a scoped fix round's out-of-range and repeated FIX_FIRST items`,
-  "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,
-  "sh-approval-carry:fix": `${RECORD}: an approval carried across a small fix`,
-  "sh-approval-carry:own": `${RECORD}: an approval carried across an own merge-up`,
-  "sh-approval-carry:set": `${RECORD}: a visual approval carried by the owner's accepted set`,
-  "sh-approval-carry": `${RECORD}: an approve-merge answer that followed the head`,
-  "sh-merge-up": `${RECORD}: a MERGE carried across a clean merge-up`,
-  "sh-release-preflight": `${READ}: the release's registry preflight`,
-  "sh-release-follow": `${READ}: waits for the release's versions to publish`,
-  "sh-main-ci": `${READ}: waits for main's CI after the merge`,
-  "sh-stack-children": `${RECORD}: the stacked children listed after the parent landed`,
-  "sh-restack": `${WRITE}: pushes a child's restack and retargets its base`,
-  "sh-redeploy": `${WRITE}: starts a service deploy`,
-  "sh-unfreeze": `${WRITE}: releases the repo freeze`,
-  "sh-freeze": `${WRITE}: freezes the repo on a red main`,
-  "sh-file-fix-task": `${WRITE}: files the fix task`,
-  "sh-main-rerun": `${WRITE}: reruns main's failed jobs once and may thaw`,
-  "sh-spawn-fixer": `${WRITE}: spawns the fixer agent`,
-  "sh-thaw": `${WRITE}: releases the freeze for the owner`,
-  "sh-cleanup": `${WRITE}: deletes the head ref and closes the task`,
-  "sh-landed": `${RECORD}: the run's landed outcome`,
-  "sh-stopped": `${RECORD}: the run's stopped outcome`,
-  "sh-override": `${RECORD}: the owner's override and when it was taken`,
-  "sh-conflict-check": `${READ}: whether the PR is mergeable`,
-  "sh-conflict-base": `${RECORD}: the base sha at a conflict and whether the head merged the last one`,
-  "sh-freeze-hold": `${WRITE}: holds the run behind a freeze`,
-  "sh-freeze-wait": `${READ}: waits for the freeze to thaw`,
-  "sh-base-wait": `${READ}: waits for the base to move`,
-  "sh-g10-release": `${WRITE}: releases the G10 adversary hold`,
-  "sh-g10-rehold": `${WRITE}: re-places the G10 adversary hold`,
-  "sh-seat-notice": `${WRITE}: sends the seat notice`,
-  "sh-held-check": `${RECORD}: whether the run was held at this point`,
-  "sh-held-wait": `${READ}: waits for a hold to release`,
-  "sh-head-origin": `${RECORD}: who pushed the head`,
-  "sh-review-refused": `${RECORD}: a standing MERGE re-read instead of a fresh review`,
-  "sh-ci-unread": `${RECORD}: a CI-unread-only FIX_FIRST taken as no verdict`,
-  "sh-visual-packet": `${WRITE}: spawns the review packager for a visual gate`,
-  "audit-load": `${READ}: the audit's input and prior report`,
-  "audit-inventory-data": `${READ}: the data store inventory`,
-  "audit-inventory-code": `${RECORD}: an agent's code inventory`,
-  "audit-purpose": `${RECORD}: an agent's purpose statement`,
-  "audit-answerability": `${READ}: runs each declared surface once`,
-  "audit-propose": `${RECORD}: an agent's proposal`,
-  "audit-baseline": `${READ}: one baseline metric`,
-  "audit-gaps": `${RECORD}: an agent's gap proposal`,
-  "audit-plan": `${RECORD}: an agent's surface plan`,
-  "audit-publish": `${WRITE}: writes the audit report file`,
-};
+const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = Object.fromEntries(
+  factoryRegistry.entries.flatMap((entry) => (entry.op === "dispatch" && entry.effect.class !== "read" ? [[entry.name, entry.effect.reason]] : [])),
+);
+
+const PINNED_IRREVERSIBLE_STEPS: readonly string[] = ["bs-deploy", "merge", "sh-cleanup", "sh-publish-review", "sh-redeploy"];
 
 const home = mkdtempSync(join(tmpdir(), "restart-contract-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -140,7 +50,7 @@ function parkRoutesWithoutReconcile(routes: readonly StepRoute[]): string[] {
 const detailOf = (reason: string): string => reason.slice(reason.indexOf(":") + 1).trim();
 
 function unsafeDispatchSteps(): string[] {
-  const ids = factoryWorkflows.flatMap((definition) => dispatchStepIds(definition).filter((id) => !orphanSafe(definition)(id)));
+  const ids = factoryWorkflows.flatMap((definition) => dispatchStepIds(definition).filter((id) => !abandonsOrphan(id)));
   return [...new Set(ids)];
 }
 
@@ -153,9 +63,106 @@ describe("restart contract", () => {
     expect(unsafeDispatchSteps().sort()).toEqual(Object.keys(RESTART_WRITE_STEPS).sort());
   });
 
+  it("a dispatch step's orphan is dropped exactly when its registry effect class is read", () => {
+    const dispatchIds = factoryWorkflows.flatMap((definition) => dispatchStepIds(definition));
+    const dropped = dispatchIds.filter((id) => entryFor(factoryRegistry, id)?.effect.class === "read");
+    expect([...new Set(dispatchIds.filter(abandonsOrphan))].sort()).toEqual([...new Set(dropped)].sort());
+    expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  it("the registry's parking dispatch entries equal the independent fixture, reasons included", () => {
+    const parking = factoryRegistry.entries.filter((e) => e.op === "dispatch" && e.effect.class !== "read");
+    expect(Object.fromEntries(parking.map((e) => [e.name, "reason" in e.effect ? e.effect.reason : ""]))).toEqual(PARKING_STEPS);
+  });
+
+  it("only the fifteen read-only steps are dropped, and the irreversible five stay irreversible", () => {
+    const reads = factoryRegistry.entries.filter((e) => e.effect.class === "read").map((e) => e.name);
+    expect(reads.sort()).toEqual(DROPPED_STEPS);
+    const irreversible = factoryRegistry.entries.filter((e) => e.effect.class === "irreversible").map((e) => e.name);
+    expect(irreversible.sort()).toEqual(PINNED_IRREVERSIBLE_STEPS);
+  });
+
   it("gives every exception a reason of its own, beyond the shared category", () => {
     const blankParks = Object.entries(PARK_ROUTES_WITHOUT_RECONCILE).filter(([, reason]) => reason.trim() === "");
     const blankSteps = Object.entries(RESTART_WRITE_STEPS).filter(([, reason]) => !reason.includes(":") || detailOf(reason) === "");
     expect([...blankParks, ...blankSteps].map(([id]) => id)).toEqual([]);
+  });
+});
+
+/** TP-3106 S3: each reviewed READ row of core, build-surface and audit, and the class the review gave it. */
+const S3_READ = ["update-backoff", "base-wait", "merge-settle", "await-new-head", "snapshot", "bs-plan", "bs-await-land", "audit-load", "audit-inventory-data"];
+const S3_KEPT = ["bs-preflight", "bs-extract-check", "bs-report-check", "bs-gates", "bs-health", "bs-review-check", "audit-answerability", "audit-baseline"];
+
+let dbs = 0;
+
+/** A workflow that blocks on `orphan`, then runs a merge and a landing; `skip` makes a replay take the branch that never reaches it. */
+function divergingWorkflow(family: string, orphan: string, skip: () => boolean) {
+  return defineWorkflow({
+    name: "diverging",
+    steps: [{ id: family, kind: "dispatch" }, { id: "merge", kind: "dispatch" }, { id: "sh-landed", kind: "dispatch" }],
+    run: async (ctx) => {
+      if (!skip()) await ctx.dispatch(orphan, "wait");
+      await ctx.dispatch("merge:r4:0", "merge");
+      await ctx.dispatch("sh-landed", "landed");
+    },
+  });
+}
+
+const blockOn = (stuck: string, ids: readonly string[]): StepRoute[] => ids.map((match) => ({
+  match,
+  onRestart: "repeat",
+  runner: { run: (input) => (input.stepId === stuck ? new Promise(() => undefined) : Promise.resolve({ ok: true, output: `${input.stepId} done` })) },
+}));
+
+async function finish(dbPath: string, workflow: ReturnType<typeof defineWorkflow>, runId?: string) {
+  const host = openFactoryHost({ dbPath, workflows: [workflow], routes: blockOn("none", dispatchStepIds(workflow)) });
+  try {
+    await host.adopt();
+    return await host.runtime.wait(runId ?? host.runtime.start(workflow.name));
+  } finally {
+    host.close();
+  }
+}
+
+/** Blocks a run on `<family>:r3:0`, restarts the host, and replays down the branch that never reaches it. */
+async function replayDivergedBefore(family: string) {
+  const orphan = `${family}:r3:0`;
+  let replaying = false;
+  const workflow = divergingWorkflow(family, orphan, () => replaying);
+  const dbPath = join(home, `diverged-${dbs++}.sqlite3`);
+  const first = openFactoryHost({ dbPath, workflows: [workflow], routes: blockOn(orphan, dispatchStepIds(workflow)) });
+  const runId = first.runtime.start(workflow.name);
+  await vi.waitFor(() => expect(first.runtime.status(runId)?.activeSteps[orphan]).toBeDefined());
+  first.close();
+  replaying = true;
+  const run = await finish(dbPath, workflow, runId);
+  const control = await finish(join(home, `control-${dbs++}.sqlite3`), divergingWorkflow(family, orphan, () => true));
+  return { run, orphan, controlKeys: Object.keys(control.stepResults).sort() };
+}
+
+function reasonOf(family: string): string {
+  const effect = entryFor(factoryRegistry, family)?.effect;
+  return effect && "reason" in effect ? detailOf(effect.reason) : "it has no reason";
+}
+
+describe("TP-3106 S3 READ review", () => {
+  it("leaves no core, build-surface or audit entry pending review", () => {
+    const pending = [...coreSteps, ...buildSurfaceSteps, ...auditSteps].filter((entry) => entry.effect.class === "pending");
+    expect(pending.map((entry) => entry.name)).toEqual([]);
+  });
+
+  it.each(S3_READ)("a restart whose replay diverged before %s drops its orphan and the run continues, not parks", async (family) => {
+    const { run, controlKeys } = await replayDivergedBefore(family);
+
+    expect(run.status).toBe("completed");
+    expect(run.activeSteps).toEqual({});
+    expect(Object.keys(run.stepResults).sort()).toEqual(controlKeys);
+  });
+
+  it.each(S3_KEPT.map((family) => [family, reasonOf(family)]))("%s's orphan still parks because %s", async (family) => {
+    const { run, orphan } = await replayDivergedBefore(family);
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe(`replay never reached recovered step ${orphan}`);
   });
 });

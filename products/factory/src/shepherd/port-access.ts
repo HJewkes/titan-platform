@@ -28,6 +28,7 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.prs": "read",
   "shepherd.watch": "read",
   "shepherd.visual-delta": "read",
+  "shepherd.brief": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;
 
 const isList = (args: object): boolean => "action" in args && args.action === "list";

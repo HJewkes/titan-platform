@@ -1,0 +1,117 @@
+import fs from "node:fs";
+import { describe, expect, it } from "vitest";
+import { gitShimScript } from "./git-shim.js";
+import { posixShell } from "./posix-shell.js";
+import { type GitShimFixture, gitShimHarness, NO_VERIFY } from "./git-shim.fixture.js";
+
+/**
+ * CC-613, against real git, temp repos and a local bare remote: a shell (!) alias runs only when
+ * its name is on the baked allowlist. Each reproduction builds push in a way the push and argument
+ * checks cannot see. Listed, each now reaches the shim through its mirror (TP-4249).
+ */
+
+const { realGit, git, fixture, runScript, remoteHasMain } = gitShimHarness();
+
+const pushCommand = `git push ${NO_VERIFY} origin main`;
+
+// Each pushed with the hook skipped before CC-613 (review d16c219d on ac#350).
+const REPRODUCTIONS: [string, string, string][] = [
+  ["rev|xargs", `!git version; echo hsup | rev | xargs -I% git % ${NO_VERIFY} origin main`, "git rv"],
+  ["tr", `!echo PUSH | tr A-Z a-z | xargs -I% git % ${NO_VERIFY} origin main`, "git rv"],
+  ["base64|sh", `!echo ${Buffer.from(pushCommand).toString("base64")} | base64 --decode | sh`, "git rv"],
+  ["env", `!git $P ${NO_VERIFY} origin main; true`, "P=push git rv"],
+];
+
+const pushedWithoutHook = (fx: GitShimFixture): boolean => remoteHasMain(fx) && !fs.existsSync(fx.marker);
+
+describe("the agent git shim refusing a shell alias that is not on the allowlist (CC-613)", () => {
+  // Kills: the allowlist gate in resolve() removed; the controls below show each one then pushes.
+  it.each(REPRODUCTIONS)("refuses the unlisted %s reproduction", (_form, alias, command) => {
+    const fx = fixture();
+    git(fx.work, "config", "alias.rv", alias);
+
+    const run = runScript(fx, command);
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("git-shim: refused (shell-alias)");
+    expect(remoteHasMain(fx)).toBe(false);
+    expect(fs.existsSync(fx.marker)).toBe(false);
+  });
+
+  // TP-4249: a listed alias's body finds the shim's mirror first on PATH, so its git by name is the shim.
+  // leak-git-mirror.test.ts runs the same shapes with no shim, where they push.
+  it.each(REPRODUCTIONS)("refuses the listed %s reproduction at the git its body runs", (_form, alias, command) => {
+    const fx = fixture(["rv"]);
+    git(fx.work, "config", "alias.rv", alias);
+
+    const run = runScript(fx, command);
+
+    expect(run.stderr).toContain("git-shim: push refused (no-verify)");
+    expect(pushedWithoutHook(fx)).toBe(false);
+  });
+
+  // Kills: a gate that always refuses, or one that reads the wrong variable.
+  it("runs a listed shell alias", () => {
+    const fx = fixture(["hi"]);
+    git(fx.work, "config", "alias.hi", "!echo hello");
+
+    const run = runScript(fx, "git hi");
+
+    expect(run.stdout.trim()).toBe("hello");
+    expect(run.status).toBe(0);
+  });
+
+  // Kills: a gate placed after the alias runs.
+  it("refuses an unlisted shell alias before it runs, push or not", () => {
+    const fx = fixture();
+    git(fx.work, "config", "alias.hi", "!echo hello");
+
+    const run = runScript(fx, "git hi");
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("git-shim: refused (shell-alias)");
+    expect(run.stdout).toBe("");
+  });
+
+  // Kills: checking the word typed instead of the shell alias a chain reaches.
+  it("refuses an unlisted shell alias reached through a listed plain alias", () => {
+    const fx = fixture(["x"]);
+    git(fx.work, "config", "alias.x", "rv");
+    git(fx.work, "config", "alias.rv", "!echo hello");
+
+    const run = runScript(fx, "git x");
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("alias.rv");
+    expect(run.stdout).toBe("");
+  });
+
+  // Kills: a substring or case-folding match. git finds alias.hi for HI; refusing it is a documented false refusal.
+  it.each([
+    [["hi"], "git HI"],
+    [["hix"], "git hi"],
+    [["xhi"], "git hi"],
+    [["h"], "git hi"],
+  ])("with the allowlist %j refuses %s", (listed, command) => {
+    const fx = fixture(listed);
+    git(fx.work, "config", "alias.hi", "!echo hello");
+
+    const run = runScript(fx, command);
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("git-shim: refused (shell-alias)");
+  });
+});
+
+describe("baking the shell alias allowlist into the shim (CC-613)", () => {
+  // Kills: dropping the alias-name filter, which would let a listed name inject shell into the shim.
+  it("keeps only valid alias names, lowercased", () => {
+    const script = gitShimScript(realGit, "/guard", [], "", posixShell(), ["Ok", "a b", "x';touch y;'", "-n", ""]);
+
+    expect(script).toContain("shell_aliases='ok'\n");
+  });
+
+  it("bakes an empty allowlist by default", () => {
+    expect(gitShimScript(realGit, "/guard", [])).toContain("shell_aliases=''\n");
+  });
+});

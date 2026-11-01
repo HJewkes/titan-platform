@@ -7,13 +7,14 @@ import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigrati
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { z } from "zod";
-import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { EXIT, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { defineWorkflow, dispatchStepIds } from "./definition.js";
 import { gateAskMigration } from "./gate-ask-store.js";
 import { gateBatchMigration } from "./gate-batch-store.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import type { PolicyRule } from "./gate-policy.js";
-import { openFactoryHost } from "./host.js";
+import { factoryMigrations, openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
@@ -223,7 +224,29 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]);
+  });
+});
+
+describe("marker table migration", () => {
+  it("factoryMigrations applies the marker table at 49, after every tenant migration up to 48", () => {
+    const dbPath = dbFile();
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const atFortyEight = openDatabase(dbPath);
+    runMigrations(atFortyEight, [...factoryMigrations().filter((migration) => migration.version < 49), ...SHEPHERD_MIGRATIONS]);
+    const before = appliedVersions(atFortyEight);
+    atFortyEight.close();
+    const tenantRoutes = Object.assign([...routes], { database: { extraMigrations: SHEPHERD_MIGRATIONS, bind: () => () => undefined } });
+
+    openFactoryHost({ dbPath, workflows: [approval], routes: tenantRoutes }).close();
+
+    const db = openDatabase(dbPath);
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_marker%' ORDER BY name").all();
+    const versions = appliedVersions(db);
+    db.close();
+    expect(before.at(-1)).toBe(48);
+    expect(versions.at(-1)).toBe(49);
+    expect(tables).toEqual([{ name: "factory_marker" }, { name: "factory_marker_blob" }, { name: "factory_marker_root" }]);
   });
 });
 

@@ -74,9 +74,9 @@ function answerPendingGates(host: FactoryHost, runId: string, world: World): voi
 
 /** The crashed host still needs its gates answered to reach the later steps; stop once it has hung. */
 async function answerUntil(host: FactoryHost, runId: string, world: World, hung: Promise<void>): Promise<void> {
-  let stopped = false;
-  void hung.then(() => (stopped = true));
-  while (!stopped) {
+  const state = { stopped: false };
+  void hung.then(() => (state.stopped = true));
+  while (!state.stopped) {
     answerPendingGates(host, runId, world);
     await new Promise((resolve) => setTimeout(resolve, 5));
   }

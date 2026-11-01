@@ -3,9 +3,10 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
+type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
 export type Outcome =
-  | { outcome: "resolved"; gateId: string }
+  /** `covered` names the owner-at-head facts whose evidence the owner read on the card before this resolve (TP-4404). */
+  | { outcome: "resolved"; gateId: string; covered?: string[] }
   | { outcome: "already"; gateId: string }
   | { outcome: "released"; runId: string; stillHeld: string | null }
   | { outcome: "already"; runId: string }
@@ -21,6 +22,9 @@ export type Outcome =
   /** A deploy-pause-clear tap removed the failure pause it named; a manual hold, never cleared by the op, may still stand. */
   | { outcome: "pause-cleared"; clearedPause: string; stillHeld: string | null }
   | { outcome: "already"; clearedPause: string }
+  /** A plan-approval tap recorded the owner's plan-time answer; `claimedRun` is the one live run of the task it bound to, or null until a registration claims it. */
+  | { outcome: "plan-approved"; task: string; gate: string; claimedRun: string | null }
+  | { outcome: "already"; task: string }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -60,6 +64,7 @@ export function statusOf(outcome: Outcome): Status {
     case "retired":
     case "pr-closed":
     case "pause-cleared":
+    case "plan-approved":
     case "already":
       return 200;
     case "moved":

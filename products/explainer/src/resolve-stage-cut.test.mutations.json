@@ -22,8 +22,8 @@
     {
       "name": "emphasis-target falls back to visual.beat for cut beats",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const beats = keptBeats(script.beats, resolved).map(",
-      "replace": "const beats = script.beats.map(",
+      "find": "const kept = keptBeats(script.beats, resolved);",
+      "replace": "const kept = script.beats;",
       "kills": [
         "resolve checks over a cut sim beat leaves a cut beat's emphasis cues out of the emphasis-target gate"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "emphasis-target checks no beat at all",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const beats = keptBeats(script.beats, resolved).map(",
-      "replace": "const beats = keptBeats([] as ScriptV1[\"beats\"], resolved).map(",
+      "find": "const kept = keptBeats(script.beats, resolved);",
+      "replace": "const kept = keptBeats([] as typeof script.beats, resolved);",
       "kills": [
         "resolve checks over a cut sim beat still holds a kept sim beat's emphasis cues to its elements"
       ]

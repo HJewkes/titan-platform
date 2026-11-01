@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { checkSnapshot } from "../check/run.js";
 import type { CheckRule } from "../check/types.js";
 import { diffCheckResults } from "../diff/check-diff.js";
 import { diffSnapshots } from "../diff/diff.js";
-import { makeTestRepo, type TestRepo } from "../history/test-repo.js";
+import { makeTestRepo, tempRepoDir, testRepoAt, type TestRepo } from "../history/test-repo.js";
 import { indexPaths } from "../indexer.js";
 import { CodeGraphStore, openCodeGraph } from "../store.js";
 import { ALIAS_BASE_ATTR } from "./lineage.js";
@@ -54,7 +55,7 @@ async function commitAndIndex(f: Fixture, name: string, ref: string, change: () 
   f.snaps[name] = result.snapshotId;
 }
 
-async function buildFixture(): Promise<Fixture> {
+async function indexHistory(): Promise<Fixture> {
   const repo = await makeTestRepo();
   const f: Fixture = { repo, store: openCodeGraph(path.join(repo.dir, ".git", "graph.db")), snaps: {} };
   const mv = (from: string, to: string) => repo.git(["mv", from, to]);
@@ -70,6 +71,27 @@ async function buildFixture(): Promise<Fixture> {
   );
   return f;
 }
+
+// Each describe changes its own fixture, but all start from the same indexed history: build it once, copy it per describe.
+let seed: Promise<{ dir: string; snaps: Record<string, number> }> | undefined;
+
+async function seedFixture() {
+  const f = await indexHistory();
+  f.store.close();
+  return { dir: f.repo.dir, snaps: f.snaps };
+}
+
+async function buildFixture(): Promise<Fixture> {
+  seed ??= seedFixture();
+  const { dir: from, snaps } = await seed;
+  const dir = await tempRepoDir();
+  await fs.cp(from, dir, { recursive: true, preserveTimestamps: true });
+  return { repo: testRepoAt(dir), store: openCodeGraph(path.join(dir, ".git", "graph.db")), snaps: { ...snaps } };
+}
+
+afterAll(async () => {
+  if (seed) await fs.rm((await seed).dir, { recursive: true, force: true });
+});
 
 describe("identity across renames, on a real git history", () => {
   let f: Fixture;

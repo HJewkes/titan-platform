@@ -17,7 +17,8 @@ import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demot
 import { fixProofBounce } from "./fix-proof-cap.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { mergeVerdict } from "./review.js";
 import { recordFixFirst } from "./routed.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";

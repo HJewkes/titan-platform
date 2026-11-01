@@ -13,7 +13,7 @@ interface QueueContext {
   lineageOf: ReadonlyMap<string, string>;
 }
 
-interface QuotaContext {
+export interface QuotaContext {
   /** Ideas kept last round; each one owes a follow-up. */
   keptLastRound: readonly string[];
   minPool: number;
@@ -29,6 +29,18 @@ export function toIdea(proposal: Proposal, context: Pick<QueueContext, "round" |
   const id = ideaId(proposal);
   const lineage = (proposal.parent && context.lineageOf.get(proposal.parent)) || id;
   return { ...proposal, id, lineage, cell: `${proposal.class}:${proposal.direction}`, round: context.round };
+}
+
+/** The quotas `quotaViolations` enforces, worded for the planner; kept beside the check so the brief's numbers are the check's. */
+export function quotaRules(quota: QuotaContext): string[] {
+  const kept = quota.keptLastRound;
+  const followups = kept.length === 0 ? "no follow-ups are owed, since no idea was kept last round" : `an add with source "followup" and parent set to each kept idea (${kept.join(", ")}), or a reason in exempt.followup`;
+  const net = Math.max(0, quota.minPool - quota.queuedBefore);
+  return [
+    "at least one add with bold true, or a reason in exempt.bold",
+    followups,
+    `a candidate pool of at least ${quota.minPool}: the queue holds ${quota.queuedBefore}, so adds minus drops must be at least ${net}`,
+  ];
 }
 
 /** Quotas the planner must meet each round (plan 4.2); an empty list means the ops may be applied. */

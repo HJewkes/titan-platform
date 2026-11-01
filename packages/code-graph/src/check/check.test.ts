@@ -30,7 +30,7 @@ describe("runChecks — metric-max", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   it("reports nodes whose value exceeds the max", async () => {
@@ -211,7 +211,7 @@ describe("runChecks — metric-min", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   it("reports nodes whose value falls below the min", async () => {
@@ -243,7 +243,7 @@ describe("runChecks — metric-product-max", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   it("flags nodes whose product of two metrics exceeds the max", async () => {
@@ -385,7 +385,7 @@ describe("runChecks — forbid-import", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   it("flags imports matching the from→to pattern", async () => {
@@ -474,7 +474,7 @@ describe("runChecks — forbid-import", () => {
 describe("runChecks — layered-deps", () => {
   let fixture: Fixture;
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   const layers: string[][] = [
@@ -747,7 +747,7 @@ describe("runChecks — layered-deps", () => {
 describe("runChecks — no-internal-only-barrels", () => {
   let fixture: Fixture;
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   const packageRoots = ["packages/analyzer", "packages/cli", "packages/core"];
@@ -1088,7 +1088,7 @@ describe("runChecks — baseline", () => {
   let fixture: Fixture;
 
   afterEach(async () => {
-    if (fixture) await fs.rm(fixture.dir, { recursive: true, force: true });
+    await fs.rm(fixture.dir, { recursive: true, force: true });
   });
 
   async function createTwoSnapshotFixture(

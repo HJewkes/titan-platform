@@ -5,7 +5,8 @@
  * hold, `accepted` (a land run started that merges at the pinned head), `approved` (the owner's approval stands until the
  * adversary loop closes on a g10-held PR) and `already` for a `merge-at-head` op, `retired` and `already` for a
  * `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, `pause-cleared` and
- * `already` (each with the cleared pause) for a `deploy-pause-clear` op, and `moved`, `gone` and `refused` for any of them.
+ * `already` (each with the cleared pause) for a `deploy-pause-clear` op, `plan-approved` and `already` (each with the task) for a
+ * plan round's approval, and `moved`, `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -20,7 +21,9 @@ export type ActionOutcome =
   | { status: "retired"; name: string; caveats: string[] }
   | { status: "pr-closed"; closedHead: string }
   | { status: "pause-cleared"; clearedPause: string; stillHeld: string | null }
-  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string; clearedPause?: string }
+  /** `claimedRun` is the task's one live run the approval bound to, or null until a registration claims it. */
+  | { status: "plan-approved"; task: string; gate: string; claimedRun: string | null }
+  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string; clearedPause?: string; task?: string }
   /** `currentAgentId` only for a retire-agent whose name moved, `currentPause` only for a deploy-pause-clear whose newer pause stands; every other op moves with a head. */
   | { status: "moved"; currentHead: string | null; currentAgentId?: string; currentPause?: string }
   | { status: "gone"; reason: string }
@@ -45,6 +48,9 @@ const routeBody = z.looseObject({
   closedHead: z.string().optional(),
   clearedPause: z.string().optional(),
   currentPause: z.string().optional(),
+  task: z.string().optional(),
+  gate: z.string().optional(),
+  claimedRun: z.string().nullable().optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
   error: z.string().optional(),
@@ -54,24 +60,26 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause }: RouteBody): ActionOutcome | undefined {
+function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause, task, gate, claimedRun }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if ((outcome === "accepted" || outcome === "approved") && runId) return { status: outcome, runId };
   if (outcome === "retired" && name && caveats) return { status: "retired", name, caveats };
   if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
   if (outcome === "pause-cleared" && clearedPause && stillHeld !== undefined) return { status: "pause-cleared", clearedPause, stillHeld };
-  if (outcome === "already" && (gateId || runId || name || closedHead || clearedPause)) return alreadyOf({ gateId, runId, name, closedHead, clearedPause });
+  if (outcome === "plan-approved" && task && gate && claimedRun !== undefined) return { status: "plan-approved", task, gate, claimedRun };
+  if (outcome === "already" && (gateId || runId || name || closedHead || clearedPause || task)) return alreadyOf({ gateId, runId, name, closedHead, clearedPause, task });
   return undefined;
 }
 
-const alreadyOf = ({ gateId, runId, name, closedHead, clearedPause }: Pick<RouteBody, "gateId" | "runId" | "name" | "closedHead" | "clearedPause">): ActionOutcome => ({
+const alreadyOf = ({ gateId, runId, name, closedHead, clearedPause, task }: Pick<RouteBody, "gateId" | "runId" | "name" | "closedHead" | "clearedPause" | "task">): ActionOutcome => ({
   status: "already",
   ...(gateId && { gateId }),
   ...(runId && { runId }),
   ...(name && { name }),
   ...(closedHead && { closedHead }),
   ...(clearedPause && { clearedPause }),
+  ...(task && { task }),
 });
 
 const movedOf = ({ currentHead, currentAgentId, currentPause }: RouteBody): ActionOutcome => ({

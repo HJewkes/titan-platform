@@ -1,4 +1,4 @@
-import { isRetryableWrite } from "./update-branch-retry.js";
+import { httpStatusOf, isRetryableWrite } from "./update-branch-retry.js";
 
 export type Sleep = (ms: number) => Promise<void>;
 export const pause: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,8 +17,7 @@ export class WriteRetriesExhaustedError extends Error {
   ) {
     super(`${step} failed after ${attempts} attempts: ${last instanceof Error ? last.message : String(last)}`, { cause: last });
     this.name = "WriteRetriesExhaustedError";
-    const status = (last as { status?: unknown } | null)?.status;
-    this.status = typeof status === "number" ? status : undefined;
+    this.status = httpStatusOf(last);
   }
 }
 

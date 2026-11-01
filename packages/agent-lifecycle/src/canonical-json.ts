@@ -7,7 +7,7 @@ function normalize(value: unknown): unknown {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (Array.isArray(value)) return Array.from(value, normalize);
-  if (typeof value !== "object" || value === null) throw new TypeError("execution events must contain only JSON-safe values");
+  if (typeof value !== "object") throw new TypeError("execution events must contain only JSON-safe values");
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) throw new TypeError("normalize native objects before storing execution events");
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)

@@ -1,7 +1,8 @@
 import type { ProbedText } from "@titan-design/render-qa";
 import { numberToWords } from "@titan-design/speech-vet";
 import { z } from "zod";
-import { numberForms } from "../spoken-numbers.js";
+import { heardForms } from "../spoken-numbers.js";
+import { countingFigures, settle } from "./counting-figures.js";
 
 /**
  * Narration carries every on-screen fact (content standards XT-36; WCAG 1.2.5 AA without an audio-description track):
@@ -17,17 +18,20 @@ export const NarrationFactsReportSchema = z.object({
 type NarrationFactsReport = z.infer<typeof NarrationFactsReportSchema>;
 type NarrationFact = NarrationFactsReport["findings"][number];
 
-export type ScreenText = Pick<ProbedText, "text" | "tag" | "cls">;
+export type ScreenText = Pick<ProbedText, "text" | "tag" | "cls"> & Partial<Pick<ProbedText, "element" | "lines">>;
 
 const isHeadline = (text: ScreenText): boolean => text.tag === "h1" || text.tag === "h2";
 /** Axis ends, ticks, step markers and code are scaffolding: a listener loses nothing by not hearing them. */
-const DECOR_CLASS = /axis|tick|step|marker|counter|code|gutter|line-no/;
+const DECOR_CLASS = /axis|tick|step|marker|counter|chapter-count|code|gutter|line-no/;
 const BAR_VALUE_CLASS = /\bex-bar-value\b/;
 /** "Beat 3", "step 2", "#4": a number that orders the video, not a claim about the project. */
 const ORDER_LEAD = /(?:\b(?:beats?|steps?|chapters?|ch|parts?|phases?|stages?|items?|rounds?|no\.)\s*|#)$/i;
 const YEAR = /^(?:19|20)\d{2}$/;
-/** Dates, file names, section marks and line or row numbers cite where a fact came from; they are not the fact. */
-const CITATION = /\b\d{4}-\d{2}(?:-\d{2})?\b|\S+\.(?:md|tsv|json|ya?ml|ts|js|py|txt)\b|§\s?[\d.]+|\b(?:lines?|rows?|steps?|items?)\s?\d+[-–]\d+\b|\b(?:lines?|rows?)\s?\d+\b/gi;
+/** Dates, file names, section marks, line or row numbers, and PR or task ids cite where a fact came from; they are not the fact. */
+const CITATION = /\b\d{4}-\d{2}(?:-\d{2})?\b|\S+\.(?:md|tsv|json|ya?ml|ts|js|py|txt)\b|§\s?[\d.]+|\b(?:lines?|rows?|steps?|items?)\s?\d+[-–]\d+\b|\b(?:lines?|rows?)\s?\d+\b|\bPRs?\s?#?\d+\b|#\d+\b/gi;
+/** Upper case and three or more digits: "top-10", "GPT-4" and "COVID-19" are claims; "TP-4467" cites a task. */
+const TASK_ID = /\b[A-Z]{2,}-\d{3,}\b/g;
+const blank = (text: string, pattern: RegExp): string => text.replace(pattern, (match) => " ".repeat(match.length));
 const SCREEN_NUMBER = /(?<![\p{L}\p{N}.])[£$€]?(\d[\d,]*(?:\.\d+)?)\s?(k|K|M|bn|B|%)?(?![\p{L}\p{N}])/gu;
 const MAGNITUDE: Readonly<Record<string, number>> = { M: 1e6, bn: 1e9, B: 1e9 };
 
@@ -37,8 +41,8 @@ const NUMBER_WORDS = new Set([
 ]);
 const SCALES = new Map([["hundred", 100], ["thousand", 1e3], ["million", 1e6], ["billion", 1e9]]);
 
-/** numberForms' single form as a number, the percent sign dropped: "40%" on screen and "forty" heard are one value. */
-const valuesOf = (mention: string): number[] => numberForms(mention).map((form) => Number(form.replace(/%$/, ""))).filter(Number.isFinite);
+/** heardForms as numbers, the percent sign dropped: "40%" on screen and "forty" heard are one value. */
+const valuesOf = (mention: string): number[] => heardForms(mention).map((form) => Number(form.replace(/%$/, ""))).filter(Number.isFinite);
 
 const wordsOf = (spoken: string): string[] => spoken.toLowerCase().split(/\s+/).map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, "")).filter(Boolean);
 
@@ -48,6 +52,17 @@ function joinsRun(words: readonly string[], i: number, run: readonly string[]): 
   if (word.split("-").every((part) => NUMBER_WORDS.has(part))) return true;
   if (word === "and") return run.length > 0 && NUMBER_WORDS.has(words[i + 1] ?? "");
   return (word === "a" || word === "an") && run.length === 0 && SCALES.has(words[i + 1] ?? "");
+}
+
+/** "one-off" is an idiom for a single occurrence, not a count; every other compound's leading number is said. */
+const IDIOM_COMPOUND = /^one-off$/;
+
+/** The leading number words of a hyphenated compound that goes on with other words: "twenty-one-cycle" gives twenty, one. */
+function compoundLead(word: string): string[] {
+  const parts = word.split("-");
+  const lead = parts.findIndex((part) => !NUMBER_WORDS.has(part));
+  if (lead <= 0 || IDIOM_COMPOUND.test(word) || parts[0] === "oh" || parts[0] === "point") return [];
+  return parts.slice(0, lead);
 }
 
 /** numberForms reads "one point four million" as 1.4 and 1000000; a decimal before a scale is one value, 1400000. */
@@ -74,7 +89,11 @@ export function spokenValues(spoken: string): Set<number> {
       flush();
       for (const value of valuesOf(word)) values.add(value);
     } else if (joinsRun(words, i, run)) run.push(word);
-    else flush();
+    else {
+      flush();
+      run = compoundLead(word);
+      flush();
+    }
   }
   flush();
   return values;
@@ -94,7 +113,7 @@ interface ShownNumber {
 
 /** The claim numbers of one text: years only in a headline, never a number that orders the video. */
 function shownNumbers(text: ScreenText): ShownNumber[] {
-  const claims = text.text.replace(CITATION, (citation) => " ".repeat(citation.length));
+  const claims = blank(blank(text.text, CITATION), TASK_ID);
   return [...claims.matchAll(SCREEN_NUMBER)].flatMap((match) => {
     const [mention, digits, unit] = match;
     if (ORDER_LEAD.test(claims.slice(0, match.index))) return [];
@@ -105,7 +124,8 @@ function shownNumbers(text: ScreenText): ShownNumber[] {
 }
 
 /** Heard as said, or rounded to two significant figures, as a narrator says "twelve hundred" for 1,247. */
-const heard = (value: number, said: ReadonlySet<number>): boolean => said.has(value) || said.has(Number(value.toPrecision(2)));
+const heard = (value: number, said: ReadonlySet<number>, spoken: string): boolean =>
+  said.has(value) || said.has(Number(value.toPrecision(2))) || (value === 0 && /\b(?:nothing|none)\b/i.test(spoken));
 
 /** A chart's rows are its evidence; only its largest value, the finding a chart is drawn to show, is a claim. */
 function claimNumbers(texts: readonly ScreenText[]): Array<ShownNumber & { shown: string }> {
@@ -142,8 +162,14 @@ function expanded(name: string, keys: readonly string[]): boolean {
   return initials.includes(letters.toLowerCase());
 }
 
-/** A letter-and-number marker ("Q1") heard as its number: "question one". */
-const numberHeard = (name: string, spoken: string): boolean => /^\p{Lu}\d+$/u.test(name) && spokenValues(spoken).has(Number(name.slice(1)));
+const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+
+/** A letter-and-number marker ("Q1") heard as its number, "question one", or as its place in a list, "first". */
+function numberHeard(name: string, spoken: string): boolean {
+  if (!/^\p{Lu}\d+$/u.test(name)) return false;
+  const n = Number(name.slice(1));
+  return spokenValues(spoken).has(n) || wordsOf(spoken).includes(ORDINALS[n - 1] ?? "");
+}
 
 /** Heard as a word, as letters ("Q A"), or run together across words, as a compound read apart ("sort gate") is. */
 function nameHeard(name: string, spoken: string): boolean {
@@ -158,16 +184,36 @@ function nameHeard(name: string, spoken: string): boolean {
 export function unspokenFacts(beat: string, texts: readonly ScreenText[], spoken: string): NarrationFact[] {
   const unique = [...new Map(texts.map((text) => [text.text, text])).values()];
   const said = spokenValues(spoken);
-  const numbers = claimNumbers(unique).filter((n) => !heard(n.value, said)).map((n): NarrationFact => ({ beat, kind: "number", fact: n.mention, shown: n.shown }));
+  const numbers = claimNumbers(unique).filter((n) => !heard(n.value, said, spoken)).map((n): NarrationFact => ({ beat, kind: "number", fact: n.mention, shown: n.shown }));
   const names = unique.filter(isHeadline).flatMap((text) =>
     headlineNames(text.text).filter((name) => !nameHeard(name, spoken)).map((name): NarrationFact => ({ beat, kind: "name", fact: name, shown: text.text })),
   );
   return [...new Map([...numbers, ...names].map((fact) => [`${fact.kind}\u0000${fact.fact}`, fact])).values()];
 }
 
+/** A figure counting up in place shows each step as its own text; the viewer takes away the one it settles on. */
+function settledTexts(samples: readonly ScreenText[], counting: (figure: ScreenText) => string | undefined): ScreenText[] {
+  const first = new Map<string, ScreenText>();
+  const settled = new Map<string, ScreenText>();
+  for (const text of samples) {
+    const key = counting(text);
+    if (key === undefined) continue;
+    if (!first.has(key)) first.set(key, text);
+    settled.set(key, settle(first.get(key)!, text));
+  }
+  return samples.flatMap((text) => {
+    const key = counting(text);
+    return key === undefined ? [text] : first.get(key) === text ? [settled.get(key)!] : [];
+  });
+}
+
 /** The report for qa.json: every probed beat's on-screen text against the words heard in it. */
 export function narrationFactsReport(probed: readonly { beat: string; texts: readonly ScreenText[] }[], spoken: (beat: string) => string): NarrationFactsReport {
-  const byBeat = new Map<string, ScreenText[]>();
-  for (const moment of probed) byBeat.set(moment.beat, [...(byBeat.get(moment.beat) ?? []), ...moment.texts]);
-  return { beats: byBeat.size, findings: [...byBeat].flatMap(([beat, texts]) => unspokenFacts(beat, texts, spoken(beat))) };
+  const byBeat = new Map<string, (typeof probed)[number][]>();
+  for (const moment of probed) byBeat.set(moment.beat, [...(byBeat.get(moment.beat) ?? []), moment]);
+  const findings = [...byBeat].flatMap(([beat, moments]) => {
+    const texts = settledTexts(moments.flatMap((moment) => moment.texts), countingFigures(moments));
+    return unspokenFacts(beat, texts, spoken(beat));
+  });
+  return { beats: byBeat.size, findings };
 }

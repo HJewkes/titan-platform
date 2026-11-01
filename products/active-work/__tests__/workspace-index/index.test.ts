@@ -197,22 +197,22 @@ describe('derived edges', () => {
 describe('FTS spans', () => {
   it('tags every workspace span source id so it cannot collide with a transcript', () => {
     const below = rows(
-      'SELECT span_id FROM search_span WHERE source_id < ?',
+      'SELECT span_id FROM workspace_span WHERE source_id < ?',
       WORKSPACE_SPAN_SOURCE_BASE,
     );
 
     expect(below).toEqual([]);
   });
 
-  it('finds a source body through the shared contentless index', () => {
-    const hits = graph.spans.search('"Prose a search should find"');
+  it('finds a source body through the workspace contentless index', () => {
+    const hits = graph.workspaceSpans.search('"Prose a search should find"');
 
     expect(hits.map((h) => h.ownerRef)).toEqual(['source:beta/design.md']);
   });
 
   it('resolves a span locator back to the exact bytes of the file', async () => {
     const { readFileSync } = await import('node:fs');
-    const hit = graph.spans.search('"The indexer was written"')[0];
+    const hit = graph.workspaceSpans.search('"The indexer was written"')[0];
     const relative = graph.db
       .prepare('SELECT source_key FROM workspace_file WHERE source_id = ?')
       .get(hit.sourceId - WORKSPACE_SPAN_SOURCE_BASE) as { source_key: string };
@@ -229,21 +229,21 @@ describe('FTS spans', () => {
     removeFile(root, 'beta/sources/design.md');
     await refreshWorkspace(graph, { activeRoot: root });
 
-    expect(graph.spans.search('"Prose a search should find"')).toEqual([]);
+    expect(graph.workspaceSpans.search('"Prose a search should find"')).toEqual([]);
     expect(rows('SELECT path FROM source WHERE path = ?', 'beta/sources/design.md')).toEqual([]);
   });
 
   it('purges spans through an index rather than by scanning the table', () => {
-    // Not a micro-optimisation. The kit indexes `search_span` on `owner_ref`
+    // Not a micro-optimisation. The kit indexes `workspace_span` on `owner_ref`
     // only, and every purge here goes by `source_id`; without this index a full
     // pass over the live root took 5.2 seconds against 89,533 existing spans,
     // and 0.6 with it. A future migration dropping the index would be an 8x
     // regression with no other symptom.
     const plan = rows<{ detail: string }>(
-      'EXPLAIN QUERY PLAN DELETE FROM search_span WHERE source_id = 1',
+      'EXPLAIN QUERY PLAN DELETE FROM workspace_span WHERE source_id = 1',
     );
 
-    expect(plan.map((row) => row.detail).join(' ')).toContain('idx_search_span_source');
+    expect(plan.map((row) => row.detail).join(' ')).toContain('idx_workspace_span_source');
   });
 });
 

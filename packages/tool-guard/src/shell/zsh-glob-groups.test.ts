@@ -8,6 +8,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { ParseError, tokenize } from "./lexer.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -66,7 +67,16 @@ const zshOnPath = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 describe.skipIf(!zshOnPath)("zsh on each group form", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2839-b-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-  const zsh = (...args: string[]) => spawnSync("zsh", ["-f", ...args], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("tool-guard-tp-2839-b-rows-", (_dir, ...args: string[]) => ({
+    run: { program: "zsh", args: ["-f", ...args], cwd: scratch, input: "" },
+    read: (run) => run,
+  }));
+  const zsh = (...args: string[]) => oracle.get(...args);
+  const QUALIFIER = "[[ x == *(e:'touch pwn':) ]]";
+  for (const command of ZSH_GROUPS) oracle.add("-n", "-c", command);
+  oracle.add("-c", QUALIFIER);
+  oracle.beforeAll();
 
   it.each(ZSH_GROUPS.slice(0, -1))("zsh -n accepts %j, so the push after the group would run", (command) => {
     expect(zsh("-n", "-c", command).status).toBe(0);
@@ -80,7 +90,7 @@ describe.skipIf(!zshOnPath)("zsh on each group form", () => {
   });
 
   it("an (e::) qualifier inside [[ ]] runs nothing, because [[ ]] matches patterns without generating filenames", () => {
-    zsh("-c", "[[ x == *(e:'touch pwn':) ]]");
+    zsh("-c", QUALIFIER);
 
     expect(existsSync(join(scratch, "pwn"))).toBe(false);
   });

@@ -85,12 +85,23 @@ describe("the console update bootstrap", () => {
 
   it("hands off without rebuilding a release that finished building", async () => {
     const fake = fakePorts();
-    fake.files.set(BUILT, "{}");
+    fake.files.set(BUILT, JSON.stringify({ sha: NEW }));
 
     expect(await bootstrap(fake.ports, OPTIONS)).toBe(EXIT.OK);
 
     expect(fake.calls.some((call) => call.startsWith("pnpm") || call.includes("worktree"))).toBe(false);
     expect(handOffs(fake)).toHaveLength(1);
+  });
+
+  // TP-4638: a power loss left every file of a release at 0 bytes; its empty cli.js exits 0, so a hand-off to it judges nothing.
+  it("rebuilds a release whose build stamp a power loss left empty", async () => {
+    const fake = fakePorts();
+    fake.files.set(BUILT, "");
+
+    expect(await bootstrap(fake.ports, OPTIONS)).toBe(EXIT.OK);
+
+    expect(fake.calls).toContain(`git worktree remove --force ${RELEASE}`);
+    expect(fake.calls).toContain("pnpm --filter titan-console... build");
   });
 
   it("does nothing when origin/main already serves, or its sha was already judged", async () => {

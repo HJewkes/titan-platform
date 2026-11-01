@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
 import { copiedRounds, type CopiedRounds } from "../server/round-fixtures.js";
 import { listRounds } from "../server/rounds.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const SUPERSEDED = "kiln-schedule-r2";
 const CLOSED = "lantern-cards-r1";
@@ -31,12 +31,7 @@ afterEach(async () => {
 async function renderRounds(): Promise<void> {
   const calls = { [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(rounds.source)) };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls }), "text/html");
-  window.location.hash = "#/rounds";
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), "#/rounds");
   await screen.findByText("Open rounds");
 }
 
@@ -47,12 +42,8 @@ const liveRounds: DataSource = {
 };
 
 async function renderLiveRounds(): Promise<void> {
-  window.location.hash = "#/rounds";
-  render(
-    <RpcProvider source={liveRounds}>
-      <App />
-    </RpcProvider>,
-  );
+  // The return refetch is mounted by the shell, so this one needs the whole App.
+  renderPage(liveRounds, "#/rounds", { inApp: true });
   await screen.findByText("Open rounds");
 }
 

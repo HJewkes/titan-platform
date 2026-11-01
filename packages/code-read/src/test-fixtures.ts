@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { indexPaths, openCodeGraph, type CodeGraphStore } from "@titan-design/code-graph";
 
 /** A throwaway git repository indexed into its own code-graph store, for tests that need real snapshots. */
@@ -18,6 +19,9 @@ export interface FixtureRepo {
 
 // Real commit times, so the default churn windows see the fixture's history.
 const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull };
+
+// Without it every fixture index type-checks the default libs, about half a second per repo.
+const NO_LIB_TSCONFIG = fileURLToPath(new URL("./test-fixtures.tsconfig.json", import.meta.url));
 
 export const FIXTURE_FILES: Record<string, string> = {
   "src/math.ts": "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
@@ -41,7 +45,7 @@ export async function makeFixtureRepo(): Promise<FixtureRepo> {
     git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message], dated);
     return git(["rev-parse", "HEAD"]).trim();
   };
-  const index = async (ref: string): Promise<number> => (await indexPaths(store, { paths: [dir], ref })).snapshotId;
+  const index = async (ref: string): Promise<number> => (await indexPaths(store, { paths: [dir], ref, tsConfig: NO_LIB_TSCONFIG })).snapshotId;
   const cleanup = async (): Promise<void> => {
     store.close();
     await fs.rm(dir, { recursive: true, force: true });

@@ -50,12 +50,12 @@ export async function publishReview(ctx: WorkflowContext, target: PrTarget, chec
 }
 
 /**
- * What the review of `headSha` came to, read after the review ends. Every outcome but MERGE is published here, a moved
+ * What the review of `headSha` came to, read after the review ends. Every outcome but MERGE and carried is published here, a moved
  * head at the head the PR moved to; a MERGE was published by `mergeVerdict`, before its evidence step.
  */
 export async function publishOutcome(ctx: WorkflowContext, target: PrTarget, verdict: Verdict, observed: ObservedPr, headSha: string): Promise<ReviewOutcome> {
   const outcome = reviewOutcome(verdict, observed, headSha);
-  if (outcome !== "MERGE") await publishReview(ctx, target, { outcome, verdictHead: headSha, head: outcome === "head-moved" ? observed.headSha : headSha });
+  if (outcome !== "MERGE" && outcome !== "carried") await publishReview(ctx, target, { outcome, verdictHead: headSha, head: outcome === "head-moved" ? observed.headSha : headSha });
   return outcome;
 }
 

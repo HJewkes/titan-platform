@@ -2,14 +2,18 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import path from "node:path";
 import { captureFrames, mixAudio, startEncoder, type Encoder, type FramesOptions, type FramesResult } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { z } from "zod";
 import { canonicalJson } from "../eval-store.js";
+import { qaGateChecks } from "../qa/qa-gates.js";
+import type { Check } from "../workflow/records.js";
 import { sha256 } from "../workflow/artifacts.js";
 import { toVtt, type CaptionWord } from "./captions.js";
 import { assertDurationAgreement } from "./duration-check.js";
-import { defaultQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
+import { chromiumQaGate, failedQaGates, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
 import { collectRenderHost, renderManifestJson, type RenderHost, type RenderManifest } from "./render-manifest.js";
 import { silentMix } from "./silent-mix.js";
+import { chromiumStageFitScan, StageOverflow, type StageFitScan } from "./stage-fit-scan.js";
 
 export const RENDER_FPS = 30;
 const VIEWPORT = { width: 1920, height: 1080 };
@@ -45,6 +49,8 @@ export interface RenderInput {
   workers: number;
   outDir: string;
   stem: string;
+  /** Where capture spills frames waiting on the head chunk: real disk with room for the video's PNGs; `outDir` by default. */
+  spillDir?: string;
   /** The pre-capture QA gate; without it the manifest records `qaGate: "absent"`. */
   qa?: RenderQa;
 }
@@ -57,17 +63,27 @@ export interface RenderDeps {
   host: () => Promise<RenderHost>;
   now: () => number;
   qaGate: RenderQaGate;
+  stageFit: StageFitScan;
 }
 
-export const defaultRenderDeps: RenderDeps = {
-  captureFrames, startEncoder, mixAudio, silentMix, host: collectRenderHost, now: () => performance.now(), qaGate: defaultQaGate,
-};
+/** The real deps, with every Chromium step in `browser` when one is lent; without one each step launches its own. */
+export function chromiumRenderDeps(browser?: Browser): RenderDeps {
+  return {
+    captureFrames: (options, sink) => captureFrames({ ...options, browser }, sink),
+    startEncoder, mixAudio, silentMix, host: () => collectRenderHost(browser), now: () => performance.now(), qaGate: chromiumQaGate(browser),
+    stageFit: chromiumStageFitScan(browser),
+  };
+}
+
+export const defaultRenderDeps: RenderDeps = chromiumRenderDeps();
 
 export interface RenderResult {
   mp4: string;
   vtt: string;
   manifest: string;
   data: RenderManifest;
+  /** qa's gate rows over the encoded MP4; empty when no `encoded` check ran. */
+  qaChecks?: Check[];
 }
 
 interface OutPaths {
@@ -107,7 +123,7 @@ async function capture(input: RenderInput, paths: OutPaths, deps: RenderDeps): P
   const encoder = deps.startEncoder(paths.mp4, RENDER_FPS, paths.mix);
   const options: FramesOptions = {
     url: input.pageUrl, fps: RENDER_FPS, frames: Math.round(mixDurationS(input.timeline) * RENDER_FPS),
-    workers: input.workers, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
+    workers: input.workers, spillDir: input.spillDir ?? input.outDir, beatStartsS: input.timeline.beats.map((beat) => beat.startS), ...VIEWPORT,
   };
   try {
     const frames = await deps.captureFrames(options, (_, png) => encoder.write(png));
@@ -132,6 +148,17 @@ async function gateQa(input: RenderInput, qaJson: string, deps: RenderDeps): Pro
   const held = result.held.errors.length;
   if (held > 0) throw new QaRefused(input.stem, qaJson, held);
   return { qaGate: "passed", qa: { heldErrors: 0, gateProfile: input.qa.gate.sha } };
+}
+
+/** After encode, qa's report on the MP4 goes to `qa.json` and qa's gate rows over it; a failing gate row refuses the render. */
+async function gateEncoded(input: RenderInput, paths: OutPaths): Promise<Check[]> {
+  if (input.qa?.mode !== "gate" || input.qa.encoded === undefined) return [];
+  const report = await input.qa.encoded(input.pageUrl, { mp4: paths.mp4, vtt: paths.vtt });
+  const text = `${JSON.stringify(report, null, 1)}\n`;
+  await writeFile(paths.qa, text);
+  const checks = qaGateChecks(text);
+  if (failedQaGates(checks).length > 0) throw new QaRefused(input.stem, paths.qa, report.errors.length, checks);
+  return checks;
 }
 
 interface Run {
@@ -166,19 +193,23 @@ async function encodeChecked(input: RenderInput, paths: OutPaths, deps: RenderDe
 
 /**
  * Renders a served timeline page to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json` in
- * `outDir`. The manifest is written last, so a render that failed leaves none behind. With `qa` in gate mode the
- * page is QA-gated first, and held errors throw `QaRefused` before any mix or frame exists.
+ * `outDir`. The manifest is written last, so a render that failed leaves none behind. Every beat still past its stage
+ * box at the type floor throws one `StageOverflow` first; then, with `qa` in gate mode, held errors throw `QaRefused`,
+ * both before any mix or frame exists. With an `encoded` check, a qa gate row failing on the MP4 throws `QaRefused` too.
  */
 export async function renderVideo(input: RenderInput, deps: RenderDeps = defaultRenderDeps): Promise<RenderResult> {
   const paths = outPaths(input);
   await mkdir(input.outDir, { recursive: true });
   await Promise.all([rm(paths.manifest, { force: true }), rm(paths.qa, { force: true })]);
+  const overflows = await deps.stageFit(input.pageUrl, input.timeline, VIEWPORT);
+  if (overflows.length > 0) throw new StageOverflow(overflows);
   const qa = await gateQa(input, paths.qa, deps);
   const started = deps.now();
   const frames = await encodeChecked(input, paths, deps);
   const wallS = (deps.now() - started) / 1000;
   await writeFile(paths.vtt, toVtt(input.audio ? captionWords(input.audio.words) : []));
+  const qaChecks = await gateEncoded(input, paths);
   const data = await manifestFor(input, paths, { frames, wallS, qa }, await deps.host());
   await writeFile(paths.manifest, renderManifestJson(data));
-  return { mp4: paths.mp4, vtt: paths.vtt, manifest: paths.manifest, data };
+  return { mp4: paths.mp4, vtt: paths.vtt, manifest: paths.manifest, data, qaChecks };
 }

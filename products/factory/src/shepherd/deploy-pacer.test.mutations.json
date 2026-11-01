@@ -45,12 +45,12 @@
       ]
     },
     {
-      "name": "a busy count that moves reads as a new reason",
+      "name": "the bound restarts on every new sha, so steady merges starve the deploy",
       "file": "products/factory/src/shepherd/deploy-pacer.ts",
-      "find": "key: decision.key ?? decision.why",
-      "replace": "key: decision.why",
+      "find": "const capEnds = ms(wanted.firstAt) + input.maxWaitMs;",
+      "replace": "const capEnds = ms(wanted.lastAt) + input.maxWaitMs;",
       "kills": [
-        "the pacer's wait line (TP-2427) a change to a busy-run wait logs again, and a busy count that moves does not"
+        "deploy pacer shas landing every 8 minutes deploy the newest at the 45-minute bound instead of starving behind the quiet window"
       ]
     }
   ]

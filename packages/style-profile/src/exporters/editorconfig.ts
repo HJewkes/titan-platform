@@ -2,14 +2,14 @@ import type { Profile } from "../schema/profile.js";
 import type { StyleRule } from "../schema/style-rule.js";
 import type { GeneratedFile } from "./types.js";
 
-function getConvention<T>(
+function getConvention(
   section: Record<string, StyleRule>,
   key: string,
   infoThreshold: number,
-): T | undefined {
+): StyleRule["convention"] | undefined {
   const rule = section[key];
   if (!rule || rule.confidence < infoThreshold) return undefined;
-  return rule.convention as T;
+  return rule.convention;
 }
 
 function indentAndNewlineLines(
@@ -18,7 +18,7 @@ function indentAndNewlineLines(
 ): string[] {
   const lines: string[] = [];
 
-  const indentStyle = getConvention<string>(
+  const indentStyle = getConvention(
     formatting,
     "indentStyle",
     infoThreshold,
@@ -33,7 +33,7 @@ function indentAndNewlineLines(
     lines.push(`indent_style = ${value}`);
   }
 
-  const indentSize = getConvention<number>(
+  const indentSize = getConvention(
     formatting,
     "indentSize",
     infoThreshold,
@@ -42,7 +42,7 @@ function indentAndNewlineLines(
     lines.push(`indent_size = ${indentSize}`);
   }
 
-  const trailingNewline = getConvention<boolean>(
+  const trailingNewline = getConvention(
     formatting,
     "trailingNewline",
     infoThreshold,
@@ -71,7 +71,7 @@ export function generateEditorConfigExport(
   lines.push("charset = utf-8");
   lines.push("trim_trailing_whitespace = true");
 
-  const lineLength = getConvention<number>(
+  const lineLength = getConvention(
     formatting,
     "lineLength",
     infoThreshold,

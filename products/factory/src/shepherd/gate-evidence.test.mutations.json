@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the oldest record wins",
+      "file": "products/factory/src/shepherd/gate-evidence.ts",
+      "find": "ORDER BY rowid DESC LIMIT 1",
+      "replace": "ORDER BY rowid LIMIT 1",
+      "kills": ["the gate evidence table reads the newest conclusion at a head, so a red rerun replaces an earlier green"]
+    },
+    {
+      "name": "a record at another head is read",
+      "file": "products/factory/src/shepherd/gate-evidence.ts",
+      "find": "WHERE repo = ? AND head = ? AND gate = ?",
+      "replace": "WHERE repo = ? AND (head = ? OR 1) AND gate = ?",
+      "kills": ["the gate evidence table reads nothing at a head whose only records are at another head"]
+    },
+    {
+      "name": "evidence for an undeclared gate is kept",
+      "file": "products/factory/src/shepherd/gate-evidence.ts",
+      "find": "if (!known(gate)) throw",
+      "replace": "if (false) throw",
+      "kills": ["the gate evidence table refuses evidence for a gate never declared and for a head that is not a full sha"]
+    }
+  ]
+}

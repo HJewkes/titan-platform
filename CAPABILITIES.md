@@ -24,7 +24,6 @@ Before adding code:
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. |
-| [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies), the opt-in `no-wall-clock-motion` (no wall clock or unseeded randomness in beat and motion code) and `todo-needs-issue` (every TODO names a task id). |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
@@ -32,16 +31,18 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`png-delta`](#cap-png-delta) | 0 | You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). |
 | [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. |
-| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
+| [`egress-scan`](#cap-egress-scan) | 1 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
 | [`frame-capture`](#cap-frame-capture) | 1 | You need deterministic PNG frames, or an MP4, of a web page that animates on a timeline: the page publishes `window.__titanMotion` (`seek(t)`, `ready()`, `duration`) and `captureFrames` drives it under a virtual clock (`VIRTUAL_TIME_SCRIPT`) across parallel Playwright browsers, failing on any page error or unloaded font face; `startEncoder` and `mixAudio` wrap ffmpeg. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. |
 | [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. |
@@ -54,6 +55,7 @@ Before adding code:
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
+| [`test-timing`](#cap-test-timing) | 1 | You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. |
 | [`autoresearch`](#cap-autoresearch) | 2 | An agent loop should propose changes to a system, measure each against a frozen evaluator, and keep only those that beat the best by more than run-to-run noise, with the metric, guards and gates read from the target's own config. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
@@ -85,9 +87,11 @@ Before adding code:
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. |
 | [`explainer`](#cap-explainer) | product | You are building a step of the explainer video pipeline and need its file contracts or its pure helpers. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. |
+| [`fleet-panel`](#cap-fleet-panel) | product | You want to watch the agent-chat fleet from inside Claude Code: a docked pane of running |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`titan`](#cap-titan) | product | You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. |
+| [`yt-scout`](#cap-yt-scout) | product | You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. |
 
@@ -163,6 +167,8 @@ HarnessExecutionPort adds an open generic execution service with profile/account
 HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter.
 
 For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
+
+For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames and the records they carry, import `./wire`.
 
 Key exports:
 
@@ -258,9 +264,9 @@ Key exports:
 - `registry`: `DrainTreeRegistry`
 - `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
-- `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
+- `masks`: `applyMasks`
 - `template-id`: `templateId`
-- `clusterer`: `Clusterer`
+- `clusterer`: `Clusterer`, `parseClustererSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/cluster)
 
 <a id="cap-code-parser"></a>
@@ -278,25 +284,6 @@ Key exports:
 - `types`: `Extractor`, `ParsedFile`
 - `parser`: `getSupportedLanguages`, `parseFile`
 - `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
-
-<a id="cap-egress-scan"></a>
-
-### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
-
-Tier 0, `@titan-design/egress-scan@0.6.7`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
-
-**Use this when:**
-
-Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
-
-Key exports:
-
-- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
-- `diff`: `parseCommit`, `parseDiff`
-- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
-- `terms`: `parseTerms`, `TermFileError`
-- `scan`: `scan`
-- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -367,7 +354,7 @@ Tier 0, `@titan-design/fix-proof@0.8.0`. Proves a fix PR's new tests fail on the
 
 **Use this when:**
 
-You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. `execHeadMutants` runs generated mutations (`HeadMutation`, no `kills`) against head, each against its owning package's suite, and classifies each as `survived`, `caught`, `caught-error`, `load-error` or `timeout`, for audits that look for covered but untested code. To decide who may merge afterwards, use authority.
+You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To read where a fix-proof read leaves a head (proved, NO_REPRO, unverified, unproven or none), call `proofStanding` and ask it `endsReview` or `needsTestsSeat`; do not parse the line again. `execHeadMutants` runs generated mutations (`HeadMutation`, no `kills`) against head, each against its owning package's suite, and classifies each as `survived`, `caught`, `caught-error`, `load-error` or `timeout`, for audits that look for covered but untested code. To decide who may merge afterwards, use authority.
 
 A package compiles globs or other untrusted patterns to a RegExp: construct a `LinearRegExp` from `@titan-design/fix-proof/linear-regexp` in place of `new RegExp`, so matching cannot backtrack polynomially; its tests count `linearRegExpSteps()` instead of timing it.
 
@@ -434,6 +421,22 @@ Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
 
+<a id="cap-png-delta"></a>
+
+### `png-delta`
+
+Tier 0, private, `packages/png-delta`. Bounded PNG decode, pixelmatch share and delta image, and a small RGBA PNG encoder for untrusted screenshot pairs
+
+**Use this when:**
+
+You hold two untrusted PNG screenshots, a base and a head, and need to know how much of the rendered content changed (`snapshotShare`), see which pixels moved (`pixelDelta`, drawn by pixelmatch, then `encodePng`), or decode one PNG under a hard pixel cap (`decodePngBounded`). For capturing frames of a page use `frame-capture`; for per-frame change counts across an MP4 use `render-qa`.
+
+Key exports:
+
+- `png-bounded`: `decodePngBounded`, `overPixels`, `Decoded`
+- `png-encode`: `encodePng`
+- `delta`: `DEFAULT_PIXEL_TOLERANCE`, `contentBox`, `pixelDelta`, `snapshotShare`, `ContentBox`, `PixelDelta`, `SnapshotShareOptions`
+
 <a id="cap-review-burden"></a>
 
 ### [`review-burden`](https://hjewkes.github.io/titan-platform/reference/review-burden)
@@ -461,7 +464,7 @@ Tier 0, `@titan-design/rpc-protocol@0.3.0`. Dependency-free wire contract betwee
 
 **Use this when:**
 
-You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary.
+You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. The `./narrow` subpath holds `isRecord`, `isObjectLike` and `errorCode`, for reading a field off an `unknown` from parsed JSON or a `catch` without a cast; for a whole shape, use a zod schema.
 
 Key exports:
 
@@ -498,6 +501,8 @@ Tier 0, `@titan-design/test-kit@0.1.0`. Typed test doubles: partialFake builds a
 A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. For a whole fake service with behaviour, use the package's own fake (for example `fakeGitHub()` in `github`).
 
 A test must show an operation is linear or bounded, typically a glob or regex matcher that could backtrack: `linearWork` with `hostileGlobs` and a step meter, or `countCalls` with a cap, asserts counted work, never a time.
+
+A test runs real git against scratch repositories: `@titan-design/test-kit/git` copies a per-file template (`seedRepo`, `seedRepoWithOrigin`), writes multi-commit history in one process (`withHistory`), and runs git without session hooks or host config (`fixtureEnv`, `gitIn`).
 
 Key exports:
 
@@ -561,7 +566,7 @@ Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents
 
 **Use this when:**
 
-Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
+Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. Its `./routing` subpath holds the workflow table that picks an implementer profile (lite or full) from a task's estimate, tags and owned files.
 
 Key exports:
 
@@ -628,6 +633,25 @@ Key exports:
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
+<a id="cap-egress-scan"></a>
+
+### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+
+Tier 1, `@titan-design/egress-scan@0.6.7`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+
+**Use this when:**
+
+Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The root export scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range; `/hooks` writes a spawn-time hooks dir whose pre-push scans with the scanner on a baked PATH and, for no-rewrite agents, refuses the deletes, main updates and non-fast-forwards git hands it. To mask secrets for display, use the redactors in queue-mirror instead.
+
+Key exports:
+
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
+- `diff`: `parseCommit`, `parseDiff`
+- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
+- `terms`: `parseTerms`, `TermFileError`
+- `scan`: `scan`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+
 <a id="cap-frame-capture"></a>
 
 ### [`frame-capture`](https://hjewkes.github.io/titan-platform/reference/frame-capture)
@@ -640,9 +664,8 @@ You need deterministic PNG frames, or an MP4, of a web page that animates on a t
 
 Key exports:
 
-- `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
-- `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
-- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `protocol`: `TITAN_MOTION_GLOBAL`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `screenshotFrame`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
@@ -655,7 +678,7 @@ Tier 1, `@titan-design/github@0.11.0`. GitHub REST port over the gh CLI: validat
 
 **Use this when:**
 
-Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`.
+Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. `gitDiffPin` and `diffCarry` are I2's diff hash and its two carry exclusions.
 
 Key exports:
 
@@ -664,7 +687,7 @@ Key exports:
 - `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isPassing`, `isPassingConclusion`
+- `checks`: `isConcluded`, `isPassing`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
@@ -854,6 +877,24 @@ Key exports:
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
+
+<a id="cap-test-timing"></a>
+
+### [`test-timing`](https://hjewkes.github.io/titan-platform/reference/test-timing)
+
+Tier 1, `@titan-design/test-timing@0.0.0`. titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store
+
+**Use this when:**
+
+You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). `openTimingStore` and `ingestArtifact` keep each record as one `runs` row and a `files` row per test file in SQLite, idempotent on the run id, with a `runner_class` per row so a CI runner is never compared with a bigger host. `ingestRecord`, `ingestGhArtifact` and `ingestSpool` archive each record gzipped with a checksum before storing it, from a downloaded CI artifact or a local spool. `timingReport` and `slowerSince` read it back as suite anomalies, growth and per-project trends, and `renderReportMarkdown` renders them. For service health samples use health; for the SQLite primitives use store-sqlite.
+
+Key exports:
+
+- `artifact`: `parseTimingArtifact`, `timingArtifactReadSchema`, `timingArtifactSchema`
+- `store`: `ingestArtifact`, `openTimingStore`, `runnerClass`, `storeStats`
+- `archive`: `archiveRaw`, `fileSafeId`
+- `ingest`: `ghRunFetched`, `ingestGhArtifact`, `ingestRecord`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
 
 <a id="cap-worktree"></a>
 
@@ -1148,14 +1189,17 @@ Tier 2, `@titan-design/review-workflow@0.0.0`. PR review as a resumable workflow
 
 **Use this when:**
 
-You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. The recipe, preflight and fixer arrive in later releases; to run a panel in memory today use review-panel's `reviewPullRequest`.
+You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies; `reviewRunner` runs it standalone as a version-pinned durable workflow. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
 
 Key exports:
 
-- `types`: `DEFAULT_REVIEW_STEP_IDS`, `FAILURE_CLASSES`
+- `plan-for-head`: `planForHead`
+- `preflight`: `preflight`
+- `preflight-read`: `preflightRead`
 - `heal`: `applyHeal`, `healOnce`
 - `fixer`: `fixerBrief`, `fixerFingerprint`, `fixerName`, `requestFixer`, `resolveFingerprint`
-- `fixer-report`: `FIXER_FIXES`, `FIXER_REPORT_END`, `readFixerReport`
+- `fixer-report`: `readFixerReport`
+- `failure`: `classifyFailure`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
 <a id="cap-session-analytics"></a>
@@ -1216,7 +1260,8 @@ Key exports:
 - `line-reader`: `LineReader`
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
-- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
+- `distinct-requests`: `distinctRequests`
+- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-speech-vet"></a>
@@ -1359,7 +1404,7 @@ Key exports:
 
 - `hooks/provider`: `RpcProviderProps`, `RpcProvider`
 - `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `RpcHooks`, `createRpcHooks`
-- `hooks/query-store`: `QueryStatus`
+- `hooks/query-store`: `QuerySettled`
 - `hooks/embedded-snapshot`: `SNAPSHOT_ELEMENT_ID`, `embedSnapshot`, `pageDataSource`, `readEmbeddedSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/react-app)
 
@@ -1530,6 +1575,8 @@ it voids any verdict without a verbatim quote, plants a name-only canary beat pe
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
 `explainer eval calibrate` prints that report.
+`explainer eval writing-calibrate` derives `doctrine/writing-check.json` from a corpus manifest: per-row AUC, human false-positive rate and status per length bucket, numbers only.
+`explainer eval writing` scores a script against that table at the script's own length: per row its value, band, human standing, status, verdict and offending spans, exit 1 only when a gate row fails.
 For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included (plus docs-skim and lifetime-history facts when the review has them), and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 `renderCompanion` renders a repo run's companion doc (the martini-glass bowl) from those facts, one section per repo-tour block (`COMPANION_SECTIONS`), with each chapter's link into it and warnings rather than throws (`W-NO-SUMMARY`).
 `companionChapters` maps script chapters to the blocks their spine rows play, so a digest cut links into the tour's doc; the script stage writes both as `companion` and `chapter-links`.
@@ -1603,12 +1650,14 @@ Tier product, private, `products/factory`. Code-driven software-factory workflow
 
 **Use this when:**
 
-You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch.
+You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for five kinds of agent: the Shepherd reviewer, the main-red fixer, the successor implementer, and build-surface's slice implementer and slice reviewer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch.
 
 - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class.
 - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main.
 - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line.
 - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
+- **Build-surface implementer.** Spawned once per slice of a `build-surface` run (`titan-factory build-surface start <owner/repo> --spec <path>`), under the profile the repo's build spec names (`bd-implementer` by default), with `--role implementer` and the slice's task on its roster row. It starts in the spec's clone, works on the slice branch the workflow created, pushes, and ends its final message with a fenced JSON report that the workflow reads from its transcript. Each fix round resumes the same session, and the PR is registered with Shepherd under its name, so Shepherd's wake and successor logic follow that lineage.
+- **Build-surface reviewer.** Spawned per gated head of a slice under the spec's read-only reviewer profile, with `--role reviewer`, never in the implementer's lineage. It reviews that exact head, changes nothing, and ends with a fenced JSON verdict that a validator checks before it counts.
 - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks.
 
 Key exports:
@@ -1617,6 +1666,28 @@ Key exports:
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
 - More in `products/factory/src/index.ts`
+
+<a id="cap-fleet-panel"></a>
+
+### `fleet-panel`
+
+Tier product, private, `products/fleet-panel`. Claude Code mod: a live panel of running agent-chat agents, their accounts, context and spend
+
+**Use this when:**
+
+You want to watch the agent-chat fleet from inside Claude Code: a docked pane of running
+agents with their account, context fill, spend and last Status report, plus per-account
+usage. For a browser view of the same broker use agent-chat's own dashboard; for spend
+reports over past sessions use `session-analytics`.
+
+Key exports:
+
+- `inputs`: `parseAccounts`, `parseRoster`, `parseSlots`, `parseStatusLine`
+- `events`: `EventBook`, `SseParser`, `statusReportOf`
+- `snapshot`: `accountChip`, `buildSnapshot`
+- `view-model`: `fleetView`
+- `feed`: `Feed`, `ReconcileSchedule`
+- More in `products/fleet-panel/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 
@@ -1669,6 +1740,25 @@ You want this host's services sampled on a schedule and kept: `titan health samp
 Key exports:
 
 - `cli`: `runCli`, `CliIo`
+
+<a id="cap-yt-scout"></a>
+
+### `yt-scout`
+
+Tier product, private, `products/yt-scout`. Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest
+
+**Use this when:**
+
+You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. Detect, transcribe and score are typed seams only (`Detector`, `Transcriber`, `Scorer`); full-text search over transcripts is `corpus-query`, and the durable step runner is `workflow`.
+
+Key exports:
+
+- `config`: `isOnTrial`, `SourceSchema`, `WatchlistSchema`
+- `paths`: `configPath`, `dbPath`, `ytRoot`
+- `seen-import`: `formatSeenImport`, `importSeen`, `mergeRecords`, `sourceResolver`
+- `seen-sources`: `readSeenSources`
+- `store`: `countByState`
+- More in `products/yt-scout/src/index.ts`
 
 <a id="cap-codewatch"></a>
 

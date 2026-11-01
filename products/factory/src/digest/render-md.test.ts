@@ -10,7 +10,7 @@ function maximalModel(asks: number) {
   const needsYou: Ask[] = Array.from({ length: asks }, (_, i) => ({ text: `ask ${i} ${LONG}`, command: `tool act --id ${i}`, source: "seat-a", keys: [`pr:widgets#${i}`] }));
   const merged = Array.from({ length: 40 }, (_, i) => ({ ref: `acme/widgets#${100 + i}`, title: `merged change number ${i} with a title of several words`, at: `2026-03-10T12:${String(i).padStart(2, "0")}:00Z` }));
   const stuck = Array.from({ length: 12 }, (_, i) => ({ ref: `acme/widgets#${200 + i}`, reason: `stuck ${LONG}`, since: "2026-03-10T08:00:00Z" }));
-  const seats = [{ seat: "seat-a", dispatches: 9, usd: 12.5 }, { seat: "seat-b", dispatches: 3, usd: 2 }];
+  const seats = [{ seat: "seat-a", merges: 9, spawns: 12 }, { seat: "seat-b", merges: 3, spawns: 2 }];
   const spend = [{ pool: "pool-a", sevenDay: 70, fiveHour: 12, stale: false }, { pool: "pool-b", sevenDay: 30, stale: true }];
   return emptyModel({ needsYou, merged, stuck, seats, spend, gaps: ["agent-chat digest: exit 1"] });
 }

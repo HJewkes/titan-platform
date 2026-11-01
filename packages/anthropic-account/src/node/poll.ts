@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { z } from "zod";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
@@ -95,7 +96,8 @@ function assertOptions(now: number, timeoutMs: number): void {
 
 function tokenOf(credentials: unknown): string | null {
   try {
-    const token = (credentials as { claudeAiOauth: { accessToken: unknown } }).claudeAiOauth.accessToken;
+    const oauth = isRecord(credentials) ? credentials.claudeAiOauth : undefined;
+    const token = isRecord(oauth) ? oauth.accessToken : undefined;
     return typeof token === "string" && TOKEN_SHAPE.test(token) ? token : null;
   } catch {
     return null;

@@ -63,9 +63,14 @@ async function titan(...argv: string[]) {
   return { code, stdout: out.join(""), stderr: err.join("") };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) throw new Error("expected a JSON object");
+  return Object.fromEntries(Object.entries(value));
+}
+
 async function uptimeJson(...extra: string[]) {
   const result = await titan("uptime", "factory", "--window", "1h", "--end", END, "--db", dbPath, "--json", ...extra);
-  return { ...result, report: JSON.parse(result.stdout) as Record<string, unknown> };
+  return { ...result, report: asRecord(JSON.parse(result.stdout)) };
 }
 
 describe("titan health uptime", () => {
@@ -171,7 +176,7 @@ describe("titan health cost", () => {
     seed([selfRow(1, 200, 150_000), selfRow(2, 400, 250_000), selfRow(3, 300, 200_000), factoryRow(1, "pass")]);
 
     const { code, stdout } = await titan("cost", "--window", "1h", "--end", END, "--db", dbPath, "--json");
-    const cost = JSON.parse(stdout) as Record<string, unknown>;
+    const cost = asRecord(JSON.parse(stdout));
 
     expect(code).toBe(0);
     expect(cost).toMatchObject({
@@ -183,7 +188,7 @@ describe("titan health cost", () => {
       maxRssKb: 50_003,
     });
     expect(cost.store).toMatchObject({ rows: 4 });
-    expect((cost.store as { bytes: number }).bytes).toBeGreaterThan(0);
+    expect(asRecord(cost.store).bytes).toBeGreaterThan(0);
   });
 
   it("reports zero ticks and no averages for a window without self rows", async () => {

@@ -8,6 +8,7 @@ import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-ind
 import { getActiveRoot } from '../utils/paths.js';
 import { SEARCH_CLASSES, capFor, type SearchClass } from './classes.js';
 import { resolveHits, type ResolvedHit } from './resolve.js';
+import { workspaceSpanReader } from './workspace-spans.js';
 
 /**
  * Search over every initiative at once.
@@ -62,7 +63,8 @@ function classRetriever(
   limit: number,
   options: SearchOptions,
 ): Retriever {
-  return ftsRetriever(graph.spans, {
+  const table = cls.name === 'transcripts' ? graph.spans : workspaceSpanReader(graph);
+  return ftsRetriever(table, {
     name: cls.name,
     scope: cls.scope,
     cap: capFor(cls, limit),
