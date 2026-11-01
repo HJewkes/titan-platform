@@ -96,7 +96,7 @@ function runParams(ctx: WorkflowContext): { pin: string; settings: RunSettings }
 async function baseline(run: Run): Promise<Pick<LoopState, "best" | "noise" | "spend">> {
   const { ctx, pinned } = run;
   const keys = Array.from({ length: phaseOf(run).baselineRuns }, (_, index) => `b${index + 1}`);
-  const input = (label: string) => ({ ...runPinOf(run), tree: pinned.integrationTree, case: phaseOf(run).train[0], key: runKey(ctx.runId, "base", label), rung: "seed" });
+  const input = (label: string) => ({ ...runPinOf(run), tree: pinned.integrationTree, head: pinned.ratchetHead, case: phaseOf(run).train[0], key: runKey(ctx.runId, "base", label), rung: "seed" });
   const evalBase = (label: string) => dispatch(ctx, `${arStepId("eval")}:base:${label}`, input(label), run.result);
   const mapped = await mapItems(ctx, "ar-baseline", keys, (key) => evalBase(key), { key: (key) => key, concurrency: 2 });
   if (mapped.failed.length > 0 || mapped.skipped.length > 0) throw new Error(`[baseline] ${mapped.failed.map((failure) => `${failure.key}: ${failure.error}`).join("; ")}`);

@@ -157,6 +157,12 @@ async function guarded<T>(session: Session, run: () => Promise<T>): Promise<T> {
 const defined = (vars: Record<string, string | undefined>): Record<string, string> =>
   Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));
 
+/** R6: a measurement is only evidence for the sha it ran at, so a tree that sits elsewhere is refused before it runs. */
+async function assertAtHead(tree: string, head: string): Promise<void> {
+  const actual = await execGit(["rev-parse", "HEAD"], tree);
+  if (actual !== head) throw new Error(`[head] ${tree} is at ${actual}, not the requested ${head}`);
+}
+
 function rungOf(target: Target, name: string) {
   const rung = target.rungs[name];
   if (!rung) throw new Error(`[rung] ${name} is not in target.rungs`);
@@ -320,6 +326,7 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
     evalCase: async (input, signal) => {
       const pinned = await session.of(input);
       const { target } = pinned;
+      await assertAtHead(input.tree, input.head);
       const vars = { caseSet: target.caseSets[input.case], case: input.case, key: input.key, runnerRoot: join(input.tree, target.runnerRoot) };
       return resultSchemaFor(target.metric).parse(await runRung(pinned, input.rung, vars, signal));
     },
