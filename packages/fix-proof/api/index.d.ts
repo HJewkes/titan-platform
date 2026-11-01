@@ -460,8 +460,9 @@ interface ExecSideOptions {
     budgetMs?: number;
     exec?: Exec;
     /**
-     * Runs each base-side vitest call as this user in a fresh PID namespace through `sudo -n`, so nothing the head's test
-     * or carried files start outlives the run or can write the runner's files. The head side ignores it.
+     * Runs every command the head controls as this user in a fresh PID namespace through `sudo -n`, so nothing it starts
+     * outlives the run or can write the runner's files: the head side's install, build and vitest, and the base side's
+     * vitest. A sandbox that cannot be set up is an error marker, never an unsandboxed run.
      */
     sandboxUser?: string;
     /** How many times the head side runs vitest after one install and build, an integer from 1 to 5; default 1. The base side ignores it. */
