@@ -1,17 +1,10 @@
+import { ContractSchema, type Contract } from "@titan-design/dispatch-ledger";
 import { z } from "zod";
 import { OPS } from "./ops.js";
 import { agentChatOldPaths } from "./old-paths.js";
 import { lintSlices, sliceWarnings } from "./slice-lint.js";
 
 /** A planner's `burndown-slices` block. The report a tick-spawned agent leaves is read by session-analytics' `parseReport`. */
-
-const CONTRACT_OPS = ["replace", "remove", "rename", "migrate", "add", "extend", "modify"] as const;
-
-const Contract = z.object({
-  scope: z.string().trim().min(1),
-  op: z.enum(CONTRACT_OPS),
-});
-type Contract = z.infer<typeof Contract>;
 
 const PlannedSlice = z.object({
   n: z.string().min(1),
@@ -22,7 +15,7 @@ const PlannedSlice = z.object({
   repo: z.string().optional(),
   points: z.number().optional(),
   doneWhen: z.string().optional(),
-  contracts: z.array(Contract).default([]),
+  contracts: z.array(ContractSchema).default([]),
   /** The ops the slice's doneWhen names; `[]` says its hits are subject matter. */
   ops: z.array(z.enum(OPS)).optional(),
   /** The semantic reason a slice waits on one whose owns it does not share. */

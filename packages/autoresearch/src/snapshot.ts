@@ -178,9 +178,9 @@ async function settledSync(run: SnapshotRun, stepId: string, input: SyncRequest)
 const REMEASURE = ["r1", "r2", "r3"];
 
 /** B after main came in: the keep rung's three runs of the new head, under their own scope. */
-async function remeasure(run: SnapshotRun, round: CadenceRound): Promise<ArResult[]> {
+async function remeasure(run: SnapshotRun, round: CadenceRound, head: string): Promise<ArResult[]> {
   const scope = `sync-${round}`;
-  const input = (label: string) => ({ ...runPinOf(run), tree: run.pinned.integrationTree, case: run.pinned.target.phases[0]!.train[0], key: runKey(run.ctx.runId, scope, label), rung: "sync" });
+  const input = (label: string) => ({ ...runPinOf(run), tree: run.pinned.integrationTree, head, case: run.pinned.target.phases[0]!.train[0], key: runKey(run.ctx.runId, scope, label), rung: "seed" });
   const runs: ArResult[] = [];
   for (const label of REMEASURE) runs.push(await step(run.ctx, `${arStepId("eval")}:${scope}:${label}`, input(label), run.result));
   return runs;
@@ -195,7 +195,7 @@ async function applySync<S extends Ledger>(run: SnapshotRun, state: S, round: Ca
   const snapshot = { ...state.snapshot, open: null };
   const head = synced.merged.to;
   if (!synced.treeChanged) return { ...state, snapshot, best: { head, runs: state.best.runs } };
-  const runs = await remeasure(run, round);
+  const runs = await remeasure(run, round, head);
   const modelUsd = state.spend.modelUsd + runs.reduce((total, result) => total + result.usd, 0);
   return { ...state, snapshot, best: { head, runs }, spend: { ...state.spend, modelUsd } };
 }

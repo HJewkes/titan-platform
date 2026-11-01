@@ -175,7 +175,7 @@ interface FakeCalls extends SnapshotCalls {
   implement: string[];
   /** Every implement input but the brief, in call order. */
   implementInputs: Omit<ImplementRequest, "brief">[];
-  evals: { ideaId: string | null; key: string }[];
+  evals: { ideaId: string | null; key: string; rung: string; head: string }[];
   micro: string[];
   microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
@@ -280,9 +280,9 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.runPins.push({ step: "l1", runPin: runPinIn(input) });
       return ArMicroSchema.parse(fakeMicro(repo.policyPath, tree, rung, idea.mechanism));
     },
-    async evalCase({ tree, case: testCase, key, ...runPin }: RunPin & { tree: string; case: string; key: string }) {
+    async evalCase({ tree, case: testCase, key, rung, head, ...runPin }: Parameters<ArPorts["evalCase"]>[0]) {
       const ideaId = ideaOfTree.get(tree) ?? null;
-      calls.evals.push({ ideaId, key });
+      calls.evals.push({ ideaId, key, rung, head });
       calls.runPins.push({ step: "eval", runPin: runPinIn(runPin) });
       await options.beforeEval?.(ideaId, key);
       return ArResultSchema.parse(fakeEval(repo.policyPath, tree, testCase, key));
