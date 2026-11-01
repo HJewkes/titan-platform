@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isConcluded, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isConcluded, isPassingConclusion, latestPerName, withoutSupersededCancels, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import type { HeadObserver } from "../head-guard/head-regression.js";
@@ -105,15 +105,6 @@ function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: 
   const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
   if (input.contexts.length === 0) return openRepoFindings(headSha, runs);
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
-}
-
-/**
- * A newer push cancels the older run of the same check, so that cancel is not a verdict on the head. Only a cancel is
- * dropped, and only when a newer run of that name exists: a superseded failure still counts, and a lone cancel stays red.
- */
-function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const supersededBy = (run: CheckRun) => runs.some((other) => other !== run && other.name === run.name && other.headSha === run.headSha && other.appId === run.appId && latestPerName([run, other])[0] === other);
-  return runs.filter((run) => run.conclusion !== "cancelled" || !supersededBy(run));
 }
 
 /**
