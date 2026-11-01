@@ -8,6 +8,7 @@ import { assertOutsideWorkTree } from "../private/out-dir.js";
 import { splitOf } from "../review-pr/build-cases.js";
 import type { BundleGit } from "../review-pr/bundle.js";
 import { EvalCaseSchema, type EvalCase } from "../spec/index.js";
+import type { FixSource } from "./later-fix.js";
 import { assertNoLaterHistory, seedWorkspace, writeBaseTree } from "./workspace.js";
 
 export const IMPLEMENT_TASK_UNIT = { id: "implement-task", version: "1.0.0" } as const;
@@ -24,12 +25,28 @@ export interface ImplementTaskSource {
   cls: string;
 }
 
+interface LaterFixFile {
+  path: string;
+  bytes: Buffer;
+}
+
+/** A later fix that passed its screen; its files are read at the corrected reference, which only the scratch clone holds. */
+export interface LaterFixAttachment {
+  pr: number;
+  fixSource: FixSource;
+  /** The fix PR's own merge, recorded as provenance; the corrected reference is not kept. */
+  sourceSha: string;
+  tests: readonly LaterFixFile[];
+  support: readonly LaterFixFile[];
+}
+
 interface WriteOptions {
   outDir: string;
   policy: ExclusionPolicy;
   /** The local clone for `owner/repo`; the writer never fetches, so a source with no clone is an error. */
   gitFor(repo: string): BundleGit | undefined;
   seed?: string;
+  laterFixesFor?(source: ImplementTaskSource): readonly LaterFixAttachment[];
 }
 
 interface WriteResult {
@@ -43,11 +60,12 @@ interface Draft {
   taskInitiative: string | null;
   source: ImplementTaskSource;
   plan: FixProofPlan;
+  laterFixes: readonly LaterFixAttachment[];
   body: EvalCase;
 }
 
 const repoSlug = (repo: string): string => repo.slice(repo.lastIndexOf("/") + 1).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-const implementCaseId = (source: ImplementTaskSource): string => `${repoSlug(source.repo)}-pr${source.pr}-implement-${source.mergeSha.slice(0, 10)}`;
+export const implementCaseId = (source: ImplementTaskSource): string => `${repoSlug(source.repo)}-pr${source.pr}-implement-${source.mergeSha.slice(0, 10)}`;
 
 const show = async (port: BundleGit, sha: string, path: string): Promise<Buffer> => port.git(["show", `${sha}:${path}`]);
 
@@ -83,18 +101,33 @@ function caseBody(source: ImplementTaskSource, seed: string, expected: unknown):
   });
 }
 
-async function draftOf(port: BundleGit, source: ImplementTaskSource, seed: string): Promise<Draft> {
-  const plan = await planHiddenTests(port, source.baseSha, source.mergeSha);
-  const expected = { hiddenTests: await filesAtMerge(port, source, plan.tests), support: await filesAtMerge(port, source, plan.carried), overlayRemovals: plan.overlayRemovals };
-  const body = caseBody(source, seed, expected);
-  return { id: body.id, repo: source.repo, taskInitiative: source.taskInitiative, source, plan, body };
+const laterFixEntries = (fix: LaterFixAttachment, files: readonly LaterFixFile[]) =>
+  files.map((file) => ({ path: file.path, sha256: sha256Hex(file.bytes), sourcePr: fix.pr, sourceSha: fix.sourceSha, fixSource: fix.fixSource }));
+
+/** Apart from `hiddenTests`: the accepted diff fails these by construction, so mixing them in would cap the reference below 100 percent. */
+function laterFixExpected(fixes: readonly LaterFixAttachment[]) {
+  if (fixes.length === 0) return {};
+  return { laterFixTests: fixes.flatMap((fix) => laterFixEntries(fix, fix.tests)), laterFixSupport: fixes.flatMap((fix) => laterFixEntries(fix, fix.support)) };
 }
 
+async function draftOf(port: BundleGit, source: ImplementTaskSource, seed: string, laterFixes: readonly LaterFixAttachment[]): Promise<Draft> {
+  const plan = await planHiddenTests(port, source.baseSha, source.mergeSha);
+  const primary = { hiddenTests: await filesAtMerge(port, source, plan.tests), support: await filesAtMerge(port, source, plan.carried), overlayRemovals: plan.overlayRemovals };
+  const body = caseBody(source, seed, { ...primary, ...laterFixExpected(laterFixes) });
+  return { id: body.id, repo: source.repo, taskInitiative: source.taskInitiative, source, plan, laterFixes, body };
+}
+
+function writeFileAt(target: string, bytes: Buffer): void {
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, bytes);
+}
+
+// Each fix gets its own `fix-<pr>/` root, so a fix that edits a primary hidden test never overwrites it.
 async function writeHidden(port: BundleGit, draft: Draft, outDir: string): Promise<void> {
-  for (const path of [...draft.plan.tests, ...draft.plan.carried]) {
-    const target = join(outDir, "hidden", draft.id, path);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, await show(port, draft.source.mergeSha, path));
+  const hidden = join(outDir, "hidden", draft.id);
+  for (const path of [...draft.plan.tests, ...draft.plan.carried]) writeFileAt(join(hidden, path), await show(port, draft.source.mergeSha, path));
+  for (const fix of draft.laterFixes) {
+    for (const file of [...fix.tests, ...fix.support]) writeFileAt(join(hidden, `fix-${fix.pr}`, file.path), file.bytes);
   }
 }
 
@@ -137,7 +170,7 @@ export async function writeImplementTaskCases(sources: readonly ImplementTaskSou
   const seed = options.seed ?? "implement-task";
   const { kept, excluded } = filterPrivate(sources.map((source) => ({ id: implementCaseId(source), repo: source.repo, taskInitiative: source.taskInitiative, body: source })), options.policy);
   const drafts: Draft[] = [];
-  for (const { body: source } of kept) drafts.push(await draftOf(portOf(options, source.repo), source, seed));
+  for (const { body: source } of kept) drafts.push(await draftOf(portOf(options, source.repo), source, seed, options.laterFixesFor?.(source) ?? []));
   assertNoPrivate(drafts, options.policy);
   const cases: EvalCase[] = [];
   for (const draft of drafts) cases.push(await writeDraft(portOf(options, draft.repo), draft, options.outDir));

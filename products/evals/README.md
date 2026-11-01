@@ -70,6 +70,13 @@ titan-evals implement-task export --corpus cases.v3.classified.jsonl --repos-roo
 - `--selftest` runs the private exclusion self-test first and aborts the run if it fails.
 - It refuses an `--out` inside a git work tree or one that is not empty, and writes `cases/*.json`, `suite.json` and
   `manifest.json` only after screening ends.
+- Each kept case's later fix PRs (`--later-fix-source follow-up|fix-touch|both`, default `both`; `--no-later-fixes`
+  turns them off) are screened against a corrected reference: the accepted merge plus the fix's own diff. A fix whose
+  tests reproduce the escaped defect lands in `expected.laterFixTests`, with files under `hidden/<id>/fix-<pr>/`; every
+  other fix is listed in the manifest's `laterFix.rejected` with its reason.
+- `laterFixTests` grade whether a candidate avoided the defect the accepted diff shipped. They stay apart from
+  `hiddenTests` because the accepted diff fails them by construction, and mixing them in would cap the reference below
+  100 percent. Grading them is the trial grader's job; the export only writes them.
 
 `titan-evals history build` is the history corpus builder (TP-949). It makes no `gh` or
 GraphQL call; mirrors fetch over git smart HTTP unless `--no-fetch` is given.

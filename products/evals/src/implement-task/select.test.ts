@@ -39,6 +39,11 @@ describe("parseCorpusV3", () => {
     expect(parseCorpusV3(text)).toEqual([row("titan-platform#1")]);
   });
 
+  it("keeps the later-fix file-overlap links", () => {
+    const text = JSON.stringify({ ...row("titan-platform#1"), fix_touch_14d: [5, 7] });
+    expect(parseCorpusV3(text)[0]?.fix_touch_14d).toEqual([5, 7]);
+  });
+
   it("refuses a malformed line by its number", () => {
     const text = [JSON.stringify(row("a#1")), "{not json", JSON.stringify(row("a#3"))].join("\n");
     expect(() => parseCorpusV3(text)).toThrow(/^corpus line 2:/);

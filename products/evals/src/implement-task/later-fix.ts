@@ -6,7 +6,7 @@ import type { CorpusV3Row } from "./select.js";
 import { planHiddenTests } from "./write-case.js";
 
 /** `follow-up` is a title-matched fix; `fix-touch` is any later fix PR touching the same files within 14 days. */
-type FixSource = "follow-up" | "fix-touch";
+export type FixSource = "follow-up" | "fix-touch";
 
 type LaterFixReason = "fix-not-in-corpus" | "fix-not-descendant" | "fix-no-tests" | "fix-not-applicable";
 
