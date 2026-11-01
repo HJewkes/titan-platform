@@ -6,6 +6,8 @@ export {
   limitsSchema,
   liftSchema,
   overrideSchema,
+  PACE_MODES,
+  paceSchema,
   poolSchema,
   profileSchema,
   seatSchema,
@@ -17,6 +19,8 @@ export {
   type Limits,
   type LimitsDefaults,
   type LimitsOverride,
+  type PaceLimits,
+  type PaceMode,
   type PoolLimits,
   type ProfileLimits,
   type SeatLimits,
@@ -46,6 +50,7 @@ export {
   type ResolvedField,
   type ResolvedLimits,
 } from "./resolve.js";
+export { PACE_DEFAULTS, resolvePace, type ResolvedPace } from "./pace.js";
 export { checkLimits, type CheckOptions, type LimitsFinding, type LimitsFindingKind } from "./check.js";
 export { limitsReport } from "./report.js";
 export { BOOKKEEPING_REASON, CAP_KINDS } from "./report-refusals.js";

@@ -75,6 +75,15 @@ export const shepherdSchema = z.strictObject({
   review: z.strictObject({ max_concurrent: z.number().int().positive().optional() }).optional(),
 });
 
+export const PACE_MODES = ["off", "shadow", "on"] as const;
+
+/** The pace controller's mode and tuning. Omitted fields take `PACE_DEFAULTS` through `resolvePace`. */
+export const paceSchema = z.strictObject({
+  mode: z.enum(PACE_MODES),
+  buffer_points: z.number().finite().nonnegative().optional(),
+  finish_hours_before_reset: z.number().finite().min(0).max(168).optional(),
+});
+
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 export const overrideSchema = z.strictObject({
   ...tunableFields,
@@ -103,11 +112,14 @@ export const limitsSchema = z.strictObject({
   overrides: z.array(overrideSchema).optional(),
   capacity: capacitySchema.optional(),
   shepherd: shepherdSchema.optional(),
+  pace: paceSchema.optional(),
 });
 
 export type Limits = z.infer<typeof limitsSchema>;
 export type CapacityLimits = z.infer<typeof capacitySchema>;
 export type ShepherdLimits = z.infer<typeof shepherdSchema>;
+export type PaceLimits = z.infer<typeof paceSchema>;
+export type PaceMode = (typeof PACE_MODES)[number];
 export type BriefGate = (typeof BRIEF_GATES)[number];
 export type LimitsDefaults = z.infer<typeof defaultsSchema>;
 export type PoolLimits = z.infer<typeof poolSchema>;

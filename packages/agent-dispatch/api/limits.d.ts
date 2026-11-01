@@ -1,5 +1,5 @@
-import { B as BriefGate, P as ParsedLimits, G as Grant, L as Lift } from '../parse.js';
-export { a as BRIEF_GATES, C as CapacityLimits, I as IgnoredEntry, b as Limits, c as LimitsBlock, d as LimitsConfigError, e as LimitsDefaults, f as LimitsOverride, g as LimitsSection, h as PoolLimits, i as ProfileLimits, S as SeatLimits, j as ShepherdLimits, k as capacitySchema, l as grantSchema, m as liftSchema, n as limitsSchema, o as overrideSchema, p as parseLimits, q as poolSchema, r as profileSchema, s as seatSchema, t as shepherdSchema } from '../parse.js';
+import { B as BriefGate, P as ParsedLimits, G as Grant, L as Lift, a as PaceLimits } from '../parse.js';
+export { b as BRIEF_GATES, C as CapacityLimits, I as IgnoredEntry, c as Limits, d as LimitsBlock, e as LimitsConfigError, f as LimitsDefaults, g as LimitsOverride, h as LimitsSection, i as PACE_MODES, j as PaceMode, k as PoolLimits, l as ProfileLimits, S as SeatLimits, m as ShepherdLimits, n as capacitySchema, o as grantSchema, p as liftSchema, q as limitsSchema, r as overrideSchema, s as paceSchema, t as parseLimits, u as poolSchema, v as profileSchema, w as seatSchema, x as shepherdSchema } from '../parse.js';
 import { z } from 'zod';
 
 /**
@@ -99,7 +99,21 @@ type ResolveResult = {
 /** Resolves one pool for one spawn. Pure: `now` and the grants come in, nothing is read. */
 declare function resolveLimits(parsed: ParsedLimits, input: ResolveInput): ResolveResult;
 
-type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "ignored_section" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped";
+/** Mirrors agent-chat's `PACE_BUFFER_POINTS` (3) and `FINISH_EARLY_MS` (one day); change them together. */
+declare const PACE_DEFAULTS: {
+    readonly mode: "shadow";
+    readonly buffer_points: 3;
+    readonly finish_hours_before_reset: 24;
+};
+type ResolvedPace = {
+    present: false;
+} | ({
+    present: true;
+} & Required<PaceLimits>);
+/** `{ present: false }` when the block has no valid `pace`, so callers fall back to their own setting. */
+declare function resolvePace(parsed: ParsedLimits): ResolvedPace;
+
+type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "ignored_section" | "invalid_pace" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped";
 interface LimitsFinding {
     kind: LimitsFindingKind;
     message: string;
@@ -647,7 +661,7 @@ declare function liftQuestion(input: {
 /** The grant a yes writes: the lifted ceiling until the window resets. A no, or no answer, holds. */
 declare function grantFromAnswer(question: LiftQuestion, answer: LiftAnswer): Grant | null;
 
-export { BOOKKEEPING_REASON, BriefGate, CAP_KINDS, type CheckOptions, type ContradictionReport, type FiveHourReading, Grant, LIMIT_BOUNDS, LIMIT_DEFAULTS, type LayeredField, type LedgerOnlyClaim, Lift, type LiftAnswer, type LiftQuestion, type LimitLayer, type LimitsBinding, type LimitsBlockerRef, type LimitsClaim, type LimitsClock, type LimitsFinding, type LimitsFindingKind, type LimitsGateReading, type LimitsLedger, type LimitsPlanInput, type LimitsPoolInput, type LimitsPoolReading, type LimitsPrStatus, type LimitsRefusal, type LimitsReport, type LimitsRole, type LimitsRoleInput, type LimitsSeatInput, type LimitsShepherdInput, type LimitsShepherdRun, type LimitsWorktreesInput, ParsedLimits, type PoolReport, type RefusalBlocker, type RefusalKindReport, type ResolveInput, type ResolveResult, type ResolvedCapacity, type ResolvedField, type ResolvedLimits, type ResolvedSetting, type ResolvedShepherd, type RoleReport, type SeatReport, type SettingSource, type ShepherdReport, type SupplyReport, type WorktreesReport, checkLimits, grantFromAnswer, liftKey, liftQuestion, limitsBindingSchema, limitsReport, limitsReportSchema, resolveCapacity, resolveLimits, resolveShepherd, seatReportSchema, shepherdReportSchema };
+export { BOOKKEEPING_REASON, BriefGate, CAP_KINDS, type CheckOptions, type ContradictionReport, type FiveHourReading, Grant, LIMIT_BOUNDS, LIMIT_DEFAULTS, type LayeredField, type LedgerOnlyClaim, Lift, type LiftAnswer, type LiftQuestion, type LimitLayer, type LimitsBinding, type LimitsBlockerRef, type LimitsClaim, type LimitsClock, type LimitsFinding, type LimitsFindingKind, type LimitsGateReading, type LimitsLedger, type LimitsPlanInput, type LimitsPoolInput, type LimitsPoolReading, type LimitsPrStatus, type LimitsRefusal, type LimitsReport, type LimitsRole, type LimitsRoleInput, type LimitsSeatInput, type LimitsShepherdInput, type LimitsShepherdRun, type LimitsWorktreesInput, PACE_DEFAULTS, PaceLimits, ParsedLimits, type PoolReport, type RefusalBlocker, type RefusalKindReport, type ResolveInput, type ResolveResult, type ResolvedCapacity, type ResolvedField, type ResolvedLimits, type ResolvedPace, type ResolvedSetting, type ResolvedShepherd, type RoleReport, type SeatReport, type SettingSource, type ShepherdReport, type SupplyReport, type WorktreesReport, checkLimits, grantFromAnswer, liftKey, liftQuestion, limitsBindingSchema, limitsReport, limitsReportSchema, resolveCapacity, resolveLimits, resolvePace, resolveShepherd, seatReportSchema, shepherdReportSchema };
 
 // ./dist/parse.d.ts
 import { z } from 'zod';
@@ -734,6 +748,17 @@ declare const shepherdSchema: z.ZodObject<{
     review: z.ZodOptional<z.ZodObject<{
         max_concurrent: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>;
+}, z.core.$strict>;
+declare const PACE_MODES: readonly ["off", "shadow", "on"];
+/** The pace controller's mode and tuning. Omitted fields take `PACE_DEFAULTS` through `resolvePace`. */
+declare const paceSchema: z.ZodObject<{
+    mode: z.ZodEnum<{
+        off: "off";
+        shadow: "shadow";
+        on: "on";
+    }>;
+    buffer_points: z.ZodOptional<z.ZodNumber>;
+    finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strict>;
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
 declare const overrideSchema: z.ZodObject<{
@@ -849,10 +874,21 @@ declare const limitsSchema: z.ZodObject<{
             max_concurrent: z.ZodOptional<z.ZodNumber>;
         }, z.core.$strict>>;
     }, z.core.$strict>>;
+    pace: z.ZodOptional<z.ZodObject<{
+        mode: z.ZodEnum<{
+            off: "off";
+            shadow: "shadow";
+            on: "on";
+        }>;
+        buffer_points: z.ZodOptional<z.ZodNumber>;
+        finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 type Limits = z.infer<typeof limitsSchema>;
 type CapacityLimits = z.infer<typeof capacitySchema>;
 type ShepherdLimits = z.infer<typeof shepherdSchema>;
+type PaceLimits = z.infer<typeof paceSchema>;
+type PaceMode = (typeof PACE_MODES)[number];
 type BriefGate = (typeof BRIEF_GATES)[number];
 type LimitsDefaults = z.infer<typeof defaultsSchema>;
 type PoolLimits = z.infer<typeof poolSchema>;
@@ -867,7 +903,7 @@ declare class LimitsConfigError extends Error {
 }
 type LimitsBlock = Limits & Required<Pick<Limits, "funds" | "profiles" | "seats" | "overrides">>;
 /** Host-wide sections that bind no pool, so a bad one is dropped rather than closing anything. */
-type LimitsSection = "capacity" | "shepherd";
+type LimitsSection = "capacity" | "shepherd" | "pace";
 interface IgnoredEntry {
     index: number;
     reason: string;
@@ -887,4 +923,4 @@ interface ParsedLimits {
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
 declare function parseLimits(raw: unknown): ParsedLimits;
 
-export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, BRIEF_GATES as a, type Limits as b, type LimitsBlock as c, LimitsConfigError as d, type LimitsDefaults as e, type LimitsOverride as f, type LimitsSection as g, type PoolLimits as h, type ProfileLimits as i, type ShepherdLimits as j, capacitySchema as k, grantSchema as l, liftSchema as m, limitsSchema as n, overrideSchema as o, parseLimits as p, poolSchema as q, profileSchema as r, seatSchema as s, shepherdSchema as t };
+export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, type PaceLimits as a, BRIEF_GATES as b, type Limits as c, type LimitsBlock as d, LimitsConfigError as e, type LimitsDefaults as f, type LimitsOverride as g, type LimitsSection as h, PACE_MODES as i, type PaceMode as j, type PoolLimits as k, type ProfileLimits as l, type ShepherdLimits as m, capacitySchema as n, grantSchema as o, liftSchema as p, limitsSchema as q, overrideSchema as r, paceSchema as s, parseLimits as t, poolSchema as u, profileSchema as v, seatSchema as w, shepherdSchema as x };
