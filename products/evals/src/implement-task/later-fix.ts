@@ -6,26 +6,26 @@ import type { CorpusV3Row } from "./select.js";
 import { planHiddenTests } from "./write-case.js";
 
 /** `follow-up` is a title-matched fix; `fix-touch` is any later fix PR touching the same files within 14 days. */
-export type FixSource = "follow-up" | "fix-touch";
+type FixSource = "follow-up" | "fix-touch";
 
-export type LaterFixReason = "fix-not-in-corpus" | "fix-not-descendant" | "fix-no-tests" | "fix-not-applicable";
+type LaterFixReason = "fix-not-in-corpus" | "fix-not-descendant" | "fix-no-tests" | "fix-not-applicable";
 
 /** A corpus row with the file-overlap fix links, which the selector's row type does not read. */
 export type LaterFixRow = CorpusV3Row & { fix_touch_14d?: readonly number[] };
 
-export interface LaterFixCandidate {
+interface LaterFixCandidate {
   pr: number;
   fixSource: FixSource;
   row: CorpusV3Row;
 }
 
-export interface LaterFixRejection {
+interface LaterFixRejection {
   pr: number;
   fixSource: FixSource;
   reason: LaterFixReason;
 }
 
-export type CorpusIndex = ReadonlyMap<string, CorpusV3Row>;
+type CorpusIndex = ReadonlyMap<string, CorpusV3Row>;
 
 const keyOf = (repo: string, pr: number): string => `${repo}#${pr}`;
 
@@ -68,7 +68,7 @@ export interface CorrectedRefInput {
   exec: Exec;
 }
 
-export type CorrectedRef = { ok: true; sha: string } | { ok: false; reason: "fix-not-descendant" | "fix-not-applicable" };
+type CorrectedRef = { ok: true; sha: string } | { ok: false; reason: "fix-not-descendant" | "fix-not-applicable" };
 
 const GIT_TIMEOUT_MS = 2 * 60_000;
 // Pinned so two builds of the same fix on the same merge give the same sha.
@@ -123,7 +123,7 @@ export async function buildCorrectedRef(input: CorrectedRefInput): Promise<Corre
   }
 }
 
-export type FixTests = { ok: true; tests: string[]; carried: string[] } | { ok: false; reason: "fix-no-tests" };
+type FixTests = { ok: true; tests: string[]; carried: string[] } | { ok: false; reason: "fix-no-tests" };
 
 /** The fix's tests and support files, planned as fix-proof plans any PR; a fix that changes no test has nothing to grade. */
 export async function fixTests(port: BundleGit, fixBase: string, fixMerge: string): Promise<FixTests> {
