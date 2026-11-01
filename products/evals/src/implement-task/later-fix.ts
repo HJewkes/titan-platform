@@ -117,7 +117,7 @@ export async function buildCorrectedRef(input: CorrectedRefInput): Promise<Corre
     await mustGit(input, ["worktree", "add", "--quiet", "--detach", tree, input.merge]);
     return await applyAndCommit(input, tree, join(temp, "fix.patch"));
   } finally {
-    await git(input, ["worktree", "remove", "--force", tree]);
+    // Deleting the directory and pruning also clears a worktree whose add half-failed, which `worktree remove` refuses.
     rmSync(temp, { recursive: true, force: true });
     await git(input, ["worktree", "prune"]);
   }
