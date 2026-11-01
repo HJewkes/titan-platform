@@ -1,6 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { getBlob, insertBlobRow, refuseSecrets, stageBlob, type BlobStore, type StagedBlob } from "./blob-store.js";
+import { asText, getBlob, insertBlobRow, refuseSecrets, stageBlob, type BlobStore, type StagedBlob } from "./blob-store.js";
 
 type PinClass = "tree" | "diff" | "observed" | "item" | "landed";
 
@@ -54,12 +54,12 @@ interface MarkerRow extends MarkerIdentity {
 type MarkerValues = { reads: Map<string, Buffer>; output?: Buffer } | { missing: string[] };
 
 /**
- * Appends one marker. Every read value and the output pass the capability guard first, large values reach their files
- * before the transaction opens (a failed write leaves only an orphan file), and the blob rows and the marker commit together.
+ * Appends one marker. The whole input passes the capability guard first, since the table is append-only and a stored
+ * secret could never be scrubbed. Large values reach their files before the transaction opens (a failed write leaves only
+ * an orphan file), and the blob rows and the marker commit together.
  */
 export function writeMarker(db: Db, store: BlobStore, input: MarkerInput): { id: number } {
-  for (const read of input.reads) refuseSecrets(store, read.bytes, `marker read ${read.name}`);
-  if (input.output) refuseSecrets(store, input.output, "marker output");
+  refuseSecrets(store, guardView(input), "marker write");
   const staged = input.reads.map((read) => stageBlob(store, read.bytes));
   const output = input.output ? stageBlob(store, input.output) : undefined;
   const reads: MarkerRead[] = input.reads.map((read, i) => ({ name: read.name, digest: staged[i]!.digest, bytes: staged[i]!.bytes }));
@@ -70,6 +70,14 @@ export function writeMarker(db: Db, store: BlobStore, input: MarkerInput): { id:
       return { id: insertMarker(db, input, reads, output?.digest) };
     })
     .immediate();
+}
+
+function guardView(input: MarkerInput): unknown {
+  return {
+    ...input,
+    reads: input.reads.map((read) => ({ name: read.name, value: asText(read.bytes) })),
+    output: input.output && asText(input.output),
+  };
 }
 
 function insertMarker(db: Db, input: MarkerInput, reads: MarkerRead[], outputDigest: string | undefined): number {

@@ -1,7 +1,8 @@
+import { parseRateLimitMarker } from "@titan-design/github";
 import type { WorkflowFn } from "@titan-design/workflow";
 import { isOneOf } from "../narrow.js";
 
-export const FAILURE_CLASSES = ["ci-timeout", "gh-api-5xx", "land-rules", "update-branch", "other"] as const;
+export const FAILURE_CLASSES = ["ci-timeout", "gh-api-5xx", "gh-rate-limit", "land-rules", "update-branch", "other"] as const;
 /** The closed set a failed Shepherd run's `error` is filed under, as its `[<class>] ` prefix. */
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
 
@@ -18,6 +19,8 @@ export function failureClassOf(error: string): FailureClass {
   const prefixed = PREFIX.exec(error)?.[1];
   if (prefixed !== undefined && isOneOf(FAILURE_CLASSES, prefixed)) return prefixed;
   if (CI_TIMEOUT.test(error)) return "ci-timeout";
+  // Only the transport writes the marker, on an answer `classifyGitHubFailure` called a limit, so it outranks the step's name.
+  if (parseRateLimitMarker(error)) return "gh-rate-limit";
   if (LAND_RULES.test(error)) return "land-rules";
   const ghTail = GH_API_FAILED.exec(error)?.[1];
   if (ghTail !== undefined && GH_SERVER_SIDE.test(ghTail)) return "gh-api-5xx";

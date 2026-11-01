@@ -13,10 +13,19 @@
     {
       "name": "a marker write skips the capability guard",
       "file": "products/factory/src/markers/blob-store.ts",
-      "find": "  store.capabilities.refuse(Buffer.from(bytes).toString(\"utf8\"), where);",
+      "find": "  store.capabilities.refuse(value, where);",
       "replace": "  void where;",
       "kills": [
         "capability guard a read value carrying a refused capability is refused before any blob is written"
+      ]
+    },
+    {
+      "name": "a marker write guards only its byte values",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "  return {\n    ...input,\n    reads:",
+      "replace": "  return {\n    reads:",
+      "kills": [
+        "capability guard a secret in an input digest pin is refused, and the refusal does not name it"
       ]
     },
     {

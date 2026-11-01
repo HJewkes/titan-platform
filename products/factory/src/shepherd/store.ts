@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
-import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { proofWaiverTable, type ProofWaivers } from "./proof-waiver-table.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
@@ -16,9 +16,9 @@ import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, write
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
-import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
+import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
-import type { KindMove } from "./register-kind.js";
+import type { KindMove } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 

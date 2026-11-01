@@ -9,7 +9,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { AgentChatAgents } from "./agents.js";
 import { landGateHead } from "./approval-carry.js";
 import type { PrTarget } from "./gates.js";
-import type { OwnerGateReason } from "./policy.js";
+import type { OwnerGateReason } from "./policy-schema.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { visualAcceptHead } from "./visual-accept.js";
 

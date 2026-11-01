@@ -11,7 +11,7 @@ import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { proofWaiverMigration } from "./proof-waiver.js";
+import { proofWaiverMigration } from "./proof-waiver-table.js";
 import { DEFAULT_ADVERSARY_PROFILE, intentPlan, panelPolicyFor } from "./review-panel-plan.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";

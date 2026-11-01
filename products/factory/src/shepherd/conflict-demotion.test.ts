@@ -7,7 +7,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
-import type { EffectivePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
 import type { ExitNoticePorts } from "./ports.js";

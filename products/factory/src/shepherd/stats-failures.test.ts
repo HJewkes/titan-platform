@@ -17,8 +17,8 @@ describe("failureStats", () => {
     ];
 
     expect(failureStats(runs)).toEqual([
-      { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
-      { repo: "acme/widgets", week: "2026-W42", failures: 1, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 0, "update-branch": 0, other: 0 } },
+      { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "gh-rate-limit": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
+      { repo: "acme/widgets", week: "2026-W42", failures: 1, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "gh-rate-limit": 0, "land-rules": 0, "update-branch": 0, other: 0 } },
     ]);
   });
 
@@ -35,7 +35,7 @@ describe("failureStats", () => {
       runOf("c", "workflow returned while step ci-wait:r3:17 still required reconciliation", null, { status: "recovery_required" }),
     ];
 
-    expect(failureStats(runs)).toEqual([{ repo: "acme/widgets", week: "2026-W41", failures: 1, byClass: { "ci-timeout": 0, "gh-api-5xx": 0, "land-rules": 0, "update-branch": 0, other: 1 } }]);
+    expect(failureStats(runs)).toEqual([{ repo: "acme/widgets", week: "2026-W41", failures: 1, byClass: { "ci-timeout": 0, "gh-api-5xx": 0, "gh-rate-limit": 0, "land-rules": 0, "update-branch": 0, other: 1 } }]);
   });
 
   it("keeps only failures inside the date range", () => {

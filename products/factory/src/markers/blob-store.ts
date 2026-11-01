@@ -11,7 +11,8 @@ export interface CapabilityGuard {
 
 /**
  * Where large blobs go, and the guard every write passes. `blobDir` is `<db dir>/marker-blobs`.
- * A store with no guard refuses every write, so a missing capability can never let a secret through.
+ * A store with no guard refuses every write, so a missing capability can never let a secret through. A guard over an
+ * empty vault (`NO_CAPABILITIES`) passes every write: it holds no secret to find.
  */
 export interface BlobStore {
   blobDir: string;
@@ -32,10 +33,13 @@ function digestOf(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-/** Refuses a value that holds a capability secret; called before any blob byte is written. */
-export function refuseSecrets(store: BlobStore, bytes: Uint8Array, where: string): void {
+/** Byte values reach the guard as text, the form in which a secret inside them would match. */
+export const asText = (bytes: Uint8Array): string => Buffer.from(bytes).toString("utf8");
+
+/** Refuses a value that holds a capability secret anywhere, keys included; called before any blob byte or row is written. */
+export function refuseSecrets(store: BlobStore, value: unknown, where: string): void {
   if (!store.capabilities) throw new Error(`${where}: refused, the store has no capability guard`);
-  store.capabilities.refuse(Buffer.from(bytes).toString("utf8"), where);
+  store.capabilities.refuse(value, where);
 }
 
 /**
@@ -61,7 +65,7 @@ export function insertBlobRow(db: Db, blob: StagedBlob, createdAt: string): void
 }
 
 export function putBlob(db: Db, store: BlobStore, bytes: Uint8Array, createdAt: string): string {
-  refuseSecrets(store, bytes, "marker blob");
+  refuseSecrets(store, asText(bytes), "marker blob");
   const staged = stageBlob(store, bytes);
   db.transaction(() => insertBlobRow(db, staged, createdAt)).immediate();
   return staged.digest;

@@ -12,10 +12,10 @@ const AT = "2026-11-01T12:00:00.000Z";
 const LIMIT = 256 * 1024;
 const SECRET = "synthetic-secret-token-0001";
 
-/** Stands in for the runtime's vault: refuses any string holding the secret. */
+/** Stands in for the runtime's vault: refuses a value holding the secret in any string or key. */
 const vault: CapabilityGuard = {
   refuse(value, where) {
-    if (typeof value === "string" && value.includes(SECRET)) throw new CapabilityLeakError(where);
+    if (JSON.stringify(value).includes(SECRET)) throw new CapabilityLeakError(where);
   },
 };
 
@@ -149,6 +149,22 @@ describe("capability guard", () => {
   it("an output carrying a refused capability is refused", () => {
     expect(() => writeMarker(db, guarded(), marker({ output: Buffer.from(SECRET) }))).toThrow(CapabilityLeakError);
     expect(markerRows()).toBe(0);
+  });
+
+  it.each([
+    ["a read name", { reads: [{ name: SECRET, bytes: bytes(LIMIT + 1) }] }],
+    ["an input digest pin", { inputDigests: { x: { pin: SECRET, projection: "p" } } }],
+    ["an input digest key", { inputDigests: { [SECRET]: { pin: "p", projection: "p" } } }],
+    ["the item", { item: `o/r#${SECRET}` }],
+    ["the run id", { runId: SECRET }],
+  ])("a secret in %s is refused, and the refusal does not name it", (_where, overrides: Partial<MarkerInput>) => {
+    const input = marker({ reads: [{ name: "log", bytes: bytes(LIMIT + 1) }], ...overrides });
+
+    expect(() => writeMarker(db, guarded(), input)).toThrow(CapabilityLeakError);
+    expect(() => writeMarker(db, guarded(), input)).not.toThrow(new RegExp(SECRET));
+    expect(blobRows()).toBe(0);
+    expect(markerRows()).toBe(0);
+    expect(files()).toEqual([]);
   });
 
   it("putBlob refuses a secret", () => {

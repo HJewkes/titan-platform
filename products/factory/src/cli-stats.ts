@@ -238,7 +238,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")
-    .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
+    .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, gh-rate-limit, land-rules, update-branch, other)")
     .option("--gates", "instead, with --since: gates opened in the window per policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered), with decisions by value, cancelled-unanswered, pending, and median and max wait hours; plus visual-gate latency (median, p90) and re-asks per PR")
     .option("--since <window>", "the --gates window back from now: 90m, 6h or 7d", parseSinceOption)
     .action((opts: StatsOpts) => statsAction(opts, io, dbPath, setExit, now));
