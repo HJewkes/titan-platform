@@ -345,7 +345,9 @@ Actions run on the commit must pass, so an API failure never thaws a red main.
 A task that is already done is left alone, so a replay after a restart closes nothing twice and adds no
 second note. If active-work cannot be reached, the step gives up after an hour, records `task <initiative>/<id> not
 closed: <error class>` as a caveat on its result, and the run still completes. A slice registration only
-notes the landing and leaves its task open for the seat to close after live evidence.
+notes the landing and leaves its task open for the seat to close after live evidence. A task whose plan has a
+slices block with slices unlanded, or that is tagged `epic`, `slices` or `multi-slice`, is left open too, with a note
+saying why; a task id the registered initiative does not hold is never closed.
 
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
