@@ -374,11 +374,6 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows/land-ci.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/land-settle.ts": {
     "titan/max-line-length": {
       "count": 2
