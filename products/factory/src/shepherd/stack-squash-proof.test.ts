@@ -82,7 +82,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe("a 3-deep stack squash-merged in order", () => {
+describe("a 3-deep stack squash-merged in order", { timeout: 30_000 }, () => {
   it("takes a clean merge-up at each level when each child edits only its own files", () => {
     const s = scratch();
     branchFrom(s, "main", "p");

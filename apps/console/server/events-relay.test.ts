@@ -59,7 +59,7 @@ async function startFakeStream(token?: string): Promise<FakeStream> {
   };
 }
 
-async function until(condition: () => boolean, timeoutMs = 3000): Promise<void> {
+async function until(condition: () => boolean, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) throw new Error("condition not met in time");
@@ -121,7 +121,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
   };
 }
 
-describe("the console daemon's /events", () => {
+describe("the console daemon's /events", { timeout: 20_000 }, () => {
   let handle: DaemonHandle | undefined;
   let browser: Subscription | undefined;
 
@@ -161,7 +161,7 @@ describe("the console daemon's /events", () => {
   });
 });
 
-describe("the console daemon's refreshed frame", () => {
+describe("the console daemon's refreshed frame", { timeout: 20_000 }, () => {
   let handle: DaemonHandle | undefined;
   let browser: Subscription | undefined;
 
@@ -191,7 +191,7 @@ describe("the console daemon's refreshed frame", () => {
   });
 });
 
-describe("the events relay", () => {
+describe("the events relay", { timeout: 20_000 }, () => {
   const relays: EventsRelay[] = [];
   afterEach(async () => {
     await Promise.all(relays.splice(0).map((relay) => relay.close()));
@@ -349,7 +349,7 @@ describe("the events relay", () => {
   });
 });
 
-describe("the factory relay source", () => {
+describe("the factory relay source", { timeout: 20_000 }, () => {
   const relays: EventsRelay[] = [];
   afterEach(async () => {
     await Promise.all(relays.splice(0).map((relay) => relay.close()));

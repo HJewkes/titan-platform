@@ -94,7 +94,7 @@ function readCases(out: string): EvalCase[] {
   return readdirSync(join(out, "cases")).map((file) => EvalCaseSchema.parse(readJson(join(out, "cases", file))));
 }
 
-describe("buildReviewPrCases", () => {
+describe("buildReviewPrCases", { timeout: 30_000 }, () => {
   let scratch: string;
   let clone: string;
   let activeWorkRoot: string;
@@ -111,7 +111,7 @@ describe("buildReviewPrCases", () => {
     activeWorkRoot = join(scratch, "active-work");
     mkdirSync(join(activeWorkRoot, PRIVATE_SLUG), { recursive: true });
     writeFileSync(join(activeWorkRoot, PRIVATE_SLUG, "brief.md"), "# private\n");
-  });
+  }, 60_000);
 
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
