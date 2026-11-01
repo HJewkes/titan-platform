@@ -17,7 +17,7 @@ import { LeaveLand } from "./leave-land.js";
 import { DEFAULT_DIAGNOSIS_PROFILE, DIAGNOSIS_SPAWN_ATTEMPTS, diagnosisName, spawnDiagnosis, type DiagnosisPorts, type DiagnosisTiming } from "./no-verdict-diagnosis.js";
 import { freshNoVerdictState, noteReviewerStep, type ReviewerSeen } from "./no-verdict-round.js";
 import type { ObservedPr } from "./observe.js";
-import type { EffectivePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Escalated } from "./route-table.js";

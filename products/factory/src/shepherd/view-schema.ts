@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AutoPassedSchema } from "./auto-pass.js";
 import { TIMELINE_EVENT_KINDS } from "./ci-timeout-entry.js";
 import { NONE_KINDS } from "./none-reason.js";
-import { OWNER_GATE_REASONS } from "./policy.js";
+import { OWNER_GATE_REASONS } from "./policy-schema.js";
 import { STAGES } from "./stage-times.js";
 import { PhaseSchema } from "./step-phase.js";
 

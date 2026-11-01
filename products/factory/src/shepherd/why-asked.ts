@@ -4,7 +4,7 @@
  */
 import { withheldInReason } from "./grant-withheld.js";
 import type { MergeGuardRow } from "./merge-facts.js";
-import type { OwnerGateReason } from "./policy.js";
+import type { OwnerGateReason } from "./policy-schema.js";
 import { transientOnlyConditions } from "./resync.js";
 import { ESCALATIONS, SEAT_HELD_ROUNDS_WORDS } from "./route-table.js";
 

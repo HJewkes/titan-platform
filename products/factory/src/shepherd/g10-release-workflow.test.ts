@@ -14,7 +14,8 @@ import { G10_RELEASE_STEP, TWO_MERGE_RULE, type TwoMergeMode } from "./g10-relea
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
