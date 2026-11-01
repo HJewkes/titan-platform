@@ -34,16 +34,15 @@ function insertMarker(db: Db, overrides: MarkerInput = {}): number {
   return Number(result.lastInsertRowid);
 }
 
-function currentId(db: Db, identity: Required<Pick<MarkerInput, "item" | "fact" | "pin_class" | "pin">>): number {
-  const row = db.prepare("SELECT MAX(id) AS id FROM factory_marker WHERE item = @item AND fact = @fact AND pin_class = @pin_class AND pin = @pin").get(identity) as { id: number };
-  return row.id;
+function current(db: Db, identity: Required<Pick<MarkerInput, "item" | "fact" | "pin_class" | "pin">>): unknown {
+  return db.prepare("SELECT MAX(id) AS id FROM factory_marker WHERE item = @item AND fact = @fact AND pin_class = @pin_class AND pin = @pin").get(identity);
 }
 
 function insertBlob(db: Db, blob: { bytes: number; inline: Buffer | null; path: string | null }): void {
   db.prepare(`INSERT INTO factory_marker_blob (digest, bytes, inline, path, created_at) VALUES ('sha256:x', @bytes, @inline, @path, '${AT}')`).run(blob);
 }
 
-const count = (db: Db): number => (db.prepare("SELECT COUNT(*) AS n FROM factory_marker").get() as { n: number }).n;
+const count = (db: Db): unknown => db.prepare("SELECT COUNT(*) AS n FROM factory_marker").get();
 
 describe("marker table migration", () => {
   it("registers as version 49", () => {
@@ -79,8 +78,8 @@ describe("marker identity and supersession", () => {
     const second = insertMarker(db);
 
     expect(second).toBeGreaterThan(first);
-    expect(count(db)).toBe(2);
-    expect(currentId(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_A })).toBe(second);
+    expect(count(db)).toEqual({ n: 2 });
+    expect(current(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_A })).toEqual({ id: second });
   });
 
   it("a marker at a new tree epoch is a new identity beside the old one", () => {
@@ -89,8 +88,8 @@ describe("marker identity and supersession", () => {
 
     const moved = insertMarker(db, { pin: SHA_B, pin_seq: 2 });
 
-    expect(currentId(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_A })).toBe(old);
-    expect(currentId(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_B })).toBe(moved);
+    expect(current(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_A })).toEqual({ id: old });
+    expect(current(db, { item: "o/r#7", fact: "ci", pin_class: "tree", pin: SHA_B })).toEqual({ id: moved });
   });
 });
 
@@ -104,7 +103,7 @@ describe("reverted is terminal", () => {
     expect(() => insertMarker(db, { fact: "ci" })).toThrow(/reverted item is terminal/);
     expect(() => insertMarker(db, { ...landed, reverted: 0 })).toThrow(/reverted item is terminal/);
     expect(() => insertMarker(db, landed)).toThrow(/reverted item is terminal/);
-    expect(count(db)).toBe(1);
+    expect(count(db)).toEqual({ n: 1 });
   });
 
   it("a reverted item leaves other items free to take markers", () => {
@@ -113,7 +112,7 @@ describe("reverted is terminal", () => {
 
     insertMarker(db, { item: "o/r#8" });
 
-    expect(count(db)).toBe(2);
+    expect(count(db)).toEqual({ n: 2 });
   });
 
   it("reverted is refused on a fact other than landed", () => {
@@ -121,7 +120,7 @@ describe("reverted is terminal", () => {
 
     expect(() => insertMarker(db, { fact: "ci", pin_class: "landed", reverted: 1 })).toThrow(/CHECK constraint/);
     expect(() => insertMarker(db, { fact: "landed", pin_class: "tree", reverted: 1 })).toThrow(/CHECK constraint/);
-    expect(count(db)).toBe(0);
+    expect(count(db)).toEqual({ n: 0 });
   });
 });
 
@@ -131,7 +130,7 @@ describe("marker column checks", () => {
 
     expect(() => insertMarker(db, { pin_class: "tree", expires_at: AT })).toThrow(/CHECK constraint/);
     insertMarker(db, { pin_class: "observed", pin: "ttl", expires_at: AT });
-    expect(count(db)).toBe(1);
+    expect(count(db)).toEqual({ n: 1 });
   });
 
   it("a pin class outside the five is refused", () => {
