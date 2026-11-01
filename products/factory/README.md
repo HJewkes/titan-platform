@@ -1234,6 +1234,10 @@ Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one t
 
 Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBrief`.
 
+## Step registry: `src/registry/`
+
+`factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. A read not yet reviewed is `pending` and parks like an effect; `restart-contract.test.ts` derives its list of parking steps from the registry. `census.test.ts` fails when a declared step has no entry.
+
 ## Land core: `src/workflows/land.ts`
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:
