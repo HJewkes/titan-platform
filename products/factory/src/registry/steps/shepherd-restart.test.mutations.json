@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a classified Shepherd read goes back to pending",
+      "file": "products/factory/src/registry/steps/shepherd.ts",
+      "find": "step(\"sh-held-wait\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"sh-held-wait\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
+      "kills": ["Shepherd READ review (TP-3106 S4) a restart whose replay diverged before sh-held-wait drops its orphan and the run continues, not parks"]
+    },
+    {
+      "name": "a kept Shepherd write is classified read",
+      "file": "products/factory/src/registry/steps/shepherd.ts",
+      "find": "step(\"sh-freeze-wait\", \"dispatch\", \"software\", effect(",
+      "replace": "step(\"sh-freeze-wait\", \"dispatch\", \"software\", READ_EFFECT ?? effect(",
+      "kills": ["Shepherd READ review (TP-3106 S4) sh-freeze-wait's orphan still parks because it thaws the freeze when main reads green"]
+    }
+  ]
+}
