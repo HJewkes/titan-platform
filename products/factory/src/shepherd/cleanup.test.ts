@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
-import { holdSlotsMigration } from "./store-migrations.js";
+import { holdSlotsMigration, lastSliceMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type MergedPr, type TaskSlicing, type TaskState } from "./cleanup.js";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
@@ -19,7 +19,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), lastSliceMigration(43)]);
   const store = new ShepherdStore(db, () => 0);
   store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -58,14 +58,14 @@ function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): Cleanup
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; taskClose?: "keep" | "last-slice-only"; slicing?: TaskSlicing; registration?: RegistrationInput; advisory?: (repo: string) => boolean; merged?: MergedPr } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
   const tasks = fakeTasks(options.task ?? "open", options.slicing);
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
-  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
+  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.taskClose && { taskClose: options.taskClose }), ...(options.advisory && { advisory: options.advisory }) };
   const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN, ...(options.merged && { merged: options.merged }) }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
@@ -114,6 +114,56 @@ describe("sh-cleanup task", () => {
     expect(result.task).toBe("left-open");
     expect(w.tasks.closed).toEqual([]);
     expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it is tagged ${tag}`]);
+  });
+
+  describe("register --last-slice", () => {
+    const last = { ...base, lastSlice: true };
+
+    it.each(["slices", "multi-slice"])("closes a task tagged %s, noting the last slice", async (tag) => {
+      const w = world({ registration: last, slicing: { ...NO_SLICING, tags: [tag] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: last slice ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it.each(["slices", "multi-slice"])("keeps a task tagged %s open without the flag", async (tag) => {
+      const w = world({ slicing: { ...NO_SLICING, tags: [tag] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("closes a tagged task in last-slice-only mode too", async () => {
+      const w = world({ registration: last, slicing: { ...NO_SLICING, tags: ["slices"] }, taskClose: "last-slice-only" });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: last slice ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it("still holds an epic and an unlanded plan slice", async () => {
+      const epic = world({ registration: last, slicing: { ...NO_SLICING, tags: ["epic", "slices"] } });
+      const planned = world({ registration: last, slicing: { tags: ["slices"], notes: "", plan: planOf("a", "b") } });
+
+      expect([(await epic.run()).task, (await planned.run()).task]).toEqual(["left-open", "left-open"]);
+      expect([...epic.tasks.closed, ...planned.tasks.closed]).toEqual([]);
+    });
+
+    it("does nothing to a task that is already done", async () => {
+      const w = world({ registration: last, task: "done", slicing: { ...NO_SLICING, tags: ["slices"] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("already-done");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([]);
+    });
   });
 
   it("closes a single-slice task that carries only unrelated tags", async () => {
