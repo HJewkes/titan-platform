@@ -2,20 +2,14 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { Command } from "commander";
 import { hostDoctor, type HostDoctorReport } from "./doctor.js";
-import type { HostPorts } from "./ports.js";
+import { registerServices, type ServicesIo } from "./services/cli-services.js";
 
-interface HostIo {
-  stdout: (text: string) => void;
-  setExitCode: (code: number) => void;
-  env: NodeJS.ProcessEnv;
-  home: string;
-  platform: NodeJS.Platform;
-  ports: HostPorts;
-}
+type HostIo = ServicesIo;
 
 export function registerHost(program: Command, io: HostIo): void {
   const host = program.command("host").description("Check and converge this host's coordination setup");
   registerDoctor(host, io);
+  registerServices(host, io);
 }
 
 function registerDoctor(host: Command, io: HostIo): void {
