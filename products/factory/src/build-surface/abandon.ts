@@ -9,8 +9,8 @@ import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 export interface AbandonArgs {
   runId: string;
   reason: string;
-  /** Ends the run although a PR it opened is still open. */
-  force?: boolean;
+  /** Who ends the run, as the caller claims it, in the form `gate resolve` records. */
+  actor: string;
 }
 
 export interface Abandoned {
@@ -32,10 +32,15 @@ function openedPrs(run: WorkflowRun): number[] {
   return [...new Set(prs)];
 }
 
-async function refuseOpenPrs(run: WorkflowRun, repo: string, github: Pick<GitHubPort, "getPr"> | undefined): Promise<void> {
-  if (!github) throw new AbandonRefused("this factory has no GitHub port to read the run's PRs; pass --force to abandon without reading them");
-  for (const pr of openedPrs(run)) {
-    if ((await github.getPr(repo, pr)).state === "open") throw new AbandonRefused(`${repo}#${pr} is still open; merge or close it, or pass --force`);
+/** The run ends only once every PR it opened has left Shepherd's hands, merged or closed; an open PR's gates are the owner's to answer. */
+async function refuseUnlessGone(run: WorkflowRun, github: Pick<GitHubPort, "getPr"> | undefined): Promise<void> {
+  const repo = run.params.repo ?? "";
+  const prs = openedPrs(run);
+  if (prs.length === 0) throw new AbandonRefused(`run ${run.id} recorded no PR, so none is merged or closed`);
+  if (!github) throw new AbandonRefused("this factory has no GitHub port to read the run's PRs");
+  for (const pr of prs) {
+    const read = await github.getPr(repo, pr);
+    if (read.state === "open") throw new AbandonRefused(`${repo}#${pr} is open; abandon needs it merged or closed`);
   }
 }
 
@@ -52,16 +57,16 @@ function abandonable(host: FactoryHost, runId: string): WorkflowRun {
  */
 export async function abandonBuildSurface(host: FactoryHost, github: Pick<GitHubPort, "getPr"> | undefined, args: AbandonArgs): Promise<Abandoned> {
   const run = abandonable(host, args.runId);
-  if (!args.force) await refuseOpenPrs(run, run.params.repo ?? "", github);
+  await refuseUnlessGone(run, github);
   const cancelledGates = host.pendingGates().filter((gated) => gated.runId === args.runId).map(({ gate }) => gate.id);
-  host.runtime.cancel(args.runId, `abandoned: ${args.reason}`, { abandon: true });
+  host.runtime.cancel(args.runId, `abandoned by ${args.actor}: ${args.reason}`, { abandon: true });
   return { runId: args.runId, cancelledGates };
 }
 
 export const buildSurfaceAbandonCommand = defineCommand<AbandonArgs, Abandoned, FactoryContext>({
   name: "factory.build-surface.abandon",
-  description: "End a build-surface run whose PR was merged outside Shepherd, cancelling its open gates with the reason; refused while a PR it opened is open unless forced",
-  args: z.object({ runId: z.string().min(1), reason: z.string().trim().min(1), force: z.boolean().optional() }),
+  description: "End a build-surface run whose PR was merged outside Shepherd, cancelling its open gates with the actor and reason; refused unless every PR it opened is merged or closed",
+  args: z.object({ runId: z.string().min(1), reason: z.string().trim().min(1), actor: z.string().trim().min(1) }),
   result: z.custom<Abandoned>(),
   run: async (args, ctx) => abandonBuildSurface(ctx.host, ctx.shepherd?.port, args),
 });
