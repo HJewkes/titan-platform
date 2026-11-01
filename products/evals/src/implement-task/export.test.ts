@@ -2,15 +2,18 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { classifyReports, spawnExec, type Classification, type Exec } from "@titan-design/fix-proof";
 import { seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { caseHash } from "../hash.js";
 import { defaultPolicy, type ExclusionPolicy } from "../private/exclusion.js";
 import { EvalCaseSchema, SuiteSpecSchema } from "../spec/index.js";
+import { localCloneGit } from "../review-pr/bundle.js";
 import { validateSpec } from "../validate.js";
 import { exportImplementTaskCases, selectExportPool, type ExportOptions } from "./export.js";
 import type { CorpusV3Row } from "./select.js";
-import type { ImplementTaskSource } from "./write-case.js";
+import type { HeadRuns, screenCase } from "./screen.js";
+import { planHiddenTests, type ImplementTaskSource } from "./write-case.js";
 
 const PRIVATE_SLUG = "household-ledger";
 
@@ -264,7 +267,7 @@ describe("exportImplementTaskCases", () => {
     await expect(exportImplementTaskCases(optionsFor([], { corpus: join(root, "missing.jsonl") }))).rejects.toThrow(/ENOENT/);
   });
 
-  it("records the corpus digest, later fix PRs and skips by reason in the manifest", async () => {
+  it("records the corpus digest, a later fix PR missing from the corpus and skips by reason in the manifest", async () => {
     const pr = setUp();
     const rows = [row(pr, 1, { follow_up_fixes: [9] }), row(pr, 2, { repo: PRIVATE_SLUG, case_id: `${PRIVATE_SLUG}#2` })];
     const options = optionsFor(rows, { screen: fakeScreen().screen });
@@ -272,7 +275,11 @@ describe("exportImplementTaskCases", () => {
     const manifest = await exportImplementTaskCases(options);
 
     expect(manifest.corpusSha256).toBe(createHash("sha256").update(readFileSync(options.corpus)).digest("hex"));
-    expect(manifest.laterFixPrs).toEqual({ "HJewkes/titan-platform#1": [9] });
+    expect(manifest.laterFix).toEqual({
+      attached: [],
+      rejected: [{ caseId: expect.stringMatching(/-pr1-implement-/), pr: 9, fixSource: "follow-up", reason: "fix-not-in-corpus" }],
+      counts: { attached: 0, rejected: { "fix-not-in-corpus": 1 } },
+    });
     expect(manifest.skipped).toEqual({ "private-repo": 1 });
     expect(JSON.stringify(manifest)).not.toContain(PRIVATE_SLUG);
   });
@@ -315,5 +322,145 @@ describe("selectExportPool", () => {
 
     expect(pool.byClass["local-fix"]?.map((source) => source.pr)).toEqual([1]);
     expect(pool.reposWithoutClone).toContain("relay");
+  });
+});
+
+const BUG_TEST = "src/bug.test.ts";
+const BUG_TEST_TEXT = "it('bug', () => expect(x).toBe(3));\n";
+
+interface LaterFixHistory {
+  accepted: MergedPr;
+  /** Adds the bug test and fixes x on top of the accepted merge. */
+  f1: MergedPr;
+  /** Edits a line an intervening commit changed after the accepted merge, so its diff does not apply to it. */
+  f2: MergedPr;
+}
+
+/** B, the accepted squash M, F1 on M, an intervening commit I, then F2 on I; all on main. */
+function setUpLaterFixes(): LaterFixHistory {
+  seedRepo(clone, {});
+  const [base = "", merge = "", f1 = "", between = "", f2 = ""] = withHistory(clone, [
+    { message: "base", files: { "pnpm-lock.yaml": "lockfileVersion: 9\n", "src/a.ts": "export const a = 1;\n" } },
+    { message: "squash", files: { "src/x.ts": "export const x = 2;\n", "src/x.test.ts": "it('x', () => {});\n" } },
+    { message: "fix x", files: { "src/x.ts": "export const x = 3;\n", [BUG_TEST]: BUG_TEST_TEXT } },
+    { message: "bump a", files: { "src/a.ts": "export const a = 10;\n" } },
+    { message: "fix a", files: { "src/a.ts": "export const a = 11;\n", "src/a.test.ts": "it('a', () => {});\n" } },
+  ]);
+  return { accepted: { base, merge }, f1: { base: merge, merge: f1 }, f2: { base: between, merge: f2 } };
+}
+
+function laterFixRows(history: LaterFixHistory, caseOverrides: Partial<CorpusV3Row> = {}): CorpusV3Row[] {
+  const fixRow = (pr: MergedPr, number: number) => row(pr, number, { class: "bug-fix", title: "Fix", brief_text: null });
+  return [row(history.accepted, 1, { follow_up_fixes: [11, 12], ...caseOverrides }), fixRow(history.f1, 11), fixRow(history.f2, 12)];
+}
+
+type Report = Record<string, unknown>;
+const fileReport = (status: string, failure?: string): Report => ({
+  name: `/${BUG_TEST}`,
+  status,
+  assertionResults: [{ fullName: "bug", status, failureMessages: failure === undefined ? [] : [failure] }],
+});
+
+/** What a real screen judges for F1: an assertion failure on the accepted merge and a pass on the corrected reference. */
+const judged = (base: Report): Classification =>
+  classifyReports({ selected: [BUG_TEST], base: { root: "/", report: { testResults: [base] } }, head: { root: "/", report: { testResults: [fileReport("passed")] } } });
+const reproducing = (): Classification => judged(fileReport("failed", "AssertionError: expected 2 to be 3"));
+
+/** Plans from the clone it is handed, as the real screen does, and reports F1's judged runs. */
+function fakeLaterScreen(judge: () => Classification = reproducing): { screen: typeof screenCase; calls: ImplementTaskSource[] } {
+  const calls: ImplementTaskSource[] = [];
+  const screen: typeof screenCase = async (source, screenOptions) => {
+    calls.push(source);
+    const plan = await planHiddenTests(localCloneGit(screenOptions.cloneFor(source.repo) ?? ""), source.baseSha, source.mergeSha);
+    const run = judge();
+    screenOptions.onRuns?.(plan, [run, run, run] satisfies HeadRuns);
+    return "keep";
+  };
+  return { screen, calls };
+}
+
+function recordingExec(): { exec: Exec; calls: string[][] } {
+  const calls: string[][] = [];
+  const exec: Exec = async (file, args, execOptions) => {
+    calls.push([file, ...args]);
+    return spawnExec(file, args, execOptions);
+  };
+  return { exec, calls };
+}
+
+const writtenCase = () => {
+  const [file = ""] = readdirSync(join(out, "cases"));
+  return EvalCaseSchema.parse(JSON.parse(readFileSync(join(out, "cases", file), "utf8")));
+};
+
+describe("exportImplementTaskCases with later fixes", { timeout: 60_000 }, () => {
+  it("attaches the fix whose test reproduces and rejects the one that does not apply, never screening it", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen();
+    const { exec, calls } = recordingExec();
+
+    const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history), { screen: fakeScreen().screen, laterFixScreen: later.screen, exec }));
+
+    const written = writtenCase();
+    const sha256 = createHash("sha256").update(BUG_TEST_TEXT).digest("hex");
+    expect(written.expected).toMatchObject({ laterFixTests: [{ path: BUG_TEST, sha256, sourcePr: 11, sourceSha: history.f1.merge, fixSource: "follow-up" }], laterFixSupport: [] });
+    expect(readFileSync(join(out, "hidden", written.id, "fix-11", BUG_TEST), "utf8")).toBe(BUG_TEST_TEXT);
+    expect(existsSync(join(out, "hidden", written.id, "fix-12"))).toBe(false);
+    expect(later.calls.map((source) => [source.pr, source.baseSha])).toEqual([[11, history.accepted.merge]]);
+    expect(manifest.laterFix).toEqual({
+      attached: [{ caseId: written.id, pr: 11, fixSource: "follow-up", tests: [BUG_TEST] }],
+      rejected: [{ caseId: written.id, pr: 12, fixSource: "follow-up", reason: "fix-not-applicable" }],
+      counts: { attached: 1, rejected: { "fix-not-applicable": 1 } },
+    });
+    expect(calls.some(([file, ...args]) => file === "git" && args.includes("clone"))).toBe(true);
+    expect(calls.flat()).not.toContain("gh");
+    expect(calls.filter((args) => args[1] === "-C" && args[2] === clone)).toEqual([]);
+  });
+
+  it("a fix whose test already passes on the accepted merge is rejected passes-on-accepted and writes no file", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen(() => judged(fileReport("passed")));
+
+    const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history, { follow_up_fixes: [11] }), { screen: fakeScreen().screen, laterFixScreen: later.screen }));
+
+    const written = writtenCase();
+    expect(manifest.laterFix?.rejected).toEqual([{ caseId: written.id, pr: 11, fixSource: "follow-up", reason: "passes-on-accepted" }]);
+    expect(written.expected).not.toHaveProperty("laterFixTests");
+    expect(existsSync(join(out, "hidden", written.id, "fix-11"))).toBe(false);
+  });
+
+  it("with later fixes off, writes the case without later-fix tests and screens no fix", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen();
+
+    const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history), { screen: fakeScreen().screen, laterFixScreen: later.screen, laterFixSource: "none" }));
+
+    const written = writtenCase();
+    expect(written.expected).toEqual({ hiddenTests: expect.any(Array), support: expect.any(Array), overlayRemovals: expect.any(Array) });
+    expect(existsSync(join(out, "hidden", written.id, "fix-11"))).toBe(false);
+    expect(later.calls).toEqual([]);
+    expect(manifest).not.toHaveProperty("laterFix");
+  });
+
+  it("a case the primary screen drops never screens its later fixes", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen();
+
+    const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history), { screen: fakeScreen({ 1: "flaky" }).screen, laterFixScreen: later.screen }));
+
+    expect(later.calls).toEqual([]);
+    expect(manifest.laterFix?.counts).toEqual({ attached: 0, rejected: {} });
+  });
+
+  it("the fix-touch source ignores follow_up_fixes and records a fix both list under fix-touch", async () => {
+    const history = setUpLaterFixes();
+    const later = fakeLaterScreen();
+    const rows = laterFixRows(history, { fix_touch_14d: [11] });
+
+    const manifest = await exportImplementTaskCases(optionsFor(rows, { screen: fakeScreen().screen, laterFixScreen: later.screen, laterFixSource: "fix-touch" }));
+
+    expect(later.calls.map((source) => source.pr)).toEqual([11]);
+    expect(manifest.laterFix?.attached.map(({ pr, fixSource }) => [pr, fixSource])).toEqual([[11, "fix-touch"]]);
+    expect(manifest.laterFix?.rejected).toEqual([]);
   });
 });

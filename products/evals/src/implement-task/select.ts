@@ -15,6 +15,8 @@ const CorpusV3RowSchema = z.object({
   title: z.string(),
   brief_text: z.string().nullable(),
   follow_up_fixes: z.array(z.number().int()),
+  // Read only by the later-fix resolver; older corpus builds lack it.
+  fix_touch_14d: z.array(z.number().int()).optional(),
 });
 
 export type CorpusV3Row = z.infer<typeof CorpusV3RowSchema>;
