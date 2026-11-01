@@ -144,7 +144,7 @@ repo, branch)` reads rulesets, then classic protection; both reads treat a free-
 ("Upgrade to GitHub Pro") as no rules and throw on any other 403. `resolveCommit(repo, sha)`
 expands an abbreviation (null when GitHub has no such commit) and `commitStatuses(repo, sha)`
 reads the combined status. `ciWait(port, options)` polls those until green, red or the deadline,
-reading the rules once and retrying a failed read. The `titan-gh` bin wraps it:
+re-reading the rules each poll (a failed or newly empty read keeps the last list) and retrying a failed read. The `titan-gh` bin wraps it:
 
 ```
 titan-gh ci-wait <owner/repo> <sha> [--base <branch>] [--timeout <seconds>] [--interval <seconds>]

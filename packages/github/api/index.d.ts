@@ -759,7 +759,8 @@ interface CiWaitResult {
 }
 /**
  * Polls until the sha's CI is green or red, or the next poll would pass the deadline. The required contexts
- * are read once. A sha GitHub does not have ends at once, because its status would read pending forever.
+ * are re-read on every poll; a failed read, or one that comes back empty after a list was recorded, keeps the
+ * last list. A sha GitHub does not have ends at once, because its status would read pending forever.
  */
 declare function ciWait(port: GitHubPort, options: CiWaitOptions): Promise<CiWaitResult>;
 
