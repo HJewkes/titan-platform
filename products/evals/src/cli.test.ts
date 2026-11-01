@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fixProof from "@titan-design/fix-proof";
+import { partialFake } from "@titan-design/test-kit";
 import { runCli, unitRootOf } from "./cli.js";
+import * as exportModule from "./implement-task/export.js";
 import * as exclusion from "./private/exclusion.js";
 import { FIXTURE_ROOT } from "./test-fixtures.js";
 
@@ -124,6 +126,27 @@ describe("titan-evals", () => {
     expect(code).toBe(0);
     expect(execSide).not.toHaveBeenCalled();
     expect(errors.join("\n")).toMatch(/dryRun/);
+  });
+
+  it.each([
+    [[], "both"],
+    [["--later-fix-source", "fix-touch"], "fix-touch"],
+    [["--no-later-fixes", "--later-fix-source", "follow-up"], "none"],
+  ])("export %j screens later fixes from %s", async (flags, laterFixSource) => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    const run = vi.spyOn(exportModule, "exportImplementTaskCases").mockResolvedValue(partialFake<Awaited<ReturnType<typeof exportModule.exportImplementTaskCases>>>({}));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const code = await runCli(["implement-task", "export", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch, "--out", join(scratch, "out"), ...flags]);
+
+    expect(code).toBe(0);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ laterFixSource }));
+  });
+
+  it("refuses an unknown later-fix source with a usage error", async () => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    expect(await runCli(["implement-task", "export", "--corpus", "c.jsonl", "--active-work-root", ".", "--later-fix-source", "title"])).toBe(2);
   });
 
   it("selftest failure aborts before any write", async () => {

@@ -1,14 +1,17 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnExec, type Exec } from "@titan-design/fix-proof";
 import { caseHash, sha256Hex, suiteHash } from "../hash.js";
 import { filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
 import { assertFreshOut, assertOutsideWorkTree } from "../private/out-dir.js";
 import { localCloneGit, type BundleGit } from "../review-pr/bundle.js";
 import { SuiteSpecSchema, type EvalCase, type SuiteSpec } from "../spec/index.js";
 import { cloneFacts } from "./clone-facts.js";
+import { indexCorpus } from "./later-fix.js";
+import { screenLaterFixes, type LaterFixManifest, type LaterFixSource } from "./later-fix-attach.js";
 import { screenCase } from "./screen.js";
 import { briefOf, parseCorpusV3, selectCandidates, type CandidateFacts, type CorpusV3Row, type TestChange } from "./select.js";
-import { IMPLEMENT_TASK_UNIT, planHiddenTests, writeImplementTaskCases, type ImplementTaskSource } from "./write-case.js";
+import { IMPLEMENT_TASK_UNIT, implementCaseId, planHiddenTests, writeImplementTaskCases, type ImplementTaskSource } from "./write-case.js";
 
 // The corpus names repos bare; the screen and the case's input need owner/name.
 const DEFAULT_OWNER = "HJewkes";
@@ -29,6 +32,12 @@ export interface ExportOptions {
   maxCandidates?: number;
   /** Replaces `screenCase`; returns `keep` or a drop reason. */
   screen?: (source: ImplementTaskSource) => Promise<string>;
+  /** Which later fix PRs of a kept case to screen and attach; `none` writes the cases as they were before later fixes. */
+  laterFixSource?: LaterFixSource | "none";
+  /** Replaces `screenCase` under each later fix's screen, which still judges the runs it reports. */
+  laterFixScreen?: typeof screenCase;
+  /** Every git and toolchain process the screens and the corrected references start. */
+  exec?: Exec;
   /** Progress lines; stderr unless replaced. */
   log?: (line: string) => void;
 }
@@ -44,7 +53,9 @@ interface ExportPool {
   skipped: Record<string, number>;
   excluded: Record<string, number>;
   reposWithoutClone: string[];
-  laterFixPrs: Record<string, number[]>;
+  /** Every corpus row, so a fix PR resolves even when the selector skipped its own row. */
+  corpusIndex: ReturnType<typeof indexCorpus>;
+  rowOf: ReadonlyMap<string, CorpusV3Row>;
   corpusSha256: string;
 }
 
@@ -66,8 +77,8 @@ interface ExportManifest {
   dropped: Dropped[];
   excluded: Record<string, number>;
   reposWithoutClone: string[];
-  /** Keyed `repo#pr`, listed and not screened: their tests are not in this round's hidden set. */
-  laterFixPrs: Record<string, number[]>;
+  /** Absent when later fixes are off. */
+  laterFix?: LaterFixManifest;
   suite: string;
 }
 
@@ -141,18 +152,20 @@ async function filterCandidates(rows: readonly CorpusV3Row[], failures: Readonly
 /** Everything short of a build: selection, private filtering and the corpus digest. Runs no install, build or test. */
 export async function selectExportPool(options: ExportOptions): Promise<ExportPool> {
   const text = readFileSync(options.corpus);
+  const rows = parseCorpusV3(text.toString("utf8"));
   const reposWithoutClone = options.policy.repos.filter((repo) => portFor(options, repo) === undefined);
   const repos = options.policy.repos.filter((repo) => !reposWithoutClone.includes(repo));
   const failures = new Map<string, string>();
   const facts = recordingFailures(cloneFacts((row) => requirePort(options, row.repo)), failures);
-  const selection = await selectCandidates(parseCorpusV3(text.toString("utf8")), { repos, classes: options.classes, seed: options.seed }, facts);
+  const selection = await selectCandidates(rows, { repos, classes: options.classes, seed: options.seed }, facts);
   const { kept, dropped, excluded } = await filterCandidates(Object.values(selection.byClass).flat(), failures, options);
   const byClass: ExportPool["byClass"] = {};
   for (const cls of options.classes) {
     byClass[cls] = kept.filter((row) => row.class === cls).slice(0, options.maxCandidates).map((row) => row.source);
   }
-  const later = kept.filter((row) => row.follow_up_fixes.length > 0).map((row) => [prKey(row.source), row.follow_up_fixes] as const);
-  return { byClass, dropped, skipped: countBy(selection.skipped.map((skip) => skip.reason)), excluded, reposWithoutClone, laterFixPrs: Object.fromEntries(later), corpusSha256: sha256Hex(text) };
+  const rowOf = new Map(kept.map((row) => [prKey(row.source), row]));
+  const skipped = countBy(selection.skipped.map((skip) => skip.reason));
+  return { byClass, dropped, skipped, excluded, reposWithoutClone, corpusIndex: indexCorpus(rows), rowOf, corpusSha256: sha256Hex(text) };
 }
 
 interface Screened {
@@ -216,11 +229,27 @@ function mergeCounts(first: Record<string, number>, second: Record<string, numbe
   return merged;
 }
 
-async function writeOutput(pool: ExportPool, screened: Screened, options: ExportOptions): Promise<ExportManifest> {
+type LaterFixes = Awaited<ReturnType<typeof screenLaterFixes>>;
+
+/** Only kept cases screen their fixes: each fix is one more install and build pair. */
+async function laterFixesOf(pool: ExportPool, screened: Screened, options: ExportOptions, log: (line: string) => void): Promise<LaterFixes | undefined> {
+  const fixSource = options.laterFixSource ?? "both";
+  if (fixSource === "none") return undefined;
+  const kept = screened.kept.flatMap((source) => {
+    const row = pool.rowOf.get(prKey(source));
+    return row === undefined ? [] : [{ source, row }];
+  });
+  const cloneFor = (repo: string) => options.cloneFor(qualified(options, repo));
+  const context = { index: pool.corpusIndex, fixSource, outDir: options.outDir, policy: options.policy, cloneFor, exec: options.exec ?? spawnExec, screen: options.laterFixScreen, log };
+  return screenLaterFixes(kept, context);
+}
+
+async function writeOutput(pool: ExportPool, screened: Screened, later: LaterFixes | undefined, options: ExportOptions): Promise<ExportManifest> {
   const gitFor = (repo: string) => portFor(options, repo);
-  const { cases, excluded } = await writeImplementTaskCases(screened.kept, { outDir: options.outDir, policy: options.policy, gitFor, seed: options.seed });
+  const laterFixesFor = (source: ImplementTaskSource) => later?.attachments.get(implementCaseId(source)) ?? [];
+  const { cases, excluded } = await writeImplementTaskCases(screened.kept, { outDir: options.outDir, policy: options.policy, gitFor, seed: options.seed, laterFixesFor });
   const suite = suiteOf(cases);
-  const { corpusSha256, skipped, reposWithoutClone, laterFixPrs } = pool;
+  const { corpusSha256, skipped, reposWithoutClone } = pool;
   const manifest: ExportManifest = {
     schema: "titan.implement-task-cases/v1",
     corpusSha256,
@@ -231,7 +260,7 @@ async function writeOutput(pool: ExportPool, screened: Screened, options: Export
     dropped: [...pool.dropped, ...screened.dropped],
     excluded: mergeCounts(pool.excluded, excluded),
     reposWithoutClone,
-    laterFixPrs,
+    ...(later === undefined ? {} : { laterFix: later.manifest }),
     suite: suiteHash(suite),
   };
   mkdirSync(options.outDir, { recursive: true });
@@ -249,11 +278,12 @@ export async function exportImplementTaskCases(options: ExportOptions): Promise<
   await assertOutsideWorkTree(options.outDir);
   assertFreshOut(options.outDir);
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  const screen = options.screen ?? ((source: ImplementTaskSource) => screenCase(source, { outDir: options.outDir, cloneFor: options.cloneFor }));
+  const screen = options.screen ?? ((source: ImplementTaskSource) => screenCase(source, { outDir: options.outDir, cloneFor: options.cloneFor, exec: options.exec }));
   try {
     const pool = await selectExportPool(options);
     const screened = await screenToQuota(pool, options, screen, log);
-    return await writeOutput(pool, screened, options);
+    const later = await laterFixesOf(pool, screened, options, log);
+    return await writeOutput(pool, screened, later, options);
   } finally {
     rmSync(join(options.outDir, ".scratch"), { recursive: true, force: true, maxRetries: 3 });
   }

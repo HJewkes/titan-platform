@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { Command, CommanderError, InvalidArgumentError } from "commander";
+import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { z } from "zod";
 import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
 import { historyCommand } from "./history/command.js";
@@ -171,6 +171,8 @@ interface ImplementTaskExportFlags {
   maxCandidates?: number;
   dryRun?: boolean;
   selftest?: boolean;
+  laterFixes: boolean;
+  laterFixSource: "follow-up" | "fix-touch" | "both";
 }
 
 const positiveInt = (value: string): number => {
@@ -205,6 +207,7 @@ async function runImplementTaskExport(flags: ImplementTaskExportFlags): Promise<
     perClass: flags.perClass,
     seed: flags.seed,
     maxCandidates: flags.maxCandidates,
+    laterFixSource: flags.laterFixes ? flags.laterFixSource : ("none" as const),
   };
   if (flags.dryRun) {
     const pool = await selectExportPool(options);
@@ -229,6 +232,8 @@ function implementTaskCommand(onResult: (code: number) => void): Command {
     .option("--per-class <n>", "kept cases per class", positiveInt, 8)
     .option("--seed <text>", "seeds the candidate order", "implement-task")
     .option("--max-candidates <n>", "caps each class's pool after filtering", positiveInt)
+    .option("--no-later-fixes", "screen and attach no later fix PR's tests")
+    .addOption(new Option("--later-fix-source <source>", "the corpus links to later fix PRs to follow").choices(["follow-up", "fix-touch", "both"]).default("both"))
     .option("--dry-run", "select and filter only; no install, build or test")
     .option("--selftest", "run the private exclusion self-test first and abort if it fails")
     .exitOverride()
