@@ -5,13 +5,13 @@ import ts from "typescript";
 import { isFactEntry } from "./entry.js";
 import { schemaHash, type createRegistry } from "./registry.js";
 
-export interface LockRow {
+interface LockRow {
   closure: string;
   schemaHash: string;
   bump: number;
 }
 export type ClosureLock = Readonly<Record<string, LockRow>>;
-export interface Attestation {
+interface Attestation {
   step: string;
   closure: string;
   pr: number;
