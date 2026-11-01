@@ -7,7 +7,7 @@ import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
 import { EPISODE_OPENED, episodeRecords, type EpisodeRecords } from "./freeze-episode.js";
 import { repoFreezes, type RepoFreezes } from "./repo-freeze.js";
 
-export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
+export { actionsRunsAt } from "./main-verdict.js";
 
 export const FREEZE_RECHECK_MS = 5 * 60_000;
 

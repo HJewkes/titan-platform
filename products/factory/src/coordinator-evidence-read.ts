@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, withoutSupersededCancels, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
@@ -25,7 +25,7 @@ import {
 import type { FactoryHost } from "./host.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { readRequiredChecks } from "./required-checks.js";
-import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
+import { actionsRunsAt } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
 import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
