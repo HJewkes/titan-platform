@@ -8,13 +8,13 @@ import type { ShepherdPhases } from "../shepherd/phases.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
 import type { PackageRegistry } from "../shepherd/release.js";
 import type { SeatBook } from "../shepherd/seats.js";
-import type { SpawnGate } from "../shepherd/spawn-gate.js";
 import { shepherdStoreRef } from "../shepherd/store.js";
 import type { VisualThreshold } from "../shepherd/visual-delta-read.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { prSnapshot } from "../workflows/pr-snapshot.js";
+import type { SpawnGate } from "../shepherd/ports.js";
 
 export const BRANCH = "agent-chat/demo-1";
 

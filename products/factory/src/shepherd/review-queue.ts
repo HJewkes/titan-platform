@@ -1,22 +1,8 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { LiveHead } from "./review-dispatcher.js";
+import type { QueuedTarget, ReviewAsk } from "./ports.js";
 
 type Admission = { admit: true } | { admit: false; reason: string };
-
-/** The PR a review is for, at the head its intent was recorded against. */
-interface QueuedTarget {
-  repo: string;
-  pr: number;
-  head?: string;
-}
-
-/** What a review spawn tells the gate: whether its PR is the fix for its repo's red main, and which PR it is, so status can name its place. */
-export interface ReviewAsk {
-  fixer: boolean;
-  target?: QueuedTarget;
-  /** When the run's sh-review-intent step recorded the review, from the store; it orders the queue across a serve restart, which forgets `firstAsk`. */
-  intentAt?: number;
-}
 
 /** A review queued for the dispatcher; it waits until admitted, withdrawn or moved past. */
 export interface WaitingReview extends ReviewAsk {

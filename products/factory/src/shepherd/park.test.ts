@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import {
   parkOnce,
   parkImplementer,
@@ -13,11 +12,12 @@ import {
   type ParkPort,
 } from "./park.js";
 import { liveRetry, type LiveRetryDeps } from "./park-retry.js";
-import { createRosterReader, type RosterReader } from "./roster.js";
+import { createRosterReader } from "./roster.js";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, parkSettledMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
 import { partialFake } from "@titan-design/test-kit";
+import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
 interface Registered {
   implementer?: string;

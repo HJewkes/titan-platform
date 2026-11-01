@@ -2,10 +2,11 @@ import { execFileSync } from "node:child_process";
 import { availableParallelism, loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
-import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
-import { reviewDispatcher, type LiveHead, type ReviewStart } from "./review-dispatcher.js";
-import { admitQueued, queueNote, reviewWaitList, type MovedPast, type ReviewAsk, type WaitingReview } from "./review-queue.js";
+import { reviewDispatcher, type LiveHead } from "./review-dispatcher.js";
+import { admitQueued, queueNote, reviewWaitList, type MovedPast, type WaitingReview } from "./review-queue.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
+import type { ReviewAsk, ReviewerReading, ReviewSlots, ReviewStart } from "./ports.js";
+import type { SpawnGate } from "./ports.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
@@ -192,22 +193,6 @@ export function readMachine({ platform = process.platform, readFile, sysctl = sy
 /** Thrown when the gate would not admit a spawn; nobody was started, so the caller asks again on its next poll. */
 export class SpawnDeferred extends Error {
   override readonly name = "SpawnDeferred";
-}
-
-export interface SpawnGate {
-  /** Resolves when the spawn of `name` is admitted; throws `SpawnDeferred` when it is not. Only a review spawn passes `review`. */
-  admit(name: string, runningReviews?: readonly number[], review?: ReviewAsk): void;
-  /** Keeps the newest reading of the running reviewers, replacing the one before. */
-  noteReviewers(reading: ReviewerReading): void;
-  /** Undefined until a spawn has read the roster in this process. */
-  reviewSlots(): ReviewSlots | undefined;
-  /**
-   * Queues a review and resolves once it has launched. It starts when it reaches the front on a trigger the gate admits on;
-   * it rejects with `ReviewSuperseded` once its pull request moves past it, and with `SpawnDeferred` once it outwaits the hold.
-   */
-  queueReview(name: string, review: ReviewAsk, start: ReviewStart): Promise<void>;
-  /** A review ended, so a slot may be free: the queue's front asks again now rather than on the next tick. */
-  reviewEnded(): void;
 }
 
 interface SpawnGateOptions {

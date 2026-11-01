@@ -12,40 +12,13 @@ import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { holdsLiveSession } from "./wake-roster.js";
+import type { ExitNoticePorts, FallbackSeat, LastReport } from "./ports.js";
 
 const EXIT_NOTICE_STEP = "sh-exit-notice";
 export const EXIT_NOTICE_STEPS: readonly StepDeclaration[] = [{ id: EXIT_NOTICE_STEP, kind: "dispatch" }];
 
 /** Long enough for a DONE report's status lines, short enough for one chat message. */
 export const REPORT_MAX_CHARS = 600;
-
-/** The last thing the exited agent wrote, from its transcript; `writtenAt` is epoch milliseconds. */
-export interface LastReport {
-  text: string;
-  writtenAt: number;
-}
-
-/** What the notice reads and writes; absent from the deps means every exit takes the owner gate. */
-export interface ExitNoticePorts {
-  /** The agent-chat name of the one seat that owns `repo`, or undefined when no single seat does. */
-  seatFor(repo: string): string | undefined;
-  /** The config's shepherd.hubSeat, told about a held run whose policy names no seat; absent when none is set. */
-  hubSeat?(): string | undefined;
-  /** The seat the run's lineage names (`lineageSeat`); undefined, or absent, falls back to `seatFor`. */
-  lineageSeat?(target: { repo: string; pr: number }): Promise<string | undefined>;
-  lastReport(target: { repo: string; pr: number; head: string }, agent: string, sessionId?: string): Promise<LastReport | undefined>;
-  send(seat: string, text: string): Promise<void>;
-  /** Whether `seat` holds a live session; rejects when the roster cannot be read. Absent means every seat is taken as live. */
-  live?(seat: string): Promise<boolean>;
-  /** The seats a notice for `repo` goes to, in order, when its seat holds no live session. */
-  fallbackSeats?(repo: string): readonly FallbackSeat[];
-}
-
-/** `from` names the config key the seat came from, so a rerouted notice's record says which one it reached. */
-export interface FallbackSeat {
-  seat: string;
-  from: string;
-}
 
 /** Where a notice goes: the seat, the fallback that stands in for it with why, or why none can take it. */
 type LiveRoute = { seat: string; rerouted?: string } | { none: string };

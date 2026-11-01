@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { FactoryContext } from "../registry.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { GH_GATEWAY_COMMANDS, ghGateway, type GhCallLine } from "./gh-gateway.js";
 
 const API = "https://api.github.com/";

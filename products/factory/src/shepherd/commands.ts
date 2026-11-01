@@ -42,9 +42,6 @@ import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
 
-/** Transitional, for workflows.ts until TP-2466 b repoints it. */
-export type { ShepherdServices } from "./services.js";
-
 export interface Registered {
   runId: string;
   /** False when `repo#pr`, or the PR's head branch, was already registered and its run came back instead. */

@@ -11,11 +11,11 @@ import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { deployWatch, type DeployWatch } from "../deploy-watch.js";
 import { H1, REPO } from "../test-support/land.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { ReviewerReading } from "./review-slots.js";
 import { spawnGate } from "./spawn-gate.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import { z } from "zod";
 import { portOf } from "../test-support/fakes.js";
+import type { ReviewerReading } from "./ports.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
 const dirs: string[] = [];

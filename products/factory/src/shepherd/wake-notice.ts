@@ -1,7 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { failureOf } from "./error-class.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { lineageSeat, newestAgent } from "./wake-roster.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 /** What a wake no agent took told the session that spawned its lineage, which can start the fix round by hand. */
 export type SpawnerNotice = { sent: boolean; detail: string; seat?: string };

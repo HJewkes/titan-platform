@@ -2,21 +2,16 @@ import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import type { CleanupPorts, TaskClose } from "./cleanup.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
-import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
-import type { RosterReader } from "./roster.js";
-import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
-import type { SuiteRules } from "./suite-host.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { VisualPacketPorts } from "./visual-packet-trigger.js";
 import type { DiagnosisPorts } from "./no-verdict-diagnosis.js";
+import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {

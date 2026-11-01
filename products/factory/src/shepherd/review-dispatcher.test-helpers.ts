@@ -1,7 +1,7 @@
 import { vi } from "vitest";
-import type { ReviewAsk } from "./review-queue.js";
 import { movedPastOnList } from "./review-queue.js";
 import { spawnGate, type MachineReadings } from "./spawn-gate.js";
+import type { ReviewAsk } from "./ports.js";
 
 export const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
 const busy: MachineReadings = { ...idle, load5: 30 };

@@ -8,11 +8,11 @@ import type { GhGateway } from "./gh-gateway-port.js";
 import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
-import type { ReviewSlots } from "./review-slots.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 import type { VisualThreshold } from "./visual-threshold.js";
+import type { ReviewSlots } from "./ports.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
