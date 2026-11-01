@@ -1,7 +1,7 @@
 import type { Migration } from "@titan-design/store-sqlite";
 
 /** A blob at or under this many bytes sits inline in the database; a larger one goes to a file and the row keeps its path. */
-const INLINE_LIMIT_BYTES = 256 * 1024;
+export const INLINE_LIMIT_BYTES = 256 * 1024;
 
 const MARKER_DDL = `
   CREATE TABLE factory_marker (
