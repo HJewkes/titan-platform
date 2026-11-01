@@ -51,8 +51,8 @@ To run it by that short name, put it on `PATH`:
 pnpm factory:install
 ```
 
-That installs, builds the factory with its workspace dependencies, and links
-`~/.local/bin/titan-factory` to the built bin. The link survives a rebuild and needs no
+That installs, builds the factory and the session miner with their workspace dependencies, and links
+`~/.local/bin/titan-factory` and `~/.local/bin/titan-miner` to their built bins. The link survives a rebuild and needs no
 sudo. It leaves a link that points at another checkout alone unless you add `--force`, and
 `--bin-dir <dir>` picks another directory.
 
