@@ -17,6 +17,9 @@ importers:
       '@testing-library/dom':
         specifier: ^10.4.2
         version: 10.4.2
+      '@titan-design/egress-scan':
+        specifier: link:packages/egress-scan
+        version: link:packages/egress-scan
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.5

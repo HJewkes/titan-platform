@@ -163,12 +163,16 @@ export function checkTurboBuildContract(root) {
   return messages;
 }
 
-/** R54: turbo hashes the root's workspace dependencies into every task, so one edit to any of them would miss the whole cache. */
+/**
+ * R54: turbo hashes the root's `workspace:` dependencies into every task, so one edit to any of them would miss the
+ * whole cache. A `link:` dependency gives the same root node_modules entry, which egress-scan's pre-push hook needs,
+ * and turbo leaves it out of the hash.
+ */
 export function checkRootHasNoWorkspaceDependencies(root) {
   const pkg = readJson(join(root, "package.json"));
   return DEPENDENCY_FIELDS.flatMap((field) => Object.entries(pkg[field] ?? {}))
     .filter(([, spec]) => spec.startsWith("workspace:"))
-    .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path instead.`);
+    .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path, or use \`link:\` if something resolves it through the root node_modules.`);
 }
 
 const isWarn = (setting) => {
