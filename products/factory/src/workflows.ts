@@ -61,7 +61,7 @@ import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
 import { configuredStatusContexts, withStatusChecks } from "./shepherd/status-checks.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
-import { proofWaiverMigration } from "./shepherd/proof-waiver.js";
+import { proofWaiverMigration } from "./shepherd/proof-waiver-table.js";
 import { planApprovalMigration } from "./shepherd/plan-approval.js";
 import { repoFreezeMigration } from "./shepherd/repo-freeze.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";

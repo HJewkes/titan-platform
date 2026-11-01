@@ -5,7 +5,7 @@ import { parse } from "yaml";
 import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
-import type { VisualBaselines } from "./visual-gate.js";
+import type { VisualBaselines } from "./policy-schema.js";
 import { errorMessage } from "../narrow.js";
 
 export { isRepo as isRepoKey } from "@titan-design/github";

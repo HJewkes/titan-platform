@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HoldSatisfiedBySchema } from "./hold-satisfaction.js";
 import { ownerHoldOf } from "./owner-hold-rows.js";
-import { EffectivePolicySchema } from "./policy.js";
+import { EffectivePolicySchema } from "./policy-schema.js";
 import { registrationFactsOf } from "./registration-facts.js";
 import type { RegistrationRow } from "./registration-row.js";
 import type { Registration } from "./store.js";

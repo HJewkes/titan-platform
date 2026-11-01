@@ -28,7 +28,8 @@ import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling } from "./shepherd/policy.js";
+import { stricterPolicy, type EffectivePolicy } from "./shepherd/policy-schema.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {

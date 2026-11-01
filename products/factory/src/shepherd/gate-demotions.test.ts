@@ -14,7 +14,8 @@ import { demoteFailedRounds, noteReviewerAccount, onEscalated, type FailedRounds
 import { LeaveLand } from "./leave-land.js";
 import { freshNoVerdictState, noteReviewerStep } from "./no-verdict-round.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
-import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdMainCi } from "./post-merge.js";
 import { SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, type Escalated } from "./route-table.js";
 import type { ObservedPr } from "./observe.js";
