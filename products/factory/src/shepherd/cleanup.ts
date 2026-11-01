@@ -210,7 +210,7 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
   if (deps.taskClose === "last-slice-only") return pr === undefined ? "unread" : settleLastSliceOnly(deps, registration, input, landing, wait);
-  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined), tasks);
+  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined, registration.lastSlice), tasks);
   if (pr === undefined) return "unread";
   return onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
 }
@@ -227,17 +227,19 @@ async function settleLastSliceOnly(deps: CleanupDeps, registration: Registration
   const closes = await retrying(`last slice of #${input.pr}`, read, wait);
   if (closes === undefined) return "unread";
   if (registration.slice !== null) await onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
-  if (closes) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, true), tasks);
+  if (closes) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, true, registration.lastSlice), tasks);
   if (registration.slice !== null) return "noted";
   return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `slice merged: ${landing}`).then(() => "slice-noted"), tasks);
 }
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
-function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean): (initiative: string, id: string) => Promise<string> {
+function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean, lastSlice = false): (initiative: string, id: string) => Promise<string> {
   return async (initiative, id) => {
-    const heldBy = heldOpenBy(await tasks.slicing(initiative, id));
+    const slicing = await tasks.slicing(initiative, id);
+    const heldBy = heldOpenBy(slicing, lastSlice);
     if (heldBy === undefined) {
-      await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+      const overrodeTag = lastSlice && SLICE_TAGS.some((tag) => slicing.tags.includes(tag));
+      await tasks.appendNote(initiative, id, `closed by Shepherd: ${overrodeTag ? "last slice " : ""}${landing} merged`);
       await tasks.done(initiative, id);
       return "done";
     }
@@ -252,8 +254,11 @@ const EPIC_TAG = "epic";
 /** Tags a task carries when its work lands in several PRs without a plan's slices block (TP-4698). */
 const SLICE_TAGS = ["slices", "multi-slice"];
 
-/** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
-function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
+/**
+ * Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. A last-slice PR
+ * (`register --last-slice`) skips only the slices/multi-slice tag check: an epic tag or an unlanded plan slice still holds (TP-4703).
+ */
+function heldOpenBy({ tags, notes, plan }: TaskSlicing, lastSlice = false): string | undefined {
   if (plan !== undefined && hasSlicesBlock(plan)) {
     const slices = readSlices(plan).slices;
     if (slices === undefined) return "its plan has a burndown-slices block that does not read";
@@ -261,7 +266,7 @@ function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
     const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
     return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
   }
-  const sliceTag = SLICE_TAGS.find((tag) => tags.includes(tag));
+  const sliceTag = lastSlice ? undefined : SLICE_TAGS.find((tag) => tags.includes(tag));
   if (sliceTag !== undefined) return `it is tagged ${sliceTag}`;
   return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
 }
