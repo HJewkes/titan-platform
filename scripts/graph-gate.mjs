@@ -53,7 +53,8 @@ export function runGate({ dagScript, deadScript, argv, env, cwd = ROOT }) {
     const { dagArgs, dbPath } = gateArgs(argv, path.join(tmpDir, "graph.db"));
     const dag = runNode(dagScript, dagArgs, { ...env, DAG_CHECK_HANDOFF: "1" }, cwd);
     if (FAILED_TO_RUN.has(dag)) return dag;
-    const { DAG_CHECK_HANDOFF: _handoff, ...deadOnlyEnv } = deadEnv(env, refExists(DEFAULT_BASE_REF, cwd));
+    const deadOnlyEnv = { ...deadEnv(env, refExists(DEFAULT_BASE_REF, cwd)) };
+    delete deadOnlyEnv.DAG_CHECK_HANDOFF;
     const dead = runNode(deadScript, ["--db", dbPath], deadOnlyEnv, cwd);
     return combineExits(dag, dead);
   } finally {
