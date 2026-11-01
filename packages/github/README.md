@@ -202,6 +202,14 @@ failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `
 doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
 in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. `githubApiPool` calls it.
 
+Both `Rest` transports (`ghCliWire` and `octokitWire`) ask it about every failed 4xx answer. When
+it says `unavailable`, the thrown `GhError` message starts with a marker,
+`[gh-rate-limit status=<n> method=<M> retry-after=… x-ratelimit-remaining=… x-ratelimit-reset=… x-ratelimit-resource=…]`,
+carrying only the headers that are present. `GhError.rateLimit` holds the same text.
+`rateLimitMarker(status, method, headers, message)` writes it, and `parseRateLimitMarker(text)`
+returns `{ status, method, headers }`, or undefined. A caller that only has an error's text can then
+classify it again on its own clock. Shepherd's step retry relies on this.
+
 `githubApiPool({ identity, send, clock, probe, state?, onAvailable?, onAuthFailed? })` gates every call one GitHub identity makes.
 `pool.run(priority, callClass, call)` queues `call`, hands it to `send` when granted, and resolves
 to `send`'s answer or to `{ unavailable: { resetAt, reason, class } }`; an unavailable call never

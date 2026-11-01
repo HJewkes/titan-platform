@@ -1,5 +1,6 @@
 import type { BudgetResource, RateBudget } from "./budget.js";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
+import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact, redactStreams } from "./redact.js";
 
 export interface HttpResponse {
@@ -124,9 +125,20 @@ function runner(exec: GhExec, budget: RateBudget): Run {
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
-    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, scrubbed(result), response?.status);
+    if (result.code !== 0 || (response && response.status >= 400)) throw failed(full, scrubbed(result), response);
     return response ?? { status: 200, headers: new Map(), body: result.stdout };
   };
+}
+
+function failed(full: readonly string[], result: GhResult, response: HttpResponse | null): GhError {
+  const marker = response ? rateLimitMarker(response.status, methodOf(full), response.headers, `${result.stderr}\n${response.body}`) : "";
+  return new GhError(full, result, response?.status, marker);
+}
+
+/** `gh api` sends a GET unless `-X` names another method. */
+function methodOf(args: readonly string[]): string {
+  const flag = args.indexOf("-X");
+  return flag >= 0 ? (args[flag + 1] ?? "GET") : "GET";
 }
 
 /** Every non-exchange call's error quotes raw `gh` output, which can carry a token shape. */
