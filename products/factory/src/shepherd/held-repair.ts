@@ -9,7 +9,7 @@ import type { LandPrState } from "../workflows/land-pr.js";
 import { headWasRerun, rerunFlakyHead } from "./flake-check.js";
 import { holdClassOf } from "./g10-release.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
 import { PUSH_WATCH_TICK_MS, headPoll, leftHead } from "./push-signal.js";
 import { stopCovering, type RepairStop } from "./repair-stop.js";

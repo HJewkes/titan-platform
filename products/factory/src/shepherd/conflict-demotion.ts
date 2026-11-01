@@ -1,17 +1,13 @@
 import type { LandOutcome } from "../workflows/land.js";
 import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import { conflictAtNewBase, type ConflictBaseRun } from "./conflict-base.js";
-import { awaitNewHead, conflictGate, type GateRun } from "./gates.js";
-import { releaseUnlandable, unreserved, type OrderRun } from "./merge-order-steps.js";
+import { conflictAtNewBase } from "./conflict-base.js";
+import type { ConflictRun } from "./run-state.js";
+import { awaitNewHead, conflictGate } from "./gates.js";
+import { releaseUnlandable, unreserved } from "./merge-order-steps.js";
 
 /** Fixer attempts at one conflict under D9: the implementer's, then one fresh agent's. */
 const MAX_CONFLICT_WAKES = 2;
-
-export interface ConflictRun extends GateRun, ConflictBaseRun, OrderRun {
-  /** Conflict wakes since the PR was last green or its base moved past the fixer's merge (`conflictAtNewBase`). */
-  conflictWakes: number;
-}
 
 /** Wakes a fixer with `payload`; true when an agent took it and a new head is up. */
 type Wake = (payload: unknown) => Promise<boolean>;

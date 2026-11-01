@@ -4,7 +4,7 @@ import type { StepRoute, WorkflowContext, WorkflowRun } from "@titan-design/work
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
-import type { PrTarget } from "./gates.js";
+import type { OrderRun, PrTarget } from "./run-state.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
 import { stillOpen } from "./merge-order-guard.js";
 import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
@@ -181,18 +181,6 @@ export function mergeOrderRoutes(deps: MergeOrderStepDeps): StepRoute[] {
 export function replayingWithout(ctx: WorkflowContext, stepId: string): boolean {
   const next = ctx.historyNext();
   return next !== undefined && !stepIdMatches(stepId, next);
-}
-
-export interface OrderRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
-  orderSteps: number;
-  /** Set by a recorded reservation and cleared by its release or expiry, so a replay rebuilds it. */
-  reserved?: boolean;
-  /** Set once a reservation was released short of landing, so the run's next landable head takes it again. */
-  retake?: boolean;
-  /** Set when a conflict leaves a resolved head to land, so the round it ended keeps the reservation. */
-  resolving?: boolean;
 }
 
 /**

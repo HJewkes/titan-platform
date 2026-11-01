@@ -1,13 +1,8 @@
 import { stepIdMatches } from "../definition.js";
 import type { CiSnapshot, LandOutcome } from "../workflows/land.js";
-import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
+import { fixConflict } from "./conflict-demotion.js";
+import type { RetargetRun } from "./run-state.js";
 import { orderedConflict, RESERVE_STEP, resolvedConflict } from "./merge-order-steps.js";
-
-export interface RetargetRun extends ConflictRun {
-  lastCi?: CiSnapshot;
-  /** The base GitHub moved the PR off, from the last CI read before the move until a green head; replay rebuilds it. */
-  retargetedFrom?: string;
-}
 
 /** Read before `lastCi` takes `ci`: a base that differs from the last read's is a retarget, as when a stacked parent merges. */
 export function noteRetarget(run: RetargetRun, ci: CiSnapshot): CiSnapshot {

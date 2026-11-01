@@ -1,5 +1,3 @@
-import type { WorkflowContext } from "@titan-design/workflow";
-import type { RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { WAIVE_PROOF, conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
@@ -8,22 +6,7 @@ import { waiveProof } from "./proof-waiver.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
 import { mainFixedSpent } from "./main-fixed.js";
-
-export interface PrTarget {
-  repo: RepoSlug;
-  pr: number;
-}
-
-/** What the run's owner gates read: its context, its pull request, and the wait counter the await-new-head steps number from. */
-export interface GateRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
-  state: { waits: number };
-  /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
-  carried?: Escalated;
-  /** The verdict taken at each head; a waived fix-proof drops its head's NO_REPRO, so the next round reviews that head. */
-  reviews?: Map<string, unknown>;
-}
+import type { GateRun } from "./run-state.js";
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
 type CiRead = Pick<CiSnapshot, "headSha" | "mergeableState">;

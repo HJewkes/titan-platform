@@ -5,7 +5,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { registrantSeat, storedLineage } from "./registrant.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { toPresence } from "./presence.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
