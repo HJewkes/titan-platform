@@ -1,5 +1,6 @@
 import { GhError } from "./exec.js";
 import { GitHubRequestError, type GitHubClient } from "./octokit-client.js";
+import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact } from "./redact.js";
 import { nextPage, type Fields, type Rest, type Revalidated } from "./rest.js";
 
@@ -104,7 +105,10 @@ function caller(client: GitHubClient): Call {
 /** Shaped like a failed `gh api` call, so `status`, `isTransient` and every caller's branch on them read the same. */
 function asGhError(method: Method, url: string, error: unknown): GhError {
   const args = ["api", "-X", method, redact(url, [])];
-  if (error instanceof GitHubRequestError) return new GhError(args, { code: 1, stdout: "", stderr: `${error.message} (HTTP ${error.status})` }, error.status);
+  if (error instanceof GitHubRequestError) {
+    const marker = rateLimitMarker(error.status, method, headerMap(error.headers), error.message);
+    return new GhError(args, { code: 1, stdout: "", stderr: `${error.message} (HTTP ${error.status})` }, error.status, marker);
+  }
   return new GhError(args, { code: 1, stdout: "", stderr: redact(error instanceof Error ? error.message : String(error), []) });
 }
 

@@ -163,6 +163,18 @@ export function checkTurboBuildContract(root) {
   return messages;
 }
 
+/**
+ * R54: turbo hashes the root's `workspace:` dependencies into every task, so one edit to any of them would miss the
+ * whole cache. A `link:` dependency gives the same root node_modules entry, which egress-scan's pre-push hook needs,
+ * and turbo leaves it out of the hash.
+ */
+export function checkRootHasNoWorkspaceDependencies(root) {
+  const pkg = readJson(join(root, "package.json"));
+  return DEPENDENCY_FIELDS.flatMap((field) => Object.entries(pkg[field] ?? {}))
+    .filter(([, spec]) => spec.startsWith("workspace:"))
+    .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path, or use \`link:\` if something resolves it through the root node_modules.`);
+}
+
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
   return level === "warn" || level === 1;
@@ -295,4 +307,33 @@ export function checkNoPython(root) {
   const fileViolations = files.map((file) => `\`${relative(root, file)}\` is Python. Write it in TypeScript; titan-platform releases no Python tools (decision 373).`);
   const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
   return [...fileViolations, ...scriptViolations];
+}
+
+const BOT_TOKEN_READER = /\bparseGitHubToken\b|\bBOT_TOKEN_PATH\b|bot-token-path|bot-token-layout|github-bot\.token/;
+// The reader (bot-identity.ts) and the modules that define or pin the path; everything else reaches the bot only through `BotAccess`.
+const BOT_TOKEN_READERS = new Set([
+  "products/factory/src/bot-identity.ts",
+  "products/factory/src/bot-identity.test.ts",
+  "products/factory/src/bot-token-path.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/bot-token-layout.ts",
+  "products/factory/src/serve-bot.test.ts",
+  "products/factory/src/test-support/serve-child-main.ts",
+  "packages/github/src/github-token.ts",
+  "packages/github/src/github-token.test.ts",
+  "packages/github/src/index.ts",
+  "packages/github/api/index.d.ts",
+  "packages/tool-guard/src/paths.ts",
+  "packages/tool-guard/src/families/secret.test.ts",
+]);
+const isCommentLine = (line) => /^\s*(?:\/\/|\/?\*)/.test(line);
+
+/** TP-3412: no module but the bot identity reads the bot token file or imports the token reader. */
+export function checkBotTokenReaders(root) {
+  const files = WORKSPACE_GROUPS.flatMap((group) => subdirs(join(root, group))).flatMap((dir) => sourceFiles(dir));
+  return files
+    .map((file) => relative(root, file).split(sep).join("/"))
+    .filter((path) => !BOT_TOKEN_READERS.has(path))
+    .filter((path) => readFileSync(join(root, path), "utf8").split("\n").some((line) => !isCommentLine(line) && BOT_TOKEN_READER.test(line)))
+    .map((path) => `\`${path}\` reads the bot token file or imports its reader. Only \`products/factory/src/bot-identity.ts\` may; take a \`BotAccess\` from it instead (TP-3412).`);
 }

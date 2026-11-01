@@ -3,21 +3,17 @@ import type {
   LimitsClock,
   LimitsLedger,
   LimitsPlanInput,
-  LimitsPoolReading,
   LimitsSeatInput,
-  LimitsShepherdInput,
 } from "./report-input.js";
 import { bindingOf, firstRefusalPerTask, isBookkeeping, planBlockedSplit, refusalKinds } from "./report-refusals.js";
+import { poolReports, shepherdReport, worktreesReport } from "./report-sections.js";
 import type {
   ContradictionReport,
   LimitsReport,
   LimitsRole,
-  PoolReport,
   RoleReport,
   SeatReport,
-  ShepherdReport,
   SupplyReport,
-  WorktreesReport,
 } from "./report-schema.js";
 
 const ROLE_OF_PHASE: Readonly<Record<string, LimitsRole>> = {
@@ -25,8 +21,6 @@ const ROLE_OF_PHASE: Readonly<Record<string, LimitsRole>> = {
   implementing: "implementers",
   reviewing: "reviewers",
 };
-
-const MINUTE_MS = 60_000;
 
 interface SeatContext {
   claims: readonly LimitsClaim[];
@@ -74,23 +68,6 @@ function roleReport(role: LimitsRole, seat: LimitsSeatInput, ctx: SeatContext): 
   };
 }
 
-const ageMinutes = (readAt: string, now: Date): number =>
-  Math.max(0, Math.round((now.getTime() - Date.parse(readAt)) / MINUTE_MS));
-
-const reading = (r: LimitsPoolReading | undefined, now: Date): PoolReport["fiveHour"] =>
-  r === undefined ? null : { value: r.value, ageMinutes: ageMinutes(r.readAt, now) };
-
-function poolReports(seat: LimitsSeatInput, now: Date): PoolReport[] {
-  return seat.pools.map((p) => ({
-    pool: p.pool,
-    fiveHour: reading(p.fiveHour, now),
-    sevenDay: reading(p.sevenDay, now),
-    band: p.band ?? null,
-    pace: p.pace ?? null,
-    reserve: p.reserve ?? null,
-  }));
-}
-
 /** Nearest-rank percentile; null over no samples. */
 function percentile(samples: readonly number[], p: number): number | null {
   if (samples.length === 0) return null;
@@ -107,18 +84,6 @@ function supplyReport(seat: LimitsSeatInput): SupplyReport {
     seeded: units.filter(isBookkeeping).length,
     readyAgeMinutes: { p50: percentile(ages, 50), p90: percentile(ages, 90) },
     outOfScope: units.filter((r) => r.kind === "out-of-scope").length,
-  };
-}
-
-function worktreesReport(seat: LimitsSeatInput): WorktreesReport {
-  const { active, perRepoPerSeat, totalCeiling, leftFree, budget } = seat.worktrees;
-  const repos = Object.fromEntries(
-    Object.entries(active).map(([repo, n]) => [repo, { active: n, perRepoPerSeat: perRepoPerSeat ?? null }]),
-  );
-  return {
-    repos,
-    ceiling: totalCeiling === undefined ? null : totalCeiling - (leftFree ?? 0),
-    budget: budget ?? null,
   };
 }
 
@@ -148,27 +113,12 @@ function seatReport(seat: LimitsSeatInput, ctx: SeatContext): SeatReport {
       reviewers: roleReport("reviewers", seat, ctx),
       planners: roleReport("planners", seat, ctx),
     },
-    pools: poolReports(seat, ctx.now),
+    pools: poolReports(seat.pools, ctx.now),
     refusals: refusalKinds(seat.refusals, seat.prs ?? []),
     planBlocked: planBlockedSplit(seat.refusals),
     supply: supplyReport(seat),
-    worktrees: worktreesReport(seat),
+    worktrees: worktreesReport(seat.worktrees),
     contradictions: contradictions(ctx),
-  };
-}
-
-function shepherdReport(input: LimitsShepherdInput | undefined): ShepherdReport | null {
-  if (input === undefined) return null;
-  if ("error" in input) return { error: input.error };
-  const runs: Record<string, number> = {};
-  for (const run of input.runs) runs[run.phase] = (runs[run.phase] ?? 0) + 1;
-  return {
-    runs,
-    held: input.runs.flatMap((r) => (r.holdReason === undefined ? [] : [{ run: r.id, reason: r.holdReason }])),
-    reviews: {
-      inFlight: input.runs.filter((r) => r.reviewInFlight === true).length,
-      maxConcurrent: input.maxConcurrent ?? null,
-    },
   };
 }
 
