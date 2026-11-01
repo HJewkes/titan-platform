@@ -33,6 +33,22 @@ describe("readShepherdLimits", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it("stays quiet for a config file with no limits block", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    writeConfig({ worktreeBudget: 12 });
+
+    expect(readShepherdLimits({ AGENT_CHAT_HOME: home })).toEqual({});
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("logs a limits block that is not an object, though its message also names a block", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    writeConfig({ limits: "has no limits block" });
+
+    expect(readShepherdLimits({ AGENT_CHAT_HOME: home })).toEqual({});
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to nothing and logs once for a malformed shepherd block", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     writeConfig(block({ review: { max_concurrent: -3 } }));

@@ -1,4 +1,4 @@
-import { G as Grant, I as IgnoredEntry, P as ParsedLimits } from '../parse.js';
+import { G as Grant, I as IgnoredEntry, L as LimitsConfigError, P as ParsedLimits } from '../parse.js';
 import 'zod';
 
 interface GrantsFile {
@@ -6,6 +6,9 @@ interface GrantsFile {
     /** Lift-question keys already asked, so a restart never asks twice in one window. */
     asked: string[];
     ignored: IgnoredEntry[];
+}
+/** The file parsed but has no property under the requested key: a host that has set no limits. */
+declare class LimitsBlockMissingError extends LimitsConfigError {
 }
 /**
  * Reads a limits block from a path the caller owns. With `key`, the block is that property of
@@ -18,7 +21,7 @@ declare function loadLimits(path: string, options?: {
 /** Reads the grants state file. A missing file means no grants yet; a malformed entry is ignored. */
 declare function readGrants(path: string): GrantsFile;
 
-export { type GrantsFile, loadLimits, readGrants };
+export { type GrantsFile, LimitsBlockMissingError, loadLimits, readGrants };
 
 // ./dist/parse.d.ts
 import { z } from 'zod';
@@ -280,4 +283,4 @@ interface ParsedLimits {
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
 declare function parseLimits(raw: unknown): ParsedLimits;
 
-export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, type Lift as L, type ParsedLimits as P, type SeatLimits as S, type PaceLimits as a, BRIEF_GATES as b, type Limits as c, type LimitsBlock as d, LimitsConfigError as e, type LimitsDefaults as f, type LimitsOverride as g, type LimitsSection as h, PACE_MODES as i, type PaceMode as j, type PoolLimits as k, type ProfileLimits as l, type ShepherdLimits as m, capacitySchema as n, grantSchema as o, liftSchema as p, limitsSchema as q, overrideSchema as r, paceSchema as s, parseLimits as t, poolSchema as u, profileSchema as v, seatSchema as w, shepherdSchema as x };
+export { type BriefGate as B, type CapacityLimits as C, type Grant as G, type IgnoredEntry as I, LimitsConfigError as L, type ParsedLimits as P, type SeatLimits as S, type Lift as a, type PaceLimits as b, BRIEF_GATES as c, type Limits as d, type LimitsBlock as e, type LimitsDefaults as f, type LimitsOverride as g, type LimitsSection as h, PACE_MODES as i, type PaceMode as j, type PoolLimits as k, type ProfileLimits as l, type ShepherdLimits as m, capacitySchema as n, grantSchema as o, liftSchema as p, limitsSchema as q, overrideSchema as r, paceSchema as s, parseLimits as t, poolSchema as u, profileSchema as v, seatSchema as w, shepherdSchema as x };
