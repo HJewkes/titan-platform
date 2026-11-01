@@ -11,7 +11,8 @@ import { rateLimitWaitMs, retryingGhServerErrors } from "./gh-retry.js";
 import { OBSERVE_STEP } from "./observe.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
 
