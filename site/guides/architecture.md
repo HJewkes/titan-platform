@@ -276,6 +276,7 @@ graph TD
   factory --> clusterPkg
   factory --> coordinator
   factory --> daemon
+  factory --> dispatchLedger
   factory --> fixProof
   factory --> github
   factory --> health

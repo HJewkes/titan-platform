@@ -42,6 +42,7 @@
     "@titan-design/cluster": "workspace:^",
     "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
+    "@titan-design/dispatch-ledger": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/health": "workspace:^",
