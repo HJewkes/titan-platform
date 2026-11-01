@@ -685,6 +685,9 @@ and exit codes as on macOS. A missing unit reads as exit 0 with `LoadState=not-f
 `not loaded`; a non-zero exit from `systemctl --user show` (no user bus because
 `XDG_RUNTIME_DIR` is unset, a permission error, a timeout, no `systemctl`) is `unreadable`,
 never `not loaded`, since the unit may well be installed.
+`service install` (including `--dry-run`) and `service uninstall` refuse on that same failure with
+systemctl's stderr (or `exit N`) and the user-bus remedy, run no mutating `systemctl` call and touch no
+file, and `service status` prints `<unit>: unreadable: ...` in place of `not loaded`.
 
 ### The restart fence
 
