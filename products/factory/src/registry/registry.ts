@@ -4,7 +4,7 @@ import { declarationFor } from "../definition.js";
 import { entryProblems, isFactEntry, type FactEntry, type StepEntry } from "./entry.js";
 import { factRule, type PinClass } from "./pin-classes.js";
 
-interface StepRegistry {
+export interface StepRegistry {
   readonly entries: readonly StepEntry[];
 }
 
