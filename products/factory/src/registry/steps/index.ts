@@ -6,7 +6,7 @@ import { gateSteps } from "./gates.js";
 import { shepherdSteps } from "./shepherd.js";
 
 /** One entry per step id the factory workflows declare; a step shared by several workflows has one entry. */
-export const factoryRegistry = createRegistry([...coreSteps, ...shepherdSteps, ...auditSteps, ...buildSurfaceSteps, ...gateSteps]);
+export const factoryRegistry: ReturnType<typeof createRegistry> = createRegistry([...coreSteps, ...shepherdSteps, ...auditSteps, ...buildSurfaceSteps, ...gateSteps]);
 
 /** The runtime's `abandonsOrphan` predicate: a read's orphan is dropped on restart, every other class parks. */
 export function abandonsOrphan(stepId: string): boolean {
