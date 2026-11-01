@@ -12,8 +12,7 @@ import { isSandboxed, sudoStub } from "./sandbox.test-helpers.js";
 afterEach(removeRepos);
 
 const ok = (file: string, args: string[]) => spawnSync(file, args, { stdio: "ignore" }).status === 0;
-// sandboxCommand passes the user as setpriv's --regid too, so the user needs a same-named group: Debian's nobody has only nogroup.
-const SYSTEM_USER = ["nobody", "daemon"].find((user) => ok("id", ["-u", user]) && ok("getent", ["group", user]));
+const SYSTEM_USER = ok("id", ["-u", "nobody"]) ? "nobody" : undefined;
 const REAL_SANDBOX =
   process.platform === "linux" && SYSTEM_USER !== undefined && ok("sudo", ["-n", "true"]) && ok("sh", ["-c", "command -v unshare setpriv timeout"]);
 
