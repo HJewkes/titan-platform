@@ -69,6 +69,7 @@ export const shepherdSteps = [
   step("sh-order-wait", "dispatch", "software", effect("item", `${WRITE}: leaves the merge train, then waits for the PRs merging ahead of the reservation`)),
   step("sh-order-unreserve", "dispatch", "software", effect("item", `${WRITE}: deletes the run's merge-order reservation`)),
   step("sh-order-expire", "dispatch", "software", effect("item", `${WRITE}: deletes the run's reservation past its TTL and logs order-expired, once`)),
+  step("sh-stale-green", "dispatch", "software", pending(`${READ}: whether main's delta since the head's fork shares a unit with the PR`)),
   step("sh-freeze-hold", "dispatch", "software", effect("item", `${WRITE}: holds the run behind a freeze`)),
   step("sh-freeze-wait", "dispatch", "software", pending(`${READ}: waits for the freeze to thaw`)),
   step("sh-base-wait", "dispatch", "software", pending(`${READ}: waits for the base to move`)),
