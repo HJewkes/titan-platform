@@ -308,6 +308,35 @@ Each tick writes one serve-log line per outcome:
 | `reconciler.skipped` / `reconciler.starved` | the pool refused the repo's claim |
 | `reconciler.unit-failed` | the read or a step threw; the repo's cursor stays where it was |
 
+### Head guard {#head-guard}
+
+Before the reconciler appends a PR-head row or moves past a main tip, it runs the read through
+the head guard (`products/factory/src/head-guard/`, wired in by
+`reconciler/guard-verdicts.ts`). A replica can show a head or tip GitHub has already moved past,
+so a read is trusted only once it is confirmed.
+
+- **Stale classes** (`classify.ts`). A read is `same` as the stored head, `confirmed`, `suspect`,
+  `stale` or `unavailable`. It is stale when it is an ancestor of the stored head, equals a head
+  confirmed earlier, GitHub's compare cannot find it, or `ls-remote` still shows the stored head.
+- **Confirmation rules.** Only a `confirmed` read moves the per-PR epoch
+  (`epoch-store.ts`, a compare-and-set). A read is confirmed by being ahead of the stored head
+  (`fast-forward`), diverged from it and not seen before (`non-ancestor`), or agreed by
+  `ls-remote` when the compare is no help (`ls-remote`). A PR with no stored head is confirmed
+  the same way (`bootstrap`). A lost compare-and-set is re-classified once against the row that
+  won.
+- **The unknown outcome** (`guard.ts`). A stale read is re-read at 8, 16, 24, 32 and 40 seconds
+  (`RETRY_DELAYS_MS`). If replica lag outlasts them, the answer is `unknown`: nothing moves.
+  The reconciler's snapshot makes one try per tick on the head it already read, so a stale head
+  there logs `class=stale-read` and the next tick is the retry; a head it could not confirm logs
+  `class=unconfirmed`.
+- **When the pool refuses a read.** The compare goes through the bot's `github-api` pool as a
+  claim. A claim the pool answers as unavailable comes back from the guard as `Unavailable`, with
+  its `resetAt`, unchanged. It counts no try and moves no epoch, and the head is left
+  unconfirmed this tick. A 401 puts the pool in its auth state, which raises one alarm for the
+  whole identity (not one per PR) and holds every later claim until the token changes; the
+  failed read moves no epoch and is not retried per PR.
+  `reconciler/guard-pool.test.ts` pins both.
+
 ## A17 invariant tests: both event-source modes
 
 A17 says an invariant holds whether GitHub observations arrive as webhook deliveries or are polled. The harness in
