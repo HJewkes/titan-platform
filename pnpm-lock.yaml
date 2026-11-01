@@ -1586,6 +1586,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/dispatch-ledger':
+        specifier: workspace:^
+        version: link:../../packages/dispatch-ledger
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../../packages/fix-proof

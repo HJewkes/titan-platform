@@ -1,19 +1,10 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, withoutSupersededCancels, type CheckFinding, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { readBaseRequiredChecks } from "../required-checks.js";
 import { readMainOnlyContexts } from "../required-checks-policy.js";
 
 /** Only GitHub Actions runs at `sha` judge main CI there. */
 export function actionsRunsAt(runs: readonly CheckRun[], sha: string): CheckRun[] {
   return runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID);
-}
-
-/**
- * Drops each cancelled run that a newer run of its name superseded, as workflow concurrency does to a run when a later
- * push starts; "newer" is the latest start, then the higher id. Any other superseded run still counts.
- */
-export function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const newest = new Set(latestPerName(runs).map((run) => run.id));
-  return runs.filter((run) => run.conclusion !== "cancelled" || newest.has(run.id));
 }
 
 /** The base branch's required contexts, plus its main-only ones, with their app pins; no `MainRules` means every Actions check judges main. */

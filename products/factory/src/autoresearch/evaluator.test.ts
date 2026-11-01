@@ -25,7 +25,7 @@ const TARGET = {
   rungs: {
     seed: { cmd: ["sh", "ar/eval.sh", "{caseSet}", "{case}", "{key}", "{runnerRoot}"], maxUsd: 1, timeoutMin: 1 },
     "L1-replay": { cmd: ["sh", "ar/micro.sh", "{runnerRoot}", "{baselineDir}", "{microSignal}"] },
-    slow: { cmd: ["sh", "-c", 'echo $$ > "$0/slow.pid"; exec sleep 600', "{runnerRoot}"], timeoutMin: 0.005 },
+    slow: { cmd: ["sh", "-c", 'echo ar-work-started >&2; echo $$ > "$0/slow.pid"; exec sleep 600', "{runnerRoot}"], timeoutMin: 0.005 },
   },
   metric: { primary: { name: "score", direction: "min" }, noise: {} },
   phases: [{ id: "p1", train: ["t-alpha"], stop: { ideasEvaluated: 1, roundsWithoutGain: 1 } }],
