@@ -1,6 +1,5 @@
 import type { WaitingReview } from "./review-queue.js";
-import type { ReviewAsk } from "./ports.js";
-import type { ReviewStart } from "./ports.js";
+import type { ReviewAsk, ReviewStart } from "./ports.js";
 
 /** The queued review's pull request moved to a new head or closed before its turn, so it never started. */
 export class ReviewSuperseded extends Error {

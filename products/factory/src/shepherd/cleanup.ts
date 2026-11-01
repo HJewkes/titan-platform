@@ -5,7 +5,6 @@ import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
-import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { closesTask, otherOpenOnTask } from "./task-close.js";
 import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose, TaskSlicing } from "./ports.js";

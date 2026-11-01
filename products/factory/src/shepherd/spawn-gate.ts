@@ -5,8 +5,7 @@ import { stopReason } from "./machine-stop.js";
 import { reviewDispatcher, type LiveHead } from "./review-dispatcher.js";
 import { admitQueued, queueNote, reviewWaitList, type MovedPast, type WaitingReview } from "./review-queue.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
-import type { ReviewAsk, ReviewerReading, ReviewSlots, ReviewStart } from "./ports.js";
-import type { SpawnGate } from "./ports.js";
+import type { ReviewAsk, ReviewSlots, SpawnGate } from "./ports.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
