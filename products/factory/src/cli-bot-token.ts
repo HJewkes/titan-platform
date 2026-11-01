@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 import { BOT_FINGERPRINT_FILE } from "./bot-token-fingerprint.js";
 import { scanForBotToken, type ScanReport, type ScanSources } from "./bot-token-scan.js";
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 
 interface ScanOpts {

@@ -12,7 +12,7 @@ export type { FactoryContext, FactoryServer, FactoryServerOptions } from "./serv
 export { FACTORY_PORT, TOOL_PREFIX, factoryHealth, serveFactoryUntilSignal, startFactoryServer } from "./serve.js";
 export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute } from "@titan-design/workflow";
 export { routedRunner } from "@titan-design/workflow";
-export type { CliDeps, CliIo } from "./cli.js";
+export type { CliDeps, CliIo } from "./cli-types.js";
 export { EXIT, formatResume, runCli } from "./cli.js";
 export type { FactoryRouteDeps } from "./workflows.js";
 export { factoryRoutes, factoryRoutesFor, factoryWorkflows } from "./workflows.js";

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { stableNodePath } from "@titan-design/daemon/service";
 import type { Command } from "commander";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { deployService, type DeployPorts } from "./deploy.js";

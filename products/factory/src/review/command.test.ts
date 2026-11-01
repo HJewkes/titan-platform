@@ -3,7 +3,7 @@ import type { Resumed, ReviewOutcome } from "@titan-design/review-workflow";
 import { partialFake } from "@titan-design/test-kit";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
-import type { CliIo, Verbs } from "../cli.js";
+import type { CliIo, Verbs } from "../cli-types.js";
 import { registerReview, runResolve, runReview, type CiWait } from "./command.js";
 import type { ReviewMember, ReviewReport } from "./format.js";
 import type { ReviewService } from "./service.js";
