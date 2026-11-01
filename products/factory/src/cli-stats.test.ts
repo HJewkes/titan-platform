@@ -186,7 +186,7 @@ describe("shepherd stats verb", () => {
     const report = JSON.parse(out.join(""));
     expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "trainShadow", "failures", "reviewCauses"]);
     expect(report.failures).toEqual([
-      { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
+      { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "gh-rate-limit": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
     ]);
     expect(human.out.join("")).toContain("failures by class:\nacme/widgets  2026-W41  failed 2  ci-timeout 1  land-rules 1\n");
   });

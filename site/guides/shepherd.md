@@ -921,10 +921,19 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
-  error's `[<class>] ` prefix; an older error without one is classified from its text. A
-  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
+  class as the error's `[<class>] ` prefix; an older error without one is classified from its
+  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
+  secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
+
+  Neither class fails a run on its first answer. A step that may run again after a restart
+  (its route's `onRestart` is `repeat`) is retried on a `gh-api-5xx` after 5 s, 20 s and 60 s.
+  On a `gh-rate-limit` it is retried only when the refused call was a `GET` or `HEAD`, so a
+  write is never sent twice. It then waits until `retry-after`, or `x-ratelimit-reset` plus
+  5 s, or 60 s when GitHub names neither, and at most 61 min a wait. After two waits the next
+  limit fails the run. The waits are recorded as `ghRetries` on the step's result.
 
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
