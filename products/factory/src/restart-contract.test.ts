@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { DROPPED_STEPS, PARKING_STEPS } from "./restart-contract.fixture.js";
 import { defineWorkflow, dispatchStepIds } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import { entryFor } from "./registry/registry.js";
@@ -27,6 +28,8 @@ const PARK_ROUTES_WITHOUT_RECONCILE: Readonly<Record<string, string>> = {};
 const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = Object.fromEntries(
   factoryRegistry.entries.flatMap((entry) => (entry.op === "dispatch" && entry.effect.class !== "read" ? [[entry.name, entry.effect.reason]] : [])),
 );
+
+const PINNED_IRREVERSIBLE_STEPS: readonly string[] = ["bs-deploy", "merge", "sh-cleanup", "sh-publish-review", "sh-redeploy"];
 
 const home = mkdtempSync(join(tmpdir(), "restart-contract-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -65,6 +68,18 @@ describe("restart contract", () => {
     const dropped = dispatchIds.filter((id) => entryFor(factoryRegistry, id)?.effect.class === "read");
     expect([...new Set(dispatchIds.filter(abandonsOrphan))].sort()).toEqual([...new Set(dropped)].sort());
     expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  it("the registry's parking dispatch entries equal the independent fixture, reasons included", () => {
+    const parking = factoryRegistry.entries.filter((e) => e.op === "dispatch" && e.effect.class !== "read");
+    expect(Object.fromEntries(parking.map((e) => [e.name, "reason" in e.effect ? e.effect.reason : ""]))).toEqual(PARKING_STEPS);
+  });
+
+  it("only the fifteen read-only steps are dropped, and the irreversible five stay irreversible", () => {
+    const reads = factoryRegistry.entries.filter((e) => e.effect.class === "read").map((e) => e.name);
+    expect(reads.sort()).toEqual(DROPPED_STEPS);
+    const irreversible = factoryRegistry.entries.filter((e) => e.effect.class === "irreversible").map((e) => e.name);
+    expect(irreversible.sort()).toEqual(PINNED_IRREVERSIBLE_STEPS);
   });
 
   it("gives every exception a reason of its own, beyond the shared category", () => {

@@ -2,13 +2,25 @@
   "v": 1,
   "mutations": [
     {
+      "name": "an irreversible deploy step is classified read",
+      "file": "products/factory/src/registry/steps/shepherd.ts",
+      "find": "irreversible(\"external\", `${WRITE}: starts a service deploy`)",
+      "replace": "READ_EFFECT",
+      "kills": ["restart contract the registry's parking dispatch entries equal the independent fixture, reasons included"]
+    },
+    {
       "name": "abandonsOrphan never drops an orphan",
       "file": "products/factory/src/registry/steps/index.ts",
       "find": "effect.class === \"read\";",
       "replace": "effect.class === \"read\" && false;",
-      "kills": [
-        "restart contract a dispatch step's orphan is dropped exactly when its registry effect class is read"
-      ]
+      "kills": ["restart contract a dispatch step's orphan is dropped exactly when its registry effect class is read"]
+    },
+    {
+      "name": "sh-fix-pr-stall is not declared",
+      "file": "products/factory/src/shepherd/shepherd-steps.ts",
+      "find": "  ...FIX_PR_STALL_STEPS,\n",
+      "replace": "",
+      "kills": ["restart contract lists every dispatch step that is not orphan-safe in RESTART_WRITE_STEPS, and nothing else"]
     },
     {
       "name": "merge-settle back to pending",
@@ -16,6 +28,7 @@
       "find": "step(\"merge-settle\", \"dispatch\", \"software\", READ_EFFECT)",
       "replace": "step(\"merge-settle\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
       "kills": [
+        "restart contract only the fifteen read-only steps are dropped, and the irreversible five stay irreversible",
         "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
         "TP-3106 S3 READ review a restart whose replay diverged before merge-settle drops its orphan and the run continues, not parks"
       ]
@@ -26,18 +39,9 @@
       "find": "step(\"bs-await-land\", \"dispatch\", \"software\", READ_EFFECT)",
       "replace": "step(\"bs-await-land\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
       "kills": [
+        "restart contract only the fifteen read-only steps are dropped, and the irreversible five stay irreversible",
         "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
         "TP-3106 S3 READ review a restart whose replay diverged before bs-await-land drops its orphan and the run continues, not parks"
-      ]
-    },
-    {
-      "name": "audit-inventory-data back to pending",
-      "file": "products/factory/src/registry/steps/audit.ts",
-      "find": "step(\"audit-inventory-data\", \"dispatch\", \"software\", READ_EFFECT)",
-      "replace": "step(\"audit-inventory-data\", \"dispatch\", \"software\", { class: \"pending\", reason: \"unreviewed\" })",
-      "kills": [
-        "TP-3106 S3 READ review leaves no core, build-surface or audit entry pending review",
-        "TP-3106 S3 READ review a restart whose replay diverged before audit-inventory-data drops its orphan and the run continues, not parks"
       ]
     }
   ]
