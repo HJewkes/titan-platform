@@ -47,7 +47,8 @@ describe("worldTemplate", () => {
   it("builds afresh when the template root is gone", () => {
     const { roots, copy } = countedTemplate();
     copy();
-    fs.rmSync(roots[0] as string, { recursive: true, force: true });
+    const [templateRoot = ""] = roots;
+    fs.rmSync(templateRoot, { recursive: true, force: true });
 
     const world = copy();
 
@@ -58,7 +59,8 @@ describe("worldTemplate", () => {
   it("builds afresh when the template changed after its build, and copies none of the change", () => {
     const { roots, copy } = countedTemplate();
     copy();
-    fs.writeFileSync(path.join(roots[0] as string, "repo", ".git", "objects", "maintenance.lock"), "");
+    const [templateRoot = ""] = roots;
+    fs.writeFileSync(path.join(templateRoot, "repo", ".git", "objects", "maintenance.lock"), "");
 
     const world = copy();
 
