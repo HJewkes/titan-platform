@@ -20,6 +20,10 @@ export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./read
 export { statusCheckRuns } from "./status-runs.js";
 export type { ApprovedHeadWalk, ApprovedHeadWalkInput, CleanMergeTree } from "./approved-head-walk.js";
 export { MAX_BASE_MERGES, approvedHeadWalk } from "./approved-head-walk.js";
+export type { AmbiguousDiffPin, DiffCarry, DiffPin, DiffSerialisation, ExactDiffPin, MergeUpCheck, MergeUpProof } from "./diff-hash.js";
+export { diffCarry, diffHashes, serialiseDiff } from "./diff-hash.js";
+export type { DiffPinOptions } from "./git-diff-hash.js";
+export { DIFF_HASH_ARGS, DiffHashError, HARDENED_GIT_ENV, gitDiffPin, gitMergeUpCheck } from "./git-diff-hash.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
 export type { AppCredentials, InstallationToken } from "./app-token.js";

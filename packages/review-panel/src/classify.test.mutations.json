@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the diff-hash rule files leave the authority globs",
+      "file": "packages/review-panel/src/classify.ts",
+      "find": "    ...DIFF_HASH_RULE_FILES,\n",
+      "replace": "",
+      "kills": ["classifyPr A17: a canonicaliser change is a rule-file change, so it takes the adversarial class"]
+    }
+  ]
+}
