@@ -2,8 +2,11 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../../cli.js";
 import type { HostPorts } from "../ports.js";
+
+const planSchema = z.object({ platform: z.string(), services: z.array(z.object({ id: z.string(), source: z.string() })) });
 
 const homes: string[] = [];
 
@@ -76,7 +79,7 @@ describe("titan host services list", () => {
   it("prints the plan as one JSON object", async () => {
     const { code, stdout } = await services(["list", "--json"]);
 
-    const plan = JSON.parse(stdout) as { platform: string; services: { id: string; source: string }[] };
+    const plan = planSchema.parse(JSON.parse(stdout));
     expect(code).toBe(0);
     expect(plan.platform).toBe("linux");
     expect(plan.services.map((row) => [row.id, row.source])).toEqual([

@@ -3,7 +3,7 @@ import { userUnitDir } from "@titan-design/daemon/service";
 import type { HostPorts } from "../ports.js";
 import { BACKUP_SERVICE, BACKUP_TIMER, backupScriptPath, renderBackupService, renderBackupTimer } from "./backup.js";
 
-export type ServiceSource = "render" | "delegate" | "chezmoi" | "deferred";
+type ServiceSource = "render" | "delegate" | "chezmoi" | "deferred";
 type CatalogPlatform = "linux" | "darwin";
 
 interface CatalogRow {
@@ -58,7 +58,7 @@ const CATALOG: Record<CatalogPlatform, CatalogRow[]> = {
   ],
 };
 
-export interface UnitFile {
+interface UnitFile {
   path: string;
   text: string;
 }
@@ -75,7 +75,7 @@ export interface ServicesPlan {
   services: PlannedService[];
 }
 
-export interface PlanPaths {
+interface PlanPaths {
   home: string;
   xdgConfigHome?: string;
   titanBin: string;
