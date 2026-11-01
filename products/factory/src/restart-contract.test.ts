@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterAll, describe, expect, it } from "vitest";
+import { DROPPED_STEPS, PARKING_STEPS } from "./restart-contract.fixture.js";
 import { dispatchStepIds } from "./definition.js";
 import { entryFor } from "./registry/registry.js";
 import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
@@ -23,15 +24,6 @@ const PARK_ROUTES_WITHOUT_RECONCILE: Readonly<Record<string, string>> = {};
 const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = Object.fromEntries(
   factoryRegistry.entries.flatMap((entry) => (entry.op === "dispatch" && entry.effect.class !== "read" ? [[entry.name, entry.effect.reason]] : [])),
 );
-
-/**
- * An oracle that does not come from the registry: the write and record steps the pre-registry list named (the 86 that
- * are not reads), so reclassifying one as `read` fails here instead of silently dropping its orphan on restart.
- * Reclassifying a reviewed read as an effect (TP-3106 S3, S4) adds its id.
- */
-const PINNED_PARKING_STEPS: readonly string[] = [
-  "audit-gaps", "audit-inventory-code", "audit-plan", "audit-propose", "audit-publish", "audit-purpose", "bs-branch", "bs-deploy", "bs-extract", "bs-file-task", "bs-fix", "bs-implement", "bs-pr", "bs-preview", "bs-review", "bs-shepherd", "ci-orphan-rerun", "merge", "merge-policy", "post-merge", "rerun", "sh-account-hold", "sh-approval-carry", "sh-approval-carry:fix", "sh-approval-carry:own", "sh-approval-carry:set", "sh-auto-pass", "sh-await-verdict", "sh-carry", "sh-carry-scope", "sh-carry-seat", "sh-ci-unread", "sh-cleanup", "sh-conflict-base", "sh-correct-verdict", "sh-exit-notice", "sh-file-fix-task", "sh-fix-pr-stall", "sh-fix-proof-waive", "sh-fix-proof-waived", "sh-freeze", "sh-freeze-hold", "sh-g10-rehold", "sh-g10-release", "sh-head-origin", "sh-held-check", "sh-held-verdict", "sh-landed", "sh-late-verdict", "sh-main-rerun", "sh-merge-evidence", "sh-merge-up", "sh-no-reviewer-hold", "sh-no-verdict-diagnosis", "sh-order-expire", "sh-order-reserve", "sh-order-unreserve", "sh-order-wait", "sh-override", "sh-park", "sh-policy", "sh-publish-review", "sh-redeploy", "sh-remerge", "sh-repair", "sh-restack", "sh-review", "sh-review-intent", "sh-review-panel", "sh-review-refused", "sh-review-scope", "sh-review-shadow", "sh-scope-check", "sh-seat-notice", "sh-seat-recheck", "sh-spawn-fixer", "sh-stack-children", "sh-stopped", "sh-thaw", "sh-train-leave", "sh-unfreeze", "sh-visual-packet", "sh-wake-fix-first", "sh-wake-fix-proof", "sh-wake-implementer", "update-branch",
-];
 
 const PINNED_IRREVERSIBLE_STEPS: readonly string[] = ["bs-deploy", "merge", "sh-cleanup", "sh-publish-review", "sh-redeploy"];
 
@@ -74,10 +66,16 @@ describe("restart contract", () => {
     expect(dropped.length).toBeGreaterThan(0);
   });
 
-  it("every pinned write or record step is an effect, and no other step is", () => {
-    const effects = factoryRegistry.entries.filter((e) => e.op === "dispatch" && (e.effect.class === "effect" || e.effect.class === "irreversible"));
-    expect(effects.map((e) => e.name).sort()).toEqual([...PINNED_PARKING_STEPS].sort());
-    expect(effects.filter((e) => e.effect.class === "irreversible").map((e) => e.name).sort()).toEqual([...PINNED_IRREVERSIBLE_STEPS]);
+  it("the registry's parking dispatch entries equal the independent fixture, reasons included", () => {
+    const parking = factoryRegistry.entries.filter((e) => e.op === "dispatch" && e.effect.class !== "read");
+    expect(Object.fromEntries(parking.map((e) => [e.name, "reason" in e.effect ? e.effect.reason : ""]))).toEqual(PARKING_STEPS);
+  });
+
+  it("only the six read-only steps are dropped, and the irreversible five stay irreversible", () => {
+    const reads = factoryRegistry.entries.filter((e) => e.effect.class === "read").map((e) => e.name);
+    expect(reads.sort()).toEqual(DROPPED_STEPS);
+    const irreversible = factoryRegistry.entries.filter((e) => e.effect.class === "irreversible").map((e) => e.name);
+    expect(irreversible.sort()).toEqual(PINNED_IRREVERSIBLE_STEPS);
   });
 
   it("gives every exception a reason of its own, beyond the shared category", () => {

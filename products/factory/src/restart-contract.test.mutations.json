@@ -6,14 +6,14 @@
       "file": "products/factory/src/registry/steps/shepherd.ts",
       "find": "irreversible(\"external\", `${WRITE}: starts a service deploy`)",
       "replace": "READ_EFFECT",
-      "kills": ["restart contract every pinned write or record step is an effect, and no other step is"]
+      "kills": ["restart contract the registry's parking dispatch entries equal the independent fixture, reasons included"]
     },
     {
       "name": "the merge-order unreserve step is classified read",
       "file": "products/factory/src/registry/steps/shepherd.ts",
       "find": "effect(\"item\", `${WRITE}: deletes the run's merge-order reservation`)",
       "replace": "READ_EFFECT",
-      "kills": ["restart contract every pinned write or record step is an effect, and no other step is"]
+      "kills": ["restart contract the registry's parking dispatch entries equal the independent fixture, reasons included"]
     },
     {
       "name": "abandonsOrphan never drops an orphan",
