@@ -5,7 +5,7 @@ import { RequestedPolicyFields, resolveEffectivePolicy } from "./policy.js";
 import { RegistrationRefused, type EffectivePolicy } from "./policy-schema.js";
 import { HEAD } from "./await-verdict.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
-import type { KindMove } from "./register-kind.js";
+import type { KindMove } from "./task-kind.js";
 import { TASK_KINDS, type Registration } from "./store.js";
 
 export const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });

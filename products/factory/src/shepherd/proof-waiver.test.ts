@@ -23,7 +23,7 @@ import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { proofWaiverMigration } from "./proof-waiver.js";
+import { proofWaiverMigration } from "./proof-waiver-table.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef } from "./store.js";
 

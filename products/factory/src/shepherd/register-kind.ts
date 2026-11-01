@@ -1,16 +1,8 @@
 import type { RegisterArgs } from "./register-args.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { kindMoveRefusal } from "./task-kind.js";
-import { testOnlyDiff, type TestOnlyDiff } from "./test-only-diff.js";
-
-type KindGuard = typeof kindMoveRefusal;
-
-/** The guard a register applies, and the PR's diff facts it reads them with. */
-export interface KindMove {
-  guard: KindGuard;
-  diff: TestOnlyDiff | undefined;
-}
+import { kindMoveRefusal, type KindMove } from "./task-kind.js";
+import { testOnlyDiff } from "./test-only-diff.js";
 
 /**
  * Read for every explicit move into test-only, whatever the stored kind: another register can change the kind between this read and
