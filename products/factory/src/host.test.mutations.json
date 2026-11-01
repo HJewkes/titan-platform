@@ -27,6 +27,15 @@
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"
       ]
+    },
+    {
+      "name": "the host never applies the marker table",
+      "file": "products/factory/src/host.ts",
+      "find": ", markerTableMigration(49)]",
+      "replace": "]",
+      "kills": [
+        "marker table migration factoryMigrations applies the marker table at 49, after every tenant migration up to 48"
+      ]
     }
   ]
 }
