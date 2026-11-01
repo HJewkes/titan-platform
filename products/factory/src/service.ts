@@ -12,6 +12,9 @@ export function serviceLabel(prefix: string = DEFAULT_LABEL_PREFIX): string {
 export const SERVICE_LABEL = serviceLabel();
 /** The launchd label without its owner prefix, the rule active-work's `active-work.service` follows too. */
 export const UNIT_NAME = `${SERVICE_NAME}.service`;
+/** The refusal when `systemctl --user show` cannot answer, so the unit may well be installed. */
+export const unreadableRefusal = (uid: number, why: string): string =>
+  `systemctl --user show ${UNIT_NAME} failed: ${why}; run the command as the service user in a session with a user bus (XDG_RUNTIME_DIR=/run/user/${uid})`;
 
 export interface PlistOptions {
   /** Absolute path of the built `bin.js`. */

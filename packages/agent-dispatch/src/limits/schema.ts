@@ -4,6 +4,9 @@ const points = z.number().finite();
 const until = z.iso.datetime({ offset: true });
 const names = z.array(z.string().min(1));
 
+/** Matches agent-chat's burndown `BRIEF_GATES`; the two must change together. */
+export const BRIEF_GATES = ["off", "shadow", "on"] as const;
+
 /** Fields every layer from `defaults` to an override may set. Keys stay snake_case to match the gate's `PoolRule`. */
 const tunableFields = {
   ceiling_five_hour: points.optional(),
@@ -50,6 +53,26 @@ export const seatSchema = z.strictObject({
   per_run_points: points.optional(),
   per_day_points: points.optional(),
   implementers: z.number().int().nonnegative().optional(),
+  hand_reserve: z.number().int().nonnegative().optional(),
+  brief_gate: z.enum(BRIEF_GATES).optional(),
+});
+
+const slots = z.number().int().nonnegative();
+const load = z.number().finite().positive();
+
+/** Host-wide agent and worktree slots. Each field is optional so the product's own default stands when unset. */
+export const capacitySchema = z.strictObject({
+  max_agents: z.number().int().positive().optional(),
+  reserve_slots: slots.optional(),
+  max_worktrees_per_repo: z.number().int().positive().optional(),
+  reserve_worktrees: slots.optional(),
+});
+
+export const shepherdSchema = z.strictObject({
+  spawn_gate: z
+    .strictObject({ load5: load.optional(), build_load5: load.optional() })
+    .optional(),
+  review: z.strictObject({ max_concurrent: z.number().int().positive().optional() }).optional(),
 });
 
 /** In an override, `per_day_points: null` lifts the cap for the override's lifetime. */
@@ -78,9 +101,14 @@ export const limitsSchema = z.strictObject({
   profiles: z.record(z.string(), profileSchema).optional(),
   seats: z.record(z.string(), seatSchema).optional(),
   overrides: z.array(overrideSchema).optional(),
+  capacity: capacitySchema.optional(),
+  shepherd: shepherdSchema.optional(),
 });
 
 export type Limits = z.infer<typeof limitsSchema>;
+export type CapacityLimits = z.infer<typeof capacitySchema>;
+export type ShepherdLimits = z.infer<typeof shepherdSchema>;
+export type BriefGate = (typeof BRIEF_GATES)[number];
 export type LimitsDefaults = z.infer<typeof defaultsSchema>;
 export type PoolLimits = z.infer<typeof poolSchema>;
 export type ProfileLimits = z.infer<typeof profileSchema>;

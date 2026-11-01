@@ -39,8 +39,9 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     platform: io.platform ?? process.platform,
     setExitCode: (code: number) => (exitCode = code),
   };
-  registerHealth(program, { ...shared, stderr: io.stderr, titanBin: io.titanBin ?? resolve(process.argv[1] ?? "titan") });
-  registerHost(program, { ...shared, ports: io.hostPorts ?? realHostPorts(env) });
+  const titanBin = io.titanBin ?? resolve(process.argv[1] ?? "titan");
+  registerHealth(program, { ...shared, stderr: io.stderr, titanBin });
+  registerHost(program, { ...shared, stderr: io.stderr, titanBin, ports: io.hostPorts ?? realHostPorts(env) });
   registerConfig(program, { ...shared, stderr: io.stderr, reportPorts: io.reportPorts, fetch: io.fetch });
   try {
     await program.parseAsync(argv, { from: "user" });

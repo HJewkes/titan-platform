@@ -1,5 +1,7 @@
 export { LIMIT_BOUNDS, LIMIT_DEFAULTS, type LayeredField } from "./defaults.js";
 export {
+  BRIEF_GATES,
+  capacitySchema,
   grantSchema,
   limitsSchema,
   liftSchema,
@@ -7,6 +9,9 @@ export {
   poolSchema,
   profileSchema,
   seatSchema,
+  shepherdSchema,
+  type BriefGate,
+  type CapacityLimits,
   type Grant,
   type Lift,
   type Limits,
@@ -15,8 +20,24 @@ export {
   type PoolLimits,
   type ProfileLimits,
   type SeatLimits,
+  type ShepherdLimits,
 } from "./schema.js";
-export { LimitsConfigError, parseLimits, type IgnoredEntry, type LimitsBlock, type ParsedLimits } from "./parse.js";
+export {
+  LimitsConfigError,
+  parseLimits,
+  type IgnoredEntry,
+  type LimitsBlock,
+  type LimitsSection,
+  type ParsedLimits,
+} from "./parse.js";
+export {
+  resolveCapacity,
+  resolveShepherd,
+  type ResolvedCapacity,
+  type ResolvedSetting,
+  type ResolvedShepherd,
+  type SettingSource,
+} from "./capacity.js";
 export {
   resolveLimits,
   type LimitLayer,

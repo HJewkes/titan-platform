@@ -7,6 +7,7 @@ export type LimitsFindingKind =
   | "invalid_profile"
   | "invalid_seat"
   | "ignored_override"
+  | "ignored_section"
   | "expired_override"
   | "unknown_pool"
   | "unknown_profile"
@@ -36,6 +37,10 @@ function invalidScopes(parsed: ParsedLimits): LimitsFinding[] {
     ...parsed.ignoredOverrides.map(({ index, reason }) => ({
       kind: "ignored_override" as const,
       message: `overrides[${index}] is ignored: ${reason}`,
+    })),
+    ...Object.entries(parsed.ignoredSections).map(([section, reason]) => ({
+      kind: "ignored_section" as const,
+      message: `${section} is ignored, so its fields stay unset: ${reason}`,
     })),
   ];
 }
