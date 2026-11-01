@@ -3,7 +3,7 @@ import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import { EXIT } from "@titan-design/registry";
 import type { Command } from "commander";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { parseSinceOption } from "../digest/command.js";
 import { configuredInboxLink } from "./link.js";

@@ -2,7 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runCli, type CliIo } from "../cli.js";
+import { runCli } from "../cli.js";
+import type { CliIo } from "../cli-types.js";
 import { inboxLinkVia, type InboxLink } from "./link.js";
 
 const CONSOLE = "https://console.example.test:7500";

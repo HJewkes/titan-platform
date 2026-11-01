@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "CliDeps takes an owner-presence check again",
-      "file": "products/factory/src/cli.ts",
+      "file": "products/factory/src/cli-types.ts",
       "find": "  /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */\n",
       "replace": "  presence?: OwnerPresence;\n  /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */\n",
       "kills": [

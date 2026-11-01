@@ -5,7 +5,7 @@ import type { MetricsEntryRead } from "@titan-design/health/metrics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
-import type { CliIo } from "./cli.js";
+import type { CliIo } from "./cli-types.js";
 import { parseSinceOption } from "./digest/command.js";
 import { gateStats, visualGateStats, type GateStatsRow, type VisualGateStats } from "./shepherd/gate-stats.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
