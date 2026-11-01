@@ -21,9 +21,9 @@ function factEntry(overrides: Partial<FactEntry> = {}): FactEntry {
   });
 }
 
-/** An entry as untyped data, the way a malformed one would reach the registry. */
-function loose(entry: Record<string, unknown>): StepEntry {
-  return entry as unknown as StepEntry;
+/** A well-typed entry with fields the types forbid patched on, the way a malformed one would reach the registry. */
+function loose(entry: StepEntry, patch: object): StepEntry {
+  return Object.assign(entry, patch);
 }
 
 describe("step registry entries", () => {
@@ -35,8 +35,8 @@ describe("step registry entries", () => {
   it("an entry's pin class comes from the rule file, and an entry cannot declare one", () => {
     const registry = createRegistry([factEntry()]);
     expect(pinClassOf(registry.entries[0] as FactEntry, { visual: false })).toBe("tree");
-    expect(() => createRegistry([loose({ ...factEntry(), pinClass: "diff" })])).toThrow(/pinClass/);
-    expect(() => createRegistry([loose({ ...base(), pinClass: "diff" })])).toThrow(/pinClass/);
+    expect(() => createRegistry([loose(factEntry(), { pinClass: "diff" })])).toThrow(/pinClass/);
+    expect(() => createRegistry([loose(base(), { pinClass: "diff" })])).toThrow(/pinClass/);
   });
 
   it("owner:approved is tree-pinned on a visual item and diff-pinned otherwise", () => {
@@ -52,8 +52,8 @@ describe("step registry entries", () => {
   });
 
   it("an effect or irreversible entry without a target or reason is refused", () => {
-    expect(() => createRegistry([loose({ ...base(), effect: { class: "effect", reason: "posts a comment" } })])).toThrow(/invalid/);
-    expect(() => createRegistry([loose({ ...base(), effect: { class: "irreversible", target: "pr" } })])).toThrow(/invalid/);
+    expect(() => createRegistry([loose(base(), { effect: { class: "effect", reason: "posts a comment" } })])).toThrow(/invalid/);
+    expect(() => createRegistry([loose(base(), { effect: { class: "irreversible", target: "pr" } })])).toThrow(/invalid/);
     expect(() => createRegistry([base({ effect: { class: "irreversible", target: "pr", reason: "" } })])).toThrow(/invalid/);
     expect(createRegistry([base({ effect: { class: "effect", target: "pr", reason: "posts a comment" } })]).entries).toHaveLength(1);
   });
@@ -63,8 +63,7 @@ describe("step registry entries", () => {
   });
 
   it("an entry without a kind is refused", () => {
-    const { kind: _kind, ...withoutKind } = base();
-    expect(() => createRegistry([loose(withoutKind)])).toThrow(/kind/);
+    expect(() => createRegistry([loose(base(), { kind: undefined })])).toThrow(/kind/);
   });
 
   it("the schema hash changes when the output schema gains a field, and not when an entry's name changes", () => {
