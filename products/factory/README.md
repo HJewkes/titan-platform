@@ -599,11 +599,11 @@ loopback on its default port.
 ## Install as a LaunchAgent
 
 ```sh
-pnpm factory:install                  # pnpm install, build factory and its workspace deps, link the bin
+pnpm factory:install                  # pnpm install, build factory and session-miner with their workspace deps, link both bins
 titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
 
-`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` in
+`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` and `~/.local/bin/titan-miner` to `products/session-miner/dist/bin.js` in
 this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild needs no
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
