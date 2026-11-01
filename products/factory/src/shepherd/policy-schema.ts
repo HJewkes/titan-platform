@@ -80,7 +80,8 @@ export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy)
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
-  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  const seat = merge === trusted.merge ? trusted.seat : other.seat;
+  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat, ...(visualPaths && { visualPaths }) };
   if (!other.featureBase) delete stricter.featureBase;
   if (other.release !== "grant") delete stricter.release;
   if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;
