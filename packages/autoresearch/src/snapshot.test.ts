@@ -220,6 +220,14 @@ describe("ar-sync", () => {
     expect(summaryOf(run, 2).against.head).toBe(merged);
   });
 
+  it("re-measures on the seed rung the factory accepts, at the merged sha", async () => {
+    const { ports, merged } = await synced(true);
+
+    const remeasured = ports.calls.evals.filter(({ key }) => key.includes("sync-2"));
+    expect(remeasured).toHaveLength(3);
+    expect(remeasured.map(({ rung, head }) => ({ rung, head }))).toEqual(Array(3).fill({ rung: "seed", head: merged }));
+  });
+
   it("keeps B's runs when only the log changed", async () => {
     const { run, merged } = await synced(false);
 

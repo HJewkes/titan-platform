@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a push detaches maintenance in the bare remote while the template is copied",
+      "file": "packages/egress-scan/src/test-repo.ts",
+      "find": "GIT_CONFIG_GLOBAL: path.join(import.meta.dirname, \"test-repo.gitconfig\"),",
+      "replace": "GIT_CONFIG_GLOBAL: os.devNull,",
+      "kills": [
+        "a test repository's push starts no maintenance in a bare remote made with default config, which would still be changing it afterwards"
+      ]
+    },
+    {
+      "name": "a copy starts from a template that is gone or changed",
+      "file": "packages/egress-scan/src/test-repo.ts",
+      "find": "if (template === undefined || contentsOf(template.root) !== template.contents) template = buildWorld(build);",
+      "replace": "template ??= buildWorld(build);",
+      "kills": [
+        "worldTemplate builds afresh when the template root is gone",
+        "worldTemplate builds afresh when the template changed after its build, and copies none of the change"
+      ]
+    }
+  ]
+}

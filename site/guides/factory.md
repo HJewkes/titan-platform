@@ -915,7 +915,7 @@ titan-factory service install --port 7411 --mcp
 | Verb | What it does | Exits 0 when |
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
-| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
+| `service status [--port <n>]` | Prints loaded or not (on Linux, `unreadable: <stderr>` when `systemctl --user show` fails), the pid, and a `/health` summary | `/health` answers with `github` `ok` |
 | `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`, `stale CLI`); a deploy the pacer holds adds `; deploy <sha> waits: <why> until <time>` to the line and `deployWaitSha`, `deployWaitWhy` and `deployWaitUntil` to `detail`; `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured; a `stale CLI` alone still exits 0 |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until the runs `/health` listed busy at the start clear, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
@@ -950,6 +950,8 @@ The whole check prints within `SERVICE_CHECK_BUDGET_MS` (20 s): up to three `/he
 On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPID` is the pid
 (none unless `ActiveState` is `active`), `NRestarts` stands in for the run count and
 `ExecMainStatus` for the last exit code.
+
+On Linux, a failed `systemctl --user show` also makes `service install` (including `--dry-run`) and `service uninstall` refuse with that text and the user-bus remedy, with no mutating `systemctl` call and no file touched; `service status` prints `unreadable: ...` instead of `not loaded`.
 
 - **unreadable**: on Linux, `systemctl --user show` itself failed (no user bus, permission, timeout); the line carries its stderr, or `exit N` when it printed none, and `--json` puts both in `detail.exitCode` and `detail.stderr`.
 - **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded` on a successful read.

@@ -1148,8 +1148,10 @@ interface ArPorts {
     }, signal: AbortSignal): Promise<z.input<typeof StaticCheckSchema>>;
     micro(input: MicroRequest, signal: AbortSignal): Promise<ArMicro>;
     /** `key` is unique per run, scope and repeat, since a target may use it as a cache directory. */
+    /** `head` is the sha `tree` must be at, which the port checks before it measures (R6). */
     evalCase(input: RunPin & {
         tree: string;
+        head: string;
         case: string;
         key: string;
         rung: string;
