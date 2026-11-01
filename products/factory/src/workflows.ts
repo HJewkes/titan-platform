@@ -27,6 +27,7 @@ import { adversaryGuard } from "./shepherd/adversary-guard.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents, installedHeadless } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
+import { readShepherdLimits } from "./shepherd/limits-read.js";
 import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
 import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
 import { movedPastOnList, openHeadOnPort } from "./shepherd/review-queue.js";
@@ -285,11 +286,11 @@ function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> 
   return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
 }
 
-/** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`; a key left out keeps its default. */
-export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Partial<SpawnLimits> {
+/** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`, with the host's `limits.shepherd` winning; a key left out keeps its default. */
+export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv = process.env): Partial<SpawnLimits> {
   const review = shepherd?.review;
   const fromReview = { reviewMinFreeBytes: review?.minFreeBytes, reviewMinFreeInodesPct: review?.minFreeInodesPct, maxConcurrentReviews: review?.maxConcurrent };
-  return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)) };
+  return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)), ...readShepherdLimits(env) };
 }
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
@@ -309,7 +310,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const repos: UnseatedRepos = () => loadConfig(configPath(env)).shepherd?.repos ?? {};
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const limits = liveSpawnLimits(configuredSpawnLimits(shepherd), config);
+  const limits = liveSpawnLimits(configuredSpawnLimits(shepherd, env), config);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
   const client = sharedOctokit();
   const port = withStatusChecks(overrides.port ?? githubPort(octokitWire({ client })), configuredStatusContexts(() => config.get().shepherd?.repos));

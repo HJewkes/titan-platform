@@ -3,11 +3,12 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { DEFAULT_EXIT_GRACE_MS, DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
 import type { MachineStopWatch } from "./shepherd/machine-stop.js";
+import { resetLimitsReadLog } from "./shepherd/limits-read.js";
 import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
@@ -476,5 +477,38 @@ describe("configuredSpawnLimits", () => {
 
   it("leaves every review limit unset when shepherd.review names none, so the defaults hold", () => {
     expect(configuredSpawnLimits({ review: { profile: "rv" } })).toEqual({});
+  });
+
+  describe("with the host's limits.shepherd", () => {
+    let home: string;
+    beforeEach(() => {
+      home = mkdtempSync(join(tmpdir(), "spawn-limits-"));
+      resetLimitsReadLog();
+    });
+    afterEach(() => rmSync(home, { recursive: true, force: true }));
+    const writeHost = (shepherd: unknown): void => writeFileSync(join(home, "config.json"), JSON.stringify({ limits: { version: 1, pools: {}, shepherd } }));
+
+    it("lets limits.shepherd beat the factory config", () => {
+      writeHost({ review: { max_concurrent: 5 }, spawn_gate: { load5: 40 } });
+
+      expect(configuredSpawnLimits({ spawnGate: { load5: 30, buildLoad5: 12 }, review: { profile: "rv", maxConcurrent: 8 } }, { AGENT_CHAT_HOME: home })).toEqual({ load5: 40, buildLoad5: 12, maxConcurrentReviews: 5 });
+    });
+
+    it("keeps the factory values when limits has no shepherd key", () => {
+      writeHost(undefined);
+
+      expect(configuredSpawnLimits({ review: { profile: "rv", maxConcurrent: 8 } }, { AGENT_CHAT_HOME: home })).toEqual({ maxConcurrentReviews: 8 });
+    });
+
+    it("keeps the factory values and logs once for a malformed block", () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      writeHost({ review: { max_concurrent: "many" } });
+      const shepherd = { review: { profile: "rv", maxConcurrent: 8 } };
+
+      expect(configuredSpawnLimits(shepherd, { AGENT_CHAT_HOME: home })).toEqual({ maxConcurrentReviews: 8 });
+      expect(configuredSpawnLimits(shepherd, { AGENT_CHAT_HOME: home })).toEqual({ maxConcurrentReviews: 8 });
+      expect(log).toHaveBeenCalledTimes(1);
+      log.mockRestore();
+    });
   });
 });
