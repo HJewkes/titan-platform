@@ -113,7 +113,7 @@ type ResolvedPace = {
 /** `{ present: false }` when the block has no valid `pace`, so callers fall back to their own setting. */
 declare function resolvePace(parsed: ParsedLimits): ResolvedPace;
 
-type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "ignored_section" | "invalid_pace" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped";
+type LimitsFindingKind = "invalid_pool" | "invalid_profile" | "invalid_seat" | "ignored_override" | "ignored_section" | "invalid_pace" | "expired_override" | "unknown_pool" | "unknown_profile" | "unknown_config_dir" | "clamped" | "deprecated_key";
 interface LimitsFinding {
     kind: LimitsFindingKind;
     message: string;
