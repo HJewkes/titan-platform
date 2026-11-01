@@ -6,7 +6,7 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
 
-export interface AbandonArgs {
+interface AbandonArgs {
   runId: string;
   reason: string;
   /** Who ends the run, as the caller claims it, in the form `gate resolve` records. */
