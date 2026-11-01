@@ -48,6 +48,7 @@ import { expireOrder } from "./merge-order-expiry.js";
 import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
 import { staleBaseOf, staleBaseRoute, type StaleBaseRun } from "./stale-base.js";
 import { mergeMainFirst, mergeMainRoute } from "./merge-main.js";
+import { staleGreenCheck, staleGreenRoute } from "./stale-green.js";
 import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -139,7 +140,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run), stalled: fixPrStall(run) };
-  const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
+  const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha), recheckMovedBase: staleGreenCheck(run.target.repo, run.target.pr) };
   const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };
   return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer(), mergeBaseFirst: mergeMainFirst(run.target.repo) };
 }
@@ -347,7 +348,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps),
+    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps), staleGreenRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
