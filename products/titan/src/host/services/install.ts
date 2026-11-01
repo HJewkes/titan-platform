@@ -11,7 +11,7 @@ export const writeUnitFile: UnitWriter = async (path, text) => {
   await writeFile(path, text, "utf8");
 };
 
-export type InstallResult = { ok: true } | { ok: false; step: string; detail: string };
+type InstallResult = { ok: true } | { ok: false; step: string; detail: string };
 
 /**
  * Legacy timer off first, so two backup timers are never enabled together. Any failing step
