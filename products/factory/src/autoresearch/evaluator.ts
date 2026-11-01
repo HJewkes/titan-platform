@@ -163,12 +163,15 @@ function rungOf(target: Target, name: string) {
   return rung;
 }
 
+/** The runner's load gate may hold a session this long before real work starts; only work after its marker counts against timeoutMin. */
+const LOAD_WAIT_ALLOWANCE_MS = 3 * 60 * 60_000;
+
 /** Eval and micro scripts are frozen, so they run from the evaluator checkout; `{runnerRoot}` points them at the idea's code. */
 async function runRung(session: Session, name: string, vars: Record<string, string | undefined>, signal: AbortSignal): Promise<unknown> {
   const rung = rungOf(session.target, name);
   const argv = renderCommand(rung.cmd, defined({ ...vars, maxUsd: rung.maxUsd?.toString() }));
   const timeoutMs = rung.timeoutMin === undefined ? undefined : rung.timeoutMin * 60_000;
-  return guarded(session, async () => lastLine(await runCommand(argv, { cwd: session.evaluatorTree, signal, timeoutMs }), argv));
+  return guarded(session, async () => lastLine(await runCommand(argv, { cwd: session.evaluatorTree, signal, timeoutMs, waitAllowanceMs: LOAD_WAIT_ALLOWANCE_MS }), argv));
 }
 
 async function paramsOf(bounds: Bounds, idea: Idea, diff: readonly DiffFile[], tree: string, revs: [string, string]) {
