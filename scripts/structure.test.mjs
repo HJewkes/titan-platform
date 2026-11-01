@@ -15,6 +15,7 @@ import {
   checkNoWarnSeverity,
   checkPnpmPin,
   checkProductIsolation,
+  checkRootHasNoWorkspaceDependencies,
   checkRootLintCoversWorkspaces,
   checkScaffold,
   checkTurboBuildContract,
@@ -50,6 +51,12 @@ function driftedScriptRoot() {
   writeFileSync(join(pkgDir, "tsup.config.ts"), "export default {};\n");
   const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
   writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, typecheck: "echo skipped" } }));
+  return root;
+}
+
+function workspaceDepRoot() {
+  const root = tempRoot("structure-root-dep-");
+  writeFileSync(join(root, "package.json"), JSON.stringify({ devDependencies: { "@titan-design/a": "workspace:*", vitest: "^3" } }));
   return root;
 }
 
@@ -202,6 +209,12 @@ const cases = [
     check: checkTurboBuildContract,
     root: () => turboRoot("structure-turbo-git-", { agentGuidance: false }, { runsProcess: true }),
     message: "`packages/a` runs a process in its build config. Add a `turbo.json` that extends `//` and sets `tasks.build.cache` to false.",
+  },
+  {
+    rule: "R54 the root has no workspace dependency",
+    check: checkRootHasNoWorkspaceDependencies,
+    root: () => workspaceDepRoot(),
+    message: "The root `package.json` depends on `@titan-design/a`, which keys every turbo task on it.",
   },
   {
     rule: "R58 a member declares every workspace package it imports",
