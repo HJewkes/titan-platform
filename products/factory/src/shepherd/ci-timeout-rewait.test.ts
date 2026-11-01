@@ -9,7 +9,8 @@ import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
-import type { PrTimeline, TimelineEntry } from "./view.js";
+import type { PrTimeline } from "./view.js";
+import type { TimelineEntry } from "./view-schema.js";
 
 const MIN = 60_000;
 const TIMEOUT_MS = 45 * MIN;

@@ -6,7 +6,7 @@ import { blockers, orderDriving, orderWaiting, withinTtl, type OrderWait, type R
 import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { MergeOrderServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const ClearReason = z.string().trim().min(1, "a clear needs a non-empty --reason").max(500);
 const OrderArgs = z.discriminatedUnion("action", [

@@ -17,7 +17,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import { MergeTrain, mergeTrainRef, trainMigration, type MergeTrainRef } from "./train.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 import { fakeLocator } from "../test-support/fakes.js";
 
 const HEADS = { 1: fakeSha("train-head1"), 2: fakeSha("train-head2") } as const;

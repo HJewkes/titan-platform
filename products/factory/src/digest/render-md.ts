@@ -1,4 +1,4 @@
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
 import { alarmLine, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";

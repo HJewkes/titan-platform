@@ -1,5 +1,5 @@
 import { isSeat } from "../shepherd/wake-brief.js";
-import type { WatchRow } from "../shepherd/view.js";
+import type { WatchRow } from "../shepherd/view-schema.js";
 import type { AgentSpan } from "./flow.js";
 import type { SeatLine } from "./model.js";
 

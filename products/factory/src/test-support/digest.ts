@@ -1,4 +1,4 @@
-import type { WatchRow } from "../shepherd/view.js";
+import type { WatchRow } from "../shepherd/view-schema.js";
 import type { DigestSources } from "../digest/collect.js";
 import type { DigestModel } from "../digest/model.js";
 

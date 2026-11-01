@@ -1,7 +1,7 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
 import type { Registration } from "./store.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 /**
  * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit

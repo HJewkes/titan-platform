@@ -1,4 +1,4 @@
-import type { WaitingGate } from "../shepherd/waiting.js";
+import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 
 /** One owner action; `keys` are the PR refs and run ids it names, so the same ask from two sources merges into one. */

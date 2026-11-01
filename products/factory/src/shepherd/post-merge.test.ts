@@ -16,7 +16,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
-import type { Waiting } from "./waiting.js";
+import type { Waiting } from "./waiting-schema.js";
 import { expectBrief } from "../test-support/brief.js";
 import { callCommand } from "../test-support/shepherd.js";
 import { OWNER } from "../test-support/resolver.js";

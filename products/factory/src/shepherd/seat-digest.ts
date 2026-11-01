@@ -11,7 +11,7 @@ import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
