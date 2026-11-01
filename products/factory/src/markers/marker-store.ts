@@ -1,4 +1,5 @@
 import type { Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { getBlob, insertBlobRow, refuseSecrets, stageBlob, type BlobStore, type StagedBlob } from "./blob-store.js";
 
 type PinClass = "tree" | "diff" | "observed" | "item" | "landed";
@@ -115,6 +116,9 @@ interface StoredMarker {
   written_at: string;
 }
 
+const inputDigestsSchema = z.record(z.string(), z.object({ pin: z.string(), projection: z.string() }));
+const readsSchema = z.array(z.object({ name: z.string(), digest: z.string(), bytes: z.number() }));
+
 function toRow(r: StoredMarker): MarkerRow {
   return {
     id: r.id,
@@ -127,8 +131,8 @@ function toRow(r: StoredMarker): MarkerRow {
     step: r.step,
     callSite: r.call_site,
     version: r.version,
-    inputDigests: JSON.parse(r.input_digests) as MarkerRow["inputDigests"],
-    reads: JSON.parse(r.reads) as MarkerRead[],
+    inputDigests: inputDigestsSchema.parse(JSON.parse(r.input_digests)),
+    reads: readsSchema.parse(JSON.parse(r.reads)),
     outputDigest: r.output_digest,
     projectionDigest: r.projection_digest,
     runId: r.run_id,

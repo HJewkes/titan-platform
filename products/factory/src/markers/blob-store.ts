@@ -86,7 +86,7 @@ function readBlobFile(store: BlobStore, name: string): Buffer | undefined {
   try {
     return readFileSync(join(store.blobDir, name));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
 }

@@ -60,15 +60,15 @@ function marker(overrides: Partial<MarkerInput> = {}): MarkerInput {
   };
 }
 
-const blobRows = (): number => (db.prepare("SELECT COUNT(*) AS n FROM factory_marker_blob").get() as { n: number }).n;
-const markerRows = (): number => (db.prepare("SELECT COUNT(*) AS n FROM factory_marker").get() as { n: number }).n;
+const blobRows = (): number => db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM factory_marker_blob").get()?.n ?? 0;
+const markerRows = (): number => db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM factory_marker").get()?.n ?? 0;
 
 describe("blob tiers", () => {
   it("a 256 KB read value is stored inline, and 256 KB + 1 byte goes to a file out of line", () => {
     const small = putBlob(db, store, bytes(LIMIT), AT);
     const large = putBlob(db, store, bytes(LIMIT + 1), AT);
 
-    const rows = db.prepare("SELECT digest, inline IS NOT NULL AS inl, path FROM factory_marker_blob").all() as { digest: string; inl: number; path: string | null }[];
+    const rows = db.prepare<[], { digest: string; inl: number; path: string | null }>("SELECT digest, inline IS NOT NULL AS inl, path FROM factory_marker_blob").all();
     expect(rows.find((r) => r.digest === small)).toMatchObject({ inl: 1, path: null });
     expect(rows.find((r) => r.digest === large)).toMatchObject({ inl: 0, path: large.slice("sha256:".length) });
     expect(files()).toEqual([large.slice("sha256:".length)]);
@@ -159,7 +159,7 @@ describe("capability guard", () => {
 
 describe("failed writes", () => {
   it("a write that fails inside the transaction leaves only an orphan blob, which no marker references", () => {
-    const failing = marker({ reads: [{ name: "log", bytes: bytes(LIMIT + 1) }], pinClass: "bogus" as never });
+    const failing = marker({ reads: [{ name: "log", bytes: bytes(LIMIT + 1) }], reverted: true });
 
     expect(() => writeMarker(db, store, failing)).toThrow();
     expect(markerRows()).toBe(0);
