@@ -1,19 +1,15 @@
 /** The pre-registry restart list, kept apart from the registry so the registry is checked against it, never against itself. */
 const WRITE = "writes outside the run";
 const RECORD = "records a fact a replay must read back, never recompute";
+const RUNS = "runs a repo-configured command the factory cannot prove writes nothing";
 const READ = "read or wait whose result chose the branch taken; not yet reviewed for orphanSafe";
 
 /** Dispatch steps whose orphan parks on restart, with the reason each gives. Reviewing a read (TP-3106 S3, S4) edits its row. */
 export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "update-branch": `${WRITE}: updates the PR branch on GitHub`,
-  "update-backoff": `${READ}: a sleep between update tries`,
-  "base-wait": `${READ}: waits for the PR's base to be retargeted`,
   merge: `${WRITE}: merges the PR on GitHub`,
   "merge-policy": `${RECORD}: the merge policy in force at the merge`,
-  "merge-settle": `${READ}: waits for the merge to settle`,
-  "await-new-head": `${READ}: waits for a push to the PR head`,
   "post-merge": `${WRITE}: runs the configured post-merge chore`,
-  snapshot: `${READ}: the PR snapshot the run branched on`,
   rerun: `${WRITE}: re-runs failed CI jobs on GitHub`,
   "ci-orphan-rerun": `${WRITE}: re-runs a CI job left open under a completed workflow run`,
   "sh-await-pr": `${READ}: waits for the registered PR to exist`,
@@ -98,35 +94,34 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-review-refused": `${RECORD}: a standing MERGE re-read instead of a fresh review`,
   "sh-ci-unread": `${RECORD}: a CI-unread-only FIX_FIRST taken as no verdict`,
   "sh-visual-packet": `${WRITE}: spawns the review packager for a visual gate`,
-  "audit-load": `${READ}: the audit's input and prior report`,
-  "audit-inventory-data": `${READ}: the data store inventory`,
   "audit-inventory-code": `${RECORD}: an agent's code inventory`,
   "audit-purpose": `${RECORD}: an agent's purpose statement`,
-  "audit-answerability": `${READ}: runs each declared surface once`,
+  "audit-answerability": `${RUNS}: runs each declared surface command once, so re-running repeats its side effects`,
   "audit-propose": `${RECORD}: an agent's proposal`,
-  "audit-baseline": `${READ}: one baseline metric`,
+  "audit-baseline": `${RUNS}: a cli metric runs the store's declared command with the metric's own arguments`,
   "audit-gaps": `${RECORD}: an agent's gap proposal`,
   "audit-plan": `${RECORD}: an agent's surface plan`,
   "audit-publish": `${WRITE}: writes the audit report file`,
-  "bs-plan": `${READ}: the build spec the slices come from`,
-  "bs-preflight": `${READ}: the repo's preflight verdict for a slice`,
+  "bs-preflight": `${RUNS}: the repo's preflight argv for a slice, through the runner bs-preview and bs-deploy write through`,
   "bs-extract": `${RECORD}: an agent's extracted targets`,
-  "bs-extract-check": `${READ}: the repo's verdict on the targets`,
+  "bs-extract-check": `${RUNS}: the repo's extract validator argv, fed the targets on stdin`,
   "bs-branch": `${WRITE}: creates the slice branch on GitHub`,
   "bs-implement": `${WRITE}: spawns the slice implementer`,
-  "bs-report-check": `${READ}: the verdict on an implementer's report`,
-  "bs-gates": `${READ}: runs the repo's gates at a head`,
-  "bs-health": `${READ}: the repo's health probe before an infra rerun`,
+  "bs-report-check": `${RUNS}: the repo's report validator argv, after reading the remote head`,
+  "bs-gates": `${RUNS}: the repo's gate argv, which writes the gate evidence records the step then reads`,
+  "bs-health": `${RUNS}: the repo's health probe argv before an infra rerun`,
   "bs-file-task": `${WRITE}: files the task for a broken gate or spec`,
   "bs-preview": `${WRITE}: syncs the preview at a head`,
   "bs-review": `${WRITE}: dispatches the slice reviewer`,
-  "bs-review-check": `${READ}: the verdict on a review`,
+  "bs-review-check": `${RUNS}: the repo's review validator argv, fed the review on stdin`,
   "bs-fix": `${WRITE}: resumes the implementer for a fix round`,
   "bs-pr": `${WRITE}: opens the slice PR`,
   "bs-shepherd": `${WRITE}: registers the PR with Shepherd`,
-  "bs-await-land": `${READ}: waits for Shepherd to land the PR`,
   "bs-deploy": `${WRITE}: runs the repo's deploy at the merge`,
 };
 
 /** The steps whose orphan is dropped: read-only, so a replay never needs their result. */
-export const DROPPED_STEPS: readonly string[] = ["base-check", "ci-wait", "land-rules", "sh-observe", "sh-send-back-offer", "sh-visual-accept-offer"];
+export const DROPPED_STEPS: readonly string[] = [
+  "audit-inventory-data", "audit-load", "await-new-head", "base-check", "base-wait", "bs-await-land", "bs-plan", "ci-wait", "land-rules",
+  "merge-settle", "sh-observe", "sh-send-back-offer", "sh-visual-accept-offer", "snapshot", "update-backoff",
+];
