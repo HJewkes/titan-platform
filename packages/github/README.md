@@ -40,7 +40,7 @@ numeric size, throws `BlobTooLargeError` before the blob is read.
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run; a run with no start is ordered by id
-unless it is still queued, which makes it newest. `behind` comes from the compare API.
+unless it is still queued, which makes it newest. `withoutSupersededCancels` drops a `cancelled` run only when a newer run of the same name, head sha and app exists; `mergeReadiness` does not apply it, so callers that ignore concurrency cancels pre-filter with it. `behind` comes from the compare API.
 `mergeReadiness` (and `headCheckFindings` under it) is the one rule for whether a required check
 passed: a required name needs a completed `success` run, so a `skipped` or `neutral` run, or no run
 at all, never passes.

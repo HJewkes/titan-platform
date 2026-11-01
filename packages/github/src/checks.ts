@@ -40,6 +40,21 @@ export function latestPerName(runs: readonly CheckRun[]): CheckRun[] {
   return [...byName.values()].map(newest);
 }
 
+/**
+ * A newer push cancels the older run of the same check, so that cancel is not a verdict on the head. Only a cancel is
+ * dropped, and only when a newer run of the same name, head sha and app exists: a superseded failure still counts, and
+ * a lone cancel stays red.
+ */
+export function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
+  const groups = new Map<string, CheckRun[]>();
+  for (const run of runs) {
+    const key = `${run.headSha}\0${run.appId}\0${run.name}`;
+    groups.set(key, [...(groups.get(key) ?? []), run]);
+  }
+  const newestIds = new Set([...groups.values()].flatMap((group) => latestPerName(group)).map((run) => run.id));
+  return runs.filter((run) => run.conclusion !== "cancelled" || newestIds.has(run.id));
+}
+
 function newest(runs: readonly CheckRun[]): CheckRun {
   const unstarted = runs.filter(isUnstarted);
   if (unstarted.length > 0) return unstarted.reduce(higherId);
