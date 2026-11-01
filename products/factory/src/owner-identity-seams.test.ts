@@ -29,9 +29,9 @@ describe("owner-identity seams", () => {
   it("no production deps type carries an owner-identity check", () => {
     expectTypeOf<CliDeps>().not.toHaveProperty("presence");
     expectTypeOf<FactoryServerOptions>().not.toHaveProperty("ownerKeys");
-    const program = sourceProgram([join(SRC, "cli.ts"), join(SRC, "serve.ts")]);
+    const program = sourceProgram([join(SRC, "cli-types.ts"), join(SRC, "serve.ts")]);
 
-    const seams = [...seamsOf(program, "cli.ts", "CliDeps"), ...seamsOf(program, "serve.ts", "FactoryServerOptions")];
+    const seams = [...seamsOf(program, "cli-types.ts", "CliDeps"), ...seamsOf(program, "serve.ts", "FactoryServerOptions")];
 
     expect(seams).toEqual([]);
   });
