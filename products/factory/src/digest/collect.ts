@@ -3,7 +3,7 @@ import type { OwnerItem } from "@titan-design/owner-queue";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { waitingGates } from "../shepherd/waiting.js";
 import { lastAwaitClause } from "../shepherd/none-reason.js";
-import type { WatchRow } from "../shepherd/view.js";
+import type { WatchRow } from "../shepherd/view-schema.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type AgentSpan, type FlowPorts } from "./flow.js";
 import { prKey, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";

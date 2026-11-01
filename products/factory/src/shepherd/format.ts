@@ -13,8 +13,10 @@ import type { FixPrResult } from "./fix-pr-command.js";
 import type { MergeBaseResult } from "./merge-base-command.js";
 import type { Freeze } from "./freeze.js";
 import { lastAwaitClause } from "./none-reason.js";
-import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
-import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
+import { OVERDUE_HOURS, overdueOwnerGates } from "./waiting.js";
+import type { Waiting, WaitingGate } from "./waiting-schema.js";
+import type { PrTimeline } from "./view.js";
+import type { TimelineEntry, WatchRow } from "./view-schema.js";
 
 /** `timeline --last N` keeps the last N entries; `--width W` cuts every line to W characters, the `| tail | cut -c` seats used to type. */
 export interface TimelineView {

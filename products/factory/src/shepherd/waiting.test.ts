@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { formatShepherd } from "./format.js";
-import { OVERDUE_HOURS, WaitingSchema, overdueOwnerGates, waitingGates } from "./waiting.js";
-import type { WatchRow } from "./view.js";
+import { OVERDUE_HOURS, overdueOwnerGates, waitingGates } from "./waiting.js";
+import { WaitingSchema } from "./waiting-schema.js";
+import type { WatchRow } from "./view-schema.js";
 
 const NOW = new Date("2026-01-10T12:00:00.000Z");
 const HOUR = 3_600_000;

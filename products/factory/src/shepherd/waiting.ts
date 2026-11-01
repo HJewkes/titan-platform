@@ -3,7 +3,9 @@ import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import type { FactoryContext } from "../context.js";
 import { headGateAsks } from "./stale-gates.js";
-import type { WatchRow } from "./view.js";
+import type { Waiting, WaitingGate } from "./waiting-schema.js";
+import { WaitingSchema } from "./waiting-schema.js";
+import type { WatchRow } from "./view-schema.js";
 
 /** Gates a seat can answer; TP-2033 routes these to the seat that owns the PR. Any other gate, a new kind included, is the owner's. */
 export const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuck-behind"];
@@ -11,26 +13,6 @@ export const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuc
 const HOUR_MS = 3_600_000;
 /** The longest an owner gate may wait before `shepherd waiting` exits 1. */
 export const OVERDUE_HOURS = 24;
-
-const WaitingGateSchema = z.object({
-  gateId: z.string(),
-  /** The gate's step without its repeat suffix, such as `approve-merge`. */
-  stepId: z.string(),
-  repo: z.string(),
-  pr: z.number().int().nullable(),
-  head: z.string().nullable(),
-  task: z.string(),
-  since: z.string(),
-  ageHours: z.number(),
-  /** Whether the head the gate names is the run's current head; null when the gate names none. */
-  headIsCurrent: z.boolean().nullable(),
-  /** Why the run is held, if it is. */
-  held: z.string().nullable(),
-});
-export type WaitingGate = z.infer<typeof WaitingGateSchema>;
-
-export const WaitingSchema = z.object({ owner: z.array(WaitingGateSchema), seat: z.array(WaitingGateSchema) });
-export type Waiting = z.infer<typeof WaitingSchema>;
 
 type GateHead = (gateId: string) => string | undefined;
 

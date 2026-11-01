@@ -38,7 +38,8 @@ import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { watchCommand } from "./watch-command.js";
-import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
+import { timelineEntries, type PrTimeline } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
 

@@ -13,7 +13,7 @@ import { MergeOrder, type MergeOrderRules, type Reservation } from "./merge-orde
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { MergeOrderServices } from "./services.js";
 import { shepherdStoreRef } from "./store.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const REPO = "demo/repo";
 const SHARED = "docs/shared.md";

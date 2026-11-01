@@ -5,7 +5,8 @@ import { statusOrder, type StatusOrder } from "./merge-order-command.js";
 import type { RepoFreeze } from "./repo-freeze.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { watchRow, type WatchRow } from "./view.js";
+import { watchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 /** The run's watch row; a caller reading many rows passes the pending gates it read once. */
 export function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun, pendingGates: readonly PendingGate[] = host.pendingGates()): WatchRow {
