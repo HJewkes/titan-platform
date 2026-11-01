@@ -19,7 +19,7 @@ function fakeCheck(dir, name) {
   writeFileSync(
     file,
     `import { writeFileSync } from "node:fs";
-writeFileSync(process.env.RECORD_DIR + "/${name}.json", JSON.stringify({ argv: process.argv.slice(2), baseRef: process.env.BASE_REF ?? null }));
+writeFileSync(process.env.RECORD_DIR + "/${name}.json", JSON.stringify({ argv: process.argv.slice(2), baseRef: process.env.BASE_REF ?? null, handoff: process.env.DAG_CHECK_HANDOFF ?? null }));
 process.exit(Number(process.env.${name.toUpperCase()}_EXIT));
 `,
   );
@@ -92,6 +92,19 @@ describe("graph gate graph handoff", () => {
     expect(r.dag.argv).toEqual(["--db", keep]);
     expect(r.dead.argv).toEqual(["--db", keep]);
     expect(existsSync(keep)).toBe(true);
+  });
+});
+
+describe("graph gate queue-ticket handoff", () => {
+  it("sets DAG_CHECK_HANDOFF for the dag step only", () => {
+    const r = gate({ dag: 0, dead: 0 });
+    expect(r.dag.handoff).toBe("1");
+    expect(r.dead.handoff).toBeNull();
+  });
+
+  it("clears a caller's DAG_CHECK_HANDOFF for the dead step", () => {
+    const r = gate({ dag: 0, dead: 0, env: { DAG_CHECK_HANDOFF: "1" } });
+    expect(r.dead.handoff).toBeNull();
   });
 });
 

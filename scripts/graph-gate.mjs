@@ -46,13 +46,15 @@ function runNode(script, args, env, cwd) {
   return r.status ?? 2;
 }
 
+// The dag step's queue ticket passes to dead:check (dag-check-lock's grace), so only the dag step sees DAG_CHECK_HANDOFF.
 export function runGate({ dagScript, deadScript, argv, env, cwd = ROOT }) {
   const tmpDir = mkdtempSync(path.join(tmpdir(), "graph-gate-"));
   try {
     const { dagArgs, dbPath } = gateArgs(argv, path.join(tmpDir, "graph.db"));
-    const dag = runNode(dagScript, dagArgs, env, cwd);
+    const dag = runNode(dagScript, dagArgs, { ...env, DAG_CHECK_HANDOFF: "1" }, cwd);
     if (FAILED_TO_RUN.has(dag)) return dag;
-    const dead = runNode(deadScript, ["--db", dbPath], deadEnv(env, refExists(DEFAULT_BASE_REF, cwd)), cwd);
+    const { DAG_CHECK_HANDOFF: _handoff, ...deadOnlyEnv } = deadEnv(env, refExists(DEFAULT_BASE_REF, cwd));
+    const dead = runNode(deadScript, ["--db", dbPath], deadOnlyEnv, cwd);
     return combineExits(dag, dead);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
