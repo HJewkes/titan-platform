@@ -16,7 +16,8 @@ import type { EffectivePolicy } from "./policy-schema.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import type { PanelMode } from "./review-panel-plan.js";
-import { proofWaiverMigration, waiveProof } from "./proof-waiver.js";
+import { proofWaiverMigration } from "./proof-waiver-table.js";
+import { waiveProof } from "./proof-waiver.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
