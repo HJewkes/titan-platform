@@ -2,11 +2,11 @@ import { z } from "zod";
 import type { StepKind } from "../definition.js";
 
 /** Who performs the step: software, or a step the recipe docs mark AGENT or OWNER. */
-export type Kind = "software" | "AGENT" | "OWNER";
-export type EffectTarget = "commit" | "pr" | "item" | "external";
+type Kind = "software" | "AGENT" | "OWNER";
+type EffectTarget = "commit" | "pr" | "item" | "external";
 
 /** A read's orphan is dropped on restart; every other class parks, and must say why. */
-export type Effect = { class: "read" } | { class: "effect" | "irreversible"; target: EffectTarget; reason: string };
+type Effect = { class: "read" } | { class: "effect" | "irreversible"; target: EffectTarget; reason: string };
 
 export interface BaseEntry {
   /** The StepDeclaration id; a family name covers `<name>:<suffix>`. */
