@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FactoryConfigSchema } from "../config.js";
 import { movedPastOnList, type CachedOpenList } from "./review-queue.js";
-import { spawnGate, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
+import { spawnGate } from "./spawn-gate.js";
+import type { MachineReadings, SpawnLimits } from "./spawn-limits.js";
 import type { ReviewAsk } from "./ports.js";
 
 const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
