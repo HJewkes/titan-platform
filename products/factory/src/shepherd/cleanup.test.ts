@@ -54,7 +54,8 @@ const NO_SLICING: TaskSlicing = { tags: [], notes: "", plan: undefined };
 function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): CleanupTasks & { closed: string[]; notes: string[] } {
   const closed: string[] = [];
   const notes: string[] = [];
-  return { closed, notes, state: async () => state, slicing: async () => slicing, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
+  const appended: string[] = [];
+  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
 }
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;
@@ -222,6 +223,59 @@ describe("sh-cleanup task", () => {
     expect(result.task).toBe("noted");
     expect(w.tasks.closed).toEqual([]);
     expect(w.tasks.notes).toEqual([`demo/TP-1: S4 landed in ${REPO}#1 at ${fakeSha("merge")}`]);
+  });
+
+  describe("keep mode with a plan's slices", () => {
+    const sliced = (notes: string) => ({ tags: [], notes, plan: planOf("S1", "S2", "S3") });
+    const landed = (n: string) => `${n} landed in demo/x#9 at ${fakeSha("old")}`;
+
+    it("closes the task when the slice that merges is the last unlanded one", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: sliced(`${landed("S1")}\n${landed("S2")}`) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("done");
+      expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: S3 landed in ${REPO}#1 at ${fakeSha("merge")}`, `demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
+    });
+
+    it("leaves an epic-tagged task open when its last slice merges", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { ...sliced(`${landed("S1")}\n${landed("S2")}`), tags: ["epic"] } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("only notes a middle slice while others are unlanded", async () => {
+      const w = world({ registration: { ...base, slice: "S2" }, slicing: sliced(landed("S1")) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: S2 landed in ${REPO}#1 at ${fakeSha("merge")}`]);
+    });
+
+    it("leaves the task open when the plan's slices block does not read", async () => {
+      const w = world({ registration: { ...base, slice: "S3" }, slicing: { tags: [], notes: "", plan: "```burndown-slices\n[{ \"n\": \n```\n" } });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+    });
+
+    it("keeps a slice-less registration of a sliced task open, since its own slice is never noted", async () => {
+      const w = world({ slicing: sliced(`${landed("S2")}\n${landed("S3")}`) });
+
+      const result = await w.run();
+
+      expect(result.task).toBe("left-open");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes).toEqual([`demo/TP-1: PR ${REPO}#1 at ${fakeSha("merge")} merged; task left open: it has slices S1`]);
+    });
   });
 
   it("writes no landing note while the merge sha cannot be read, so a retry cannot leave two lines", async () => {
