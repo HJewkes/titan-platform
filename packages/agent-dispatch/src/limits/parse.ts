@@ -6,6 +6,7 @@ import {
   poolSchema,
   profileSchema,
   seatSchema,
+  paceSchema,
   shepherdSchema,
   type Limits,
   type LimitsOverride,
@@ -18,7 +19,7 @@ export class LimitsConfigError extends Error {
 export type LimitsBlock = Limits & Required<Pick<Limits, "funds" | "profiles" | "seats" | "overrides">>;
 
 /** Host-wide sections that bind no pool, so a bad one is dropped rather than closing anything. */
-export type LimitsSection = "capacity" | "shepherd";
+export type LimitsSection = "capacity" | "shepherd" | "pace";
 
 export interface IgnoredEntry {
   index: number;
@@ -50,6 +51,7 @@ const envelopeSchema = z.strictObject({
   overrides: z.array(z.unknown()).optional(),
   capacity: z.unknown().optional(),
   shepherd: z.unknown().optional(),
+  pace: z.unknown().optional(),
 });
 
 function splitScope<T>(
@@ -77,16 +79,18 @@ function splitOverrides(entries: unknown[] | undefined) {
   return { valid, ignored };
 }
 
-function splitSections(raw: { capacity?: unknown; shepherd?: unknown }) {
-  const kept: Pick<Limits, LimitsSection> = {};
+const sectionSchemas = { capacity: capacitySchema, shepherd: shepherdSchema, pace: paceSchema } as const;
+
+function splitSections(raw: Partial<Record<LimitsSection, unknown>>) {
+  const kept: Record<string, unknown> = {};
   const ignored: Partial<Record<LimitsSection, string>> = {};
-  const capacity = capacitySchema.optional().safeParse(raw.capacity);
-  if (!capacity.success) ignored.capacity = z.prettifyError(capacity.error);
-  else if (capacity.data !== undefined) kept.capacity = capacity.data;
-  const shepherd = shepherdSchema.optional().safeParse(raw.shepherd);
-  if (!shepherd.success) ignored.shepherd = z.prettifyError(shepherd.error);
-  else if (shepherd.data !== undefined) kept.shepherd = shepherd.data;
-  return { kept, ignored };
+  for (const [name, schema] of Object.entries(sectionSchemas)) {
+    const section = name as LimitsSection;
+    const result = schema.optional().safeParse(raw[section]);
+    if (!result.success) ignored[section] = z.prettifyError(result.error);
+    else if (result.data !== undefined) kept[section] = result.data;
+  }
+  return { kept: kept as Pick<Limits, LimitsSection>, ignored };
 }
 
 /** Throws `LimitsConfigError` only when the envelope itself is unusable; everything inside fails per scope. */
@@ -95,12 +99,12 @@ export function parseLimits(raw: unknown): ParsedLimits {
   if (!envelope.success) {
     throw new LimitsConfigError(`limits block refused: ${z.prettifyError(envelope.error)}`);
   }
-  const { pools, profiles, seats, overrides, capacity, shepherd, ...rest } = envelope.data;
+  const { pools, profiles, seats, overrides, capacity, shepherd, pace, ...rest } = envelope.data;
   const poolParts = splitScope(poolSchema, pools);
   const profileParts = splitScope(profileSchema, profiles);
   const seatParts = splitScope(seatSchema, seats);
   const overrideParts = splitOverrides(overrides);
-  const sectionParts = splitSections({ capacity, shepherd });
+  const sectionParts = splitSections({ capacity, shepherd, pace });
   return {
     limits: {
       ...rest,
