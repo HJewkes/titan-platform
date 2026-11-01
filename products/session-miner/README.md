@@ -545,6 +545,18 @@ titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtes
 Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
 `--json` returns the full class table or back-test result beside the same header fields.
 
+`titan-miner throughput forecast` (TP-2157) forecasts a set of open tasks with exactly one of
+`--tasks <ids>`, `--parent <id>` (open descendants) or `--milestone <tag>` (add `--initiative` when
+the tag recurs). It fits the same table, then prints total implementer agent-hours, reviewer
+agent-hours and USD at p10/p50/p80/p90, each task's `kind/band`, back-off level, n and closure
+rate, and the unclassifiable, notFound and skippedDone tasks. `--seed` (default `titan-miner`),
+`--draws`, `--week-effect on|off` and `--closure on|off` tune the simulation; equal inputs give an
+identical forecast hash.
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput forecast --parent TP-2150 --json
+```
+
 `titan-miner throughput pr-backfill` (TP-2162) caches each merged PR's head sha and changed
 files (paths and line counts, never diff text) in `<state>/pr-diffs.json`, mode 0600, through
 the shell's `gh` login. Cached refs are skipped, a 404 is cached as missing, and the run stops
