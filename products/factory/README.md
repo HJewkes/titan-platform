@@ -873,6 +873,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
 | `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+| `src/markers/marker-table.ts` | The v9.1 marker table (migration 49), shadow-only: no live writer or reader yet, and `workflow_run.step_results` stays authoritative. One row per (item, fact, pin class, pin); version and digests are columns, and the highest id at an identity is current. Triggers refuse UPDATE, DELETE and REPLACE, and refuse any marker for an item that has a reverted `landed` marker. Read values and outputs live in `factory_marker_blob` (inline up to 256 KB, a file path above); `factory_marker_root` holds the eval rows that GC keeps as roots |
 
 ## GitHub event sources config
 
