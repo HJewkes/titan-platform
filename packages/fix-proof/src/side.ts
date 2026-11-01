@@ -44,8 +44,9 @@ export interface ExecSideOptions {
   budgetMs?: number;
   exec?: Exec;
   /**
-   * Runs each base-side vitest call as this user in a fresh PID namespace through `sudo -n`, so nothing the head's test
-   * or carried files start outlives the run or can write the runner's files. The head side ignores it.
+   * Runs every command the head controls as this user in a fresh PID namespace through `sudo -n`, so nothing it starts
+   * outlives the run or can write the runner's files: the head side's install, build and vitest, and the base side's
+   * vitest. A sandbox that cannot be set up is an error marker, never an unsandboxed run.
    */
   sandboxUser?: string;
   /** How many times the head side runs vitest after one install and build, an integer from 1 to 5; default 1. The base side ignores it. */
@@ -70,16 +71,16 @@ function sh(ctx: Context, tree: string, script: string, args: readonly string[])
   return call(ctx, tree, "sh", ["-c", `${script} "$@"`, "sh", ...args]);
 }
 
-async function shell(ctx: Context, tree: string, script: string, what: string): Promise<void> {
-  const result = await sh(ctx, tree, script, []);
+async function shell(ctx: Context, tree: string, script: string, what: string, sandboxUser?: string): Promise<void> {
+  const result = await runInTree(ctx, tree, script, [], sandboxUser);
   if (result.status !== 0) throw new RunError(`${what} failed (exit ${result.status ?? "signal"})`);
 }
 
-/** Installs and builds the tree with its lockfile's toolchain and returns the test command it resolved. */
-export async function prepare(ctx: Context, tree: string, side: string, config: FixProofConfig): Promise<string> {
+/** Installs and builds the tree with its lockfile's toolchain, as sandboxUser when given, and returns the test command it resolved. */
+export async function prepare(ctx: Context, tree: string, side: string, config: FixProofConfig, sandboxUser?: string): Promise<string> {
   const tools = toolchainOf(tree);
-  if (tools.install !== null) await shell(ctx, tree, tools.install, `${side}: install`);
-  await shell(ctx, tree, config.build ?? tools.build, `${side}: build`);
+  if (tools.install !== null) await shell(ctx, tree, tools.install, `${side}: install`, sandboxUser);
+  await shell(ctx, tree, config.build ?? tools.build, `${side}: build`, sandboxUser);
   return config.command ?? tools.command;
 }
 
@@ -117,9 +118,9 @@ function readReportFile(file: string, name: string): string | null {
   }
 }
 
-async function sudo(ctx: Context, args: readonly string[]): Promise<void> {
+async function sudo(ctx: Context, label: string, args: readonly string[]): Promise<void> {
   const result = await call(ctx, ctx.tmp, "sudo", ["-n", "--", ...args]);
-  if (result.status !== 0) throw new RunError(`base: sandbox setup failed (sudo ${args[0]} exit ${result.status ?? "signal"})`);
+  if (result.status !== 0) throw new RunError(`${label}: sandbox setup failed (sudo ${args[0]} exit ${result.status ?? "signal"})`);
 }
 
 /** Runs `sh -c <script> sh ...args` in tree, inside the sandbox when a sandbox user is given. */
@@ -141,7 +142,7 @@ export async function testReport(
   // A fresh dir per run, handed to the sandbox only now, so an earlier run cannot plant this run's report.
   const dir = path.join(ctx.tmp, `${name}-out`);
   fs.mkdirSync(dir);
-  if (sandboxUser !== undefined) await sudo(ctx, ["chown", `${sandboxUser}:`, dir]);
+  if (sandboxUser !== undefined) await sudo(ctx, name, ["chown", `${sandboxUser}:`, dir]);
   const out = path.join(dir, `${name}.json`);
   const args = ["--reporter=json", "--outputFile", out, "--testTimeout", "30000", ...tests];
   const result = await runInTree(ctx, tree, command, args, sandboxUser);
@@ -154,49 +155,57 @@ async function runTests(ctx: Context, tree: string, plan: FixProofPlan, command:
   return encodeReport(await testReport(ctx, tree, plan.tests, command, name, sandboxUser));
 }
 
-function runnerIds(): { uid: number; gid: number } {
-  if (process.getuid === undefined || process.getgid === undefined) throw new RunError("base: sandbox setup failed (no uid on this platform)");
+function runnerIds(label: string): { uid: number; gid: number } {
+  if (process.getuid === undefined || process.getgid === undefined) throw new RunError(`${label}: sandbox setup failed (no uid on this platform)`);
   return { uid: process.getuid(), gid: process.getgid() };
 }
 
 // Root or the runner's own login would run the head's tests with exactly the reach the sandbox exists to take away.
-async function assertSeparateUid(ctx: Context, user: string, runnerUid: number): Promise<void> {
+async function assertSeparateUid(ctx: Context, label: string, user: string, runnerUid: number): Promise<void> {
   const result = await call(ctx, ctx.tmp, "id", ["-u", "--", user]);
   const uid = result.status === 0 && /^\d+\n?$/.test(result.stdout) ? Number(result.stdout) : null;
-  if (uid === null) throw new RunError(`base: sandbox setup failed (no uid for ${user})`);
-  if (uid === 0 || uid === runnerUid) throw new RunError(`base: sandbox setup failed (${user} is uid ${uid}, root or the runner)`);
+  if (uid === null) throw new RunError(`${label}: sandbox setup failed (no uid for ${user})`);
+  if (uid === 0 || uid === runnerUid) throw new RunError(`${label}: sandbox setup failed (${user} is uid ${uid}, root or the runner)`);
 }
 
 /**
  * Hands the tree's directories to the sandbox user for body, then everything under ctx.tmp back to the runner so cleanup
- * can remove it. Only directories: pnpm hardlinks node_modules files to its store, which the runner keeps using.
+ * can remove it. Only directories: pnpm hardlinks node_modules files to its store, which the runner keeps using. label
+ * prefixes a setup failure's message.
  */
-export async function withSandbox<T>(ctx: Context, tree: string, user: string, body: () => Promise<T>): Promise<T> {
+export async function withSandbox<T>(ctx: Context, tree: string, user: string, body: () => Promise<T>, label = "base"): Promise<T> {
   assertSandboxUser(user);
-  const runner = runnerIds();
-  await assertSeparateUid(ctx, user, runner.uid);
+  const runner = runnerIds(label);
+  await assertSeparateUid(ctx, label, user, runner.uid);
   fs.chmodSync(ctx.tmp, 0o711);
   try {
-    await sudo(ctx, ["find", tree, "-type", "d", "-exec", "chown", `${user}:`, "{}", "+"]);
+    await sudo(ctx, label, ["find", tree, "-type", "d", "-exec", "chown", `${user}:`, "{}", "+"]);
     return await body();
   } finally {
     await ctx.exec("sudo", ["-n", "--", "chown", "-R", `${runner.uid}:${runner.gid}`, ctx.tmp], { cwd: ctx.tmp, timeoutMs: TEARDOWN_TIMEOUT_MS });
   }
 }
 
-async function runHeadTests(ctx: Context, tree: string, plan: FixProofPlan, command: string, runs: number): Promise<string[]> {
+async function runHeadTests(ctx: Context, tree: string, plan: FixProofPlan, runs: number, sandboxUser?: string): Promise<string[]> {
+  const command = await prepare(ctx, tree, "head", plan.config, sandboxUser);
   const reports: string[] = [];
-  for (const name of reportNames("head", runs)) reports.push(await runTests(ctx, tree, plan, command, name));
+  for (const name of reportNames("head", runs)) reports.push(await runTests(ctx, tree, plan, command, name, sandboxUser));
   return reports;
+}
+
+// Install and build run head code too, so the whole head side sits inside the sandbox, not just its vitest calls.
+function runHead(ctx: Context, tree: string, plan: FixProofPlan, runs: number, sandboxUser?: string): Promise<string[]> {
+  const body = () => runHeadTests(ctx, tree, plan, runs, sandboxUser);
+  return sandboxUser === undefined ? body() : withSandbox(ctx, tree, sandboxUser, body, "head");
 }
 
 async function runSide(ctx: Context, shas: Shas, side: Side, headRuns: number, sandboxUser?: string): Promise<string[]> {
   const plan = await planDiff(ctx, shas);
   if (plan.tests.length === 0) return reportNames(side, headRuns).map(() => encodeError("no tests planned"));
   const tree = await addTree(ctx, side, shas[side]);
+  if (side === "head") return runHead(ctx, tree, plan, headRuns, sandboxUser);
   // The base builds before any head file lands in its tree, so nothing the PR carries runs during its install or build.
   const command = await prepare(ctx, tree, side, plan.config);
-  if (side === "head") return runHeadTests(ctx, tree, plan, command, headRuns);
   await overlay(ctx, tree, shas.head, plan);
   const test = (name: string) => runTests(ctx, tree, plan, command, name, sandboxUser);
   const both = async () => [await test("base"), await test("base-rerun")];
