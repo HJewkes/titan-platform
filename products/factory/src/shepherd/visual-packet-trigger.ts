@@ -6,7 +6,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { AgentChatAgents } from "./agents.js";
+import type { VisualPacketPorts } from "./spawn-ports.js";
 import { landGateHead } from "./approval-carry.js";
 import type { PrTarget } from "./gates.js";
 import type { OwnerGateReason } from "./policy-schema.js";
@@ -16,22 +16,7 @@ import { visualAcceptHead } from "./visual-accept.js";
 const VISUAL_PACKET_STEP = "sh-visual-packet";
 export const VISUAL_PACKET_STEPS: readonly StepDeclaration[] = [{ id: VISUAL_PACKET_STEP, kind: "dispatch" }];
 
-export type VisualPacketMode = "off" | "shadow" | "on";
 export const DEFAULT_PACKAGER_PROFILE = "review-packager";
-
-/** `shepherd.visualPacket` and what an `on` spawn needs; absent reads as `off`. */
-export interface VisualPacketPorts {
-  mode: VisualPacketMode;
-  profile: string;
-  /** The factory state dir; each packet goes under `<stateDir>/packets/<run id>/<head sha>`. */
-  stateDir: string;
-  /** Absent means no agent-chat is configured, so an `on` spawn is recorded as failed. */
-  agents?: Pick<AgentChatAgents, "roster" | "spawn">;
-  /** The repo's seat checkout: the packager starts in it, and from-ci and the lint read git objects from it. None spawns nothing. */
-  cwdFor?: (repo: string) => string | undefined;
-  /** `shepherd.titanReviewBin`; absent means `$HOME/.local/bin/titan-review`, named in full as `~/.local/bin` is not on every PATH. */
-  titanReviewBin?: string;
-}
 
 const PacketEvent = z.enum(["visual-packet-off", "visual-packet-would-spawn", "visual-packet-spawned", "visual-packet-spawn-failed"]);
 const PacketResult = z.looseObject({

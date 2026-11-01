@@ -4,7 +4,7 @@ import { WorkflowRunStore, type RoutedStepInput, type StepRoute, type WorkflowRu
 import { z } from "zod";
 import type { PrReads } from "../workflows/pr-snapshot.js";
 import type { IsAdvisory } from "./advisory.js";
-import type { HeldCheck } from "./hold.js";
+import type { HeldCheck } from "./hold-timing.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { TRAIN_WORKFLOW } from "./train.js";
 import { readDisjoint, type DisjointVerdict } from "./train-shadow-disjoint.js";

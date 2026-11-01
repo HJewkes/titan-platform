@@ -85,8 +85,7 @@ import { localBasementSuite, suiteRules } from "./shepherd/suite-host.js";
 import type { ShepherdServices, ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
-import type { VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
-import type { DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import type { DiagnosisPorts, VisualPacketPorts } from "./shepherd/spawn-ports.js";
 import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
 import type { CleanupPorts, ExitNoticePorts, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./shepherd/ports.js";
 
