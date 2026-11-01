@@ -63,14 +63,14 @@ const RUN_PIN = { runId: "run-1", pin: "ppp" };
 
 describe("autoresearch routes", () => {
   it("records the step's first start time and restart count, not the time of this attempt", async () => {
-    const { body } = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
+    const { body } = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", head: "aaa", case: "t-alpha", key: "k1", rung: "seed" });
 
     expect(body).toMatchObject({ startedAt: "2026-10-20T08:00:00.000Z", restarts: 1, result: { repeat: "k1" } });
   });
 
   it("passes a dispatch's usage, cache reads included, and an eval's model dollars to the runtime", async () => {
     const implemented = await callRoute("implement", { runId: "run-1", idea: IDEA, tree: "/trees/a", base: "aaa", brief: "b", round: 1, lane: 1, fork: "explore" });
-    const evaluated = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
+    const evaluated = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", head: "aaa", case: "t-alpha", key: "k1", rung: "seed" });
 
     expect(implemented.outcome.usage).toEqual({ costUsd: 2.5, cacheReadTokens: 900 });
     expect(evaluated.outcome.usage).toEqual({ costUsd: 0.4 });
@@ -112,7 +112,7 @@ describe("autoresearch routes per run", () => {
     const seen: string[] = [];
     const portsOf = (runId: string): ArPorts => ({ ...answeringPorts(), evalCase: async () => (seen.push(runId), RUN) });
     const route = arRoutes(portsOf).find((candidate) => candidate.match === arStepId("eval"))!;
-    const input = (runId: string) => ({ runId, workflowName: "autoresearch", stepId: "ar-eval:x", iteration: 0, prompt: JSON.stringify({ ...RUN_PIN, runId, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" }), signal: new AbortController().signal, attempt: 1, requestKey: `${runId}/ar-eval:x` });
+    const input = (runId: string) => ({ runId, workflowName: "autoresearch", stepId: "ar-eval:x", iteration: 0, prompt: JSON.stringify({ ...RUN_PIN, runId, tree: "/trees/a", head: "aaa", case: "t-alpha", key: "k1", rung: "seed" }), signal: new AbortController().signal, attempt: 1, requestKey: `${runId}/ar-eval:x` });
 
     await route.runner.run(input("run-a"));
     await route.runner.run(input("run-b"));

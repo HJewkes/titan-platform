@@ -146,9 +146,9 @@ describe("evaluator eval and micro", () => {
   it("runs the seed rung from the evaluator checkout with the idea's tree as the runner root", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "plain", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "plain", GATE_EDIT);
 
-    const result = await repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "run-1-a-r1", rung: "seed" }, signal);
+    const result = await repo.ports.evalCase({ ...repo.run, tree, head, case: "t-alpha", key: "run-1-a-r1", rung: "seed" }, signal);
 
     expect(result).toMatchObject({ case: "t-alpha", repeat: "run-1-a-r1", usd: 0.5, artifact_dir: join(tree, ".artifacts", "run-1-a-r1") });
   });
@@ -157,9 +157,9 @@ describe("evaluator eval and micro", () => {
   it("stops a rung that runs past its timeoutMin instead of waiting for it", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "slow", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "slow", GATE_EDIT);
 
-    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k-slow", rung: "slow" }, signal)).rejects.toThrow("[command]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, head, case: "t-alpha", key: "k-slow", rung: "slow" }, signal)).rejects.toThrow("[command]");
     const pid = Number(readFileSync(join(tree, "slow.pid"), "utf8"));
     expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
   });
@@ -167,19 +167,19 @@ describe("evaluator eval and micro", () => {
   it("fails an eval whose run rewrites and commits a frozen file", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "drifts", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "drifts", GATE_EDIT);
     writeFileSync(join(tree, "drift"), "");
 
-    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, head, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
   });
 
   it("refuses to run an eval in a dirty evaluator checkout", async () => {
     const repo = await fixture();
     const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "dirty", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "dirty", GATE_EDIT);
     writeFileSync(join(pinned.evaluatorTree!, "stray.txt"), "left by someone\n");
 
-    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[evaluator-dirty]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, head, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[evaluator-dirty]");
     expect(existsSync(join(tree, ".artifacts", "k1"))).toBe(false);
   });
 
@@ -199,9 +199,9 @@ describe("evaluator after a restart", () => {
   it("serves an eval for a run another instance pinned, from the recorded pin", async () => {
     const repo = await fixture();
     const { frozenHash } = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "after-restart", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "after-restart", GATE_EDIT);
 
-    const result = await repo.restarted().evalCase({ ...repo.run, frozenHash, tree, case: "t-alpha", key: "k-restart", rung: "seed" }, signal);
+    const result = await repo.restarted().evalCase({ ...repo.run, frozenHash, tree, head, case: "t-alpha", key: "k-restart", rung: "seed" }, signal);
 
     expect(result).toMatchObject({ case: "t-alpha", repeat: "k-restart" });
   });
@@ -215,20 +215,20 @@ describe("evaluator after a restart", () => {
     const restarted = repo.restarted();
     const run = { ...repo.run, frozenHash: pinned.frozenHash };
 
-    await expect(restarted.evalCase({ ...run, tree: gate.tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
+    await expect(restarted.evalCase({ ...run, tree: gate.tree, head: gate.head, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
     await expect(restarted.staticCheck({ ...run, idea: idea("accept-gate"), ...gate }, signal)).rejects.toThrow("[frozen-drift]");
   });
 
   it("rebuilds again on the next step once a refused drift is undone, without another restart", async () => {
     const repo = await fixture();
     const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "restored", GATE_EDIT);
+    const { tree, head } = await ideaTree(repo, "restored", GATE_EDIT);
     const scorer = join(pinned.evaluatorTree!, "ar", "score.py");
     const original = readFileSync(scorer, "utf8");
     writeFileSync(scorer, "def score(run):\n    return 1\n");
     await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "edit the scorer");
     const restarted = repo.restarted();
-    const evalAt = (key: string) => restarted.evalCase({ ...repo.run, frozenHash: pinned.frozenHash, tree, case: "t-alpha", key, rung: "seed" }, signal);
+    const evalAt = (key: string) => restarted.evalCase({ ...repo.run, frozenHash: pinned.frozenHash, tree, head, case: "t-alpha", key, rung: "seed" }, signal);
     await expect(evalAt("k1")).rejects.toThrow("[frozen-drift]");
 
     writeFileSync(scorer, original);
@@ -237,11 +237,20 @@ describe("evaluator after a restart", () => {
     expect(await evalAt("k2")).toMatchObject({ repeat: "k2" });
   });
 
+  it("refuses an eval whose tree is not at the head the request names", async () => {
+    const repo = await fixture();
+    await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const { tree } = await ideaTree(repo, "elsewhere", GATE_EDIT);
+
+    await expect(repo.ports.evalCase({ ...repo.run, tree, head: repo.pin, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[head]");
+    expect(existsSync(join(tree, ".artifacts", "k1"))).toBe(false);
+  });
+
   it("refuses a step whose run recorded no frozen hash or was never pinned here", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
-    const { tree } = await ideaTree(repo, "unpinned", GATE_EDIT);
-    const evalIn = (runId: string, frozenHash?: string) => repo.restarted().evalCase({ runId, pin: repo.pin, frozenHash, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal);
+    const { tree, head } = await ideaTree(repo, "unpinned", GATE_EDIT);
+    const evalIn = (runId: string, frozenHash?: string) => repo.restarted().evalCase({ runId, pin: repo.pin, frozenHash, tree, head, case: "t-alpha", key: "k1", rung: "seed" }, signal);
 
     await expect(evalIn("run-1")).rejects.toThrow("[no-pin] run run-1 recorded no frozen hash");
     await expect(evalIn("run-2", "0".repeat(64))).rejects.toThrow("[no-pin] run run-2 has no evaluator checkout");

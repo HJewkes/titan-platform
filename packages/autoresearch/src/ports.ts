@@ -312,7 +312,8 @@ export interface ArPorts {
   staticCheck(input: RunPin & { idea: Idea; tree: string; base: string; head: string }, signal: AbortSignal): Promise<z.input<typeof StaticCheckSchema>>;
   micro(input: MicroRequest, signal: AbortSignal): Promise<ArMicro>;
   /** `key` is unique per run, scope and repeat, since a target may use it as a cache directory. */
-  evalCase(input: RunPin & { tree: string; case: string; key: string; rung: string }, signal: AbortSignal): Promise<ArResult>;
+  /** `head` is the sha `tree` must be at, which the port checks before it measures (R6). */
+  evalCase(input: RunPin & { tree: string; head: string; case: string; key: string; rung: string }, signal: AbortSignal): Promise<ArResult>;
   ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{ head: string }>;
   /**
    * Merges a later winner onto the round's new head in the integration tree, or names the conflicting files after
