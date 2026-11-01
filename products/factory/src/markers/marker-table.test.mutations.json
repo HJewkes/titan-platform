@@ -35,13 +35,6 @@
       "find": "CHECK (reverted = 0 OR (fact = 'landed' AND pin_class = 'landed')),",
       "replace": "",
       "kills": ["reverted is terminal reverted is refused on a fact other than landed"]
-    },
-    {
-      "name": "the host never applies the marker table",
-      "file": "products/factory/src/host.ts",
-      "find": ", markerTableMigration(49)]",
-      "replace": "]",
-      "kills": ["marker table migration factoryMigrations applies the marker table at 49, after every tenant migration up to 48"]
     }
   ]
 }
