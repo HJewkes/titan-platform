@@ -436,7 +436,7 @@ describe("exportImplementTaskCases with later fixes", { timeout: 60_000 }, () =>
     const manifest = await exportImplementTaskCases(optionsFor(laterFixRows(history), { screen: fakeScreen().screen, laterFixScreen: later.screen, laterFixSource: "none" }));
 
     const written = writtenCase();
-    expect(Object.keys(written.expected as object)).toEqual(["hiddenTests", "support", "overlayRemovals"]);
+    expect(written.expected).toEqual({ hiddenTests: expect.any(Array), support: expect.any(Array), overlayRemovals: expect.any(Array) });
     expect(existsSync(join(out, "hidden", written.id, "fix-11"))).toBe(false);
     expect(later.calls).toEqual([]);
     expect(manifest).not.toHaveProperty("laterFix");

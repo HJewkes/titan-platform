@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fixProof from "@titan-design/fix-proof";
+import { partialFake } from "@titan-design/test-kit";
 import { runCli, unitRootOf } from "./cli.js";
 import * as exportModule from "./implement-task/export.js";
 import * as exclusion from "./private/exclusion.js";
@@ -133,7 +134,7 @@ describe("titan-evals", () => {
     [["--no-later-fixes", "--later-fix-source", "follow-up"], "none"],
   ])("export %j screens later fixes from %s", async (flags, laterFixSource) => {
     scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
-    const run = vi.spyOn(exportModule, "exportImplementTaskCases").mockResolvedValue(undefined as never);
+    const run = vi.spyOn(exportModule, "exportImplementTaskCases").mockResolvedValue(partialFake<Awaited<ReturnType<typeof exportModule.exportImplementTaskCases>>>({}));
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const code = await runCli(["implement-task", "export", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch, "--out", join(scratch, "out"), ...flags]);
