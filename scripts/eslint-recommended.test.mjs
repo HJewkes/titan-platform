@@ -193,4 +193,16 @@ describe("the root lint config with the recipe-file capability ban", () => {
 
     expect(result.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-syntax", severity: 2, message: expect.stringContaining("never an event source") })]);
   });
+
+  it("the root config fails a recipe fixture that calls step in a loop", async () => {
+    const result = await recipe("shepherd/policy.ts");
+
+    expect(result.messages).toEqual([expect.objectContaining({ ruleId: "titan/recipe-step-in-loop", severity: 2 })]);
+  });
+
+  it("an inline disable does not suppress the loop rule in a capability-baseline recipe file", async () => {
+    const result = await fixtureLinter(join(REPO, "scripts", "fixtures", "recipe-loops"))(join(RECIPE_SRC, "shepherd", "release.ts"));
+
+    expect(result.messages).toContainEqual(expect.objectContaining({ ruleId: "titan/recipe-step-in-loop", severity: 2 }));
+  });
 });

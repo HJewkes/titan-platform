@@ -66,6 +66,12 @@ const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/workflows/land-pr.ts",
   "products/factory/src/workflows/post-merge.ts",
 ];
+const RECIPE_LOOP_BASELINE = [
+  "products/factory/src/shepherd/merge-evidence-gate.ts",
+  "products/factory/src/shepherd/review-panel-step.ts",
+  "products/factory/src/shepherd/stack-land.ts",
+  "products/factory/src/workflows/land.ts",
+];
 const RECIPE_FILES = JSON.parse(readFileSync(new URL("./products/factory/src/recipe-files.json", import.meta.url), "utf8")).map((file) => `products/factory/src/${file}`);
 const RECIPE_GLOBAL_MESSAGE = "Reach it through a step body (D-M1b-07).";
 const RECIPE_BANNED_GLOBALS = ["Date", "setTimeout", "setInterval", "setImmediate", "fetch", "process", "performance"];
@@ -90,6 +96,8 @@ export default tseslint.config(
       "scripts/fixtures/gray-matter/**",
       // Holds deliberate recipe-file violations; scripts/eslint-recommended.test.mjs lints it from its own directory.
       "scripts/fixtures/recipe-capabilities/**",
+      // Holds a loop under an inline disable in a capability-baseline file; scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/recipe-loops/**",
     ],
   },
   js.configs.recommended,
@@ -107,6 +115,13 @@ export default tseslint.config(
   {
     files: ["products/factory/**", "packages/github/**"],
     rules: { "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS] },
+  },
+  // A step in a loop has one call site for every pass, so a replay cannot tell the passes apart (TP-3108 H-L3). These files still loop over steps; only remove entries.
+  {
+    files: RECIPE_FILES,
+    ignores: RECIPE_LOOP_BASELINE,
+    linterOptions: { noInlineConfig: true },
+    rules: { "titan/recipe-step-in-loop": "error" },
   },
   // A recipe sees no client, filesystem or clock: those exist only in step bodies. Inline directives are off per file, the per-file form of --no-inline-config. The block re-lists the Events API selectors because a later block replaces the rule's options.
   {
