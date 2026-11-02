@@ -1242,6 +1242,12 @@ Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBr
 
 `factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
 
+A fact entry's `body` module is hashed with everything it imports, workspace sources included, into `src/registry/closure.lock.json`. CI's `pnpm registry:closure` fails when that lock is stale, or when a step's closure changed against `origin/main` with neither a new schema hash, a new `version.bump`, nor a row in `src/registry/attestations.json` naming the new closure. After a change, run `pnpm build`, then `pnpm registry:closure --write`.
+
+### Marker shadow (M1b): `src/markers/shadow.ts`
+
+`FactoryHostOptions.markerShadow` wraps each workflow's guarded context in `shadowContext`. Before each call to a step that has a fact entry, the shadow sends the fact's marker verdict to the option's `sink`: either the call would fast-forward or it would run. The step then runs live, unchanged. Afterwards the shadow appends a marker joined to the run id and memo key, unless the current row already records the same digests. The option is off by default and serve does not set it, so `step_results` stays authoritative. A shadow error goes to the sink and never reaches the run.
+
 ## Land core: `src/workflows/land.ts`
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:

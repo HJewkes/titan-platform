@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the attestation match ignores the closure",
+      "file": "products/factory/src/registry/closure.ts",
+      "find": "a.step === step && a.closure === row.closure",
+      "replace": "a.step === step",
+      "kills": ["step closure lint an attestation for a different closure does not pass"]
+    },
+    {
+      "name": "the verdict skips the bump comparison",
+      "file": "products/factory/src/registry/closure.ts",
+      "find": " || before.bump !== row.bump",
+      "replace": "",
+      "kills": ["step closure lint the same change passes with a bump"]
+    },
+    {
+      "name": "a stale lock is never reported",
+      "file": "products/factory/src/registry/closure.ts",
+      "find": "JSON.stringify(input.committed) === JSON.stringify(input.computed) ?",
+      "replace": "true ?",
+      "kills": ["step closure lint a stale head lock fails"]
+    },
+    {
+      "name": "a workspace import hashes its built dist instead of its source",
+      "file": "products/factory/src/registry/closure.ts",
+      "find": "if (!dist) return real;",
+      "replace": "return real;",
+      "kills": ["step closure lint a change in a transitively imported workspace file changes the closure"]
+    }
+  ]
+}

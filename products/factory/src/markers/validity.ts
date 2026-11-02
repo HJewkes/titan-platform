@@ -17,7 +17,7 @@ type Reason = "unpinnable" | "no-marker" | "ttl-expired" | "version" | "input-ab
  * A valid fact carries the digests its dependents compare against. A pin-source fact (O4) has no marker. `drift` names
  * inputs whose full output moved under an equal projection: the fact stays valid and is never re-run for them.
  */
-type Verdict =
+export type Verdict =
   | { status: "valid"; marker?: MarkerRow; digests: { projection: string | null; output: string | null }; drift: string[] }
   | { status: "absent"; reason: Reason; detail?: string; inputs: InputVerdict[] };
 

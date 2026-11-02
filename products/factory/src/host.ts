@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
@@ -12,14 +12,18 @@ import { githubApiPoolMigration } from "./github-api/pool-state.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { botIntentMigration } from "./bot-intent.js";
 import { markerTableMigration } from "./markers/marker-table.js";
+import type { PinSources } from "./markers/pins.js";
+import { shadowContext, type ShadowSink } from "./markers/shadow.js";
 import { mergeLogMigration } from "./merge-log.js";
 import { reconcilerCursorMigration } from "./reconciler/cursor.js";
 import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
+  CapabilityVault,
   routedRunner,
   type StepRoute,
   type WorkflowCapability,
+  type WorkflowContext,
   type WorkflowEvent,
   workflowMigration,
   workflowNameIndexMigration,
@@ -32,7 +36,7 @@ import type { ArConfig } from "./autoresearch/config.js";
 import { composeRoutes } from "./compose-routes.js";
 import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
-import { abandonsOrphan } from "./registry/steps/index.js";
+import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
 import { assertDistinctStepIds, assertRegistered, dispatchStepIds, guardedContext, type RegisteredSteps, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
@@ -71,6 +75,8 @@ export interface FactoryHostOptions {
   onEvent?: (event: WorkflowEvent) => void;
   /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
   capabilities?: Record<string, WorkflowCapability>;
+  /** Computes marker verdicts and appends markers beside `step_results` (M1b). Absent by default; serve does not set it (TP-3111 does). */
+  markerShadow?: { sink: ShadowSink; diffPin?: PinSources["diffPin"]; treeOf?: PinSources["treeOf"] };
 }
 
 export interface PendingGate {
@@ -163,14 +169,24 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     capabilities: options.capabilities,
   });
   const registered = new Set(options.workflows);
+  const shadow = shadowWrapper(db, options);
   for (const definition of [...options.workflows, ...(options.routes.workflows ?? [])]) {
     assertDistinctStepIds(definition);
     const registry = registered.has(definition) ? options.registry : undefined;
     if (registry) assertRegistered(definition, registry);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
-    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition, registry)), { abandonsOrphan, strictReplay: true });
+    runtime.register(definition.name, (ctx) => definition.run(shadow(guardedContext(ctx, definition, registry))), { abandonsOrphan, strictReplay: true });
   }
   return runtime;
+}
+
+/** The shadow wraps the guard, so the guard still refuses every undeclared or unregistered call and the shadow answers none. */
+function shadowWrapper(db: Db, options: FactoryHostOptions): (ctx: WorkflowContext) => WorkflowContext {
+  const shadow = options.markerShadow;
+  if (!shadow) return (ctx) => ctx;
+  const blobs = { blobDir: join(dirname(options.dbPath), "marker-blobs"), capabilities: new CapabilityVault(options.capabilities ?? {}) };
+  const now = (): string => new Date((options.now ?? Date.now)()).toISOString();
+  return (ctx) => shadowContext(ctx, { ...shadow, db, blobs, registry: factoryRegistry, now });
 }
 
 async function resume(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], pollMs: number, now: () => number): Promise<ResumeReport> {

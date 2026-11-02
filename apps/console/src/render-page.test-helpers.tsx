@@ -40,10 +40,14 @@ function RoutedPage({ route }: { route: Route }): ReactNode {
 
 /**
  * Unmounts what `renderPage` mounted, then lets the macrotask a late snapshot resolution or React's scheduler queued
- * run inside `act`. Left pending, it fires after the file's jsdom is torn down and fails the run with
+ * run inside `act`, the setImmediate one included. Left pending, it fires after the file's jsdom is torn down and fails the run with
  * "window is not defined" (TP-4636).
  */
 export async function unmountPages(): Promise<void> {
   cleanup();
-  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  await act(async () => {
+    // Which of the two runs first depends on load: the scheduler's setImmediate can land after a lone setTimeout (TP-4713).
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
 }
