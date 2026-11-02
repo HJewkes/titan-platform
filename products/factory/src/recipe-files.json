@@ -3,6 +3,7 @@
   "build-surface/slice-run.ts",
   "build-surface/workflow.ts",
   "definition.ts",
+  "markers/shadow.ts",
   "shepherd/account-hold.ts",
   "shepherd/approval-carry.ts",
   "shepherd/approved-set-carry.ts",
