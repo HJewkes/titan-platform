@@ -759,6 +759,32 @@ non-merge commit, another first parent, a second parent off the base, a hand-res
 tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
 rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
 
+## Steps
+
+The steps of `shepherd-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
+| `sh-sent-back` | OWNER |
+| `sh-review` | AGENT |
+| `sh-await-verdict` | AGENT |
+| `sh-late-verdict` | AGENT |
+| `sh-correct-verdict` | AGENT |
+| `sh-merge-evidence-gate` | OWNER |
+| `sh-review-panel` | AGENT |
+| `sh-spawn-fixer` | AGENT |
+| `main-red` | OWNER |
+| `main-ci-timeout` | OWNER |
+| `main-red-again` | OWNER |
+| `main-frozen` | OWNER |
+| `after-stages` | OWNER |
+| `sh-visual-packet` | AGENT |
+| `sh-visual-accept` | OWNER |
+| `sh-no-verdict-diagnosis` | AGENT |
+
 ## Watch
 
 ```sh

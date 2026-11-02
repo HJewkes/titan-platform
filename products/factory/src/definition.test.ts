@@ -52,3 +52,16 @@ describe("guardedContext authorize", () => {
     expect(ctx.authorize).not.toHaveBeenCalled();
   });
 });
+
+describe("guardedContext registry", () => {
+  const registry = { entries: [{ name: "approve", op: "assisted" as const }] };
+  const both = defineWorkflow({ name: "governed", steps: [{ id: "approve", kind: "assisted" }, { id: "merge-authorize", kind: "authorize" }], run: async () => undefined });
+
+  it("A17: a call to an unregistered step id fails the run", async () => {
+    const ctx = fakeContext();
+
+    await expect(guardedContext(ctx, both, registry).authorize("merge-authorize", REQUEST)).rejects.toThrow('authorize("merge-authorize") is not a registered step');
+
+    expect(ctx.authorize).not.toHaveBeenCalled();
+  });
+});

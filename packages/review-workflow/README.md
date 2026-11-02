@@ -52,3 +52,16 @@ import { DEFAULT_RETRY_POLICY } from "@titan-design/review-workflow";
 const timeout = DEFAULT_RETRY_POLICY.find((rule) => rule.class === "timeout");
 // { steps: [late-read ×1, retry ×1], then: { kind: "fixer", key: "timeout" } }
 ```
+
+## Steps
+
+The steps of `reviewHead` that an agent answers, under the default ids. Every other step is software. A lint in the
+factory checks these rows against `DEFAULT_REVIEW_STEP_IDS`.
+
+| Step | Marker |
+| --- | --- |
+| `review-dispatch` | AGENT |
+| `review-await` | AGENT |
+| `review-correct` | AGENT |
+| `review-late-read` | AGENT |
+| `review-fixer` | AGENT |
