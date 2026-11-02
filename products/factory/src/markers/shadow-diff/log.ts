@@ -41,7 +41,7 @@ export function shadowLogMigration(version = 50): Migration {
   return { version, name: "factory:shadow_log", up: (db) => db.exec(SHADOW_LOG_DDL) };
 }
 
-export interface Validity {
+interface Validity {
   materialValid: boolean;
   fullValid: boolean;
   drift: string[];
@@ -116,7 +116,7 @@ export function logSink(db: Db, now: () => string): ShadowSink {
   };
 }
 
-export interface ShadowLogRow {
+interface ShadowLogRow {
   id: number;
   at: string;
   kind: string;
