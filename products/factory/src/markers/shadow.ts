@@ -1,9 +1,11 @@
+import { isPoolUnavailable } from "@titan-design/github";
 import { memoKey, type WorkflowContext } from "@titan-design/workflow";
 import { declarationFor, type StepKind, type WorkflowDefinition } from "../definition.js";
 import type { PrKey } from "../head-guard/epoch-store.js";
 import { isFactEntry, type FactEntry } from "../registry/entry.js";
 import { entryFor, type createRegistry } from "../registry/registry.js";
 import type { BlobStore } from "./blob-store.js";
+import { isSpent, metered, type EntryCounters, type EntryMeter } from "./budget.js";
 import { jcs } from "./jcs.js";
 import { currentMarker, readMarkerValues, writeMarker, type InputDigest, type MarkerRow } from "./marker-store.js";
 import { visit, type EntryLog } from "./orphan-trap.js";
@@ -23,6 +25,8 @@ export type ShadowEvent =
   | (ShadowSite & { kind: "verdict"; verdict: Verdict; wouldFastForward: boolean; unreplayable: string[] })
   | (ShadowSite & { kind: "shadow-error"; error: string })
   | (ShadowSite & { kind: "call-site-orphan"; marker: MarkerRow; callSite: string; failClosed: true })
+  | (ShadowSite & { kind: "budget-exceeded"; counters: EntryCounters })
+  | (ShadowSite & { kind: "entry-end"; counters: EntryCounters })
   | (ShadowSite & { kind: "not-after-skip"; notAfter: string })
   | (ShadowSite & { kind: "advisory" });
 
@@ -33,14 +37,17 @@ export interface ShadowDeps extends PinSources {
   registry: ReturnType<typeof createRegistry>;
   sink: ShadowSink;
   now: () => string;
+  /** The host's injected clock in ms; the budget times shadow work on it, never on wall time. */
+  clock: () => number;
   /** Runs with a call-site orphan: the shadow fails closed for them and reports no would-fast-forward. */
   closedRuns: ReadonlySet<string>;
 }
 
-/** The workflow whose declarations name each call site, and the entry log every call is visited in. */
+/** The workflow whose declarations name each call site, the entry log every call is visited in, and the entry's budget. */
 interface ShadowScope {
   definition: WorkflowDefinition;
   log: EntryLog;
+  meter: EntryMeter;
 }
 
 /** A static call-site id: the workflow and the declared step (family) id, never the iteration. */
@@ -57,7 +64,7 @@ interface Prepared {
  */
 export function shadowContext(ctx: WorkflowContext, deps: ShadowDeps, scope: ShadowScope): WorkflowContext {
   const observe = <R>(op: StepKind, stepId: string, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> =>
-    observeCall(ctx, deps, { op, stepId, callSite: callSiteOf(scope.definition, stepId), log: scope.log }, live, outputOf);
+    observeCall(ctx, deps, { op, stepId, callSite: callSiteOf(scope.definition, stepId), log: scope.log, meter: scope.meter }, live, outputOf);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -81,18 +88,22 @@ interface ObservedCall {
   stepId: string;
   callSite: string;
   log: EntryLog;
+  meter: EntryMeter;
 }
 
 async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: ObservedCall, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> {
   const key = memoKey(call.op, call.stepId, ctx.iteration(call.stepId));
+  if (call.log.recorded.includes(key)) call.meter.counters.replayed += 1;
   visit(call.log, call.callSite, key);
   const entry = entryFor(deps.registry, call.stepId);
   const item = itemOf(ctx);
-  if (!entry || !isFactEntry(entry) || !item) return live();
+  if (!entry || !isFactEntry(entry) || !item || isSpent(call.meter)) return live();
   const site: ShadowSite = { runId: ctx.runId, stepId: call.stepId, fact: entry.fact, memoKey: key };
-  const prepared = await swallow(deps, site, () => prepare(deps, entry, item, site));
+  const exceeded = () => deps.sink({ ...site, kind: "budget-exceeded", counters: { ...call.meter.counters } });
+  const shadowed = <T>(work: () => Promise<T> | T) => swallow(deps, site, () => metered(call.meter, deps.clock, exceeded, work));
+  const prepared = await shadowed(() => prepare(deps, entry, item, site, call.meter));
   const result = await live();
-  if (prepared) await swallow(deps, site, () => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
+  if (prepared && !isSpent(call.meter)) await shadowed(() => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
   return result;
 }
 
@@ -106,7 +117,7 @@ export interface NotAfterShadow {
  * A skip is a visit, so its call site is never an orphan, and one digest line. A live run of a step whose `notAfter` fact
  * already holds a valid marker is what a marker runner would only advise on, never block.
  */
-export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: ShadowScope): NotAfterShadow {
+export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: Pick<ShadowScope, "definition" | "log">): NotAfterShadow {
   const siteOf = (stepId: string, fact: string): ShadowSite => ({ runId: ctx.runId, stepId, fact, memoKey: "" });
   return {
     skipped: (stepId, notAfter) => {
@@ -144,21 +155,27 @@ export async function swallow<T>(deps: Pick<ShadowDeps, "sink">, site: ShadowSit
   }
 }
 
-async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: ShadowSite): Promise<Prepared | undefined> {
+type Evaluate = (target: { item: PrKey; fact: string }) => Promise<Verdict>;
+
+async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: ShadowSite, meter: EntryMeter): Promise<Prepared | undefined> {
   const validity: ValidityContext = { registry: deps.registry, sources: deps, now: deps.now() };
-  const verdict = await evaluateFact(validity, { item, fact: entry.fact });
+  const evaluate: Evaluate = (target) => {
+    meter.counters.evaluations += 1;
+    return evaluateFact(validity, target);
+  };
+  const verdict = await evaluate({ item, fact: entry.fact });
   const unreplayable = verdict.status === "valid" && verdict.marker ? readMarkerValues(deps.db, deps.blobs, verdict.marker.id).missing : [];
   // A valid marker whose blobs were collected is re-run, never fast-forwarded and never parked (TP-3105 plan §5).
   deps.sink({ ...site, kind: "verdict", verdict, wouldFastForward: verdict.status === "valid" && unreplayable.length === 0 && !deps.closedRuns.has(site.runId), unreplayable });
   const pin = await pinFor(entry.fact, item, deps, validity.now);
-  return "unpinnable" in pin ? undefined : { pin, inputs: await inputDigests(validity, entry, item) };
+  return "unpinnable" in pin ? undefined : { pin, inputs: await inputDigests(validity, evaluate, entry, item) };
 }
 
 /** What the step saw of each material input; an input with no valid verdict is left out, so it later reads as changed. */
-async function inputDigests(validity: ValidityContext, entry: FactEntry, item: PrKey): Promise<Record<string, InputDigest>> {
+async function inputDigests(validity: ValidityContext, evaluate: Evaluate, entry: FactEntry, item: PrKey): Promise<Record<string, InputDigest>> {
   const digests: Record<string, InputDigest> = {};
   for (const { fact } of entry.materialInputs) {
-    const verdict = await evaluateFact(validity, { item, fact });
+    const verdict = await evaluate({ item, fact });
     const pin = await pinFor(fact, item, validity.sources, validity.now);
     if (verdict.status !== "valid" || "unpinnable" in pin || verdict.digests.projection === null) continue;
     const output = verdict.digests.output;
@@ -169,7 +186,8 @@ async function inputDigests(validity: ValidityContext, entry: FactEntry, item: P
 
 /** Appends the marker unless the current row at its identity already says the same, so a replay appends nothing. */
 function record(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: ShadowSite & { callSite: string }, prepared: Prepared, output: unknown): void {
-  if (output === undefined) return;
+  // An `Unavailable` result is no fact: the step learned nothing, so it writes no marker and counts no re-drive (§2.3).
+  if (output === undefined || isPoolUnavailable(output)) return;
   const identity = { item: itemKey(item), fact: entry.fact, pinClass: prepared.pin.pinClass, pin: prepared.pin.pin };
   const version = versionOf(entry);
   const projection = projectionDigest(entry, output);

@@ -4,6 +4,7 @@ import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { changedPaths, runtimeTouched, showAt } from "./deploy-range.js";
+import { versionRefusal, type IntentPorts } from "./deploy-intents.js";
 import { announce, resolveAlarms, type NoticePorts } from "./deploy-notices.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployHeld } from "./deploy-hold-gate.js";
@@ -14,7 +15,7 @@ import type { CommandResult } from "./run-command.js";
 import { restartService, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
-export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts {
+export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts, IntentPorts {
   /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
   healthWithin: (port: number, timeoutMs: number) => Promise<Probe>;
   /** `git clone --branch main <remote> <dest>`, run from the parent of `dest`; only called when the checkout is absent. */
@@ -214,6 +215,8 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   if (head !== target && (await isAncestor(ports, target, head))) return pastTarget(ports, head, target);
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports.git, from, target);
+  const versions = await versionRefusal(ports, from, target);
+  if (versions !== undefined) return refuse(versions);
   const go = { target, running, closure, touched: await runtimeTouched(ports.git, touchedPaths(changed, closure), from, target), prepareOnly };
   const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
   return native === undefined ? { kind: "go", go } : refuse(native);

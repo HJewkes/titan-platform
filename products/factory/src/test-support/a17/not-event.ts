@@ -36,6 +36,11 @@ export const NOT_EVENT: readonly NotEvent[] = [
     reason: "TP-3108 S5: asserts the shadow's orphan trap over a recorded replay, with no GitHub event input",
   },
   {
+    file: "markers/shadow-unavailable.test.ts",
+    title: "A17: an Unavailable step writes no marker and counts no re-drive, against the marker table",
+    reason: "TP-3108 S7: asserts the shadow's marker writes for a fake step answer, with no GitHub event input",
+  },
+  {
     file: "host.c28.test.ts",
     title: "A17: an in-flight run past an inserted step finishes",
     reason: "TP-3108 S6: asserts a recorded replay past an inserted notAfter step, with no GitHub event input",

@@ -23,6 +23,6 @@ describe("taking a verdict without the round's fix-proof standing", () => {
       verdictOf(ctx, target, awaiting, reviewer, awaited);
 
     expect(typeof omitted).toBe("function");
-    expect(verdictOf.length).toBe(6);
+    expect(verdictOf.length).toBe(7);
   });
 });

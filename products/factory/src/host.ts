@@ -13,6 +13,7 @@ import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { botIntentMigration } from "./bot-intent.js";
 import { markerTableMigration } from "./markers/marker-table.js";
 import type { PinSources } from "./markers/pins.js";
+import type { EntryBudget } from "./markers/budget.js";
 import { beginEntry } from "./markers/entry.js";
 import type { ShadowSink } from "./markers/shadow.js";
 import { mergeLogMigration } from "./merge-log.js";
@@ -78,7 +79,7 @@ export interface FactoryHostOptions {
   /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
   capabilities?: Record<string, WorkflowCapability>;
   /** Computes marker verdicts and appends markers beside `step_results` (M1b). Absent by default; serve does not set it (TP-3111 does). */
-  markerShadow?: { sink: ShadowSink; diffPin?: PinSources["diffPin"]; treeOf?: PinSources["treeOf"] };
+  markerShadow?: { sink: ShadowSink; diffPin?: PinSources["diffPin"]; treeOf?: PinSources["treeOf"]; entryBudget?: EntryBudget };
 }
 
 export interface PendingGate {
@@ -195,7 +196,7 @@ function shadowDriver(db: Db, options: FactoryHostOptions, runtime: WorkflowRunt
   const blobs = { blobDir: join(dirname(options.dbPath), "marker-blobs"), capabilities: new CapabilityVault(options.capabilities ?? {}) };
   const now = (): string => new Date((options.now ?? Date.now)()).toISOString();
   const recordedOf = (runId: string): string[] => Object.keys(runtime.status(runId)?.stepResults ?? {});
-  const deps = { ...shadow, db, blobs, registry: factoryRegistry, now, recordedOf, closedRuns: new Set<string>(), sentOrphans: new Set<string>() };
+  const deps = { ...shadow, db, blobs, registry: factoryRegistry, now, clock: options.now ?? Date.now, recordedOf, closedRuns: new Set<string>(), sentOrphans: new Set<string>() };
   return async (definition, ctx) => {
     const entry = beginEntry(ctx, definition, deps);
     try {

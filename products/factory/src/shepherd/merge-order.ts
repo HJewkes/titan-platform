@@ -208,10 +208,18 @@ function counted(repo: RepoSlug, rule: MergeOrderRule): (path: string) => boolea
   return (path) => !skip(path);
 }
 
+/**
+ * An entry ending in `/` is a whole unit, reserved by a green head whose base moved under it (TP-4717): it covers every
+ * path in the unit but markdown, which the stale-green check never counts.
+ */
+function covers(entry: string, path: string): boolean {
+  return entry === path || (entry.endsWith("/") && path.startsWith(entry) && !path.endsWith(".md"));
+}
+
 /** The paths both sides change that the rule counts, sorted; empty means the two PRs never wait on each other. */
 export function overlapping(repo: RepoSlug, a: readonly string[], b: readonly string[], rule: MergeOrderRule): string[] {
-  const theirs = new Set(b);
-  return [...new Set(a)].filter((path) => theirs.has(path)).filter(counted(repo, rule)).sort();
+  const shared = [...new Set(a)].filter((path) => b.some((other) => covers(other, path) || covers(path, other)));
+  return shared.filter(counted(repo, rule)).sort();
 }
 
 /** The PR waiting at its merge: its run, and its changed paths, or `unread` when they could not be read at its head. */
