@@ -9,6 +9,7 @@ const FAN_OUT_METHODS = new Set(["map", "flatMap"]);
 const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
 type Node = Rule.Node;
+type Call = Extract<Node, { type: "CallExpression" }>;
 
 function parentOf(node: Node): Node | null {
   return node.type === "Program" ? null : node.parent;
@@ -44,20 +45,20 @@ function fanOutOwner(mapCall: Node): Node | null {
 }
 
 /** The call a function is passed to as an argument; null for a callee, a declaration or a function held in a variable. */
-function callTaking(fn: Node): CallExpression | null {
+function callTaking(fn: Node): Call | null {
   const parent = parentOf(fn);
   return parent?.type === "CallExpression" && (parent.arguments as readonly unknown[]).includes(fn) ? parent : null;
 }
 
-function isIterating(call: CallExpression): boolean {
+function isIterating(call: Call): boolean {
   const { callee } = call;
   const arrayFrom = callee.type === "MemberExpression" && callee.object.type === "Identifier" && callee.object.name === "Array";
   return LOOP_CALLBACKS.has(calleeName(call) ?? "") || (arrayFrom && calleeName(call) === "from");
 }
 
 /** The `all(...)` whose argument holds this `.map` or `.flatMap` call: the callbacks of that call are the sanctioned fan-out. */
-function fanOutAll(call: CallExpression): Node | null {
-  return FAN_OUT_METHODS.has(calleeName(call) ?? "") ? fanOutOwner(call as Node) : null;
+function fanOutAll(call: Call): Node | null {
+  return FAN_OUT_METHODS.has(calleeName(call) ?? "") ? fanOutOwner(call) : null;
 }
 
 /**
