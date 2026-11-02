@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { shadowLogMigration } from "./shadow-diff/log.js";
 
 
+const MANIFEST = z.object({
+  defaults: z.array(z.object({ path: z.string(), task: z.string().optional(), milestone: z.string().optional(), fate: z.string() })),
+  entries: z.array(z.object({ path: z.string(), task: z.string().optional() })),
+});
 const HOUR = 3_600_000;
 const FAMILIES = ["tree", "diff", "observed"];
 let dir: string;
@@ -81,7 +86,7 @@ describe("markers shadow-diff and shadow-gate", () => {
   });
 
   it("the sunset check maps every shadow-diff file to D-M8-09", () => {
-    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "../../sunset/manifest.json"), "utf8")) as { defaults: { path: string; task: string; milestone: string; fate: string }[]; entries: { path: string; task: string }[] };
+    const manifest = MANIFEST.parse(JSON.parse(readFileSync(join(import.meta.dirname, "../../sunset/manifest.json"), "utf8")));
     const root = "products/factory/src/markers/shadow-diff";
     const files = readdirSync(join(import.meta.dirname, "shadow-diff")).map((name) => `${root}/${name}`);
 
