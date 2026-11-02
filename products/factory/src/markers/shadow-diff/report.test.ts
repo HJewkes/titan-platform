@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ShadowLogRow } from "./log.js";
-import { shadowGate, shadowReport } from "./report.js";
+import { seedFactSteps } from "../../registry/steps/seed-facts.js";
+import { factFamiliesOf, shadowGate, shadowReport } from "./report.js";
 
 const HOUR = 3_600_000;
 const NOW = Date.parse("2026-11-03T12:00:00.000Z");
@@ -77,5 +78,9 @@ describe("shadow report and gate", () => {
 
     expect(report.blocking).toEqual([]);
     expect(report.counts.tree.classes).toEqual({ hit: 1, miss: 1 });
+  });
+
+  it("the seeded fact entries cover the tree and diff families but not observed", () => {
+    expect([...factFamiliesOf(seedFactSteps)].sort()).toEqual(["diff", "landed", "tree"]);
   });
 });
