@@ -2,18 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the pin encoder is not registered",
-      "file": "products/factory/src/head-guard/no-consumer.test.ts",
-      "find": "const CONSUMERS = new Set([\"markers/pins.ts\"]);",
-      "replace": "const CONSUMERS = new Set<string>([]);",
-      "kills": ["lets only head-guard/, markers/pins.ts and tests mention readEpoch", "admits the pin encoder as the one consumer and refuses a second marker file"]
-    },
-    {
-      "name": "mayRead admits all of markers/",
-      "file": "products/factory/src/head-guard/no-consumer.test.ts",
-      "find": "|| CONSUMERS.has(path) ||",
-      "replace": "|| path.startsWith(\"markers/\") ||",
-      "kills": ["admits the pin encoder as the one consumer and refuses a second marker file"]
+      "name": "a second markers file mentions readEpoch",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "such a step writes no marker. */",
+      "replace": "such a step writes no marker; readEpoch. */",
+      "kills": [
+        "lets only head-guard/, markers/pins.ts and tests mention readEpoch"
+      ]
     }
   ]
 }

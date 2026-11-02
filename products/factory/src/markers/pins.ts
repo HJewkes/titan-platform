@@ -89,7 +89,7 @@ async function landedPin(item: PrKey, sources: PinSources): Promise<Pin> {
   const row = sources.db
     .prepare<[string, number], { id: number; merge_commit: string }>("SELECT id, merge_commit FROM merge_op WHERE kind = 'result' AND outcome = 'merged' AND lower(repo) = ? AND pr = ? ORDER BY id DESC LIMIT 1")
     .get(item.repo.toLowerCase(), item.pr);
-  if (row === undefined) return { unpinnable: "no merged merge_op result row" };
+  if (row === undefined) return { unpinnable: "no merged result row in the merge log" };
   const tree = await sources.treeOf?.(row.merge_commit);
   if (tree === undefined) return { unpinnable: `no tree for merge commit ${row.merge_commit}` };
   const reverted = newestSeq(sources.db, { subject: itemKey(item), kinds: ["Reverted"] });

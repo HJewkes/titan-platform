@@ -104,7 +104,7 @@ describe("pinFor", () => {
     const failedOnly = await pinOf("landed", { db, treeOf });
     const id = merged(db, "merged");
 
-    expect(failedOnly).toEqual({ unpinnable: "no merged merge_op result row" });
+    expect(failedOnly).toEqual({ unpinnable: "no merged result row in the merge log" });
     expect(await pinOf("landed", { db, treeOf })).toEqual({ pinClass: "landed", pin: `${TREE}|merge_op:${id}@r0`, pinSeq: 0 });
   });
 
