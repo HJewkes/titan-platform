@@ -14,7 +14,7 @@ interface ClaimRefs {
   head: string;
 }
 
-export type ClaimsRead = { claimed: Attestation[] } | { unread: string };
+type ClaimsRead = { claimed: Attestation[] } | { unread: string };
 
 /** A file absent at a ref holds no rows there. */
 async function rowsAt(port: GitHubPort, repo: RepoSlug, ref: string): Promise<Attestation[]> {

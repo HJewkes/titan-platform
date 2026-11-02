@@ -7,7 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { attestAtHead } from "./attest-evidence.js";
+import { attestJudge } from "./attest-evidence.js";
 import { briefClaimsAt } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitVerdictStep } from "./await-verdict-step.js";
@@ -284,8 +284,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
   const holdContext = shape === "adversary" ? holdContextOf(deps, runId) : undefined;
-  const ciChecks = asked ? undefined : await ciChecksAt(deps.port, target.repo, target.pr, target.head);
-  const claims = asked ? {} : await briefClaimsAt(deps.port, target);
+  const [ciChecks, claims] = asked ? [undefined, {}] : await Promise.all([ciChecksAt(deps.port, target.repo, target.pr, target.head), briefClaimsAt(deps.port, target)]);
   const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(convergence && { convergence, earlierFindings }), ...scopedBriefFields(scopedRereview), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }), ...claims }, codewatch, questions);
   const outcome = asking && (await startReviewer(memberDispatch(wired, shape) ?? dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
   if (typeof outcome === "object") {
@@ -315,12 +314,6 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
   return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
 }
 
-/** The evidence step's attestation judge, naming meeters from the dispatch's roster and the wired lineage. */
-const attestJudge = (deps: ShepherdDeps, wiring: ReviewWiring | undefined) => (input: MergeEvidenceInput, baseRef: string) => {
-  const dispatch = wiring?.dispatch;
-  return attestAtHead(deps.port, { store: deps.store, ...(dispatch && { roster: () => dispatch.roster() }), ...(wiring?.lineage && { lineage: wiring.lineage }) }, input, baseRef);
-};
-
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
@@ -333,7 +326,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps, wiring) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps.port, deps.store, wiring ?? {}) })),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),

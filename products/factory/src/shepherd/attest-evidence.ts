@@ -57,6 +57,13 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
   }
 }
 
+/** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage. */
+export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, wiring: { dispatch?: { roster(): Promise<readonly ReviewerAgent[]> }; lineage?: () => Promise<Lineage> }) {
+  const { dispatch, lineage } = wiring;
+  const readers: AttestReaders = { store, ...(dispatch && { roster: () => dispatch.roster() }), ...(lineage && { lineage }) };
+  return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
+}
+
 /** Undefined when the head claims no row; the meeters are named only from the roster, never from the reviewer's text. */
 export async function attestAtHead(port: GitHubPort, readers: AttestReaders, subject: AttestSubject, baseRef: string): Promise<AttestJudgment | undefined> {
   const read = await readClaims(port, { repo: subject.repo, base: baseRef, head: subject.head });
