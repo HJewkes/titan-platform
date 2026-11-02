@@ -5,6 +5,7 @@ import { z } from "zod";
 import { step } from "../workflows/land.js";
 import { accountHeld } from "./account-hold.js";
 import type { AttestVerdicts } from "./attest-evidence.js";
+import { attestUnmetSteps } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
@@ -23,10 +24,14 @@ export const LATE_VERDICT_STEP = "sh-late-verdict";
 
 /** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">, ownerBrief?: OwnerBrief): Promise<Verdict> {
-  await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) });
+  const check = { outcome: "MERGE" as const, verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) };
+  await publishReview(ctx, input, check);
   const { visualPaths, visualBaselines } = effectivePolicy(ctx);
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }), ...(visualBaselines && { visualBaselines }) };
   const evidence = await evidenceOrGate(ctx, input.head, request);
+  const attestUnmet = attestUnmetSteps(evidence.attest);
+  // The check was posted before the evidence existed, so an unmet attestation posts it again, blocking, at this head.
+  if (attestUnmet.length > 0) await publishReview(ctx, input, { ...check, attestUnmet }, ":attest");
   return { kind: "MERGE", headSha: input.head, evidence, ...(ownerBrief && { ownerBrief }) };
 }
 

@@ -56,3 +56,9 @@ export function attestUnmetReason(attest: AttestDecided | undefined): string | u
   if ("unread" in attest) return `attestation unmet: unread: ${attest.unread}`;
   return attest.unmet.length === 0 ? undefined : `attestation unmet: ${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}`;
 }
+
+/** The steps the `shepherd/review` check names as unmet; an unread file names itself. */
+export function attestUnmetSteps(attest: AttestDecided | undefined): string[] {
+  if (attest === undefined) return [];
+  return "unread" in attest ? ["attestations.json unread"] : attest.unmet.map(({ step }) => step);
+}
