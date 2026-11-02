@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the darwin poller refreshes tokens",
+      "file": "packages/anthropic-account/src/cli/install-command.ts",
+      "find": "    \"    <string>--write</string>\",",
+      "replace": "    \"    <string>--write</string>\",\n    \"    <string>--refresh</string>\",",
+      "kills": [
+        "renders the launchd plist golden on darwin and bootstraps it without --refresh"
+      ]
+    },
+    {
+      "name": "dry-run still writes the files",
+      "file": "packages/anthropic-account/src/cli/install-command.ts",
+      "find": "  if (options.dryRun) {\n    printDryRun(plan, plan.enable, \"write\", context);\n    return EXIT_OK;\n  }",
+      "replace": "  if (options.dryRun) {\n    for (const file of plan.files) {\n      fs.mkdirSync(path.dirname(file.path), { recursive: true });\n      fs.writeFileSync(file.path, file.text);\n    }\n    printDryRun(plan, plan.enable, \"write\", context);\n    return EXIT_OK;\n  }",
+      "kills": [
+        "writes no file and runs no command with --dry-run on linux",
+        "writes no file and runs no command with --dry-run on darwin"
+      ]
+    },
+    {
+      "name": "uninstall leaves the timer enabled",
+      "file": "packages/anthropic-account/src/cli/install-command.ts",
+      "find": "  const disabled = await runSteps(plan.disable.slice(0, 1), context);",
+      "replace": "  const disabled = true;",
+      "kills": [
+        "removes exactly the installed files and disables the timer on linux",
+        "removes the plist and boots out the agent on darwin"
+      ]
+    }
+  ]
+}

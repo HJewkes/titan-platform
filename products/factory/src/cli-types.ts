@@ -20,6 +20,7 @@ import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import type { MainWatchPorts } from "./shepherd/main-watch.js";
 import type { HeadRefRead } from "./shepherd/register-identity.js";
 import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
+import type { CiTimingFallbackPorts } from "./ci-timing-fallback.js";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -60,6 +61,7 @@ export interface CliDeps {
   fixerRetire?: (env: NodeJS.ProcessEnv) => FixerRetirePorts | undefined;
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
+  ciTimingFallback?: (env: NodeJS.ProcessEnv) => CiTimingFallbackPorts | undefined;
   /** The serve verb's gate notifier; absent, or undefined for an env, means serve posts no gate to agent-chat. */
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
   /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */

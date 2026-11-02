@@ -1,4 +1,5 @@
 import type { CliContext } from "./context.js";
+import { runInstall, runUninstall } from "./install-command.js";
 import { runPoll } from "./poll-command.js";
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, PROGRAM } from "./report.js";
 import { runStatus, type StatusFormat } from "./status-command.js";
@@ -8,10 +9,14 @@ export type { CliContext } from "./context.js";
 const USAGE = [
   `usage: ${PROGRAM} poll [--write [--refresh]]`,
   `       ${PROGRAM} status [--json | --statusline]`,
+  `       ${PROGRAM} install|uninstall [--dry-run]`,
   "",
   "poll       GET each profile's OAuth usage and print it; --write stores it as usage-poll.json",
   "--refresh  first renew each access token due within 10 minutes; this rewrites .credentials.json",
   "status     print each profile's login state and newest usage reading, with no network",
+  "",
+  "install    write the poll units (systemd --user, or a launchd agent on darwin) and enable them;",
+  "           uninstall reverses it; --dry-run prints the files and commands and changes nothing",
   "",
   "poll skips a profile with no login, and one backing off after a 429",
   "",
@@ -38,13 +43,20 @@ function statusCommand(flags: Set<string>): Command {
   return { run: (context) => runStatus(format, context) };
 }
 
+function installCommand(name: "install" | "uninstall", flags: Set<string>): Command {
+  if (![...flags].every((flag) => flag === "--dry-run")) return { usage: `${name} takes only --dry-run` };
+  const options = { dryRun: flags.has("--dry-run") };
+  return { run: (context) => (name === "install" ? runInstall(options, context) : runUninstall(options, context)) };
+}
+
 function commandFor(argv: readonly string[]): Command {
   const [name, ...rest] = argv;
   const flags = new Set(rest);
   if (flags.size !== rest.length) return { usage: "a flag is repeated" };
   if (name === "poll") return pollCommand(flags);
   if (name === "status") return statusCommand(flags);
-  return { usage: "expected poll or status" };
+  if (name === "install" || name === "uninstall") return installCommand(name, flags);
+  return { usage: "expected poll, status, install or uninstall" };
 }
 
 // A thrown error's message is dropped, not printed: the library redacts its own, but the
