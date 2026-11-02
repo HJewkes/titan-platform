@@ -2,6 +2,7 @@ import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { factRule } from "../../registry/pin-classes.js";
 import type { ShadowEvent, ShadowSink } from "../shadow.js";
+import type { CompareRow } from "./compare.js";
 import type { Verdict } from "../validity.js";
 
 const KINDS = ["verdict", "shadow-error", "call-site-orphan", "budget-exceeded", "entry-end", "not-after-skip", "advisory", "compare"];
@@ -69,10 +70,18 @@ interface LogFields {
   validity: Validity | null;
   markerId: number | null;
   class: string | null;
+  cause: string | null;
   detail: Record<string, unknown>;
 }
 
-const NO_FIELDS: Omit<LogFields, "family" | "detail"> = { item: null, validity: null, markerId: null, class: null };
+const NO_FIELDS: Omit<LogFields, "family" | "detail"> = { item: null, validity: null, markerId: null, class: null, cause: null };
+
+/** A carry row compares pins, so it keeps the carry's heads where a fact row keeps its live projection. */
+function compareFields(row: CompareRow): LogFields {
+  const { family, class: rowClass, cause, materialValid, fullValid, drift, liveProjection, carry } = row;
+  const detail = carry ? { carry } : { liveProjection };
+  return { ...NO_FIELDS, family, item: carry?.item ?? null, class: rowClass, cause: cause ?? null, validity: { materialValid, fullValid, drift }, detail };
+}
 
 function verdictFields(event: Extract<ShadowEvent, { kind: "verdict" }>, family: string | null): LogFields {
   const { verdict, wouldFastForward, unreplayable } = event;
@@ -96,17 +105,15 @@ function fieldsOf(event: ShadowEvent, family: string | null): LogFields {
       return { ...NO_FIELDS, family, detail: { notAfter: event.notAfter } };
     case "advisory":
       return { ...NO_FIELDS, family, detail: {} };
-    case "compare": {
-      const { family: rowFamily, class: rowClass, materialValid, fullValid, drift, liveProjection } = event.row;
-      return { ...NO_FIELDS, family: rowFamily, class: rowClass, validity: { materialValid, fullValid, drift }, detail: { liveProjection } };
-    }
+    case "compare":
+      return compareFields(event.row);
   }
 }
 
 const PARAM: Record<KeyColumn, string> = { id: "NULL", kind: "@kind", run_id: "@runId", marker_id: "@markerId", memo_key: "@memoKey" };
 
-const INSERT = `INSERT INTO factory_shadow_log (at, kind, family, run_id, memo_key, item, step, fact, class, material_valid, full_valid, drift, marker_id, detail)
-  SELECT @at, @kind, @family, @runId, @memoKey, @item, @step, @fact, @class, @materialValid, @fullValid, @drift, @markerId, @detail
+const INSERT = `INSERT INTO factory_shadow_log (at, kind, family, run_id, memo_key, item, step, fact, class, cause, material_valid, full_valid, drift, marker_id, detail)
+  SELECT @at, @kind, @family, @runId, @memoKey, @item, @step, @fact, @class, @cause, @materialValid, @fullValid, @drift, @markerId, @detail
   WHERE NOT ${keyTaken((column) => PARAM[column])}`;
 
 const flag = (value: boolean | undefined): number | null => (value === undefined ? null : Number(value));
@@ -126,6 +133,7 @@ export function logSink(db: Db, now: () => string): ShadowSink {
       step: event.stepId || null,
       fact: event.fact || null,
       class: fields.class,
+      cause: fields.cause,
       materialValid: flag(fields.validity?.materialValid),
       fullValid: flag(fields.validity?.fullValid),
       drift: fields.validity ? JSON.stringify(fields.validity.drift) : null,
