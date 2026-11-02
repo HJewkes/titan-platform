@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tags are read with no frozen touches",
+      "file": "products/factory/src/old-path/task-tags.ts",
+      "find": "if (frozenTouches(repo, files).length === 0) return { status: \"clear\", kind };",
+      "replace": "await readTask(deps.tags, task);\n      if (frozenTouches(repo, files).length === 0) return { status: \"clear\", kind };",
+      "kills": ["a PR that touches no frozen root never calls the task port"]
+    },
+    {
+      "name": "CC maps to titan-platform",
+      "file": "products/factory/src/old-path/task-tags.ts",
+      "find": "CC: \"claude-channels\"",
+      "replace": "CC: \"titan-platform\"",
+      "kills": ["a bare TP id resolves to titan-platform, CC to claude-channels and TD to titan-design; an unprefixed name is no task"]
+    },
+    {
+      "name": "an rpc error reads as empty tags",
+      "file": "products/factory/src/old-path/task-tags.ts",
+      "find": "return { unread: errorMessage(error) };",
+      "replace": "return { tags: [] };",
+      "kills": ["a task missing from its initiative is no-task, and an rpc failure or timeout is task-unread; both refuse under an active freeze"]
+    },
+    {
+      "name": "the timeout is dropped",
+      "file": "products/factory/src/old-path/task-tags.ts",
+      "find": "{ signal }",
+      "replace": "{}",
+      "kills": ["a task missing from its initiative is no-task, and an rpc failure or timeout is task-unread; both refuse under an active freeze"]
+    }
+  ]
+}
