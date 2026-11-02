@@ -6,6 +6,7 @@ describe("cli-types leaf", () => {
     expect(relativeImports("cli-types.ts").sort()).toEqual([
       "./blocker/link.js",
       "./bot-identity.js",
+      "./ci-timing-fallback.js",
       "./definition.js",
       "./deploy-behind.js",
       "./deploy-watch.js",
