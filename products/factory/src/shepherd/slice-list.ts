@@ -38,7 +38,7 @@ function notedSlices(notes: string): string[] {
 function describedLabels(sentence: string): string[] {
   const items = sentence.replace(PARENTHETICAL, "").split(",").map((item) => item.trim());
   const labels = items.map((item) => DESCRIBED_ITEM.exec(item)?.[1]);
-  return labels.length > 1 && labels.every((label) => label !== undefined) ? (labels as string[]) : [];
+  return labels.length > 1 && labels.every((label) => label !== undefined) ? labels : [];
 }
 
 function labelsOf(list: string): string[] {

@@ -22,7 +22,7 @@
     {
       "name": "one undescribed item no longer voids a prose slice list",
       "file": "products/factory/src/shepherd/slice-list.ts",
-      "find": "labels.every((label) => label !== undefined) ? (labels as string[]) : []",
+      "find": "labels.every((label) => label !== undefined) ? labels : []",
       "replace": "true ? labels.filter((label) => label !== undefined) : []",
       "kills": [
         "listedSlices lists nothing from one undescribed item among described ones, so a first landing cannot close the task"
