@@ -20,6 +20,7 @@
   "shepherd/main-rerun.ts",
   "shepherd/merge-evidence-gate.ts",
   "shepherd/merge-main.ts",
+  "shepherd/merge-order-steps.ts",
   "shepherd/merge-settle.ts",
   "shepherd/merge-standing.ts",
   "shepherd/merge-up-carry.ts",

@@ -54,6 +54,7 @@ const CLOCK_BUDGET_BASELINE = [
 const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/shepherd/freeze-hold.ts",
   "products/factory/src/shepherd/main-rerun.ts",
+  "products/factory/src/shepherd/merge-order-steps.ts",
   "products/factory/src/shepherd/publish-review.ts",
   "products/factory/src/shepherd/redeploy.ts",
   "products/factory/src/shepherd/release.ts",
