@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a notes re-plan no longer extends a heading list",
+      "file": "products/factory/src/shepherd/slice-list.ts",
+      "find": "noted.some((label) => headed.includes(label)) ? unique([...headed, ...noted]) : headed",
+      "replace": "headed",
+      "kills": [
+        "listedSlices extends a heading list by a re-plan in the notes that shares its labels"
+      ]
+    },
+    {
+      "name": "a bare number after any word reads as a moved slice",
+      "file": "products/factory/src/shepherd/slice-list.ts",
+      "find": "S_LABEL.test(match[1]!) || NAMES_A_SLICE.test(notes.slice(0, match.index))",
+      "replace": "true",
+      "kills": [
+        "movedSlices takes \"Phase 2 moved to TP-9\" for no move"
+      ]
+    }
+  ]
+}

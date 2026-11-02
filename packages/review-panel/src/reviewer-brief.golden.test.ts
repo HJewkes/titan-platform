@@ -19,6 +19,10 @@ const scope = {
   ],
   mergedBase: false,
 };
+const attestClaims = [
+  { step: "ci-wait", closure: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+  { step: "merge", closure: "fedcba987654" },
+];
 const refusals:MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed"];
 
 const reviews: [string, string][] = [
@@ -31,6 +35,7 @@ const reviews: [string, string][] = [
   ["re-review after three FIX_FIRSTs", reviewerBrief({ ...target, fixFirsts: 3 })],
   ["g10 re-review", reviewerBrief({ ...target, fixFirsts: 2, ownerBrief: true, questions })],
   ["re-review with earlier findings", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings })],
+  ["standard review with claimed attestations", reviewerBrief({ ...target, attestClaims })],
 ];
 const scopedReviews: [string, string][] = [
   ["scoped fix-round re-review", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings, scope })],
@@ -48,6 +53,15 @@ describe("rendered briefs against main's output", () => {
 
   it.each([...reviews, ...corrections])("is byte-identical for %s", (name, rendered) => {
     expect(rendered).toBe(golden[name]);
+  });
+
+  it("a brief with claimed rows asks for the Attests line and names each step and closure", () => {
+    const brief = reviewerBrief({ ...target, attestClaims: [...attestClaims, { step: "Bad step", closure: "not-hex" }] });
+
+    expect(brief).toContain("This PR claims no semantic change for ci-wait (closure 0123456789ab), merge (closure fedcba987654).");
+    expect(brief).toContain("`Attests: ci-wait@0123456789ab, merge@fedcba987654`");
+    expect(brief).not.toContain("Bad step");
+    expect(brief.indexOf("Attests:")).toBeLessThan(brief.lastIndexOf("Verdict: <MERGE or FIX_FIRST>"));
   });
 
   it("is byte-identical for both scoped fix-round re-reviews", () => {
