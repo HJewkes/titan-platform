@@ -32,9 +32,14 @@ export async function readClaims(port: GitHubPort, { repo, base, head }: ClaimRe
   }
 }
 
-/** The claims the reviewer's brief asks about; an unreadable file asks nothing, and the merge guard reads it again. */
+/** The claims the reviewer's brief asks about; an unreadable PR or file asks nothing, and the merge guard reads it again. */
 export async function briefClaimsAt(port: GitHubPort, target: { repo: RepoSlug; pr: number; head: string }): Promise<{ attestClaims?: { step: string; closure: string }[] }> {
-  const read = await port.getPr(target.repo, target.pr).then((pr) => readClaims(port, { repo: target.repo, base: pr.baseRef, head: target.head }), (error: unknown) => ({ unread: statusOf(error) }));
-  if ("unread" in read || read.claimed.length === 0) return {};
-  return { attestClaims: read.claimed.map(({ step, closure }) => ({ step, closure })) };
+  try {
+    const { baseRef } = await port.getPr(target.repo, target.pr);
+    const read = await readClaims(port, { repo: target.repo, base: baseRef, head: target.head });
+    if ("unread" in read || read.claimed.length === 0) return {};
+    return { attestClaims: read.claimed.map(({ step, closure }) => ({ step, closure })) };
+  } catch {
+    return {};
+  }
 }

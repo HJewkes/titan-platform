@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { fakeLocator } from "../test-support/fakes.js";
 import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
-import { ATTESTATIONS_PATH, readClaims } from "./attest-read.js";
+import { ATTESTATIONS_PATH, briefClaimsAt, readClaims } from "./attest-read.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 
@@ -67,6 +67,14 @@ describe("readClaims", () => {
     const read = await readClaims(githubPort(world(undefined, "[{").wire), { repo: REPO, base: "main", head: HEAD });
 
     expect(read).toEqual({ unread: `${ATTESTATIONS_PATH} is unreadable: malformed` });
+  });
+});
+
+describe("briefClaimsAt", () => {
+  it("asks the reviewer about each row the head claims against the PR's base", async () => {
+    const claims = await briefClaimsAt(githubPort(world([CI_WAIT], [CI_WAIT, MERGE_STEP]).wire), { repo: REPO, pr: 1, head: HEAD });
+
+    expect(claims).toEqual({ attestClaims: [{ step: "merge", closure: MERGE_STEP.closure }] });
   });
 });
 
