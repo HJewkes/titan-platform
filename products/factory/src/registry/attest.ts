@@ -94,7 +94,9 @@ export function judgeAttestations(input: JudgeInput): { met: Met[]; unmet: Unmet
   for (const row of input.claimed) {
     const why = input.correctness.carried ? "carried" : (verdictShortfall(row, input.correctness, input) ?? (input.adversaryRequired ? adversaryShortfall(row, input) : undefined));
     if (why !== undefined) unmet.push({ step: row.step, closure: row.closure, why });
-    else met.push({ step: row.step, closure: row.closure, meeters: [input.correctness.reviewer, input.adversaryRequired ? input.adversary?.reviewer : undefined].filter((agent) => agent !== undefined) });
+    if (why !== undefined) continue;
+    const meeters = [input.correctness.reviewer, input.adversaryRequired ? input.adversary?.reviewer : undefined];
+    met.push({ step: row.step, closure: row.closure, meeters: meeters.filter((agent) => agent !== undefined) });
   }
   return { met, unmet };
 }
