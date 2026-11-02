@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "a slice landed outside a derived list does not mark the list partial",
+      "file": "products/factory/src/shepherd/held-open.ts",
+      "find": "[...landedSlices(notes)].every((n) => listed.includes(n))",
+      "replace": "true",
+      "kills": [
+        "sh-cleanup task keep mode with a slices tag and no slices block holds on the tag when a slice landed outside the list, since the list is then partial"
+      ]
+    },
+    {
       "name": "a slice moved to another task holds the original open",
       "file": "products/factory/src/shepherd/held-open.ts",
       "find": "!landed.has(n) && !moved.has(n)",

@@ -358,6 +358,15 @@ describe("sh-cleanup task", () => {
       expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: S1 merged; task left open: it is tagged slices");
     });
 
+    it("holds on the tag when a slice landed outside the list, since the list is then partial", async () => {
+      const notes = ["re-plan: order a -> b.", landed("a"), landed("z")].join("\n");
+      const w = world({ registration: { ...base, slice: "b" }, slicing: slicesTagged(notes) });
+
+      expect((await w.run()).task).toBe("noted");
+      expect(w.tasks.closed).toEqual([]);
+      expect(w.tasks.notes.at(-1)).toBe("demo/TP-1: b merged; task left open: it is tagged slices");
+    });
+
     it("leaves an epic with a listed plan open once every slice has landed", async () => {
       const notes = [landed("S1"), landed("S2"), landed("S3")].join("\n");
       const w = world({ registration: { ...base, slice: "S4" }, slicing: { tags: ["slices", "epic"], notes, plan: headedPlan } });
