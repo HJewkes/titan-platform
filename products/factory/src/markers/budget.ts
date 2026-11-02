@@ -24,6 +24,9 @@ export function newMeter(budget: EntryBudget = DEFAULT_ENTRY_BUDGET): EntryMeter
   return { counters: { replayed: 0, evaluations: 0, shadowMs: 0 }, budget, exceeded: false };
 }
 
+/** Read through a call, so a check after an `await` sees a cap the awaited work hit. */
+export const isSpent = (meter: EntryMeter): boolean => meter.exceeded;
+
 const atCap = ({ counters, budget }: EntryMeter): boolean => counters.evaluations >= budget.evaluations || counters.shadowMs >= budget.shadowMs;
 
 /** Times shadow work on the injected clock, then marks the meter exceeded and calls `onExceeded` the first time a cap is hit. */

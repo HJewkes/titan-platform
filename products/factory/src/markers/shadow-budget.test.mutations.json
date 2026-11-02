@@ -5,7 +5,7 @@
       "name": "the live call stops at the cap",
       "file": "products/factory/src/markers/shadow.ts",
       "find": "  const result = await live();\n",
-      "replace": "  if (call.meter.exceeded) throw new Error(\"over budget\");\n  const result = await live();\n",
+      "replace": "  if (isSpent(call.meter)) throw new Error(\"over budget\");\n  const result = await live();\n",
       "kills": [
         "the per-entry replay budget an entry over its evaluation cap sends one budget-exceeded and the run's step_results equal a shadow-off run"
       ]
@@ -22,7 +22,7 @@
     {
       "name": "the shadow stands down only on its next call",
       "file": "products/factory/src/markers/shadow.ts",
-      "find": "if (prepared && !call.meter.exceeded)",
+      "find": "if (prepared && !isSpent(call.meter))",
       "replace": "if (prepared)",
       "kills": [
         "the per-entry replay budget an entry over its evaluation cap sends one budget-exceeded and the run's step_results equal a shadow-off run"

@@ -5,7 +5,7 @@ import type { PrKey } from "../head-guard/epoch-store.js";
 import { isFactEntry, type FactEntry } from "../registry/entry.js";
 import { entryFor, type createRegistry } from "../registry/registry.js";
 import type { BlobStore } from "./blob-store.js";
-import { metered, type EntryCounters, type EntryMeter } from "./budget.js";
+import { isSpent, metered, type EntryCounters, type EntryMeter } from "./budget.js";
 import { jcs } from "./jcs.js";
 import { currentMarker, readMarkerValues, writeMarker, type InputDigest, type MarkerRow } from "./marker-store.js";
 import { visit, type EntryLog } from "./orphan-trap.js";
@@ -95,13 +95,13 @@ async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: Obse
   visit(call.log, call.callSite, key);
   const entry = entryFor(deps.registry, call.stepId);
   const item = itemOf(ctx);
-  if (!entry || !isFactEntry(entry) || !item || call.meter.exceeded) return live();
+  if (!entry || !isFactEntry(entry) || !item || isSpent(call.meter)) return live();
   const site: ShadowSite = { runId: ctx.runId, stepId: call.stepId, fact: entry.fact, memoKey: key };
   const exceeded = () => deps.sink({ ...site, kind: "budget-exceeded", counters: { ...call.meter.counters } });
   const shadowed = <T>(work: () => Promise<T> | T) => swallow(deps, site, () => metered(call.meter, deps.clock, exceeded, work));
   const prepared = await shadowed(() => prepare(deps, entry, item, site, call.meter));
   const result = await live();
-  if (prepared && !call.meter.exceeded) await shadowed(() => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
+  if (prepared && !isSpent(call.meter)) await shadowed(() => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
   return result;
 }
 

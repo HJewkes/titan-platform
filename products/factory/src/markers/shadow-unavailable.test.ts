@@ -38,7 +38,7 @@ function hostAnswering(answers: Array<() => Promise<object>>) {
 }
 
 const markerCount = (host: ReturnType<typeof openFactoryHost>, where = "1 = 1"): number =>
-  (host.db.prepare(`SELECT COUNT(*) AS n FROM factory_marker WHERE ${where}`).get() as { n: number }).n;
+  host.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM factory_marker WHERE ${where}`).get()?.n ?? 0;
 
 describe("an Unavailable step on the marker table", () => {
   it("A17: an Unavailable step writes no marker and counts no re-drive, against the marker table", async () => {
