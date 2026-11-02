@@ -1242,6 +1242,8 @@ Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBr
 
 `factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
 
+A fact entry's `body` module is hashed with everything it imports, workspace sources included, into `src/registry/closure.lock.json`. CI's `pnpm registry:closure` fails when that lock is stale, or when a step's closure changed against `origin/main` with neither a new schema hash, a new `version.bump`, nor a row in `src/registry/attestations.json` naming the new closure. After a change, run `pnpm build`, then `pnpm registry:closure --write`.
+
 ## Land core: `src/workflows/land.ts`
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:
