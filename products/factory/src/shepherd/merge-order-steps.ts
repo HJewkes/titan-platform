@@ -9,6 +9,7 @@ import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
 import { stillOpen } from "./merge-order-guard.js";
 import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
+import { pathUnit } from "./train-shadow-disjoint.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
 import { MERGING_STALL_LIMIT_MS } from "./phase-limits.js";
@@ -24,6 +25,8 @@ interface OrderInput extends PrTarget {
   headSha: string;
   /** Taken again at a landable head after a fix round released it (TP-4497), not at a conflict. */
   retake?: boolean;
+  /** TP-4717: taken at a green head whose base moved by commits sharing its units, which it reserves whole. */
+  movedBase?: boolean;
 }
 
 const ReserveResult = z.looseObject({ reserved: z.boolean(), ahead: z.array(z.string()) });
@@ -97,15 +100,33 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   const rule = deps.rules(input.repo);
   if (!rule?.enabled) return NOT_RESERVED;
   const own = deps.order().list(input.repo).find((reservation) => reservation.runId === input.runId);
-  if (own?.headSha === input.headSha) return { reserved: true, ahead: own.ahead };
+  if (own?.headSha === input.headSha && !input.movedBase) return { reserved: true, ahead: own.ahead };
   const read = await pinnedPaths(deps.port, { ...input, head: input.headSha }, input.headSha);
   const baseSha = await deps.port.getHeadSha(input.repo, await deps.port.defaultBranch(input.repo)).catch(() => undefined);
   if (read.unread !== undefined || !baseSha) return NOT_RESERVED;
-  const ahead = await mergingAhead(deps, input, read.paths, rule);
+  if (own !== undefined && input.movedBase) return widened(deps, own, input.headSha, read.paths);
+  const paths = input.movedBase ? [...read.paths, ...unitsOf(read.paths)] : read.paths;
+  const ahead = await mergingAhead(deps, input, paths, rule);
   const since = new Date(deps.now()).toISOString();
-  const reason = input.retake ? `landable again at ${input.headSha}` : `conflict at ${input.headSha}`;
-  deps.order().reserve({ ...input, baseSha, paths: read.paths, ahead, since, reason });
+  deps.order().reserve({ ...input, baseSha, paths, ahead, since, reason: reserveReason(input) });
   return { reserved: true, ahead };
+}
+
+function reserveReason(input: OrderInput): string {
+  if (input.movedBase) return `base moved under green ${input.headSha}`;
+  return input.retake ? `landable again at ${input.headSha}` : `conflict at ${input.headSha}`;
+}
+
+/** The units a PR's paths sit in, each ending in `/`, so the reservation covers every path in them (`overlapping`). */
+function unitsOf(paths: readonly string[]): string[] {
+  return [...new Set(paths.flatMap((path) => pathUnit(path) ?? []))];
+}
+
+/** A run already reserving keeps its place in the order, `since` and `ahead` included, and only widens to its units. */
+function widened(deps: MergeOrderStepDeps, own: Reservation, headSha: string, paths: readonly string[]): Reserved {
+  const units = unitsOf(paths).filter((unit) => !own.paths.includes(unit));
+  if (units.length > 0) deps.order().reserve({ ...own, paths: [...own.paths, ...units], reason: `base moved under green ${headSha}` });
+  return { reserved: true, ahead: own.ahead };
 }
 
 /**
@@ -236,6 +257,18 @@ export async function releasedUnlessWoken<T extends { kind: string }>(run: Order
   const read = await outcome;
   if (read.kind !== "woken") await releaseUnlandable(run);
   return read;
+}
+
+/**
+ * TP-4717: a green head whose base moved by commits sharing its units reserves those units before its update, so later
+ * PRs in them wait at their merge and it lands on its next green instead of chasing main's tip (tp#3149, tp#2241).
+ * It is released as any reservation is: on landing, or when the round ends unmerged.
+ */
+export async function reserveMovedBase(run: OrderRun, ctx: WorkflowContext, headSha: string): Promise<void> {
+  if (replayingWithout(ctx, RESERVE_STEP)) return;
+  const input: OrderInput = { ...run.target, runId: ctx.runId, headSha, movedBase: true };
+  const reserved = (await step(ctx, `${RESERVE_STEP}:${run.orderSteps++}`, input, ReserveResult)).reserved;
+  run.reserved = run.reserved === true || reserved;
 }
 
 /** A run whose reservation a fix round released takes it again, once, when a head reaches the merge decision. */

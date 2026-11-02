@@ -1,10 +1,12 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { GitHubPort } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { RecheckMovedBase } from "../workflows/land-merge-base.js";
+import { reserveMovedBase } from "./merge-order-steps.js";
 import type { ShepherdDeps } from "./phases.js";
+import type { OrderRun } from "./run-state.js";
 import { pathUnit } from "./train-shadow-disjoint.js";
 
 const STALE_GREEN_STEP = "sh-stale-green";
@@ -62,13 +64,17 @@ export function staleGreenRoute(deps: Pick<ShepherdDeps, "port" | "now">): StepR
  * TP-4711: land's `recheckMovedBase` for one run. Green heads land back to back only when main's delta shares no unit with
  * the PR; otherwise land merges main in and the required checks run on that merge, as tp#3130 and tp#3131 needed. A record
  * from before this step skips it and lands as it did.
+ * TP-4717: land asks at every green read whose base moved, so a rerun's green lands when main moved only by disjoint
+ * commits since; an overlap reserves the PR's units first, so it lands on its next green ahead of later overlapping PRs.
  */
-export function staleGreenCheck(repo: RepoSlug, pr: number): RecheckMovedBase {
+export function staleGreenCheck(run: OrderRun): RecheckMovedBase {
   let reads = 0;
   return async (ctx, at) => {
     const next = ctx.historyNext();
     if (next !== undefined && !stepIdMatches(STALE_GREEN_STEP, next)) return false;
-    const input: StaleGreenInput = { repo, pr, headSha: at.headSha, base: at.base };
-    return (await step(ctx, `${STALE_GREEN_STEP}:${reads++}`, input, StaleGreenResult)).recheck;
+    const input: StaleGreenInput = { ...run.target, headSha: at.headSha, base: at.base };
+    const read = await step(ctx, `${STALE_GREEN_STEP}:${reads++}`, input, StaleGreenResult);
+    if (read.recheck && read.shared?.length) await reserveMovedBase(run, ctx, at.headSha);
+    return read.recheck;
   };
 }
