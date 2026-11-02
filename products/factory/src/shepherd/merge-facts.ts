@@ -105,7 +105,13 @@ export interface MergeEvidence extends GrantWithheldField {
   /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
   ciPolicy?: CiPolicy;
   visualDelta?: VisualDelta;
+  attest?: AttestDecided;
+  /** The input's `Attests:` tokens, so a re-read at this head judges the same lines. */
+  attestVerdicts?: AttestVerdicts;
 }
+
+/** What the attestation judge came to at the head, as the guard reads it; absent means the head claims no row. */
+type AttestDecided = { unmet: readonly { step: string; why: string }[] } | { unread: string };
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
 export interface DecidableEvidence extends GrantWithheldField {
@@ -119,10 +125,11 @@ export interface DecidableEvidence extends GrantWithheldField {
   changedFilesUnread?: string;
   ciPolicy?: CiPolicy;
   visualDelta?: VisualDelta;
+  attest?: AttestDecided;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed", "attest-unmet"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -173,6 +180,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour);
   if (policyGate) return policyGate;
+  const unmetGate = attestGate(evidence.attest);
+  if (unmetGate) return unmetGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
@@ -236,6 +245,19 @@ function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour): GateDeci
   if (github.length === 0) return undefined;
   return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }
+
+/**
+ * A head that adds or changes an attestation row merges only when an independent reviewer's MERGE at that head attests
+ * each row, and the adversary's too where the class has one; claims that cannot be read gate as unmet.
+ */
+function attestGate(attest: AttestDecided | undefined): GateDecision | undefined {
+  if (attest === undefined) return undefined;
+  if ("unread" in attest) return { outcome: "gate", rule: guardRule("attest-unmet"), reason: `${ATTEST_UNMET_PREFIX}unread: ${attest.unread}` };
+  if (attest.unmet.length === 0) return undefined;
+  return { outcome: "gate", rule: guardRule("attest-unmet"), reason: `${ATTEST_UNMET_PREFIX}${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}` };
+}
+
+const ATTEST_UNMET_PREFIX = "attestation unmet: ";
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
 function runFact(run: CheckRun): CheckRunFact {
@@ -369,12 +391,13 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
   const visual = await visualDeltaOf(port, input, observed, reads.threshold);
-  const attest = await reads.attest?.(input, pr.baseRef);
-  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input) };
+  const judged = await reads.attest?.(input, pr.baseRef);
+  const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
+  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...(attest && { attest }) });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...(judged && { attest: judged }) });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...attest, ...grantWithheldField(input), commentId: comment.id };
 }

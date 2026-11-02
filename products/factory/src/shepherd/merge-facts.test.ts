@@ -18,10 +18,13 @@ import type { EffectivePolicy } from "./policy-schema.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
-import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef, type TaskKind } from "./store.js";
+import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, lineageMigration, type Registration, type ShepherdStoreRef, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 import { partialFake } from "@titan-design/test-kit";
 import { fakeLocator } from "../test-support/fakes.js";
+import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
+import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
+import { ATTESTATIONS_PATH } from "./attest-read.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -947,5 +950,86 @@ describe("an empty gh body while posting the sh-merge-evidence comment", () => {
     expect(gate.prompt).toContain(MERGE_EVIDENCE_STEP);
     expect(host.runtime.status(runId)!.status).not.toBe("failed");
     expect(fake.effects.merge).toBe(0);
+  });
+});
+
+describe("the attestation guard", () => {
+  const closure = (seed: string) => fakeSha(`closure-${seed}`) + fakeSha(`closure-${seed}-tail`).slice(0, 24);
+  const CI_WAIT = { step: "ci-wait", closure: closure("ci-wait"), pr: 1 };
+  const TOKEN = `ci-wait@${CI_WAIT.closure.slice(0, 12)}`;
+  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: name === "human" ? null : "human", predecessor: null });
+  const roster = ["human", "impl-a", "rev-1", "adv-1"].map(agent);
+  const as = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
+  const byReviewer = (name: string, attests: string[] = [TOKEN], extra: Partial<MergeEvidenceInput> = {}): Partial<MergeEvidenceInput> => ({ resolver: as(name), dispatchedReviewer: as(name), attest: { attests }, ...extra });
+
+  function claiming(head: unknown = [CI_WAIT]): FakeGitHub {
+    const fake = world();
+    fake.files.set(`${HEAD}:${ATTESTATIONS_PATH}`, { content: typeof head === "string" ? head : JSON.stringify(head), blobSha: "attest-head" });
+    return fake;
+  }
+
+  function readers(holdReason: string | null = null): AttestReaders {
+    const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason });
+    const store = partialFake<ShepherdStore>({ byRun: () => registration, authorsOf: () => [] });
+    return { store: partialFake<ShepherdStoreRef>({ get: () => store }), roster: async () => roster };
+  }
+
+  async function judged(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput>, holdReason?: string) {
+    const port = githubPort(fake.wire);
+    const attest = (request: MergeEvidenceInput, baseRef: string) => attestAtHead(port, readers(holdReason), request, baseRef);
+    return mergeEvidence(port, { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest });
+  }
+
+  it("a head that claims an attestation with no Attests line gates as attest-unmet", async () => {
+    const evidence = await judged(claiming(), byReviewer("rev-1", []));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: no-meeter" });
+  });
+
+  it("an attestation the implementer reviewed gates as attest-unmet: meeter-is-author", async () => {
+    const store = shepherdStoreRef();
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+    store.bind(db);
+    new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "rev-1", policy: AUTO, kind: "correctness" });
+    const deps: ShepherdDeps = { port: githubPort(claiming().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const route = reviewRoutes(deps, { dispatch: partialFake<ReviewerDispatch>({ roster: async () => roster }) }).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
+
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ ...input, ...byReviewer("rev-1") }), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+    const { result } = JSON.parse(outcome.ok ? outcome.output : "{}") as { result: MergeEvidence };
+    expect(result.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: meeter-is-author" });
+  });
+
+  it("an independent reviewer's Attests line lets MRG-AU-RV allow, and the record lists the meeter", async () => {
+    const evidence = await judged(claiming(), byReviewer("rev-1"));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV" } });
+    expect(evidence.record.attested).toEqual([{ step: "ci-wait", closure: CI_WAIT.closure, meeters: [{ name: "rev-1", agentId: "agent-rev-1", shape: "correctness" }] }]);
+  });
+
+  it("an adversary-class head needs the adversary member's Attests line too", async () => {
+    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests }, adversaryPlanned: true } });
+
+    const silent = await judged(claiming(), adversary([]));
+    const attested = await judged(claiming(), adversary([TOKEN]));
+
+    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-missing" });
+    expect(attested.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
+  it("an unreadable attestations.json gates and names it unread", async () => {
+    const evidence = await judged(claiming("not json"), byReviewer("rev-1"));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: `attestation unmet: unread: ${ATTESTATIONS_PATH} is unreadable: malformed` });
+  });
+
+  it("a head that claims nothing decides exactly as before", async () => {
+    const before = await collect(world());
+    const after = await judged(world(), byReviewer("rev-1", []));
+
+    expect(after.record.decision).toEqual(before.record.decision);
+    expect(after.record).not.toHaveProperty("attested");
+    expect(after).not.toHaveProperty("attest");
   });
 });
