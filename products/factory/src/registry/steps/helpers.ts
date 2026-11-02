@@ -3,6 +3,8 @@ import { defineStep, type BaseEntry } from "../entry.js";
 
 export const WRITE = "writes outside the run";
 export const RECORD = "records a fact a replay must read back, never recompute";
+/** A step whose body runs a repo-configured command: the same runner other steps write through, so no write is ruled out. */
+export const RUNS = "runs a repo-configured command the factory cannot prove writes nothing";
 export const READ = "read or wait whose result chose the branch taken; not yet reviewed for orphanSafe";
 
 type Effect = BaseEntry["effect"];
