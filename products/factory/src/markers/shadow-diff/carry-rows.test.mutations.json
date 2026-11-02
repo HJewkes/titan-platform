@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "carries recorded before this entry are included",
+      "file": "products/factory/src/markers/shadow-diff/carry-rows.ts",
+      "find": "before.has(memoKey) ? undefined : ",
+      "replace": "",
+      "kills": ["carry rows a carry recorded in an earlier entry is not logged again"]
+    },
+    {
+      "name": "no probe is treated as agreement",
+      "file": "products/factory/src/markers/shadow-diff/carry-rows.ts",
+      "find": "const cause = pinCause(probe);",
+      "replace": "const cause = probe ? pinCause(probe) : ({ class: \"carry-agrees\", exclusion2: false } as const);",
+      "kills": ["carry rows with no carry probe a carried MERGE is pin-differs unprobed"]
+    },
+    {
+      "name": "an exclusion-2 agreement reads as full-valid",
+      "file": "products/factory/src/markers/shadow-diff/carry-rows.ts",
+      "find": "fullValid: agrees && !exclusion2,",
+      "replace": "fullValid: agrees,",
+      "kills": ["carry rows a carry across a clean merge-up logs carry-agrees with exclusion2"]
+    }
+  ]
+}

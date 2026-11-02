@@ -3,18 +3,31 @@ import type { FactEntry } from "../../registry/entry.js";
 import { factRule, type PinClass } from "../../registry/pin-classes.js";
 import { projectionDigest } from "../projection.js";
 import type { Verdict } from "../validity.js";
+import type { Cause } from "./pin-cause.js";
 
 type CompareClass = "hit" | "false-hit" | "miss" | "miss-same-output" | "unmarked";
 
+/** A carried MERGE's heads, the live rule that carried it, and whether only exclusion 2 (core plus merge-up) agrees. */
+interface CarryDetail {
+  item: string;
+  fromHead: string;
+  head: string;
+  rule: string;
+  exclusion2: boolean;
+}
+
 export interface CompareRow {
   family: PinClass;
-  class: CompareClass;
+  class: CompareClass | "carry-agrees" | "pin-differs";
+  cause?: Cause;
+  carry?: CarryDetail;
   /** The verdict was `valid`. */
   materialValid: boolean;
   /** The verdict was `valid` with no input drifting; a false-hit that is material-only names an under-declared input (R23). */
   fullValid: boolean;
   drift: string[];
-  liveProjection: string;
+  /** Absent on a carry row, which compares pins, not outputs. */
+  liveProjection?: string;
 }
 
 export interface CompareCall {

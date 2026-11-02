@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the carry pass runs outside the meter",
+      "file": "products/factory/src/markers/entry.ts",
+      "find": "metered(meter, deps.clock, exceeded, async () => {",
+      "replace": "metered(meter, () => 0, exceeded, async () => {",
+      "kills": ["the marker shadow logs each carried MERGE at entry end a Shepherd run that carries a MERGE across a whitespace-only change logs one pin-differs row with cause whitespace"]
+    },
+    {
+      "name": "a probe that throws is rethrown out of its own carry",
+      "file": "products/factory/src/markers/entry.ts",
+      "find": "    await swallow(deps, site, () =>\n      metered(",
+      "replace": "    await (() =>\n      metered(",
+      "kills": ["the marker shadow logs each carried MERGE at entry end a probe that throws logs shadow-error and the run completes on the blob"]
+    },
+    {
+      "name": "the carry row is logged without its cause",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "      cause: fields.cause,\n",
+      "replace": "      cause: null,\n",
+      "kills": ["the marker shadow logs each carried MERGE at entry end a Shepherd run that carries a MERGE across a whitespace-only change logs one pin-differs row with cause whitespace"]
+    },
+    {
+      "name": "the compare call gets no previous projection",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "previousProjection: call.before?.previousProjection ?? null",
+      "replace": "previousProjection: null",
+      "kills": ["the marker shadow logs each carried MERGE at entry end a miss whose live projection equals the previous marker's logs miss-same-output"]
+    }
+  ]
+}
