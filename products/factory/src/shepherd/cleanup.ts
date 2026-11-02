@@ -4,7 +4,7 @@ import { z } from "zod";
 import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
-import { ALL_SLICES_LANDED, heldOpenBy, SLICE_TAGS } from "./held-open.js";
+import { ALL_SLICES_LANDED, completedBefore, heldOpenBy, LANDED_BEFORE_THIS_PR, SLICE_TAGS } from "./held-open.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { closesTask, otherOpenOnTask } from "./task-close.js";
 import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose } from "./ports.js";
@@ -178,11 +178,12 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   return onOpenTask(registration.task, wait, noteThenCloseIfLast(tasks, registration.slice, landing, registration.lastSlice), tasks);
 }
 
-/** Noting the slice first lets the close read it: the last unlanded slice closes the task, any other leaves it open and names what holds it. */
+/** Noting the slice first lets the close read it: the slice that completes the list closes the task, any other leaves it open and names what holds it. */
 function noteThenCloseIfLast(tasks: CleanupTasks, slice: string, landing: string, lastSlice = false): (initiative: string, id: string) => Promise<string> {
   return async (initiative, id) => {
     await noteSlice(tasks, slice, landing)(initiative, id);
-    const heldBy = heldOpenBy(await tasks.slicing(initiative, id), lastSlice);
+    const slicing = await tasks.slicing(initiative, id);
+    const heldBy = !lastSlice && completedBefore(slicing, landingLine(slice, landing)) ? LANDED_BEFORE_THIS_PR : heldOpenBy(slicing, lastSlice);
     if (heldBy !== ALL_SLICES_LANDED && !(lastSlice && heldBy === undefined)) {
       if (heldBy !== undefined) await tasks.appendNote(initiative, id, `${slice} merged; task left open: ${heldBy}`);
       return "noted";
@@ -193,7 +194,9 @@ function noteThenCloseIfLast(tasks: CleanupTasks, slice: string, landing: string
   };
 }
 
-const noteSlice = (tasks: CleanupTasks, slice: string, landing: string) => (initiative: string, id: string) => tasks.appendNote(initiative, id, `${slice} landed in ${landing}`).then(() => "noted");
+const landingLine = (slice: string, landing: string): string => `${slice} landed in ${landing}`;
+
+const noteSlice = (tasks: CleanupTasks, slice: string, landing: string) => (initiative: string, id: string) => tasks.appendNote(initiative, id, landingLine(slice, landing)).then(() => "noted");
 
 /**
  * Unlike `keep`, a PR body or open-PR list that cannot be read leaves the task open, since a wrong close is what this mode
@@ -215,7 +218,7 @@ function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolea
   return async (initiative, id) => {
     const slicing = await tasks.slicing(initiative, id);
     const heldBy = heldOpenBy(slicing, lastSlice);
-    if (heldBy === undefined) {
+    if (heldBy === undefined || (lastSlice && heldBy === ALL_SLICES_LANDED)) {
       const overrodeTag = lastSlice && SLICE_TAGS.some((tag) => slicing.tags.includes(tag));
       await tasks.appendNote(initiative, id, `closed by Shepherd: ${overrodeTag ? "last slice " : ""}${landing} merged`);
       await tasks.done(initiative, id);
