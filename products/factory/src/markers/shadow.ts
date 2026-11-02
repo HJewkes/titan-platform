@@ -24,7 +24,7 @@ export type ShadowEvent =
 
 export type ShadowSink = (event: ShadowEvent) => void;
 
-export interface ShadowDeps extends PinSources {
+interface ShadowDeps extends PinSources {
   blobs: BlobStore;
   registry: ReturnType<typeof createRegistry>;
   sink: ShadowSink;
