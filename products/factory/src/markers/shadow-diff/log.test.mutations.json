@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "full validity ignores drift",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "fullValid: verdict.drift.length === 0",
+      "replace": "fullValid: true",
+      "kills": ["shadow disagreement log a verdict with drift is material-valid and not full-valid; an input-changed verdict is neither"]
+    },
+    {
+      "name": "a re-sent orphan insert is not ignored",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "INSERT OR IGNORE INTO factory_shadow_log",
+      "replace": "INSERT INTO factory_shadow_log",
+      "kills": ["shadow disagreement log the same call-site-orphan sent twice, across two sink instances on one database, writes one row"]
+    },
+    {
+      "name": "a log row accepts DELETE",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "CREATE TRIGGER factory_shadow_log_no_delete BEFORE DELETE ON factory_shadow_log BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+      "replace": "",
+      "kills": ["shadow disagreement log the log refuses update and delete"]
+    },
+    {
+      "name": "budget-exceeded writes no row",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "  return (event) => {\n",
+      "replace": "  return (event) => {\n    if (event.kind === \"budget-exceeded\") return;\n",
+      "kills": ["shadow disagreement log every shadow event kind is written as one log row"]
+    }
+  ]
+}
