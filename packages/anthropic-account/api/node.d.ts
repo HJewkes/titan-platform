@@ -1,4 +1,4 @@
-import { A as AccountProfile, L as LoginState, U as UsageReading, R as RefusedReason } from './profile.js';
+import { A as AccountProfile, b as AccountUsage, L as LoginState, U as UsageReading, R as RefusedReason } from './merge.js';
 import 'zod';
 
 declare const CONFIG_DIRS_ENV = "CLAUDE_CONFIG_DIRS";
@@ -8,6 +8,26 @@ interface DiscoverOptions {
     env?: Readonly<Record<string, string | undefined>>;
 }
 declare function discoverProfiles(options?: DiscoverOptions): AccountProfile[];
+
+interface ReadAccountsOptions extends DiscoverOptions {
+    now?: number;
+    /** The login a config dir bills; defaults to accountIdentity. */
+    identify?: (configDir: string) => string | undefined;
+    /** The uid that must own each credentials file. Defaults to this process's. */
+    uid?: number;
+    platform?: NodeJS.Platform;
+}
+/** One row per Anthropic login, every discovered profile included, each naming all its config dirs. */
+declare function readAccounts(options?: ReadAccountsOptions): AccountUsage[];
+
+/** A file's text, or undefined when it cannot be read. Injected so tests never touch a real login. */
+type ReadText = (file: string) => string | undefined;
+/**
+ * CC-1289: the Anthropic login a config dir bills, `accountUuid/organizationUuid`, or undefined
+ * when none can be read. Claude Code keeps the default dir's login in `~/.claude.json` when
+ * CLAUDE_CONFIG_DIR is unset, so that file is read first and `<dir>/.claude.json` second.
+ */
+declare function accountIdentity(configDir: string, home?: string, read?: ReadText): string | undefined;
 
 declare const CREDENTIALS_FILE = ".credentials.json";
 declare const MAX_CREDENTIALS_BYTES: number;
@@ -117,11 +137,12 @@ interface ReadUsageOptions {
     windows?: readonly string[];
 }
 declare function readUsage(configDir: string, options?: ReadUsageOptions): UsageFileRead | null;
+declare function readReadings(configDir: string): UsageReading[];
 declare function writeReading(configDir: string, reading: UsageReading): string;
 
-export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadLoginOptions, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, discoverProfiles, pollAll, pollUsage, readLoginState, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
+export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, pollAll, pollUsage, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
 
-// ./dist/profile.d.ts
+// ./dist/merge.d.ts
 import { z } from 'zod';
 
 declare const windowSchema: z.ZodObject<{
@@ -176,4 +197,40 @@ interface AccountProfile {
 declare const DEFAULT_LABEL = "default";
 declare function accountLabel(configDir: string): string;
 
-export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, POLL_SOURCE as a, type UsageWindow as b, accountLabel as c, loginStateFromCredentials as l, needsRefresh as n, parseUsageReading as p, usageFromOAuthResponse as u };
+/** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
+interface ObservedReading extends UsageReading {
+    prompt_cache?: {
+        ttl?: string;
+        expires_at?: number;
+    };
+}
+interface AccountWindow {
+    used_pct: number;
+    resets_at?: number;
+    severity?: string;
+    /** Every reading's reset has passed: a new window is open and nothing has been read from it. */
+    rolled?: true;
+}
+interface AccountUsage {
+    account: string;
+    config_dirs: string[];
+    identity?: string;
+    source: "oauth-usage" | "status-line" | null;
+    windows: Record<string, AccountWindow>;
+    scoped?: {
+        model: string;
+        used_pct: number;
+        severity?: string;
+    };
+    age_seconds: number | null;
+    stale: boolean;
+    auth_fail: boolean;
+}
+type AccountReadings = Pick<AccountUsage, "account" | "config_dirs" | "identity"> & {
+    auth_fail?: boolean;
+    readings: readonly ObservedReading[];
+};
+/** One account's usage from its readings: a fresh poller is the record; others lend or raise windows. */
+declare function mergeAccountReadings(input: AccountReadings, now: number): AccountUsage;
+
+export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, type AccountReadings as a, type AccountUsage as b, type AccountWindow as c, type ObservedReading as d, POLL_SOURCE as e, type UsageWindow as f, accountLabel as g, loginStateFromCredentials as l, mergeAccountReadings as m, needsRefresh as n, parseUsageReading as p, usageFromOAuthResponse as u };

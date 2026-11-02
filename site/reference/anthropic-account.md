@@ -385,6 +385,16 @@ server does. An error body is cancelled unread, a fetch rejection or filesystem 
 dropped with its message, and only a bad `now`, `marginMs` or `timeoutMs` throws a
 `RangeError` with a fixed message.
 
+`readAccounts({ home?, env?, now?, identify?, uid?, platform? })` returns one `AccountUsage`
+per Anthropic login over `discoverProfiles`. `accountIdentity(configDir, home?, read?)`
+names a dir's login as `accountUuid/organizationUuid` from its `.claude.json`. The default
+dir reads `<home>/.claude.json` first. Dirs on one login form one row, in discovery order,
+through the pure `groupByIdentity`. A dir whose login cannot be read is a row of its own.
+The row's `account` is its first member not labelled `default`. Each row merges every
+member's readings (`readReadings(configDir)`) with `mergeAccountReadings`. `auth_fail` is
+set when any member's login is refused, expired with no refresh token, or missing off
+macOS.
+
 ## The `anthropic-account` bin
 
 ```sh

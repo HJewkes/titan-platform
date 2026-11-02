@@ -95,6 +95,17 @@ export function readUsage(configDir: string, options: ReadUsageOptions = {}): Us
   }
 }
 
+// Every reading with at least one window in the sessions dir, unordered; a merge picks among them.
+export function readReadings(configDir: string): UsageReading[] {
+  try {
+    const dir = sessionsDir(configDir);
+    const names = listReadingFiles(dir) ?? [];
+    return names.map((name) => readReadingFile(path.join(dir, name))).filter((reading) => reading !== null);
+  } catch (error) {
+    throw redactedError(error, "reading usage failed");
+  }
+}
+
 function writeSynced(file: string, text: string): void {
   const fd = fs.openSync(file, "wx", 0o600);
   try {

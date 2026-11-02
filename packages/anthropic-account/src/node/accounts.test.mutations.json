@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "profiles are grouped by config dir instead of login",
+      "file": "packages/anthropic-account/src/node/accounts.ts",
+      "find": "(profile) => safeIdentify(identify, profile.configDir));",
+      "replace": "(profile) => profile.configDir);",
+      "kills": [
+        "gives two config dirs on one login a single row naming both dirs"
+      ]
+    },
+    {
+      "name": "dirs whose login cannot be read merge into one row",
+      "file": "packages/anthropic-account/src/node/accounts.ts",
+      "find": "(profile) => safeIdentify(identify, profile.configDir));",
+      "replace": "(profile) => safeIdentify(identify, profile.configDir) ?? \"unread\");",
+      "kills": [
+        "keeps each dir whose identity cannot be read as its own row"
+      ]
+    },
+    {
+      "name": "a shared login takes the default label instead of the personal one",
+      "file": "packages/anthropic-account/src/node/accounts.ts",
+      "find": "(members.find((member) => member.label !== DEFAULT_LABEL) ?? members[0])",
+      "replace": "members[0]",
+      "kills": [
+        "gives two config dirs on one login a single row naming both dirs"
+      ]
+    }
+  ]
+}
