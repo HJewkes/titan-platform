@@ -248,6 +248,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
   Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
   `active-work task edit <slug> <id> status open`.
+- A slice list says nothing of a task's other `done_when` clauses, so two structural checks keep such a task open
+  (TP-4714). Under `keep`, a `--slice` PR closes its task only when it completes the list: once every slice had landed
+  before the PR, only `--last-slice` closes it. A task tag `hold:<reason>` holds against every merge in either mode,
+  `--last-slice` included. Either way the task's notes gain `task left open:` and what holds it.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
