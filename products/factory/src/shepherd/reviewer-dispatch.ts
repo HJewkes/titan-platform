@@ -16,7 +16,7 @@ import type { ReviewAsk, RosterReader, SpawnGate } from "./ports.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 /** The lineage read lists every retired generation too, many times the live roster, so it outlasts the roster's timeout on a busy broker (TP-4731). */
-export const DEFAULT_LINEAGE_TIMEOUT_MS = 90_000;
+const DEFAULT_LINEAGE_TIMEOUT_MS = 90_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
 /**

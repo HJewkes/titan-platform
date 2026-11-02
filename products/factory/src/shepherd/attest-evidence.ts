@@ -4,11 +4,10 @@ import type { ReviewerAgent } from "@titan-design/review-panel";
 import { judgeAttestations } from "../registry/attest.js";
 import { readClaims } from "./attest-read.js";
 import { errorClass } from "./error-class.js";
-import { transient } from "./external-review.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
 import { separateLineages } from "./reviewer-lineage.js";
-import { whileBrokerBooting, whileRosterSlow, type BrokerDownTiming } from "./review-wait.js";
+import { transient, whileBrokerBooting, whileRosterSlow, type BrokerDownTiming } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
@@ -67,7 +66,7 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
 }
 
 /** How long a roster or lineage read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
-export interface RosterPatience {
+interface RosterPatience {
   timing: BrokerDownTiming;
   budgetMs: number;
   signal: AbortSignal;

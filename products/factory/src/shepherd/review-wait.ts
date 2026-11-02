@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { errorClass, failureOf } from "./error-class.js";
 import { ReviewSuperseded } from "./review-dispatcher.js";
@@ -102,6 +103,12 @@ export function rosterUnread(error: unknown): NotStarted {
 export class ReviewerBrokerBusy extends Error {
   override readonly name: string = "ReviewerBrokerBusy";
 }
+
+/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
+const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
+
+export const transient = (error: unknown): boolean =>
+  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 /** The broker refused because the machine stop holds; a storm can outlast the busy wait, so the hold has its own, longer ceiling. */
 export class ReviewerMachineHold extends ReviewerBrokerBusy {
