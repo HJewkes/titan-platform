@@ -286,8 +286,10 @@ describe("acceptVerdict Attests line", () => {
   });
 
   it("a FIX_FIRST drops an Attests line", () => {
+    const merge = acceptVerdict(input, [said(`Checked.\nAttests: ${CI_WAIT}\n\n${block("MERGE")}`)]);
     const result = acceptVerdict(input, [said(`1. Broken.\nAttests: ${CI_WAIT}\n\n${block("FIX_FIRST")}`)]);
 
+    expect(merge).toMatchObject({ verdict: "MERGE", attests: [CI_WAIT] });
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
     expect(result).not.toHaveProperty("attests");
   });
@@ -301,11 +303,10 @@ describe("acceptVerdict Attests line", () => {
   });
 
   it("an Attests line inside a fence is not read", () => {
-    const fenced = acceptVerdict(input, [said(`Checked.\n\`\`\`\nAttests: ${CI_WAIT}\n\`\`\`\n\n${block("MERGE")}`)]);
+    const fenced = acceptVerdict(input, [said(`Checked.\nAttests: ${MERGE_STEP}\n\`\`\`\nAttests: ${CI_WAIT}\n\`\`\`\n\n${block("MERGE")}`)]);
     const below = acceptVerdict(input, [said(`Checked.\n\n${block("MERGE")}Attests: ${CI_WAIT}`)]);
 
-    expect(fenced).toMatchObject({ kind: "verdict", verdict: "MERGE" });
-    expect(fenced).not.toHaveProperty("attests");
+    expect(fenced).toMatchObject({ kind: "verdict", verdict: "MERGE", attests: [MERGE_STEP] });
     expect(below).toMatchObject({ kind: "verdict", verdict: "MERGE" });
     expect(below).not.toHaveProperty("attests");
   });
