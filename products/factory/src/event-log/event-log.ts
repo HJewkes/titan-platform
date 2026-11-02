@@ -158,6 +158,14 @@ export function headSeq(db: Db): number {
   return db.prepare<[], { head: number | null }>("SELECT MAX(seq) AS head FROM factory_event").get()?.head ?? 0;
 }
 
+/** The newest seq of any of `kinds` for one subject, or 0 when there is none; an observed marker's pin (TP-3107 S2). */
+export function newestSeq(db: Db, query: { subject: string; kinds: readonly string[] }): number {
+  if (query.kinds.length === 0) return 0;
+  const marks = query.kinds.map(() => "?").join(", ");
+  const row = db.prepare<string[], { newest: number | null }>(`SELECT MAX(seq) AS newest FROM factory_event WHERE subject = ? AND kind IN (${marks})`).get(query.subject, ...query.kinds);
+  return row?.newest ?? 0;
+}
+
 type ReadEventsQuery = ({ subject: string; repo?: never } | { repo: string; subject?: never }) & {
   sinceSeq: number;
   kind?: string;
