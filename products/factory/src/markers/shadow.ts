@@ -7,10 +7,11 @@ import { entryFor, type createRegistry } from "../registry/registry.js";
 import type { BlobStore } from "./blob-store.js";
 import { isSpent, metered, type EntryCounters, type EntryMeter } from "./budget.js";
 import { jcs } from "./jcs.js";
-import { currentMarker, readMarkerValues, writeMarker, type InputDigest, type MarkerRow } from "./marker-store.js";
+import { currentMarker, markerHistory, readMarkerValues, writeMarker, type InputDigest, type MarkerRow } from "./marker-store.js";
 import { visit, type EntryLog } from "./orphan-trap.js";
 import { itemKey, pinFor, type Pin, type PinSources } from "./pins.js";
 import { outputDigest, projectionDigest } from "./projection.js";
+import { compareCall, type CompareRow } from "./shadow-diff/compare.js";
 import { evaluateFact, versionOf, type ValidityContext, type Verdict } from "./validity.js";
 
 interface ShadowSite {
@@ -28,7 +29,8 @@ export type ShadowEvent =
   | (ShadowSite & { kind: "budget-exceeded"; counters: EntryCounters })
   | (ShadowSite & { kind: "entry-end"; counters: EntryCounters })
   | (ShadowSite & { kind: "not-after-skip"; notAfter: string })
-  | (ShadowSite & { kind: "advisory" });
+  | (ShadowSite & { kind: "advisory" })
+  | (ShadowSite & { kind: "compare"; row: CompareRow });
 
 export type ShadowSink = (event: ShadowEvent) => void;
 
@@ -56,6 +58,15 @@ const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `
 interface Prepared {
   pin: Exclude<Pin, { unpinnable: string }>;
   inputs: Record<string, InputDigest>;
+}
+
+/** What the shadow decided before the live call; `pinned` is absent for an unpinnable step, which writes no marker. */
+interface Before {
+  verdict: Verdict;
+  wouldFastForward: boolean;
+  pinned: Prepared | undefined;
+  /** The projection of the newest marker at another pin, so a miss that reproduces it counts as `miss-same-output`. */
+  previousProjection: string | null;
 }
 
 /**
@@ -93,7 +104,8 @@ interface ObservedCall {
 
 async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: ObservedCall, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> {
   const key = memoKey(call.op, call.stepId, ctx.iteration(call.stepId));
-  if (call.log.recorded.includes(key)) call.meter.counters.replayed += 1;
+  const memoHit = call.log.recorded.includes(key);
+  if (memoHit) call.meter.counters.replayed += 1;
   visit(call.log, call.callSite, key);
   const entry = entryFor(deps.registry, call.stepId);
   const item = itemOf(ctx);
@@ -101,10 +113,21 @@ async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: Obse
   const site: ShadowSite = { runId: ctx.runId, stepId: call.stepId, fact: entry.fact, memoKey: key };
   const exceeded = () => deps.sink({ ...site, kind: "budget-exceeded", counters: { ...call.meter.counters } });
   const shadowed = <T>(work: () => Promise<T> | T) => swallow(deps, site, () => metered(call.meter, deps.clock, exceeded, work));
-  const prepared = await shadowed(() => prepare(deps, entry, item, site, call.meter));
+  const before = await shadowed(() => prepare(deps, entry, item, site, call.meter));
+  const prepared = before?.pinned;
   const result = await live();
+  if (!isSpent(call.meter)) await shadowed(() => sendCompare(deps, site, { entry, before, liveOutput: outputOf(result), memoHit }));
   if (prepared && !isSpent(call.meter)) await shadowed(() => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
   return result;
+}
+
+/** An unpinnable step or a failed prepare leaves no verdict to compare, so the row is `unmarked`. */
+function sendCompare(deps: ShadowDeps, site: ShadowSite, call: { entry: FactEntry; before: Before | undefined; liveOutput: unknown; memoHit: boolean }): void {
+  const verdict = call.before?.pinned ? call.before.verdict : undefined;
+  const markerProjection = verdict?.status === "valid" ? (verdict.marker?.projectionDigest ?? null) : null;
+  const projections = { markerProjection, previousProjection: call.before?.previousProjection ?? null };
+  const row = compareCall({ verdict, wouldFastForward: call.before?.wouldFastForward ?? false, ...projections, liveOutput: call.liveOutput, entry: call.entry, memoHit: call.memoHit });
+  if (row) deps.sink({ ...site, kind: "compare", row });
 }
 
 /** What the shadow does when a `notAfter` step is skipped or runs live (C28). */
@@ -157,7 +180,7 @@ export async function swallow<T>(deps: Pick<ShadowDeps, "sink">, site: ShadowSit
 
 type Evaluate = (target: { item: PrKey; fact: string }) => Promise<Verdict>;
 
-async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: ShadowSite, meter: EntryMeter): Promise<Prepared | undefined> {
+async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: ShadowSite, meter: EntryMeter): Promise<Before> {
   const validity: ValidityContext = { registry: deps.registry, sources: deps, now: deps.now() };
   const evaluate: Evaluate = (target) => {
     meter.counters.evaluations += 1;
@@ -166,9 +189,16 @@ async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: Sh
   const verdict = await evaluate({ item, fact: entry.fact });
   const unreplayable = verdict.status === "valid" && verdict.marker ? readMarkerValues(deps.db, deps.blobs, verdict.marker.id).missing : [];
   // A valid marker whose blobs were collected is re-run, never fast-forwarded and never parked (TP-3105 plan §5).
-  deps.sink({ ...site, kind: "verdict", verdict, wouldFastForward: verdict.status === "valid" && unreplayable.length === 0 && !deps.closedRuns.has(site.runId), unreplayable });
+  const event = { ...site, kind: "verdict" as const, verdict, wouldFastForward: verdict.status === "valid" && unreplayable.length === 0 && !deps.closedRuns.has(site.runId), unreplayable };
+  deps.sink(event);
   const pin = await pinFor(entry.fact, item, deps, validity.now);
-  return "unpinnable" in pin ? undefined : { pin, inputs: await inputDigests(validity, evaluate, entry, item) };
+  const pinned = "unpinnable" in pin ? undefined : { pin, inputs: await inputDigests(validity, evaluate, entry, item) };
+  const previousProjection = pinned ? previousAt(deps, entry.fact, item, pinned.pin.pin) : null;
+  return { verdict, wouldFastForward: event.wouldFastForward, pinned, previousProjection };
+}
+
+function previousAt(deps: ShadowDeps, fact: string, item: PrKey, pin: string): string | null {
+  return markerHistory(deps.db, { item: itemKey(item), fact }).filter((marker) => marker.pin !== pin).at(-1)?.projectionDigest ?? null;
 }
 
 /** What the step saw of each material input; an input with no valid verdict is left out, so it later reads as changed. */

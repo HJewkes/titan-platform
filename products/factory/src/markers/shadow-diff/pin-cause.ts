@@ -1,6 +1,6 @@
 import type { DiffPin, MergeUpProof } from "@titan-design/github";
 
-type Cause = "rebase-context" | "conflict-merge-up" | "whitespace" | "ambiguous-base" | "unprobed" | "unclassified";
+export type Cause = "rebase-context" | "conflict-merge-up" | "whitespace" | "ambiguous-base" | "unprobed" | "unclassified";
 
 export interface PinProbe {
   readonly reviewed: DiffPin;
