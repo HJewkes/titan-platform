@@ -1,5 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
+import { attestRule, type AttestClaim } from "./briefs/attest.js";
 import { quoteLines } from "./briefs/quotes.js";
 import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
@@ -80,6 +81,8 @@ export interface ReviewerBriefInput extends WorkflowCiInput {
   ownerPicks?: readonly OwnerPick[];
   /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
   sourceCheckout?: string;
+  /** The attestation rows this PR adds; read from a file its author wrote, so only grammar-valid ones reach the prompt. */
+  attestClaims?: readonly AttestClaim[];
 }
 
 /** One recorded owner answer: the question it settles and the choice the owner made. */
@@ -248,6 +251,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...ownerPickLines(input.ownerPicks ?? []),
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
     CI_POLICY_RULE,
+    ...attestRule(input.attestClaims ?? []),
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
     ...convergenceLines(input.convergence),

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a second markers file mentions newestSeq",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "such a step writes no marker. */",
+      "replace": "such a step writes no marker; newestSeq. */",
+      "kills": [
+        "lets only event-log/, markers/pins.ts and tests mention readEvents, headSeq or newestSeq"
+      ]
+    },
+    {
+      "name": "a second markers file mentions headSeq",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "such a step writes no marker. */",
+      "replace": "such a step writes no marker; headSeq. */",
+      "kills": [
+        "lets only event-log/, markers/pins.ts and tests mention readEvents, headSeq or newestSeq"
+      ]
+    }
+  ]
+}

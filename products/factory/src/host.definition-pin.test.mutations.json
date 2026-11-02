@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the factory registers its workflows pinned to the run function's source",
+      "file": "products/factory/src/host.ts",
+      "find": "{ abandonsOrphan, strictReplay: true }",
+      "replace": "{ abandonsOrphan, strictReplay: true, version: definition.run.toString() }",
+      "kills": [
+        "the definitionVersion pin stays off a deploy that changes a workflow's body under the same name parks no run",
+        "the definitionVersion pin stays off the factory registers its workflows unpinned"
+      ]
+    }
+  ]
+}
