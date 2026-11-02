@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a landing after the list completed closes the task",
+      "file": "products/factory/src/shepherd/cleanup.ts",
+      "find": "!lastSlice && completedBefore(slicing, landingLine(slice, landing)) ? LANDED_BEFORE_THIS_PR : heldOpenBy(slicing, lastSlice)",
+      "replace": "heldOpenBy(slicing, lastSlice)",
+      "kills": [
+        "a task its slices do not finish stays open on a follow-up slice after every block slice merged, naming what holds it"
+      ]
+    },
+    {
+      "name": "a replayed landing counts itself as an earlier one",
+      "file": "products/factory/src/shepherd/held-open.ts",
+      "find": ".filter((line) => line !== landingLine)",
+      "replace": "",
+      "kills": [
+        "a task its slices do not finish closes on the slice that completes the block, and on the replay of that landing"
+      ]
+    },
+    {
+      "name": "--last-slice with no slice name stops at a finished list",
+      "file": "products/factory/src/shepherd/cleanup.ts",
+      "find": "heldBy === undefined || (lastSlice && heldBy === ALL_SLICES_LANDED)",
+      "replace": "heldBy === undefined",
+      "kills": [
+        "a task its slices do not finish closes on a --last-slice PR that names no slice once every block slice merged"
+      ]
+    },
+    {
+      "name": "a hold tag does not hold",
+      "file": "products/factory/src/shepherd/held-open.ts",
+      "find": "if (hold !== undefined) return `it is tagged ${hold}`;",
+      "replace": "",
+      "kills": [
+        "a task tagged hold:<reason> stays open when the slice that completes its block merges",
+        "a task tagged hold:<reason> stays open when a --last-slice PR merges"
+      ]
+    }
+  ]
+}

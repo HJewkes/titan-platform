@@ -11,16 +11,28 @@ const PARENTHETICAL = /\([^)]*\)/g;
 const DESCRIBED_ITEM = /^(S\d+[a-z]?)\s+(?!(?:S\d|done\b|landed\b|merged\b|left\b|open\b|pending\b|next\b|queued\b|blocked\b|parallel\b|and\b|or\b|then\b|can\b|is\b|are\b))\S/;
 const MOVED = new RegExp(String.raw`\b(${LIST}) (?:was |were |is |are )?(?:moved|left|handed|reassigned) to (?:[\w-]+/)?[A-Z][A-Z0-9]*-\d+`, "g");
 const SHEPHERD_HOLD_LINE = /task left open:/;
+const S_LABEL = /^S\d/;
+const NAMES_A_SLICE = /(?:^|[.;:(]\s*|\n|\b[Ss]lices?\s)$/;
 
-/** The slices a plan without a burndown-slices block lists: its slice headings, or failing those the task's notes. One heading is a section about a slice, not a list. */
+/**
+ * The slices a plan without a burndown-slices block lists: its slice headings, or failing those the task's notes. One heading
+ * is a section about a slice, not a list. A notes declaration sharing a heading's label re-plans that list and extends it;
+ * one sharing none is about something else.
+ */
 export function listedSlices(plan: string | undefined, notes: string): string[] {
   const headed = unique(plan === undefined ? [] : [...plan.matchAll(SLICE_HEADING)].flatMap((match) => match[1] ?? match[2] ?? match[3] ?? []));
-  return headed.length > 1 ? headed : notedSlices(notes);
+  const noted = notedSlices(notes);
+  if (headed.length <= 1) return noted;
+  return noted.some((label) => headed.includes(label)) ? unique([...headed, ...noted]) : headed;
 }
 
-/** Slices the notes hand to another task; that task owns them, so they cannot hold this one open. */
+/**
+ * Slices the notes hand to another task; that task owns them, so they cannot hold this one open. A bare label must open
+ * its clause or follow the word slice, since after any other word it counts that word's thing, as in "Phase 2".
+ */
 export function movedSlices(notes: string): Set<string> {
-  return new Set([...notes.matchAll(MOVED)].flatMap((match) => labelsOf(match[1]!)));
+  const named = [...notes.matchAll(MOVED)].filter((match) => S_LABEL.test(match[1]!) || NAMES_A_SLICE.test(notes.slice(0, match.index)));
+  return new Set(named.flatMap((match) => labelsOf(match[1]!)));
 }
 
 /**
