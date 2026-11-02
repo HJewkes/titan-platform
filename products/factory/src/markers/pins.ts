@@ -11,10 +11,10 @@ export interface PinSources {
   treeOf?: (commit: string) => Promise<string | undefined>;
 }
 
-export type Pin = { pinClass: PinClass; pin: string; pinSeq?: number; expiresAt?: string } | { unpinnable: string };
+type Pin = { pinClass: PinClass; pin: string; pinSeq?: number; expiresAt?: string } | { unpinnable: string };
 
 /** The marker item key, matching the epoch store's key and the event log's PR subject. */
-export const itemKey = (item: PrKey): string => `${item.repo.toLowerCase()}#${item.pr}`;
+const itemKey = (item: PrKey): string => `${item.repo.toLowerCase()}#${item.pr}`;
 
 /** The pin `fact` takes for `item` now (TP-3107 plan §2); an unpinnable fact is ABSENT, with the reason. */
 export async function pinFor(fact: string, item: PrKey, sources: PinSources, now: string): Promise<Pin> {
