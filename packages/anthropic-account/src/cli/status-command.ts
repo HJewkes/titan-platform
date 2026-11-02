@@ -52,7 +52,7 @@ function textLine(status: ProfileStatus): string {
   return `${printableLabel(status.profile.label)}: login ${login}; ${usageText(status.usage)}`;
 }
 
-export const STATUS_SCHEMA = 2;
+const STATUS_SCHEMA = 2;
 
 // Every string here may come from another writer's file or a directory name, so each is
 // narrowed or redacted; the identity is two account ids, never a token.
