@@ -5,7 +5,10 @@ import { frozenTouches, oldPathVerdict, readExited, type OldPathVerdict, type Ta
 
 const DEFAULT_TIMEOUT_MS = 3000;
 
-const INITIATIVE_BY_PREFIX: Record<string, string> = { TP: "titan-platform", CC: "claude-channels", TD: "titan-design" };
+const INITIATIVE_BY_PREFIX = new Map([ ["TP", "titan-platform"],
+  ["CC", "claude-channels"],
+  ["TD", "titan-design"],
+]);
 const BARE_ID = /^(TP|CC|TD)-\d+$/;
 
 /** The slice of active-work's command table this reader calls. */
@@ -18,14 +21,14 @@ export interface TaskTagsPort {
   tags(initiative: string, id: string): Promise<string[] | undefined>;
 }
 
-export type OldPathJudgment = OldPathVerdict & { kind: string };
+type OldPathJudgment = OldPathVerdict & { kind: string };
 
 /** `<initiative>/<ID>` as given, or a bare TP/CC/TD id resolved to its initiative; any other name is no task. */
 export function taskRef(task: string): { initiative: string; id: string } | undefined {
   const slash = task.indexOf("/");
   if (slash > 0 && slash < task.length - 1) return { initiative: task.slice(0, slash), id: task.slice(slash + 1) };
-  const prefix = BARE_ID.exec(task)?.[1];
-  return prefix === undefined ? undefined : { initiative: INITIATIVE_BY_PREFIX[prefix] as string, id: task };
+  const initiative = INITIATIVE_BY_PREFIX.get(BARE_ID.exec(task)?.[1] ?? "");
+  return initiative === undefined ? undefined : { initiative, id: task };
 }
 
 /** One task's tags over the active-work loopback rpc; it has no `task.show`, so the initiative's list is filtered by id. */

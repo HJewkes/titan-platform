@@ -11,8 +11,8 @@
     {
       "name": "CC maps to titan-platform",
       "file": "products/factory/src/old-path/task-tags.ts",
-      "find": "CC: \"claude-channels\"",
-      "replace": "CC: \"titan-platform\"",
+      "find": "[\"CC\", \"claude-channels\"]",
+      "replace": "[\"CC\", \"titan-platform\"]",
       "kills": ["a bare TP id resolves to titan-platform, CC to claude-channels and TD to titan-design; an unprefixed name is no task"]
     },
     {
