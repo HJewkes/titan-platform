@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an author is matched by agent id only",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "author.agentId === row.agentId || author.name === row.name",
+      "replace": "author.agentId === row.agentId",
+      "kills": ["independentOfRun refuses an agent named among the run's authors, by id or by name"]
+    },
+    {
+      "name": "the recorded authors are not read",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (authors.some((author) => author.agentId === row.agentId || author.name === row.name)) return false;",
+      "replace": "if (authors.length < 0) return false;",
+      "kills": ["independentOfRun refuses an agent named among the run's authors, by id or by name"]
+    }
+  ]
+}
