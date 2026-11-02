@@ -113,5 +113,6 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
 export const DROPPED_STEPS: readonly string[] = [
   "audit-inventory-data", "audit-load", "await-new-head", "base-check", "base-wait", "bs-await-land", "bs-plan", "ci-wait", "land-rules",
   "merge-settle", "sh-base-wait", "sh-conflict-check", "sh-fix-proof", "sh-flake-check", "sh-held-wait", "sh-main-ci", "sh-merge-main",
-  "sh-observe", "sh-review-stop", "sh-send-back-offer", "sh-stale-base", "sh-visual-accept-offer", "snapshot", "update-backoff",
+  "sh-observe", "sh-review-stop", "sh-send-back-offer", "sh-stale-base", "sh-stale-green", "sh-visual-accept-offer", "snapshot",
+  "update-backoff",
 ];
