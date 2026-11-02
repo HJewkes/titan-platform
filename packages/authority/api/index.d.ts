@@ -5,7 +5,7 @@ declare const ACTOR_CLASSES: readonly ["owner-terminal", "owner-remote", "coordi
 declare const RESOLVER_CLASSES: readonly ["owner-terminal", "owner-remote"];
 /** The only classes a gate's rule may name as a delegate resolver; anything a delegate answers still goes through `authorize`. */
 declare const DELEGATE_RESOLVER_CLASSES: readonly ["coordinator"];
-declare const ACTION_CLASSES: readonly ["merge", "release", "secret-read", "untrusted-ingest", "private-to-public", "private-egress", "hardware-actuate", "hardware-stop", "destructive-remote", "destructive-local", "destructive-foreign", "agent-retire", "spawn", "spend-over-cap", "authority-config", "human-verb", "answer-question"];
+declare const ACTION_CLASSES: readonly ["merge", "release", "secret-read", "untrusted-ingest", "private-to-public", "private-egress", "hardware-actuate", "hardware-stop", "destructive-remote", "destructive-local", "destructive-foreign", "agent-retire", "spawn", "spend-over-cap", "authority-config", "human-verb", "answer-question", "pr-close", "deploy-resume", "fleet-config"];
 declare const VERDICTS: readonly ["allow", "gate", "deny"];
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 declare const EVIDENCE_KINDS: readonly ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"];
@@ -119,6 +119,9 @@ declare const ruleSchema: z.ZodObject<{
         "authority-config": "authority-config";
         "human-verb": "human-verb";
         "answer-question": "answer-question";
+        "pr-close": "pr-close";
+        "deploy-resume": "deploy-resume";
+        "fleet-config": "fleet-config";
     }>;
     actor: z.ZodEnum<{
         "owner-terminal": "owner-terminal";

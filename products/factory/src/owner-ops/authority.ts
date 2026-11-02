@@ -1,17 +1,14 @@
 import { DEFAULT_TABLE, evaluate, type ActionClass, type Decision, type PolicyTable } from "@titan-design/authority";
 import type { OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 
-/**
- * The authority action each op is, as data. Until the table gains `pr-close`, `fleet-config` and `deploy-resume` (TP-3939 S0),
- * those ops sit under the nearest existing class, each of which denies owner-remote, so the console can never run them early.
- */
+/** The authority action each op is, as data. */
 const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "resolve-gate": "merge",
   "release-hold": "human-verb",
   "merge-at-head": "merge",
-  "close-pr": "destructive-remote",
-  "factory-config-set": "authority-config",
-  "deploy-pause-clear": "release",
+  "close-pr": "pr-close",
+  "factory-config-set": "fleet-config",
+  "deploy-pause-clear": "deploy-resume",
   "retire-agent": "agent-retire",
 });
 

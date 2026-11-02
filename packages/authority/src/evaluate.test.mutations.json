@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a coordinator may close a pull request",
+      "file": "packages/authority/src/table.json",
+      "find": "\"id\": \"PRC-CO\",\n      \"action\": \"pr-close\",\n      \"actor\": \"coordinator\",\n      \"verdict\": \"deny\"",
+      "replace": "\"id\": \"PRC-CO\",\n      \"action\": \"pr-close\",\n      \"actor\": \"coordinator\",\n      \"verdict\": \"allow\"",
+      "kills": [
+        "the approved table holds 54 allow, 9 gate and 82 deny rows",
+        "the approved table denies exactly the hand-listed rows",
+        "the approved table refuses PRC-CO",
+        "the console owner-op rows refuses pr-close to every seat, tainted or not"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "totality skips the pr-close action",
+      "file": "packages/authority/src/schema.ts",
+      "find": "  for (const action of ACTION_CLASSES) {",
+      "replace": "  for (const action of ACTION_CLASSES.filter((candidate) => candidate !== \"pr-close\")) {",
+      "kills": [
+        "policyTableSchema rejects a table missing any one owner-op row"
+      ]
+    }
+  ]
+}
