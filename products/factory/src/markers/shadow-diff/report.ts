@@ -37,7 +37,8 @@ const bump = (counts: Record<string, number>, key: string): void => {
 };
 
 function tally(rows: readonly ShadowLogRow[]): Record<GatedFamily, FamilyCounts> {
-  const counts = Object.fromEntries(GATED_FAMILIES.map((family) => [family, { classes: {}, causes: {}, materialOnly: 0 }])) as Record<GatedFamily, FamilyCounts>;
+  const empty = (): FamilyCounts => ({ classes: {}, causes: {}, materialOnly: 0 });
+  const counts: Record<GatedFamily, FamilyCounts> = { tree: empty(), diff: empty(), observed: empty() };
   for (const row of rows) {
     if (!inFamily(row) || row.class === null) continue;
     const family = counts[row.family];
@@ -93,12 +94,9 @@ export function shadowGate(report: ShadowReport, options: { windowMs: number; no
   const reasons: string[] = [];
   const first = report.header.firstEntryEnd === null ? undefined : Date.parse(report.header.firstEntryEnd);
   if (first === undefined || options.now - first < options.windowMs) reasons.push("coverage: the shadow has not been on for the full window");
-  const families = {} as Record<GatedFamily, FamilyStatus>;
+  const families: Record<GatedFamily, FamilyStatus> = { tree: "vacuous", diff: "vacuous", observed: "vacuous" };
   for (const family of GATED_FAMILIES) {
-    if (!options.factFamilies.has(family)) {
-      families[family] = "vacuous";
-      continue;
-    }
+    if (!options.factFamilies.has(family)) continue;
     const blockers = report.blocking.filter((row) => row.family === family);
     const empty = sum(report.counts[family].classes) === 0;
     families[family] = blockers.length > 0 || empty ? "blocked" : "pass";
