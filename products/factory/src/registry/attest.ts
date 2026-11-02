@@ -1,12 +1,14 @@
 import type { ReviewerAgent } from "@titan-design/review-panel";
-import { z } from "zod";
 
-/** One row of `attestations.json`: the PR claims `step`'s behaviour is unchanged at import closure `closure`. */
-export const attestationSchema = z.object({ step: z.string().min(1), closure: z.string().min(1), pr: z.number().int().positive() });
-export type Attestation = z.infer<typeof attestationSchema>;
+/** One row of `attestations.json`, the shape of the closure check's own: the PR claims `step`'s behaviour is unchanged at import closure `closure`. */
+export interface Attestation {
+  step: string;
+  closure: string;
+  pr: number;
+}
 
 /** A step and the first 12 hex of the closure a reviewer's `Attests:` line names. */
-export interface AttestToken {
+interface AttestToken {
   step: string;
   closure12: string;
 }
@@ -31,15 +33,15 @@ export interface JudgeInput {
   separate: (a: ReviewerAgent, b: ReviewerAgent) => boolean;
 }
 
-export type UnmetReason = "no-meeter" | "meeter-is-author" | "adversary-missing" | "adversary-same-lineage" | "closure-mismatch" | "carried";
+type UnmetReason = "no-meeter" | "meeter-is-author" | "adversary-missing" | "adversary-same-lineage" | "closure-mismatch" | "carried";
 
-export interface Met {
+interface Met {
   step: string;
   closure: string;
   meeters: ReviewerAgent[];
 }
 
-export interface Unmet {
+interface Unmet {
   step: string;
   closure: string;
   why: UnmetReason;
@@ -48,7 +50,7 @@ export interface Unmet {
 const TOKEN = /^([a-z0-9-]+)@([0-9a-f]{12})$/;
 
 /** Well-formed tokens only, the first per step; a malformed token names nothing. */
-export function parseAttestTokens(tokens: readonly string[]): AttestToken[] {
+function parseAttestTokens(tokens: readonly string[]): AttestToken[] {
   const parsed: AttestToken[] = [];
   for (const token of tokens) {
     const match = TOKEN.exec(token.trim());
