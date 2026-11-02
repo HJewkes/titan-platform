@@ -42,7 +42,7 @@ describe("factory step census", () => {
 
   it("no registry entry is pending review", () => {
     const reviewed: StepEntry = { ...shepherdSteps[0]! };
-    const unreviewed = Object.assign(reviewed, { effect: { class: "pending", reason: "not yet reviewed" } as object });
+    const unreviewed = Object.assign(reviewed, { effect: { class: "pending", reason: "not yet reviewed" } });
     expect(entryProblems(unreviewed)).toMatch(/class/);
     expect(factoryRegistry.entries.filter((entry) => entryProblems(entry) !== undefined)).toEqual([]);
   });
