@@ -22,7 +22,9 @@ interface ShadowSite {
 export type ShadowEvent =
   | (ShadowSite & { kind: "verdict"; verdict: Verdict; wouldFastForward: boolean; unreplayable: string[] })
   | (ShadowSite & { kind: "shadow-error"; error: string })
-  | (ShadowSite & { kind: "call-site-orphan"; marker: MarkerRow; callSite: string; failClosed: true });
+  | (ShadowSite & { kind: "call-site-orphan"; marker: MarkerRow; callSite: string; failClosed: true })
+  | (ShadowSite & { kind: "not-after-skip"; notAfter: string })
+  | (ShadowSite & { kind: "advisory" });
 
 export type ShadowSink = (event: ShadowEvent) => void;
 
@@ -42,7 +44,7 @@ interface ShadowScope {
 }
 
 /** A static call-site id: the workflow and the declared step (family) id, never the iteration. */
-const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `${definition.name}/${declarationFor(definition.steps, stepId)?.id ?? stepId}`;
+export const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `${definition.name}/${declarationFor(definition.steps, stepId)?.id ?? stepId}`;
 
 interface Prepared {
   pin: Exclude<Pin, { unpinnable: string }>;
@@ -92,6 +94,34 @@ async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: Obse
   const result = await live();
   if (prepared) await swallow(deps, site, () => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
   return result;
+}
+
+/** What the shadow does when a `notAfter` step is skipped or runs live (C28). */
+export interface NotAfterShadow {
+  skipped(stepId: string, notAfter: string): void;
+  live(stepId: string, notAfter: string): Promise<void>;
+}
+
+/**
+ * A skip is a visit, so its call site is never an orphan, and one digest line. A live run of a step whose `notAfter` fact
+ * already holds a valid marker is what a marker runner would only advise on, never block.
+ */
+export function notAfterShadow(ctx: WorkflowContext, deps: ShadowDeps, scope: ShadowScope): NotAfterShadow {
+  const siteOf = (stepId: string, fact: string): ShadowSite => ({ runId: ctx.runId, stepId, fact, memoKey: "" });
+  return {
+    skipped: (stepId, notAfter) => {
+      visit(scope.log, callSiteOf(scope.definition, stepId));
+      void swallow(deps, siteOf(stepId, notAfter), () => deps.sink({ ...siteOf(stepId, notAfter), kind: "not-after-skip", notAfter }));
+    },
+    live: async (stepId, notAfter) => {
+      const item = itemOf(ctx);
+      if (!item) return;
+      const validity: ValidityContext = { registry: deps.registry, sources: deps, now: deps.now() };
+      await swallow(deps, siteOf(stepId, notAfter), async () => {
+        if ((await evaluateFact(validity, { item, fact: notAfter })).status === "valid") deps.sink({ ...siteOf(stepId, notAfter), kind: "advisory" });
+      });
+    },
+  };
 }
 
 /** Runs without a repo and PR param (audit, autoresearch) have no item, so they write no marker (O2). */

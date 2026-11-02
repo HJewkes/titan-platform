@@ -6,7 +6,7 @@ import { entryFor } from "../registry/registry.js";
 import { markerHistory, type MarkerRow } from "./marker-store.js";
 import { findOrphans, type EntryLog } from "./orphan-trap.js";
 import { itemKey } from "./pins.js";
-import { itemOf, shadowContext, swallow, type ShadowDeps } from "./shadow.js";
+import { itemOf, notAfterShadow, shadowContext, swallow, type NotAfterShadow, type ShadowDeps } from "./shadow.js";
 import { evaluateFact, type Verdict } from "./validity.js";
 
 interface EntryDeps extends ShadowDeps {
@@ -19,6 +19,7 @@ interface EntryDeps extends ShadowDeps {
 
 interface Entry {
   ctx: WorkflowContext;
+  notAfter: NotAfterShadow;
   /** Runs the orphan trap once the drive settles; it never rejects, retries or re-drives. */
   end(): Promise<void>;
 }
@@ -28,7 +29,7 @@ export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition,
   const shadowed = shadowContext(ctx, deps, { definition, log });
   // An entry-level failure names no step.
   const site = { runId: ctx.runId, stepId: "", fact: "", memoKey: "" };
-  return { ctx: shadowed, end: async () => void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log))) };
+  return { ctx: shadowed, notAfter: notAfterShadow(ctx, deps, { definition, log }), end: async () => void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log))) };
 }
 
 /** O3: before M6 the requirement set is the facts the workflow's declared fact steps meet. */

@@ -35,4 +35,9 @@ export const NOT_EVENT: readonly NotEvent[] = [
     title: "A17: a recipe changed to skip ci-wait sends one call-site-orphan to the sink and the run completes on the blob",
     reason: "TP-3108 S5: asserts the shadow's orphan trap over a recorded replay, with no GitHub event input",
   },
+  {
+    file: "host.c28.test.ts",
+    title: "A17: an in-flight run past an inserted step finishes",
+    reason: "TP-3108 S6: asserts a recorded replay past an inserted notAfter step, with no GitHub event input",
+  },
 ];

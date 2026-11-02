@@ -16,6 +16,7 @@ import type { PinSources } from "./markers/pins.js";
 import { beginEntry } from "./markers/entry.js";
 import type { ShadowSink } from "./markers/shadow.js";
 import { mergeLogMigration } from "./merge-log.js";
+import { runnerContext } from "./runner/not-after.js";
 import { reconcilerCursorMigration } from "./reconciler/cursor.js";
 import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
@@ -38,7 +39,7 @@ import { composeRoutes } from "./compose-routes.js";
 import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
-import { assertDistinctStepIds, assertRegistered, dispatchStepIds, guardedContext, type RegisteredSteps, type WorkflowDefinition } from "./definition.js";
+import { assertDistinctStepIds, assertNotAfter, assertRegistered, dispatchStepIds, guardedContext, type RegisteredSteps, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -175,6 +176,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     assertDistinctStepIds(definition);
     const registry = registered.has(definition) ? options.registry : undefined;
     if (registry) assertRegistered(definition, registry);
+    assertNotAfter(definition, registry);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
     runtime.register(definition.name, (ctx) => drive(definition, guardedContext(ctx, definition, registry)), { abandonsOrphan, strictReplay: true });
   }
@@ -189,7 +191,7 @@ type Drive = (definition: WorkflowDefinition, ctx: WorkflowContext) => Promise<v
  */
 function shadowDriver(db: Db, options: FactoryHostOptions, runtime: WorkflowRuntime): Drive {
   const shadow = options.markerShadow;
-  if (!shadow) return (definition, ctx) => definition.run(ctx);
+  if (!shadow) return (definition, ctx) => definition.run(runnerContext(ctx, definition));
   const blobs = { blobDir: join(dirname(options.dbPath), "marker-blobs"), capabilities: new CapabilityVault(options.capabilities ?? {}) };
   const now = (): string => new Date((options.now ?? Date.now)()).toISOString();
   const recordedOf = (runId: string): string[] => Object.keys(runtime.status(runId)?.stepResults ?? {});
@@ -197,7 +199,7 @@ function shadowDriver(db: Db, options: FactoryHostOptions, runtime: WorkflowRunt
   return async (definition, ctx) => {
     const entry = beginEntry(ctx, definition, deps);
     try {
-      await definition.run(entry.ctx);
+      await definition.run(runnerContext(entry.ctx, definition, entry.notAfter));
     } finally {
       await entry.end();
     }
