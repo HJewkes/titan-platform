@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { PrFile } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { findSunsetManifest } from "../dispatch/old-paths.js";
 import { A1_FROZEN_ROOTS, carveOutOf, frozenTouches, oldPathVerdict, readExited } from "./freeze-rule.js";
 
+const Row = z.object({ repo: z.string(), path: z.string() });
+const Manifest = z.object({ roots: z.array(Row), defaults: z.array(Row) });
 const REPO = "acme/titan-platform";
 const SHEPHERD_FILE = "products/factory/src/shepherd/example.ts";
 const modified = (path: string): PrFile => ({ path, status: "modified" });
@@ -103,10 +106,7 @@ describe("old-path freeze rule", () => {
   it("every frozen root is a root or a default path of the checked-in sunset manifest", () => {
     const manifestPath = findSunsetManifest();
     expect(manifestPath).toBeDefined();
-    const manifest = JSON.parse(readFileSync(manifestPath ?? "", "utf8")) as {
-      roots: { repo: string; path: string }[];
-      defaults: { repo: string; path: string }[];
-    };
+    const manifest = Manifest.parse(JSON.parse(readFileSync(manifestPath ?? "", "utf8")));
     const known = [...manifest.roots, ...manifest.defaults].map((row) => `${row.repo}:${row.path}`);
 
     for (const root of A1_FROZEN_ROOTS) expect(known).toContain(`${root.repo}:${root.path}`);
