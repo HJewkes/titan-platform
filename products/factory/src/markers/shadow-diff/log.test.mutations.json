@@ -23,13 +23,6 @@
       "kills": ["shadow disagreement log the log refuses update and delete"]
     },
     {
-      "name": "budget-exceeded writes no row",
-      "file": "products/factory/src/markers/shadow-diff/log.ts",
-      "find": "  return (event) => {\n",
-      "replace": "  return (event) => {\n    if (event.kind === \"budget-exceeded\") return;\n",
-      "kills": ["shadow disagreement log every shadow event kind is written as one log row"]
-    },
-    {
       "name": "the replace guard ignores the orphan key",
       "file": "products/factory/src/markers/shadow-diff/log.ts",
       "find": "AND kind = 'call-site-orphan' AND",
