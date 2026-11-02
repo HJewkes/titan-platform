@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the attestations line drops the meeters",
+      "file": "products/factory/src/digest/render-md.ts",
+      "find": "; ${meeters(line)})`;",
+      "replace": ")`;",
+      "kills": [
+        "the attestations line names step, closure, PR and meeters in one line"
+      ]
+    }
+  ]
+}

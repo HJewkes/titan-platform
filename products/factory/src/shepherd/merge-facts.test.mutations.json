@@ -28,6 +28,13 @@
       "find": "githubPaths.slice(0, MAX_CI_POLICY_FILES).map(",
       "replace": "githubPaths.map(",
       "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters"]
+    },
+    {
+      "name": "the authority allow is reached before the attestation gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (unmet !== undefined) return { outcome: \"gate\", rule: guardRule(\"attest-unmet\"), reason: unmet };",
+      "replace": "void unmet;",
+      "kills": ["the attestation guard a head that claims an attestation with no Attests line gates as attest-unmet", "the attestation guard an attestation the implementer reviewed gates as attest-unmet: meeter-is-author"]
     }
   ]
 }
