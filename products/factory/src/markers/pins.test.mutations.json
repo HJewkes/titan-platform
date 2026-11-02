@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the tree pin drops its epoch",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "pin: `${stored.head}@e${stored.epoch}`",
+      "replace": "pin: stored.head",
+      "kills": ["a tree pin carries the epoch, so A then B then A gives three pins"]
+    },
+    {
+      "name": "an ambiguous diff pin is used as exact",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "if (diff.kind === \"ambiguous\") return",
+      "replace": "if (false) return",
+      "kills": ["an ambiguous diff pin is unpinnable"]
+    },
+    {
+      "name": "newestSeq ignores the subject",
+      "file": "products/factory/src/event-log/event-log.ts",
+      "find": "FROM factory_event WHERE subject = ? AND kind IN",
+      "replace": "FROM factory_event WHERE (subject = ? OR 1) AND kind IN",
+      "kills": ["an observed pin moves when an event of a producer kind for that subject is appended, and not for another subject or kind"]
+    },
+    {
+      "name": "the TTL drops its minutes",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "((hours! * 60 + minutes!) * 60 + seconds!)",
+      "replace": "((hours! * 60) * 60 + seconds!)",
+      "kills": ["a TTL fact is pinned `ttl` with expires_at five minutes after the write for hold"]
+    },
+    {
+      "name": "a failed merge result pins landed",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "WHERE kind = 'result' AND outcome = 'merged' AND",
+      "replace": "WHERE kind = 'result' AND",
+      "kills": ["a landed pin names the merge commit's tree and the merge_op row"]
+    }
+  ]
+}
