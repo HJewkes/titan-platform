@@ -4,9 +4,9 @@ import { factRule, type PinClass } from "../../registry/pin-classes.js";
 import { projectionDigest } from "../projection.js";
 import type { Verdict } from "../validity.js";
 
-export type CompareClass = "hit" | "false-hit" | "miss" | "miss-same-output" | "unmarked";
+type CompareClass = "hit" | "false-hit" | "miss" | "miss-same-output" | "unmarked";
 
-export interface CompareRow {
+interface CompareRow {
   family: PinClass;
   class: CompareClass;
   /** The verdict was `valid`. */
