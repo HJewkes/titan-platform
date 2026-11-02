@@ -8,12 +8,13 @@ import { logSink } from "./markers/shadow-diff/log.js";
 import type { ShadowSink } from "./markers/shadow.js";
 
 type MarkerShadow = NonNullable<FactoryHostOptions["markerShadow"]>;
+type SeatClone = (repo: string) => string | undefined;
 
 /**
  * The host's marker shadow as serve runs it: undefined, so no shadow at all, unless `markers.shadow.enabled`. `db` is read
  * on the first event, because the host that opens the database also takes these options.
  */
-export function markerShadowOptions(config: MarkersConfig | undefined, db: () => Db, stateDir: string, clones: (repo: string) => string | undefined, now: () => number = Date.now): MarkerShadow | undefined {
+export function markerShadowOptions(config: MarkersConfig | undefined, db: () => Db, stateDir: string, clones: SeatClone, now: () => number = Date.now): MarkerShadow | undefined {
   if (config?.shadow.enabled !== true) return undefined;
   const mirrorOf = markerMirrors(stateDir, clones);
   const diffPin = diffPinSource(mirrorOf, { now });

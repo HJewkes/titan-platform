@@ -73,7 +73,7 @@ async function serveAndDrive(config: object, head: string): Promise<{ db: Db; ru
     port: 0,
     logger: silentLogger,
     github: { status: () => "ok", refresh: async () => undefined },
-    build: { sha: "0".repeat(40), behindMain: { status: () => undefined, refresh: async () => undefined } },
+    build: { sha: "0".repeat(40), behindMain: { status: () => 0, refresh: async () => undefined } },
   });
   servers.push(server);
   advanceEpoch(server.host.db, { ...ITEM, expectedEpoch: 0, head, by: "bootstrap", at: NOW });
