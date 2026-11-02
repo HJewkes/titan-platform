@@ -248,6 +248,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
   Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
   `active-work task edit <slug> <id> status open`.
+- A slice list says nothing of a task's other `done_when` clauses, so two structural checks keep such a task open
+  (TP-4714). Under `keep`, a `--slice` PR closes its task only when it completes the list: once every slice had landed
+  before the PR, only `--last-slice` closes it. A task tag `hold:<reason>` holds against every merge in either mode,
+  `--last-slice` included. Either way the task's notes gain `task left open:` and what holds it.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -1236,7 +1240,7 @@ Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBr
 
 ## Step registry: `src/registry/`
 
-`factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. A read not yet reviewed is `pending` and parks like an effect; `restart-contract.test.ts` derives its list of parking steps from the registry. `census.test.ts` fails when a declared step has no entry.
+`factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
 
 ## Land core: `src/workflows/land.ts`
 

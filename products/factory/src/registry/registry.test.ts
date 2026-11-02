@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineStep, type BaseEntry, type FactEntry, type StepEntry } from "./entry.js";
+import { openFactoryHost } from "../host.js";
+import { defineWorkflow } from "../definition.js";
 import { createRegistry, entryFor, pinClassOf, schemaHash } from "./registry.js";
-import { abandonsOrphan } from "./steps/index.js";
+import { abandonsOrphan, factoryRegistry } from "./steps/index.js";
 
 function base(overrides: Partial<BaseEntry> = {}): BaseEntry {
   return defineStep({ name: "check-ci", op: "seed", kind: "software", effect: { class: "read" }, callSites: ["check-ci"], version: { bump: 0 }, ...overrides });
@@ -89,5 +91,14 @@ describe("abandonsOrphan", () => {
 
   it("refuses steps that write, and ids no entry covers", () => {
     expect(["merge:r4:0", "update-branch:r3:16", "rerun:2", "approve-merge", "sh-landed", "ci-wait-long:1"].filter(abandonsOrphan)).toEqual([]);
+  });
+});
+
+describe("registered recipes", () => {
+  it("A17: recipes call only registered steps: a workflow declaring an unregistered step does not open", () => {
+    const unregistered = defineWorkflow({ name: "stray", steps: [{ id: "invented-step", kind: "seed" }], run: async () => undefined });
+    const routes = Object.assign([], { database: { extraMigrations: [], bind: () => () => undefined } });
+
+    expect(() => openFactoryHost({ dbPath: ":memory:", workflows: [unregistered], routes, registry: factoryRegistry })).toThrow(/stray.*no registry entry: invented-step/);
   });
 });
