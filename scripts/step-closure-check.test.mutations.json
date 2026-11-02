@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the base lock is read from the working tree",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "JSON.parse(git([\"show\", `${base}:${LOCK_PATH}`]))",
+      "replace": "JSON.parse(readFileSync(join(ROOT, LOCK_PATH), \"utf8\"))",
+      "kills": ["the check reads the base lock from origin/main, not the working tree"]
+    }
+  ]
+}
