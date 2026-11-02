@@ -45,7 +45,7 @@ function tokenFile(mode: number): string {
 function botProbe(seen: BotAccess[]) {
   return defineWorkflow({
     name: "bot-probe",
-    steps: [],
+    steps: [{ id: "bot", kind: "seed" }],
     run: async (ctx) => {
       await ctx.seed("bot", async () => {
         seen.push(botAccess(ctx));

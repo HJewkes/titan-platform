@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every call counts as inside a step body, as if the store wrapped the whole run",
+      "file": "packages/workflow/src/capabilities.ts",
+      "find": "  return stepBody.getStore() !== undefined;",
+      "replace": "  return true;",
+      "kills": [
+        "ctx.capability is scoped to a step body a workflow body that asks for a capability outside a step body is refused, naming the capability and not the secret",
+        "ctx.capability is scoped to a step body a seed body gets the handle, and a capability asked after the seed returns is refused",
+        "ctx.capability is scoped to a step body two seeds running at once under Promise.all each get the handle, and the recipe between them does not"
+      ]
+    },
+    {
+      "name": "capability() drops the step-body check",
+      "file": "packages/workflow/src/context.ts",
+      "find": "    if (!inStepBody()) throw new CapabilityOutsideStepError(name);\n",
+      "replace": "",
+      "kills": [
+        "ctx.capability is scoped to a step body a workflow body that asks for a capability outside a step body is refused, naming the capability and not the secret",
+        "ctx.capability is scoped to a step body a seed body gets the handle, and a capability asked after the seed returns is refused",
+        "ctx.capability is scoped to a step body two seeds running at once under Promise.all each get the handle, and the recipe between them does not"
+      ]
+    },
+    {
+      "name": "the refusal carries the handle, and so the secret",
+      "file": "packages/workflow/src/context.ts",
+      "find": "throw new CapabilityOutsideStepError(name);",
+      "replace": "throw new CapabilityOutsideStepError(`${name} ${JSON.stringify((this.deps.capabilities ?? NO_CAPABILITIES).get(name))}`);",
+      "kills": [
+        "ctx.capability is scoped to a step body a workflow body that asks for a capability outside a step body is refused, naming the capability and not the secret"
+      ]
+    }
+  ]
+}
