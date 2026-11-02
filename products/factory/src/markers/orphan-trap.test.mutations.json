@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a site where the entry stopped counts as passed",
+      "file": "products/factory/src/markers/orphan-trap.ts",
+      "find": "log.reached > index",
+      "replace": "log.reached >= index",
+      "kills": ["findOrphans an entry that returns early, before the site, reports no orphan"]
+    },
+    {
+      "name": "the fact-in-requirement-set filter is dropped",
+      "file": "products/factory/src/markers/orphan-trap.ts",
+      "find": " && requirementSet.has(marker.fact)",
+      "replace": "",
+      "kills": ["findOrphans an invalid marker, or one whose fact is outside the requirement set, is not an orphan"]
+    }
+  ]
+}

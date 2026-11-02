@@ -130,11 +130,14 @@ A runtime can hold handles a step body needs but the record must never see, such
 
 ```ts
 const rt = new WorkflowRuntime({ ...options, capabilities: { "github-bot": { handle: client, secrets: [token] } } });
-// in a workflow
-const bot = ctx.capability("github-bot") as BotClient;
+// in a workflow: only a step body may ask for it
+await ctx.seed("label", async () => {
+  const bot = ctx.capability("github-bot") as BotClient;
+  return { data: { labelled: await bot.label(pr) } };
+});
 ```
 
-`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured.
+`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured, and throws `CapabilityOutsideStepError` (naming the capability, never a secret) when asked outside a step body: the workflow function between steps gets no handle.
 
 ## Authority steps
 
