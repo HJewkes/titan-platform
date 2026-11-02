@@ -22,6 +22,15 @@ export const OP_EFFECTS: OpEffects = Object.freeze({
   "deploy-pause-clear": clearPause,
 });
 
+/**
+ * A gate row names who must resolve it, and a console record is bytes any process on the account can write, so the record
+ * never stands in for the owner (TP-4491). A gated op runs only where its effect acts on no subject itself and hands the
+ * owner's answer to a gate that is enforced downstream: merge-at-head answers Shepherd's approve-merge gate, which `gate.ts`
+ * resolves under hitl's resolver rule and, on an owner-at-head row, the owner's signed presence. Every other gated op is
+ * refused until a presence proof bound to the op exists.
+ */
+const GATE_ENFORCED_DOWNSTREAM: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head"]);
+
 export interface OpDeps<C = OpContext> {
   effects: OpEffects<C>;
   ledger: OwnerOpsLedger;
@@ -29,12 +38,16 @@ export interface OpDeps<C = OpContext> {
   table?: PolicyTable;
 }
 
-/** The authority table decides first, so an op it denies owner-remote never reaches an effect or the ledger. */
+/** The authority table decides first, so an op it denies, or gates with no enforced resolver, never reaches an effect or the ledger. */
 export async function actOnOp<C>(actionId: string, read: OpRead, { effects, ledger, now, table }: OpDeps<C>, context: C): Promise<Outcome> {
   const { op } = read;
   const decision = opAuthority(op, table);
   if (decision.verdict === "deny") return refused("class", `a ${op.kind} op: ${decision.reason}`);
+  if (decision.verdict === "gate" && !GATE_ENFORCED_DOWNSTREAM.has(op.kind)) return refused("class", unresolvedGate(op.kind, decision.ruleId));
   const effect = effects[op.kind];
   if (effect === undefined) return refused("class", `a ${op.kind} op has no factory effect`);
   return runLogged(ledger, { actionId, op, now }, () => effect(actionId, read, context));
 }
+
+const unresolvedGate = (kind: OwnerOpKind, ruleId: string): string =>
+  `a ${kind} op: ${ruleId} gates it for the owner, and the console tap carries no owner presence bound to this op`;

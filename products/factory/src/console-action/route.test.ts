@@ -581,13 +581,14 @@ describe("POST /owner/console-action", () => {
       expect(ledgerWritten(w)).toBe(false);
     });
 
-    it("refuses with 403 class an op the factory has no effect for, logging nothing", async () => {
+    it("refuses with 403 class a close-pr record carrying no owner presence, leaving the PR open and logging nothing", async () => {
       const w = await world();
-      writeOp(w, { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on" });
+      writeOp(w, { kind: "close-pr", repo: REPO, pr: w.pr, headSha: H });
 
       const res = await post(w.server, { actionId: ACTION_ID });
 
-      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("no factory effect") }]);
+      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("PRC-OR gates it") }]);
+      expect(w.github.pr(w.pr).state).toBe("open");
       expect(ledgerWritten(w)).toBe(false);
     });
 

@@ -53,7 +53,24 @@ describe("actOnOp", () => {
     expect(ledger.entries).toEqual([]);
   });
 
-  it("runs the effect of an op the table gates for owner-remote, between a started and a done line", async () => {
+  // Kills: actOnOp refusing only a deny verdict, which lets any process on the account close a PR or clear a deploy pause.
+  it("refuses with class every op gated for the owner whose effect would act on the record's word alone, running nothing", async () => {
+    const effect = vi.fn<OpEffect<undefined>>();
+    const ledger = memoryLedger();
+    const ops: OwnerOp[] = [
+      { kind: "close-pr", repo: REPO, pr: 7, headSha: H },
+      { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
+      { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on" },
+    ];
+
+    const outcomes = await Promise.all(ops.map((op) => act(op, effect, ledger)));
+
+    expect(outcomes).toMatchObject(["PRC-OR", "DPR-OR", "FLC-OR"].map((ruleId) => ({ outcome: "refused", reason: "class", detail: expect.stringContaining(`${ruleId} gates it`) })));
+    expect(effect).not.toHaveBeenCalled();
+    expect(ledger.entries).toEqual([]);
+  });
+
+  it("runs the effect of a merge-at-head, whose gate the approve-merge gate enforces, between a started and a done line", async () => {
     const answer: Outcome = { outcome: "gone", reason: "synthetic" };
     const ledger = memoryLedger();
     const op: OwnerOp = { kind: "merge-at-head", repo: REPO, pr: 7, headSha: H };
