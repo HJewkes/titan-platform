@@ -7,6 +7,8 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
+import { attestJudge } from "./attest-evidence.js";
+import { briefClaimsAt } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitVerdictStep } from "./await-verdict-step.js";
 import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } from "./account-hold.js";
@@ -282,8 +284,8 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
   const holdContext = shape === "adversary" ? holdContextOf(deps, runId) : undefined;
-  const ciChecks = asked ? undefined : await ciChecksAt(deps.port, target.repo, target.pr, target.head);
-  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(convergence && { convergence, earlierFindings }), ...scopedBriefFields(scopedRereview), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
+  const [ciChecks, claims] = asked ? [undefined, {}] : await Promise.all([ciChecksAt(deps.port, target.repo, target.pr, target.head), briefClaimsAt(deps.port, target)]);
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, workflowCiProof, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(convergence && { convergence, earlierFindings }), ...scopedBriefFields(scopedRereview), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }), ...claims }, codewatch, questions);
   const outcome = asking && (await startReviewer(memberDispatch(wired, shape) ?? dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
   if (typeof outcome === "object") {
     await dropCheckout(deps, target, shape);
@@ -324,7 +326,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps.port, deps.store, wiring ?? {}) })),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
