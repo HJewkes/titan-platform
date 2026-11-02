@@ -11,6 +11,12 @@ export interface CliContext {
   now: () => number;
   // The uid that must own each credentials file. Defaults to this process's.
   uid?: number;
+  // install and uninstall only. Default process.platform.
+  platform?: NodeJS.Platform;
+  // Runs systemctl or launchctl; rejects on a non-zero exit. Tests pass a recorder.
+  exec?: (file: string, args: readonly string[]) => Promise<void>;
+  // Directory holding the shipped systemd units. Defaults to the package's own.
+  templateDir?: string;
   out: (line: string) => void;
   err: (line: string) => void;
 }
