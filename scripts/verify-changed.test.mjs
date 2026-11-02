@@ -5,6 +5,7 @@ import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
   describeOutcome,
+  failureSummary,
   locRuleFrom,
   locScope,
   locViolations,
@@ -169,7 +170,26 @@ describe("planCommands", () => {
     const step = vitestOf(plan);
     expect(describeOutcome(step, 0)).toEqual({ ok: true });
     expect(describeOutcome(step, 124).message).toMatch(/timed out after 600 s.*no test failed/);
-    expect(describeOutcome(step, 1).message).toBe(`${step.label} failed`);
+    expect(describeOutcome(step, 1).message).toBe(`${step.label} failed (exit status 1)`);
+  });
+
+  it("names the signal that killed a step, which has a null exit status", () => {
+    // Mutant caught: printing "exit status null" for a step the OOM killer or a signal stopped.
+    const step = { label: "lint:types", cmd: "node", scope: "packages/a,packages/b" };
+    expect(describeOutcome(step, null, "SIGKILL").message).toBe("lint:types failed (killed by SIGKILL, scope packages/a,packages/b)");
+  });
+
+  it("closes a failing run with one line naming every failed step", () => {
+    // Mutant caught: an earlier failure scrolling away behind later steps, leaving a bare exit 1.
+    expect(failureSummary(["capabilities:check failed (exit status 1)", "lint:types failed (exit status 2)"])).toBe(
+      "verify:changed: 2 steps failed: capabilities:check failed (exit status 1); lint:types failed (exit status 2)",
+    );
+  });
+
+  it("records the scoped dirs on the lint:types step", () => {
+    // Mutant caught: a lint:types failure line that cannot say which packages were checked.
+    const step = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTimeout: true }).find((s) => s.label === "lint:types");
+    expect(step.scope).toBe(step.args[1].replace("--only=", ""));
   });
 
   it("still runs vitest, unbounded and labelled so, without a timeout command", () => {
