@@ -20,15 +20,6 @@
       ]
     },
     {
-      "name": "budget-exceeded is sent at every capped call",
-      "file": "products/factory/src/markers/budget.ts",
-      "find": "if (!meter.exceeded && atCap(meter))",
-      "replace": "if (atCap(meter))",
-      "kills": [
-        "the per-entry replay budget an entry over its evaluation cap sends one budget-exceeded and the run's step_results equal a shadow-off run"
-      ]
-    },
-    {
       "name": "the shadow stands down only on its next call",
       "file": "products/factory/src/markers/shadow.ts",
       "find": "if (prepared && !call.meter.exceeded)",

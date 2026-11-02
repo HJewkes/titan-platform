@@ -25,7 +25,8 @@ export type ShadowEvent =
   | (ShadowSite & { kind: "verdict"; verdict: Verdict; wouldFastForward: boolean; unreplayable: string[] })
   | (ShadowSite & { kind: "shadow-error"; error: string })
   | (ShadowSite & { kind: "call-site-orphan"; marker: MarkerRow; callSite: string; failClosed: true })
-  | (ShadowSite & { kind: "budget-exceeded" | "entry-end"; counters: EntryCounters });
+  | (ShadowSite & { kind: "budget-exceeded"; counters: EntryCounters })
+  | (ShadowSite & { kind: "entry-end"; counters: EntryCounters });
 
 export type ShadowSink = (event: ShadowEvent) => void;
 

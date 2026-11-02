@@ -22,7 +22,7 @@ const ciUntilRead = defineWorkflow({
   run: async (ctx) => {
     for (;;) {
       const read = await ctx.dispatch("ci-wait", "wait", { schema: z.looseObject({}) });
-      if (!("unavailable" in read.data)) return;
+      if (!read.data || !("unavailable" in read.data)) return;
     }
   },
 });
