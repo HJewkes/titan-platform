@@ -9,6 +9,42 @@
       "kills": [
         "acceptVerdict malformed record covers every refusal the schema lists, the two Shepherd's scope check sends included"
       ]
+    },
+    {
+      "name": "a FIX_FIRST carries the Attests line too",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "verdict: \"FIX_FIRST\", text:",
+      "replace": "verdict: \"FIX_FIRST\", ...attestsField(final.text), text:",
+      "kills": [
+        "acceptVerdict Attests line a FIX_FIRST drops an Attests line"
+      ]
+    },
+    {
+      "name": "the first Attests line is read instead of the last",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": ".at(-1)",
+      "replace": ".at(0)",
+      "kills": [
+        "acceptVerdict Attests line a MERGE carries the steps its Attests line names"
+      ]
+    },
+    {
+      "name": "fenced lines are read as visible",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "const lines = visibleLines(text);",
+      "replace": "const lines = text.split(\"\\n\").map((line) => line.trim());",
+      "kills": [
+        "acceptVerdict Attests line an Attests line inside a fence is not read"
+      ]
+    },
+    {
+      "name": "tokens are not checked against the grammar",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": ".filter((token) => ATTEST_TOKEN.test(token))",
+      "replace": ".filter((token) => token.includes(\"@\"))",
+      "kills": [
+        "acceptVerdict Attests line a malformed Attests token is dropped and the MERGE still counts"
+      ]
     }
   ]
 }

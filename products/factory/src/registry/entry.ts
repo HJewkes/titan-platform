@@ -5,13 +5,9 @@ import type { StepKind } from "../definition.js";
 type Kind = "software" | "AGENT" | "OWNER";
 type EffectTarget = "commit" | "pr" | "item" | "external";
 
-/**
- * A read's orphan is dropped on restart; every other class parks, and must say why. `pending` is a read not yet
- * reviewed (TP-3106 S3, S4): it parks like an effect, and S4 deletes the shape.
- */
+/** A read's orphan is dropped on restart; every other class parks, and must say why. */
 type Effect =
   | { class: "read" }
-  | { class: "pending"; reason: string }
   | { class: "effect" | "irreversible"; target: EffectTarget; reason: string };
 
 export interface BaseEntry {
@@ -46,7 +42,6 @@ const nonEmpty = z.string().min(1);
 
 const effectSchema = z.discriminatedUnion("class", [
   z.strictObject({ class: z.literal("read") }),
-  z.strictObject({ class: z.literal("pending"), reason: nonEmpty }),
   z.strictObject({ class: z.enum(["effect", "irreversible"]), target: z.enum(["commit", "pr", "item", "external"]), reason: nonEmpty }),
 ]);
 

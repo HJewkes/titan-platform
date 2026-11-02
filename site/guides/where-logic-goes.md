@@ -30,6 +30,11 @@ It decides the order and what to wait for, nothing else.
 Example: a slice's recipe calls the step that meets `ci:green`, then waits on the
 event that re-enters it. It never reads CI itself.
 
+A recipe calls only registered steps: the host refuses to open a workflow that declares a
+step with no registry entry, and a call to an unregistered id fails the run. Each recipe doc
+has a `## Steps` table that marks every step an agent or the owner answers, as `AGENT` or
+`OWNER`. Software steps are not listed. A lint matches each row to the registry's kind.
+
 ## Step: every effect and every read
 
 A step is the only place something happens or is looked at. It has a name, schemas, an
