@@ -3,8 +3,8 @@ import { runCommand, type CommandResult } from "./run-command.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
 /** GitHub's own schedule for the workflow starts it at 06:17Z when it runs at all; by this hour a missing run is a dropped one. */
-export const CI_TIMING_DEADLINE_HOUR_UTC = 14;
-export const CI_TIMING_FALLBACK_MS = 10 * 60_000;
+const CI_TIMING_DEADLINE_HOUR_UTC = 14;
+const CI_TIMING_FALLBACK_MS = 10 * 60_000;
 const WORKFLOW_FILE = "ci-timing.yml";
 
 export interface CiTimingFallbackPorts {
