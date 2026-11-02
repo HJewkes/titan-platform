@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pin encoder is not registered",
+      "file": "products/factory/src/event-log/no-consumer.test.ts",
+      "find": "const CONSUMERS = new Set([\"markers/pins.ts\"]);",
+      "replace": "const CONSUMERS = new Set<string>([]);",
+      "kills": ["lets only event-log/, markers/pins.ts and tests mention readEvents, headSeq or newestSeq", "admits the pin encoder as the one consumer and refuses a second marker file"]
+    },
+    {
+      "name": "mayRead admits all of markers/",
+      "file": "products/factory/src/event-log/no-consumer.test.ts",
+      "find": "|| CONSUMERS.has(path) ||",
+      "replace": "|| path.startsWith(\"markers/\") ||",
+      "kills": ["admits the pin encoder as the one consumer and refuses a second marker file"]
+    },
+    {
+      "name": "newestSeq is not a read",
+      "file": "products/factory/src/event-log/no-consumer.test.ts",
+      "find": "/\\b(readEvents|headSeq|newestSeq)\\b/",
+      "replace": "/\\b(readEvents|headSeq)\\b/",
+      "kills": ["counts a newestSeq call as a read"]
+    }
+  ]
+}
