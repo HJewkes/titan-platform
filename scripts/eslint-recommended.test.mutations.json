@@ -4,8 +4,8 @@
     {
       "name": "recipe block keeps inline directives",
       "file": "eslint.config.js",
-      "find": "noInlineConfig: true",
-      "replace": "noInlineConfig: false",
+      "find": "noInlineConfig: true, reportUnusedDisableDirectives",
+      "replace": "noInlineConfig: false, reportUnusedDisableDirectives",
       "kills": ["an inline eslint-disable in a recipe file does not suppress the error"]
     },
     {
