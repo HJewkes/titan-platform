@@ -78,11 +78,15 @@ describe("ci.yml's test jobs", () => {
     expect(checkoutDepth("test-shard")).toBe(0);
   });
 
-  it("run the shards on pull requests, which then require each shard", () => {
-    const policy = JSON.parse(readFileSync(new URL("../.github/required-checks.json", import.meta.url), "utf8"));
-    const shards = ci.jobs["test-shard"].strategy.matrix.shard.map((shard) => `test-shard (${shard})`);
+  // The ruleset requires only validate; a sharded scope's tests must still decide it, failed, cancelled or never run.
+  it("fail the required validate check first unless every shard passed", () => {
+    const validate = ci.jobs.validate;
+    const [gate] = validate.steps;
 
     expect(ci.jobs["test-shard"].if).toBeUndefined();
-    expect(policy.branches.main.contexts).toEqual(expect.arrayContaining(shards));
+    expect(validate.needs).toBe("test-shard");
+    expect(validate.if).toBe("${{ !cancelled() }}");
+    expect(gate.env.SHARDS).toBe("${{ needs.test-shard.result }}");
+    expect(gate.run).toMatch(/^test "\$SHARDS" = success \|\| \{.*exit 1; \}$/);
   });
 });
