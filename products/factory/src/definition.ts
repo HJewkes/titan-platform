@@ -7,6 +7,8 @@ export interface StepDeclaration {
   /** A bare id, or a family whose calls are `<id>:<suffix>` (for example `ci-wait:2`). */
   id: string;
   kind: StepKind;
+  /** A fact the registry knows. The step is inserted before a live call site, and `unlessPast` skips it for a run past that point (C28). */
+  notAfter?: string;
 }
 
 export interface WorkflowDefinition {
@@ -44,7 +46,7 @@ export function assertDistinctStepIds(definition: WorkflowDefinition): void {
 
 /** What the registered-step checks read of a step registry: the names its entries answer to. */
 export interface RegisteredSteps {
-  readonly entries: readonly { readonly name: string; readonly op: StepKind }[];
+  readonly entries: readonly { readonly name: string; readonly op: StepKind; readonly fact?: string }[];
 }
 
 const isRegistered = (registry: RegisteredSteps, stepId: string): boolean =>
@@ -54,6 +56,20 @@ const isRegistered = (registry: RegisteredSteps, stepId: string): boolean =>
 export function assertRegistered(definition: WorkflowDefinition, registry: RegisteredSteps): void {
   const missing = definition.steps.filter((step) => !isRegistered(registry, step.id)).map((step) => step.id);
   if (missing.length > 0) throw new Error(`workflow ${definition.name}: declared steps with no registry entry: ${missing.join(", ")}`);
+}
+
+/**
+ * `notAfter` must name a fact some registered step meets, since an unknown fact blocks. The first declaration may not
+ * carry it: before any call is answered from the record `historyNext` is undefined, so the step would run live and park
+ * an in-flight run. With no registry no fact is known, so every `notAfter` is refused.
+ */
+export function assertNotAfter(definition: WorkflowDefinition, registry: RegisteredSteps | undefined): void {
+  const facts = new Set((registry?.entries ?? []).flatMap((entry) => (entry.fact === undefined ? [] : [entry.fact])));
+  definition.steps.forEach((step, index) => {
+    if (step.notAfter === undefined) return;
+    if (index === 0) throw new Error(`workflow ${definition.name}: the first step "${step.id}" may not declare notAfter`);
+    if (!facts.has(step.notAfter)) throw new Error(`workflow ${definition.name}: step "${step.id}" declares notAfter "${step.notAfter}", a fact no registered step meets`);
+  });
 }
 
 /** Step ids of the dispatch steps, the ones a route must cover. */

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AttestedSchema } from "./attest-schema.js";
 import { AutoPassedSchema } from "./auto-pass.js";
 import { TIMELINE_EVENT_KINDS } from "./ci-timeout-entry.js";
 import { NONE_KINDS } from "./none-reason.js";
@@ -43,6 +44,8 @@ export const WatchRowSchema = z.object({
   lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
   repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
   autoPassed: AutoPassedSchema.optional(),
+  /** The attestation rows the newest merge evidence recorded as met (TP-3110); absent when none was. */
+  attested: AttestedSchema.optional(),
   /** The risk tier the newest merge evidence at the row's head recorded (TP-3734 r1, shadow); absent before any evidence there. */
   riskTier: RiskTierSchema.optional(),
 });
