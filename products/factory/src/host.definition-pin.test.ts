@@ -16,24 +16,31 @@ function dbFile(): string {
   return join(dir, "factory.sqlite3");
 }
 
-function gatedWorkflow(label: string) {
-  return defineWorkflow({
-    name: "gated",
-    steps: [{ id: "approve", kind: "assisted" }],
-    run: async (ctx) => {
-      const brief = { summary: `Approve the change? ${label}`, evidenceRef: "$ git log -1" };
-      await ctx.assisted("approve", "Approve the change?", { schema: z.object({ approve: z.literal(true) }), brief });
-    },
-  });
-}
+const approval = z.object({ approve: z.literal(true) });
+
+const before = defineWorkflow({
+  name: "gated",
+  steps: [{ id: "approve", kind: "assisted" }],
+  run: async (ctx) => {
+    await ctx.assisted("approve", "Approve the change?", { schema: approval, brief: { summary: "Approve the change?", evidenceRef: "$ git log -1" } });
+  },
+});
+
+const after = defineWorkflow({
+  name: "gated",
+  steps: [{ id: "approve", kind: "assisted" }],
+  run: async (ctx) => {
+    const brief = { summary: "Approve the redeployed change?", evidenceRef: "$ git show --stat HEAD" };
+    await ctx.assisted("approve", "Approve the change?", { schema: approval, brief });
+  },
+});
 
 const routes: StepRoute[] = [];
 
 async function gatedRun(dbPath: string): Promise<string> {
-  const host = openFactoryHost({ dbPath, workflows: [gatedWorkflow("before")], routes, gatePollMs: 10 });
+  const host = openFactoryHost({ dbPath, workflows: [before], routes, gatePollMs: 10 });
   const runId = host.runtime.start("gated");
   await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
-  expect(host.runtime.status(runId)?.definitionVersion).toBeUndefined();
   host.close();
   return runId;
 }
@@ -42,8 +49,9 @@ describe("the definitionVersion pin stays off", () => {
   it("a deploy that changes a workflow's body under the same name parks no run", async () => {
     const dbPath = dbFile();
     const runId = await gatedRun(dbPath);
+    expect(after.run.toString()).not.toBe(before.run.toString());
 
-    const deployed = openFactoryHost({ dbPath, workflows: [gatedWorkflow("after")], routes, gatePollMs: 10 });
+    const deployed = openFactoryHost({ dbPath, workflows: [after], routes, gatePollMs: 10 });
     try {
       const report = await deployed.resume();
       const run = deployed.runtime.status(runId);
@@ -58,7 +66,7 @@ describe("the definitionVersion pin stays off", () => {
 
   it("the factory registers its workflows unpinned", async () => {
     const dbPath = dbFile();
-    const host = openFactoryHost({ dbPath, workflows: [gatedWorkflow("before")], routes, gatePollMs: 10 });
+    const host = openFactoryHost({ dbPath, workflows: [before], routes, gatePollMs: 10 });
     try {
       const runId = host.runtime.start("gated");
       expect(host.runtime.status(runId)?.definitionVersion).toBeUndefined();
