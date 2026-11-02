@@ -71,8 +71,8 @@ describe("collectMarkerBlobs", () => {
     const result = collectMarkerBlobs(db, store, { openItems: new Set([OPEN]), now: afterDays(400) });
 
     expect(result).toEqual({ kept: 4, deleted: 0, filesDeleted: 0 });
-    expect(readMarkerValues(db, store, first)).not.toHaveProperty("missing");
-    expect(readMarkerValues(db, store, second)).not.toHaveProperty("missing");
+    expect(readMarkerValues(db, store, first).missing).toEqual([]);
+    expect(readMarkerValues(db, store, second).missing).toEqual([]);
   });
 
   it("GC keeps the blobs an eval root names after the item closes and retention has passed", () => {
@@ -83,7 +83,7 @@ describe("collectMarkerBlobs", () => {
     const result = collectMarkerBlobs(db, store, { openItems: new Set(), now: afterDays(PAST_RETENTION) });
 
     expect(result).toMatchObject({ kept: 2, deleted: 0 });
-    expect(readMarkerValues(db, store, evaluated)).not.toHaveProperty("missing");
+    expect(readMarkerValues(db, store, evaluated).missing).toEqual([]);
   });
 
   it("GC deletes a closed item's blobs once retention passes, and its marker rows remain", () => {
@@ -96,7 +96,7 @@ describe("collectMarkerBlobs", () => {
     expect(inside).toMatchObject({ kept: 2, deleted: 0 });
     expect(past).toMatchObject({ kept: 0, deleted: 2 });
     expect(count("factory_marker")).toBe(2);
-    expect(readMarkerValues(db, store, id)).toEqual({ missing: ["conclusion", "output"] });
+    expect(readMarkerValues(db, store, id)).toEqual({ reads: new Map(), missing: ["conclusion", "output"] });
   });
 
   it("GC removes an out-of-line file whose blob row it deleted, and an orphan file with no row", () => {

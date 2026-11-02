@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an absent input passes",
+      "file": "products/factory/src/markers/validity.ts",
+      "find": "  if (broken) return absent(",
+      "replace": "  if (broken && false) return absent(",
+      "kills": ["evaluateFact an input with no valid marker at its current pin makes the dependent absent, even with equal recorded digests"]
+    },
+    {
+      "name": "validity compares the recorded pin, breaking the cutoff",
+      "file": "products/factory/src/markers/validity.ts",
+      "find": "marker.inputDigests[fact]?.projection !== verdict.digests.projection",
+      "replace": "marker.inputDigests[fact]?.pin !== verdict.marker?.pin || marker.inputDigests[fact]?.projection !== verdict.digests.projection",
+      "kills": ["evaluateFact an input re-run with an unchanged projection digest keeps every dependent valid, two levels down"]
+    },
+    {
+      "name": "drift is dropped",
+      "file": "products/factory/src/markers/validity.ts",
+      "find": "return recorded !== undefined && recorded !== verdict.digests.output;",
+      "replace": "return recorded === undefined && recorded !== verdict.digests.output;",
+      "kills": ["evaluateFact H-L5: a step is not re-run when an input changes outside its projection, and the drift is reported"]
+    },
+    {
+      "name": "the step's own pin is evaluated before its inputs",
+      "file": "products/factory/src/markers/validity.ts",
+      "find": "  const inputs: InputVerdict[] = [];\n",
+      "replace": "  const inputs: InputVerdict[] = [];\n  const early = entry && (await pinFor(fact, item, ctx.sources, ctx.now));\n  if (early && !(\"unpinnable\" in early) && !currentMarker(ctx.sources.db, { item: itemKey(item), fact, pinClass: early.pinClass, pin: early.pin })) return absent(\"no-marker\", inputs);\n",
+      "kills": ["evaluateFact inputs are checked first: an absent input is the reason even when the step's own pin also moved"]
+    },
+    {
+      "name": "a TTL pin is still valid at its expiry",
+      "file": "products/factory/src/markers/validity.ts",
+      "find": "Date.parse(ctx.now) >= Date.parse(marker.expiresAt)",
+      "replace": "Date.parse(ctx.now) > Date.parse(marker.expiresAt)",
+      "kills": ["evaluateFact C3: a TTL-pinned observed fact is valid before its expiry and absent at it"]
+    }
+  ]
+}
