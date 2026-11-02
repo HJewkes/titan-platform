@@ -1,6 +1,8 @@
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import {
+  AuthorityDeniedError,
+  AuthorityRefusedError,
   StepFailedError,
   WorkflowRecoveryRequiredError,
   WorkflowRuntime,
@@ -51,6 +53,18 @@ describe("all", () => {
     const caught = await all([Promise.reject(parked), slow]).catch((e: unknown) => ({ e, settled }));
 
     expect(caught).toEqual({ e: parked, settled: true });
+  });
+
+  it.each([
+    ["refused", new AuthorityRefusedError("merge", 0, "rule", "gate", "owner said no")],
+    ["denied", new AuthorityDeniedError("merge", 0, "rule", "not allowed")],
+  ])("an authority-%s child is rethrown, not reported red, after the other children settle", async (_, stop) => {
+    let settled = false;
+    const slow = later(10, "x").then(() => (settled = true));
+
+    const caught = await all([Promise.reject(stop), slow]).catch((e: unknown) => ({ e, settled }));
+
+    expect(caught).toEqual({ e: stop, settled: true });
   });
 
   it("a run whose children are all replayed from the record makes no live call", async () => {
