@@ -15,6 +15,8 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import type { ReviewAsk, RosterReader, SpawnGate } from "./ports.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
+/** The lineage read lists every retired generation too, many times the live roster, so it outlasts the roster's timeout on a busy broker (TP-4731). */
+export const DEFAULT_LINEAGE_TIMEOUT_MS = 90_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
 /**
@@ -40,6 +42,7 @@ export interface AgentChatReviewerDispatchOptions {
   /** Read per spawn: the accounts a spawn refused at `configDir`'s account limit moves to, in order; absent means none. */
   fallbackConfigDirs?: () => readonly string[];
   rosterTimeoutMs?: number;
+  lineageTimeoutMs?: number;
   spawnTimeoutMs?: number;
   /** The serve process's shared roster reader; absent means one of this dispatch's own. */
   roster?: RosterReader;
@@ -231,7 +234,7 @@ function resumeAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerD
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
-  const lineage = options.lineage ?? agentChatLineage(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
+  const lineage = options.lineage ?? agentChatLineage(agentChatBin, { timeoutMs: options.lineageTimeoutMs ?? DEFAULT_LINEAGE_TIMEOUT_MS });
   const queued = queuedStart(options.gate, roster);
   // The gate admits each review from its queue, so the adapter that launches it is ungated.
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS, roster });

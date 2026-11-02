@@ -1040,18 +1040,34 @@ describe("the attestation guard", () => {
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: unread: the meeters' facts are unreadable: TypeError" });
   });
 
-  describe("when the broker is slow to answer the roster read", () => {
+  describe("when the broker is slow to answer the roster or lineage read", () => {
     const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason: null, held: false, kind: "correctness", policy: AUTO });
     const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => registration, authorsOf: () => [] }) });
     const request = { ...input, ...byReviewer("rev-1") };
 
-    function slowBroker(fake: FakeGitHub, timeouts: number): FactoryHost {
+    /** A read that times out `timeouts` times, then answers `value`. */
+    function slow<T>(timeouts: number, value: T): () => Promise<T> {
       let reads = 0;
-      const slowRoster = async () => (++reads <= timeouts ? Promise.reject(new ReviewerAskTimedOut("roster read timed out")) : roster);
+      return async () => (++reads <= timeouts ? Promise.reject(new ReviewerAskTimedOut("read timed out")) : value);
+    }
+
+    function slowBroker(fake: FakeGitHub, timeouts: number, slowLineage = false): FactoryHost {
       fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
-      const wiring = partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: slowRoster }), sessionStartTimeoutMs: 60_000 });
+      const readers = slowLineage ? { roster: async () => roster, lineage: slow(timeouts, { rows: roster, complete: true }) } : { roster: slow(timeouts, roster) };
+      const wiring = partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: readers.roster }), ...(readers.lineage && { lineage: readers.lineage }), sessionStartTimeoutMs: 60_000 });
       return shepherdHost(fake, undefined, { store, wiring, request });
     }
+
+    it("a lineage read that times out once and then answers merges with no gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, 1, true);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("completed");
+      expect(fake.effects.merge).toBe(1);
+      expect(host.gates.listPending()).toEqual([]);
+    });
 
     it("a read that times out once and then answers judges the attestation and merges with no gate", async () => {
       const fake = claiming();

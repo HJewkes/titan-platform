@@ -66,24 +66,24 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
   }
 }
 
-/** How long the roster read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
+/** How long a roster or lineage read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
 export interface RosterPatience {
   timing: BrokerDownTiming;
   budgetMs: number;
   signal: AbortSignal;
 }
 
-const patientRoster = (roster: () => Promise<readonly ReviewerAgent[]>, { timing, budgetMs, signal }: RosterPatience) => () =>
-  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, roster));
+const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
 
 interface JudgeWiring {
   dispatch?: { roster(): Promise<readonly ReviewerAgent[]> };
   lineage?: () => Promise<Lineage>;
 }
 
-/** The evidence step's judge, naming meeters from the dispatch's roster, read with `patience`, and the wired lineage. */
+/** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage, each read with `patience`. */
 export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage }: JudgeWiring, patience: RosterPatience) {
-  const readers: AttestReaders = { store, ...(dispatch && { roster: patientRoster(() => dispatch.roster(), patience) }), ...(lineage && { lineage }) };
+  const readers: AttestReaders = { store, ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }) };
   return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
 }
 
