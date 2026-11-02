@@ -30,6 +30,13 @@
       "kills": ["a type-only import of the GitHub client in a recipe file passes"]
     },
     {
+      "name": "recipe baseline swallows a fixture",
+      "file": "eslint.config.js",
+      "find": "const RECIPE_CAPABILITY_BASELINE = [\n",
+      "replace": "const RECIPE_CAPABILITY_BASELINE = [\n  \"products/factory/src/shepherd/approval-carry.ts\",\n",
+      "kills": ["every recipe fixture is a listed recipe file off the baseline"]
+    },
+    {
       "name": "recipe block stops banning node:fs",
       "file": "eslint.config.js",
       "find": "const RECIPE_BANNED_MODULES = [\"node:fs\", ",
