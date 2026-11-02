@@ -112,14 +112,22 @@ describe("missing blobs", () => {
     for (const file of files()) unlinkSync(join(store.blobDir, file));
     db.prepare("DELETE FROM factory_marker_blob WHERE inline IS NOT NULL").run();
 
-    expect(readMarkerValues(db, store, id)).toEqual({ missing: ["log", "output"] });
+    expect(readMarkerValues(db, store, id)).toEqual({ reads: new Map(), missing: ["log", "output"] });
+  });
+
+  it("readMarkerValues returns the surviving reads beside the names of the missing ones", () => {
+    const reads = [{ name: "log", bytes: bytes(LIMIT + 1) }, { name: "conclusion", bytes: Buffer.from("success") }];
+    const { id } = writeMarker(db, store, marker({ reads, output: bytes(LIMIT + 1, 0x62) }));
+    for (const file of files()) unlinkSync(join(store.blobDir, file));
+
+    expect(readMarkerValues(db, store, id)).toEqual({ reads: new Map([["conclusion", Buffer.from("success")]]), missing: ["log", "output"] });
   });
 
   it("a stored marker reads back its recorded values", () => {
     const { id } = writeMarker(db, store, marker({ output: Buffer.from("out") }));
 
     const values = readMarkerValues(db, store, id);
-    expect(values).toEqual({ reads: new Map([["conclusion", Buffer.from("success")]]), output: Buffer.from("out") });
+    expect(values).toEqual({ reads: new Map([["conclusion", Buffer.from("success")]]), output: Buffer.from("out"), missing: [] });
   });
 });
 

@@ -60,7 +60,7 @@ a17Event("a dropped marker replays from its recorded read values", async (feed) 
   readdirSync(store.blobDir)
     .filter((name) => name === recorded.outputDigest?.slice("sha256:".length))
     .forEach((name) => unlinkSync(join(store.blobDir, name)));
-  expect(readMarkerValues(feed.db, store, id)).toEqual({ missing: ["output"] });
+  expect(readMarkerValues(feed.db, store, id)).toEqual({ reads: new Map([["head", Buffer.from(head)]]), missing: ["output"] });
 
   await push(feed, SECOND_HEAD, "synchronize");
   const readsBefore = feed.reads();
