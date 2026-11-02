@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Promise.all stops at the first rejection instead of settling every child",
+      "file": "products/factory/src/runner/all.ts",
+      "find": "children.map(async (child): Promise<AllOutcome<T>> => {\n      try {\n        return { ok: true, value: await child };\n      } catch (error) {\n        if (error instanceof StepFailedError && !isAuthorityStop(error)) return { ok: false, red: error };\n        fatal ??= { error };\n        return { ok: false, red: new StepFailedError(\"all\", 0, \"non-step error\") };\n      }\n    }),",
+      "replace": "children.map(async (child): Promise<AllOutcome<T>> => ({ ok: true, value: await child })),",
+      "kills": [
+        "a red child does not cancel its siblings: both siblings complete and the red one is reported"
+      ]
+    },
+    {
+      "name": "a red step is rethrown instead of reported",
+      "file": "products/factory/src/runner/all.ts",
+      "find": "if (error instanceof StepFailedError && !isAuthorityStop(error)) return { ok: false, red: error };",
+      "replace": "if (error instanceof StepFailedError) throw error;",
+      "kills": [
+        "a red child does not cancel its siblings: both siblings complete and the red one is reported"
+      ]
+    },
+    {
+      "name": "a non-step error is rethrown before the siblings settle",
+      "file": "products/factory/src/runner/all.ts",
+      "find": "fatal ??= { error };",
+      "replace": "throw error;",
+      "kills": [
+        "a recovery-required child is rethrown only after the other children settle"
+      ]
+    },
+    {
+      "name": "an authority refusal or denial is reported red instead of rethrown",
+      "file": "products/factory/src/runner/all.ts",
+      "find": "return error instanceof AuthorityRefusedError || error instanceof AuthorityDeniedError;",
+      "replace": "return false;",
+      "kills": [
+        "an authority-refused child is rethrown, not reported red, after the other children settle",
+        "an authority-denied child is rethrown, not reported red, after the other children settle"
+      ]
+    }
+  ]
+}
