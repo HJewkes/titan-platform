@@ -82,8 +82,10 @@ export function diffPinSource(mirrorOf: MirrorOf, { exec = execGit, fetchEnv, no
   };
 }
 
+type CarryProbe = (item: PrKey, fromHead: string, head: string) => Promise<PinProbe>;
+
 /** The inputs `pinCause` classifies for a MERGE Shepherd carried from `fromHead` to `head`. */
-export function carryProbeSource(mirrorOf: MirrorOf, diffPin: NonNullable<PinSources["diffPin"]>, { exec = execGit }: GitSourceOptions = {}): (item: PrKey, fromHead: string, head: string) => Promise<PinProbe> {
+export function carryProbeSource(mirrorOf: MirrorOf, diffPin: NonNullable<PinSources["diffPin"]>, { exec = execGit }: GitSourceOptions = {}): CarryProbe {
   return async (item, fromHead, head) => {
     const [reviewed, current] = [await diffPin(item, fromHead), await diffPin(item, head)];
     const mirror = await mirrorOf(item.repo);
