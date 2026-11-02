@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the teardown drains only a timeout",
+      "file": "apps/console/src/render-page.test-helpers.tsx",
+      "find": "    await new Promise<void>((resolve) => setImmediate(resolve));\n",
+      "replace": "",
+      "kills": [
+        "unmountPages waits for the immediate queue the scheduler uses, not only for a timeout"
+      ]
+    }
+  ]
+}
