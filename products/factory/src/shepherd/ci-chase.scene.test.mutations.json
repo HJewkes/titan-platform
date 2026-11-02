@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an overlapping moved-base green never reserves merge order",
+      "file": "products/factory/src/shepherd/stale-green.ts",
+      "find": "    if (read.recheck && read.shared?.length) await reserveMovedBase(run, ctx, at.headSha);\n",
+      "replace": "",
+      "kills": [
+        "a green PR whose base moves while its CI runs (tp#3149, tp#2241) reserves its unit at the first overlap and lands on its next green, in at most 2 CI rounds"
+      ]
+    },
+    {
+      "name": "a moved-base reservation holds only the PR's own files, not its units",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "const paths = input.movedBase ? [...read.paths, ...unitsOf(read.paths)] : read.paths;",
+      "replace": "const paths = read.paths;",
+      "kills": [
+        "a green PR whose base moves while its CI runs (tp#3149, tp#2241) reserves its unit at the first overlap and lands on its next green, in at most 2 CI rounds"
+      ]
+    },
+    {
+      "name": "a reserved unit covers no path inside it",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "  return entry === path || (entry.endsWith(\"/\") && path.startsWith(entry) && !path.endsWith(\".md\"));",
+      "replace": "  return entry === path;",
+      "kills": [
+        "a green PR whose base moves while its CI runs (tp#3149, tp#2241) reserves its unit at the first overlap and lands on its next green, in at most 2 CI rounds"
+      ]
+    },
+    {
+      "name": "the disjoint check runs only before the first update",
+      "file": "products/factory/src/shepherd/stale-green.ts",
+      "find": "    if (next !== undefined && !stepIdMatches(STALE_GREEN_STEP, next)) return false;\n",
+      "replace": "    if (next !== undefined && !stepIdMatches(STALE_GREEN_STEP, next)) return false;\n    if (reads > 0) return true;\n",
+      "kills": [
+        "a green PR whose base moves while its CI runs (tp#3149, tp#2241) lands a rerun's green as it stands when main moved since only by disjoint commits"
+      ]
+    },
+    {
+      "name": "an overlapping green after an update lands stale",
+      "file": "products/factory/src/shepherd/stale-green.ts",
+      "find": "    return read.recheck;\n",
+      "replace": "    return read.recheck && reads === 1;\n",
+      "kills": [
+        "a green PR whose base moves while its CI runs (tp#3149, tp#2241) never lands a green whose base a PR in its unit moved: it merges main in again"
+      ]
+    }
+  ]
+}

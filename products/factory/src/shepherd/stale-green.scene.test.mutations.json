@@ -13,7 +13,7 @@
     {
       "name": "shepherd-pr never wires the check into land",
       "file": "products/factory/src/shepherd/pr.ts",
-      "find": ", recheckMovedBase: staleGreenCheck(run.target.repo, run.target.pr) };",
+      "find": ", recheckMovedBase: staleGreenCheck(run) };",
       "replace": ", recheckMovedBase: undefined };",
       "kills": [
         "two PRs green at one main tip, the second importing a symbol the first moved never lands the second on its stale green: the typecheck runs on the merge and its red stays off main"
