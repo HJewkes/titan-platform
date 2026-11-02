@@ -7,7 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { attestJudge, type RosterPatience } from "./attest-evidence.js";
+import { attestJudge } from "./attest-evidence.js";
 import { briefClaimsAt } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitVerdictStep } from "./await-verdict-step.js";
@@ -219,16 +219,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
 const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS });
-const bootTiming = (deps: ShepherdDeps, wired: Pick<ReviewWiring, "brokerDownWaitMs">): BrokerDownTiming => ({
-  ...brokerTiming(deps),
-  brokerDownWaitMs: wired.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS,
-});
-/** The evidence step's roster read waits as long as the review intent's does. */
-const rosterPatience = (deps: ShepherdDeps, wiring: ReviewWiring | undefined, signal: AbortSignal): RosterPatience => ({
-  timing: bootTiming(deps, wiring ?? {}),
-  budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS,
-  signal,
-});
+const bootTiming = (deps: ShepherdDeps, wired: Wired): BrokerDownTiming => ({ ...brokerTiming(deps), brokerDownWaitMs: wired.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS });
 
 /** A broker that stayed down says so in the stored reason, from its budget alone; any other refusal carries only its class. */
 const refusalOf = (error: unknown): string => (error instanceof ReviewerBrokerStillDown ? error.message : failureOf(error));
@@ -335,7 +326,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps.port, deps.store, wiring ?? {}, rosterPatience(deps, wiring, signal)) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
