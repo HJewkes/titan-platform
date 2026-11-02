@@ -13,8 +13,8 @@
     {
       "name": "headIsMerge reads the first parent only",
       "file": "products/factory/src/markers/shadow-diff/git-sources.ts",
-      "find": "\"rev-list\", \"--parents\", \"-n\", \"1\", head]",
-      "replace": "\"rev-list\", \"--first-parent\", \"--parents\", \"-n\", \"1\", head]",
+      "find": "\"rev-list\")).trim().split(\" \");",
+      "replace": "\"rev-list\")).trim().split(\" \").slice(0, 2);",
       "kills": [
         "a hand-resolved conflict merge of main probes as a merge whose merge-up proof fails"
       ]
