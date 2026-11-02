@@ -109,7 +109,7 @@ describe("ctx.capability is scoped to a step body", () => {
 
     expect(refusal).toBeInstanceOf(CapabilityOutsideStepError);
     expect(refusal).toMatchObject({ capability: "github-bot", message: "capability github-bot asked outside a step body" });
-    expect(JSON.stringify({ refusal, message: (refusal as Error).message, stack: (refusal as Error).stack })).not.toContain(SENTINEL);
+    expect(refusal instanceof Error ? `${JSON.stringify(refusal)} ${refusal.message} ${refusal.stack}` : "not an error").not.toContain(SENTINEL);
     expect(h.rt.status(runId)?.status).toBe("completed");
     h.rt.shutdown();
   });
