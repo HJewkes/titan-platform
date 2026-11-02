@@ -7,7 +7,7 @@ import { entryFor } from "../registry/registry.js";
 import { markerHistory, type MarkerRow } from "./marker-store.js";
 import { findOrphans, type EntryLog } from "./orphan-trap.js";
 import { itemKey } from "./pins.js";
-import { itemOf, shadowContext, swallow, type ShadowDeps } from "./shadow.js";
+import { itemOf, notAfterShadow, shadowContext, swallow, type NotAfterShadow, type ShadowDeps } from "./shadow.js";
 import { evaluateFact, type Verdict } from "./validity.js";
 
 interface EntryDeps extends ShadowDeps {
@@ -21,6 +21,7 @@ interface EntryDeps extends ShadowDeps {
 
 interface Entry {
   ctx: WorkflowContext;
+  notAfter: NotAfterShadow;
   /** Runs the orphan trap and sends `entry-end` once the drive settles; it never rejects, retries or re-drives. */
   end(): Promise<void>;
 }
@@ -36,7 +37,7 @@ export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition,
     // D-M2-01 measures every entry from these, so they are sent however the entry settled.
     await swallow(deps, site, () => deps.sink({ ...site, kind: "entry-end", counters: { ...meter.counters } }));
   };
-  return { ctx: shadowed, end };
+  return { ctx: shadowed, notAfter: notAfterShadow(ctx, deps, { definition, log }), end };
 }
 
 /** O3: before M6 the requirement set is the facts the workflow's declared fact steps meet. */
