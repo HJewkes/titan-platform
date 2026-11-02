@@ -178,11 +178,15 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   return onOpenTask(registration.task, wait, noteThenCloseIfLast(tasks, registration.slice, landing, registration.lastSlice), tasks);
 }
 
-/** Noting the slice first lets the close read it: the last unlanded slice closes the task, any other leaves it open. */
+/** Noting the slice first lets the close read it: the last unlanded slice closes the task, any other leaves it open and names what holds it. */
 function noteThenCloseIfLast(tasks: CleanupTasks, slice: string, landing: string, lastSlice = false): (initiative: string, id: string) => Promise<string> {
   return async (initiative, id) => {
     await noteSlice(tasks, slice, landing)(initiative, id);
-    if (heldOpenBy(await tasks.slicing(initiative, id), lastSlice) !== ALL_SLICES_LANDED) return "noted";
+    const heldBy = heldOpenBy(await tasks.slicing(initiative, id), lastSlice);
+    if (heldBy !== ALL_SLICES_LANDED && !(lastSlice && heldBy === undefined)) {
+      if (heldBy !== undefined) await tasks.appendNote(initiative, id, `${slice} merged; task left open: ${heldBy}`);
+      return "noted";
+    }
     await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
     await tasks.done(initiative, id);
     return "done";
