@@ -1,6 +1,6 @@
 import { StepFailedError } from "@titan-design/workflow";
 
-export type AllOutcome<T> = { ok: true; value: T } | { ok: false; red: StepFailedError };
+type AllOutcome<T> = { ok: true; value: T } | { ok: false; red: StepFailedError };
 
 /**
  * Runs every child to its own completion. A red step is that child's outcome and never cancels a
