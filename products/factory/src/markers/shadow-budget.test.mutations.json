@@ -13,7 +13,7 @@
     {
       "name": "a live call counts as replayed",
       "file": "products/factory/src/markers/shadow.ts",
-      "find": "  if (call.log.recorded.includes(key)) call.meter.counters.replayed += 1;\n",
+      "find": "  if (memoHit) call.meter.counters.replayed += 1;\n",
       "replace": "  call.meter.counters.replayed += 1;\n",
       "kills": [
         "the per-entry replay budget every entry sends entry-end with its replayed-call count"
