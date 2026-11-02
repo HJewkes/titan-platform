@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the compare runs before the live call, with no live output",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "liveOutput: outputOf(result), memoHit",
+      "replace": "liveOutput: undefined, memoHit",
+      "kills": ["the marker shadow compares each live fact call a live ci-wait call with a valid marker and the same green answer logs one hit row in the tree family"]
+    },
+    {
+      "name": "a memo hit emits a compare row",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "memoHit: call.memoHit });",
+      "replace": "memoHit: false });",
+      "kills": ["the marker shadow compares each live fact call a fact step replayed from the record logs no compare row"]
+    },
+    {
+      "name": "the compare is not swallowed",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "await shadowed(() => sendCompare(",
+      "replace": "await metered(call.meter, deps.clock, exceeded, () => sendCompare(",
+      "kills": ["the marker shadow compares each live fact call A17: step_results are byte-equal with the shadow on and off on a run with a false-hit"]
+    },
+    {
+      "name": "a would-fast-forward call hands the marker's answer to the run",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "  return result;\n}\n\n/** An unpinnable",
+      "replace": "  return (before?.wouldFastForward ? { ...result, data: { verdict: \"green\" } } : result) as R;\n}\n\n/** An unpinnable",
+      "kills": ["the marker shadow compares each live fact call A17: step_results are byte-equal with the shadow on and off on a run with a false-hit"]
+    },
+    {
+      "name": "a compare row is logged without its class",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "      class: fields.class,\n",
+      "replace": "      class: null,\n",
+      "kills": ["the marker shadow compares each live fact call a live ci-wait call with a valid marker and the same green answer logs one hit row in the tree family"]
+    }
+  ]
+}

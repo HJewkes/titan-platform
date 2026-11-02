@@ -41,6 +41,11 @@ export const NOT_EVENT: readonly NotEvent[] = [
     reason: "TP-3108 S7: asserts the shadow's marker writes for a fake step answer, with no GitHub event input",
   },
   {
+    file: "markers/shadow-compare.test.ts",
+    title: "A17: step_results are byte-equal with the shadow on and off on a run with a false-hit",
+    reason: "TP-3111 S3a: asserts the shadow's compare leaves the blob unchanged for fake step answers, with no GitHub event input",
+  },
+  {
     file: "host.c28.test.ts",
     title: "A17: an in-flight run past an inserted step finishes",
     reason: "TP-3108 S6: asserts a recorded replay past an inserted notAfter step, with no GitHub event input",

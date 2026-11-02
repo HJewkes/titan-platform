@@ -6,7 +6,7 @@ import type { Verdict } from "../validity.js";
 
 type CompareClass = "hit" | "false-hit" | "miss" | "miss-same-output" | "unmarked";
 
-interface CompareRow {
+export interface CompareRow {
   family: PinClass;
   class: CompareClass;
   /** The verdict was `valid`. */
