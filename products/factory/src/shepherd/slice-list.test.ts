@@ -17,6 +17,10 @@ describe("listedSlices", () => {
     expect(listedSlices("### S1: x\n### S2: y\n", "order a -> b")).toEqual(["S1", "S2"]);
   });
 
+  it("extends a heading list by a re-plan in the notes that shares its labels", () => {
+    expect(listedSlices("### S1: x\n### S2: y\n", "re-plan: order S1 -> S2 -> S3")).toEqual(["S1", "S2", "S3"]);
+  });
+
   it.each([
     ["a prose list", "plan: Slices S1 one (1, lite no), S2 two (0.5, lite yes). Open O1-O5.", ["S1", "S2"]],
     ["an arrow order", "order j,g,i -> f1 -> e (e = TP-9 cut 1)", ["j", "g", "i", "f1", "e"]],
@@ -52,11 +56,14 @@ describe("movedSlices", () => {
     ["left to", "Slice e left to TP-9002.", ["e"]],
     ["several, across an initiative", "Slices e, f were moved to demo/TP-9002", ["e", "f"]],
     ["an S label with no word slice", "S3 moved to CC-12", ["S3"]],
+    ["an S label mid-sentence", "so S3 moved to CC-12", ["S3"]],
+    ["a bare number after the word slice", "Slice 2 moved to TP-9", ["2"]],
+    ["a bare number opening a clause", "Re-cut. 2 moved to TP-9", ["2"]],
   ])("reads %s", (_, notes, expected) => {
     expect([...movedSlices(notes)]).toEqual(expected);
   });
 
-  it.each(["e = TP-9002 cut 1", "slice e moved to the next sprint", "the task moved to TP-9002", "owns slices c-g from here"])("takes %j for no move", (notes) => {
+  it.each(["e = TP-9002 cut 1", "slice e moved to the next sprint", "the task moved to TP-9002", "owns slices c-g from here", "Phase 2 moved to TP-9"])("takes %j for no move", (notes) => {
     expect([...movedSlices(notes)]).toEqual([]);
   });
 });

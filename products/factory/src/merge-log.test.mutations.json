@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a second markers file mentions merge_op",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "such a step writes no marker. */",
+      "replace": "such a step writes no marker; merge_op. */",
+      "kills": [
+        "only C7's intent check and the landed pin read merge_op, and nothing writes it yet"
+      ]
+    },
+    {
+      "name": "the landed pin reads a failed result",
+      "file": "products/factory/src/markers/pins.ts",
+      "find": "WHERE kind = 'result' AND outcome = 'merged' AND",
+      "replace": "WHERE kind = 'result' AND",
+      "kills": [
+        "only C7's intent check and the landed pin read merge_op, and nothing writes it yet"
+      ]
+    }
+  ]
+}
