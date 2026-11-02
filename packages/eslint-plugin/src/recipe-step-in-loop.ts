@@ -45,7 +45,7 @@ function nearestLoop(node: Node): Node | null {
   return null;
 }
 
-function enclosingAll(node: Node): CallExpression | null {
+function enclosingAll(node: Node): Node | null {
   for (let at = parentOf(node); at !== null; at = parentOf(at)) {
     if (at.type === "CallExpression" && at.callee.type === "Identifier" && at.callee.name === "all") return at;
   }
