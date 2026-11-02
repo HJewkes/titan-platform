@@ -114,6 +114,12 @@ export default tseslint.config(
     files: ["products/factory/**", "packages/github/**"],
     rules: { "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS] },
   },
+  // A step in a loop has one call site for every pass, so a replay cannot tell the passes apart (TP-3108 H-L3). These files still loop over steps; only remove entries.
+  {
+    files: RECIPE_FILES,
+    ignores: RECIPE_LOOP_BASELINE,
+    rules: { "titan/recipe-step-in-loop": "error" },
+  },
   // A recipe sees no client, filesystem or clock: those exist only in step bodies. Inline directives are off per file, the per-file form of --no-inline-config. The block re-lists the Events API selectors because a later block replaces the rule's options.
   {
     files: RECIPE_FILES,
@@ -132,12 +138,6 @@ export default tseslint.config(
       "no-restricted-globals": ["error", ...RECIPE_BANNED_GLOBALS.map((name) => ({ name, message: RECIPE_GLOBAL_MESSAGE }))],
       "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS],
     },
-  },
-  // A step in a loop has one call site for every pass, so a replay cannot tell the passes apart (TP-3108 H-L3). These files still loop over steps; only remove entries.
-  {
-    files: RECIPE_FILES,
-    ignores: RECIPE_LOOP_BASELINE,
-    rules: { "titan/recipe-step-in-loop": "error" },
   },
   // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera, timing and composition page sources are named.
   {
