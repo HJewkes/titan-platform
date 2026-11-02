@@ -29,7 +29,7 @@ const registry: RegisteredSteps = {
 
 let settleCalls = 0;
 const outcomes: unknown[] = [];
-const seedStep = (ctx: WorkflowContext, id: string, data: Record<string, unknown> = {}) => ctx.seed(id, async () => ({ data }));
+const seedStep = (ctx: WorkflowContext, id: string, data: Record<string, string> = {}) => ctx.seed(id, async () => ({ data }));
 const approve = (ctx: WorkflowContext) =>
   ctx.assisted("approve", "Approve?", { schema: z.object({ approve: z.literal(true) }), brief: { summary: "Approve?", evidenceRef: "$ git log -1" } });
 
@@ -54,7 +54,7 @@ const gatedEarly = defineWorkflow({
   },
 });
 
-const settle = (ctx: WorkflowContext) => ctx.seed("settle", async () => ({ data: { settled: (settleCalls += 1) } }));
+const settle = (ctx: WorkflowContext) => ctx.seed("settle", async () => ({ data: { settled: String((settleCalls += 1)) } }));
 const insertedSteps: StepDeclaration[] = [
   { id: "prepare", kind: "seed" },
   { id: "settle", kind: "seed", notAfter: "landed" },
@@ -132,7 +132,7 @@ describe("C28: a step inserted before a live call site", () => {
 
     expect(run.status).toBe("completed");
     expect(settleCalls).toBe(1);
-    expect(outcomes).toEqual([{ settled: 1 }]);
+    expect(outcomes).toEqual([{ settled: "1" }]);
   });
 
   it("a run that recorded the inserted step replays it from the record", async () => {
@@ -144,6 +144,6 @@ describe("C28: a step inserted before a live call site", () => {
 
     expect(run.status).toBe("completed");
     expect(settleCalls).toBe(1);
-    expect(outcomes).toEqual([{ settled: 1 }]);
+    expect(outcomes).toEqual([{ settled: "1" }]);
   });
 });

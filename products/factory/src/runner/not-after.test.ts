@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, type RegisteredSteps, type StepDeclaration } from "../definition.js";
 import { openFactoryHost } from "../host.js";
@@ -16,7 +17,7 @@ const registry: RegisteredSteps = { entries: [{ name: "prepare", op: "seed" }, {
 
 /** A record whose next step after the last answered call is `next`; seeds resolve on the next macrotask. */
 function recordedContext(next: string | undefined): WorkflowContext {
-  const result: StepResult = { ok: true, output: "", data: {} } as StepResult;
+  const result = partialFake<StepResult>({ stepId: "plain", data: {} });
   const unused = (): never => {
     throw new Error("not used");
   };
@@ -60,7 +61,7 @@ describe("unlessPast", () => {
   it("unlessPast inside all is refused", async () => {
     const ctx = runnerContext(recordedContext("plain"), definition);
 
-    const children = Promise.all([unlessPast(ctx, "settle", async () => "ran"), ctx.seed("plain", async () => ({}))]);
+    const children = Promise.all([unlessPast(ctx, "settle", async () => "ran"), ctx.seed("plain", async () => ({ data: {} }))]);
 
     await expect(children).rejects.toThrow(/inside all/);
   });
@@ -69,7 +70,7 @@ describe("unlessPast", () => {
     const events: ShadowEvent[] = [];
     const log: EntryLog = { runId: "run-1", recorded: [], visited: new Set(), reached: 0, failClosed: false };
     const inner = recordedContext("plain");
-    const shadow = notAfterShadow(inner, { sink: (event) => events.push(event) } as unknown as ShadowDeps, { definition, log });
+    const shadow = notAfterShadow(inner, partialFake<ShadowDeps>({ sink: (event) => void events.push(event) }), { definition, log });
     let calls = 0;
 
     const outcome = await unlessPast(runnerContext(inner, definition, shadow), "settle", async () => (calls += 1));
