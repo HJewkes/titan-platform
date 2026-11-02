@@ -5,3 +5,5 @@ export type { LoginState, RefusedReason } from "./login.js";
 export { DEFAULT_LABEL, accountLabel } from "./profile.js";
 export type { AccountProfile } from "./profile.js";
 export { REDACTED, redactSecrets } from "./redact.js";
+export { mergeAccountReadings } from "./merge.js";
+export type { AccountReadings, AccountUsage, AccountWindow, ObservedReading } from "./merge.js";
