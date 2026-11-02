@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the scoped cap is dropped",
+      "file": "packages/anthropic-account/src/usage.ts",
+      "find": "    ...(scoped && { scoped }),\n    source",
+      "replace": "    source",
+      "kills": ["keeps the scoped cap and takes the weekly severity from weekly_all"]
+    },
+    {
+      "name": "the weekly severity comes from the scoped limit",
+      "file": "packages/anthropic-account/src/usage.ts",
+      "find": "limit.kind === \"weekly_all\")?.severity",
+      "replace": "limit.kind === \"weekly_scoped\")?.severity",
+      "kills": ["keeps the scoped cap and takes the weekly severity from weekly_all"]
+    },
+    {
+      "name": "an unknown limit kind throws",
+      "file": "packages/anthropic-account/src/usage.ts",
+      "find": "  const weeklySeverity = limits.find(",
+      "replace": "  if (limits.some((limit) => limit.kind === \"daily_burst\")) throw new Error(\"unknown kind\");\n  const weeklySeverity = limits.find(",
+      "kills": ["ignores a limit kind it does not know"]
+    }
+  ]
+}

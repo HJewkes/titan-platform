@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AccountProfile } from "../profile.js";
-import type { UsageWindow } from "../usage.js";
+import type { ScopedUsage, UsageWindow } from "../usage.js";
 import { readUsage, type UsageFileRead } from "../node/usage-file.js";
 import type { CliContext } from "./context.js";
 import { printableLabel } from "./report.js";
@@ -16,6 +16,7 @@ export const UNKNOWN_LINE = "unknown|unknown|||||||";
 interface Figures {
   five: UsageWindow | undefined;
   weekly: UsageWindow;
+  scoped: ScopedUsage | undefined;
   age: number;
 }
 
@@ -32,7 +33,7 @@ function figuresOf(configDir: string, now: number): Figures | null {
     return null;
   }
   const weekly = read?.reading.rate_limits.seven_day;
-  return read && weekly ? { five: read.reading.rate_limits.five_hour, weekly, age: read.ageSeconds } : null;
+  return read && weekly ? { five: read.reading.rate_limits.five_hour, weekly, scoped: read.reading.scoped, age: read.ageSeconds } : null;
 }
 
 const whole = (window: UsageWindow | undefined): string => (window === undefined ? "" : String(Math.floor(window.used_percentage)));
@@ -40,8 +41,9 @@ const reset = (window: UsageWindow | undefined): string => (window?.resets_at ==
 
 function currentLine(figures: Figures | null): string {
   if (figures === null) return UNKNOWN_LINE;
-  const { five, weekly, age } = figures;
-  return `${whole(five)}|${whole(weekly)}|${reset(five)}|${reset(weekly)}|||||${age}`;
+  const { five, weekly, scoped, age } = figures;
+  const scopedFields = [scoped === undefined ? "" : Math.floor(scoped.used_pct), scoped?.model ?? "", weekly.severity ?? "", scoped?.severity ?? ""];
+  return [whole(five), whole(weekly), reset(five), reset(weekly), ...scopedFields, age].join("|");
 }
 
 function realOrResolved(dir: string): string {
