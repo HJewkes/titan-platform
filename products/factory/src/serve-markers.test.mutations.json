@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the marker shadow is on by default",
-      "file": "products/factory/src/config.ts",
+      "file": "products/factory/src/markers/config.ts",
       "find": "enabled: z.boolean().default(false)",
       "replace": "enabled: z.boolean().default(true)",
       "kills": ["serve wires the marker shadow from markers.shadow serve with no markers config sets no marker shadow and writes no log row"]

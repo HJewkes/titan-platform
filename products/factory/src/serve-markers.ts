@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "@titan-design/store-sqlite";
-import type { MarkersConfig } from "./config.js";
+import type { MarkersConfig } from "./markers/config.js";
 import type { FactoryHostOptions } from "./host.js";
 import { carryProbeSource, diffPinSource, markerMirrors, treeOfSource } from "./markers/shadow-diff/git-sources.js";
 import { logSink } from "./markers/shadow-diff/log.js";
