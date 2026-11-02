@@ -36,6 +36,15 @@
       "kills": [
         "capability guard a write is refused when the store has no capability guard, and nothing is written"
       ]
+    },
+    {
+      "name": "readMarkerValues drops the surviving reads when one is missing",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "  return output ? { reads, output, missing } : { reads, missing };",
+      "replace": "  if (missing.length > 0) reads.clear();\n  return output ? { reads, output, missing } : { reads, missing };",
+      "kills": [
+        "missing blobs readMarkerValues returns the surviving reads beside the names of the missing ones"
+      ]
     }
   ]
 }

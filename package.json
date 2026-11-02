@@ -31,6 +31,7 @@
     "areas": "node scripts/areas.mjs",
     "metrics:check": "node scripts/metrics-check.mjs",
     "index-version:check": "node scripts/index-version-guard.mjs && node scripts/stage-version-guard.mjs",
+    "registry:closure": "node scripts/step-closure-check.mjs",
     "stage-version:check": "node scripts/stage-version-guard.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",

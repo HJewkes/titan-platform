@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the base lock is read from the working tree",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "JSON.parse(git([\"show\", `${base}:${LOCK_PATH}`]))",
+      "replace": "JSON.parse(readFileSync(join(ROOT, LOCK_PATH), \"utf8\"))",
+      "kills": [
+        "the check reads the base lock from origin/main, not the working tree"
+      ]
+    },
+    {
+      "name": "every row is judged, not only the added ones",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "const added = rows.filter((row) => !baseRows.some((old) => sameRow(old, row)));",
+      "replace": "const added = rows;",
+      "kills": [
+        "a row already on the base is never re-judged"
+      ]
+    },
+    {
+      "name": "the PR number is read from the first row's pr",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "row.pr !== prNumber",
+      "replace": "row.pr !== rows[0].pr",
+      "kills": [
+        "an added attestation row naming another PR fails"
+      ]
+    }
+  ]
+}

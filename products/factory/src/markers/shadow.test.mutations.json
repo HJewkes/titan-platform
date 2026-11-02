@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a shadow error is rethrown into the run",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "      // A sink that throws must not reach the run either.\n    }\n    return undefined;",
+      "replace": "      // A sink that throws must not reach the run either.\n    }\n    throw error;",
+      "kills": ["marker shadow a shadow failure is sent to the sink and the run completes"]
+    },
+    {
+      "name": "the equal-row check is dropped",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "  if (unchanged) return;",
+      "replace": "  void unchanged;",
+      "kills": ["marker shadow a replayed run appends no second marker"]
+    },
+    {
+      "name": "the host wraps every context in the shadow",
+      "file": "products/factory/src/host.ts",
+      "find": "  const shadow = options.markerShadow;",
+      "replace": "  const shadow = options.markerShadow ?? { sink: () => undefined };",
+      "kills": ["marker shadow a host opened without markerShadow writes no marker"]
+    },
+    {
+      "name": "an absent verdict reports would-fast-forward",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "wouldFastForward: verdict.status === \"valid\" && unreplayable.length === 0",
+      "replace": "wouldFastForward: unreplayable.length === 0",
+      "kills": ["marker shadow the shadow reports would-fast-forward for a step whose marker is valid, and the step still runs live"]
+    },
+    {
+      "name": "the memo key names the next call position",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "memoKey(call.op, call.stepId, ctx.iteration(call.stepId))",
+      "replace": "memoKey(call.op, call.stepId, ctx.iteration(call.stepId) + 1)",
+      "kills": ["marker shadow a live ci-wait writes one ci:green marker joined to its run id and memo key"]
+    }
+  ]
+}
