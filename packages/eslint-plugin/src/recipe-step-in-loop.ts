@@ -52,13 +52,9 @@ function isAllCall(node: Node): boolean {
 
 /** The `all(...)` that a `.map` call is a direct argument of, through array literals and spreads only. */
 function fanOutOwner(mapCall: Node): Node | null {
-  let at: Node | null = mapCall;
-  while (at !== null) {
-    const parent = parentOf(at);
-    if (parent === null) return null;
+  for (let parent = parentOf(mapCall); parent !== null; parent = parentOf(parent)) {
     if (isAllCall(parent)) return parent;
     if (parent.type !== "ArrayExpression" && parent.type !== "SpreadElement") return null;
-    at = parent;
   }
   return null;
 }
