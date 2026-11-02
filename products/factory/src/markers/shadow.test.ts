@@ -102,8 +102,9 @@ describe("marker shadow", () => {
     first.close();
     const events: ShadowEvent[] = [];
     const second = hostAt(dbPath, events);
-    await second.resume();
-    expect(events.map((event) => event.stepId)).toContain("ci-wait");
+    await second.adopt();
+    // The replay reaches the second step only after the first call's shadow write has run.
+    await vi.waitFor(() => expect(events.map((event) => event.stepId)).toContain("sh-await-verdict"));
     expect(markerHistory(second.db, { item: KEY, fact: "ci:green" }).map((row) => row.runId)).toEqual([run.id]);
     second.close();
   });
