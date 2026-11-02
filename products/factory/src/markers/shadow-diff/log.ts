@@ -1,4 +1,5 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { factRule } from "../../registry/pin-classes.js";
 import type { ShadowEvent, ShadowSink } from "../shadow.js";
 import type { Verdict } from "../validity.js";
@@ -147,15 +148,17 @@ const SELECT = `SELECT id, at, kind, family, run_id AS runId, memo_key AS memoKe
   FROM factory_shadow_log WHERE at >= ? ORDER BY id`;
 
 const bool = (value: number | null): boolean | null => (value === null ? null : value === 1);
+const driftSchema = z.array(z.string());
+const detailSchema = z.record(z.string(), z.unknown());
 
 /** Every row at or after `sinceIso`, oldest first. */
 export function readLog(db: Db, window: { sinceIso: string }): ShadowLogRow[] {
-  const rows = db.prepare(SELECT).all(window.sinceIso) as RawRow[];
+  const rows = db.prepare<[string], RawRow>(SELECT).all(window.sinceIso);
   return rows.map((row) => ({
     ...row,
     materialValid: bool(row.materialValid),
     fullValid: bool(row.fullValid),
-    drift: row.drift === null ? null : (JSON.parse(row.drift) as string[]),
-    detail: JSON.parse(row.detail) as Record<string, unknown>,
+    drift: row.drift === null ? null : driftSchema.parse(JSON.parse(row.drift)),
+    detail: detailSchema.parse(JSON.parse(row.detail)),
   }));
 }
