@@ -4,6 +4,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { step } from "../workflows/land.js";
 import { accountHeld } from "./account-hold.js";
+import type { AttestVerdicts } from "./attest-evidence.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
@@ -117,12 +118,21 @@ export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, aw
   return dispatchedReviewer && !("external" in awaiting) ? ciUnreadAsNone(ctx, target.head, verdict) : verdict;
 }
 
-/** The caller passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE. */
-export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult, standing: ProofStanding): Promise<Verdict> {
+/**
+ * The caller passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE. A panel
+ * passes its adversary member's MERGE, so the evidence step judges the adversary's `Attests:` line beside the accepted one.
+ */
+export async function verdictOf(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, awaited: AwaitedResult, standing: ProofStanding, panel?: Omit<AttestVerdicts, "attests">): Promise<Verdict> {
   const seatHeld = dispatchedReviewer && seatHeldOf(awaited, dispatchedReviewer);
   if (seatHeld) return { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }), seatHeld };
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, ...seatGrants(ctx, standing), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }) }, awaited.ownerBrief ?? undefined);
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, ...seatGrants(ctx, standing), ...(awaited.ciPolicy && { ciPolicy: awaited.ciPolicy }), ...attestOf(awaited, panel) }, awaited.ownerBrief ?? undefined);
+}
+
+/** A MERGE with no tokens and no panel adversary attests nothing, so its evidence input is as it was before attestations. */
+function attestOf(awaited: AwaitedResult, panel: Omit<AttestVerdicts, "attests"> | undefined): { attest?: AttestVerdicts } {
+  const attests = awaited.kind === "verdict" ? (awaited.attests ?? []) : [];
+  return attests.length === 0 && panel?.adversary === undefined && panel?.adversaryPlanned === undefined ? {} : { attest: { attests, ...panel } };
 }

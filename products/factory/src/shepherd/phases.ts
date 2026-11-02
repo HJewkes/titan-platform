@@ -76,6 +76,8 @@ export interface PanelMember {
   head?: string;
   /** The profile Shepherd spawned the member at. */
   profile?: string;
+  /** The `Attests:` tokens of the member's MERGE; absent attests nothing. */
+  attests?: readonly string[];
 }
 
 /** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */

@@ -1,6 +1,7 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
+import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
@@ -85,6 +86,8 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   proofUnverified?: string;
   /** The base branch the head's fix-proof line says it judged, when the line names one. */
   proofBase?: string;
+  /** The `Attests:` tokens of the accepted MERGE and of a panel's adversary member; absent attests nothing. */
+  attest?: AttestVerdicts;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -344,10 +347,12 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
-/** What the evidence step reads beyond its input: the App `shepherd/review` counts from, and the repo's `shepherd.visualThreshold`. */
+/** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, and the attestation judge. */
 interface EvidenceReads {
   reviewAppId?: number;
   threshold?: VisualThreshold;
+  /** Judges the head's attestation claims at the PR's base; absent judges none. */
+  attest?: (input: MergeEvidenceInput, baseRef: string) => Promise<AttestJudgment | undefined>;
 }
 
 /** Off, or no threshold for the repo, reads nothing, so a repo that never opted in pays no blob reads. */
@@ -364,11 +369,12 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
   const visual = await visualDeltaOf(port, input, observed, reads.threshold);
+  const attest = await reads.attest?.(input, pr.baseRef);
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
   const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual, ...(attest && { attest }) });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input), commentId: comment.id };
 }

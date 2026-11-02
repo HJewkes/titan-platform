@@ -22,7 +22,7 @@ export const G10_RELEASE_STEPS: readonly StepDeclaration[] = [{ id: G10_RELEASE_
  * other class waits for a seat.
  */
 const G10_REVIEW_CLASS = "g10-review";
-const G10_ADVERSARY_CLASS = "g10-adversary";
+export const G10_ADVERSARY_CLASS = "g10-adversary";
 
 /**
  * Decision 422(1)'s stopgap, superseded at M5: D-M5-03 (TP-3153) deletes it with the hold slots, and its merge-up carry goes at M3

@@ -2,6 +2,7 @@ import type { AgentIdentity, CarryFact, MergeFacts } from "@titan-design/authori
 import type { CheckRun, PullRequest, RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { GateDecision } from "../gate-policy.js";
+import type { AttestJudgment } from "./attest-evidence.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import type { RiskTier } from "./risk-tier.js";
 import type { VisualDelta } from "./visual-delta-read.js";
@@ -40,6 +41,12 @@ export interface EvidenceRecord {
   riskTier?: RiskTier;
   /** The measured visual delta under `shepherd.visualThreshold` (TP-4320); absent when that is off for the repo. */
   visualDelta?: VisualDelta;
+  /** Each claimed attestation row met at this head, with the roster rows that met it (TP-3110). */
+  attested?: { step: string; closure: string; meeters: { name: string; agentId: string; shape: "correctness" | "adversary" }[] }[];
+  /** Each claimed row left unmet, and why. */
+  attestUnmet?: { step: string; why: string }[];
+  /** Why the claims or the meeters' facts could not be read. */
+  attestUnread?: string;
 }
 
 /** The parts of the evidence step's input a record names. */
@@ -53,7 +60,19 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier; attest?: AttestJudgment };
+
+/** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
+function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread"> {
+  if (attest === undefined) return {};
+  if ("unread" in attest) return { attestUnread: attest.unread };
+  const attested = attest.met.map(({ step, closure, meeters }) => ({
+    step,
+    closure,
+    meeters: meeters.map(({ name, agentId }) => ({ name, agentId, shape: agentId === resolver.agentId ? ("correctness" as const) : ("adversary" as const) })),
+  }));
+  return { attested, attestUnmet: attest.unmet.map(({ step, why }) => ({ step, why })) };
+}
 
 /** The head's fix-proof standing and judged base, absent keys left out so a record spreads them as they are. */
 const proofFields = (input: RecordInput): Pick<EvidenceRecord, "proofUnverified" | "proofBase"> => ({
@@ -65,7 +84,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta }: RecordExtras,
+  { ciPolicy, riskTier, visualDelta, attest }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -86,5 +105,6 @@ export function evidenceRecord(
     ...proofFields(input),
     riskTier,
     ...(visualDelta && { visualDelta }),
+    ...attestFields(attest, input.resolver),
   };
 }

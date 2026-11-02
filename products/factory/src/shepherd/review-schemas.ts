@@ -139,7 +139,7 @@ const Dispatched = z.discriminatedUnion("kind", [
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema, attests: z.array(z.string()).optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */
