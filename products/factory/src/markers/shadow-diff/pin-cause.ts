@@ -1,6 +1,6 @@
 import type { DiffPin, MergeUpProof } from "@titan-design/github";
 
-export type Cause = "rebase-context" | "conflict-merge-up" | "whitespace" | "ambiguous-base" | "unprobed" | "unclassified";
+type Cause = "rebase-context" | "conflict-merge-up" | "whitespace" | "ambiguous-base" | "unprobed" | "unclassified";
 
 export interface PinProbe {
   readonly reviewed: DiffPin;
@@ -11,7 +11,7 @@ export interface PinProbe {
   readonly wsBlindCoreEqual: boolean;
 }
 
-export type PinCause = { readonly class: "carry-agrees"; readonly exclusion2: boolean } | { readonly class: "pin-differs"; readonly cause: Cause };
+type PinCause = { readonly class: "carry-agrees"; readonly exclusion2: boolean } | { readonly class: "pin-differs"; readonly cause: Cause };
 
 const differs = (cause: Cause): PinCause => ({ class: "pin-differs", cause });
 
