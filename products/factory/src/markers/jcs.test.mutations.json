@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "negative zero is written as -0",
+      "file": "products/factory/src/markers/jcs.ts",
+      "find": "Object.is(value, -0) ? \"0\" : JSON.stringify(value)",
+      "replace": "Object.is(value, -0) ? \"-0\" : JSON.stringify(value)",
+      "kills": ["jcs matches the RFC 8785 number vectors"]
+    },
+    {
+      "name": "keys sort by locale",
+      "file": "products/factory/src/markers/jcs.ts",
+      "find": ".sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))",
+      "replace": ".sort((a, b) => a.localeCompare(b))",
+      "kills": ["jcs sorts keys by UTF-16 code unit, as RFC 8785 §3.2.3's example orders them"]
+    },
+    {
+      "name": "NaN is let through",
+      "file": "products/factory/src/markers/jcs.ts",
+      "find": "if (!Number.isFinite(value)) throw",
+      "replace": "if (false) throw",
+      "kills": ["jcs refuses NaN, Infinity and bigint rather than writing null"]
+    }
+  ]
+}
