@@ -4,7 +4,7 @@ import type { CallExpression } from "estree";
 const STEP_OPS = new Set(["dispatch", "seed", "assisted", "authorize"]);
 const STEP_WRAPPERS = new Set(["step", "codeStep"]);
 const LOOP_STATEMENTS = new Set(["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"]);
-const LOOP_CALLBACKS = new Set(["map", "forEach", "flatMap", "reduce", "filter", "some", "every"]);
+const LOOP_CALLBACKS = new Set(["map", "forEach", "flatMap", "reduce", "reduceRight", "filter", "some", "every", "find", "findIndex", "findLast", "findLastIndex"]);
 const FAN_OUT_METHODS = new Set(["map", "flatMap"]);
 const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
@@ -30,22 +30,6 @@ function isStepOp(call: CallExpression): boolean {
   return callee.type === "Identifier" && STEP_WRAPPERS.has(callee.name) && isContext(call.arguments[0]);
 }
 
-function isCallbackOf(fn: Node, names: ReadonlySet<string>): boolean {
-  const parent = parentOf(fn);
-  if (parent?.type !== "CallExpression" || !(parent.arguments as readonly unknown[]).includes(fn)) return false;
-  return names.has(calleeName(parent) ?? "");
-}
-
-/** The nearest loop statement or iterating callback around a node. A function boundary ends the walk, and so does a `mapItems` callback, which is a fan-out and not a loop (O5). */
-function nearestLoop(node: Node): Node | null {
-  for (let at = parentOf(node); at !== null; at = parentOf(at)) {
-    if (LOOP_STATEMENTS.has(at.type)) return at;
-    if (!FUNCTIONS.has(at.type)) continue;
-    return isCallbackOf(at, LOOP_CALLBACKS) ? at : null;
-  }
-  return null;
-}
-
 function isAllCall(node: Node): boolean {
   return node.type === "CallExpression" && node.callee.type === "Identifier" && node.callee.name === "all";
 }
@@ -59,17 +43,44 @@ function fanOutOwner(mapCall: Node): Node | null {
   return null;
 }
 
-/** Only a `.map` or `.flatMap` callback written directly as an argument of `all(...)` is the fan-out; any loop deeper in it is not. */
-function isSanctioned(loop: Node): boolean {
-  const mapCall = FUNCTIONS.has(loop.type) ? parentOf(loop) : null;
-  if (mapCall?.type !== "CallExpression" || !FAN_OUT_METHODS.has(calleeName(mapCall) ?? "")) return false;
-  const all = fanOutOwner(mapCall);
-  return all !== null && nearestLoop(all) === null;
+/** The call a function is passed to as an argument; null for a callee, a declaration or a function held in a variable. */
+function callTaking(fn: Node): CallExpression | null {
+  const parent = parentOf(fn);
+  return parent?.type === "CallExpression" && (parent.arguments as readonly unknown[]).includes(fn) ? parent : null;
+}
+
+function isIterating(call: CallExpression): boolean {
+  const { callee } = call;
+  const arrayFrom = callee.type === "MemberExpression" && callee.object.type === "Identifier" && callee.object.name === "Array";
+  return LOOP_CALLBACKS.has(calleeName(call) ?? "") || (arrayFrom && calleeName(call) === "from");
+}
+
+/** The `all(...)` whose argument holds this `.map` or `.flatMap` call: the callbacks of that call are the sanctioned fan-out. */
+function fanOutAll(call: CallExpression): Node | null {
+  return FAN_OUT_METHODS.has(calleeName(call) ?? "") ? fanOutOwner(call as Node) : null;
+}
+
+/**
+ * Whether a step op sits in a loop. The walk climbs through every function except the ones that end it: a `mapItems` callback,
+ * which is a fan-out and not a loop (O5), and an iterating callback, which is a loop. A callback of `all(xs.map(…))` is the
+ * sanctioned fan-out, so the walk goes on from that `all`, which must itself be in no loop.
+ */
+function inLoop(node: Node): boolean {
+  for (let at = parentOf(node); at !== null; at = parentOf(at)) {
+    if (LOOP_STATEMENTS.has(at.type)) return true;
+    const call = FUNCTIONS.has(at.type) ? callTaking(at) : null;
+    if (call === null) continue;
+    if (calleeName(call) === "mapItems") return false;
+    const all = fanOutAll(call);
+    if (all !== null) return inLoop(all);
+    if (isIterating(call)) return true;
+  }
+  return false;
 }
 
 /**
  * Flags a step op (`ctx.dispatch`, `ctx.seed`, `ctx.assisted`, `ctx.authorize`, or `step(ctx, …)` and `codeStep(ctx, …)`) called in a loop.
- * Residual: a helper that holds the step op and is called in a loop is not seen, because the rule reads one function at a time.
+ * Residual: a helper declared outside the loop that holds the step op and is called in it is not seen, because the rule reads one function at a time.
  * The runtime orphan trap (TP-3108 S5) covers that case.
  */
 export const recipeStepInLoop: Rule.RuleModule = {
@@ -86,8 +97,7 @@ export const recipeStepInLoop: Rule.RuleModule = {
     return {
       CallExpression(node) {
         if (!isStepOp(node)) return;
-        const loop = nearestLoop(node);
-        if (loop !== null && !isSanctioned(loop)) context.report({ node, messageId: "stepInLoop" });
+        if (inLoop(node)) context.report({ node, messageId: "stepInLoop" });
       },
     };
   },

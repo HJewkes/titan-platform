@@ -2,13 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "any ancestor all allows, so a loop deep inside all passes",
+      "name": "a fan-out callback ends the walk, so all inside a loop passes",
       "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
-      "find": "  return all !== null && nearestLoop(all) === null;",
-      "replace": "  return all !== null;",
+      "find": "    if (all !== null) return inLoop(all);",
+      "replace": "    if (all !== null) return false;",
       "kills": [
-        "recipe-step-in-loop invalid all([...]) called inside a while loop is an error",
-        "recipe-step-in-loop invalid all over a map inside a while loop is an error"
+        "recipe-step-in-loop invalid all over a map inside a while loop is an error",
+        "recipe-step-in-loop invalid all over a map inside an IIFE inside a for loop is an error"
       ]
     },
     {
@@ -23,8 +23,8 @@
     {
       "name": "a map callback is not a loop",
       "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
-      "find": "    return isCallbackOf(at, LOOP_CALLBACKS) ? at : null;",
-      "replace": "    return null;",
+      "find": "    if (isIterating(call)) return true;\n",
+      "replace": "",
       "kills": [
         "recipe-step-in-loop invalid a step called in a .map callback outside all is an error"
       ]
@@ -37,6 +37,16 @@
       "kills": [
         "recipe-step-in-loop invalid a step called in a .map callback outside all is an error",
         "recipe-step-in-loop invalid authorize in a reduce callback"
+      ]
+    },
+    {
+      "name": "a wrapper function ends the walk",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (isIterating(call)) return true;\n",
+      "replace": "    if (isIterating(call)) return true;\n    return false;\n",
+      "kills": [
+        "recipe-step-in-loop invalid a step in a wrapper callback inside a for loop is an error",
+        "recipe-step-in-loop invalid a step in a then callback inside a for loop is an error"
       ]
     }
   ]

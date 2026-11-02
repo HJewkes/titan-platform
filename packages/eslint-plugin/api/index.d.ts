@@ -19,7 +19,7 @@ declare const noWallClockMotion: Rule.RuleModule;
 
 /**
  * Flags a step op (`ctx.dispatch`, `ctx.seed`, `ctx.assisted`, `ctx.authorize`, or `step(ctx, …)` and `codeStep(ctx, …)`) called in a loop.
- * Residual: a helper that holds the step op and is called in a loop is not seen, because the rule reads one function at a time.
+ * Residual: a helper declared outside the loop that holds the step op and is called in it is not seen, because the rule reads one function at a time.
  * The runtime orphan trap (TP-3108 S5) covers that case.
  */
 declare const recipeStepInLoop: Rule.RuleModule;
