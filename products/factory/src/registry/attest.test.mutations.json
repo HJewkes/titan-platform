@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the adversary skips the independence check",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "const shortfall = verdictShortfall(row, adversary, input);",
+      "replace": "const shortfall = verdictShortfall(row, adversary, { ...input, independent: () => true });",
+      "kills": ["judgeAttestations an adversary that wrote the code does not meet an adversary class"]
+    },
+    {
+      "name": "adversaryRequired is ignored",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "(input.adversaryRequired ? adversaryShortfall(row, input) : undefined)",
+      "replace": "(false ? adversaryShortfall(row, input) : undefined)",
+      "kills": ["judgeAttestations where the class has an adversary, the correctness line alone leaves the row unmet: adversary-missing"]
+    },
+    {
+      "name": "the closure compare reads fewer than 12 hex",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "if (!row.closure.startsWith(token.closure12))",
+      "replace": "if (!row.closure.startsWith(token.closure12.slice(0, 8)))",
+      "kills": ["judgeAttestations an Attests line for another closure meets nothing: closure-mismatch"]
+    },
+    {
+      "name": "claimedRows drops a row whose closure changed",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "old.step === row.step && old.closure === row.closure && old.pr === row.pr",
+      "replace": "old.step === row.step",
+      "kills": ["claimedRows a changed closure in an existing row is claimed again, and a new row is claimed"]
+    },
+    {
+      "name": "a carried verdict meets the row",
+      "file": "products/factory/src/registry/attest.ts",
+      "find": "const why = input.correctness.carried ? \"carried\" :",
+      "replace": "const why = false ? \"carried\" :",
+      "kills": ["judgeAttestations a carried MERGE meets nothing in M1b"]
+    }
+  ]
+}

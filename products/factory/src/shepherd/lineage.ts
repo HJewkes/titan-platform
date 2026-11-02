@@ -1,4 +1,5 @@
 import type { ReviewerAgent } from "@titan-design/review-panel";
+import type { Author } from "./author-types.js";
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
 const takeovers: Parents = (agent) => [agent.predecessor];
@@ -37,4 +38,10 @@ export function provablyIndependent(agent: ReviewerAgent, implementer: string, l
   const wrote = ancestry(implementer, lineage.rows, takeovers);
   const above = ancestry(agent.name, lineage.rows, descent);
   return wrote !== undefined && above !== undefined && ![...wrote].some((author) => above.has(author));
+}
+
+/** The roster's lineage must clear the reviewer, and so must the run's recorded authors, by agent id and by name. */
+export function independentOfRun(row: ReviewerAgent, registration: { implementer: string }, lineage: Lineage, authors: readonly Pick<Author, "agentId" | "name">[]): boolean {
+  if (authors.some((author) => author.agentId === row.agentId || author.name === row.name)) return false;
+  return provablyIndependent(row, registration.implementer, lineage);
 }
