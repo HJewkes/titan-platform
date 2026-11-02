@@ -189,6 +189,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm docs:build", disposition: "local", label: "docs:build" },
   { job: "validate", run: "pnpm changeset status", disposition: "local", label: "changeset status" },
   { job: "validate", run: "pnpm index-version:check", disposition: "local", label: "index-version:check" },
+  { job: "validate", run: "pnpm registry:closure", disposition: "local", label: "registry:closure" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
   { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages, and defers past a 600-file budget to CI" },
@@ -219,6 +220,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     pnpmRun("docs:build"),
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
+    { ...pnpmRun("registry:closure"), env: { CLOSURE_BASE: base } },
     deadCheckCommand(changed, workspace, base, indexedFiles),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
