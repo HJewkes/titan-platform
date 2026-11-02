@@ -14,5 +14,7 @@
   { "step": "ci-wait", "closure": "2769d86a26943c1e4f9750ab03dcebd228dd9a6331d970696439c6ea26a67f83", "pr": 3188 },
   { "step": "sh-await-verdict", "closure": "a6e5ac596415f766aeaec85d478085ee5edbec2e7b364b3681e10a045af1756f", "pr": 3188 },
   { "step": "ci-wait", "closure": "c430eb0decccc68880936e2e3c07248ac540f2815a7ca9d18ffcf14cf6182daa", "pr": 3194 },
-  { "step": "sh-await-verdict", "closure": "a613ec838f7fa3b9227aa6dc94350406cf7d82974e915fb771f336207c12fa71", "pr": 3194 }
+  { "step": "sh-await-verdict", "closure": "a613ec838f7fa3b9227aa6dc94350406cf7d82974e915fb771f336207c12fa71", "pr": 3194 },
+  { "step": "ci-wait", "closure": "8fee57f3e436a8671fa2fc2b3cec22c75e6bbb22873e5c3060002b0023d87348", "pr": 3195 },
+  { "step": "sh-await-verdict", "closure": "add8544d5238fcbe3367875808406fe80db3e5026008b93709f1fe3724a2b99e", "pr": 3195 }
 ]
