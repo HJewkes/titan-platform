@@ -26,9 +26,9 @@ type CarveOut = { tag: string } | { stale: string } | undefined;
 type ExitedRead = { exited: Set<string> } | { unread: string };
 
 /** What the task read yielded; the pure rule takes it as data so it never reads a task itself. */
-type TaskRead = { tags: string[] } | { absent: true } | { unread: string };
+export type TaskRead = { tags: string[] } | { absent: true } | { unread: string };
 
-type OldPathVerdict =
+export type OldPathVerdict =
   | { status: "clear" }
   | { status: "carved"; touches: string[]; tag: string; active: boolean }
   | {
