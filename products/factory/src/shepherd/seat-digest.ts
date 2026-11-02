@@ -41,10 +41,7 @@ export interface SeatDigestPorts {
 /** How long an unacknowledged digest waits before its one retry; the broker usually delivered it, so the retry is a courtesy. */
 const UNACKED_RETRY_MS = 5 * 60_000;
 
-interface Unacked {
-  text: string;
-  at: number;
-}
+interface Unacked { text: string; at: number }
 
 /** Digests whose send the broker never acknowledged, per memory: one retry per seat, then the state is recorded as told. */
 const unacked = new WeakMap<SeatDigestMemory, Map<string, Unacked>>();
@@ -243,12 +240,9 @@ type DigestOutcome = { sent: string[]; failed: { seat: string; cause: string }[]
 
 /** A first unacknowledged send waits for its one retry; a second stops the resending by recording the state as told. */
 function giveUpOrWait(waiting: Map<string, Unacked>, memory: SeatDigestMemory, seat: string, sent: Unacked, earlier: Unacked | undefined, state: SeatState): void {
-  if (earlier?.text === sent.text) {
-    waiting.delete(seat);
-    memory.set(seat, state);
-    return;
-  }
-  waiting.set(seat, sent);
+  if (earlier?.text !== sent.text) return void waiting.set(seat, sent);
+  waiting.delete(seat);
+  memory.set(seat, state);
 }
 
 function recordTold(memory: SeatDigestMemory, routes: Partial<DigestRoutes>, seat: string, state: SeatState, last: SeatState | undefined, ends: string[]): void {
