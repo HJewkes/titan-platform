@@ -200,9 +200,9 @@ describe("merge_op consumers", () => {
       { file: "products/factory/src/markers/pins.ts", line: expect.stringMatching(/^\.prepare<.*"SELECT id, merge_commit FROM merge_op WHERE kind = 'result' AND outcome = 'merged' AND /) },
       { file: "products/factory/src/markers/pins.ts", line: expect.stringMatching(/^return \{ pinClass: "landed", pin: `\$\{tree\}\|merge_op:/) },
       { file: "products/factory/src/reconciler/fakes.test-helpers.ts", line: 'import { mergeLogMigration } from "../merge-log.js";' },
+      { file: "products/factory/src/reconciler/fakes.test-helpers.ts", line: expect.stringMatching(/^runMigrations\(db, \[mergeLogMigration\(\)/) },
       { file: "products/factory/src/registry/intent-readers.ts", line: "`SELECT COUNT(*) FROM merge_op i WHERE i.kind = 'intent'" },
       { file: "products/factory/src/registry/intent-readers.ts", line: "AND NOT EXISTS (SELECT 1 FROM merge_op r WHERE r.kind = 'result' AND r.intent_id = i.id AND r.outcome IN ('merged', 'failed'))`," },
-      { file: "products/factory/src/reconciler/fakes.test-helpers.ts", line: expect.stringMatching(/^runMigrations\(db, \[mergeLogMigration\(\)/) },
     ]);
   });
 });
