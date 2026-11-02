@@ -11,7 +11,7 @@ export interface EntryBudget {
 }
 
 /** O7: a runaway backstop only. D-M2-01 replaces these numbers from `entry-end` data. */
-export const DEFAULT_ENTRY_BUDGET: EntryBudget = { evaluations: 200, shadowMs: 2_000 };
+const DEFAULT_ENTRY_BUDGET: EntryBudget = { evaluations: 200, shadowMs: 2_000 };
 
 /** The entry's counters and caps. Once `exceeded`, the shadow stands down for the rest of the entry; the live call never does. */
 export interface EntryMeter {
