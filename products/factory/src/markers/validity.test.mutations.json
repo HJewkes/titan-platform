@@ -11,15 +11,15 @@
     {
       "name": "validity compares the recorded pin, breaking the cutoff",
       "file": "products/factory/src/markers/validity.ts",
-      "find": "marker.inputDigests[fact]?.projection !== verdict.digests.projection",
-      "replace": "marker.inputDigests[fact]?.pin !== verdict.marker?.pin || marker.inputDigests[fact]?.projection !== verdict.digests.projection",
+      "find": "marker.inputDigests[fact]?.projection !== digestsOf(verdict)?.projection",
+      "replace": "marker.inputDigests[fact]?.pin !== (verdict.status === \"valid\" ? verdict.marker?.pin : undefined) || marker.inputDigests[fact]?.projection !== digestsOf(verdict)?.projection",
       "kills": ["evaluateFact an input re-run with an unchanged projection digest keeps every dependent valid, two levels down"]
     },
     {
       "name": "drift is dropped",
       "file": "products/factory/src/markers/validity.ts",
-      "find": "return recorded !== undefined && recorded !== verdict.digests.output;",
-      "replace": "return recorded === undefined && recorded !== verdict.digests.output;",
+      "find": "return recorded !== undefined && recorded !== digestsOf(verdict)?.output;",
+      "replace": "return recorded === undefined && recorded !== digestsOf(verdict)?.output;",
       "kills": ["evaluateFact H-L5: a step is not re-run when an input changes outside its projection, and the drift is reported"]
     },
     {

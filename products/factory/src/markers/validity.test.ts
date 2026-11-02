@@ -61,7 +61,10 @@ function step(fact: string, inputs: string[], overrides: Partial<FactEntry> = {}
   });
 }
 
-const chain = [step("mergeability", []), step("verdict:merge", ["mergeability"]), step("conformance:ok", ["verdict:merge"])];
+const mergeability = step("mergeability", []);
+const verdictMerge = step("verdict:merge", ["mergeability"]);
+const conformance = step("conformance:ok", ["verdict:merge"]);
+const chain = [mergeability, verdictMerge, conformance];
 
 function context(entries: FactEntry[] = chain, now = AT): ValidityContext {
   return { registry: createRegistry(entries), sources: { db, diffPin: (_item, head) => Promise.resolve({ kind: "exact", head, base: SHA_B, main: SHA_B, full: diff, core: diff }) }, now };
@@ -89,16 +92,15 @@ function moveMergeability(): number {
 
 /** mergeability at seq 0 and the two diff-pinned dependents over it, all valid. */
 function recordChain(): void {
-  const [mergeability, verdict, conformance] = chain as [FactEntry, FactEntry, FactEntry];
   push(SHA_A, 0);
   const first = record(mergeability, { pinClass: "observed", pin: `${MERGEABILITY}@0/0` }, { verdict: "clean", note: "first" });
-  const merge = record(verdict, { pinClass: "diff", pin: diff }, { verdict: "merge" }, { mergeability: first });
+  const merge = record(verdictMerge, { pinClass: "diff", pin: diff }, { verdict: "merge" }, { mergeability: first });
   record(conformance, { pinClass: "diff", pin: diff }, { verdict: "ok" }, { "verdict:merge": merge });
 }
 
 function rerunMergeability(output: object): void {
   const seq = moveMergeability();
-  record(chain[0]!, { pinClass: "observed", pin: `${MERGEABILITY}@${seq}/0` }, output);
+  record(mergeability, { pinClass: "observed", pin: `${MERGEABILITY}@${seq}/0` }, output);
 }
 
 describe("evaluateFact", () => {
