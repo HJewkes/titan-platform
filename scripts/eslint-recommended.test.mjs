@@ -139,3 +139,45 @@ describe("the root lint config with the bare gray-matter import ban", () => {
     expect(result.errorCount).toBe(0);
   });
 });
+
+describe("the root lint config with the recipe-file capability ban", () => {
+  // The fixture reuses real names from recipe-files.json, because the block's file list is read from that file.
+  const lintRecipeFixture = fixtureLinter(join(REPO, "scripts", "fixtures", "recipe-capabilities"));
+  const recipe = (file) => lintRecipeFixture(`products/factory/src/${file}`);
+
+  it("a recipe file importing node:fs, or a value from the GitHub client, fails no-restricted-imports", async () => {
+    const fs = await recipe("audit/workflow.ts");
+    const client = await recipe("build-surface/workflow.ts");
+
+    expect(fs.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-imports", severity: 2 })]);
+    expect(client.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-imports", severity: 2 })]);
+  });
+
+  it("a recipe file reading Date.now or calling setTimeout fails no-restricted-globals", async () => {
+    const result = await recipe("build-surface/slice-run.ts");
+
+    expect(result.messages.map((message) => [message.ruleId, message.message])).toEqual([
+      ["no-restricted-globals", expect.stringContaining("step body")],
+      ["no-restricted-globals", expect.stringContaining("step body")],
+    ]);
+  });
+
+  it("an inline eslint-disable in a recipe file does not suppress the error", async () => {
+    const result = await recipe("definition.ts");
+
+    expect(result.messages.filter((message) => message.severity === 2)).toEqual([expect.objectContaining({ ruleId: "no-restricted-globals" })]);
+    expect(result.messages).toContainEqual(expect.objectContaining({ ruleId: null, message: expect.stringContaining("noInlineConfig") }));
+  });
+
+  it("a type-only import of the GitHub client in a recipe file passes", async () => {
+    const result = await recipe("digest/flow.ts");
+
+    expect(result.errorCount).toBe(0);
+  });
+
+  it("the Events API ban still applies to a recipe file", async () => {
+    const result = await recipe("shepherd/account-hold.ts");
+
+    expect(result.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-syntax", severity: 2, message: expect.stringContaining("never an event source") })]);
+  });
+});

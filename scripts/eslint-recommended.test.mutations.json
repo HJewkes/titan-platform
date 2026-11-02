@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "recipe block keeps inline directives",
+      "file": "eslint.config.js",
+      "find": "noInlineConfig: true",
+      "replace": "noInlineConfig: false",
+      "kills": ["an inline eslint-disable in a recipe file does not suppress the error"]
+    },
+    {
+      "name": "recipe block drops the Events API re-list",
+      "file": "eslint.config.js",
+      "find": "\"no-restricted-syntax\": [\"error\", ...EVENTS_API_SELECTORS],\n    },\n  },\n  // Beat",
+      "replace": "},\n  },\n  // Beat",
+      "kills": ["the Events API ban still applies to a recipe file"]
+    },
+    {
+      "name": "recipe block allows the clock globals",
+      "file": "eslint.config.js",
+      "find": "const RECIPE_BANNED_GLOBALS = [\"Date\", ",
+      "replace": "const RECIPE_BANNED_GLOBALS = [",
+      "kills": ["a recipe file reading Date.now or calling setTimeout fails no-restricted-globals"]
+    },
+    {
+      "name": "recipe block bans type imports too",
+      "file": "eslint.config.js",
+      "find": "importNames: GITHUB_CLIENT_EXPORTS, message: RECIPE_GLOBAL_MESSAGE, allowTypeImports: true",
+      "replace": "importNames: GITHUB_CLIENT_EXPORTS, message: RECIPE_GLOBAL_MESSAGE",
+      "kills": ["a type-only import of the GitHub client in a recipe file passes"]
+    },
+    {
+      "name": "recipe block stops banning node:fs",
+      "file": "eslint.config.js",
+      "find": "const RECIPE_BANNED_MODULES = [\"node:fs\", ",
+      "replace": "const RECIPE_BANNED_MODULES = [",
+      "kills": ["a recipe file importing node:fs, or a value from the GitHub client, fails no-restricted-imports"]
+    }
+  ]
+}

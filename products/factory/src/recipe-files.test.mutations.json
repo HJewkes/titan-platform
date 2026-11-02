@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the census skips step(ctx calls",
+      "file": "products/factory/src/recipe-files.test.ts",
+      "find": "/\\b(?:step|codeStep)\\(ctx\\b|\\bctx",
+      "replace": "/\\bcodeStep\\(ctx\\b|\\bctx",
+      "kills": ["every factory source file that calls a step op is listed as a recipe file, and every listed file exists"]
+    }
+  ]
+}
