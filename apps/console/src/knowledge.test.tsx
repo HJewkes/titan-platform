@@ -115,6 +115,12 @@ describe("the knowledge search", () => {
 });
 
 describe("a knowledge record", () => {
+  it("titles the record at the size of every other page's heading", async () => {
+    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, await recorded());
+    const title = await screen.findByRole("heading", { level: 1, name: "Cap the backoff at thirty seconds" });
+    expect(title.className).toContain("sm:text-xl");
+  });
+
   it("renders the body as prose and links to its initiative", async () => {
     renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, await recorded(), { inApp: true });
     expect(await screen.findByText("Cap the backoff at thirty seconds")).toBeTruthy();

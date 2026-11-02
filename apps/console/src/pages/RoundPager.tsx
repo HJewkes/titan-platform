@@ -179,13 +179,16 @@ interface PagerStepsProps {
   end?: boolean;
 }
 
-/** Back, where the owner is, and Next; an end of the round keeps its button, disabled, so the row does not shift. */
+/**
+ * Back, where the owner is, and Next; an end of the round keeps its button, disabled, so the row does not shift.
+ * A phone keeps all three on one row, the position wrapping between the buttons.
+ */
 function PagerSteps({ pages, paging: { index, page, step }, end = false }: PagerStepsProps): ReactNode {
   const next = pages[index + 1];
   return (
-    <HStack gap={3} align="center" wrap testID={end ? "section-pager-end" : "section-steps"}>
+    <HStack gap={3} align="center" wrap className={ONE_ROW_ON_PHONE} testID={end ? "section-pager-end" : "section-steps"}>
       <Button size="sm" variant="outline" className={PHONE_TAP} isDisabled={index === 0} onPress={() => step(-1)}><ButtonText>← Back</ButtonText></Button>
-      <Typography variant={end ? "caption" : "subtitle2"} color={end ? "secondary" : undefined} testID={end ? undefined : "section-position"}>
+      <Typography variant={end ? "caption" : "subtitle2"} color={end ? "secondary" : undefined} className="max-md:min-w-0 max-md:flex-1" testID={end ? undefined : "section-position"}>
         {`Section ${index + 1} of ${pages.length}: ${page.title}`}
       </Typography>
       <Button size="sm" variant={end && next ? "solid" : "outline"} className={PHONE_TAP} isDisabled={next === undefined} onPress={() => step(1)} testID={end ? "section-next-end" : "section-next"}><ButtonText>Next →</ButtonText></Button>
@@ -193,6 +196,9 @@ function PagerSteps({ pages, paging: { index, page, step }, end = false }: Pager
     </HStack>
   );
 }
+
+/** A phone's row does not wrap: the buttons keep their content's width and the text between them gives way. */
+const ONE_ROW_ON_PHONE = "max-md:flex-nowrap";
 
 /** A phone has no keyboard to press, so the hint shows from `md` up. */
 function KeyHint(): ReactNode {
@@ -203,11 +209,11 @@ function KeyHint(): ReactNode {
   );
 }
 
-/** Every section by title, the current one solid, each saying how much of it is answered. */
+/** Every section by title, the current one solid, each saying how much of it is answered; a phone scrolls them sideways on one row. */
 function JumpList({ pages, paging: { index, go }, open }: { pages: readonly SectionPage[]; paging: Paging; open: readonly Question[] }): ReactNode {
   return (
     <nav aria-label="Sections" data-testid="section-jump-list">
-      <HStack gap={2} wrap>
+      <HStack gap={2} wrap className="max-md:flex-nowrap max-md:overflow-x-auto">
         {pages.map((page, at) => {
           const mark = pageMark(page, open);
           return (

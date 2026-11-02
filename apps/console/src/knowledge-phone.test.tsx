@@ -28,14 +28,18 @@ const onPhone = (): void =>
   void vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === BELOW_MD, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
 
 describe("the knowledge list on a phone", () => {
-  it("stacks each note into a card with its title, kind, initiative and file instead of the table", async () => {
+  it("stacks each note into a two-line card of its title, then kind, initiative and date, instead of the table", async () => {
     onPhone();
     renderPage(snapshot, "#/knowledge");
 
     const card = within(await screen.findByTestId(`knowledge-card-${NOTE}`));
     expect(screen.queryAllByTestId(/^knowledge-row-/)).toEqual([]);
     for (const text of ["Cap the backoff at thirty seconds", "note", "decision", "orbit-relay"]) expect(card.getByText(text)).toBeTruthy();
-    expect(card.getByText(/backoff-ceiling\.md/)).toBeTruthy();
+    expect(card.queryByText(/backoff-ceiling\.md/)).toBeNull();
+    const lines = screen.getByTestId(`knowledge-card-${NOTE}`).children;
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe(screen.getByTestId(`knowledge-card-meta-${NOTE}`));
+    expect(within(lines[1] as HTMLElement).getByText("orbit-relay")).toBeTruthy();
   });
 
   it("gives each card's title and initiative links a 44px tap target", async () => {
