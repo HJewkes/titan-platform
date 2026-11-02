@@ -57,6 +57,14 @@ describe("reviewCheck", () => {
     expect(check.title).toContain(A.slice(0, 12));
   });
 
+  it("a MERGE with an unmet attestation publishes action_required, not success", () => {
+    const direct = reviewCheck(merge({ attestUnmet: ["ci-wait", "merge"] }));
+    const carried = reviewCheck(merge({ verdictHead: A, head: B, carriedFrom: A, attestUnmet: ["ci-wait"] }));
+
+    expect(direct).toMatchObject({ headSha: A, conclusion: "action_required", title: `Attestation unmet at ${A.slice(0, 12)}: ci-wait, merge` });
+    expect(carried.conclusion).toBe("action_required");
+  });
+
   it("gives the release preflight success only with zero blockers", () => {
     expect(reviewCheck(merge({ releaseBlockers: 0 })).conclusion).toBe("success");
     expect(reviewCheck(merge({ releaseBlockers: 2 })).conclusion).toBe("action_required");
