@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "only a burndown-slices block lists slices, so a bare tag holds after the last slice",
+      "name": "only a burndown-slices block lists slices, so a bare tag still holds",
       "file": "products/factory/src/shepherd/held-open.ts",
       "find": "const listed = listedSlices(plan, notes);",
       "replace": "const listed: string[] = [];",
