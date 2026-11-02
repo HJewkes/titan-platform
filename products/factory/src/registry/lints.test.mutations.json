@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "projection lint finds nothing",
+      "file": "products/factory/src/registry/lints.ts",
+      "find": "const outside = producer ?",
+      "replace": "const outside = false && producer ?",
+      "kills": ["registry lints a dependent reading a field outside its producer's projection fails the projection lint"]
+    },
+    {
+      "name": "observed lint accepts a bare observed fact",
+      "file": "products/factory/src/registry/lints.ts",
+      "find": "if (!rule.ttl && !rule.producer?.length)",
+      "replace": "if (false)",
+      "kills": ["registry lints an observed fact with neither a producer kind nor a TTL fails"]
+    },
+    {
+      "name": "observed lint accepts any producer kind",
+      "file": "products/factory/src/registry/lints.ts",
+      "find": ".filter((kind) => !emitted.has(kind))",
+      "replace": ".filter(() => false)",
+      "kills": ["registry lints an observed fact whose producer names a kind no source emits fails"]
+    },
+    {
+      "name": "long-claims lint accepts every claim",
+      "file": "products/factory/src/registry/lints.ts",
+      "find": ".filter((claim) => LONG_SCOPE_POOLS.includes(claim.pool))",
+      "replace": ".filter(() => false)",
+      "kills": ["registry lints a long-scope claim outside a start set fails, and the same claim in a start set passes"]
+    },
+    {
+      "name": "fact-entry lint accepts a missing body",
+      "file": "products/factory/src/registry/lints.ts",
+      "find": "...(bodyExists(entry.body) ? [] :",
+      "replace": "...(true ? [] :",
+      "kills": ["registry lints a fact entry with an empty projection or a missing body fails"]
+    }
+  ]
+}
