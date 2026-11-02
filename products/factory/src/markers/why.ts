@@ -14,7 +14,7 @@ export async function explainFact(ctx: ValidityContext & { blobs: BlobStore }, t
   return formatWhy(`${target.fact} at ${itemKey(target.item)}`, verdict, missing, history);
 }
 
-export function formatWhy(subject: string, verdict: Verdict, missing: readonly string[], history: readonly MarkerRow[]): string[] {
+function formatWhy(subject: string, verdict: Verdict, missing: readonly string[], history: readonly MarkerRow[]): string[] {
   const head = verdict.status === "valid" ? `${subject}: valid${missing.length > 0 ? `, unreplayable (missing ${missing.join(", ")})` : ""}` : `${subject}: absent, ${reasonText(verdict)}`;
   return [head, ...inputLines(verdict), ...historyLines(history)];
 }
