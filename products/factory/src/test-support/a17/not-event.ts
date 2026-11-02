@@ -30,4 +30,9 @@ export const NOT_EVENT: readonly NotEvent[] = [
     title: "A17: a call to an unregistered step id fails the run",
     reason: "TP-3106 S7: asserts the run guard against the step registry, with no GitHub event input",
   },
+  {
+    file: "markers/shadow-orphan.test.ts",
+    title: "A17: a recipe changed to skip ci-wait sends one call-site-orphan to the sink and the run completes on the blob",
+    reason: "TP-3108 S5: asserts the shadow's orphan trap over a recorded replay, with no GitHub event input",
+  },
 ];

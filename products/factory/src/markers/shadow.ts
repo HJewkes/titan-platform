@@ -1,11 +1,12 @@
 import { memoKey, type WorkflowContext } from "@titan-design/workflow";
-import type { StepKind } from "../definition.js";
+import { declarationFor, type StepKind, type WorkflowDefinition } from "../definition.js";
 import type { PrKey } from "../head-guard/epoch-store.js";
 import { isFactEntry, type FactEntry } from "../registry/entry.js";
 import { entryFor, type createRegistry } from "../registry/registry.js";
 import type { BlobStore } from "./blob-store.js";
 import { jcs } from "./jcs.js";
-import { currentMarker, readMarkerValues, writeMarker, type InputDigest } from "./marker-store.js";
+import { currentMarker, readMarkerValues, writeMarker, type InputDigest, type MarkerRow } from "./marker-store.js";
+import { visit, type EntryLog } from "./orphan-trap.js";
 import { itemKey, pinFor, type Pin, type PinSources } from "./pins.js";
 import { outputDigest, projectionDigest } from "./projection.js";
 import { evaluateFact, versionOf, type ValidityContext, type Verdict } from "./validity.js";
@@ -20,16 +21,28 @@ interface ShadowSite {
 /** What a marker runner would have done before the call (fast-forward or run), or a shadow failure the run never saw. */
 export type ShadowEvent =
   | (ShadowSite & { kind: "verdict"; verdict: Verdict; wouldFastForward: boolean; unreplayable: string[] })
-  | (ShadowSite & { kind: "shadow-error"; error: string });
+  | (ShadowSite & { kind: "shadow-error"; error: string })
+  | (ShadowSite & { kind: "call-site-orphan"; marker: MarkerRow; callSite: string; failClosed: true });
 
 export type ShadowSink = (event: ShadowEvent) => void;
 
-interface ShadowDeps extends PinSources {
+export interface ShadowDeps extends PinSources {
   blobs: BlobStore;
   registry: ReturnType<typeof createRegistry>;
   sink: ShadowSink;
   now: () => string;
+  /** Runs with a call-site orphan: the shadow fails closed for them and reports no would-fast-forward. */
+  closedRuns: ReadonlySet<string>;
 }
+
+/** The workflow whose declarations name each call site, and the entry log every call is visited in. */
+interface ShadowScope {
+  definition: WorkflowDefinition;
+  log: EntryLog;
+}
+
+/** A static call-site id: the workflow and the declared step (family) id, never the iteration. */
+export const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `${definition.name}/${declarationFor(definition.steps, stepId)?.id ?? stepId}`;
 
 interface Prepared {
   pin: Exclude<Pin, { unpinnable: string }>;
@@ -40,9 +53,9 @@ interface Prepared {
  * Wraps a guarded context so every fact step also computes its verdict and appends its marker beside `step_results`.
  * The live call runs unchanged and its result is returned as the same object: the blob stays authoritative (M1b).
  */
-export function shadowContext(ctx: WorkflowContext, deps: ShadowDeps): WorkflowContext {
+export function shadowContext(ctx: WorkflowContext, deps: ShadowDeps, scope: ShadowScope): WorkflowContext {
   const observe = <R>(op: StepKind, stepId: string, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> =>
-    observeCall(ctx, deps, { op, stepId }, live, outputOf);
+    observeCall(ctx, deps, { op, stepId, callSite: callSiteOf(scope.definition, stepId), log: scope.log }, live, outputOf);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -61,25 +74,34 @@ export function shadowContext(ctx: WorkflowContext, deps: ShadowDeps): WorkflowC
   };
 }
 
-async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: { op: StepKind; stepId: string }, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> {
+interface ObservedCall {
+  op: StepKind;
+  stepId: string;
+  callSite: string;
+  log: EntryLog;
+}
+
+async function observeCall<R>(ctx: WorkflowContext, deps: ShadowDeps, call: ObservedCall, live: () => Promise<R>, outputOf: (result: R) => unknown): Promise<R> {
+  const key = memoKey(call.op, call.stepId, ctx.iteration(call.stepId));
+  visit(call.log, call.callSite, key);
   const entry = entryFor(deps.registry, call.stepId);
   const item = itemOf(ctx);
   if (!entry || !isFactEntry(entry) || !item) return live();
-  const site: ShadowSite = { runId: ctx.runId, stepId: call.stepId, fact: entry.fact, memoKey: memoKey(call.op, call.stepId, ctx.iteration(call.stepId)) };
+  const site: ShadowSite = { runId: ctx.runId, stepId: call.stepId, fact: entry.fact, memoKey: key };
   const prepared = await swallow(deps, site, () => prepare(deps, entry, item, site));
   const result = await live();
-  if (prepared) await swallow(deps, site, () => record(deps, entry, item, { ...site, callSite: ctx.workflowName }, prepared, outputOf(result)));
+  if (prepared) await swallow(deps, site, () => record(deps, entry, item, { ...site, callSite: call.callSite }, prepared, outputOf(result)));
   return result;
 }
 
 /** Runs without a repo and PR param (audit, autoresearch) have no item, so they write no marker (O2). */
-function itemOf(ctx: WorkflowContext): PrKey | undefined {
+export function itemOf(ctx: WorkflowContext): PrKey | undefined {
   const repo = ctx.param("repo");
   const pr = Number(ctx.param("pr"));
   return repo && Number.isSafeInteger(pr) && pr > 0 ? { repo, pr } : undefined;
 }
 
-async function swallow<T>(deps: ShadowDeps, site: ShadowSite, work: () => Promise<T> | T): Promise<T | undefined> {
+export async function swallow<T>(deps: Pick<ShadowDeps, "sink">, site: ShadowSite, work: () => Promise<T> | T): Promise<T | undefined> {
   try {
     return await work();
   } catch (error) {
@@ -97,7 +119,7 @@ async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: Sh
   const verdict = await evaluateFact(validity, { item, fact: entry.fact });
   const unreplayable = verdict.status === "valid" && verdict.marker ? readMarkerValues(deps.db, deps.blobs, verdict.marker.id).missing : [];
   // A valid marker whose blobs were collected is re-run, never fast-forwarded and never parked (TP-3105 plan §5).
-  deps.sink({ ...site, kind: "verdict", verdict, wouldFastForward: verdict.status === "valid" && unreplayable.length === 0, unreplayable });
+  deps.sink({ ...site, kind: "verdict", verdict, wouldFastForward: verdict.status === "valid" && unreplayable.length === 0 && !deps.closedRuns.has(site.runId), unreplayable });
   const pin = await pinFor(entry.fact, item, deps, validity.now);
   return "unpinnable" in pin ? undefined : { pin, inputs: await inputDigests(validity, entry, item) };
 }
