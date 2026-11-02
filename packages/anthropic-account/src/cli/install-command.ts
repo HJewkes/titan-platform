@@ -10,7 +10,7 @@ export const LAUNCHD_LABEL = "com.titan.anthropic-account-poll";
 const TIMER = "anthropic-account-poll.timer";
 const SYSTEMD_UNITS = ["anthropic-account-poll.service", TIMER, "anthropic-account-poll-failed@.service"];
 
-export interface InstallOptions {
+interface InstallOptions {
   dryRun: boolean;
 }
 
@@ -102,7 +102,7 @@ function planFor(context: CliContext): Plan | undefined {
   return undefined;
 }
 
-export function defaultExec(file: string, args: readonly string[]): Promise<void> {
+function defaultExec(file: string, args: readonly string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(file, [...args], (error) => (error ? reject(error) : resolve()));
   });

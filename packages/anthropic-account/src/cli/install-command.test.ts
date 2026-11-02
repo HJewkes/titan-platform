@@ -74,7 +74,7 @@ describe("install", () => {
 describe("uninstall", () => {
   it("removes exactly the installed files and disables the timer on linux", async () => {
     await run(["install"], "linux");
-    const written = filesUnder(home).sort();
+    const written = filesUnder(unitDir());
     fs.writeFileSync(path.join(unitDir(), "unrelated.service"), "x");
     calls = [];
 
