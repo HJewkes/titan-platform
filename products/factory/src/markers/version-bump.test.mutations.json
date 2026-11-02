@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "markersBehindVersion lists the markers at the version instead of those behind it",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "WHERE m.step = ? AND m.version <> ?",
+      "replace": "WHERE m.step = ? AND m.version = ?",
+      "kills": ["a version bump a bump invalidates every marker of the step on every item, and no marker of another step"]
+    },
+    {
+      "name": "markersBehindVersion counts a superseded row",
+      "file": "products/factory/src/markers/marker-store.ts",
+      "find": "AND m.id = (SELECT MAX(n.id)",
+      "replace": "AND m.id <= (SELECT MAX(n.id)",
+      "kills": ["a version bump a superseded row of an old version is not listed beside the current one"]
+    }
+  ]
+}

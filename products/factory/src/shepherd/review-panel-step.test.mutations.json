@@ -10,6 +10,15 @@
         "proofPlanFields for a head proceeding on its NO_REPRO plans a tests member for a no-repro-non-source standing",
         "proofPlanFields for a head proceeding on its NO_REPRO plans a tests member for a workflow-only head proceeding on its unproved CI read (TP-4275)"
       ]
+    },
+    {
+      "name": "panelMerge drops a member's Attests tokens",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "...(profile !== undefined && { profile }), ...(attests && { attests }) }];",
+      "replace": "...(profile !== undefined && { profile }) }];",
+      "kills": [
+        "the sh-review-panel step records the adversary member's Attests tokens on its MERGE, so the merge guard can judge them"
+      ]
     }
   ]
 }
