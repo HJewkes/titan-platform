@@ -66,6 +66,12 @@ const RECIPE_CAPABILITY_BASELINE = [
   "products/factory/src/workflows/land-pr.ts",
   "products/factory/src/workflows/post-merge.ts",
 ];
+const RECIPE_LOOP_BASELINE = [
+  "products/factory/src/shepherd/merge-evidence-gate.ts",
+  "products/factory/src/shepherd/review-panel-step.ts",
+  "products/factory/src/shepherd/stack-land.ts",
+  "products/factory/src/workflows/land.ts",
+];
 const RECIPE_FILES = JSON.parse(readFileSync(new URL("./products/factory/src/recipe-files.json", import.meta.url), "utf8")).map((file) => `products/factory/src/${file}`);
 const RECIPE_GLOBAL_MESSAGE = "Reach it through a step body (D-M1b-07).";
 const RECIPE_BANNED_GLOBALS = ["Date", "setTimeout", "setInterval", "setImmediate", "fetch", "process", "performance"];
@@ -126,6 +132,12 @@ export default tseslint.config(
       "no-restricted-globals": ["error", ...RECIPE_BANNED_GLOBALS.map((name) => ({ name, message: RECIPE_GLOBAL_MESSAGE }))],
       "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS],
     },
+  },
+  // A step in a loop has one call site for every pass, so a replay cannot tell the passes apart (TP-3108 H-L3). These files still loop over steps; only remove entries.
+  {
+    files: RECIPE_FILES,
+    ignores: RECIPE_LOOP_BASELINE,
+    rules: { "titan/recipe-step-in-loop": "error" },
   },
   // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera, timing and composition page sources are named.
   {

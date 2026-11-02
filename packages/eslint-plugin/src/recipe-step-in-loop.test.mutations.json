@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any ancestor all allows, so all inside a loop passes",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "  return all !== null && nearestLoop(all) === null;",
+      "replace": "  return all !== null;",
+      "kills": [
+        "recipe-step-in-loop invalid all([...]) called inside a while loop is an error",
+        "recipe-step-in-loop invalid all over a map inside a while loop is an error"
+      ]
+    },
+    {
+      "name": "a map callback is not a loop",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    return isCallbackOf(at, LOOP_CALLBACKS) ? at : null;",
+      "replace": "    return null;",
+      "kills": [
+        "recipe-step-in-loop invalid a step called in a .map callback outside all is an error"
+      ]
+    },
+    {
+      "name": "only ctx.dispatch is a step op",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "STEP_OPS.has(calleeName(call) ?? \"\")",
+      "replace": "calleeName(call) === \"dispatch\"",
+      "kills": [
+        "recipe-step-in-loop invalid a step called in a .map callback outside all is an error",
+        "recipe-step-in-loop invalid authorize in a reduce callback"
+      ]
+    }
+  ]
+}
