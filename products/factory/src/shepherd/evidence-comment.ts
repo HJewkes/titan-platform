@@ -64,6 +64,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "github-path": "a .github/ change has no CI-policy line from the reviewer",
   "ci-policy-weakened": "the reviewer says the change weakens CI policy",
   "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
+  "attest-unmet": "no independent reviewer attested a claimed attestation row",
 };
 
 const LONG_PATH_LIST = 5;
