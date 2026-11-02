@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli, type CliIo } from "./cli.js";
-import { makeTestRepo, plantedHomePath, tempDir, ZERO_SHA, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, plantedHomePath, tempDir, worldTemplate, ZERO_SHA, type RepoWorld, type TestRepo } from "./test-repo.js";
 
 const dirs: string[] = [];
 const PLANTED_TERM = "zq-planted-" + "term";
@@ -64,11 +64,27 @@ function commitFile(repo: TestRepo, file: string, contents: string): string {
   return repo.commit(`add ${file}`);
 }
 
+/** A copy of a `base` commit followed by one adding `file`, built once per file rather than once per test. */
+function basePlus(file: string, contents: string): () => TestRepo & { base: string; head: string } {
+  const copy = worldTemplate(({ repo }) => ({ base: repo.commit("base"), head: commitFile(repo, file, contents) }));
+  return () => opened(copy());
+}
+
+function opened<T extends object>({ root, repo, ...shas }: RepoWorld & T): TestRepo & Omit<T, keyof RepoWorld> {
+  dirs.push(root);
+  return { ...repo, ...shas };
+}
+
+const withLeak = basePlus("notes.md", `path ${plantedHomePath()}\n`);
+const withClean = basePlus("a.md", "clean\n");
+const withTerm = basePlus("a.md", `mentions ${PLANTED_TERM}\n`);
+const baseCopy = worldTemplate(({ repo }) => ({ base: repo.commit("base") }));
+const withBase = () => opened(baseCopy());
+
 describe("range", () => {
   it("fails a planted path with file:line and the rule, never echoing it, and passes a clean commit", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
+    const repo = withLeak();
+    const { base, head: leak } = repo;
     const clean = commitFile(repo, "clean.md", "nothing to see\n");
 
     const failing = run(repo, ["range", base, leak]);
@@ -81,9 +97,8 @@ describe("range", () => {
   });
 
   it("exits 2 on a malformed .egress-allow instead of treating it as empty", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
+    const repo = withLeak();
+    const { base, head: leak } = repo;
     repo.write(".egress-allow", "notes.md home-path no task id here\n");
 
     const result = run(repo, ["range", base, leak]);
@@ -93,9 +108,8 @@ describe("range", () => {
   });
 
   it("exits 2 on a pathological .egress-allow glob instead of crashing", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
+    const repo = withLeak();
+    const { base, head: leak } = repo;
     repo.write(".egress-allow", `docs/${"{a}".repeat(5000)} home-path fixture, TP-405\n`);
 
     const result = run(repo, ["range", base, leak]);
@@ -105,8 +119,8 @@ describe("range", () => {
   });
 
   it("honours a valid .egress-allow entry and counts it", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = commitFile(repo, "docs/notes.md", `path ${plantedHomePath()}\n`);
     repo.write(".egress-allow", "docs/notes.md home-path fixture, TP-405\n");
 
@@ -119,9 +133,8 @@ describe("range", () => {
 
 describe("private term list", () => {
   it("is never read in CI, even when TITAN_EGRESS_TERMS points at one", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+    const repo = withTerm();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_TERMS: termFile(PLANTED_TERM) });
 
@@ -130,9 +143,8 @@ describe("private term list", () => {
   });
 
   it("prints a notice and continues when absent, and exits 2 when TITAN_EGRESS_REQUIRE_TERMS=1", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", "clean\n");
+    const repo = withClean();
+    const { base, head } = repo;
 
     const lenient = run(repo, ["range", base, head]);
     const strict = run(repo, ["range", base, head], { TITAN_EGRESS_REQUIRE_TERMS: "1" });
@@ -143,9 +155,8 @@ describe("private term list", () => {
   });
 
   it("loads the list under CI when TITAN_EGRESS_REQUIRE_TERMS=1, so a planted term fails the scan", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+    const repo = withTerm();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], {
       CI: "true",
@@ -157,9 +168,8 @@ describe("private term list", () => {
   });
 
   it("exits 2 naming the switch under CI when REQUIRE_TERMS=1 and no list exists", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", "clean\n");
+    const repo = withClean();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: "1" });
 
@@ -170,9 +180,8 @@ describe("private term list", () => {
   it.each([["zero bytes", ""], ["only comments and blanks", "# nothing here\n\n   \n"]])(
     "exits 2 when REQUIRE_TERMS=1 and the list holds no terms (%s)",
     (_name, contents) => {
-      const repo = newRepo();
-      const base = repo.commit("base");
-      const head = commitFile(repo, "a.md", "clean\n");
+      const repo = withClean();
+      const { base, head } = repo;
 
       const strict = run(repo, ["range", base, head], {
         TITAN_EGRESS_REQUIRE_TERMS: "1",
@@ -187,9 +196,8 @@ describe("private term list", () => {
   );
 
   it("exits 2 when REQUIRE_TERMS=1 and the list cannot be read", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", "clean\n");
+    const repo = withClean();
+    const { base, head } = repo;
     const unreadable = path.join(emptyHome(), "terms-dir");
     fs.mkdirSync(unreadable);
 
@@ -205,9 +213,8 @@ describe("private term list", () => {
   it.each(["1", "true", "TRUE", "yes", "on", " 1", "1 "])(
     "treats REQUIRE_TERMS=%j as on: loads the list under CI so a planted term fails the scan",
     (value) => {
-      const repo = newRepo();
-      const base = repo.commit("base");
-      const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+      const repo = withTerm();
+      const { base, head } = repo;
 
       const result = run(repo, ["range", base, head], {
         CI: "true",
@@ -220,9 +227,8 @@ describe("private term list", () => {
   );
 
   it.each(["", "0", "false", "no", "off", "OFF"])("treats REQUIRE_TERMS=%j as off", (value) => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", "clean\n");
+    const repo = withClean();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
 
@@ -232,9 +238,8 @@ describe("private term list", () => {
   it.each(["2", "tru", "enabled", "y", "1;"])(
     "exits 2 on the unrecognised REQUIRE_TERMS value %j instead of reading it as off",
     (value) => {
-      const repo = newRepo();
-      const base = repo.commit("base");
-      const head = commitFile(repo, "a.md", "clean\n");
+      const repo = withClean();
+      const { base, head } = repo;
 
       const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
 
@@ -244,9 +249,8 @@ describe("private term list", () => {
   );
 
   it("flags a planted term by its line number without naming it", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+    const repo = withTerm();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], { TITAN_EGRESS_TERMS: termFile(`# mine\n${PLANTED_TERM}\n`) });
 
@@ -256,9 +260,8 @@ describe("private term list", () => {
   });
 
   it("is found under XDG_CONFIG_HOME when TITAN_EGRESS_TERMS is unset", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+    const repo = withTerm();
+    const { base, head } = repo;
     const configHome = emptyHome();
     fs.mkdirSync(path.join(configHome, "titan-egress"));
     fs.writeFileSync(path.join(configHome, "titan-egress", "private-terms"), PLANTED_TERM, { mode: 0o600 });
@@ -269,9 +272,8 @@ describe("private term list", () => {
   });
 
   it.skipIf(process.platform === "win32")("warns but still loads a list readable by other users", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+    const repo = withTerm();
+    const { base, head } = repo;
 
     const result = run(repo, ["range", base, head], { TITAN_EGRESS_TERMS: termFile(PLANTED_TERM, 0o644) });
 
@@ -280,8 +282,8 @@ describe("private term list", () => {
   });
 
   it("exits 2 on an invalid regex term, naming its line only", () => {
-    const repo = newRepo();
-    const head = repo.commit("base");
+    const repo = withBase();
+    const { base: head } = repo;
 
     const result = run(repo, ["range", ZERO_SHA, head], { TITAN_EGRESS_TERMS: termFile("re:zq[unclosed") });
 
@@ -293,9 +295,8 @@ describe("private term list", () => {
 
 describe("pre-push and tree", () => {
   it("scans the commits named on git's pre-push stdin", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
+    const repo = withLeak();
+    const { base, head: leak } = repo;
     const stdin = `refs/heads/main ${leak} refs/heads/main ${base}\n`;
 
     const result = run(repo, ["pre-push", "origin", "/nonexistent/egress-scan-remote.git"], {}, stdin);
@@ -330,8 +331,8 @@ describe("commit idents and ref names", () => {
     ["committer.name", { GIT_COMMITTER_NAME: PLANTED_TERM }],
     ["committer.email", { GIT_COMMITTER_EMAIL: `zq@${PLANTED_TERM}.example` }],
   ])("refuses a push whose %s holds a term, naming the field and sha only", (field, env) => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = repo.commit("clean message", env);
 
     const result = prePush(repo, `refs/heads/main ${leak} refs/heads/main ${base}\n`);
@@ -342,8 +343,8 @@ describe("commit idents and ref names", () => {
   });
 
   it("finds an ident term in range as well, which CI runs", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = repo.commit("clean message", { GIT_AUTHOR_NAME: PLANTED_TERM });
 
     const result = run(repo, ["range", base, leak], termsEnv());
@@ -356,8 +357,8 @@ describe("commit idents and ref names", () => {
     ["local", `refs/heads/${PLANTED_TERM}`, "refs/heads/main"],
     ["remote", "refs/heads/main", `refs/tags/v1-${PLANTED_TERM}`],
   ])("refuses a push whose %s ref name holds a term, naming the push line only", (side, localRef, remoteRef) => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const head = repo.commit("clean");
 
     const result = prePush(repo, `${localRef} ${head} ${remoteRef} ${base}\n`);
@@ -368,8 +369,8 @@ describe("commit idents and ref names", () => {
   });
 
   it("lets a deletion of a ref named after a term through, so a leaked ref can be removed", () => {
-    const repo = newRepo();
-    const sha = repo.commit("base");
+    const repo = withBase();
+    const { base: sha } = repo;
 
     const result = prePush(repo, `(delete) ${ZERO_SHA} refs/heads/${PLANTED_TERM} ${sha}\n`);
 
@@ -377,8 +378,8 @@ describe("commit idents and ref names", () => {
   });
 
   it("passes a clean push with the term list loaded", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const head = commitFile(repo, "notes.md", "nothing to see\n");
 
     const result = prePush(repo, `refs/heads/feat/x ${head} refs/heads/feat/x ${base}\n`);
@@ -398,8 +399,8 @@ describe("files git calls binary", () => {
   }
 
   it("finds a term in a file with one NUL byte in pre-push, with no binary file skipped", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = commitFile(repo, "blob.dat", ONE_NUL);
     const stdin = `refs/heads/main ${leak} refs/heads/main ${base}\n`;
 
@@ -411,8 +412,8 @@ describe("files git calls binary", () => {
   });
 
   it("finds a term in a file with one NUL byte in range, with no binary file skipped", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = commitFile(repo, "blob.dat", ONE_NUL);
 
     const result = run(repo, ["range", base, leak], terms());
@@ -434,8 +435,8 @@ describe("files git calls binary", () => {
   });
 
   it("finds a term inside a NUL-separated record file", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const leak = commitFile(repo, "records.bin", RECORDS);
 
     const result = run(repo, ["range", base, leak], terms());
@@ -446,8 +447,8 @@ describe("files git calls binary", () => {
   });
 
   it("exits 2 naming the short sha and the limit when a commit's patch is over it", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const big = commitFile(repo, "big.dat", "x".repeat(4096));
     const stdin = `refs/heads/main ${big} refs/heads/main ${base}\n`;
 
@@ -546,8 +547,8 @@ describe("evil merges", () => {
 
 describe("commit messages", () => {
   it("finds a term in a message when the repo re-encodes log output as UTF-16", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     repo.git(["config", "i18n.logOutputEncoding", "UTF-16"]);
     const leak = repo.commit(`mention ${PLANTED_TERM}`);
 
@@ -564,8 +565,8 @@ describe("argument validation", () => {
   }
 
   it("exits 2 and writes no file when a pre-push stdin sha begins with a dash", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
     const target = outputTarget();
 
     const result = run(repo, ["pre-push", "origin"], {}, `refs/heads/main --output=${target} refs/heads/main ${base}\n`);
@@ -577,8 +578,8 @@ describe("argument validation", () => {
   });
 
   it("exits 2 and writes no file when the range base is an --output option", () => {
-    const repo = newRepo();
-    const head = repo.commit("base");
+    const repo = withBase();
+    const { base: head } = repo;
     const target = outputTarget();
 
     const result = run(repo, ["range", `--output=${target}`, head]);
@@ -589,8 +590,8 @@ describe("argument validation", () => {
   });
 
   it("exits 2 naming the position when a range head begins with a dash after --", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
 
     const result = run(repo, ["range", "--", base, "-p"]);
 
@@ -599,8 +600,8 @@ describe("argument validation", () => {
   });
 
   it("exits 2 when the pre-push remote name begins with a dash", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
+    const repo = withBase();
+    const { base } = repo;
 
     const result = run(repo, ["pre-push", "--", "--upload-pack=x"], {}, `refs/heads/main ${base} refs/heads/main ${ZERO_SHA}\n`);
 
@@ -626,8 +627,8 @@ describe("usage", () => {
   });
 
   it("exits 2 instead of skipping the scan when a help flag follows the command", () => {
-    const repo = newRepo();
-    const head = repo.commit("base");
+    const repo = withBase();
+    const { base: head } = repo;
 
     const result = run(repo, ["range", "-h", head, head]);
 

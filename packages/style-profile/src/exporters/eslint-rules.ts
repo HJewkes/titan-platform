@@ -31,12 +31,9 @@ const NAMING_MODIFIERS: Partial<Record<string, string[]>> = {
 
 function eslintExtensionOptions(rule: StyleRule): unknown[] | undefined {
   const eslintExt = rule.extensions?.eslint;
-  return eslintExt &&
-    typeof eslintExt === "object" &&
-    "options" in eslintExt &&
-    Array.isArray((eslintExt as Record<string, unknown>).options)
-    ? ((eslintExt as Record<string, unknown>).options as unknown[])
-    : undefined;
+  if (!eslintExt || typeof eslintExt !== "object" || !("options" in eslintExt)) return undefined;
+  const { options } = eslintExt;
+  return Array.isArray(options) ? options : undefined;
 }
 
 const NAMING_RULE = "@typescript-eslint/naming-convention";
@@ -104,7 +101,7 @@ export function buildNamingConvention(profile: Profile): NamingConventionResult 
   let maxSeverity: EmittedEslintSeverity | null = null;
 
   for (const key of Object.keys(NAMING_SELECTORS)) {
-    const rule = profile.naming?.[key];
+    const rule = profile.naming[key];
     if (!rule) continue;
     const selectorName = NAMING_SELECTORS[key]!;
     const severity = toEslintSeverity(rule.confidence, thresholds);
@@ -129,7 +126,7 @@ export function buildNamingConventionRule(
 export function buildImportOrderRule(
   profile: Profile,
 ): [string, unknown] | null {
-  const importOrder = profile.structure?.importOrder;
+  const importOrder = profile.structure.importOrder;
   if (!importOrder) return null;
   const severity = toEslintSeverity(importOrder.confidence, profile.severityThresholds);
   if (!severity) return null;
@@ -153,7 +150,7 @@ export function buildImportOrderRule(
 export function buildFunctionLengthRule(
   profile: Profile,
 ): [string, unknown] | null {
-  const maxLines = profile.structure?.functionMaxLines;
+  const maxLines = profile.structure.functionMaxLines;
   if (!maxLines) return null;
   const severity = toEslintSeverity(maxLines.confidence, profile.severityThresholds);
   if (!severity) return null;
@@ -165,7 +162,7 @@ export function buildFunctionLengthRule(
 export function buildFileNamingRule(
   profile: Profile,
 ): [string, unknown] | null {
-  const files = profile.naming?.files;
+  const files = profile.naming.files;
   if (!files) return null;
   const severity = toEslintSeverity(files.confidence, profile.severityThresholds);
   if (!severity) return null;
@@ -189,7 +186,6 @@ export function buildJsdocRules(
 ): Array<[string, unknown]> {
   const rules: Array<[string, unknown]> = [];
   const docs = profile.documentation;
-  if (!docs) return rules;
 
   const functionDocs = docs.functionDocs;
   if (!functionDocs) return rules;

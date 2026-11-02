@@ -13,8 +13,8 @@
     {
       "name": "a cast-in-motion beat may resolve to a still template",
       "file": "products/explainer/src/resolve-beat.ts",
-      "find": "if (key.job === \"cast-in-motion\" && layer !== \"custom\")",
-      "replace": "if (key.job === \"cast-in-motion\" && layer === \"none\")",
+      "find": "job === \"cast-in-motion\" && layer !== \"custom\";",
+      "replace": "job === \"cast-in-motion\" && layer === \"none\";",
       "kills": [
         "resolver tables resolves a cast-in-motion beat to a moving layer and refuses one authored as a still template"
       ]

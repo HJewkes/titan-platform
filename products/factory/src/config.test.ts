@@ -18,6 +18,18 @@ function xdg(config?: unknown): NodeJS.ProcessEnv {
   return { XDG_CONFIG_HOME: join(dir, "config"), XDG_STATE_HOME: join(dir, "state") };
 }
 
+describe("configPath", () => {
+  it("prefers TITAN_FACTORY_CONFIG over XDG_CONFIG_HOME", () => {
+    expect(configPath({ ...xdg(), TITAN_FACTORY_CONFIG: "/own/config.json" })).toBe("/own/config.json"); // mutation: drop the env check
+  });
+
+  it("falls back to the XDG path when TITAN_FACTORY_CONFIG is empty", () => {
+    const env: NodeJS.ProcessEnv = { ...xdg(), TITAN_FACTORY_CONFIG: "" };
+
+    expect(configPath(env)).toBe(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json")); // mutation: use `??` instead of truthiness
+  });
+});
+
 describe("resolveDbPath", () => {
   it("prefers the flag, then the environment, then the config file", () => {
     const env = { ...xdg({ dbPath: "/from/config" }), TITAN_FACTORY_DB: "/from/env" };
@@ -117,6 +129,30 @@ describe("loadConfig", () => {
 
     expect(loadConfig(configPath(xdg({ shepherd: { flakyChecks } }))).shepherd?.flakyChecks).toEqual(flakyChecks);
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
+  });
+
+  it("keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name", () => {
+    const rule = { mode: "shadow", maxChangedShare: 0.01, snapshotPaths: ["ui/**/*.png"], apiPaths: ["ui/api/*.api.md"], tokenPaths: [], harnessPaths: [], maxSnapshots: 80 };
+    const load = (visualThreshold: object) => loadConfig(configPath(xdg({ shepherd: { visualThreshold } })));
+
+    expect(load({ "acme/ui": rule }).shepherd?.visualThreshold).toEqual({ "acme/ui": rule });
+    expect(() => load({ "acme/ui": { ...rule, maxChangedShar: 0.02 } })).toThrow(/maxChangedShar/);
+    expect(() => load({ "acme/ui": { ...rule, maxChangedShare: 2 } })).toThrow(/visualThreshold/);
+    expect(() => load({ ui: rule })).toThrow(/visualThreshold/);
+  });
+
+  it("keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for", () => {
+    const rule = { mode: "shadow", snapshotPaths: [], apiPaths: [], tokenPaths: [], harnessPaths: [] };
+    const load = (more: object) => loadConfig(configPath(xdg({ shepherd: { visualThreshold: { "acme/ui": { ...rule, ...more } } } })));
+    const mi = 1024 * 1024;
+
+    expect(load({ maxSnapshots: 200, maxBytes: 20 * mi, maxPixels: 32 * mi, maxTotalPixels: 256 * mi }).shepherd?.visualThreshold?.["acme/ui"]?.maxTotalPixels).toBe(256 * mi);
+    expect(load({ mode: "on" }).shepherd?.visualThreshold?.["acme/ui"]?.mode).toBe("on");
+    expect(() => load({ mode: "enforce" })).toThrow(/mode/);
+    expect(() => load({ maxBytes: 20 * mi + 1 })).toThrow(/maxBytes/);
+    expect(() => load({ maxSnapshots: 201 })).toThrow(/maxSnapshots/);
+    expect(() => load({ maxPixels: 32 * mi + 1 })).toThrow(/maxPixels/);
+    expect(() => load({ maxTotalPixels: 256 * mi + 1 })).toThrow(/maxTotalPixels/);
   });
 
   it("reads the held-repair gate reset flag, and rejects a value other than off or on and an unknown key", () => {

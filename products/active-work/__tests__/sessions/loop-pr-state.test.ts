@@ -79,6 +79,15 @@ describe('findMergedPrLoops cache', () => {
     expect(second.warnings[0]).toMatch(/Could not check 1 PR\(s\).*ENETUNREACH/);
   });
 
+  it('reports a gh answer that is not an object as a failure, leaving the loop unmarked', async () => {
+    setGhRunner(() => Promise.resolve({ code: 0, stdout: 'null', stderr: '' }));
+
+    const result = await findMergedPrLoops(NO_INITIATIVE, [prLoop(1)], clockAt(0));
+
+    expect(result.merged.size).toBe(0);
+    expect(result.warnings[0]).toMatch(/Could not check 1 PR\(s\).*did not return a PR object/);
+  });
+
   it('asks again once the entry is five minutes old', async () => {
     let state = 'OPEN';
     const calls = recordingGh(() => state);

@@ -9,7 +9,8 @@ import { evidenceComment } from "./evidence-comment.js";
 import { MERGE_EVIDENCE_STEP, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
-import { mergeEvidenceAt, shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { mergeEvidenceAt, shepherdGatePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { verdictOf } from "./take-verdict.js";
 
 const REPO = "octo/demo";

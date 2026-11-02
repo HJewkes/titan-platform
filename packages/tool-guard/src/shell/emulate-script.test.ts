@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { killGroup, shellOracle } from "../test-support/shell-rows.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
@@ -60,18 +61,7 @@ describe("emulate -c text is walked as eval (TP-3207)", () => {
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!zsh)("zsh runs the text of each emulate form (TP-3207)", () => {
-  function runs(line: string): boolean {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "emulate-c-"));
-    try {
-      fs.writeFileSync(path.join(dir, "s.zsh"), `${line}\n`);
-      spawnSync("zsh", ["-f", "s.zsh"], { cwd: dir, stdio: ["ignore", "ignore", "ignore"] });
-      return fs.existsSync(path.join(dir, "mk"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  it.each([
+  const lines = [
     "emulate zsh -c 'touch mk'",
     "emulate -R sh -c 'touch mk'",
     "emulate sh -o errexit -c 'touch mk'",
@@ -80,8 +70,16 @@ describe.skipIf(!zsh)("zsh runs the text of each emulate form (TP-3207)", () => 
     "emulate sh -co errexit 'touch mk'",
     "emulate sh -c - 'touch mk'",
     "f=-c; emulate sh $f 'touch mk'",
-  ])("runs %s", (line) => {
-    expect(runs(line)).toBe(true);
+  ];
+  const runs = shellOracle("emulate-c-", (dir, line: string) => {
+    fs.writeFileSync(path.join(dir, "s.zsh"), `${line}\n`);
+    return { run: { program: "zsh", args: ["-f", "s.zsh"] }, read: () => fs.existsSync(path.join(dir, "mk")) };
+  });
+  for (const line of lines) runs.add(line);
+  runs.beforeAll();
+
+  it.each(lines)("runs %s", (line) => {
+    expect(runs.get(line)).toBe(true);
   });
 });
 
@@ -131,8 +129,12 @@ function sweepLines(): string[] {
   return [...lines];
 }
 
-/** Runs each line in one zsh with a fake git that logs the row it ran in; returns the rows that ran and each stderr. */
-function zshRuns(lines: string[], preamble = ""): { ran: Set<number>; stderr: string[] } {
+/**
+ * Runs each line in one zsh with a fake git that logs the row it ran in; returns the rows that ran and each stderr.
+ * Async, so the two option-letter runs and the guard's own reading overlap (TP-4453); the zsh leads its own process
+ * group, killed when it exits.
+ */
+async function zshRuns(lines: string[], preamble = ""): Promise<{ ran: Set<number>; stderr: string[] }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "emulate-sweep-"));
   try {
     fs.mkdirSync(path.join(dir, "bin"));
@@ -141,7 +143,13 @@ function zshRuns(lines: string[], preamble = ""): { ran: Set<number>; stderr: st
     const script = lines.map((line, i) => `(ROW=${i}; export ROW; ${line}) 2> err/${i}`).join("\n");
     fs.writeFileSync(path.join(dir, "s.zsh"), `${preamble}${script}\n`);
     const env = { PATH: `${path.join(dir, "bin")}:/usr/bin:/bin`, RAN_LOG: path.join(dir, "ran"), HOME: dir };
-    spawnSync("zsh", ["-f", "s.zsh"], { cwd: dir, env, stdio: "ignore" });
+    await new Promise((resolve, reject) => {
+      const child = spawn("zsh", ["-f", "s.zsh"], { cwd: dir, env, stdio: "ignore", detached: true });
+      child.on("error", reject).on("close", () => {
+        killGroup(child.pid);
+        resolve(undefined);
+      });
+    });
     const log = fs.existsSync(path.join(dir, "ran")) ? fs.readFileSync(path.join(dir, "ran"), "utf8") : "";
     const ran = new Set(log.split("\n").filter(Boolean).map(Number));
     return { ran, stderr: lines.map((_, i) => fs.readFileSync(path.join(dir, "err", String(i)), "utf8")) };
@@ -151,8 +159,8 @@ function zshRuns(lines: string[], preamble = ""): { ran: Set<number>; stderr: st
 }
 
 describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh runs its text (TP-3207)", () => {
-  it("agrees with zsh on the named cluster rows", () => {
-    const { ran } = zshRuns(CLUSTER_ROWS.map(([, line]) => line.replace(PUSH, PROTECTED)));
+  it("agrees with zsh on the named cluster rows", async () => {
+    const { ran } = await zshRuns(CLUSTER_ROWS.map(([, line]) => line.replace(PUSH, PROTECTED)));
     expect(CLUSTER_ROWS.map(([form], i) => [form, ran.has(i) ? "deny" : "pass"])).toEqual(CLUSTER_ROWS.map(([form, , expected]) => [form, expected]));
   });
 
@@ -162,12 +170,14 @@ describe.skipIf(!zsh)("the guard denies an emulate line exactly where real zsh r
    */
   it("agrees with zsh under either option-letter set on every generated cluster, over-reading only an unknown option", async () => {
     const lines = sweepLines();
-    const own = zshRuns(lines);
-    const sh = zshRuns(lines, "setopt shoptionletters\n");
+    const runs = Promise.all([zshRuns(lines), zshRuns(lines, "setopt shoptionletters\n")]);
+    const verdicts: string[] = [];
+    for (const line of lines) verdicts.push(await verdict(line));
+    const [own, sh] = await runs;
     const ran = new Set([...own.ran, ...sh.ran]);
     const disagreements: string[] = [];
     for (const [i, line] of lines.entries()) {
-      const denied = (await verdict(line)) === "deny";
+      const denied = verdicts[i] === "deny";
       const overRead = denied && !ran.has(i) && [own, sh].some((run) => /no such option|bad option/.test(run.stderr[i] ?? ""));
       if (denied !== ran.has(i) && !overRead) disagreements.push(`${ran.has(i) ? "zsh runs" : "zsh refuses"}: ${line}`);
     }

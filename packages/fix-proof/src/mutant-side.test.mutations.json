@@ -52,6 +52,15 @@
       "kills": [
         "execMutants with source in the diff, a git failure reading the specs is refused, since no judge reads them"
       ]
+    },
+    {
+      "name": "a file outside every package falls back to the whole-repo build",
+      "file": "packages/fix-proof/src/mutant-side.ts",
+      "find": "  if (mt.pnpm && (await owningPackage(mt.ctx, mt.base, file)) === null) return null;\n",
+      "replace": "",
+      "kills": [
+        "execMutants in a pnpm workspace a mutated file outside every package is not rebuilt, and is restored"
+      ]
     }
   ]
 }

@@ -6,6 +6,7 @@ import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { voiceCheck } from "../lint-voice.js";
 import { claimsCheck } from "../lint-claims.js";
+import { heteronymCheck } from "../lint-heteronyms.js";
 import { spellScript } from "../rewrite-pass.js";
 import { sha256 } from "./artifacts.js";
 import { l0Check, SPINE } from "./run-fakes.test-helpers.js";
@@ -53,6 +54,15 @@ describe("script stage checks", () => {
     expect(verdict(run, "l0")).toMatchObject({ gate: true, pass: false, detail: expect.stringContaining("fake-l0") });
     expect(verdict(run, "l0-warnings")).toMatchObject({ gate: false, pass: false, detail: expect.stringContaining("fake-warn (warning)") });
     expect(failedGates(run.checks).map((check) => check.name)).toEqual(["l0"]);
+  });
+
+  it("names each undeclared heteronym and its place in the l0 gate detail", () => {
+    // Catches: a Q-V10 failure that names only "Q-V10", so the reader cannot tell which word stopped the run.
+    const draft = choppy({ h2: { spoken: "Every minute counts at the desk." } });
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: SPINE }, [heteronymCheck]));
+
+    expect(verdict(run, "l0")).toMatchObject({ gate: true, pass: false, detail: expect.stringMatching(/; Q-V10: .*h2 "minute" \(word 2\)/) });
   });
 
   it("passes l0 when only a warning row fails", () => {
@@ -232,10 +242,13 @@ describe("running a stage's checks", () => {
       eval: [], resolve: [
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",
-        "sim-check:reported", "sim-cut-orphan:gate",
+        "chart-integrity:gate", "colour-only-series:gate", "sim-check:reported", "sim-cut-orphan:gate",
       ], tts: ["cue-resolution:gate"], render: ["duration-agreement:gate"], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported",
-        "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate", "direction-gates:reported",
-        "black-frames:reported", "silence-2s:reported", "frozen-frames:reported"], sheets: [],
+        "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate",
+        "headline-label-words:gate", "narration-shared-run:gate", "words-per-frame:gate", "direction-gates:reported",
+        "black-frames:reported", "silence-2s:reported", "frozen-frames:reported",
+        "captions-complete:reported", "captions-words:reported", "captions-lines:reported", "captions-cps:reported", "captions-onset:reported", "narration-facts:gate", "photosensitive-flash:gate",
+        "text-contrast:gate", "chart-mark-contrast:gate"], sheets: [],
     });
   });
 });

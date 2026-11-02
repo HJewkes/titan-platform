@@ -7,8 +7,12 @@
    "path": "products/factory/src/shepherd"
   },
   {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff"
+  },
+  {
    "repo": "agent-chat",
-   "path": "src/agents/burndown"
+   "path": "src"
   },
   {
    "repo": "agent-chat",
@@ -23,6 +27,14 @@
    "reason": "default: a file added after the manifest; its entry is owed (TP-3180), listed by the check's defaulted notice"
   },
   {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8",
+   "reason": "default: the SHD-2 comparator and disagreement log are deleted by D-M8-09; SHD-1 (D-M8-01) follows"
+  },
+  {
    "repo": "agent-chat",
    "path": "src/agents/burndown",
    "fate": "delete",
@@ -35,6 +47,54 @@
    "path": "scripts/seat",
    "fate": "kept",
    "reason": "default: seat scripts retire per scripts/seat/README.md's retirement list (CC-746), not a D-task; an entry is still owed"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src",
+   "fate": "delete",
+   "task": "TP-626",
+   "milestone": "fold",
+   "reason": "default: agent-chat src is old path until the fold (TP-626); new logic there needs a package home or a carve-out tag"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents",
+   "fate": "delete",
+   "task": "TP-647",
+   "milestone": "fold",
+   "reason": "default: spawn and lifecycle code moves to the agent-dispatch Dispatcher (TP-647 spawn, TP-648 resume and retire)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/isolation",
+   "fate": "delete",
+   "task": "TP-646",
+   "milestone": "fold",
+   "reason": "default: isolation strategies move over @titan-design/worktree (TP-646)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/leak-guard",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "leak-guard",
+   "reason": "default: survives as product at the fold, pending the owner decision on its package home"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/broker",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "broker",
+   "reason": "default: the broker survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/seats",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "seats",
+   "reason": "default: seats survive as product at the fold"
   }
  ],
  "entries": [
@@ -1766,6 +1826,18 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ports.test.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/ports.ts",
+   "fate": "kept",
+   "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/presence.ts",
    "fate": "kept",
    "reason": "the agent-chat port and roster read across the process boundary; v9.1 sec. 3.1 re-keys roster reads and does not delete them"
@@ -2195,13 +2267,6 @@
   {
    "repo": "titan-platform",
    "path": "products/factory/src/shepherd/review-schemas.ts",
-   "fate": "survives",
-   "task": "D-M2-07",
-   "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
-  },
-  {
-   "repo": "titan-platform",
-   "path": "products/factory/src/shepherd/review-slots.ts",
    "fate": "survives",
    "task": "D-M2-07",
    "reason": "the pool runner's spawn, transcript-read, checkout and account-pick bodies (TP-3218, plan Q1)"
@@ -3189,6 +3254,132 @@
    "path": "products/factory/src/shepherd/why-asked.ts",
    "fate": "kept",
    "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
   },
   {
    "repo": "agent-chat",
@@ -4529,6 +4720,78 @@
    "path": "scripts/seat/testdata/backlog/records/tc-131/img/before.png",
    "fate": "kept",
    "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/supervisor.ts",
+   "fate": "delete",
+   "task": "TP-647",
+   "milestone": "fold",
+   "reason": "the Dispatcher replaces it: spawn, launch, attach and exit (TP-647), then resume, park and retire (TP-648)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/profiles.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/launch-plan.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/launch-files.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-account.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-appendix.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-config.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-destination.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
   }
  ],
  "compensators": [

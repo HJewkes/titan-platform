@@ -1,4 +1,4 @@
-import { TEST_CLASSES, parseResultLine, provedByMutants, type FixProofResult, type Verdict } from "@titan-design/fix-proof";
+import { TEST_CLASSES, parseResultLine, provedByMutants, type FixProofResult, type FixProofUnverified, type Verdict } from "@titan-design/fix-proof";
 
 export const TESTS_OVERLAY: readonly string[] = [
   "You are the tests member of a review panel. Other members judge correctness and scope; your question is whether the tests prove the change.",
@@ -24,8 +24,7 @@ function verdictLine(result: FixProofResult): string {
   return `fix-proof/v1 verdict for this head: ${result.verdict}. ${reading}`;
 }
 
-/** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
+export type { FixProofUnverified };
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {

@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { SeatDigestPacingSchema, digestPacer, type DigestPacer } from "./seat-digest-pace.js";
 import { sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const START = Date.parse("2026-10-10T00:00:00.000Z");
 const MINUTE = 60_000;

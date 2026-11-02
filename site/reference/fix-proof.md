@@ -35,6 +35,11 @@ This package is the pure core of that gate. It adds three primitives:
   its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
   skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
+- `proofStanding(read, head)` is the one reading of a fix-proof read at a head that Shepherd's gate,
+  the owner's waiver and the review panel's aggregate all derive from: `proved`, `no-repro`,
+  `unverified`, `unproven` or `none`. `endsReview` says whether a NO_REPRO stops the review before
+  any reviewer starts; `needsTestsSeat` says whether the tests seat is blocking. An `unproven` line
+  answers no to the first and yes to the second.
 
 ## When to reach for it
 
@@ -50,7 +55,7 @@ runs in the job that prints the verdict.
 ```sh
 fix-proof exec --side base|head|mutants --out <dir> [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
-fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof run [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 ```
 
 **`exec`** builds and tests one side and writes encoded reports to `<dir>`. It prints nothing
@@ -75,13 +80,14 @@ when it succeeds.
    `fix-proof/v1 ` log line. A failed git call, install or build, a missing vitest report or the
    `--budget-ms` deadline (default 18 minutes) writes an error marker in place of each report.
 
-**The base-side sandbox.** The base side runs head test code on the runner. Without a sandbox, a
-`setsid` child of a head test outlives vitest under the job's own uid and can rewrite the base
-reports before they are passed on. `--sandbox-user <name>` closes that:
+**The sandbox.** Both sides run head code on the runner: the base side runs head tests, and the
+head side runs the head's install, build and tests. Without a sandbox, a `setsid` child of a head
+test outlives vitest under the job's own uid and can rewrite the base reports before they are
+passed on. `--sandbox-user <name>` closes that:
 
 - The tree's directories and a fresh output directory per run are handed to that user. Files
   stay runner-owned, because pnpm hardlinks `node_modules` files to its store.
-- Each vitest run is `sudo -n -- timeout -k 5 <budget> unshare --pid --fork --kill-child
+- Each base-side vitest run, and each head-side install, build and vitest run, is `sudo -n -- timeout -k 5 <budget> unshare --pid --fork --kill-child
   --mount-proc -- setpriv --reuid <name> --regid <name> --init-groups --no-new-privs
   --bounding-set=-all -- env -i PATH=… HOME=<tree> CI=1 sh -c <command>`. Every process the
   tests start dies when the namespace's init exits, and none can regain root.
@@ -89,9 +95,11 @@ reports before they are passed on. `--sandbox-user <name>` closes that:
 - The vitest output is read only as a regular file of at most 16 MiB, never through a symlink.
 - Everything is handed back to the runner afterwards so cleanup can remove it.
 
-A failed `sudo` setup writes an error marker for both base reports; vitest never falls back to an
-unsandboxed run. The head side ignores the flag. The caller creates the user, which must not be
-able to `sudo`. Code running inside the sandbox during the
+A failed `sudo` setup writes an error marker for each of that side's reports (`base: sandbox setup
+failed …` or `head: sandbox setup failed …`); nothing falls back to an unsandboxed run. The caller
+creates the user, which must not be able to `sudo` and needs a group of the same name, since
+`--regid` takes the user's name. The head's install and build run with `HOME=<tree>`, so the
+toolchain must sit on a path that user can read. Code running inside the sandbox during the
 run can still rewrite that run's own vitest output, as the test itself could by failing on
 purpose; the sandbox removes the survivors, not the test code's own reach.
 
@@ -131,7 +139,10 @@ The deadline defaults to 13 minutes; an overrun is an error marker, never a kill
   presence in a merge-base build tells the CI script that the base supports the split.
 
 **`run`** runs both sides and then the judge in one process: the local mode, with the same
-base-vs-head verdict as the CI jobs. It does not run the mutants side.
+base-vs-head verdict as the CI jobs. It does not run the mutants side. `--sandbox-user` sandboxes
+both sides as `exec` does. The base, head and judge snapshots sit in one runner-owned 0700 temp dir
+that is never handed to the sandbox user, so sandboxed head code cannot read or write `judge.git`.
+Without `--sandbox-user`, the head side runs as the caller and could reach that dir on purpose.
 
 Every subcommand exits 0. Bad arguments or any failure give an `error` line instead; the
 deadline's error is `timeout`. Worktrees are removed either way.
@@ -335,7 +346,7 @@ import { execHeadMutants, type HeadMutation } from "@titan-design/fix-proof";
 const mutations: HeadMutation[] = [
   { name: "body-delete:add", file: "packages/a/src/lib.ts",
     find: "export function add(a: number, b: number): number {",
-    replace: "export function add(a: number, b: number): number { return undefined as never;" },
+    replace: "export function add(a: number, b: number): number { if (true as boolean) return undefined as never;" },
 ];
 const report = await execHeadMutants({ repo: ".", head: "HEAD", mutations });
 // report.runs[0].outcome === "caught" when a test asserts on add's result

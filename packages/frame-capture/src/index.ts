@@ -2,9 +2,13 @@ export { TITAN_MOTION_GLOBAL, type TitanMotionApi } from './protocol.js'
 export { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 export {
   captureFrame,
+  FontLoadError,
   launch,
   openCapturePage,
+  screenshotFrame,
   settleFonts,
+  withBrowser,
+  withCapturePage,
   type CapturePage,
   type FontState,
   type PageOptions,

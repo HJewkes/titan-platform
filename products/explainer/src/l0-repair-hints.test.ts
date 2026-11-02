@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { dailyWith, l0Row } from "./daily-script.test-helpers.js";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
 import { claimsCheckWith } from "./lint-claims.js";
@@ -61,6 +62,29 @@ describe("repair hints for rows whose value says too little", () => {
     expect(runL0(tour(edited), undefined, [flowCheck]).find((r) => r.check_id === "Q-F1")?.pass).toBe(true);
   });
 
+  // Mutation: dropping the passing link rate or the connective tally leaves the repair guessing which half failed.
+  it("Q-F1 says the link rate passes and variety fails, with each value, the connective tally, and to keep the link", () => {
+    const therefore = (id: string) => withBeat(id, { extra: { connector_in: "therefore" } }).find((spec) => spec[0] === id)!;
+    const beats = GOOD_BEATS.map((spec) => (["w2", "w3", "k2", "k3"].includes(spec[0]) ? therefore(spec[0]) : spec));
+
+    const hint = hintFor(tour(beats), "Q-F1")!;
+
+    expect(hint).toMatch(/^link rate passes: 100 % of in-chapter boundaries link \(needs 70 %\); connective variety fails at 57 % \(at most 40 %\)/);
+    expect(hint).toContain("(connectives: therefore x4; 3 by a reference or a shared word)");
+    expect(hint).toContain("vary the connective, never drop the link");
+  });
+
+  it("Q-F1 says the link rate fails and variety passes, naming the unlinked beats", () => {
+    const swap: Record<string, string> = { w2: "Here is the desk server.", w3: "Parcels weigh little.", k2: "Vans park outside." };
+    const beats = GOOD_BEATS.map(([id, chapter, fn, text, extra]): BeatSpec => [id, chapter, fn, swap[id] ?? text, extra]);
+
+    const hint = hintFor(tour(beats), "Q-F1");
+
+    expect(hint).toBe(
+      'link rate fails: 57 % of in-chapter boundaries link (needs 70 %); unlinked: w2, w3, k2; open each on a connective, a "this" or "that" back-reference, or a word the beat before ends on; connective variety passes',
+    );
+  });
+
   it("Q-F3 quotes the anchor and lists the HOW beats that never name it", () => {
     const script = tour(GOOD_BEATS, { running_example: { scenario: "Parcel P-7 arrives late", anchor: "parcel p-7" } });
 
@@ -75,10 +99,10 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(script, "Q-F16")).toMatch(/^the first identifier the voice says is "GitHub" in h2, after \d+ % of the words \(needs 40 %\)/);
   });
 
-  it("Q-V10 names each undeclared heteronym with the declarations that would settle it", () => {
+  it("Q-V10 names each undeclared heteronym, its place and the declarations that would settle it", () => {
     const script = tour(withBeat("w2", { spoken: "The desk server will read each scan, so nothing prints early." }));
 
-    expect(hintFor(script, "Q-V10")).toMatch(/; w2 "read" \(write \[read\]\(=\w+\) or \[read\]\(=\w+\)\)/);
+    expect(hintFor(script, "Q-V10")).toMatch(/; w2 "read" \(word 5; write \[read\]\(=\w+\) or \[read\]\(=\w+\)\)/);
   });
 
   it("Q-V13 names each over-long headline and the line budget", () => {
@@ -109,5 +133,46 @@ describe("repair hints for rows whose value says too little", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 
     expect(hintFor(script, "Q-F11")).toMatch(/; the last beat c2 says 14 words \(at most 8\)$/);
+  });
+});
+
+describe("Q-D17 hint for a claim-card, which takes no cue", () => {
+  const words = (n: number): string => Array.from({ length: n }, (_, i) => `lane${i % 3 === 0 ? "s" : ""}`).join(" ");
+  const hintOf = (patch: Parameters<typeof dailyWith>[1]): string => {
+    const script = dailyWith("reflection-2", patch);
+    return repairHint(l0Row(script, "Q-D17"), script) ?? "";
+  };
+
+  it("a 9.3 s claim-card's hint names its word cap and offers a trim", () => {
+    const hint = hintOf({ plannedS: 12, spoken: words(26) });
+
+    const cap = Number(/at most (\d+) words \(now 26\)/.exec(hint)?.[1]);
+    expect(cap).toBeGreaterThan(0);
+    expect(cap).toBeLessThan(26);
+    expect(hint).toContain(`Trim it to ${cap} words`);
+  });
+
+  it("a split hint keeps the beat floor and asks heldS on one piece", () => {
+    const hint = hintOf({ plannedS: 20, heldS: 4, spoken: words(50) });
+
+    const pieces = Number(/split it into (\d+) claim-card beats/.exec(hint)?.[1]);
+    expect(pieces).toBeGreaterThanOrEqual(2);
+    expect(20 / pieces).toBeGreaterThanOrEqual(6);
+    expect(hint).toContain("6 s or longer by plannedS");
+    expect(hint).toContain("heldS on one piece only");
+  });
+
+  it("offers no split when its pieces would fall under the beat floor", () => {
+    const hint = hintOf({ plannedS: 10, spoken: words(26) });
+
+    expect(hint).toContain("Trim it to");
+    expect(hint).not.toContain("split it into");
+    expect(hint).not.toContain("heldS on one piece");
+  });
+
+  it("a reflection claim-card split asks each piece to cite its slow fact", () => {
+    const hint = hintOf({ plannedS: 20, spoken: words(50) });
+
+    expect(hint).toContain("cite the slow/ fact it answers in every piece");
   });
 });

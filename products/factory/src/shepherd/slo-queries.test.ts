@@ -3,6 +3,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import type { ShepherdEvent } from "./events.js";
 import { SLO_QUERIES, type SloInput } from "./slo-queries.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const REPO = "acme/widgets";
 const MINUTE = 60_000;
@@ -17,11 +18,11 @@ function run(id: string, steps: [string, number, Record<string, unknown>][], ext
 }
 
 function gate(id: string, opened: number, extra: Partial<GateRecord> = {}): GateRecord {
-  return { id, prompt: "p", schema: undefined, status: "pending", payload: undefined, reason: undefined, createdAt: iso(opened), resolvedAt: undefined, expiresAt: undefined, resolvedBy: undefined, resolvedEvidence: undefined, rule: undefined, summary: undefined, ...extra } as GateRecord;
+  return partialFake<GateRecord>({ id, prompt: "p", schema: undefined, status: "pending", payload: undefined, reason: undefined, createdAt: iso(opened), resolvedAt: undefined, expiresAt: undefined, resolvedBy: undefined, resolvedEvidence: undefined, rule: undefined, summary: undefined, ...extra });
 }
 
 const resolved = (id: string, opened: number, closed: number, cls: string): GateRecord =>
-  gate(id, opened, { status: "resolved", resolvedAt: iso(closed), resolvedBy: { class: cls, id: "x", channel: "terminal" } as GateRecord["resolvedBy"] });
+  gate(id, opened, { status: "resolved", resolvedAt: iso(closed), resolvedBy: Object.assign(partialFake<NonNullable<GateRecord["resolvedBy"]>>(), { class: cls, id: "x", channel: "terminal" }) });
 
 const event = (kind: ShepherdEvent["kind"], at: number, runId: string | null = null): ShepherdEvent => ({ runId, repo: REPO, pr: null, kind, reason: null, actor: null, at: iso(at), headSha: null });
 

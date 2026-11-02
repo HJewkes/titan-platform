@@ -19,10 +19,10 @@ export function extractAllRules(profile: Profile): RuleEntry[] {
 
   for (const category of PROFILE_CATEGORIES) {
     const section = profile[category];
-    if (!section || typeof section !== "object") continue;
+    if (typeof section !== "object") continue;
 
     for (const [name, rule] of Object.entries(section)) {
-      if (!rule || typeof rule !== "object") continue;
+      if (typeof rule !== "object") continue;
       rules.push({
         category,
         name,

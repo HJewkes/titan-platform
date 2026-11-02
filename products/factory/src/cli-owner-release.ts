@@ -1,6 +1,6 @@
 import { EXIT as SYSEXITS } from "@titan-design/registry";
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { ownerResolver } from "./gate-resolve.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";

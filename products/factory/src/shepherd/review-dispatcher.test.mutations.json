@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an enqueue does not pump the queue",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "      ports.enter(name, review);\n      void pump();\n",
+      "replace": "      ports.enter(name, review);\n",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts a review on enqueue when the machine has room, with no wait"
+      ]
+    },
+    {
+      "name": "a review ending does not wake the dispatcher",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "    reviewEnded: () => void dispatcher.wake(),",
+      "replace": "    reviewEnded: () => undefined,",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front when a review ends and frees the slot"
+      ]
+    },
+    {
+      "name": "the tick does not pump the queue",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "  const book = waiterBook(ports, () => void pump());",
+      "replace": "  const book = waiterBook(ports, () => undefined);",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front on the tick once the machine settles, and nothing between ticks"
+      ]
+    },
+    {
+      "name": "the dispatcher's order keeps asks whose run moved past them",
+      "file": "products/factory/src/shepherd/review-queue.ts",
+      "find": "      dropMoved(entries, undefined, options);\n",
+      "replace": "",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers never starts a queued review whose pull request moved to a new head, and tells its waiter at once"
+      ]
+    },
+    {
+      "name": "the pass does not read the live head of a queued review",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "  await dropMovedLive(ports, book);\n",
+      "replace": "",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers a gate-deferred review whose head moves finishes superseded and leaves the queue"
+      ]
+    }
+  ]
+}

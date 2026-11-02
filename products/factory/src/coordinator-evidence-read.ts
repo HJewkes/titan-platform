@@ -1,9 +1,10 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, withoutSupersededCancels, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
   AWAIT_NEW_HEAD,
+  MAIN_CI_TIMEOUT,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
@@ -18,15 +19,17 @@ import {
   type CheckRunFact,
   type CoordinatorEvidence,
   type LandGate,
+  type MainMerge,
   type RunFacts,
 } from "./coordinator-evidence.js";
 import type { FactoryHost } from "./host.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { readRequiredChecks } from "./required-checks.js";
-import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
+import { actionsRunsAt } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling } from "./shepherd/policy.js";
+import { stricterPolicy, type EffectivePolicy } from "./shepherd/policy-schema.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -102,8 +105,9 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   const runs = await port.checkRuns(repo, head);
   if (headCheckFindings({ headSha: head, contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length > 0) return undefined;
   const required = contexts.map((name) => runs.find((run) => run.name === name && run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID && run.conclusion === "success"));
-  if (required.some((run) => run === undefined)) return undefined;
-  return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
+  const found = required.filter((run) => run !== undefined);
+  if (found.length !== required.length) return undefined;
+  return { base, required: contexts, runs: found.map(runFact) };
 }
 
 type ChecksState = "green" | "failing" | "pending" | "unreadable";
@@ -119,10 +123,19 @@ export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { state: findings.length > 0 ? "pending" : "green", failing: [] };
 }
 
-/** The base branch's tip, when it contains the merge sha and every check that judges main passed (the required contexts when the base has them, else every Actions run). */
-async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> {
+/** A main-ci-timeout gate asks the question Shepherd's own clear answers, so it needs the same required contexts. */
+function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> | undefined {
   const main = mainGate(gate);
-  if (!main) return undefined;
+  return main && mainGreenAt(sources, gate.id, main, { required: stepOf(gate.id) === MAIN_CI_TIMEOUT });
+}
+
+export type MainGreenEvidence = Extract<CoordinatorEvidence, { kind: "main-green" }>;
+
+/**
+ * The base branch's tip, when it contains the merge sha and every check that judges main passed: the required contexts when
+ * the base has them, else every Actions run. With `required`, a base with no readable required contexts is no evidence.
+ */
+export async function mainGreenAt(sources: Pick<EvidenceSources, "port" | "now">, gateId: string, main: MainMerge, { required }: { required: boolean }): Promise<MainGreenEvidence | undefined> {
   const { port } = sources;
   const pull = await port.getPr(main.repo, main.pr);
   const tip = pull.merged && pull.mergeSha === main.mergeSha ? await port.getHeadSha(main.repo, pull.baseRef) : null;
@@ -130,10 +143,11 @@ async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promis
   const mergeBaseSha = tip === main.mergeSha ? tip : (await port.compareFiles(main.repo, main.mergeSha, tip)).mergeBaseSha;
   const all = await port.checkRuns(main.repo, tip);
   const { rules } = await readMainRules(port, main.repo, pull.baseRef);
+  if (required && rules === undefined) return undefined;
   const judged = judgeMain(tip, all, rules);
   if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;
   const runs = withoutSupersededCancels(actionsRunsAt(all, tip)).filter((run) => rules === undefined || rules.contexts.includes(run.name));
-  return { kind: "main-green", gateId: gate.id, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
+  return { kind: "main-green", gateId, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
 }
 
 /** The PR the gate names, when it is the run's own PR. */
@@ -166,7 +180,7 @@ function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {
   return { id, name, conclusion: conclusion ?? "none", headSha };
 }
 
-const readAt = (sources: EvidenceSources): string => new Date(sources.now()).toISOString();
+const readAt = (sources: Pick<EvidenceSources, "now">): string => new Date(sources.now()).toISOString();
 
 /** The live sources: Shepherd's port, registration store and freeze store; an unbound freeze store throws, which reads as no evidence. */
 export function evidenceSources(services: ShepherdServices): EvidenceSources {

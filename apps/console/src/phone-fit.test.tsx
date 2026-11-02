@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import { unmountPages } from "./render-page.test-helpers.js";
 import { RpcProvider } from "@titan-design/react-app";
 import { staticSource, type Snapshot } from "@titan-design/rpc-client";
 import { twinSnapshot } from "../server/twin/snapshot.js";
@@ -25,8 +26,8 @@ class SeeNothing {
 
 beforeEach(() => vi.stubGlobal("IntersectionObserver", SeeNothing));
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 

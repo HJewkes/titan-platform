@@ -40,7 +40,13 @@ export type { ToolCallOutcome };
 export function mcpOptions(): McpServerOptions<CommandContext> {
   return {
     registry,
-    createContext: () => ({ activeRoot: getActiveRoot(), warnings: [], format: 'json' }),
+    // The daemon shares this context with /rpc, whose one machine caller always sends a done_when.
+    createContext: (surface) => ({
+      activeRoot: getActiveRoot(),
+      warnings: [],
+      format: 'json',
+      caller: surface === 'mcp' ? 'agent' : undefined,
+    }),
     formatError,
     toolPrefix: TOOL_NAME_PREFIX,
     name: '@hjewkes/active-work',

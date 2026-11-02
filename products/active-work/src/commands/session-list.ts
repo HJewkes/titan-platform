@@ -3,7 +3,6 @@ import path from 'node:path';
 import { z } from 'zod';
 import { SessionFrontmatterSchema } from '../schemas/session.js';
 import type { SessionFrontmatter } from '../schemas/session.js';
-import { getInitiativeDir } from '../utils/paths.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import {
   SESSION_KINDS,
@@ -117,9 +116,9 @@ export default defineCommand({
     },
     usage: 'session.list <slug> [--limit N] [--kind worker|adhoc|sidecar|canonical]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const limit = args.limit ?? DEFAULT_LIMIT;
-    const sessionsDir = path.join(getInitiativeDir(args.slug), 'sessions');
+    const sessionsDir = path.join(ctx.activeRoot, args.slug, 'sessions');
     const filenames = await listSessionFiles(sessionsDir);
 
     const entries: ListEntry[] = [];

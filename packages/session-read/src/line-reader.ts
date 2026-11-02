@@ -26,6 +26,8 @@ export interface EmitPolicy {
   readonly toolSpans: boolean;
   /** `context_block` audit rows, from user, assistant and attachment lines alike. */
   readonly contextBlocks: boolean;
+  /** Chars kept per span; absent, `SPAN_TEXT_CAP`. */
+  readonly spanTextCap?: number;
 }
 
 export const DEFAULT_EMIT_POLICY: EmitPolicy = { toolSpans: true, contextBlocks: true };
@@ -95,7 +97,7 @@ export class LineReader {
 
   span(ctx: LineContext, field: SpanField): void {
     if (!this.policy.toolSpans && TOOL_SPAN_FIELDS.has(field)) return;
-    this.emit({ ...this.base(ctx), kind: "span", field, text: searchText(asObject(ctx.line.message), field) });
+    this.emit({ ...this.base(ctx), kind: "span", field, text: searchText(asObject(ctx.line.message), field, this.policy.spanTextCap) });
   }
 
   session(ctx: LineContext, patch: SessionPatch, deltas: { turn?: number; commit?: number; push?: number } = {}): void {

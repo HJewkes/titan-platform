@@ -27,7 +27,7 @@ describe("step handlers", () => {
     const planned = { ops: { add: [] }, agent: "planner-a", sessionId: "s-a", mode: "resume" as const, usage: { usd: 1, retries: 0 } };
     const ports = portsWith({ plan: async () => planned });
 
-    const result = await handlerFor(ports, "plan").run({ runId: "run-a", round: 2, digest: {}, violations: [], mode: "resume" }, signal);
+    const result = await handlerFor(ports, "plan").run({ runId: "run-a", round: 2, digest: {}, violations: [], quota: { keptLastRound: [], minPool: 12, queuedBefore: 0 }, mode: "resume" }, signal);
 
     expect(result).toEqual(planned);
   });

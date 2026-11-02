@@ -12,7 +12,7 @@
     },
     {
       "name": "qa's held beats keep their script ids",
-      "file": "products/explainer/src/qa/qa-stage.ts",
+      "file": "products/explainer/src/qa/qa-core.ts",
       "find": ".flatMap((beat) => ids.get(beat.id) ?? [])",
       "replace": ".map((beat) => beat.id)",
       "kills": [
@@ -21,9 +21,9 @@
     },
     {
       "name": "qa's timing gates read words.json under script ids",
-      "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "readTiming(renameWordsBeats(json(input, need(input, \"words\")), ids))",
-      "replace": "readTiming(json(input, need(input, \"words\")))",
+      "file": "products/explainer/src/qa/qa-core.ts",
+      "find": "readTiming(renameWordsBeats(sources.words, ids))",
+      "replace": "readTiming(sources.words)",
       "kills": [
         "qa on a render's storyboard ids reads words.json under the timeline's beat-01, so a text the narration says needs no reading hold"
       ]

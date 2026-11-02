@@ -14,6 +14,8 @@ node products/titan/dist/bin.js health uptime factory --window 24h [--min 0.99] 
 node products/titan/dist/bin.js health cost --window 24h [--json]
 node products/titan/dist/bin.js health import <stopgap.jsonl> [--target factory]
 node products/titan/dist/bin.js host doctor [--json]
+node products/titan/dist/bin.js host services list [--json]
+node products/titan/dist/bin.js host services install [--dry-run]
 node products/titan/dist/bin.js config report [--json] [--to <https console origin> --token-file <path>]
 ```
 
@@ -27,6 +29,30 @@ A product CLI whose version differs from its checkout's `package.json` (under
 `$TITAN_PROJECTS_ROOT`, default `~/projects`) is a `warn` row. It then stats every path in the
 coordination design's inventory for this platform, secrets included, without reading any of
 them. Any `fail` or `missing` row exits 1.
+
+`titan host services list [--json]` prints every host-owned scheduled job for this platform
+(backup, health sampler, usage refresh, memory sampler) and its source: `render` (titan renders
+its systemd units), `delegate` (another installer owns it, whose commands the dry run prints),
+`chezmoi` (the dotfiles own it), or `deferred` with the host-job task that will. Only the linux
+backup renders; no darwin row does, so no launchd plist is ever produced.
+`titan host services install --dry-run` prints each rendered unit with its target path under
+`$XDG_CONFIG_HOME/systemd/user`, any legacy `restic-nightly` unit found there, and the
+`systemctl --user` commands to run; with `--dry-run` it runs nothing and writes nothing. Without
+`--dry-run` it installs the rendered units: it disables a legacy `restic-nightly.timer` when
+present, writes the units, runs `daemon-reload` and enables `titan-host-backup.timer`, stopping
+at the first failing step (exit 1, step named on stderr). If a step after the legacy disable
+fails, no backup timer is enabled until you re-enable one by hand. Run it yourself.
+
+The backup unit runs `scripts/host-backup.sh` from this checkout. The script sources
+`$XDG_CONFIG_HOME/titan/backup.env` (default `~/.config`; or `$TITAN_BACKUP_ENV`) as bash:
+
+```sh
+RESTIC_REPOSITORY=/mnt/backup/restic
+RESTIC_PASSWORD_FILE="$HOME/.config/restic/password"
+BACKUP_PATHS=("$HOME/projects" "$HOME/.config")
+BACKUP_EXCLUDES=(node_modules .cache)
+BACKUP_MOUNT=/mnt/backup   # optional; the run exits 75 when it is not mounted
+```
 
 `titan health install [--dry-run]` writes `titan-health-sample.service` (a oneshot at
 `Nice=10`, idle IO, CPU and IO accounting on) and `titan-health-sample.timer` (every wall-clock
@@ -56,5 +82,7 @@ Reference: [titan](https://hjewkes.github.io/titan-platform/reference/titan).
 | `src/host/doctor.ts` | the doctor rows and the report's zod schema |
 | `src/host/inventory.ts` | the inventory paths, their categories and platforms, and the stat-only rows |
 | `src/config/report.ts` | `titan config report`: the per-host surface facts and the `config.report` deposit client |
+| `src/host/services/catalog.ts` | the per-platform job catalog and `planServices` |
+| `src/host/services/cli-services.ts` | `titan host services list` and `install [--dry-run]` |
 | `src/host/ports.ts` | the exec, readFile, stat, list and which ports, and the real ones |
 | `src/health/self-cost.ts` | the `self` row from `process.cpuUsage()` and `process.resourceUsage()` |

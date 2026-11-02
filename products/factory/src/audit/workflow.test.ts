@@ -1,4 +1,4 @@
-import { measurementAuditSchema, type MeasurementAudit } from "@titan-design/health/metrics";
+import { measurementAuditSchema } from "@titan-design/health/metrics";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { AUDIT_INPUT, BROKEN_QUERY, HAND_AUDIT_COUNTS, fakeAuditPorts, type FakeAuditPorts } from "../test-support/audit.js";
@@ -24,7 +24,7 @@ async function audit(ports: FakeAuditPorts, decision = "publish", input: AuditIn
   await gateOpened(host, gateId(runId, "audit-review"));
   host.runtime.signal(runId, "audit-review", { decision }, OWNER);
   const run = await host.runtime.wait(runId);
-  return { run, report: ports.written.size > 0 ? (JSON.parse([...ports.written.values()][0]!) as MeasurementAudit) : undefined };
+  return { run, report: ports.written.size > 0 ? measurementAuditSchema.parse(JSON.parse([...ports.written.values()][0]!)) : undefined };
 }
 
 const within10 = (actual: number, expected: number) => Math.abs(actual - expected) <= 0.1 * expected;
@@ -33,7 +33,7 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
   it("reproduces the hand audit's counts within 10 percent", async () => {
     const { run, report } = await audit(fakeAuditPorts());
 
-    expect(run?.status).toBe("completed");
+    expect(run.status).toBe("completed");
     const answerable = (kind: string) => report!.questions.filter((question) => question.answerable === kind).length;
     const actual = { ...report!.counts, yes: answerable("yes"), partly: answerable("partly"), no: answerable("no"), reports: report!.reports.length };
     const expected = { ...HAND_AUDIT_COUNTS, ...HAND_AUDIT_COUNTS.questions };
@@ -93,7 +93,7 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
     const ports = fakeAuditPorts();
     const { run } = await audit(ports, "discard");
 
-    expect(run?.status).toBe("completed");
+    expect(run.status).toBe("completed");
     expect(ports.written.size).toBe(0);
   });
 

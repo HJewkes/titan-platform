@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ownerItemSchema, type OwnerItem } from "@titan-design/owner-queue";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 /** Items stay `unknown` here so one item that fails `ownerItemSchema` costs a gap line, not the whole list. */
 const needsList = z.object({ items: z.array(z.unknown()), gaps: z.array(z.string()) });
@@ -20,10 +21,10 @@ interface FactoryNeeds {
 const READ_TIMEOUT_MS = 10_000;
 
 /** Calls titan-factory's `needs.list` on loopback. It needs no token, only the client header `liveSource` sends. */
-export function factoryNeeds(port: number, timeoutMs: number = READ_TIMEOUT_MS): FactoryNeeds {
+export function factoryNeeds(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): FactoryNeeds {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("factory", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
   return {
     async list() {

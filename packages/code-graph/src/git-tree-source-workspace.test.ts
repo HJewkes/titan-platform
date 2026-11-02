@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
-import { isolatedGitEnv } from "./history/test-repo.js";
 import { openCodeGraph } from "./store.js";
 
 // Each test indexes a real git repo through ts-morph; CI run 38183124631 saw up to 7 s.
@@ -39,19 +38,11 @@ const SECOND: Record<string, string> = {
 let dir: string;
 let checkoutAtFirst: Snapshot;
 
-const git = (args: readonly string[]) =>
-  execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: isolatedGitEnv() }).trim();
-
 async function writeAll(files: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
     await fs.writeFile(path.join(dir, rel), content);
   }
-}
-
-function commit(message: string): void {
-  git(["add", "-A"]);
-  git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "commit", "-q", "-m", message]);
 }
 
 async function indexSnapshot(options: Partial<IndexOptions> = {}): Promise<Snapshot> {
@@ -66,20 +57,20 @@ async function indexSnapshot(options: Partial<IndexOptions> = {}): Promise<Snaps
 
 beforeAll(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-ws-"));
-  git(["init", "-q", "-b", "main"]);
-  git(["config", "commit.gpgsign", "false"]);
-  await writeAll({ ...TRACKED, ...BUILT });
+  seedRepo(dir, {});
+  withHistory(dir, [
+    { message: "first", author: "alice", files: TRACKED },
+    { message: "second", author: "alice", files: { ...SECOND, "packages/c/src/index.ts": null } },
+  ]);
+  await writeAll(BUILT);
   await fs.mkdir(path.join(dir, "node_modules", "@x"), { recursive: true });
   await fs.symlink(path.join("..", "..", "packages", "a"), path.join(dir, "node_modules", "@x", "a"));
   await fs.symlink(path.join("..", "..", "packages", "c"), path.join(dir, "node_modules", "@x", "c"));
-  commit("first");
-  await fs.rm(path.join(dir, "packages/c/src/index.ts"));
-  await writeAll(SECOND);
-  commit("second");
 
-  git(["checkout", "-q", "HEAD~1"]);
+  const git = gitIn(dir);
+  git("checkout", "-q", "HEAD~1");
   checkoutAtFirst = await indexSnapshot();
-  git(["checkout", "-q", "main"]);
+  git("checkout", "-q", "main");
 }, 60_000);
 
 const crossPackage = (s: Snapshot) => s.edges.filter((e) => e.includes('"srcId":"packages/b/') && e.includes("packages/a/"));

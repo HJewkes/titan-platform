@@ -1,15 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { editHarness } from "./edit-cli.test-helpers.js";
 import { editLogFile } from "./edit-ledger.js";
 import type { LaunchIo } from "./edit-launch.js";
-import { fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
-const { baseRun, editFile, cli } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx, (next) => (fx = next));
 const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 
 function fakeLaunch(reachable: boolean) {
@@ -26,7 +27,6 @@ function fakeLaunch(reachable: boolean) {
 }
 
 async function applyStarted(launch: LaunchIo) {
-  fx = fixture();
   const base = await baseRun();
   const { text } = await cli(["apply", editFile(base, { h1: { slots: { figures } } }), "--start", "--json"], { launch });
   return z.object({ editId: z.string() }).parse(JSON.parse(text)).editId;

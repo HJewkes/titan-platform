@@ -40,7 +40,7 @@ function generate(seed: number): { items: OwnerItem[]; principles: Principle[] }
       door: next() < 0.2 ? "one-way" : "two-way",
       category: pick(CATEGORIES),
       options,
-      recommended: pickRecommendation(options?.map((each) => each.id) ?? ["o0"]) as OwnerItem["recommended"],
+      recommended: pickRecommendation(options?.map((each) => each.id) ?? ["o0"]),
     });
   });
   const ids = items.map((each) => each.id);
@@ -48,7 +48,7 @@ function generate(seed: number): { items: OwnerItem[]; principles: Principle[] }
     id: `p${index}`,
     rule: pick(TEXTS),
     covers: ids.filter(() => next() < 0.5),
-    recommended: pickRecommendation(["yes", "no"]) as Principle["recommended"],
+    recommended: pickRecommendation(["yes", "no"]),
   }));
   return { items, principles };
 }

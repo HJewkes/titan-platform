@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the REST wire ignores maxBytes and downloads the blob",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "  if (maxBytes !== undefined && !(entry.size <= maxBytes)) throw new BlobTooLargeError(entry.size, maxBytes);\n",
+      "replace": "",
+      "kills": ["fileBytes with maxBytes over the REST wire refuses a 50 MiB file under a 5 MiB cap from the contents entry, with no git/blobs read"]
+    },
+    {
+      "name": "a contents entry with no numeric size passes the cap",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "!(entry.size <= maxBytes)",
+      "replace": "entry.size > maxBytes",
+      "kills": ["fileBytes with maxBytes over the REST wire refuses a contents entry with no numeric size rather than download an unknown amount"]
+    },
+    {
+      "name": "a file exactly at the cap is refused",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "(entry.size <= maxBytes)",
+      "replace": "(entry.size < maxBytes)",
+      "kills": ["fileBytes with maxBytes over the REST wire reads a file whose size is exactly the cap"]
+    },
+    {
+      "name": "the fake serves stored bytes over the cap",
+      "file": "packages/github/src/fake-bytes.ts",
+      "find": "  if (stored) checkSize(stored, maxBytes);\n",
+      "replace": "",
+      "kills": ["fileBytes with maxBytes over the fake refuses stored bytes over the cap as the REST wire does"]
+    },
+    {
+      "name": "the port passes a non-positive cap to the wire",
+      "file": "packages/github/src/validate.ts",
+      "find": "checkPositiveInt(\"maxBytes\", maxBytes)",
+      "replace": "maxBytes",
+      "kills": ["fileBytes with maxBytes over the fake refuses a cap that is not a positive integer before any wire call"]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { MOTION, useBeatTime } from "@titan-design/react-ui/motion";
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
+import { litBox, useLit } from "./stage/emphasis.js";
 import { enter } from "./stage/entrance.js";
 
 /**
@@ -11,6 +12,8 @@ import { enter } from "./stage/entrance.js";
 
 const WORDS_START_S = 0.15;
 const WORD_EACH_S = 0.08;
+/** The lit claim's tint reaches this far past its words, which the title draws with no padding. */
+const CLAIM_BLEED_PX = 24;
 
 interface TitleFrameProps {
   title: string;
@@ -23,9 +26,10 @@ function TitleFrame({ title, subtitle, atS }: TitleFrameProps) {
   const { t } = useBeatTime();
   const words = title.split(/\s+/).filter(Boolean);
   const wordStart = (i: number) => atS + WORDS_START_S + i * WORD_EACH_S;
+  const lit = useLit()("claim", t);
   return (
     <>
-      <h1 className="beat-title" data-reveal="claim">
+      <h1 className="beat-title" data-reveal="claim" style={litBox(lit, { bleedPx: CLAIM_BLEED_PX })}>
         {words.map((word, i) => (
           <span key={i} className="beat-word" style={enter(t, wordStart(i))}>{word}</span>
         ))}
@@ -37,7 +41,7 @@ function TitleFrame({ title, subtitle, atS }: TitleFrameProps) {
 
 /**
  * claim-card, as its spec says (a TitleBeat; owner question Q1 at P3): the claim word by word, then its quote when it
- * has one. The source chip is the chrome's, from the same chip the fill read the claim's source off.
+ * has one, the claim lit when a later cue names it. The source chip is the chrome's, from the same chip the fill read the claim's source off.
  */
 export function ClaimCardBeat({ slots, reveal }: BeatViewProps<z.infer<(typeof BEAT_SLOTS)["claim-card"]>>) {
   return <TitleFrame title={slots.claim} atS={reveal("claim") ?? 0} {...(slots.quote ? { subtitle: `“${slots.quote.text}”` } : {})} />;

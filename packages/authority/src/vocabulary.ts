@@ -18,6 +18,7 @@ export const ACTION_CLASSES = [
   "destructive-remote",
   "destructive-local",
   "destructive-foreign",
+  "agent-retire",
   "spawn",
   "spend-over-cap",
   "authority-config",

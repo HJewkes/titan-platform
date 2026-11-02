@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeGitHub, successRun } from "./fake.js";
 import { gitMergeTree } from "./git-merge-tree.js";
@@ -12,27 +13,25 @@ let clone: string;
 
 const git = (...args: string[]) => execFileSync("git", ["-C", clone, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { encoding: "utf-8" }).trim();
 
-function commitFile(name: string, content: string): string {
-  fs.writeFileSync(path.join(clone, name), content);
-  git("add", name);
-  git("commit", "-qm", name);
-  return git("rev-parse", "HEAD");
+/** A `topic` commit off main's seed, then a newer main commit; main is left checked out. */
+function diverge(topic: Record<string, string>, base: Record<string, string>): { head: string; tip: string } {
+  const [head = "", tip = ""] = withHistory(clone, [
+    { branch: "topic", from: "main", files: topic },
+    { files: base },
+  ]);
+  return { head, tip };
 }
 
 beforeEach(() => {
   clone = fs.mkdtempSync(path.join(os.tmpdir(), "git-merge-tree-"));
-  git("init", "-q", "-b", "main");
-  commitFile("shared.txt", "one\n");
+  seedRepo(clone, { "shared.txt": "one\n" });
 });
 
 afterEach(() => fs.rmSync(clone, { recursive: true, force: true }));
 
 describe("gitMergeTree", () => {
   it("returns the tree of a clean merge, the same tree git merge records", async () => {
-    git("checkout", "-qb", "topic");
-    const reviewed = commitFile("topic.txt", "topic\n");
-    git("checkout", "-q", "main");
-    const baseParent = commitFile("base.txt", "base\n");
+    const { head: reviewed, tip: baseParent } = diverge({ "topic.txt": "topic\n" }, { "base.txt": "base\n" });
     git("checkout", "-q", "topic");
     git("merge", "-q", "--no-edit", "main");
 
@@ -40,10 +39,7 @@ describe("gitMergeTree", () => {
   });
 
   it("returns null when the two commits conflict", async () => {
-    git("checkout", "-qb", "topic");
-    const reviewed = commitFile("shared.txt", "topic\n");
-    git("checkout", "-q", "main");
-    const baseParent = commitFile("shared.txt", "base\n");
+    const { head: reviewed, tip: baseParent } = diverge({ "shared.txt": "topic\n" }, { "shared.txt": "base\n" });
 
     expect(await gitMergeTree(clone)(baseParent, reviewed)).toBeNull();
   });
@@ -59,10 +55,7 @@ describe("premerge --clone over a real clone", () => {
   /** A topic head, a clean old base it branched from, and a newer base tip that conflicts with it. */
   function staleClone(): { head: string; oldBase: string; tip: string } {
     const oldBase = git("rev-parse", "HEAD");
-    git("checkout", "-qb", "topic");
-    const head = commitFile("shared.txt", "topic\n");
-    git("checkout", "-q", "main");
-    const tip = commitFile("shared.txt", "base\n");
+    const { head, tip } = diverge({ "shared.txt": "topic\n" }, { "shared.txt": "base\n" });
     git("update-ref", "refs/remotes/origin/main", oldBase);
     return { head, oldBase, tip };
   }
@@ -100,10 +93,7 @@ describe("premerge --clone over a real clone", () => {
 
   it("is ok when the head merges cleanly into the real base tip", async () => {
     const oldBase = git("rev-parse", "HEAD");
-    git("checkout", "-qb", "topic");
-    const head = commitFile("topic.txt", "topic\n");
-    git("checkout", "-q", "main");
-    const tip = commitFile("base.txt", "base\n");
+    const { head, tip } = diverge({ "topic.txt": "topic\n" }, { "base.txt": "base\n" });
     git("update-ref", "refs/remotes/origin/main", oldBase);
 
     expect(await gate(head, tip)).toMatchObject({ ok: true, reasons: [] });

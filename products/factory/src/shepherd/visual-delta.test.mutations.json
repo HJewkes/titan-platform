@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a story shot keeps its story suffix",
+      "file": "products/factory/src/shepherd/visual-delta.ts",
+      "find": "if (story > 0) return name.slice(0, story);",
+      "replace": "if (story > 0) return name;",
+      "kills": ["componentOf names a story shot by its story title"]
+    },
+    {
+      "name": "the factory measure imports pngjs again",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "import { setImmediate as nextTurn } from \"node:timers/promises\";\n",
+      "replace": "import { setImmediate as nextTurn } from \"node:timers/promises\";\nimport \"pngjs\";\n",
+      "kills": ["factory runtime code never imports pngjs, so untrusted snapshots only reach the bounded decoder"]
+    }
+  ]
+}

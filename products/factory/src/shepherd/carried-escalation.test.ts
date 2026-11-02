@@ -3,7 +3,8 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord, MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
-import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdLandOptions } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import type { Escalated, Escalation } from "./route-table.js";
 
 const FIRED = "a".repeat(40);

@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "../test-support/built-hook.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
@@ -31,13 +30,11 @@ async function hookStdout(command: string): Promise<string> {
   return (await handle(event(command), { PATH: "/usr/bin" }, port)).stdout;
 }
 
-// CI builds before it tests; locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-dollar-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-function builtHookStdout(command: string): string {
-  const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event(command, home), env: { ...process.env, HOME: home }, encoding: "utf-8" });
+async function builtHookStdout(command: string): Promise<string> {
+  const run = await runBuiltHook(event(command, home), { home });
   expect(run.status).toBe(0);
   return run.stdout;
 }
@@ -92,16 +89,16 @@ describe("a guarded command next to a $-opener", () => {
     expect(await hookStdout(command)).toContain(DENY);
   });
 
-  it.each(GUARDED)("the built hook denies %s after a # inside a top-level $[ ]", (_name, guarded) => {
-    expect(builtHookStdout(`true || : $[ #]; ${guarded}`)).toContain(DENY);
+  it.each(GUARDED)("the built hook denies %s after a # inside a top-level $[ ]", async (_name, guarded) => {
+    expect(await builtHookStdout(`true || : $[ #]; ${guarded}`)).toContain(DENY);
   });
 
-  it.each(GUARDED)("the built hook denies %s after a joined $[ ]", (_name, guarded) => {
-    expect(builtHookStdout(`true || : $${JOIN}[ #]; ${guarded}`)).toContain(DENY);
+  it.each(GUARDED)("the built hook denies %s after a joined $[ ]", async (_name, guarded) => {
+    expect(await builtHookStdout(`true || : $${JOIN}[ #]; ${guarded}`)).toContain(DENY);
   });
 
-  it.each(GUARDED.flatMap(([name, g]) => [...PAREN_JOINS, ...TAB_JOINS].map(([join, line]) => [name, join, line(g)] as const)))("the built hook denies %s after %s", (_name, _join, command) => {
-    expect(builtHookStdout(command)).toContain(DENY);
+  it.each(GUARDED.flatMap(([name, g]) => [...PAREN_JOINS, ...TAB_JOINS].map(([join, line]) => [name, join, line(g)] as const)))("the built hook denies %s after %s", async (_name, _join, command) => {
+    expect(await builtHookStdout(command)).toContain(DENY);
   });
 
   it("names the unclosed expansion when $[ never closes", async () => {
@@ -124,8 +121,8 @@ describe("a harmless $-opener", () => {
     expect(await hookStdout(command)).toBe("");
   });
 
-  it("the built hook passes a top-level $[ ]", () => {
-    expect(builtHookStdout("echo $[1+2] done")).toBe("");
+  it("the built hook passes a top-level $[ ]", async () => {
+    expect(await builtHookStdout("echo $[1+2] done")).toBe("");
   });
 });
 

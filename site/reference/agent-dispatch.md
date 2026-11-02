@@ -128,10 +128,167 @@ the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or m
   envelope (wrong `version`, not an object) throws `LimitsConfigError`.
 - Seat caps are a separate stop: `per_run_points` is added and `per_day_points` only ever
   lowers the pool's.
+- Optional `capacity` and `shepherd` sections hold host slots and Shepherd's spawn gate and
+  review cap; a seat may add `hand_reserve` and `brief_gate` (`off`, `shadow` or `on`).
+  `resolveCapacity(parsed, seat?)` and `resolveShepherd(parsed)` return each field as
+  `{ value, source }`, with `source: "unset"` and a `null` value when the block leaves the
+  product default in force. A malformed `capacity` or `shepherd` section is dropped into
+  `ignoredSections`, reported as `ignored_section`, and closes no pool.
 - `liftQuestion` asks once per pool per five-hour window when a pool with a `lift` reaches
   its ceiling. `grantFromAnswer` turns a yes into a grant until that window resets. The
   resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
   `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
+
+### The `/limits` report (v1)
+
+`limitsReport(plan, ledger, clock)` is a pure projection. A product adapter maps its
+planner's dry-run result, pool gate, broker capacity and Shepherd read onto a structural
+`LimitsPlanInput`; the report never reads config, so no count can drift from what the tick
+saw. `limitsReportSchema` (zod) validates the result:
+
+```ts
+{ v: 1, at, shepherd, seats: { [seat]: {
+  binding,        // { kind: "lever", refusal, lever, value, reading, headroom, ... } or { kind: "supply", ready, mix }
+  roles,          // per role: cap, used, live, spawning, hand, ledger, handReserve, ledgerOnly[]
+  pools,          // per pool: fiveHour / sevenDay { value, ageMinutes }, band, pace, reserve
+  refusals,       // per kind: { count, blockers[] } (top five PRs for file-overlap and open-pr)
+  planBlocked,    // { depBlocked, dead: { [class]: n } }
+  supply,         // ready, waiting, seeded, readyAgeMinutes { p50, p90 }, outOfScope
+  worktrees,      // repos { active, perRepoPerSeat }, ceiling, budget
+  contradictions, // items[] with dispositions; undisposed is null, never 0, until stamped
+} } }
+```
+
+- Refusal counts follow the tick row: each refused unit once, under its first refusal.
+- A unit "held in the burndown claim ledger" is bookkeeping: it counts under
+  `supply.seeded`, never as a `claimed` refusal.
+- `shepherd` is `{ runs, held, reviews: { inFlight, maxConcurrent } }`, `{ error }` when the
+  read failed, or null when the caller made none.
+- v1 only gains optional fields; a renamed or removed field is v2.
+
+## Routing
+
+The `./routing` subpath holds the workflow table that picks an implementer profile from a
+task's facts: estimate, done_when, tags and the files its plan owns. The package ships the
+default table as `workflow/shape-v1.yml`.
+
+```ts
+import { classifyTask, parseWorkflowTable, profileFor } from "@titan-design/agent-dispatch/routing";
+import { DEFAULT_WORKFLOW_TABLE } from "@titan-design/agent-dispatch/routing/node";
+
+const { table } = parseWorkflowTable(readFileSync(DEFAULT_WORKFLOW_TABLE, "utf8"));
+const facts = { estimate: 2, done_when: "ships", tags: [], owns: ["src/cli/x.ts"] };
+const { prior, reason } = classifyTask(table!, facts); // "standard", "estimate 2 <= 2"
+profileFor(table!, prior, facts.estimate); // "bd-implementer-lite"
+```
+
+Rules run in order and the first match wins, so a risk row (door, safety or visual paths,
+`kind:security`) beats a size row. A row with `needsOwns: true` never matches a task whose
+owns are unknown, so missing facts route up to `needs-plan`, never down.
+
+At spawn time, `routeSpawn` turns the table's pick into the profile that runs:
+
+```ts
+import { routeMeta, routeSpawn } from "@titan-design/agent-dispatch/routing";
+
+const decision = routeSpawn({
+  mode: "shadow", // "off" | "shadow" | "on"
+  requested: "implementer", // or "auto"
+  table: { table: table!, id: "shape-v1@1a2b3c4d" },
+  taskId: "EX-1",
+  role: "fix-round-2", // kept, logged as keep-role
+  facts,
+});
+// undefined for a reviewer, or for an explicit profile with routing off
+const meta = decision === undefined ? {} : routeMeta(decision); // { route_source: "keep-role", ... }
+```
+
+| `source` | When | Profile that runs |
+|---|---|---|
+| `auto` | `auto` was requested | the table's tier, else `bd-implementer` |
+| `routed` | `on`, and the table picks another tier | the table's tier, in the caller's family |
+| `agrees` | the table picks the requested tier, or a profile outside the tiers | requested |
+| `shadow` | `shadow`, and the table picks another tier | requested |
+| `override` | the caller passed an override | requested |
+| `keep-role` | the role is a keep-role (default `fix-round`) | requested |
+| `no-task` | `auto` with no task id | `bd-implementer` |
+| `table-error` | the table could not be read | requested, or `bd-implementer` for `auto` |
+
+A `candidate` table is classified beside the live one, and its pick is recorded as
+`candidateWanted` but never applied. `summarizeRoutes(rows)` reads logged rows back. It
+counts agreement over `agrees`, `shadow` and `routed` only, so keep-role, override and auto
+rows are not in the denominator.
+
+The `./routing/node` subpath supplies a spawn path with the table and the facts:
+
+```ts
+import { readRouteTable, readSpawnFacts } from "@titan-design/agent-dispatch/routing/node";
+
+const read = readRouteTable("/path/to/shape-v1.yml"); // cached on mtime and size
+const { facts, note } = readSpawnFacts("/path/to/active-work", "EX-7", "b", req.owns ?? []);
+const decision = routeSpawn({
+  mode,
+  requested,
+  taskId: "EX-7",
+  table: read.table,
+  tableProblem: read.problem,
+  facts,
+  factsNote: note,
+});
+```
+
+`readSpawnFacts` never throws. An unknown id, or one that is not a plain file name, gives
+empty facts with source `none`, and the router keeps the requested profile.
+
+## Isolation
+
+The `./isolation` subpath holds the isolation strategies a spawn picks from its profile and
+the rules that keep a retire or a park from pulling a worktree out from under another agent.
+The host builds the worktree strategy, because it reads host budgets, and hands it in:
+
+```ts
+import {
+  createIsolationRegistry,
+  refusalsIn,
+  worktreeTenancy,
+} from "@titan-design/agent-dispatch/isolation";
+
+const registry = createIsolationRegistry({ worktree: hostWorktreeStrategy });
+const strategy = registry.resolve(["toolset-limited", "worktree"]);
+const reasons = await strategy.check(ctx);
+if (refusalsIn(reasons).length > 0) throw new Error(reasons.join("; "));
+const allocation = await strategy.allocate(ctx);
+
+const verdict = worktreeTenancy(
+  { agentId: "a1", name: "scout", isolation: "worktree", ref: allocation.ref },
+  notRetiredRoster,
+  false,
+);
+// { refusal: "scout allocated the worktree ..., and heir (not retired) is working in it. ..." }
+```
+
+- `none`, `toolset-limited` and `file-ownership` are pure. `check` lines carrying
+  `WARNING_PREFIX` are advisory; `refusalsIn` keeps the rest.
+- `worktreeTenancy`, `adopterBlocker` and `parkTenancyBlocker` are the one CC-141 rule for the
+  single retire, the bulk retire and the park. Paths are compared after `canonicalPath`, so a
+  symlinked cwd still counts.
+- `allocatedWorktree`, `parkBlocker`, `parkable` and `liveBlocker` are the park rules over
+  journal rows and roster identities.
+- `createWorktreeStrategy` is the strategy the host hands in. It takes `budget` and
+  `reviewerBudget` readers, called on every spawn, and keeps implementer and reviewer trees
+  in separate pools.
+- `unsavedWork` and `dispatchIgnoredFiles` are the one ignored-file policy for release and
+  park. It lets go of everything `@titan-design/worktree` does, and also of a few more build
+  outputs, an index-only `.codewatch/graph.db` and paths a committed `.agent-chat/generated`
+  lists. Any failed read refuses.
+- `parkWorktree` removes a finished agent's tree and keeps its branch, under the same policy.
+  Pass `lsofCwds` for an agent whose process may have outlived the broker, and a merged-PR
+  reader for a squash merge whose head branch origin deleted. `readMergedPrs` runs `gh` under
+  `minimalEnv`; a host whose `gh` needs a token or a shim builds a reader with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every tree the host's `HeldAllocationStore`
+  or a named root holds, and `reclaim(entry, { store, strategy })` re-checks the work before it
+  removes one, so a stale report destroys nothing. `rowState`, `repoHeadroom` and `repoSummary`
+  turn a sweep into the words a seat counts in.
 
 ## What it deliberately does not do
 

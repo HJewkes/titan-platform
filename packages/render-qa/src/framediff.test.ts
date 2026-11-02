@@ -97,4 +97,39 @@ describe('frameDiffs through the exec seam', () => {
 
     assert.deepEqual(diffs, [0, 0])
   })
+
+  describe('a one-frame codec blip on a still picture', () => {
+    const still = () => new Uint8Array(FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT).fill(40)
+    /** The still with its first 207 pixels moved by `levels`, like the keyframe noise of a real h264 render. */
+    const strayed = (levels: number) => still().fill(40 + levels, 0, 207)
+    const execOf = (frames: Uint8Array[]) =>
+      async function* exec() {
+        yield Buffer.concat(frames)
+      }
+
+    // catches: an I-frame's re-quantisation noise read as motion and split a real 5.5 s still into two short ones
+    test('a keyframe blip that strays 5 levels and returns the next frame is no change', async () => {
+      const frames = [still(), still(), strayed(5), still(), still()]
+
+      const diffs = await frameDiffs('clip.mp4', execOf(frames))
+
+      assert.deepEqual(diffs, [0, 0, 0, 0, 0])
+    })
+
+    test('a one-frame flash that moves pixels 40 levels still counts as change', async () => {
+      const frames = [still(), still(), strayed(40), still(), still()]
+
+      const diffs = await frameDiffs('clip.mp4', execOf(frames))
+
+      assert.deepEqual(diffs, [0, 0, 0.00359, 0.00359, 0])
+    })
+
+    test('a small step that stays on the next frame still counts as change', async () => {
+      const frames = [still(), still(), strayed(5), strayed(5), strayed(5)]
+
+      const diffs = await frameDiffs('clip.mp4', execOf(frames))
+
+      assert.deepEqual(diffs, [0, 0, 0.00359, 0, 0])
+    })
+  })
 })

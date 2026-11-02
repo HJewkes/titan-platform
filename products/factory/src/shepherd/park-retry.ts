@@ -1,4 +1,4 @@
-import type { RosterReader } from "./roster.js";
+import type { RosterReader } from "./ports.js";
 
 /** A roster read is shared and cached, so a minute between looks costs one `agent ls` per minute across every waiting park. */
 const PARK_RETRY_POLL_MS = 60_000;

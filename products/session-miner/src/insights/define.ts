@@ -63,7 +63,7 @@ export function insightResultSchema<Data>(schema: ZodType<Data>) {
 }
 
 export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
-  const args = insightFilters.extend(question.options as z.ZodRawShape).strict();
+  const args = insightFilters.extend(question.options).strict();
   return defineCommand({
     name: `insights.${question.name}`,
     description: `${question.id}: ${question.description}`,
@@ -71,7 +71,7 @@ export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
     result: z.union([insightResultSchema(question.schema), z.string()]),
     cli: { options: { ...FILTER_FLAGS, ...(question.flags as Record<string, CliOption>) } },
     async run(parsed, ctx) {
-      const { session, agentPrefix, role, since, until, ...options } = parsed as InsightFilters & Record<string, unknown>;
+      const { session, agentPrefix, role, since, until, ...options } = parsed;
       const filters: InsightFilters = { session, agentPrefix, role, since: utc(since), until: utc(until) };
       refuseCliOnly(question, options, ctx);
       const { data, text } = await question.answer(ctx.graph().db, reportOptions(filters), options, ctx.config);

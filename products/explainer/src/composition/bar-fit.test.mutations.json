@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bar chart of ten or more rows is never dense",
+      "file": "products/explainer/src/composition/beats/BarChartBeat.tsx",
+      "find": "data-dense={rows.length > DENSE_AFTER_ROWS || undefined}",
+      "replace": "data-dense={undefined}",
+      "kills": [
+        "a dense bar chart twelve rows fit the stage box with and without a legend, as do ten rows and nine with a legend"
+      ]
+    },
+    {
+      "name": "a ten-row bar chart keeps the full row height",
+      "file": "products/explainer/src/composition/beats/BarChartBeat.tsx",
+      "find": "const DENSE_AFTER_ROWS = 9;",
+      "replace": "const DENSE_AFTER_ROWS = 10;",
+      "kills": [
+        "a dense bar chart twelve rows fit the stage box with and without a legend, as do ten rows and nine with a legend"
+      ]
+    },
+    {
+      "name": "a dense bar chart keeps the 64 px row",
+      "file": "products/explainer/src/composition/beats/stage/examples.css",
+      "find": ".ex-bars[data-dense] .ex-bar-row { height: 44px; line-height: 1; }\n",
+      "replace": "",
+      "kills": [
+        "a dense bar chart twelve rows fit the stage box with and without a legend, as do ten rows and nine with a legend"
+      ]
+    },
+    {
+      "name": "a dense bar chart with a legend keeps the 44 px row",
+      "file": "products/explainer/src/composition/beats/stage/examples.css",
+      "find": ".ex-bars[data-dense]:has(~ .ex-chart-legend) .ex-bar-row { height: 40px; }\n",
+      "replace": "",
+      "kills": [
+        "a dense bar chart twelve rows fit the stage box with and without a legend, as do ten rows and nine with a legend"
+      ]
+    }
+  ]
+}

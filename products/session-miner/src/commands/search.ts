@@ -3,6 +3,7 @@ import { createRetrievalEngine, ftsRetriever, graphRetriever, type FusedResult }
 import { normalizedSessions, normalizedSourcePath, readIndexedText, type SessionGraph } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { parseRow } from "../rows.js";
 
 const SearchArgs = z.object({
   query: z.string().min(1),
@@ -44,11 +45,13 @@ export const search = defineCommand<z.infer<typeof SearchArgs>, SearchResponse, 
   },
 });
 
+const sessionRow = z.object({ ai_title: z.string().nullable(), started_at: z.string().nullable() });
+const spanPayload = z.object({ sourceId: z.number(), byteOffset: z.number(), byteLength: z.number(), field: z.string() });
+
 async function toHit(graph: SessionGraph, result: FusedResult): Promise<SearchHit> {
-  const session = graph.db.prepare("SELECT ai_title, started_at FROM session WHERE session_id = ?").get(result.id.replace(/^session:/, "")) as
-    | { ai_title: string | null; started_at: string | null }
-    | undefined;
-  const span = result.payloads.fts as { sourceId: number; byteOffset: number; byteLength: number; field: string } | undefined;
+  const session = parseRow(sessionRow, graph.db.prepare("SELECT ai_title, started_at FROM session WHERE session_id = ?").get(result.id.replace(/^session:/, "")));
+  const spanParse = spanPayload.safeParse(result.payloads.fts);
+  const span = spanParse.success ? spanParse.data : undefined;
   const transcript = span ? graph.transcripts.list().find((t) => t.sourceId === span.sourceId) : undefined;
   const sourcePath = (span ? normalizedSourcePath(graph, span.sourceId) : null) ?? transcript?.sourceKey;
   const locator = span && sourcePath ? { transcript: sourcePath, byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field } : null;

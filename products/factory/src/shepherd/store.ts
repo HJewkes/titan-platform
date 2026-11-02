@@ -2,9 +2,11 @@ import type { RepoSlug } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
-import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { proofWaiverTable, type ProofWaivers } from "./proof-waiver-table.js";
+import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
+import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -14,9 +16,9 @@ import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, write
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
-import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
+import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy-schema.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
-import type { KindMove } from "./register-kind.js";
+import type { KindMove } from "./task-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -104,14 +106,14 @@ export class ShepherdStore implements HoldLookup {
     if (input.pr === undefined && input.branch === undefined) throw new Error("a shepherd registration needs a pr or a branch");
     const kind = KindSchema.parse(input.kind ?? "unknown");
     const at = this.stamp();
-    this.db
-      .prepare(
-        `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
-    writeRegistrationFacts(this.db, input.runId, input);
-    writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
+    this.db.transaction(() => {
+      const insert = this.db.prepare(`INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      insert.run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+      writeRegistrationFacts(this.db, input.runId, input);
+      writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
+      claimPlanApprovals(this.db, input.runId, input.task, input.repo);
+    })();
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -130,7 +132,7 @@ export class ShepherdStore implements HoldLookup {
 
   /** Every registration, oldest first. */
   all(): Registration[] {
-    const rows = this.db.prepare("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all() as Row[];
+    const rows = this.db.prepare<[], Row>("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all();
     return rows.map(registrationOf);
   }
 
@@ -175,6 +177,7 @@ export class ShepherdStore implements HoldLookup {
       repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
       repointMergeBaseException(this.db, runId, newRunId);
+      repointPlanApprovals(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
     move();
@@ -252,11 +255,17 @@ export class ShepherdStore implements HoldLookup {
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
 
+  /** The owner's plan-time answers, which only the console's plan-approval action writes; a registration claims its task's unclaimed ones. */
+  readonly planApprovals = (): PlanApprovals => planApprovalTable(this.db, () => this.stamp());
+
   /** Planners' leave for a run's fix rounds to merge the base branch; read where a fix round's brief is built. */
   readonly mergeBaseExceptions = (): MergeBaseExceptions => mergeBaseExceptionTable(this.db, () => this.stamp());
 
   /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
   readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
+
+  /** What gates outside GitHub Actions concluded at each head; a `lan-gates` hold stands aside at a head where they are green (`lan-gates.ts`). */
+  readonly gateEvidence = (): GateEvidence => gateEvidenceTable(this.db, () => this.stamp());
 
   /** The run's hold, release, repair-stop and gate-cancel events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
@@ -276,11 +285,8 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
   satisfyHold(runId: string, reviewer: string, head: string, by: Omit<HoldSatisfiedBy, "reviewer">): boolean {
-    const satisfiedBy = JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer }));
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
-      .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
-    return this.changed(runId, changed === 1);
+    const satisfy = "UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?";
+    return this.changed(runId, this.db.prepare(satisfy).run(head, JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer })), this.stamp(), runId, reviewer).changes === 1);
   }
 
   /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */
@@ -314,11 +320,11 @@ export class ShepherdStore implements HoldLookup {
     this.changed(runId, this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId).changes === 1);
   }
 
-  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. No satisfaction passes an owner hold. */
+  /** A branch registration waiting for its PR holds that PR too. A MERGE, or green lan-gates, at `sha` passes the hold there only; none passes an owner hold. */
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
     const owner = candidates.find((registration) => registration?.ownerHold)?.ownerHold;
-    const held = candidates.find((registration) => registration?.held && !(sha !== undefined && registration.holdSatisfied?.head === sha));
+    const held = candidates.find((r) => r?.held && !(sha !== undefined && holdPassedAt(this, r, sha)));
     return owner?.reason ?? (held && (held.holdReason ?? "held"));
   }
 
@@ -340,7 +346,7 @@ export class ShepherdStore implements HoldLookup {
 
   /** Every author recorded for the run, earliest first, ties broken by agent id. */
   authorsOf(runId: string): Author[] {
-    const rows = this.db.prepare("SELECT * FROM shepherd_lineage WHERE run_id = ? ORDER BY at, agent_id").all(runId) as AuthorRow[];
+    const rows = this.db.prepare<[string], AuthorRow>("SELECT * FROM shepherd_lineage WHERE run_id = ? ORDER BY at, agent_id").all(runId);
     return rows.map((row) => ({ runId: row.run_id, agentId: row.agent_id, name: row.name, role: row.role, predecessor: row.predecessor, at: row.at }));
   }
 
@@ -371,7 +377,7 @@ export class ShepherdStore implements HoldLookup {
   }
 
   private one(where: string, ...args: unknown[]): Registration | undefined {
-    const row = this.db.prepare(`SELECT * FROM shepherd_registration WHERE ${where}`).get(...args) as Row | undefined;
+    const row = this.db.prepare<unknown[], Row>(`SELECT * FROM shepherd_registration WHERE ${where}`).get(...args);
     return row && registrationOf(row);
   }
 

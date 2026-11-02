@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an inlined file is read through git/blobs anyway",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "entry.encoding === \"base64\" && entry.content ? entry.content",
+      "replace": "false ? entry.content",
+      "kills": ["fileBytes over the REST wire decodes a file the contents API inlined without a blob read"]
+    },
+    {
+      "name": "a decoded length unlike the reported size is returned",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "  if (bytes.length !== entry.size) throw",
+      "replace": "  if (false) throw",
+      "kills": ["fileBytes over the REST wire throws when the decoded bytes are shorter than the size GitHub reported"]
+    },
+    {
+      "name": "a directory listing is read as a file",
+      "file": "packages/github/src/file-bytes.ts",
+      "find": "  if (Array.isArray(entry) || entry.type !== \"file\") throw",
+      "replace": "  if (false) throw",
+      "kills": ["fileBytes over the REST wire throws for a directory rather than read it as a file"]
+    },
+    {
+      "name": "the fake round-trips stored bytes through UTF-8",
+      "file": "packages/github/src/fake-bytes.ts",
+      "find": "  if (stored) return stored.slice();",
+      "replace": "  if (stored) return new TextEncoder().encode(new TextDecoder().decode(stored));",
+      "kills": ["fileBytes over the fake returns a PNG's bytes exactly, including bytes that are not valid UTF-8"]
+    },
+    {
+      "name": "fileBytes passes the path to the wire unvalidated",
+      "file": "packages/github/src/port.ts",
+      "find": "wire.getContentBytes(repoOf(repo), checkPath(path),",
+      "replace": "wire.getContentBytes(repoOf(repo), path,",
+      "kills": ["fileBytes over the fake refuses a path that escapes the repo before any wire call"]
+    }
+  ]
+}

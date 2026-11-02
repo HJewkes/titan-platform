@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { depositItemId, type OwnerItemDeposit } from "./deposit.js";
 import type { OwnerAnswer } from "./schema.js";
@@ -275,6 +276,6 @@ describe("writeAnswer and readAnswer", () => {
   });
 
   it("refuses a malformed answer", async () => {
-    await expect(writeAnswer(dir, "deposit:x", { at: "yesterday" } as unknown as OwnerAnswer)).rejects.toThrow();
+    await expect(writeAnswer(dir, "deposit:x", partialFake<OwnerAnswer>({ at: "yesterday" }))).rejects.toThrow();
   });
 });

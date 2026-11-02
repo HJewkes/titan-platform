@@ -1,7 +1,8 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
-import { DamagedTranscriptError, type SeatReader } from "./external-review.js";
+import { DamagedTranscriptError } from "./seat-evidence.js";
+import type { SeatReader } from "./seat-reader.js";
 import type { Presence } from "./presence.js";
 import { isInvestigativeCall, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage } from "@titan-design/review-panel";
 

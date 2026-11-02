@@ -3,6 +3,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promises as fs } from 'node:fs';
 import lockfile from 'proper-lockfile';
+import { z } from 'zod';
 import { discoverAllTranscripts, discoverTranscripts } from '@titan-design/session-read';
 import { refreshCorpus, resetIndex, syncPrices } from '@titan-design/session-graph';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
@@ -13,7 +14,7 @@ import { agentChatOriginResolver } from './origin-agent-chat.js';
 import type { RunCommand } from '../discover/run-command.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace, type WorkspaceRefreshSummary } from '../workspace-index/refresh.js';
-import { resetWorkspaceIndex } from '../workspace-index/write.js';
+import { resetWorkspaceIndex, resetWorkspaceSpans } from '../workspace-index/write.js';
 import { preserveUnreachable, replayPreserved, type ReplaySummary } from './preserve.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
 import { runDeltaPass } from './delta-pass.js';
@@ -87,6 +88,8 @@ export interface RefreshOptions {
   activeRoot?: string;
   /** Skip the workspace half of the pass. For tests that only care about transcripts. */
   skipWorkspace?: boolean;
+  /** Full mode only: rebuild the workspace span table from the files, cheaper than `full`. */
+  resetWorkspaceSpans?: boolean;
   /** Skip PR outcomes from `gh`. For tests that must not reach the network. */
   skipPrOutcomes?: boolean;
   /** Runs `gh` for PR outcomes; tests replace it so the real binary never runs. */
@@ -166,6 +169,13 @@ export interface RefreshLockHolder {
   stale?: boolean;
 }
 
+const RefreshLockHolderSchema = z.looseObject({
+  pid: z.number(),
+  command: z.string(),
+  startedAt: z.string(),
+  stale: z.boolean().optional().catch(undefined),
+});
+
 export interface RefreshLockOptions {
   /** Attempts after the first; `0` fails at once with ELOCKED. Omitted, the call blocks about 4 minutes. */
   retries?: number;
@@ -209,7 +219,9 @@ export async function readRefreshLockHolder(
 ): Promise<RefreshLockHolder | null> {
   try {
     const raw = await fs.readFile(refreshLockHolderPath(), 'utf8');
-    const holder = JSON.parse(raw) as RefreshLockHolder;
+    const parsed = RefreshLockHolderSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return null;
+    const holder = parsed.data;
     const live = isRunning(holder.pid) && Date.parse(holder.startedAt) >= bootedAt;
     return live ? holder : { ...holder, stale: true };
   } catch {
@@ -384,6 +396,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
 
     // After the transcripts, so `mentions` and the task join see the rows the
     // transcript pass just wrote.
+    if (options.resetWorkspaceSpans && !options.skipWorkspace) resetWorkspaceSpans(graph);
     const workspace = options.skipWorkspace
       ? null
       : await refreshWorkspace(graph, {

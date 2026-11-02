@@ -1,4 +1,5 @@
-import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
+import { runL0, type L0Result } from "./eval-l0.js";
+import { ScriptSchema, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 
 // Synthetic: an invented parcel floor's day; nothing here quotes a real script, video, cost or repo.
 type Cue = { action: "V6"; target: string; atCue: string };
@@ -30,8 +31,8 @@ const BEATS: DailyBeat[] = [
     ["cache · Store warmed", "cache · Cold reads cut", "cache · Eviction bug open"], [cue("rows-1", "warmed"), cue("rows-3", "eviction")]],
   ["lanes-3", "lanes", "WHAT", 18, "The label lane merged three fixes, reviewed two more, and still holds one draft that waits on the router.", "list",
     ["label · Three fixes merged", "label · Two in review", "label · One draft waiting"], [cue("rows-1", "fixes"), cue("rows-3", "draft")]],
-  ["lanes-4", "lanes", "WHAT", 18, "Across the week, merges climbed from four on Monday to nine today, the best day this month.", "chart",
-    ["2026-01-05: 4", "2026-01-06: 6", "2026-01-07: 7", "2026-01-08: 9"], [cue("series-1", "monday"), cue("series-4", "today")]],
+  ["lanes-4", "lanes", "WHAT", 18, "Across the week, merges climbed from four on Monday through six and seven to nine today, the best day this month.", "chart",
+    ["Mon: 4", "Tue: 6", "Wed: 7", "Thu: 9"], [cue("series-1", "monday"), cue("series-4", "today")]],
   ["ships-1", "ships", "WHAT", 18, "Before the rewrite, every scan waited on one queue; after it, each lane matches its own scans in parallel.", "compare",
     ["before: One shared queue", "after: One queue per lane"], [cue("rows-1", "queue"), cue("rows-2", "parallel")]],
   ["ships-2", "ships", "WHAT", 18, "The matcher now answers in twelve milliseconds where it took forty, and the slow tail is nearly gone.", "chart",
@@ -78,3 +79,14 @@ export function dailyScript(labels: Record<string, string[]> = {}): ScriptV1 {
     beats: BEATS.map(scriptBeat).map((beat) => (labels[beat.id] ? { ...beat, visual: { ...beat.visual, labels: labels[beat.id] } } : beat)),
   });
 }
+
+type Patch = Partial<Omit<ScriptBeat, "visual">> & { visual?: Partial<ScriptBeat["visual"]> };
+
+/** The synthetic daily script with one beat's fields and visual fields replaced. */
+export function dailyWith(id: string, patch: Patch, script: ScriptV1 = dailyScript()): ScriptV1 {
+  const beats = script.beats.map((beat) => (beat.id === id ? { ...beat, ...patch, visual: { ...beat.visual, ...patch.visual } } : beat));
+  return { ...script, beats };
+}
+
+/** One row of the shipped L0 set, as the script stage runs it. */
+export const l0Row = (script: ScriptV1, checkId: string): L0Result => runL0(script).find((row) => row.check_id === checkId)!;

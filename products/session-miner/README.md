@@ -413,6 +413,89 @@ systemctl --user daemon-reload
 systemctl --user enable --now session-miner-tool-gaps.timer
 ```
 
+## Daily friction audit (TP-4364)
+
+`titan-miner friction-daily [--since 24h] [--dry-run] [--archive-dir <dir>] [--profiles <dir>]`
+ranks the window's friction two ways, logs first, and says how far the workers' own reports agree.
+No model is called.
+
+**Primary: the workers' transcripts.** Worker sessions come from the `agent_spawned` and
+`agent_resumed` rows in agent-chat's events table (`TITAN_MINER_EVENTS_DB`), by `meta.session_id`.
+Coordinators are left out: an agent spawned with a coordinator profile, or one that spawned an
+agent itself, idles on its inbox by design. Each session's
+`<profiles>/<profile>/projects/<project>/<session id>.jsonl` (default `~/.claude-profiles`) is read
+for the window. Each signal is charged the time it held the worker:
+
+- denials and tool errors, classed by insights Q5's classifier and mapped to a bucket (a
+  `hook-block` is a denial, `edit-not-read` is missing context, a rate limit is broker/infra),
+  costing the time to the worker's next move, at most 10 minutes;
+- waits over 5 minutes, whether a tool ran that long or the worker idled inside a turn. A check
+  run (a local suite, a build, or a GitHub CI poll) is `ci-wait`, and a Docker wait is
+  `broker-infra`. A gap that ends at a new prompt is time between turns, not a wait;
+- a Bash command run again with no edit since its last run: a test re-run is `flaky-test`, a
+  repeated CI poll is `ci-wait`, and any other repeat takes its last error's bucket;
+- a spawner's brief fix or correction to the worker (insights Q6's classes), as `missing-context`.
+
+Log clusters rank by agent-hours.
+
+**Secondary: the workers' reports.** These are the window's messages whose body opens with the
+return contract's `Status:` line. Each report's `Friction: <line>` is taken. A report without one
+falls back to its `Concerns:` items and blocked lines, labelled `concerns` or `blocked`. Lines are
+normalised (ids, paths and numbers reduced to tokens) and put in the first keyword bucket that
+matches: `denials`, `flaky-test`, `ci-wait` (only when the line also says it waited),
+`broker-infra`, `scope-note`, `review-loop`, `missing-context`.
+
+A scope note (a design caveat, a follow-up, a choice to accept) is set aside as non-friction. So is
+a `Concerns:` line that names no friction cause. Only a `Friction:` line can land in `other`. Report
+clusters rank by reports, then by spawn-to-report agent-hours, each agent counted once.
+
+**Agreement**, per agent that both reported and had a transcript read, asks whether its report names
+its log's top named cluster:
+- `yes` when it does;
+- `partial` when it names another cluster its log shows;
+- `no` when it names neither;
+- `n/a` when the log shows no named friction.
+
+The tally is `self-report agreement <yes>/<yes+partial+no>`. It also lists the clusters only the
+logs show and the clusters only the reports name.
+
+It writes one row per report and one per agent log (its signals and its agreement) to
+`<archive>/<date>.jsonl`, and the summary to `<date>.md`. The archive defaults to
+`<active-work>/titan-platform/artifacts/friction-daily`. It then withdraws the previous seven days'
+items as `superseded:<today's id>` and files one know item: asker `friction-audit`, depositId
+`friction-daily-<date>`, key `friction-daily`. Its summary leads with the log top cluster and the
+agreement, and its context has the log top 5, the agreement, then the report top 5.
+
+`--dry-run` reads and prints the summary, and writes and files nothing. Root `--json` prints the
+result as one JSON line.
+
+`ops/systemd/session-miner-friction-daily.{service,timer}` run it daily at 14:05 UTC, catching up
+a missed day on boot. The service reads `ACTIVE_ROOT` from
+`~/.config/titan-session-miner/friction-daily.env`, which it requires. To install (an owner step):
+
+```sh
+printf 'ACTIVE_ROOT=<root>\n' > ~/.config/titan-session-miner/friction-daily.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-friction-daily.service ~/projects/titan-platform/ops/systemd/session-miner-friction-daily.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-friction-daily.timer
+```
+
+## Worker-report intake, shadow (CC-1662)
+
+`titan-miner report intake --shadow [--since 24h] [--eval] [--out <file>]` reads the window's
+`Status:` report messages from agent-chat's events table and writes one JSON line per report to
+`<state>/report-intake/<date>.jsonl` (or `--out`). Each row holds the status, PR, head sha and CI
+state that session-analytics' `parseReport` reads, the `Concerns:` items with their prefilter class
+(`visibility-denied`, `ci-unread`, `follow-up-filed`, `pre-existing-failure`, `could-not-verify` or
+`residual`), the friction clusters, and the actions the W1 rule table suggests. It acts on nothing,
+and `--shadow` is required until the rule table's match is trusted.
+
+`--eval` joins each row to what happened next to the agent, before its next report and within 12
+hours: the coordinator messaged it, it was resumed, it was retired, or it was left. It prints how
+often a suggested closeout met no re-engagement. The strict rate counts every resume. The attributed
+rate counts only resumes logged under the coordinator's own name, since agent-chat logs a CLI resume
+(Shepherd's fix rounds among them) under `human`.
+
 ## Daily self-improve classification (TP-685)
 
 `titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`
@@ -461,6 +544,18 @@ titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtes
 
 Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
 `--json` returns the full class table or back-test result beside the same header fields.
+
+`titan-miner throughput forecast` (TP-2157) forecasts a set of open tasks with exactly one of
+`--tasks <ids>`, `--parent <id>` (open descendants) or `--milestone <tag>` (add `--initiative` when
+the tag recurs). It fits the same table, then prints total implementer agent-hours, reviewer
+agent-hours and USD at p10/p50/p80/p90, each task's `kind/band`, back-off level, n and closure
+rate, and the unclassifiable, notFound and skippedDone tasks. `--seed` (default `titan-miner`),
+`--draws`, `--week-effect on|off` and `--closure on|off` tune the simulation; equal inputs give an
+identical forecast hash.
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput forecast --parent TP-2150 --json
+```
 
 `titan-miner throughput pr-backfill` (TP-2162) caches each merged PR's head sha and changed
 files (paths and line counts, never diff text) in `<state>/pr-diffs.json`, mode 0600, through

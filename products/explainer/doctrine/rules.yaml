@@ -89,28 +89,36 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"], scope: chapter }
   - id: Q-V11
-    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s", and at most one number mention in a beat'
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails (and "never X", "no X"), semicolons, "let''s", the over-represented phrases of doctrine/voice-phrases.json, verbless "no X" negation and downtoners, and at most one number mention in a beat'
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
-    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning."
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research. Each row's status (gate, warning, report-only or drop) lives in doctrine/writing-check.json per length bucket (TP-4662); a row that is report-only or dropped at the script's own bucket reports its value without warning, and the rewrite pass neither targets nor protects it for human-ness. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag."
     l0:
       severity: warning
       status: implemented
-      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:phrases", "register:neg-synthetic", "register:downtoners", "register:numbers-per-beat", "register:shortest-last"]
 
   - id: Q-V12
     rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
     fields: [beats.spoken]
-    related: [Q-V11]
+    related: [Q-V11, Q-V14]
     owner_support: none
-    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+    note: "An error since TP-4327: every digit is a guess the voice makes out loud (PL-26)."
+    l0: { severity: error, status: implemented, checks: ["Q-V12"], scope: chapter }
   - id: Q-V13
     rule: "A beat headline wraps to at most two lines at the width of the headline band, so the band never clips it"
     fields: [beats.visual.assertion]
     owner_support: none
     note: "The band is sized for two lines (TP-4105); the width estimate lives in src/lint-headline.ts."
     l0: { severity: error, status: implemented, checks: ["Q-V13"], scope: chapter }
+  - id: Q-V14
+    rule: "Spoken lines carry no print device (parentheses, slashes, e.g., i.e., etc., &, %, unit symbols), and every file path, code token and acronym in them has a spoken alias: a lexicon entry or a [word](/phonemes/) override"
+    fields: [beats.spoken]
+    related: [Q-V10, Q-V12]
+    owner_support: none
+    note: "TP-4327 (PL-32, PL-21, XT-13, XT-15). The token patterns live in src/lint-spoken-tokens.ts; a [word](=reading) declaration names a reading, not an alias, so it does not count."
+    l0: { severity: error, status: implemented, checks: ["Q-V14"], scope: chapter }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -118,6 +126,7 @@ rules:
     aliases: [X2, TC1]
     related: [P1]
     owner_support: none
+    note: "Q-W1:stake-30s (TP-4333, RW-15) is a warning row beside it: the stake by min(15 %, 30 s) of planned time, so a long video still lands it in its first 30 s."
     l0: { severity: error, status: implemented, checks: ["Q-W1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W2
@@ -264,6 +273,7 @@ rules:
     aliases: [X15, TC16]
     related: ["CT R10"]
     owner_support: none
+    note: "Q-F11:late-facts (TP-4333, RW-16) is a warning row beside it: no beat starting in the last 10 % of planned time cites a fact no earlier beat cited, except the close's button."
     l0: { severity: error, status: implemented, checks: ["Q-F11"] }
   - id: Q-F12
     rule: "simplifications voiced once; limits before the close"
@@ -343,8 +353,10 @@ rules:
     rule: "The assertion is authored before the narration; subject and verb, at most 10 words, no topic label"
     fields: [beats.visual.assertion, beats.authored]
     aliases: [R14, S7, K14]
+    related: [Q-V13]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ5 }
+    note: "TP-4328 (ST-11, PR-24, RW-14). The verb half reads speech-g2p's part-of-speech tags: a finite verb after the first word. The authored-first half reads beats.authored only when a beat carries it."
+    l0: { severity: error, status: implemented, checks: ["Q-D7"], scope: chapter }
   - id: Q-D8
     rule: "The architecture act opens on a generic model with at most 5 slots; the close references it"
     fields: [video.generic_model, beats.function, beats.spoken]
@@ -388,6 +400,69 @@ rules:
     rubric_dims: [B4]
     owner_support: none
     judge: { layer: L2, status: pending, owner: SQ7 }
+  - id: Q-D14
+    rule: "Every number the assertion, a label or a chip shows is said in the beat's spoken text"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.spoken]
+    related: [narration-facts]
+    owner_support: none
+    note: "TP-4470, on every type since TP-4475 stopped the register rewrite moving numbers it no longer says onto labels. qa's narration-facts hard gate at script time, through its own unspokenFacts: citations and ordering numbers are exempt, and a chart's labels count only their largest value."
+    l0: { severity: error, status: implemented, checks: ["Q-D14"], scope: chapter }
+  - id: Q-D15
+    rule: "A template beat's fullest frame holds at most 20 words: the headline, the stage text and the source line, as the page draws them together"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.visual.beat]
+    related: [words-per-frame]
+    owner_support: none
+    note: "TP-4470. qa's words-per-frame gate at script time, read off resolve's template fill: the kind each beat is drawn as, a list heading that yields past 3 rows, no headline on claim-card, button, outro or hook, and none of the series chrome qa skips. A custom-layer beat draws its own text, so it is not predicted."
+    l0: { severity: error, status: implemented, checks: ["Q-D15"], scope: chapter }
+  - id: Q-D16
+    rule: "No label or chip repeats 5 or more of the beat's spoken words in a row"
+    fields: [beats.visual.labels, beats.visual.chips, beats.spoken]
+    related: [G10]
+    owner_support: none
+    note: "TP-4470. qa's G10 at script time, tokenised as G10 tokenises."
+    l0: { severity: error, status: implemented, checks: ["Q-D16"], scope: chapter }
+  - id: Q-D17
+    rule: "No planned stretch of a beat without a cue runs past the profile's pacing.pictureChangeFailS"
+    fields: [beats.visual.cues, beats.visual.map_state, beats.spoken, beats.plannedS]
+    related: [picture-change]
+    owner_support: none
+    note: "TP-4470. Cue times are word positions at the beat type's voiced band rate, numbers spelled; a stretch runs from the cut in, between cues, to the end of the voiced words."
+    l0: { severity: error, status: implemented, checks: ["Q-D17"], scope: chapter }
+  - id: Q-D18
+    rule: "The count of held beats (heldS, or the held band) is within the profile's pacing.held"
+    fields: [beats.heldS, beats.band]
+    related: [G12, static-window]
+    owner_support: none
+    note: "TP-4470. qa's G12 at script time; a held beat is where static-window allows a still frame."
+    l0: { severity: error, status: implemented, checks: ["Q-D18"] }
+  - id: Q-D19
+    rule: "Every body beat speaks at least 80 % of its word cap"
+    fields: [beats.spoken, beats.plannedS]
+    related: [Q-F8]
+    owner_support: none
+    note: "TP-4470, the owner's fill floor: truing ends a beat after its last word, so words near the cap, not tails, keep the runtime near target. Chapter opens, the close and held beats are exempt."
+    l0: { severity: error, status: implemented, checks: ["Q-D19"], scope: chapter }
+  - id: Q-D20
+    rule: "No heading a template beat draws holds more than 10 words, and no label more than 3, on the kind resolve's fill draws"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.beat]
+    related: [G9]
+    owner_support: none
+    note: "TP-4470. qa's G9 at script time: the chrome headline where the kind shows one, list and map headings, an outro or button line (its first label, or the assertion), and bar, map and stat labels. A claim card's h1 is drawn a word to a span, so G9 never reads it. Custom layers are not predicted."
+    l0: { severity: error, status: implemented, checks: ["Q-D20"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D21
+    rule: "Every template beat's picture moves within 0.2 s of its cut"
+    fields: [beats.visual.chips, beats.visual.beat, beats.visual.cues]
+    related: [G7]
+    owner_support: none
+    note: "TP-4470. qa's G7 at script time: a kind with a headline or a source chip moves at once; a headline-free kind with neither opens on an element that waits for its cue, after the voice's 0.3 s lead-in. Custom layers are not predicted."
+    l0: { severity: error, status: implemented, checks: ["Q-D21"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D22
+    rule: "No planned still run of a beat, between cues that reveal an element and outside the reading hold of text it does not say, passes the profile's pacing.staticMaxS, unless the beat is held or, for at most 6 s, the frame is settled under speech"
+    fields: [beats.visual.cues, beats.visual.map_state, beats.visual.labels, beats.spoken, beats.heldS, beats.band]
+    related: [static-window, Q-D17]
+    owner_support: none
+    note: "TP-4538. qa's static-window at script time. A template beat's picture moves on each reveal resolve's fill draws, on its word (a first-word reveal at the voice's start), for its kind's own entrance, count-up or fade; a cue no element lands on closes no stretch, and a custom layer moves on every cue. A beat ends where truing ends it, the settle after its tail included. As static-window does, the reading hold of each drawn text the voice does not wholly say (max(readingMinS, chars / readingCps) from when it shows) is not still time; a custom layer gets none. What is left may run staticMaxS. TP-4574 (owner decision vc-6): as static-window does, a still run after the fill's last reveal (every element the beat draws already shown, on its cue or at the cut) may run SETTLED_SPEECH_MAX_S (6 s) while the voice speaks over it; the part of it the voice is silent over still keeps to staticMaxS. TP-4611 (vc-6): a custom layer, whose elements are not predicted, settles at its last cue."
+    l0: { severity: error, status: implemented, checks: ["Q-D22"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
 
   - id: Q-E1
     rule: "Every claim maps to a fact id with a correct status; atomic claims are supported"

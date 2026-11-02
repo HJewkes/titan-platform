@@ -303,10 +303,15 @@ async function recordDecisions(decisionLog: RoundDecisionLog | undefined, { resu
   return { ...result, log, ...(live !== null && { liveViewedLog: await decisionLog.recordLiveViewed(live) }) };
 }
 
-/** The listener never changes what the owner is told, so the response skips its 10 s factory and seat calls; the sweep retries a failure (TP-4001). */
+/**
+ * The listener never changes what the owner is told, so the response skips its 10 s factory and seat calls; the sweep retries a failure (TP-4001).
+ * `onChange` runs once the answer is written and again once the listener settles, since the listener answers the round's gate in the factory.
+ */
 async function afterSubmit(hooks: SubmitHooks, id: string, submission: Submission): Promise<SubmitResult> {
   const result = await recordDecisions(hooks.decisionLog, submission);
-  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined);
+  const { onChange = () => undefined } = hooks;
+  onChange();
+  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined).then(onChange);
   return result;
 }
 
@@ -319,20 +324,22 @@ interface SubmitTarget {
 interface SubmitHooks {
   decisionLog?: RoundDecisionLog;
   listeners?: RoundListeners;
+  /** Tells a reader that keeps the owner queue (the inbox view) that an answer changed it. */
+  onChange?: () => void;
 }
 
 /** The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044). */
 export type SubmitPipeline = (posted: z.input<typeof submitArgs>) => Promise<SubmitResult>;
 
-export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string): SubmitPipeline {
+export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string, onChange?: () => void): SubmitPipeline {
   return async (posted) => {
     const args = submitArgs.parse(posted);
-    return afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
+    return afterSubmit({ decisionLog, listeners, ...(onChange && { onChange }) }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
   };
 }
 
-export function roundsSubmitCommands(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string) {
-  const submit = submitPipeline(source, decisionLog, listeners, inboxDir);
+export function roundsSubmitCommands(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string, onChange?: () => void) {
+  const submit = submitPipeline(source, decisionLog, listeners, inboxDir, onChange);
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",

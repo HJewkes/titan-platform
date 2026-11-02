@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "gitTreeSource reports a zero commit epoch",
+      "file": "packages/code-graph/src/git-tree-source.ts",
+      "find": "    revision: { repoRoot: canonicalRoot, commit, commitEpoch },\n",
+      "replace": "    revision: { repoRoot: canonicalRoot, commit, commitEpoch: 0 },\n",
+      "kills": [
+        "gitTreeSource exposes the commit and its epoch"
+      ]
+    }
+  ]
+}

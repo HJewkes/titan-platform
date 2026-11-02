@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the heading and first-motion rows",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "  headingWordsCheck, firstMotionCheck,\n",
+      "replace": "",
+      "kills": [
+        "Q-D20 heading and label words, as qa's G9 reads them an outro or button line past 10 words fails and names the line"
+      ]
+    },
+    {
+      "name": "the heading and first-motion hints are not registered",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "  \"Q-D21\": motionHint,\n",
+      "replace": "",
+      "kills": [
+        "Q-D21 first motion, as qa's G7 reads it a headline-free beat with no source chip opens still past 0.2 s"
+      ]
+    }
+  ]
+}

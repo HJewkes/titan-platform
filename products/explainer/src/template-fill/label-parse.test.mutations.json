@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the default cue reads the raw line with its markup",
+      "file": "products/explainer/src/template-fill/label-parse.ts",
+      "find": "return plainWords(beat.spoken).find(",
+      "replace": "return beat.spoken.split(/\\s+/).find(",
+      "kills": [
+        "a beat whose first word carries a reading declaration lands an element with no cue of its own on the word the listener hears"
+      ]
+    }
+  ]
+}

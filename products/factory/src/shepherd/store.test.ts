@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { accountLimitMigration } from "./account-store.js";
 import { holdSlotsMigration, parkSettledMigration, registrationFactsMigration } from "./store-migrations.js";
 import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 
@@ -560,7 +561,7 @@ describe("shepherd lineage", () => {
   it("refuses a role other than implementer or successor", () => {
     const store = openLineageStore();
 
-    expect(() => store.recordAuthor("run-1", { ...implementer, role: "reviewer" as never })).toThrow(/CHECK/);
+    expect(() => store.recordAuthor("run-1", Object.assign({ ...implementer }, { role: "reviewer" }))).toThrow(/CHECK/);
   });
 
   it("keeps every registration when a database that holds them gains the lineage table", () => {

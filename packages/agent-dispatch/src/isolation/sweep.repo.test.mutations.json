@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a live occupant does not own the tree",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "occupantOf(worktree, roster) ?? byBranch.get(branch)",
+      "replace": "byBranch.get(branch)",
+      "kills": [
+        "a worktree someone is standing in is held for a successor spawned with worktree: on the predecessor tree, and prune leaves it"
+      ]
+    },
+    {
+      "name": "grace runs from the newest row",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "const exitedAt = stoppedAt(agent);",
+      "replace": "const exitedAt: number | undefined = stoppedAt(agent) === undefined ? undefined : agent.lastEventAt;",
+      "kills": [
+        "finding what nobody is using times the grace window from the exit, not from a later row such as a refused retire"
+      ]
+    },
+    {
+      "name": "a live tree is re-judged by its files alone",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "  if (entry.status === \"held\" || entry.status === \"in-grace\") return entry;\n",
+      "replace": "",
+      "kills": [
+        "finding what nobody is using leaves a worktree alone while its agent is still running"
+      ]
+    },
+    {
+      "name": "reclaim ignores the sweep's status",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "if (entry.status !== \"reclaimable\" && !force)\n",
+      "replace": "if (entry.status === undefined)\n",
+      "kills": [
+        "reclaiming refuses anything the sweep did not call reclaimable"
+      ]
+    },
+    {
+      "name": "reclaim keeps the allocation",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "  if (released && held !== undefined) store.forget(held.agentId);\n",
+      "replace": "",
+      "kills": [
+        "reclaiming removes the worktree, deletes the branch, and forgets the allocation"
+      ]
+    }
+  ]
+}

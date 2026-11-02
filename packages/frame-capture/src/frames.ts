@@ -1,5 +1,7 @@
+import { tmpdir } from 'node:os'
 import type { Browser } from 'playwright-core'
-import { captureFrame, launch, openCapturePage, type CapturePage, type PageOptions } from './capture.js'
+import { captureFrame, withBrowser, withCapturePage, type CapturePage, type PageOptions } from './capture.js'
+import { OrderedSink, type Range, type Sink } from './ordered-sink.js'
 
 export interface FramesOptions extends PageOptions {
   url: string
@@ -13,11 +15,19 @@ export interface FramesOptions extends PageOptions {
    */
   workers?: number
   /**
+   * Where frames that cannot reach the sink yet wait; required with `workers` above 1. It needs room for most of the
+   * video's PNGs, so it must be real disk: a tmpfs such as many a /tmp would hold them in RAM. The capture makes its
+   * own directory inside this one and removes it however the capture ends.
+   */
+  spillDir?: string
+  /**
    * Seconds at which the page lays out a fresh scene. Chunks then start only on these frames, so any
    * worker count renders the same frames as one worker; fewer chunks than `workers` run when there are
    * fewer beats.
    */
   beatStartsS?: readonly number[]
+  /** A browser to capture in, left open; without one the capture launches its own and closes them. */
+  browser?: Browser
 }
 
 export interface FramesResult {
@@ -27,10 +37,7 @@ export interface FramesResult {
   fonts: CapturePage['fonts']
 }
 
-type Sink = (index: number, png: Buffer) => Promise<void>
-type Emit = (index: number, png: Buffer) => void
-
-type Range = [from: number, to: number]
+type Emit = (index: number, png: Buffer) => Promise<void>
 
 /** Float slack so a beat at 0.5 s and 30 fps lands on frame 15, not 16. */
 const FRAME_EPSILON = 1e-6
@@ -71,60 +78,50 @@ function chunks(options: FramesOptions, frames: number): Range[] {
   return beatChunks(beatFrames(options.beatStartsS, options.fps, frames), frames, workers)
 }
 
-/**
- * Hands frames to `sink` strictly in index order however the workers interleave. Out-of-order frames
- * wait in memory; `drained()` settles once everything handed in has reached the sink.
- */
-function orderedSink(sink: Sink) {
-  const waiting = new Map<number, Buffer>()
-  let next = 0
-  let draining = Promise.resolve()
-  const drain = async () => {
-    for (let buf = waiting.get(next); buf; buf = waiting.get(next)) {
-      waiting.delete(next)
-      await sink(next++, buf)
-    }
-  }
-  return {
-    emit(index: number, png: Buffer) {
-      waiting.set(index, png)
-      draining = draining.then(drain)
-    },
-    drained: () => draining,
-  }
-}
-
-async function withBrowser<T>(use: (browser: Browser) => Promise<T>): Promise<T> {
-  const browser = await launch()
-  try {
-    return await use(browser)
-  } finally {
-    await browser.close()
-  }
+/** Sequential capture never spills, so its directory is never made. */
+function spillParent({ workers = 1, spillDir }: FramesOptions): string {
+  if (workers > 1 && spillDir === undefined) throw new Error(`workers: ${workers} needs spillDir, a directory on real disk`)
+  return spillDir ?? tmpdir()
 }
 
 /**
- * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
- * process, so a shared browser stops scaling at about 60 fps. A page error rejects the chunk
- * before its frame is emitted: a render that throws unmounts the page, and every frame after it would encode black.
+ * A page error rejects the chunk before its frame is emitted: a render that throws unmounts the page, and every
+ * frame after it would encode black.
  */
-function captureChunk(options: FramesOptions, [from, to]: Range, emit: Emit) {
-  return withBrowser(async (browser) => {
-    const { page, errors } = await openCapturePage(browser, options.url, options)
+function captureChunk(browser: Browser, options: FramesOptions, [from, to]: Range, emit: Emit) {
+  return withCapturePage(browser, options.url, options, async ({ page, errors }) => {
     for (let i = from; i < to; i++) {
       const png = await captureFrame(page, i / options.fps)
       const [error] = errors
       if (error) throw new Error(`page error at frame ${i} (${(i / options.fps).toFixed(2)} s): ${error.message}`)
-      emit(i, png)
+      await emit(i, png)
     }
   })
 }
 
+/**
+ * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
+ * process, so a shared browser stops scaling at about 60 fps. The probe's browser goes on to capture the
+ * first chunk, which saves a launch per capture and still runs one chunk per browser: the probe's page
+ * closes before that chunk opens its own. A lent browser runs every chunk, for callers such as tests that
+ * trade that scaling for one launch. A failure stops the other workers at their next frame, and the capture rejects
+ * only once all of them have closed their browsers and the spill is gone.
+ */
 export async function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult> {
-  const probe = await withBrowser((browser) => openCapturePage(browser, options.url, options))
-  const frames = options.frames ?? Math.round(probe.duration * options.fps)
-  const ordered = orderedSink(sink)
-  await Promise.all(chunks(options, frames).map((range) => captureChunk(options, range, ordered.emit)))
-  await ordered.drained()
-  return { frames, pageDurationS: probe.duration, fonts: probe.fonts }
+  const spillIn = spillParent(options)
+  return withBrowser(options.browser, async (first) => {
+    const probe = await withCapturePage(first, options.url, options, async ({ duration, fonts }) => ({ duration, fonts }))
+    const frames = options.frames ?? Math.round(probe.duration * options.fps)
+    const ranges = chunks(options, frames)
+    const ordered = new OrderedSink(ranges, sink, spillIn)
+    const capture = (range: Range, k: number) =>
+      k === 0 ? captureChunk(first, options, range, ordered.emit) : withBrowser(options.browser, (browser) => captureChunk(browser, options, range, ordered.emit))
+    try {
+      await Promise.all(ranges.map((range, k) => capture(range, k).catch(ordered.abort)))
+      await ordered.drained()
+    } finally {
+      await ordered.close()
+    }
+    return { frames, pageDurationS: probe.duration, fonts: probe.fonts }
+  })
 }

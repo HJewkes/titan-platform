@@ -1,6 +1,6 @@
 import { CLIENT_HEADER } from "@titan-design/daemon";
 import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";

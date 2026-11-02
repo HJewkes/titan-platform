@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a tiny change reads as 0%",
+      "file": "apps/console/src/pages/ShipDelta.tsx",
+      "find": "  if (percent > 0 && percent < 0.1) return \"<0.1%\";\n",
+      "replace": "",
+      "kills": [
+        "formatShare rounds to one place and keeps a tiny change visible"
+      ]
+    },
+    {
+      "name": "a size mismatch hides which sizes differ",
+      "file": "apps/console/src/pages/ShipDelta.tsx",
+      "find": "message={`Sizes differ: main is ${sized(delta.base)}, head is ${sized(delta.head)}, so there is no pixel delta.`}",
+      "replace": "message=\"No pixel delta.\"",
+      "kills": [
+        "the Diff tab's delta panel says the sizes differ instead of drawing a delta"
+      ]
+    },
+    {
+      "name": "the delta caption drops the changed share",
+      "file": "apps/console/src/pages/ShipDelta.tsx",
+      "find": "`${formatShare(delta.share)} of the content changed (${pixels})`",
+      "replace": "`the content changed (${pixels})`",
+      "kills": [
+        "the Diff tab's delta panel draws the delta image with the share of the content that changed"
+      ]
+    },
+    {
+      "name": "an unchanged frame gets a delta panel",
+      "file": "apps/console/src/pages/ShipMontages.tsx",
+      "find": "const measured = !isNew && !frame.unchanged;",
+      "replace": "const measured = !isNew;",
+      "kills": [
+        "the Diff tab's montages gives an unchanged frame and a new one no delta panel"
+      ]
+    },
+    {
+      "name": "no changed pair gets a delta panel",
+      "file": "apps/console/src/pages/ShipMontages.tsx",
+      "find": "{measured ? <DeltaPanel",
+      "replace": "{measured && false ? <DeltaPanel",
+      "kills": [
+        "the Diff tab's montages gives each changed pair a delta panel, with or without a packet diff"
+      ]
+    }
+  ]
+}

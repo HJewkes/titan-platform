@@ -1,12 +1,14 @@
+import { resolve } from "node:path";
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
+import { registerShepherdPlanRound } from "./cli-shepherd-plan-round.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
@@ -24,8 +26,10 @@ import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/forma
 import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
-import type { ReviewSlots } from "./shepherd/review-slots.js";
-import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
+import { overdueOwnerGates } from "./shepherd/waiting.js";
+import { WaitingSchema } from "./shepherd/waiting-schema.js";
+import { errorMessage } from "./narrow.js";
+import type { ReviewSlots } from "./shepherd/ports.js";
 
 interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;
@@ -57,6 +61,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdWait(shepherd, verbs);
   registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
+  registerShepherdPlanRound(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
 
@@ -87,6 +92,26 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.prs", () => (repo ? { repo } : {}), opts));
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
+  registerVisualDeltaVerb(verb, verbs);
+  registerBriefVerb(verb, verbs);
+}
+
+/** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
+function registerBriefVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("brief <ref>", "print the owner PR section for owner/repo#N as markdown, or as the review harness's round-section JSON; read-only")
+    .option("--format <format>", "md or round-section", "md")
+    .option("--images <dir>", "a directory holding pr-<n>/manifest.json, for the before and after pairs of a UI PR")
+    .action((ref: string, opts: ShepherdOpts & { format: string; images?: string }) =>
+      runShepherd(verbs, "shepherd.brief", () => ({ ...parsePrRef(ref), format: opts.format, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
+}
+
+/** TP-4320's calibration read: the delta the evidence step would measure, before a repo's threshold goes `on`. */
+function registerVisualDeltaVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-delta", "print as JSON the visual delta the merge evidence step would measure for --repo's PR --pr under its shepherd.visualThreshold, with a count of shots the decoder refused as an unsupported format; read-only, no step and no record")
+    .requiredOption("--repo <owner/repo>", "the PR's repo")
+    .requiredOption("--pr <n>", "the PR number", parsePositiveInt)
+    .option("--head <sha>", "the 40-character head to measure; when the PR is no longer at it, its files read as unread and nothing is measured")
+    .action((opts: ShepherdOpts & { repo: string; pr: number; head?: string }) => runShepherd(verbs, "shepherd.visual-delta", () => ({ repo: opts.repo, pr: opts.pr, head: opts.head }), opts));
 }
 
 function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
@@ -195,7 +220,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   try {
     args = await argsOf();
   } catch (err) {
-    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    verbs.io.stderr(`error: ${errorMessage(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
@@ -220,7 +245,7 @@ async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
-const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+const exitOf = (code: unknown): number => (typeof code === "number" && Number.isInteger(code) && code > 0 ? code : EXIT.FAILURE);
 
 /** What `status` prints after its rows, from serve's `/health`; each block is null when serve answered without it. */
 interface StatusTail {

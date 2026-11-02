@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { isShortQuote, wordCount } from "./presets/article/quotes.js";
 import { QUOTE_MAX_WORDS, type ArticleFact, type FigureSeries } from "./presets/article/schemas.js";
 import { PAPER_PUBLISH_CHECKS } from "./profile-checks.js";
@@ -66,8 +67,6 @@ const figuresReplotted: PublishCheck = ({ board, facts }) => {
     return message ? [{ check: "figures-replotted-from-data", beat: beat.id, message }] : [];
   });
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 function slotQuotes(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(slotQuotes);

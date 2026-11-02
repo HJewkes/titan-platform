@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the percentile index is one too high",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "Math.ceil(p * sorted.length) - 1)",
+      "replace": "Math.ceil(p * sorted.length))",
+      "kills": [
+        "perf recorder summarises the last 15 minutes per command with errors counted and the slowest first",
+        "perf recorder the 24 hour summary reads rows from the log, not only the ring",
+        "percentile the p95 of 20 samples is the 19th smallest"
+      ]
+    },
+    {
+      "name": "a logged row spreads the whole sample",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "keep({ t: now(), kind: \"rpc\", name: sample.name, ms: sample.ms, bytes: sample.bytes, status: sample.status });",
+      "replace": "keep({ ...sample, t: now(), kind: \"rpc\" } as RpcRow);",
+      "kills": [
+        "perf recorder a sample carries no argument values"
+      ]
+    },
+    {
+      "name": "the ring never drops its oldest sample",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "if (ring.length > ringSize) ring.shift();",
+      "replace": "",
+      "kills": [
+        "perf recorder keeps the last ringSize samples in memory"
+      ]
+    },
+    {
+      "name": "retention deletes the recent files instead of the old",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "({ day }) => day < oldest)",
+      "replace": "({ day }) => day > oldest)",
+      "kills": [
+        "perf recorder deletes day files older than the retention at startup and keeps the rest"
+      ]
+    },
+    {
+      "name": "the 24 hour summary reads only the ring",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "if (window === \"15m\") return",
+      "replace": "if (window === \"15m\" || window === \"24h\") return",
+      "kills": [
+        "perf recorder the 24 hour summary reads rows from the log, not only the ring"
+      ]
+    }
+  ]
+}

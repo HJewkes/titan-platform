@@ -4,6 +4,7 @@ import { L0_CHECKS, runL0, type L0Result } from "./eval-l0.js";
 import { HINTED_CHECKS, repairHint } from "./l0-repair-hints.js";
 import { withCoverage } from "./lint-coverage.js";
 import { whyCheck } from "./lint-why.js";
+import { shippedRuleRegistry } from "./rules.js";
 import { parseSpine } from "./spine-schema.js";
 import { GOOD_BEATS, tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
 import { SPINE } from "./workflow/run-fakes.test-helpers.js";
@@ -29,6 +30,17 @@ describe("repair hint coverage", () => {
 
     expect(ids.length).toBeGreaterThan(30);
     expect(unhinted).toEqual([]);
+  });
+
+  // Mutation: returning the table hint as it is leaves hints that re-read the script silent on the row's beats.
+  it("gives every error-severity check in the rules registry a hint that names the beats its row fails", () => {
+    const ids = shippedRuleRegistry().rules.flatMap(({ l0 }) => (l0?.status === "implemented" && l0.severity === "error" ? l0.checks : []));
+    const script = tour();
+
+    const silent = ids.filter((id) => !repairHint(failingOn(id, ["h2", "w2"]), script, FACTS, parseSpine(SPINE))?.match(/\b(h2|w2)\b/));
+
+    expect(ids.length).toBeGreaterThan(40);
+    expect(silent).toEqual([]);
   });
 
   it("answers a failing row of every hinted rule without throwing", () => {

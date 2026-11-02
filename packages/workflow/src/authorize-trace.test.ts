@@ -29,7 +29,9 @@ function authorizeFlow(request: AuthorizeRequest): WorkflowFn {
 }
 
 function gateRecords(run: WorkflowRun): unknown[] {
-  return run.stepResults[STEP]!.data?.[TRACE_GATES_KEY] as unknown[];
+  const gates = run.stepResults[STEP]!.data?.[TRACE_GATES_KEY];
+  if (!Array.isArray(gates)) throw new Error("the step carries no trace gates");
+  return gates;
 }
 
 describe("authorize writes F3 policy gate records", () => {
@@ -39,8 +41,9 @@ describe("authorize writes F3 policy gate records", () => {
     const run = await rt.wait(rt.start("flow"));
     const [record] = gateRecords(run);
     expect(TraceGateSchema.parse(record)).toMatchObject({ gateKind: "policy", verdict: "allow", decidedBy: "policy:F5", policyRule: { table: "F5", rowId: "REL-OT", version: 1 } });
-    expect((record as { id: string }).id).toMatch(POLICY_GATE_ID_PATTERN);
-    expect((record as { id: string }).id).toBe(policyGateId(`workflow:${run.id}:${STEP}:0:0`, "F5", "REL-OT"));
+    const { id } = TraceGateSchema.parse(record);
+    expect(id).toMatch(POLICY_GATE_ID_PATTERN);
+    expect(id).toBe(policyGateId(`workflow:${run.id}:${STEP}:0:0`, "F5", "REL-OT"));
   });
 
   it("records a gate decision with a null verdict once the owner approves", async () => {

@@ -7,8 +7,10 @@
  * does not nudge again.
  *
  * A round is offered the one-tap answer only when every question carries a recommendation that answers it and no
- * question is a Ship decision: a Ship merges a PR at a head and is answered on the round page, where its blockers
- * show. The tap goes through `rounds.submit`'s own pipeline (`rounds-submit.ts`).
+ * question acts at merge: a Ship merges a PR at a head and is answered on the round page, where its blockers show; a
+ * question `planApprovals` binds (TP-4357) waives a merge gate and is answered on the round page, the one surface that
+ * shows the approval's scope. The tap goes through `rounds.submit`'s own pipeline (`rounds-submit.ts`), so every
+ * shortcut that answers a round must build its answers here.
  */
 import path from "node:path";
 import type { Manifest, Question } from "./round-schema.js";
@@ -67,10 +69,19 @@ function recAnswerOf(question: Question): SubmittedAnswer | undefined {
 
 const isShip = (question: Question): boolean => question.kind === "pick-one" && question.merge !== undefined;
 
+/** Why the round must be answered on its page, or undefined when a shortcut may answer it. */
+function pageOnlyReason(manifest: Manifest): string | undefined {
+  const ship = manifest.questions.find(isShip);
+  if (ship !== undefined) return `question "${ship.id}" is a Ship decision, answered on the round page`;
+  const bound = manifest.planApprovals?.[0];
+  if (bound !== undefined) return `question "${bound.questionId}" records a plan approval, answered on the round page where its scope shows`;
+  return undefined;
+}
+
 /** Every question answered with its recommendation, or the reason the round takes no one-tap answer. */
 export function recAnswers(manifest: Manifest): { answers: SubmittedAnswer[] } | { reason: string } {
-  const ship = manifest.questions.find(isShip);
-  if (ship !== undefined) return { reason: `question "${ship.id}" is a Ship decision, answered on the round page` };
+  const pageOnly = pageOnlyReason(manifest);
+  if (pageOnly !== undefined) return { reason: pageOnly };
   const answers: SubmittedAnswer[] = [];
   for (const question of manifest.questions) {
     const answer = recAnswerOf(question);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, quotaViolations, toIdea } from "./queue.js";
+import { applyOps, quotaRules, quotaViolations, toIdea } from "./queue.js";
 import { QueueOpsSchema, type QueueOps } from "./schemas.js";
 import { FIXTURE_BOUNDS, proposal } from "./test-support/fake-ports.js";
 
@@ -23,6 +23,26 @@ describe("planner quotas", () => {
 
   it("refuses a candidate pool under the minimum", () => {
     expect(quotaViolations(ops({ add: [proposal("a", { bold: true })] }), { ...QUOTA, minPool: 12, queuedBefore: 10 })).toEqual(["candidate pool 11 is under 12"]);
+  });
+});
+
+describe("the quota rules a planner is told", () => {
+  const quota = { keptLastRound: ["i-kept"], minPool: 9, queuedBefore: 6 };
+
+  it("state the minimum pool, the net adds it takes and the kept ideas owing a follow-up", () => {
+    const rules = quotaRules(quota).join("\n");
+
+    expect(rules).toContain("at least 9");
+    expect(rules).toContain("the queue holds 6, so adds minus drops must be at least 3");
+    expect(rules).toContain("i-kept");
+  });
+
+  it("name exactly the net adds the pool check accepts", () => {
+    const followup = proposal("f", { bold: true, source: "followup", parent: "i-kept" });
+    const adds = (count: number) => [followup, ...["a", "b", "c"].slice(0, count - 1).map((name) => proposal(name))];
+
+    expect(quotaViolations(ops({ add: adds(3) }), quota)).toEqual([]);
+    expect(quotaViolations(ops({ add: adds(2) }), quota)).toEqual(["candidate pool 8 is under 9"]);
   });
 });
 

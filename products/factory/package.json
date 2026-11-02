@@ -39,17 +39,22 @@
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/autoresearch": "workspace:^",
+    "@titan-design/cluster": "workspace:^",
     "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
+    "@titan-design/dispatch-ledger": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
+    "@titan-design/png-delta": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/review-schema": "^0.1.0",
+    "@titan-design/review-workflow": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
@@ -61,7 +66,9 @@
   },
   "devDependencies": {
     "@titan-design/decider": "workspace:^",
-    "@titan-design/test-kit": "workspace:*"
+    "@titan-design/test-kit": "workspace:*",
+    "@types/pngjs": "6.0.5",
+    "pngjs": "7.0.0"
   },
   "private": true,
   "bin": {

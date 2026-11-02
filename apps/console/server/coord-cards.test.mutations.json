@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a task carried by two coordinators is guessed onto the first",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "return spawners.size === 1 ? [...spawners][0]! : null;",
+      "replace": "return [...spawners][0] ?? null;",
+      "kills": [
+        "coord.cards attribution leaves a PR unattributed when two coordinators' implementers carried its task"
+      ]
+    },
+    {
+      "name": "a failed title read drops every card",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "if (titles === null) return cards;",
+      "replace": "if (titles === null) return [];",
+      "kills": [
+        "coord.cards enrichment and failures keeps every card with task ids and no titles when the active-work read rejects"
+      ]
+    },
+    {
+      "name": "attribution only sees the day's own spawns",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "window.from - ATTRIBUTION_LOOKBACK_MS",
+      "replace": "window.from",
+      "kills": [
+        "coord.cards attribution attributes a PR merged today to the coordinator that spawned its agent yesterday, without counting that agent today"
+      ]
+    },
+    {
+      "name": "a spawn before the day counts as an agent run that day",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "if (spawn.at >= window.from && spawn.at < window.to) addSpawn",
+      "replace": "if (spawn.at < window.to) addSpawn",
+      "kills": [
+        "coord.cards attribution attributes a PR merged today to the coordinator that spawned its agent yesterday, without counting that agent today"
+      ]
+    },
+    {
+      "name": "no coordinator is tagged with its seat",
+      "file": "apps/console/server/coord-cards.ts",
+      "find": "seat: seats.has(coordinator) ? coordinator : null",
+      "replace": "seat: null",
+      "kills": [
+        "coord.cards enrichment and failures counts live agents and sums exit costs, and tags a coordinator whose name has a seat file"
+      ]
+    }
+  ]
+}

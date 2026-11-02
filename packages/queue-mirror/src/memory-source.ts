@@ -39,7 +39,10 @@ export class MemoryQueueSource implements QueueSource {
   private async *stream(start: number, signal: AbortSignal): AsyncGenerator<SourceEvent> {
     let next = start;
     while (!signal.aborted) {
-      while (next < this.log.length) yield this.log[next++] as SourceEvent;
+      for (let event = this.log[next]; event !== undefined; event = this.log[next]) {
+        next += 1;
+        yield event;
+      }
       await this.nextAppend(signal);
     }
   }

@@ -6,6 +6,8 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { openOrRead } from "./snapshot-reads.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
+import { clearGreenMainCiGates, type ClearedMainGate } from "./main-ci-cleared.js";
+import { errorStatus } from "../narrow.js";
 
 /** How often `titan-factory serve` checks the PRs of runs waiting on a gate. */
 export const GONE_SWEEP_MS = 5 * 60_000;
@@ -34,6 +36,8 @@ interface GoneOptions {
   onUnreadable?: (runId: string, cause: string) => void;
   /** Called for a run the runtime refused to cancel for any reason but a lease held elsewhere; the run stays live. Absent, the error is thrown. */
   onCancelFailed?: (runId: string, cause: string) => void;
+  /** Called for each main-ci-timeout gate the gated sweep cleared on a green main containing the merge. */
+  onMainGreen?: (cleared: ClearedMainGate) => void;
 }
 
 const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
@@ -63,25 +67,25 @@ const MergeLanded = z.looseObject({ done: z.literal(true) });
 
 class UnreadablePr extends Error {}
 
+const NOT_FOUND = Symbol("not found");
+
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
-const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
+const isNotFound = (error: unknown): boolean => errorStatus(error) === 404;
 
 /** All the gone walk reads, so an owner op that holds only the store and the port can end a run too. */
-type GoneReads =Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer">;
+type GoneReads = Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer" | "now">;
 
 /** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
 async function goneReason(services: GoneReads, runId: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
   const target = `${registration.repo}#${registration.pr}`;
-  let notFound = false;
-  const pr = await openOrRead(services.port, services.snapshot, registration.repo, registration.pr).catch((error: unknown) => {
+  const pr = await openOrRead(services.port, services.snapshot, registration.repo, registration.pr).catch((error: unknown): typeof NOT_FOUND => {
     if (!isNotFound(error)) throw new UnreadablePr(failureOf(error));
-    notFound = true;
-    return undefined;
+    return NOT_FOUND;
   });
-  if (notFound) return `${DELETED_ELSEWHERE}${target} answered 404, so the PR or its repo is gone`;
-  if (!pr || pr.state === "open") return undefined;
+  if (pr === NOT_FOUND) return `${DELETED_ELSEWHERE}${target} answered 404, so the PR or its repo is gone`;
+  if (pr.state === "open") return undefined;
   return pr.merged ? `${LANDED_ELSEWHERE}${target} was merged outside Shepherd` : `${CLOSED_ELSEWHERE}${target} was closed outside Shepherd`;
 }
 
@@ -129,6 +133,7 @@ function tryCancel(host: FactoryHost, runId: string, reason: string, options: Go
 /**
  * Ends every shepherd-pr run in scope whose PR was merged or closed elsewhere; cancelling a run cancels its pending gates.
  * The run is read again after the PR read and cancelled in that same tick, so a merge it recorded meanwhile keeps it.
+ * The gated sweep also clears a main-ci-timeout gate, the one main gate a merged PR's later green main answers.
  */
 export async function endRunsGoneElsewhere(host: FactoryHost, services: GoneReads, options: GoneOptions = {}): Promise<EndedRun[]> {
   const ended: EndedRun[] = [];
@@ -148,5 +153,6 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: GoneRead
     if (outcome === "cancelled") ended.push({ runId, reason });
     else if (outcome === "held") options.onHeld?.(runId);
   }
+  if (scope === "gated") (await clearGreenMainCiGates(host, services, { dryRun: options.dryRun })).forEach((cleared) => options.onMainGreen?.(cleared));
   return ended;
 }

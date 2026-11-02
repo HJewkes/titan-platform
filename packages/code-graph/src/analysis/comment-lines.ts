@@ -30,7 +30,7 @@ export function commentLineStats(fn: Node, body: Node, lines: readonly string[])
 /** The leading string statement of a Python block, which Python binds to `__doc__`. */
 export function pythonDocstring(body: Node): Node | null {
   if (body.type !== "block") return null;
-  const first = body.namedChildren.find((c) => c !== null && c.type !== "comment");
+  const first = body.namedChildren.find((c) => c.type !== "comment");
   if (first?.type !== "expression_statement" || first.namedChildCount !== 1) return null;
   return first.namedChildren[0]?.type === "string" ? first : null;
 }
@@ -39,7 +39,7 @@ export function pythonDocstring(body: Node): Node | null {
 export function bodyStatements(body: Node, docstring: Node | null = pythonDocstring(body)): Node[] {
   if (body.type !== "block" && body.type !== "statement_block") return [body];
   return body.namedChildren.filter(
-    (c): c is Node => c !== null && c.type !== "comment" && c.id !== docstring?.id,
+    (c) => c.type !== "comment" && c.id !== docstring?.id,
   );
 }
 
@@ -54,7 +54,7 @@ export function descendantsOfType(root: Node, type: string): Node[] {
   const out: Node[] = [];
   const visit = (node: Node): void => {
     if (node.type === type) out.push(node);
-    for (const child of node.namedChildren) if (child) visit(child);
+    for (const child of node.namedChildren) visit(child);
   };
   visit(root);
   return out;

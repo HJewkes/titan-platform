@@ -30,7 +30,7 @@ export function exceptionMetrics(nodeId: string, root: Node, loc: number): Graph
 
 function isSwallowed(handler: Node): boolean {
   if (isOptionalImportExcept(handler)) return false;
-  const body = handler.childForFieldName("body") ?? handler.namedChildren.find((c) => c?.type === "block");
+  const body = handler.childForFieldName("body") ?? handler.namedChildren.find((c) => c.type === "block");
   if (!body) return false;
   const statements = bodyStatements(body, null);
   if (statements.length === 0) return true;
@@ -50,7 +50,7 @@ function isOptionalImportExcept(handler: Node): boolean {
   if (!typeExpr) return false;
   if (typeExpr.type === "identifier") return OPTIONAL_IMPORT_EXCEPT_TYPES.has(typeExpr.text);
   if (typeExpr.type !== "tuple") return false;
-  const names = typeExpr.namedChildren.filter((c): c is Node => c !== null);
+  const names = typeExpr.namedChildren;
   return names.length > 0 && names.every((n) => n.type === "identifier" && OPTIONAL_IMPORT_EXCEPT_TYPES.has(n.text));
 }
 

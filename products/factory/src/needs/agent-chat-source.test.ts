@@ -19,8 +19,8 @@ const queueReply = () => endpoint(() => json({ items: brokerSnapshot() }));
 
 async function readError(source: BrokerEndpoint): Promise<QueueReadError> {
   const error = await agentChatSource(source).open().catch((e: unknown) => e);
-  expect(error).toBeInstanceOf(QueueReadError);
-  return error as QueueReadError;
+  if (!(error instanceof QueueReadError)) throw new Error("expected a QueueReadError");
+  return error;
 }
 
 describe("agentChatSource open", () => {

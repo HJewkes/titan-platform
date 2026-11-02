@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "score any FIX_FIRST as a hit",
+      "file": "products/evals/src/review-workflow/score.ts",
+      "find": "const hit = path !== undefined && verifiedCitedPaths(outcome, source).some((cited) => citesPath(cited, path));",
+      "replace": "const hit = outcome.kind === \"FIX_FIRST\";",
+      "kills": [
+        "the review-workflow seed cases count no catch at 84dc2b72, whose FIX_FIRST cites only a line past the file's end",
+        "the review-workflow seed cases catch the three blocking heads and none of the fixed heads"
+      ]
+    }
+  ]
+}

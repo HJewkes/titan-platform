@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "merge order reads a lan-gates hold at no head",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "holds.byRun(runId), order.mergeHead(runId))",
+      "replace": "holds.byRun(runId), undefined)",
+      "kills": [
+        "a lan-gates hold read by merge order and the restart drain still orders peers once every gate is green at the head its merge step is at, since it may merge there"
+      ]
+    },
+    {
+      "name": "the restart drain reads a lan-gates hold at no head",
+      "file": "products/factory/src/serve-holds.ts",
+      "find": "store.byRun(run.id), lastCiHead(run))",
+      "replace": "store.byRun(run.id), undefined)",
+      "kills": [
+        "a lan-gates hold read by merge order and the restart drain makes a restart wait on its merge step once every gate is green at that step's head"
+      ]
+    },
+    {
+      "name": "a lan-gates hold never bars a merge",
+      "file": "products/factory/src/shepherd/lan-gates.ts",
+      "find": "  return head === undefined || !holdPassedAt(source, registration, head);",
+      "replace": "  return false;",
+      "kills": [
+        "a lan-gates hold read by merge order and the restart drain orders nothing while its gates are green only at a head its merge step has moved past",
+        "a lan-gates hold read by merge order and the restart drain lets a restart skip its merge step while no gate evidence is green at that step's head"
+      ]
+    }
+  ]
+}

@@ -42,6 +42,11 @@ export const NextStepSchema = z.object({
   ref: z.string().min(1).optional(),
   // When a promise comes due (TP-913). Past this instant the loop is "trigger met".
   due: iso8601.optional(),
+  // Where the loop was filed (TP-4316): a seat handing off or teleporting files
+  // its live loops so the successor and the loop board see them.
+  origin: z.enum(['handoff', 'teleport', 'wrap']).optional(),
+  // The seat that owns the loop; its later handoffs advance the loop's motion.
+  seat: z.string().min(1).optional(),
 });
 
 /** A loop opened by a prior session that this session closed. */

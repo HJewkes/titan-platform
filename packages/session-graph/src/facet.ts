@@ -68,7 +68,7 @@ function staleTranscripts(graph: SessionGraph, transcripts: readonly DiscoveredT
 }
 
 function facetVersions(db: Db): Map<number, number> {
-  const rows = db.prepare(`SELECT transcript_id, version FROM ${FACET_TABLE} WHERE facet = ?`).all(AUDIT_FACET) as { transcript_id: number; version: number }[];
+  const rows = db.prepare<[string], { transcript_id: number; version: number }>(`SELECT transcript_id, version FROM ${FACET_TABLE} WHERE facet = ?`).all(AUDIT_FACET);
   return new Map(rows.map((r) => [r.transcript_id, r.version]));
 }
 

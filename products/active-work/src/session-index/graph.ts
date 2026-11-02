@@ -4,12 +4,13 @@ import {
   openDatabase,
   runMigrations,
   SchemaTooNewError,
+  SpanFtsTables,
   WatermarkTable,
 } from '@titan-design/store-sqlite';
 import path from 'node:path';
 import { ConfigError } from '../errors.js';
 import { getMinerRoot } from '../utils/paths.js';
-import { MIGRATIONS, WORKSPACE_KIT } from '../workspace-index/schema.js';
+import { MIGRATIONS, WORKSPACE_KIT, WORKSPACE_SPAN_TABLES } from '../workspace-index/schema.js';
 import { repairMigrationBand } from './migration-repair.js';
 
 /**
@@ -27,11 +28,16 @@ export type { SessionGraph };
 
 /**
  * The session graph plus what the workspace pass needs: one watermark table
- * over the workspace files. `edges` and `spans` are shared with the transcript
- * side on purpose, because cross-class retrieval is a join.
+ * over the workspace files. `edges` are shared with the transcript side on
+ * purpose, because cross-class retrieval is a join.
+ *
+ * `workspaceSpans` is the workspace half's own span index (TP-4680). The
+ * workspace pass writes it; `workspaceSpanTable` decides which table a query reads
+ * while an older graph still holds workspace spans in `spans`.
  */
 export interface WorkspaceGraph extends SessionGraph {
   workspaceFiles: WatermarkTable;
+  workspaceSpans: SpanFtsTables;
 }
 
 /**
@@ -74,6 +80,7 @@ export function openGraph(dbPath: string = defaultGraphPath()): WorkspaceGraph {
   return {
     ...graph,
     workspaceFiles: new WatermarkTable(graph.db, { name: WORKSPACE_KIT.watermark }),
+    workspaceSpans: new SpanFtsTables(graph.db, WORKSPACE_SPAN_TABLES),
   };
 }
 

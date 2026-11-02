@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { digestReads, fileSeatDigestMemory, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const HEAD = "a".repeat(40);
 const SEATS: Record<string, string> = { "acme/widgets": "widgets-coord", "acme/gears": "gears-coord" };
@@ -283,5 +284,33 @@ describe("fileSeatDigestMemory", () => {
     await sendSeatDigests([gated(1, "approve-merge")], ports, fileSeatDigestMemory(dir));
 
     expect(ports.sent).toHaveLength(0);
+  });
+});
+
+describe("a send that fails", () => {
+  const minute = (n: number): Date => new Date(Date.UTC(2026, 10, 2, 6, 25 + n));
+  const failing = (error: Error): SeatDigestPorts & { attempts: number } => {
+    const ports = { attempts: 0, seatLookup: () => (repo: string) => SEATS[repo], send: async (): Promise<void> => { ports.attempts++; throw error; } };
+    return ports;
+  };
+
+  it("is not resent every sweep when the broker never answered send_result", async () => {
+    const ports = failing(new DispatchTimeoutError("agent-chat refused send: broker did not answer send_result"));
+    const memory = memoryMap();
+
+    for (const n of [0, 1, 2]) await sendSeatDigests([gated(1, "approve-merge")], ports, memory, {}, minute(n));
+    await sendSeatDigests([gated(1, "approve-merge")], ports, memory, {}, minute(10));
+    await sendSeatDigests([gated(1, "approve-merge")], ports, memory, {}, minute(20));
+
+    expect(ports.attempts).toBe(2);
+  });
+
+  it("is retried on every sweep when the broker refused it", async () => {
+    const ports = failing(new DispatchError('agent-chat refused send: Not delivered: no active session named "widgets-coord"'));
+    const memory = memoryMap();
+
+    for (const n of [0, 1, 2]) await sendSeatDigests([gated(1, "approve-merge")], ports, memory, {}, minute(n));
+
+    expect(ports.attempts).toBe(3);
   });
 });

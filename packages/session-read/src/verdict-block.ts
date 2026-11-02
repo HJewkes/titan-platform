@@ -142,7 +142,7 @@ function readBlock(text: string, lines: (string | null)[], at: number): VerdictB
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
   if (verdict === "Verdict: MERGE") {
-    const ciPolicy = readCiPolicy(text, lines[at + 3] === CI_POLICY_UNCHANGED_LINE ? at + 3 : -1);
+    const ciPolicy = readCiPolicy(text, canonicalAt(lines, at));
     return { ok: true, verdict: "MERGE", ...named, ...(ciPolicy && { ciPolicy }) };
   }
   const closer = readCloser(lines, at + 3);
@@ -163,11 +163,35 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
  * line, else -1.
  */
 function readCiPolicy(text: string, canonicalAt: number): CiPolicy | undefined {
-  const readings = text.split("\n").flatMap((raw, index) => {
-    const rest = ciPolicyLabelRest(raw);
-    return rest === undefined ? [] : [readCiPolicyLabel(rest, index === canonicalAt)];
-  });
+  const readings = labelledLines(text, canonicalAt).map((line) => line.reading);
   return readings.length === 0 ? undefined : strictestCiPolicy(readings);
+}
+
+/** The Head+1 index when it holds the exact unchanged line, else -1. */
+const canonicalAt = (lines: (string | null)[], verdictAt: number): number => (lines[verdictAt + 3] === CI_POLICY_UNCHANGED_LINE ? verdictAt + 3 : -1);
+
+export interface CiPolicyLabelledLine {
+  /** The line as written, untrimmed. */
+  raw: string;
+  /** What this one line reads as before the strictest reading folds them. */
+  reading: CiPolicy;
+}
+
+function labelledLines(text: string, canonicalAt: number): CiPolicyLabelledLine[] {
+  return text.split("\n").flatMap((raw, index) => {
+    const rest = ciPolicyLabelRest(raw);
+    return rest === undefined ? [] : [{ raw, reading: readCiPolicyLabel(rest, index === canonicalAt) }];
+  });
+}
+
+/**
+ * Every labelled line a MERGE block's `ciPolicy` folds, in text order, each with its own reading; empty for any text that
+ * is not one MERGE block. A card showing why the reading is what it is reads the lines here, never through its own match.
+ */
+export function ciPolicyLabelledLines(text: string): CiPolicyLabelledLine[] {
+  const block = parseVerdictBlock(text);
+  if (!block.ok || block.verdict !== "MERGE") return [];
+  return labelledLines(text, canonicalAt(visibleLines(text), block.lineOffset));
 }
 
 /**

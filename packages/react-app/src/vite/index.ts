@@ -22,5 +22,14 @@ export function titanApp(options: TitanAppOptions = {}): Plugin[] {
     name: "titan-app",
     config: () => ({ server: { proxy }, preview: { proxy } }),
   };
-  return options.singleFile === false ? [preset] : [preset, viteSingleFile() as Plugin];
+  if (options.singleFile === false) return [preset];
+  return [preset, singleFilePlugin()];
+}
+
+function singleFilePlugin(): Plugin {
+  const plugin = viteSingleFile();
+  if (typeof plugin !== "object" || plugin === null || Array.isArray(plugin) || plugin instanceof Promise) {
+    throw new Error("vite-plugin-singlefile did not return a single plugin");
+  }
+  return plugin;
 }

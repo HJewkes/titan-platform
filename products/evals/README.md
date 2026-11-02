@@ -21,6 +21,13 @@ means re-running `validate` and updating the digests it reports.
 one JSONL row per reviewed head, labelled from git history and the factory database, which it
 opens read-only. The label rules are in the reference page.
 
+`replayCase` and `replaySuite` replay review-workflow cases through `reviewWorkflow` under
+policy variants. A FIX_FIRST counts as a hit only when a verified citation names the case's path.
+`SEED_CASES` and `FAILURE_FIXTURES` run in CI over fake ports with no model.
+`reviewScorecard` scores one variant's results on catch, false blocks, sessions per head and
+verdicts reached. `compare(candidate, incumbent)` accepts a retry or timing change on the fixtures
+alone (no new loop, no fewer verdicts, no more sessions) and a plan change on catch and cost.
+
 Full reference: `site/reference/evals.md`.
 
 `titan-evals review-pr cases` builds the private cases for the `review-pr` unit in `units/review-pr/`:
@@ -45,6 +52,31 @@ titan-evals review-pr cases --corpus corpus.jsonl --repo owner/repo=<clone> \
 - The command refuses an `--out` inside a git work tree or one that is not empty. It writes
   `cases/*.json`, `suite.json` (sorted case hashes plus the checks in `src/review-pr/checks.ts`)
   and `manifest.json` (counts by kind, skipped rows by reason, excluded cases by reason).
+
+`titan-evals implement-task export` builds the private cases for the `implement-task` unit from the classified
+corpus (`cases.v3.classified.jsonl`). It selects candidates, drops private ones, then screens each class in seeded order
+(a build and test at the base and merge commits) until `--per-class` cases are kept or the pool ends.
+
+```sh
+titan-evals implement-task export --corpus cases.v3.classified.jsonl --repos-root <dir of clones> \
+  --active-work-root <dir> --out <dir outside every repo> --selftest
+```
+
+- `--repo owner/repo=<clone>` (repeatable) and `--repos-root` locate clones; `--owner` (default `HJewkes`) prefixes
+  bare corpus repo names. `--classes`, `--per-class` (default 8) and `--seed` shape the draw.
+- `--max-candidates <n>` caps each class's pool, so a first run screens a known few.
+- `--dry-run` runs selection and filtering only and prints pool counts to stderr: no install, build or test, and no
+  `--out` needed.
+- `--selftest` runs the private exclusion self-test first and aborts the run if it fails.
+- It refuses an `--out` inside a git work tree or one that is not empty, and writes `cases/*.json`, `suite.json` and
+  `manifest.json` only after screening ends.
+- Each kept case's later fix PRs (`--later-fix-source follow-up|fix-touch|both`, default `both`; `--no-later-fixes`
+  turns them off) are screened against a corrected reference: the accepted merge plus the fix's own diff. A fix whose
+  tests reproduce the escaped defect lands in `expected.laterFixTests`, with files under `hidden/<id>/fix-<pr>/`; every
+  other fix is listed in the manifest's `laterFix.rejected` with its reason.
+- `laterFixTests` grade whether a candidate avoided the defect the accepted diff shipped. They stay apart from
+  `hiddenTests` because the accepted diff fails them by construction, and mixing them in would cap the reference below
+  100 percent. Grading them is the trial grader's job; the export only writes them.
 
 `titan-evals history build` is the history corpus builder (TP-949). It makes no `gh` or
 GraphQL call; mirrors fetch over git smart HTTP unless `--no-fetch` is given.

@@ -7,7 +7,8 @@ import { step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { FreezeStore } from "./freeze.js";
 import { judgeMain, readMainRules } from "./main-verdict.js";
-import { FixerResult, MAIN_RERUN_STEP, THAWED, failedTests, failingLogs, notRefused, patiently, type EpisodeInput, type FailingRead, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
+import { FixerResult, MAIN_RERUN_STEP, THAWED, notRefused, patiently, type EpisodeInput, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
+import { failedTests, failingLogs, type FailingRead } from "./main-red-logs.js";
 import type { ShepherdDeps } from "./phases.js";
 import { tailBytes } from "./wake-brief.js";
 

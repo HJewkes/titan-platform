@@ -142,13 +142,13 @@ function runExportStage(artifacts: Readonly<Record<string, string>>, store: Arti
   return { outputs, notes: [`linked ${stemmed.join(", ")} as ${file.theater.stem}.*`, ...companion] };
 }
 
-/** Keyed by the script's own id, not the plan's: a first run has no plan video id, and its re-runs carry the run id. */
-async function withReflection(outcome: StageOutcome, artifacts: Readonly<Record<string, string>>, deps: StageDeps, at: Date): Promise<StageOutcome> {
+/** Filed under the digest day the gather named, which a run from a later stage inherits from its base. Keyed by the script's own id, not the plan's: a first run has no plan video id, and its re-runs carry the run id. */
+async function withReflection(outcome: StageOutcome, artifacts: Readonly<Record<string, string>>, deps: StageDeps): Promise<StageOutcome> {
   const sha = artifacts.script;
   if (!deps.reflection || deps.reflection.mode === "off" || sha === undefined) return outcome;
   const script = parseScript(JSON.parse(deps.store.readText(sha)));
   const gather = deps.plan.gather;
-  const day = gather && "day" in gather ? gather.day : at.toISOString().slice(0, 10);
+  const day = gather && "day" in gather ? gather.day : undefined;
   const outDir = deps.plan.theater ?? deps.bridge().theater.dir;
   const result = await exportReflection(deps.reflection, { script, scriptSha: sha, videoId: script.id, day, outDir });
   return { ...outcome, notes: [...(outcome.notes ?? []), ...result.notes] };
@@ -163,7 +163,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date, run
   const { stage } = input;
   if (!isCachedStage(stage)) {
     const startedAt = now();
-    const outcome = await withReflection(runExportStage(input.artifacts, deps.store, deps.bridge()), input.artifacts, deps, startedAt);
+    const outcome = await withReflection(runExportStage(input.artifacts, deps.store, deps.bridge()), input.artifacts, deps);
     return stageRecord(stage, startedAt, now(), outcome);
   }
   const variantSha = deps.plan.variants[stage];

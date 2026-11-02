@@ -61,6 +61,11 @@ export interface AgentRow {
   predecessor?: string | null;
   /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
   retired?: boolean;
+  /**
+   * When the agent's session exited, as an ISO string; null while it has not. Absent from an agent-chat that
+   * predates it, which proves nothing about when, or whether, the agent exited.
+   */
+  exitedAt?: string | null;
 }
 
 /**
@@ -121,6 +126,15 @@ export async function listAgentLineage(
   return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: false };
 }
 
+export interface RetireOptions {
+  force?: boolean;
+  /**
+   * Who the broker's `agent_retired` event names as the actor. The CLI reads
+   * it from `AGENT_CHAT_NAME`; absent, the broker records `human`.
+   */
+  caller?: string;
+}
+
 /**
  * Release the agent's isolation, end its process and free its name. `force`
  * discards uncommitted or unmerged work its worktree holds. Rejects with
@@ -130,13 +144,18 @@ export async function retire(
   agentChatBinPath: string,
   name: string,
   timeoutMs: number,
-  options: { force?: boolean } = {},
+  options: RetireOptions = {},
 ): Promise<RetireResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
+  const { caller } = options;
+  if (caller !== undefined && !PEER_NAME_PATTERN.test(caller)) {
+    throw new DispatchError(`invalid caller name: '${caller}'`);
+  }
   const args = buildRetireArgs(name, options.force === true);
-  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
+  const env = caller === undefined ? undefined : { AGENT_CHAT_NAME: caller };
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs, undefined, undefined, env);
   if (result.status !== 0) throw refusal("agent retire", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, caveats: lines.slice(1).filter((line) => line !== "") };
@@ -186,8 +205,8 @@ const REQUIRED_FIELDS: Record<RequiredKey, FieldCheck> = {
 
 function hasRequiredFields(value: unknown): value is RawRow {
   if (typeof value !== "object" || value === null) return false;
-  const row = value as Record<string, unknown>;
-  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(row[key]));
+  const row: object = value;
+  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(Reflect.get(row, key)));
 }
 
 /** An optional field with the wrong type is dropped rather than costing the whole row. */
@@ -215,6 +234,7 @@ function toAgentRow(value: unknown): AgentRow | undefined {
     ...optionalField(value, "teleportFrom", isStringOrNull),
     ...optionalField(value, "predecessor", isStringOrNull),
     ...optionalField(value, "retired", isBoolean),
+    ...optionalField(value, "exitedAt", isStringOrNull),
   };
 }
 
@@ -225,10 +245,11 @@ async function runAgentChatUntimed(
   timeoutMs: number,
   input?: string,
   signal?: AbortSignal,
+  extraEnv?: Record<string, string>,
 ): Promise<SafeExecResult> {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input, undefined, signal);
+    return await execSafeAsync(bin, args, { ...agentChatEnv(), ...extraEnv }, timeoutMs, input, undefined, signal);
   } catch (err) {
     throw mapExecError(err);
   }

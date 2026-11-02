@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the record drops the D21 lines",
-      "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "    ...(changes && { ciPolicyChanges: changes }),\n",
-      "replace": "",
+      "name": "the record numbers each changed line from zero",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "n: index + 1, text",
+      "replace": "n: index, text",
       "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records its changed lines"]
     },
     {
@@ -18,8 +18,8 @@
     {
       "name": "a failed file read is not named unread",
       "file": "products/factory/src/shepherd/ci-policy-read.ts",
-      "find": "const unreadFacts = [...unread, ...policy.unread]",
-      "replace": "const unreadFacts = [...unread]",
+      "find": "const unread = reads.flatMap((read) => (\"unread\" in read ? [read.unread] : []));",
+      "replace": "const unread: string[] = [];",
       "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) still gates when a file read fails, naming the unread file in unreadFacts and not the error's text"]
     },
     {
@@ -28,6 +28,13 @@
       "find": "githubPaths.slice(0, MAX_CI_POLICY_FILES).map(",
       "replace": "githubPaths.map(",
       "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters"]
+    },
+    {
+      "name": "the authority allow is reached before the attestation gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (unmet !== undefined) return { outcome: \"gate\", rule: guardRule(\"attest-unmet\"), reason: unmet };",
+      "replace": "void unmet;",
+      "kills": ["the attestation guard a head that claims an attestation with no Attests line gates as attest-unmet", "the attestation guard an attestation the implementer reviewed gates as attest-unmet: meeter-is-author"]
     }
   ]
 }

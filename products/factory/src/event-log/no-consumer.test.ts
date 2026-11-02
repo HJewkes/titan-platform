@@ -3,8 +3,9 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** M1a ships emitters only (TP-3095 I7): no recipe or service may read the log until a rung registers a consumer. */
-const READS = /\b(readEvents|headSeq)\b/;
+/** TP-3095 I7: no recipe or service reads the log but its one registered consumer, M1b's marker pin encoder (TP-3107 S2). */
+const READS = /\b(readEvents|headSeq|newestSeq)\b/;
+const CONSUMERS = new Set(["markers/pins.ts"]);
 const KEY_MODULES = /event-log\/[\w-]+-keys/;
 /** The webhook projections and the backstop's observe are emitters: they build the rows the keys name and read none back (TP-3100 S2, TP-3098 S3). */
 const KEY_EMITTERS = new Set(["ingress/kinds.ts", "reconciler/observe.ts"]);
@@ -19,13 +20,13 @@ function sourceFiles(dir: string): string[] {
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
-/** Pure: whether a src-relative path is the log itself, a test, or the A17 harness feed, the only places a read may appear. */
+/** Pure: whether a src-relative path is the log itself, its registered consumer, a test, or the A17 harness feed, the only places a read may appear. */
 function mayRead(path: string): boolean {
-  return path.startsWith("event-log/") || path.startsWith("test-support/a17/") || path.endsWith(".test.ts");
+  return path.startsWith("event-log/") || CONSUMERS.has(path) || path.startsWith("test-support/a17/") || path.endsWith(".test.ts");
 }
 
 describe("event log reads", () => {
-  it("lets only event-log/ and tests mention readEvents or headSeq", () => {
+  it("lets only event-log/, markers/pins.ts and tests mention readEvents, headSeq or newestSeq", () => {
     const readers = sourceFiles(SRC)
       .map((path) => relative(SRC, path).split(sep).join("/"))
       .filter((path) => !mayRead(path))
@@ -54,5 +55,14 @@ describe("event log reads", () => {
     expect(["serve.ts", "shepherd/x.ts", "reconciler/service.ts", "event-logs.ts"].filter(mayRead)).toEqual([]);
     expect(["event-log/event-log.ts", "serve.test.ts", "test-support/a17/feed.ts"].every(mayRead)).toBe(true);
     expect(["test-support/leak.ts"].filter(mayRead)).toEqual([]);
+  });
+
+  it("admits the pin encoder as the one consumer and refuses a second marker file", () => {
+    expect(mayRead("markers/pins.ts")).toBe(true);
+    expect(["markers/validity.ts", "markers/pins.tsx", "other/markers/pins.ts"].filter(mayRead)).toEqual([]);
+  });
+
+  it("counts a newestSeq call as a read", () => {
+    expect(READS.test("newestSeq(db, query)")).toBe(true);
   });
 });

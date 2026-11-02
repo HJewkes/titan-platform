@@ -18,6 +18,8 @@ import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
 import { sendBackBlocker, shipBlockerItems } from "../../server/ship-blockers.js";
 import { ShipContext } from "./ShipContext.js";
 import { ShipLineageLine } from "./ShipLineage.js";
+import { useConfirmOnPhone } from "./PhoneConfirm.js";
+import { PHONE_TAP } from "./phone.js";
 import { Montages } from "./ShipMontages.js";
 import { ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { ShipPrsRound } from "./ShipPrs.js";
@@ -152,14 +154,35 @@ function ShipAnswer(props: ShipAnswerProps): ReactNode {
           <ShipTarget target={{ kind: "general" }}><RoundGeneral value={side.general} onChange={side.setGeneral} /></ShipTarget>
           <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={(text) => side.setBackNote(question.id, text)} />
           <ShipsAfterNote manifest={round.manifest} question={question} />
-          <HStack gap={3} wrap>
-            <Button color="success" isDisabled={disabled || draft.blockers.length > 0} onPress={() => void submit(draft.shipArgs)}><ButtonText>Ship</ButtonText></Button>
-            <Button variant="outline" color="warning" isDisabled={disabled || draft.noNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>
-          </HStack>
+          <ShipPresses pr={`${question.merge.repo}#${question.merge.pr}`} headSha={question.merge.headSha} draft={draft} disabled={disabled} submit={submit} />
           <ShipNotices blockers={draft.blockers} noNote={draft.noNote} available={available} state={state} />
         </VStack>
       </CardContent>
     </Card>
+  );
+}
+
+interface ShipPressesProps {
+  pr: string;
+  headSha: string;
+  draft: ReturnType<typeof shipDraft>;
+  disabled: boolean;
+  submit: ReturnType<typeof useSubmit>["submit"];
+}
+
+/** Ship and Send back, each a gate answer the factory acts on; on a phone a press arms a confirm step first. */
+function ShipPresses({ pr, headSha, draft, disabled, submit }: ShipPressesProps): ReactNode {
+  const ship = { id: "ship", confirm: "Confirm Ship", detail: `Ship ${pr} at ${sha7(headSha)}?`, isDisabled: disabled || draft.blockers.length > 0, run: () => void submit(draft.shipArgs) };
+  const back = { id: "back", confirm: "Confirm Send back", detail: `Send ${pr} back to its implementer with your note?`, isDisabled: disabled || draft.noNote !== undefined || !draft.canSendBack, run: () => void submit(draft.backArgs) };
+  const { press, step } = useConfirmOnPhone([ship, back]);
+  return (
+    <>
+      <HStack gap={3} wrap>
+        <Button color="success" className={PHONE_TAP} isDisabled={ship.isDisabled} onPress={() => press(ship.id)}><ButtonText>Ship</ButtonText></Button>
+        <Button variant="outline" color="warning" className={PHONE_TAP} isDisabled={back.isDisabled} onPress={() => press(back.id)}><ButtonText>Send back</ButtonText></Button>
+      </HStack>
+      {step}
+    </>
   );
 }
 

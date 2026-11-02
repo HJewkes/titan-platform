@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/registry";
-import { decisionsFileArgs } from "./cli-rounds.js";
+import { decisionsFileArgs, fileDecisionCli } from "./cli-rounds.js";
+import { resolveConfig } from "./config.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { runConsoleCli, type CliRun } from "./test-support.js";
 
 // Synthetic: kiln-schedule-r2 is a questions-only fixture round; the seat and initiative names are made up.
 const ID = "kiln-schedule-r2";
@@ -26,16 +28,12 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+const consoleEnv = (extraEnv: Record<string, string>) => ({ AGENT_CHAT_NAME: "", TITAN_CONSOLE_PORT: String(PORT), TITAN_CONSOLE_STATE: state, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_ROUNDS_DIR: "", ...extraEnv });
 
-/** Runs the real bin with `stdin` piped in, the way a seat files a round. */
-function runCli(args: string[], stdin: string, extraEnv: Record<string, string> = {}): Promise<Run> {
+/** Runs the real bin with `stdin` piped in, the way a seat files a round; the stdin and file-path smokes only. */
+function runCli(args: string[], stdin: string, extraEnv: Record<string, string> = {}): Promise<CliRun> {
   const consoleDir = path.join(import.meta.dirname, "..");
-  const env = { ...process.env, AGENT_CHAT_NAME: "", TITAN_CONSOLE_PORT: String(PORT), TITAN_CONSOLE_STATE: state, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_ROUNDS_DIR: "", ...extraEnv };
+  const env = { ...process.env, ...consoleEnv(extraEnv) };
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", "server/cli.ts", "decisions", "file", ...args], { cwd: consoleDir, env });
     let stdout = "";
@@ -45,6 +43,14 @@ function runCli(args: string[], stdin: string, extraEnv: Record<string, string> 
     child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
     child.stdin.end(stdin);
   });
+}
+
+/** The `decisions file` parse and handler in process, as cli.ts routes it; "-" reads `stdin`. */
+function runInProcess(args: string[], stdin: string, extraEnv: Record<string, string> = {}): Promise<CliRun> {
+  const env = consoleEnv(extraEnv);
+  const parsed = decisionsFileArgs(["decisions", "file", ...args], env);
+  if (parsed === null) throw new Error(`not a decisions file: ${args.join(" ")}`);
+  return runConsoleCli(() => fileDecisionCli(resolveConfig(env, root), parsed, (source) => (source === "-" ? Promise.resolve(stdin) : readFile(source, "utf8"))));
 }
 
 const roundsDirEntries = () => readdir(path.join(state, "rounds")).catch(() => []);
@@ -60,7 +66,7 @@ describe("titan-console decisions file", () => {
   });
 
   it("takes the seat from AGENT_CHAT_NAME and prints one JSON line with --json", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli(["--json"], await readFile(ROUND_JSON, "utf8"), { AGENT_CHAT_NAME: "second-seat" });
+    const result = await runInProcess(["--json"], await readFile(ROUND_JSON, "utf8"), { AGENT_CHAT_NAME: "second-seat" });
 
     expect(result.code).toBe(0);
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
@@ -76,7 +82,7 @@ describe("titan-console decisions file", () => {
   });
 
   it("refuses a round that is not round@2 on stderr, with no URL and nothing written", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli(["--seat", "sample-seat"], JSON.stringify({ schema: "titan-review/round@1", unit: "x", round: 1 }));
+    const result = await runInProcess(["--seat", "sample-seat"], JSON.stringify({ schema: "titan-review/round@1", unit: "x", round: 1 }));
 
     expect(result.code).toBe(EXIT.DATAERR);
     expect(result.stdout).toBe("");
@@ -85,7 +91,7 @@ describe("titan-console decisions file", () => {
   });
 
   it("refuses a round with no seat to name", { timeout: SPAWN_TIMEOUT_MS }, async () => {
-    const result = await runCli([], await readFile(ROUND_JSON, "utf8"));
+    const result = await runInProcess([], await readFile(ROUND_JSON, "utf8"));
 
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.stderr).toMatch(/--seat <name>/);

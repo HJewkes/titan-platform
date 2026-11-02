@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GitHubPort } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { runCli, type CliDeps } from "./cli.js";
+import { runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
 import { ADOPTION_BRANCH, DRIFTED, toolchainWorld } from "./test-support/toolchain.js";
 

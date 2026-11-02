@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import type { ClassifyContext } from "./types.js";
+import { shellOracle } from "./test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push --no-verify origin HEAD:main";
@@ -181,22 +181,22 @@ describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-/** Runs `line` under `runner` in a scratch dir whose x.sh calls a fake `git`, and reports whether it ran. */
-function runsGit(line: string, runner: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fd-scripts-"));
-  try {
+/**
+ * Runs `line` under `runner` in a scratch dir whose x.sh calls a fake `git`, and reports whether it ran.
+ * A describe adds its rows and runs them all through one driver (TP-4453).
+ */
+const runsGitOracle = () =>
+  shellOracle("fd-scripts-", (dir, line: string, runner: string) => {
     fs.writeFileSync(path.join(dir, "x.sh"), `${PUSH}\n`);
     fs.writeFileSync(path.join(dir, "f"), "true\n");
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "-c", line], { cwd: dir, env, stdio: "ignore", timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "-c", line], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 /** Denied lines whose push a real shell runs; the shells besides bash are those whose fd numbering the row does not depend on. */
 const PREMISES: Array<[string, string[]]> = [
@@ -223,19 +223,29 @@ const PREMISES: Array<[string, string[]]> = [
 const sourcesWithPath = has("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash and zsh run the push the denied lines hide (TP-3314)", () => {
-  it.each(PREMISES.flatMap(([line, runners]) => runners.map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
-    expect(runsGit(line, runner)).toBe(true);
+  const premises = PREMISES.flatMap(([line, runners]) => runners.map((runner): [string, string] => [line, runner]));
+  const SOURCE_P = "exec {fd}< ./x.sh; source -p . /dev/fd/$fd";
+  const ASSIGNMENT_ONLY = "A=1 {fd}< ./x.sh; bash /dev/fd/$fd";
+  const quiet = ["exec {fd}< f; read -r -u \"$fd\" l", "exec 3>&1; bash ./f"];
+  const runsGit = runsGitOracle();
+  for (const [line, runner] of premises) runsGit.add(line, runner);
+  if (sourcesWithPath) runsGit.add(SOURCE_P, "bash");
+  for (const line of [ASSIGNMENT_ONLY, ...quiet]) runsGit.add(line, "bash");
+  runsGit.beforeAll();
+
+  it.each(premises)("%s runs the push under %s", (line, runner) => {
+    expect(runsGit.get(line, runner)).toBe(true);
   });
 
   it.skipIf(!sourcesWithPath)("exec {fd}< ./x.sh; source -p . /dev/fd/$fd runs the push under bash 5.3", () => {
-    expect(runsGit("exec {fd}< ./x.sh; source -p . /dev/fd/$fd", "bash")).toBe(true);
+    expect(runsGit.get(SOURCE_P, "bash")).toBe(true);
   });
 
   it("keeps no fd open for an assignment-only {name} redirect, so that clause adds nothing to hide", () => {
-    expect(runsGit("A=1 {fd}< ./x.sh; bash /dev/fd/$fd", "bash")).toBe(false);
+    expect(runsGit.get(ASSIGNMENT_ONLY, "bash")).toBe(false);
   });
 
-  it.each(["exec {fd}< f; read -r -u \"$fd\" l", "exec 3>&1; bash ./f"])("%s runs no push", (line) => {
-    expect(runsGit(line, "bash")).toBe(false);
+  it.each(quiet)("%s runs no push", (line) => {
+    expect(runsGit.get(line, "bash")).toBe(false);
   });
 });

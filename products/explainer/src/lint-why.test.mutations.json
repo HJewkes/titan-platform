@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the 30 s stake row ignores the 30 s cap",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "Math.min(plannedTotal(script) * STAKE_BY_SHARE, STAKE_BY_S)",
+      "replace": "plannedTotal(script) * STAKE_BY_SHARE",
+      "kills": [
+        "why, value and thread lints the stake by min(15 percent, 30 s) warns on a 300 s script whose stake starts at 30 s, though it lands inside 15 percent"
+      ]
+    },
+    {
+      "name": "the 30 s stake row ignores the 15 percent share",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "Math.min(plannedTotal(script) * STAKE_BY_SHARE, STAKE_BY_S)",
+      "replace": "STAKE_BY_S",
+      "kills": [
+        "why, value and thread lints the stake by min(15 percent, 30 s) warns on a 110 s script whose stake starts at 20 s, past its 15 percent though inside 30 s"
+      ]
+    },
+    {
+      "name": "the close's button counts as a late new fact",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "brings && beat.function !== \"CLOSE\" && ",
+      "replace": "brings && ",
+      "kills": [
+        "why, value and thread lints no new facts in the last tenth passes the close's button when it cites a new fact"
+      ]
+    },
+    {
+      "name": "a late beat's repeated fact counts as new",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "beat.fact_ids.some((id) => !cited.has(id))",
+      "replace": "beat.fact_ids.length > 0",
+      "kills": [
+        "why, value and thread lints no new facts in the last tenth passes a late beat that cites only facts already cited"
+      ]
+    },
+    {
+      "name": "late facts start at 80 percent",
+      "file": "products/explainer/src/lint-why.ts",
+      "find": "const LATE_FACTS_SHARE = 0.9;",
+      "replace": "const LATE_FACTS_SHARE = 0.8;",
+      "kills": [
+        "why, value and thread lints no new facts in the last tenth passes a new fact in a beat that starts before 90 percent"
+      ]
+    }
+  ]
+}

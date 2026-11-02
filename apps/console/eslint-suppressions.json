@@ -1,0 +1,38 @@
+{
+  "apps/console/server/daemon.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "apps/console/server/owner-guard.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 2
+    },
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "apps/console/server/review-schema-0.3/lint.ts": {
+    "@typescript-eslint/ban-ts-comment": {
+      "count": 1
+    }
+  },
+  "apps/console/server/review-schema-0.3/schema.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    },
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "apps/console/server/tasks.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "apps/console/server/upstreams.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  }
+}

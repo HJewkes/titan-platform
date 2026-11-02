@@ -17,3 +17,6 @@ site/guides/capabilities.md
 # corpus-query CLI scratch output from local hits/ask runs
 /refs.txt
 /spec.json
+
+# Temporary fixture written by products/factory/src/test-support/a17/report.test.ts; a run killed before cleanup leaves it.
+scripts/a17-smoke-*/

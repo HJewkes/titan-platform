@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { fixtureActiveWork } from "../server/fixtures.js";
 import { readNotes, readRecord, searchRecords } from "../server/work.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -31,14 +31,9 @@ async function recorded(): Promise<Snapshot> {
   };
 }
 
-function renderConsole(hash: string, snapshot: Snapshot): void {
+function renderConsole(hash: string, snapshot: Snapshot, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const rows = (): string[] => screen.queryAllByTestId(/^knowledge-row-/).map((row) => row.getAttribute("data-testid")!.replace("knowledge-row-", ""));
@@ -61,7 +56,7 @@ describe("the knowledge browser", () => {
   });
 
   it("puts a chosen kind into the query string", async () => {
-    renderConsole("#/knowledge?initiative=kiln-tools", await recorded());
+    renderConsole("#/knowledge?initiative=kiln-tools", await recorded(), { inApp: true });
     await screen.findByTestId("knowledge-row-source:kiln-tools/deepdive-cone-chart.md");
     fireEvent.click(screen.getByText("Notes and sources"));
     fireEvent.click(await screen.findByText("Notes only"));
@@ -69,14 +64,14 @@ describe("the knowledge browser", () => {
   });
 
   it("offers to clear filters that match nothing", async () => {
-    renderConsole("#/knowledge?initiative=kiln-tools&kind=note", await recorded());
+    renderConsole("#/knowledge?initiative=kiln-tools&kind=note", await recorded(), { inApp: true });
     expect(await screen.findByText("No notes or sources match these filters")).toBeTruthy();
     fireEvent.click(screen.getByText("Clear filters"));
     await waitFor(() => expect(window.location.hash).toBe("#/knowledge"));
   });
 
   it("opens a record from its row by its whole ref as one segment", async () => {
-    renderConsole("#/knowledge", await recorded());
+    renderConsole("#/knowledge", await recorded(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId(`knowledge-row-${NOTE}`)).getByText("Cap the backoff at thirty seconds"));
     await waitFor(() => expect(window.location.hash).toBe(`#/knowledge/${encodeURIComponent(NOTE)}`));
   });
@@ -101,7 +96,7 @@ describe("the knowledge search", () => {
   });
 
   it("puts a typed query into the query string", async () => {
-    renderConsole("#/knowledge?tab=search", await recorded());
+    renderConsole("#/knowledge?tab=search", await recorded(), { inApp: true });
     fireEvent.change(await screen.findByLabelText("Search"), { target: { value: "station" } });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(window.location.hash).toBe("#/knowledge?tab=search&q=station"));
@@ -113,7 +108,7 @@ describe("the knowledge search", () => {
   });
 
   it("switches tabs through the query string", async () => {
-    renderConsole("#/knowledge", await recorded());
+    renderConsole("#/knowledge", await recorded(), { inApp: true });
     fireEvent.click(await screen.findByRole("tab", { name: "Search" }));
     await waitFor(() => expect(window.location.hash).toBe("#/knowledge?tab=search"));
   });
@@ -121,7 +116,7 @@ describe("the knowledge search", () => {
 
 describe("a knowledge record", () => {
   it("renders the body as prose and links to its initiative", async () => {
-    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, await recorded());
+    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, await recorded(), { inApp: true });
     expect(await screen.findByText("Cap the backoff at thirty seconds")).toBeTruthy();
     expect(within(screen.getByTestId("knowledge-body")).getByText("Decision")).toBeTruthy();
     fireEvent.click(screen.getByRole("link", { name: "orbit-relay" }));

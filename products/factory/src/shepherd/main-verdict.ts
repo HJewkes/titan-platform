@@ -1,32 +1,30 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, withoutSupersededCancels, type CheckFinding, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { readBaseRequiredChecks } from "../required-checks.js";
+import { readMainOnlyContexts } from "../required-checks-policy.js";
 
 /** Only GitHub Actions runs at `sha` judge main CI there. */
 export function actionsRunsAt(runs: readonly CheckRun[], sha: string): CheckRun[] {
   return runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID);
 }
 
-/**
- * Drops each cancelled run that a newer run of its name superseded, as workflow concurrency does to a run when a later
- * push starts; "newer" is the latest start, then the higher id. Any other superseded run still counts.
- */
-export function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const newest = new Set(latestPerName(runs).map((run) => run.id));
-  return runs.filter((run) => run.conclusion !== "cancelled" || newest.has(run.id));
-}
-
-/** The base branch's required contexts with their app pins; no `MainRules` means every Actions check judges main. */
+/** The base branch's required contexts, plus its main-only ones, with their app pins; no `MainRules` means every Actions check judges main. */
 export interface MainRules {
   contexts: readonly string[];
   pins: Readonly<Record<string, readonly number[]>>;
 }
 
-/** `rules` is undefined for no rules and for an unreadable answer alike, so an API failure can never narrow the checks that judge a red main; `readable` tells the two apart. */
+/**
+ * `rules` is undefined for no rules and for an unreadable answer alike, so an API failure can never narrow the checks that
+ * judge a red main; `readable` tells the two apart. Main-only contexts join the required ones, so a check that runs only on
+ * main, such as a test shard, still freezes it when red (TP-4401).
+ */
 export async function readMainRules(port: GitHubPort, repo: RepoSlug, base: string): Promise<{ rules: MainRules | undefined; readable: boolean }> {
-  const read = await readBaseRequiredChecks(port, repo, base);
-  if (!read.readable) return { rules: undefined, readable: false };
-  const { contexts, pins } = read.checks;
-  return { rules: contexts.length > 0 ? { contexts, pins: pins ?? {} } : undefined, readable: true };
+  const [read, mainOnly] = await Promise.all([readBaseRequiredChecks(port, repo, base), readMainOnlyContexts(port, repo, base)]);
+  if (!read.readable || !mainOnly.readable) return { rules: undefined, readable: false };
+  const { contexts: required, pins } = read.checks;
+  if (required.length === 0) return { rules: undefined, readable: true };
+  const contexts = [...new Set([...required, ...mainOnly.contexts])];
+  return { rules: { contexts, pins: pins ?? {} }, readable: true };
 }
 
 export type RulesReader = () => Promise<MainRules | undefined>;

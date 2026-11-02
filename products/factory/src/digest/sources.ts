@@ -4,9 +4,7 @@ import { dirname, join } from "node:path";
 import type { FactoryConfig } from "../config.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import type { DigestSources } from "./collect.js";
-import { AgentChatDigestSchema, type AgentChatDigest } from "./model.js";
 import { readQueueAsks } from "./queues.js";
-import { readSeatCosts } from "./seats.js";
 
 export const AGENT_CHAT_TIMEOUT_MS = 20_000;
 
@@ -26,15 +24,6 @@ export const execProcess: Exec = (file, args, timeoutMs) =>
     });
   });
 
-/** An agent-chat with no `--json` exits non-zero, which the collector turns into a gap line. */
-export async function readAgentChat(exec: Exec, bin: string, windowMinutes: number): Promise<AgentChatDigest> {
-  const result = await exec(bin, ["digest", "--json", "--prs", "--since", `${windowMinutes}m`], AGENT_CHAT_TIMEOUT_MS);
-  if (result.code !== 0) throw new Error(`exit ${result.code}: ${result.stderr.trim().split("\n")[0] ?? ""}`);
-  const parsed = AgentChatDigestSchema.safeParse(JSON.parse(result.stdout));
-  if (!parsed.success) throw new Error(`unexpected JSON: ${parsed.error.issues[0]?.message ?? "invalid"}`);
-  return parsed.data;
-}
-
 export interface Directories {
   outDir: string;
   copyDirs: string[];
@@ -51,16 +40,12 @@ export function queuesDirOf(config: FactoryConfig): string {
   return config.digest?.queuesDir ?? join(config.shepherd?.seatsDir ? dirname(config.shepherd.seatsDir) : "", "queues");
 }
 
-/** Queue and dispatch files for every seat in the seat book; an unset seats dir is a gap, not a guess. */
-export function fileSources(config: FactoryConfig): Pick<DigestSources, "queueAsks" | "seatCosts"> {
+/** Queue files for every seat in the seat book; an unset seats dir is a gap, not a guess. */
+export function fileSources(config: FactoryConfig): Pick<DigestSources, "queueAsks"> {
   const seatsDir = config.shepherd?.seatsDir;
   const seatNames = (): string[] => {
     if (!seatsDir) throw new Error("shepherd.seatsDir is not configured");
     return loadSeatBook({ seatsDir }).seats.map((seat) => seat.name);
   };
-  const root = seatsDir ? dirname(seatsDir) : "";
-  return {
-    queueAsks: () => readQueueAsks(queuesDirOf(config), seatNames()),
-    seatCosts: (since) => readSeatCosts(config.digest?.logsDir ?? join(root, "logs"), seatNames(), since),
-  };
+  return { queueAsks: () => readQueueAsks(queuesDirOf(config), seatNames()) };
 }

@@ -18,6 +18,14 @@
       "types": "./dist/worker-facts.d.ts",
       "import": "./dist/worker-facts.js"
     },
+    "./lifecycle-schema": {
+      "types": "./dist/lifecycle-schema.d.ts",
+      "import": "./dist/lifecycle-schema.js"
+    },
+    "./source-schema": {
+      "types": "./dist/source-schema.d.ts",
+      "import": "./dist/source-schema.js"
+    },
     "./harness": {
       "types": "./dist/harness/index.d.ts",
       "import": "./dist/harness/index.js"
@@ -25,6 +33,10 @@
     "./pricing": {
       "types": "./dist/pricing/index.d.ts",
       "import": "./dist/pricing/index.js"
+    },
+    "./wire": {
+      "types": "./dist/wire/index.d.ts",
+      "import": "./dist/wire/index.js"
     }
   },
   "files": [
@@ -60,6 +72,7 @@
     }
   },
   "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   }
 }

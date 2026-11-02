@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a slice id is never checked against the reviewer name length",
+      "file": "products/factory/src/build-surface/spec.ts",
+      "find": "  assertAgentNames(parsed.data);\n",
+      "replace": "",
+      "kills": [
+        "the build spec refuses a slice id whose last reviewer name would pass agent-chat's 64 characters, and takes it with no reviewer"
+      ]
+    },
+    {
+      "name": "the length check counts the implementer name, not the last reviewer's",
+      "file": "products/factory/src/build-surface/spec.ts",
+      "find": "spec.reviewer ? reviewerNameOf(spec, slice, spec.maxFixRounds) : agentNameOf(spec, slice)",
+      "replace": "agentNameOf(spec, slice)",
+      "kills": [
+        "the build spec refuses a slice id whose last reviewer name would pass agent-chat's 64 characters, and takes it with no reviewer"
+      ]
+    },
+    {
+      "name": "the parked implement text promises a re-read of the old report",
+      "file": "products/factory/src/build-surface/routes.ts",
+      "find": "; the resume starts a new implement turn with the full brief and takes only a report written after it\"",
+      "replace": ", and its report is read again\"",
+      "kills": [
+        "the build-surface routes tell the owner a parked implement step resumes as a new turn, not a re-read of the old report"
+      ]
+    }
+  ]
+}

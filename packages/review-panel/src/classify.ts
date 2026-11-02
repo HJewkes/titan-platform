@@ -24,8 +24,25 @@ export interface ClassRules {
   largeFiles: number;
 }
 
+/** I2's enforcement code in `@titan-design/github`: the diff-hash canonicaliser, the carry rule and the merge-tree proof. */
+const DIFF_HASH_RULE_FILES: readonly string[] = ["packages/github/src/diff-hash.ts", "packages/github/src/git-diff-hash.ts", "packages/github/src/git-merge-tree.ts"];
+/** The factory's pin-class column (v9.1 §2.3): the only place a fact's pin class is set. */
+const PIN_CLASS_RULE_FILES: readonly string[] = ["products/factory/src/registry/pin-classes.ts"];
+
 export const DEFAULT_CLASS_RULES: ClassRules = {
-  authority: ["packages/authority/**", "**/merge-facts.ts", "**/gate-policy.ts", "**/required-checks*", ".github/CODEOWNERS", ".github/workflows/**", ".codewatch/**"],
+  authority: [
+    "packages/authority/**",
+    "**/merge-facts.ts",
+    "**/gate-policy.ts",
+    "**/required-checks*",
+    ".github/CODEOWNERS",
+    ".github/workflows/**",
+    ".codewatch/**",
+    // v9.1 §2.7: the I2 canonicaliser and exclusion-2 comparator are rule files, so a change to them is adversarial.
+    ...DIFF_HASH_RULE_FILES,
+    // v9.1 §2.7 lists the pin-class column among the I2 rule files.
+    ...PIN_CLASS_RULE_FILES,
+  ],
   policy: ["**/*policy*.ts", "**/route-table.ts", "**/freeze.ts", "**/freeze-*.ts", "**/hold.ts", "**/hold-*.ts", "**/gate*schema*"],
   migration: ["**/migration*/**", "**/*.sql", "**/store/**/schema*"],
   visual: [

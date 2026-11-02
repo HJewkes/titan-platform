@@ -6,7 +6,10 @@ const CHECKS_POLICY_PATH = ".github/required-checks.json";
 
 const policyFile = z.strictObject({
   version: z.literal(1),
-  branches: z.record(z.string(), z.strictObject({ contexts: z.array(z.string().trim().min(1)).min(1) })),
+  branches: z.record(
+    z.string(),
+    z.strictObject({ contexts: z.array(z.string().trim().min(1)).min(1), mainContexts: z.array(z.string().trim().min(1)).optional() })
+  ),
 });
 
 export type ChecksPolicyRead = { readable: true; contexts: string[] } | { readable: false; reason: string };
@@ -20,7 +23,9 @@ function unreadable(repo: RepoSlug, baseRef: string, why: string): ChecksPolicyR
   return { readable: false, reason: `required-checks policy ${CHECKS_POLICY_PATH} of ${repo}@${baseRef} is unreadable: ${why}` };
 }
 
-function parseContexts(content: string, baseRef: string): { contexts: string[] } | { why: string } {
+type PolicyBranches = z.infer<typeof policyFile>["branches"];
+
+function parseBranches(content: string): { branches: PolicyBranches } | { why: string } {
   let json: unknown;
   try {
     json = JSON.parse(content);
@@ -28,8 +33,13 @@ function parseContexts(content: string, baseRef: string): { contexts: string[] }
     return { why: "the file is not valid JSON" };
   }
   const parsed = policyFile.safeParse(json);
-  if (!parsed.success) return { why: "the file does not match the policy shape" };
-  const branch = Object.hasOwn(parsed.data.branches, baseRef) ? parsed.data.branches[baseRef] : undefined;
+  return parsed.success ? { branches: parsed.data.branches } : { why: "the file does not match the policy shape" };
+}
+
+function parseContexts(content: string, baseRef: string): { contexts: string[] } | { why: string } {
+  const parsed = parseBranches(content);
+  if ("why" in parsed) return parsed;
+  const branch = Object.hasOwn(parsed.branches, baseRef) ? parsed.branches[baseRef] : undefined;
   return branch ? { contexts: branch.contexts } : { why: `the file does not list branch ${baseRef}` };
 }
 
@@ -44,6 +54,25 @@ export async function readChecksPolicy(port: GitHubPort, repo: RepoSlug, baseRef
   if (!file) return unreadable(repo, baseRef, `no ${CHECKS_POLICY_PATH} at that ref`);
   const result = parseContexts(file.content, baseRef);
   return "why" in result ? unreadable(repo, baseRef, result.why) : { readable: true, contexts: result.contexts };
+}
+
+/**
+ * Checks that run only on pushes to `branch` and still judge its own CI red, such as main's test shards (TP-4401). They
+ * never gate a pull request, so they live beside `contexts` rather than in the rulesets. An absent file or unlisted branch
+ * names none, since most repos carry no policy; a failed or malformed read is unreadable, so it can never narrow main's checks.
+ */
+export async function readMainOnlyContexts(port: GitHubPort, repo: RepoSlug, branch: string): Promise<ChecksPolicyRead> {
+  let file;
+  try {
+    file = await port.getFile(repo, CHECKS_POLICY_PATH, branch);
+  } catch (error) {
+    return unreadable(repo, branch, statusOf(error));
+  }
+  if (!file) return { readable: true, contexts: [] };
+  const parsed = parseBranches(file.content);
+  if ("why" in parsed) return unreadable(repo, branch, parsed.why);
+  const listed = Object.hasOwn(parsed.branches, branch) ? parsed.branches[branch] : undefined;
+  return { readable: true, contexts: listed?.mainContexts ?? [] };
 }
 
 /** Compares as sets: two rulesets that aggregate can repeat a context, and that is not drift. */

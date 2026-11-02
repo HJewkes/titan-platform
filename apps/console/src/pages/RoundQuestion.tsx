@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { MergeGates } from "./GateStrip.js";
+import { PlanApprovalScope } from "./PlanApprovalScope.js";
 import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
 import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -9,6 +10,8 @@ import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP } from "./phone.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
@@ -135,9 +138,12 @@ function choiceLabel(index: number, choice: string, frame: string | undefined): 
 
 /** `choiceLabel` with the option's markdown rendered, and a badge on the option a shown recommendation picks. */
 function ChoiceLabel({ index, choice, frame, recommended }: { index: number; choice: string; frame: string | undefined; recommended: boolean }): ReactNode {
+  const phone = useMediaQuery(BELOW_MD);
+  // A scale step is its own digit, so on a phone the key hint would read "1 1" (TP-4623).
+  const repeatsLabel = phone && choice === String(index + 1);
   return (
     <>
-      {index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}
+      {index < MAX_KEYED_CHOICES && !repeatsLabel ? `${index + 1}  ` : null}
       <InlineMarkdown text={choice} />
       {frame === undefined ? null : ` (frame: ${frame})`}
       {recommended ? <span className="ml-2 inline-flex"><Pill variant="subtle" size="xs" tone="info">Recommended</Pill></span> : null}
@@ -223,13 +229,13 @@ function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameO
             noting,
             choice,
             value === choice,
-            <Radio key={choice} value={choice} aria-checked={value === choice}>
+            <Radio key={choice} value={choice} aria-checked={value === choice} className={PHONE_TAP}>
               <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
             </Radio>,
           ),
         )}
         {revisable ? (
-          <Radio value={REVISION} aria-checked={value === REVISION}>
+          <Radio value={REVISION} aria-checked={value === REVISION} className={PHONE_TAP}>
             {REVISION_LABEL}
           </Radio>
         ) : null}
@@ -247,6 +253,7 @@ export function QuestionFacts({ question, answer }: { question: Question; answer
   return (
     <VStack gap={1}>
       <QuestionFrameLinks question={question} />
+      <PlanApprovalScope questionId={question.id} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
       {merge ? <MergeGates repo={merge.repo} pr={merge.pr} headSha={merge.headSha} /> : null}

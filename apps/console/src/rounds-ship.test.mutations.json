@@ -42,8 +42,8 @@
     {
       "name": "a side choice's radio is named from a zero-based key",
       "file": "apps/console/src/pages/RoundQuestion.tsx",
-      "find": "{index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}",
-      "replace": "{index < MAX_KEYED_CHOICES ? `${index}  ` : null}",
+      "find": "{index < MAX_KEYED_CHOICES && !repeatsLabel ? `${index + 1}  ` : null}",
+      "replace": "{index < MAX_KEYED_CHOICES && !repeatsLabel ? `${index}  ` : null}",
       "kills": [
         "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order",
         "answering a Ship round with side questions sends the side answers with Send back too, and leaves unanswered optional questions out",

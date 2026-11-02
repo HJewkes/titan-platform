@@ -884,6 +884,40 @@ containment to the innermost symbol. Coverage depends on which tests ran, not on
 so the index never writes or carries it. The caller stores it on the snapshot it measured,
 as codewatch's `graph coverage` command does.
 
+### Extreme mutation (body-delete)
+
+Added in C-263. `runExtremeMutation` asks one question of each changed function that coverage
+saw run: if its body returned at once, would any test notice? It answers with findings, never a
+score, and it never deletes or edits a file outside fix-proof's throwaway worktree.
+
+```ts
+import { runExtremeMutation } from "@titan-design/code-graph";
+
+const { findings, summary, report } = await runExtremeMutation({
+  repo, head, changed,                      // changed: path -> head-side line ranges from -U0 hunks
+  coverage: { head, data: coverageFinal },  // whole-suite coverage-final.json, measured at head
+  store, snapshotId,                        // a snapshot at head, read for its import edges
+});
+```
+
+1. `coveredFunctionStarts` reads the start lines of functions Istanbul saw run. Coverage is an
+   input file, and the call refuses one measured at another commit.
+2. `planBodyDeletes` writes one early-return edit (`return undefined as never;`) per changed,
+   covered, block-bodied function, capped at `max` (default 10) by a sample seeded on the head.
+3. fix-proof's `execHeadMutants` runs each edit against its owning package's test files at head.
+4. `extremeFindings` reads the outcomes:
+
+| Signal | When |
+|---|---|
+| `pseudo-tested` | the mutant built, loaded, and no test in its package that passed at head failed |
+| `test-deletion-candidate` | a test passed at head, failed under no mutant, and every target in the files it imports (transitively) is `pseudo-tested` |
+
+Both are `warning` findings meant to be read at weight 0. A survived function that a test file
+outside its package's suite also reaches is `unverified`: no finding, counted in the summary.
+A run whose failure list hit fix-proof's cap of 50 is `truncated`, and no test in its suite can
+be a deletion candidate. Reach is file-level over import edges, which over-approximates what a
+test reaches, so candidates are fewer, never more. The summary holds counts only.
+
 ## Reading one node or one metric
 
 Added for the read API (TP-183). Verified against this repo's `packages/` tree (547 files,

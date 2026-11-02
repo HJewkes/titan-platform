@@ -217,6 +217,14 @@ describe("the gate-answer listener after rounds.submit", () => {
     expect(posts.map((post) => post.choice)).toEqual(["merge"]);
   });
 
+  it("posts to the gate when Shepherd spells the repo and head in another case than the round, as the inbox folds it (TP-4356)", async () => {
+    rows = [row({ repo: "Example/Orbit-Relay", headSha: row().headSha!.toUpperCase() })];
+
+    await submit(createRoundListeners(deps()));
+
+    expect(posts.map((post) => [post.runId, post.choice])).toEqual([["run-1", "merge"]]);
+  });
+
   it("pins the Ship round the console relays: the question id, the Ship option and the one other pick", async () => {
     const round = JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8"));
     const ship = round.questions.find((question: { id: string }) => question.id === "ship-backoff");

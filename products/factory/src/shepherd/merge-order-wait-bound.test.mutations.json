@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the order wait runs to the TTL",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "    if (waitedOut(deps, input)) return { waitedBehind: [...waitedBehind], moved: false, bounded: true };\n",
+      "replace": "",
+      "kills": [
+        "TP-4434: a conflicted run's order wait ends at the merging stall limit wakes the fixer once the wait behind a long-held reservation passes the limit"
+      ]
+    },
+    {
+      "name": "the guard holds a bounded waiter behind a holder in review",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": "      if (waitedOut && order.inResolvedReview(blocker.reservation)) continue;\n",
+      "replace": "",
+      "kills": [
+        "TP-4569: the merge guard after a bounded order wait lands the resolved head past a holder whose own resolved head sits in an 87 min review round (10-29, #2670)"
+      ]
+    }
+  ]
+}

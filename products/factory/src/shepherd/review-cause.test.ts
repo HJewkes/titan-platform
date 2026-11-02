@@ -5,6 +5,7 @@ import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { UNPARSED_AFTER_CORRECTION } from "./correct-verdict.js";
 import type { Verdict } from "./phases.js";
 import { causeLabel, noteCarryStep, reviewCause, reviewCauseStats, type CarryProbe, type CauseFacts, type LastReview } from "./review-cause.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const H1 = fakeSha("cause-head-1");
 const H2 = fakeSha("cause-head-2");
@@ -72,7 +73,7 @@ const intentAt = (head: string, at: number, cause?: unknown): StepResult => ({
   data: { result: { kind: "intent", head, reviewer: "rv", at, mode: "spawn", ...(cause !== undefined && { cause }) } },
 });
 const runOf = (repo: string, results: StepResult[]): WorkflowRun =>
-  ({ runId: `run-${repo}`, workflowName: "shepherd-pr", params: { repo }, status: "completed", error: null, stepResults: Object.fromEntries(results.map((result, i) => [`dispatch:${result.stepId}:${i}`, result])) }) as unknown as WorkflowRun;
+  Object.assign(partialFake<WorkflowRun>(), { runId: `run-${repo}`, workflowName: "shepherd-pr", params: { repo }, status: "completed", error: null, stepResults: Object.fromEntries(results.map((result, i) => [`dispatch:${result.stepId}:${i}`, result])) });
 
 describe("reviewCauseStats", () => {
   it("counts each recorded cause per repo and ISO week, and counts a run recorded before causes as unknown", () => {

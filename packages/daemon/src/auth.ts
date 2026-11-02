@@ -21,6 +21,7 @@ import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto"
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { isOwnAddress } from "./bind-guard.js";
 import { trackTokenFile } from "./token-file.js";
 
@@ -212,9 +213,14 @@ function authenticate(c: Context, secret: string, now: number): Credential | nul
 
 /** `@hono/node-server` passes the raw request as `env.incoming`; anything else has no peer to read. */
 function isPeerLocal(c: Context): boolean {
-  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
-  const address = env?.incoming?.socket?.remoteAddress;
+  const address = remoteAddressOf(c.env);
   return address === undefined || isOwnAddress(address);
+}
+
+function remoteAddressOf(env: unknown): string | undefined {
+  if (!isObjectLike(env) || !isObjectLike(env.incoming) || !isObjectLike(env.incoming.socket)) return undefined;
+  const { remoteAddress } = env.incoming.socket;
+  return typeof remoteAddress === "string" ? remoteAddress : undefined;
 }
 
 /** Fail closed: a vanished or loosened token file authenticates no one. */
@@ -278,7 +284,7 @@ async function login(c: Context, auth: DaemonAuth): Promise<Response> {
 async function readLoginCode(c: Context): Promise<string | null> {
   try {
     const body: unknown = await c.req.json();
-    const code = (body as { code?: unknown } | null)?.code;
+    const code = isObjectLike(body) ? body.code : undefined;
     return typeof code === "string" ? code : null;
   } catch {
     return null;

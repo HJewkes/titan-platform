@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS, stagedRound, twoPrRound, type StagedRound } from "../server/round-fixtures.js";
 import type { Manifest } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton, getByRoleFast, queryAllByRoleFast } from "./pages/get-button.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // Each test renders the whole App and presses through it; see rounds-ship.test.tsx (TP-3866).
 const RENDER_TIMEOUT_MS = 30_000;
@@ -50,18 +49,11 @@ async function detailOf(source: RoundsSource, id: string, change: (manifest: Man
 }
 
 /** Renders a round over a recorded snapshot; rounds.submit is never reached by these tests. */
-async function renderRound(id: string, detail: RoundDetail): Promise<void> {
+async function renderRound(id: string, detail: RoundDetail, { inApp = false } = {}): Promise<void> {
   const calls = { [snapshotKey("rounds.get", { id })]: successEnvelope(detail), [snapshotKey("rounds.frames", { id })]: successEnvelope({ frames: FRAMES }) };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls }), "text/html");
   const source: DataSource = pageDataSource({ doc: page });
-  window.location.hash = `#/rounds/${id}`;
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={source}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, `#/rounds/${id}`, { answers: source, inApp });
   await screen.findAllByTestId("montage-tile-light");
 }
 
@@ -76,7 +68,7 @@ const shown = (element: HTMLElement): boolean => !element.hidden;
 
 describe("Review, Diff and Context tabs on a Ship round (decision 167)", { timeout: RENDER_TIMEOUT_MS }, () => {
   it("opens on Review with the questions, puts the montages in Diff, and keeps the Ship bar under every tab", async () => {
-    await renderOnePr();
+    await renderRound(ONE_PR, await detailOf(FIXTURE_ROUNDS, ONE_PR), { inApp: true });
 
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent).slice(-3)).toEqual(["Review", "Diff", "Context"]);
     expect(shown(panel("review"))).toBe(true);

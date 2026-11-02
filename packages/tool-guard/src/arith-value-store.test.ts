@@ -1,16 +1,14 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "./test-support/built-hook.js";
 import { nodeContext } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
 
 // Through handle() and through the built hook, as a harness runs it. CI builds before it tests; locally run `pnpm build` first.
-const bin = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-store-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
@@ -31,8 +29,8 @@ async function handled(command: string): Promise<"deny" | "pass"> {
   return stdout === "" ? "pass" : "deny";
 }
 
-function built(command: string): "deny" | "pass" {
-  const run = spawnSync(process.execPath, [bin, "hook"], { input: input(command), env: { ...process.env, HOME: home }, encoding: "utf-8" });
+async function built(command: string): Promise<"deny" | "pass"> {
+  const run = await runBuiltHook(input(command), { home });
   expect(run.status).toBe(0);
   return run.stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
 }
@@ -51,7 +49,7 @@ describe("a typed payload stored without an assignment word, then read as arithm
     ["a piped read in a group", `echo ${PAYLOAD} | { read X; (( X )); }`],
   ])("denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -62,7 +60,7 @@ describe("a subscript typed inside (( )), with the payload stored elsewhere (TP-
     ["a here-string read in a loop", `while read X; do (( a[X] )); done <<< ${BARE}`],
   ])("denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -70,7 +68,7 @@ describe("a span's words still feed the value marks (TP-3284)", () => {
   it("denies a stored payload, then a subscript assigned from an argument", async () => {
     const command = `echo 'a[$(${PUSH})]' >/dev/null; (( a[0]=$1 )); (( a[0] ))`;
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -78,7 +76,7 @@ describe("an empty () inside (( )) still reads as a function header (TP-3284)", 
   it.each(["(( () ))", "(( a () ))", "(( ( ) ))"])("denies a stored payload behind %s", async (span) => {
     const command = `echo 'a[$(${PUSH})]' >/dev/null; ${span}; (( X ))`;
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -101,7 +99,7 @@ describe("a payload a name operand or a positional offset reads as arithmetic (T
     ["a : fd variable with a subscript", `${value}; : {b[X]}>/dev/null`],
   ])("denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -111,7 +109,7 @@ describe("set stores positional parameters only through its operands (TP-1624)",
   it("passes shell options set beside arithmetic and a PR body", async () => {
     const command = `set -euo pipefail; n=3; (( n>0 )); ${body}`;
     expect(await handled(command)).toBe("pass");
-    expect(built(command)).toBe("pass");
+    expect(await built(command)).toBe("pass");
   });
 
   it.each([
@@ -119,7 +117,7 @@ describe("set stores positional parameters only through its operands (TP-1624)",
     ["set with operands and no --", `set -e "$X"; (( n>0 )); ${body}`],
   ])("still denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
-    expect(built(command)).toBe("deny");
+    expect(await built(command)).toBe("deny");
   });
 });
 
@@ -131,7 +129,7 @@ describe("a value nothing on the line reads as arithmetic (TP-1624)", () => {
     ["prose that names a push", "body='See [docs](x). Do not run `git push origin HEAD:main` by hand.'"],
   ])("passes %s", async (_, command) => {
     expect(await handled(command)).toBe("pass");
-    expect(built(command)).toBe("pass");
+    expect(await built(command)).toBe("pass");
   });
 });
 

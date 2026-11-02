@@ -11,6 +11,7 @@ import type {
   SessionSourceDescriptor,
   SourceEvidence,
 } from "./normalized.js";
+import { defined } from "./fixture.js";
 import { legacyClaudeSessionRef, scopedConversationItemRef } from "./normalized.js";
 import { sessionRef } from "./refs.js";
 
@@ -269,7 +270,7 @@ describe("decoder contract", () => {
     expect(replay.readFromByteOffset).toBe(0);
     expect(checkpoint.emitFrom).toEqual(replay.emitFrom);
     expectTypeOf<SessionFormatDecoder<CodexCheckpointState>["decode"]>().parameter(0).toMatchTypeOf<DecodeRequest<CodexCheckpointState>>();
-    expectTypeOf<SessionFormatDecoder<CodexCheckpointState>["decode"]>().parameter(1).toBeCallableWith(codexObservations[0]!);
+    expectTypeOf<SessionFormatDecoder<CodexCheckpointState>["decode"]>().parameter(1).toBeCallableWith(defined(codexObservations.at(0)));
     expectTypeOf<SessionFormatDecoder<CodexCheckpointState>["readText"]>().returns.resolves.toEqualTypeOf<string | null>();
   });
 });

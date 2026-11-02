@@ -46,12 +46,15 @@ function perTick(rows: readonly Record<string, unknown>[], metric: SelfMetric): 
 /** Folds the sampler's self rows; every counter covers the whole oneshot process, node startup included. */
 function foldCost(selfRows: readonly HealthSample[], store: HealthStoreStats, from: Date, to: Date): CostReport {
   const rows = selfRows.filter((s) => s.kind === "self").map((s) => s.observed ?? {});
-  const metrics = Object.fromEntries(Object.entries(METRICS).map(([name, metric]) => [name, perTick(rows, metric)]));
   return {
     from: from.toISOString(),
     to: to.toISOString(),
     ticks: rows.length,
-    ...(metrics as Record<keyof typeof METRICS, PerTick>),
+    wallMs: perTick(rows, METRICS.wallMs),
+    cpuMs: perTick(rows, METRICS.cpuMs),
+    fsReadBlocks: perTick(rows, METRICS.fsReadBlocks),
+    fsWriteBlocks: perTick(rows, METRICS.fsWriteBlocks),
+    contextSwitches: perTick(rows, METRICS.contextSwitches),
     maxRssKb: perTick(rows, (o) => field(o, "maxRssKb")).max,
     store,
   };

@@ -75,6 +75,16 @@ describe('POST /rpc/:name', () => {
     });
   });
 
+  it('files task.add with no done_when, since /rpc callers are exempt from the agent gate', async () => {
+    await withEmptyActiveRoot(async () => {
+      const app = buildHttpApp({ port: TEST_PORT });
+      await post(app, '/rpc/new', { slug: 'rpc-gate', title: 'Rpc gate' });
+      const res = await post(app, '/rpc/task.add', { slug: 'rpc-gate', title: 'No done when' });
+      const body = (await res.json()) as { ok: boolean };
+      expect(body.ok).toBe(true);
+    });
+  });
+
   it('returns 404 for an unknown command', async () => {
     const app = buildHttpApp({ port: TEST_PORT });
     const res = await post(app, '/rpc/does-not-exist', {});

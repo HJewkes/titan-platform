@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitEnv, mineHistory, validateDecisions, type Decision } from "./history.js";
 
@@ -18,46 +19,33 @@ const gitAt = (dir: string, ...args: string[]): string =>
   execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const git = (...args: string[]): string => gitAt(repo, ...args);
 
-function writeFiles(dir: string, files: Record<string, string | null>): void {
-  for (const [file, content] of Object.entries(files)) {
-    const target = path.join(dir, file);
-    if (content === null) rmSync(target);
-    else {
-      mkdirSync(path.dirname(target), { recursive: true });
-      writeFileSync(target, content);
-    }
-  }
-}
+type Files = Record<string, string | null>;
 
-function commitAt(dir: string, message: string, files: Record<string, string | null>): string {
-  writeFiles(dir, files);
-  gitAt(dir, "add", "-A");
-  gitAt(dir, "commit", "-q", "-m", message);
-  return gitAt(dir, "rev-parse", "HEAD");
-}
-
-function commit(label: string, message: string, files: Record<string, string | null>): void {
-  shas[label] = commitAt(repo, message, files);
+/** Writes `[message, files]` commits on main with one fast-import and returns their shas. */
+function commitAt(dir: string, ...commits: [message: string, files: Files][]): string[] {
+  return withHistory(dir, commits.map(([message, files]) => ({ message, files })));
 }
 
 function newRepo(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "explainer-history-"));
   scratch.push(dir);
-  gitAt(dir, "init", "-q", "-b", "main");
-  gitAt(dir, "config", "user.name", "Fixture Author");
-  gitAt(dir, "config", "user.email", "fixture@example.invalid");
-  gitAt(dir, "config", "commit.gpgsign", "false");
+  seedRepo(dir, {});
   return dir;
 }
 
 beforeAll(() => {
   repo = newRepo();
-  commit("init", "Add parser skeleton", { "src/parse.ts": "export {};\n", "src/legacy.ts": "export {};\n" });
-  commit("feature", "Add token reader\n\nReads tokens from the input stream.", { "src/read.ts": "export {};\n" });
-  commit("why", "Cache parsed files by path\n\nKey the cache by path rather than content hash, because hashing\nevery file on each run doubled the cold start.", { "src/cache.ts": "export {};\n" });
-  commit("removal", "Fold the legacy importer into the token reader\n\nNo caller has used it since the token reader landed.", { "src/legacy.ts": null });
-  commit("rename", "Rename read to readTokens", { "src/read.ts": "export const readTokens = 1;\n" });
-  commit("docs", "Fix a typo in the parser comment\n\nSpelling only.", { "src/parse.ts": "// parser\nexport {};\n" });
+  const labels = ["init", "feature", "why", "removal", "rename", "docs"];
+  const made = commitAt(
+    repo,
+    ["Add parser skeleton", { "src/parse.ts": "export {};\n", "src/legacy.ts": "export {};\n" }],
+    ["Add token reader\n\nReads tokens from the input stream.", { "src/read.ts": "export {};\n" }],
+    ["Cache parsed files by path\n\nKey the cache by path rather than content hash, because hashing\nevery file on each run doubled the cold start.", { "src/cache.ts": "export {};\n" }],
+    ["Fold the legacy importer into the token reader\n\nNo caller has used it since the token reader landed.", { "src/legacy.ts": null }],
+    ["Rename read to readTokens", { "src/read.ts": "export const readTokens = 1;\n" }],
+    ["Fix a typo in the parser comment\n\nSpelling only.", { "src/parse.ts": "// parser\nexport {};\n" }],
+  );
+  labels.forEach((label, index) => (shas[label] = made[index] ?? ""));
 });
 
 afterAll(() => {
@@ -137,9 +125,12 @@ describe("mineHistory on a blobless clone", () => {
     const source = newRepo();
     gitAt(source, "config", "uploadpack.allowFilter", "true");
     const body = Array.from({ length: 40 }, (_, i) => `export const line${i} = ${i};`).join("\n");
-    commitAt(source, "Add the importer", { "src/importer.ts": `${body}\n` });
-    const moved = commitAt(source, "Relocate the importer", { "src/importer.ts": null, "src/loader.ts": `${body}\nexport const extra = 1;\n` });
-    commitAt(source, "Rewrite the loader\n\nIt now streams.", { "src/loader.ts": "export const loader = 2;\n" });
+    const [, moved] = commitAt(
+      source,
+      ["Add the importer", { "src/importer.ts": `${body}\n` }],
+      ["Relocate the importer", { "src/importer.ts": null, "src/loader.ts": `${body}\nexport const extra = 1;\n` }],
+      ["Rewrite the loader\n\nIt now streams.", { "src/loader.ts": "export const loader = 2;\n" }],
+    );
     const clone = path.join(newRepo(), "clone");
     execFileSync("git", ["clone", "-q", "--filter=blob:none", `file://${source}`, clone], { stdio: "ignore" });
     gitAt(clone, "config", "diff.renames", "true");
@@ -160,9 +151,9 @@ describe("mineHistory against a hostile clone", () => {
 
   it("keeps record separators in a commit body as body text, never as a forged record", () => {
     const dir = newRepo();
-    const real = commitAt(dir, "Add the real reader", { "a.ts": "export {};\n" });
+    const [real] = commitAt(dir, ["Add the real reader", { "a.ts": "export {};\n" }]);
     const forged = `\x1e${real}\x1f2020-01-01T00:00:00Z\x1fForged subject\x1fForged because the attacker wants it to look real.\n`;
-    const carrier = commitAt(dir, `Tidy the reader\n\nWording only.${forged}`, { "a.ts": "// a\nexport {};\n" });
+    const [carrier] = commitAt(dir, [`Tidy the reader\n\nWording only.${forged}`, { "a.ts": "// a\nexport {};\n" }]);
 
     const { history, decisions } = mineHistory(dir);
 
@@ -189,7 +180,7 @@ describe("mineHistory against a hostile clone", () => {
   it("fails closed when git hangs instead of blocking the caller", () => {
     const dir = newRepo();
     const why = "Read lazily because eager reads stalled the start.";
-    const sha = commitAt(dir, `Add the reader\n\n${why}`, { "a.ts": "export {};\n" });
+    const [sha = ""] = commitAt(dir, [`Add the reader\n\n${why}`, { "a.ts": "export {};\n" }]);
     const decision = { what: "Add the reader", why, sha, why_source: "commit" };
     expect(validateDecisions(dir, [decision]).accepted).toHaveLength(1);
     execFileSync("mkfifo", [path.join(dir, ".git", "shallow")]);
@@ -200,7 +191,7 @@ describe("mineHistory against a hostile clone", () => {
 
   it("never runs a signature program the clone's own config names", () => {
     const dir = newRepo();
-    commitAt(dir, "Add the reader", { "a.ts": "export {};\n" });
+    commitAt(dir, ["Add the reader", { "a.ts": "export {};\n" }]);
     const marker = path.join(dir, "gpg-ran");
     const program = path.join(dir, "fake-gpg");
     writeFileSync(program, `#!/bin/sh\ntouch "${marker}"\n`);
@@ -225,8 +216,7 @@ describe("mineHistory against a hostile clone", () => {
   ])("fails closed in a treeless partial clone whose config sets %s, without running its ssh command", (_label, extra: Record<string, string>) => {
     const source = newRepo();
     gitAt(source, "config", "uploadpack.allowFilter", "true");
-    commitAt(source, "Add the reader", { "a.ts": "export {};\n", "b.ts": "export {};\n" });
-    commitAt(source, "Drop the second reader", { "b.ts": null });
+    commitAt(source, ["Add the reader", { "a.ts": "export {};\n", "b.ts": "export {};\n" }], ["Drop the second reader", { "b.ts": null }]);
     const clone = path.join(newRepo(), "treeless");
     execFileSync("git", ["clone", "-q", "--filter=tree:0", `file://${source}`, clone], { stdio: "ignore" });
     const marker = path.join(clone, "ssh-ran");
@@ -252,7 +242,7 @@ describe("mineHistory against a hostile clone", () => {
 
   it("mines the directory it was given even when GIT_DIR points elsewhere", () => {
     const decoy = newRepo();
-    commitAt(decoy, "Decoy commit", { "d.ts": "export {};\n" });
+    commitAt(decoy, ["Decoy commit", { "d.ts": "export {};\n" }]);
     process.env.GIT_DIR = path.join(decoy, ".git");
 
     const { history } = mineHistory(repo);

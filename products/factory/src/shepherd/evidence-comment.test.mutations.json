@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a removed or unmeasured snapshot reads as not over the threshold",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "  return \"fails closed\";\n",
+      "replace": "  return \"no\";\n",
+      "kills": ["the evidence comment's Visual diff section marks a share over the threshold, and a removed or unmeasured snapshot as failing closed"]
+    },
+    {
+      "name": "the shadow line shows under on instead of shadow",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "const shadow = mode === \"shadow\" ?",
+      "replace": "const shadow = mode === \"on\" ?",
+      "kills": ["the evidence comment's Visual diff section says in shadow what on would decide, clear or the gate's reason"]
+    },
+    {
+      "name": "a pipe in a snapshot path is not escaped",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": ".replaceAll(\"|\", \"\\\\|\")",
+      "replace": "",
+      "kills": ["the evidence comment's Visual diff section escapes a pipe a PR put in a snapshot path, so the row keeps four cells"]
+    },
+    {
+      "name": "every row repeats its component instead of grouping",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "shown[i - 1]?.component === shot.component ? \"\" :",
+      "replace": "false ? \"\" :",
+      "kills": ["the evidence comment's Visual diff section groups rows by component with the largest change first, and collapses more than five rows"]
+    },
+    {
+      "name": "a malformed delta is rendered without the schema check",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "  if (!VisualDeltaSchema.safeParse(delta).success) return [\"\", \"**Visual diff**: the recorded delta is malformed, so it reads as unmeasured.\"];\n",
+      "replace": "",
+      "kills": ["the evidence comment's Visual diff section says a malformed delta reads as unmeasured, and shows nothing without one"]
+    }
+  ]
+}

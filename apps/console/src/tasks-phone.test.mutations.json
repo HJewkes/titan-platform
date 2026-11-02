@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone gets the table instead of cards",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;",
+      "replace": "return <StageTable rows={rows} />;",
+      "kills": [
+        "the tasks list on a phone stacks each task into a card with its id, title, initiative and stage instead of the table"
+      ]
+    },
+    {
+      "name": "a card's task link keeps only its text's height",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "const TAP_TARGET = \"inline-flex min-h-11 min-w-11 items-center\";",
+      "replace": "const TAP_TARGET = \"\";",
+      "kills": [
+        "the tasks list on a phone gives each card's task link a 44px tap target"
+      ]
+    },
+    {
+      "name": "a card drops the initiative and severity line",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "{`${row.slug} · ${row.severity ?? \"no severity\"}`}",
+      "replace": "{\"\"}",
+      "kills": [
+        "the tasks list on a phone stacks each task into a card with its id, title, initiative and stage instead of the table"
+      ]
+    },
+    {
+      "name": "a desktop gets cards instead of the table",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;",
+      "replace": "return <StageCards rows={rows} />;",
+      "kills": [
+        "the tasks list on a phone keeps the table on a desktop"
+      ]
+    }
+  ]
+}

@@ -13,10 +13,10 @@
  * Every output line comes from one input line, with no derived counts, so sources that merge
  * cleanly give catalogs that merge cleanly.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MissingDistError, snapshotOutputs } from "./api-snapshots.mjs";
+import { MissingDistError, orphanSnapshots, snapshotOutputs } from "./api-snapshots.mjs";
 import { TIER_LABELS, collect } from "./gen-docs-reference.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -257,6 +257,11 @@ function siteOutputs() {
   return [{ path: join(root, "site", "guides", "capabilities.md"), text: catalogText(root, siteLinks) }];
 }
 
+function plannedOrphans(argv, repoRoot, files) {
+  if (argv.includes("--site") || argv.includes("--catalog-only")) return [];
+  return orphanSnapshots(repoRoot, files);
+}
+
 function plannedFiles(argv, repoRoot, catalog, site) {
   if (argv.includes("--site")) return site();
   return argv.includes("--catalog-only") ? catalog() : [...catalog(), ...snapshotOutputs(repoRoot)];
@@ -272,11 +277,13 @@ export function run(argv, { repoRoot = root, catalog = outputs, site = siteOutpu
     error(err.message);
     return 2;
   }
+  const orphans = plannedOrphans(argv, repoRoot, files);
   if (argv.includes("--check")) {
-    const stale = files.filter((f) => !existsSync(f.path) || readFileSync(f.path, "utf8") !== f.text);
-    for (const f of stale) error(`stale: ${f.path.slice(repoRoot.length + 1)}. Run pnpm capabilities and commit the result.`);
-    return stale.length > 0 ? 1 : 0;
+    const stale = files.filter((f) => !existsSync(f.path) || readFileSync(f.path, "utf8") !== f.text).map((f) => f.path);
+    for (const path of [...stale, ...orphans]) error(`stale: ${path.slice(repoRoot.length + 1)}. Run pnpm capabilities and commit the result.`);
+    return stale.length + orphans.length > 0 ? 1 : 0;
   }
+  for (const path of orphans) rmSync(path);
   for (const f of files) {
     mkdirSync(dirname(f.path), { recursive: true });
     writeFileSync(f.path, f.text);

@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const COALESCE_MS = 40;
 
-const READS = ["work.portfolio", "agents.roster", "autoresearch.runs", "autoresearch.run"] as const;
+const READS = ["work.portfolio", "agents.roster", "autoresearch.runs", "autoresearch.run", "blockers.banner"] as const;
 
 /** A daemon stand-in that counts calls per command and lets the test push relayed frames and stream status. */
 function countingSource(): { source: DataSource; calls: Map<string, number>; push(event: string): void; status(next: LiveStatus): void } {
@@ -42,6 +42,7 @@ function Reads(): ReactNode {
   useQuery("agents.roster");
   useQuery("autoresearch.runs");
   useQuery("autoresearch.run", { runId: "ar-0001" });
+  useQuery("blockers.banner");
   return null;
 }
 
@@ -52,7 +53,7 @@ async function renderReads(): Promise<ReturnType<typeof countingSource>> {
       <Reads />
     </RpcProvider>,
   );
-  await waitFor(() => expect(counts(fake.calls)).toEqual([1, 1, 1, 1]));
+  await waitFor(() => expect(counts(fake.calls)).toEqual([1, 1, 1, 1, 1]));
   return fake;
 }
 
@@ -70,10 +71,10 @@ describe("useRelayInvalidation", () => {
     await waitFor(() => expect(calls.get("agents.roster")).toBe(2));
     await pause(COALESCE_MS * 3);
 
-    expect(counts(calls)).toEqual([1, 2, 1, 1]);
+    expect(counts(calls)).toEqual([1, 2, 1, 1, 1]);
   });
 
-  it("coalesces a burst of factory frames into one refetch of only the autoresearch reads", async () => {
+  it("coalesces a burst of factory frames into one refetch of only the autoresearch and blocker reads", async () => {
     const { calls, push } = await renderReads();
 
     act(() => {
@@ -82,7 +83,7 @@ describe("useRelayInvalidation", () => {
     await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
     await pause(COALESCE_MS * 3);
 
-    expect(counts(calls)).toEqual([1, 1, 2, 2]);
+    expect(counts(calls)).toEqual([1, 1, 2, 2, 2]);
   });
 
   it("refetches once per window under a steady stream instead of waiting for it to stop", async () => {
@@ -107,6 +108,6 @@ describe("useRelayInvalidation", () => {
     act(() => status("connecting"));
     act(() => status("open"));
 
-    await waitFor(() => expect(counts(calls)).toEqual([2, 2, 2, 2]));
+    await waitFor(() => expect(counts(calls)).toEqual([2, 2, 2, 2, 2]));
   });
 });

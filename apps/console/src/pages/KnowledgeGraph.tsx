@@ -67,6 +67,7 @@ function EgoView({ ego }: { ego: Ego }): ReactNode {
   return (
     <VStack gap={2}>
       {ego.sources.fallback === "mentions" ? <Alert status="warning" size="compact" message="Session links are unavailable; showing mention links only." /> : null}
+      {ego.sources.mentions === "unavailable" ? <Alert status="warning" size="compact" message="Mentions did not load in time; showing session links only." /> : null}
       {ego.truncated ? <Caption>{`Showing ${shown} of ${foundNeighbours(ego)} neighbours.`}</Caption> : null}
       {shown > 0 ? <EgoPlot ego={ego} /> : <EmptyState title="No linked records." description="Pick a record to see its neighbours." />}
     </VStack>

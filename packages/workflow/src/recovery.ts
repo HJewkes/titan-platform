@@ -26,9 +26,10 @@ export async function reconcileActiveSteps(
 ): Promise<Map<string, RecoveredStep> | null> {
   const steps = Object.values(run.activeSteps);
   if (steps.length === 0) return new Map();
-  const operations = isRecoverable(options.runner)
-    ? steps.map((step) => reconcileRecoverable(options.runner as RecoverableStepRunner, step, options))
-    : steps.map((step) => reconcileLegacy(options.runner as LegacyStepRunner, step, options));
+  const { runner } = options;
+  const operations = isRecoverable(runner)
+    ? steps.map((step) => reconcileRecoverable(runner, step, options))
+    : steps.map((step) => reconcileLegacy(runner, step, options));
   const settled = await Promise.allSettled(operations);
   const recovered = collectReconciled(run, steps, settled, options);
   if (!recovered) return null;
@@ -99,7 +100,7 @@ function collectReconciled(
 ): Map<string, RecoveredStep> | null {
   const recovered = new Map<string, RecoveredStep>();
   let blocked = false;
-  settled.forEach((result, index) => {
+  for (const [index, result] of settled.entries()) {
     const step = steps[index]!;
     if (result.status === "fulfilled" && result.value) recovered.set(step.iterKey, result.value);
     else {
@@ -110,7 +111,7 @@ function collectReconciled(
       markRecovery(run, step, kind, evidence, options);
       blocked = true;
     }
-  });
+  }
   return blocked ? null : recovered;
 }
 
@@ -166,7 +167,7 @@ async function withTimeout<T>(
       reject(timeout);
     }, options.timeoutMs);
   });
-  timer?.unref?.();
+  timer?.unref();
   try {
     return await Promise.race([Promise.resolve().then(() => operation(boundedSignal)), timedOut]);
   } finally {

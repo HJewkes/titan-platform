@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
+import { readPath } from "./narrow.js";
 
 /**
  * Owner decision 2026-10-07 (TP-1904), "mechanical only": a coordinator may resolve three gate classes without the
@@ -13,7 +14,9 @@ import { headGateAsks } from "./shepherd/stale-gates.js";
  * acknowledgement or main-frozen unfreeze once a green main commit contains the merge; and an abandon of a gate whose
  * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Owner
  * decision 529 (2026-10-22, TP-4048) adds a fourth: an sh-sent-back `await-new-head` while the PR is open at the gate's
- * own head, which only waits and merges nothing. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
+ * own head, which only waits and merges nothing. Owner decision 551 (2026-10-28, TP-4285) adds a main-ci-timeout
+ * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Every other gate, a
+ * visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -91,7 +94,8 @@ export type RunFacts = z.infer<typeof RunFacts>;
 export type CheckRunFact = z.infer<typeof CheckRunFact>;
 
 export const MERGE_GATE = "approve-merge";
-export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze" } as const;
+export const MAIN_CI_TIMEOUT = "main-ci-timeout";
+export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze", [MAIN_CI_TIMEOUT]: "acknowledged" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
 export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
 export const SENT_BACK_GATE = "sh-sent-back";
@@ -150,15 +154,26 @@ export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema"
 }
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
-  const head = (schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;
+  const head = readPath(schema, "properties", "headSha", "const");
   return typeof head === "string" ? head : undefined;
 }
 
 const MAIN_PROMPT = /^Main CI on (\S+) at merge ([0-9a-f]{40}) \(PR #(\d+)\) /;
 
-/** A main-red or main-frozen gate about one merge, whose brief points at that merge's main CI. */
-export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): { repo: string; mergeSha: string; pr: number } | undefined {
-  const match = Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? MAIN_PROMPT.exec(gate.prompt) : null;
+export interface MainMerge {
+  repo: string;
+  mergeSha: string;
+  pr: number;
+}
+
+/** A main-red, main-frozen or main-ci-timeout gate about one merge, whose brief points at that merge's main CI. */
+export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): MainMerge | undefined {
+  return Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? mainMergeOf(gate) : undefined;
+}
+
+/** The merge a post-merge gate asks about, whatever its step, when its prompt and brief both name it. */
+export function mainMergeOf(gate: Pick<GateRecord, "prompt" | "evidenceRef">): MainMerge | undefined {
+  const match = MAIN_PROMPT.exec(gate.prompt);
   if (!match || gate.evidenceRef !== `$ gh run list -R ${match[1]} -c ${match[2]}`) return undefined;
   return { repo: match[1]!, mergeSha: match[2]!, pr: Number(match[3]) };
 }
@@ -239,9 +254,11 @@ function requiredGreen(checks: Of<"approve-merge">["checks"], head: string): boo
   return checks.required.every((name) => checks.runs.some((run) => run.name === name && run.headSha === head && run.conclusion === "success"));
 }
 
+const mainDecisions: Readonly<Record<string, string | undefined>> = MAIN_GATES;
+
 function mainGreenAdmits(gate: GateRecord, payload: unknown, evidence: Of<"main-green">): boolean {
   const main = mainGate(gate);
-  if (!main || !isDeepStrictEqual(payload, { decision: MAIN_GATES[stepOf(gate.id) as keyof typeof MAIN_GATES], mergeSha: main.mergeSha })) return false;
+  if (!main || !isDeepStrictEqual(payload, { decision: mainDecisions[stepOf(gate.id)], mergeSha: main.mergeSha })) return false;
   if (evidence.repo !== main.repo || evidence.pr !== main.pr || evidence.mergeSha !== main.mergeSha || evidence.mergeBaseSha !== main.mergeSha) return false;
   return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && isPassingConclusion(run.conclusion));
 }

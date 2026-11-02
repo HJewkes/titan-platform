@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a PR with no changed path counts as covered",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "if (blobs === undefined || changed.length === 0) return false;",
+      "replace": "if (blobs === undefined) return false;",
+      "kills": [
+        "a CI-policy plan approval's cover never covers a PR with no changed path"
+      ]
+    },
+    {
+      "name": "the reviewer's weakened keys are not checked against the approved keys",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "  if (!keys.every((key) => scope.ciPolicyKeys.includes(key))) return false;\n",
+      "replace": "",
+      "kills": [
+        "a CI-policy plan approval's cover does not cover a weakened key the owner was not told about"
+      ]
+    },
+    {
+      "name": "one pinned changed path covers the whole PR",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "return changed.every((path) =>",
+      "replace": "return changed.some((path) =>",
+      "kills": [
+        "a CI-policy plan approval's cover does not cover a rename whose source is not pinned as absent"
+      ]
+    },
+    {
+      "name": "a changed path missing from the head blobs reads as absent at head",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "Object.hasOwn(blobs, path) && blobs[path] === pinned.get(path)",
+      "replace": "(blobs[path] ?? null) === pinned.get(path)",
+      "kills": [
+        "a CI-policy plan approval's cover does not cover when the head blobs miss a changed path, even one pinned as absent"
+      ]
+    },
+    {
+      "name": "every pinned path must also be changed",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "return changed.every((path) =>",
+      "replace": "return scope.files.every((file) => changed.includes(file.path)) && changed.every((path) =>",
+      "kills": [
+        "a CI-policy plan approval's cover ignores a pinned path the PR leaves unchanged"
+      ]
+    }
+  ]
+}

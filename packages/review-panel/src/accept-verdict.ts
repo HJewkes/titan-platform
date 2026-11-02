@@ -1,5 +1,7 @@
 import { parseVerdictBlock, refusedLines, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { hasProbesLine } from "./briefs/adversary.js";
+import { attestTokens } from "./briefs/attest.js";
+import { mergeCiPolicy } from "./ci-policy-prose.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
 import { followUpsFields, type FollowUp, type FollowUpsWarning } from "./follow-ups.js";
@@ -23,8 +25,12 @@ export interface AcceptedVerdict {
   reviewerProfile?: string;
 }
 
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line, and only an unchanged or weakened one. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE"; ciPolicy?: CiPolicy }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string; resetsAt?: number };
+/**
+ * Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy
+ * line, and only an unchanged or weakened one. Only a MERGE carries `attests`, the `<step>@<closure12>` tokens its Attests
+ * line names, and only when one parses.
+ */
+export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE"; ciPolicy?: CiPolicy; attests?: string[] }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string; resetsAt?: number };
 
 /** Why a final message was no verdict: the account's usage limit ended the reviewer's turn, so asking again is pointless until it resets. */
 export const USAGE_LIMIT_REASON = "the reviewer hit the account usage limit and wrote no review";
@@ -43,12 +49,22 @@ const isUsageLimitNotice = ({ text, synthetic }: ReviewerMessage): boolean =>
 export const isUsageLimit = (result: { kind: string; reason?: unknown; notice?: unknown }): boolean =>
   result.kind === "none" && result.reason === USAGE_LIMIT_REASON && typeof result.notice === "string";
 
+/** The locator comes from stored or external transcript data, so its shape is checked here rather than trusted: a malformed one must read as no match, never throw on the verdict path. */
+const field = (value: unknown, key: string): unknown => (typeof value === "object" && value !== null && key in value ? Reflect.get(value, key) : undefined);
+const reviewerSessionOf = (message: ReviewerMessage): unknown => ["locator", "source", "conversation", "nativeId"].reduce<unknown>(field, message);
+
 const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boolean =>
   message.agentId === input.reviewerAgentId && message.sessionId === input.reviewerSessionId && message.writtenAt > input.dispatchedAt;
 
+const attestsField = (text: string): { attests?: string[] } => {
+  const attests = attestTokens(text);
+  return attests.length > 0 ? { attests } : {};
+};
+
 type MalformedNone = { kind: "none"; malformed: Malformed };
 const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = ""): MalformedNone => {
-  const quotes = refusal === "multiple_blocks" || refusal === "ci_policy_malformed" ? refusedLines(text, refusal) : [];
+  const quoted = refusal === "ci_policy_prose" ? "ci_policy_malformed" : refusal;
+  const quotes = quoted === "multiple_blocks" || quoted === "ci_policy_malformed" ? refusedLines(text, quoted) : [];
   return { kind: "none", malformed: { refusal, writtenAt, ...(quotes.length > 0 && { quotes }) } };
 };
 
@@ -59,14 +75,15 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = 
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
- * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
- * parser, so a weakening is never corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
+ * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
   if (!final) return { kind: "none" };
   if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
+  if (reviewerSessionOf(final) !== input.reviewerSessionId) return { kind: "none" };
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   if (isUsageLimitNotice(final)) return { kind: "none", reason: USAGE_LIMIT_REASON, notice: final.text.trim(), ...(typeof final.synthetic?.resetsAt === "number" && { resetsAt: final.synthetic.resetsAt }) };
@@ -76,7 +93,8 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   if (input.shape === "adversary" && !hasProbesLine(final.text)) return malformedNone("probes_missing", final.writtenAt);
-  if (block.verdict === "MERGE" && block.ciPolicy?.kind === "malformed") return malformedNone("ci_policy_malformed", final.writtenAt, final.text);
+  const ciPolicy = block.verdict === "MERGE" ? mergeCiPolicy(block.ciPolicy, final.text, block.lineOffset) : undefined;
+  if (ciPolicy === "ci_policy_prose" || ciPolicy === "ci_policy_malformed") return malformedNone(ciPolicy, final.writtenAt, final.text);
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(ciPolicy && { ciPolicy }), ...attestsField(final.text) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }

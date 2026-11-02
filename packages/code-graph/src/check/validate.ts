@@ -20,6 +20,20 @@ export interface ValidateRulesOptions {
 
 type Warn = (message: string) => void;
 
+type RawRule = Record<string, unknown> & { id: string };
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+function hasId(raw: Record<string, unknown>): raw is RawRule {
+  return typeof raw.id === "string" && raw.id !== "";
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 export function validateRules(
   input: unknown,
   options: ValidateRulesOptions = {},
@@ -46,13 +60,13 @@ function healMetricName(name: string, ruleId: string, warn: Warn): string {
 }
 
 function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
-  if (!raw || typeof raw !== "object") {
+  if (!isObject(raw)) {
     throw new Error(`rule[${index}] must be an object`);
   }
-  const r = raw as Record<string, unknown>;
-  if (typeof r.id !== "string" || !r.id) {
+  if (!hasId(raw)) {
     throw new Error(`rule[${index}] missing string id`);
   }
+  const r = raw;
   if (typeof r.type !== "string") {
     throw new Error(`rule[${index}] (${r.id}) missing string type`);
   }
@@ -79,70 +93,70 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
 }
 
 function assertNoInternalOnlyBarrels(
-  r: Record<string, unknown>,
+  r: RawRule,
 ): NoInternalOnlyBarrelsRule {
   if (!Array.isArray(r.packageRoots) || r.packageRoots.length === 0) {
     throw new Error(
       `${r.id}: packageRoots must be a non-empty array of path-prefix strings`,
     );
   }
-  for (const p of r.packageRoots) {
-    if (typeof p !== "string" || !p) {
-      throw new Error(`${r.id}: each packageRoots entry must be a non-empty string`);
-    }
+  if (!r.packageRoots.every((p): p is string => typeof p === "string" && p !== "")) {
+    throw new Error(`${r.id}: each packageRoots entry must be a non-empty string`);
   }
   return {
     type: "no-internal-only-barrels",
-    id: r.id as string,
-    packageRoots: r.packageRoots as string[],
+    id: r.id,
+    packageRoots: r.packageRoots,
     severity: parseSeverity(r),
     exclude: parseExclude(r),
   };
 }
 
-function assertNoImportCycles(r: Record<string, unknown>, warn: Warn): NoImportCyclesRule {
+function assertNoImportCycles(r: RawRule, warn: Warn): NoImportCyclesRule {
   if (r.includeTypeOnly !== undefined && typeof r.includeTypeOnly !== "boolean") {
     throw new Error(`${r.id}: includeTypeOnly must be a boolean`);
   }
   return {
     type: "no-import-cycles",
-    id: r.id as string,
+    id: r.id,
     severity: parseSeverity(r),
     exclude: parseExclude(r),
-    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    excludeRoles: parseRoleArray(r.id, r.excludeRoles, warn),
     includeTypeOnly: r.includeTypeOnly,
   };
 }
 
-function assertLayeredDeps(r: Record<string, unknown>, warn: Warn): LayeredDepsRule {
+function assertLayeredDeps(r: RawRule, warn: Warn): LayeredDepsRule {
   const layers = parseLayers(r);
   if (r.exemptTypeOnly !== undefined && typeof r.exemptTypeOnly !== "boolean") {
     throw new Error(`${r.id}: exemptTypeOnly must be a boolean`);
   }
   return {
     type: "layered-deps",
-    id: r.id as string,
+    id: r.id,
     layers,
     severity: parseSeverity(r),
-    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    excludeRoles: parseRoleArray(r.id, r.excludeRoles, warn),
     exemptTypeOnly: r.exemptTypeOnly,
   };
 }
 
-function parseLayers(r: Record<string, unknown>): string[][] {
+function parseLayers(r: RawRule): string[][] {
   if (!Array.isArray(r.layers) || r.layers.length < 2) {
     throw new Error(`${r.id}: layers must be an array of 2+ string arrays`);
   }
+  const layers: string[][] = [];
   for (const layer of r.layers) {
-    if (!Array.isArray(layer) || !layer.every((p) => typeof p === "string")) {
+    if (!Array.isArray(layer) || !layer.every(isString)) {
       throw new Error(`${r.id}: each layer must be a string[]`);
     }
     if (layer.length === 0) {
       throw new Error(`${r.id}: empty layers not allowed`);
     }
+    layers.push(layer);
   }
   const seen = new Set<string>();
-  for (const layer of r.layers as string[][]) {
+  for (const layer of layers) {
     for (const pkg of layer) {
       if (seen.has(pkg)) {
         throw new Error(`${r.id}: package "${pkg}" appears in more than one layer`);
@@ -150,11 +164,11 @@ function parseLayers(r: Record<string, unknown>): string[][] {
       seen.add(pkg);
     }
   }
-  return r.layers as string[][];
+  return layers;
 }
 
 function assertMetricProductMax(
-  r: Record<string, unknown>,
+  r: RawRule,
   warn: Warn,
 ): MetricProductMaxRule {
   if (!Array.isArray(r.metrics) || r.metrics.length < 2) {
@@ -166,7 +180,7 @@ function assertMetricProductMax(
   if (typeof r.max !== "number") {
     throw new Error(`${r.id}: max must be a number`);
   }
-  const ruleId = r.id as string;
+  const ruleId = r.id;
   return {
     type: "metric-product-max",
     id: ruleId,
@@ -179,10 +193,10 @@ function assertMetricProductMax(
   };
 }
 
-function assertMetricMax(r: Record<string, unknown>, warn: Warn): MetricMaxRule {
+function assertMetricMax(r: RawRule, warn: Warn): MetricMaxRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
   if (typeof r.max !== "number") throw new Error(`${r.id}: max must be a number`);
-  const ruleId = r.id as string;
+  const ruleId = r.id;
   return {
     type: "metric-max",
     id: ruleId,
@@ -195,10 +209,10 @@ function assertMetricMax(r: Record<string, unknown>, warn: Warn): MetricMaxRule 
   };
 }
 
-function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule {
+function assertMetricMin(r: RawRule, warn: Warn): MetricMinRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
   if (typeof r.min !== "number") throw new Error(`${r.id}: min must be a number`);
-  const ruleId = r.id as string;
+  const ruleId = r.id;
   return {
     type: "metric-min",
     id: ruleId,
@@ -213,13 +227,13 @@ function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule 
 
 const KIND_SET: ReadonlySet<string> = new Set(NODE_KINDS);
 
-function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutlierRule {
+function assertMetricOutlier(r: RawRule, warn: Warn): MetricOutlierRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
   if (!isNodeKind(r.kind)) throw kindError(r.id);
   if (typeof r.percentile !== "number" || r.percentile < 50 || r.percentile > 100) {
     throw new Error(`${r.id}: percentile must be a number from 50 to 100`);
   }
-  if (r.minSample !== undefined && (!Number.isInteger(r.minSample) || (r.minSample as number) < 1)) {
+  if (r.minSample !== undefined && (typeof r.minSample !== "number" || !Number.isInteger(r.minSample) || r.minSample < 1)) {
     throw new Error(`${r.id}: minSample must be a positive integer`);
   }
   if (r.floor !== undefined && (typeof r.floor !== "number" || !Number.isFinite(r.floor) || r.floor < 0)) {
@@ -228,26 +242,26 @@ function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutl
   if (r.rankNonZero !== undefined && typeof r.rankNonZero !== "boolean") {
     throw new Error(`${r.id}: rankNonZero must be a boolean`);
   }
-  const ruleId = r.id as string;
+  const ruleId = r.id;
   return {
     type: "metric-outlier",
     id: ruleId,
     metric: healMetricName(r.metric, ruleId, warn),
     kind: r.kind,
     percentile: r.percentile,
-    minSample: r.minSample as number | undefined,
-    floor: r.floor as number | undefined,
-    rankNonZero: r.rankNonZero as boolean | undefined,
+    minSample: r.minSample,
+    floor: r.floor,
+    rankNonZero: r.rankNonZero,
     severity: parseSeverity(r),
   };
 }
 
-function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
+function assertForbidImport(r: RawRule): ForbidImportRule {
   if (typeof r.from !== "string") throw new Error(`${r.id}: from must be a string`);
   if (typeof r.to !== "string") throw new Error(`${r.id}: to must be a string`);
   return {
     type: "forbid-import",
-    id: r.id as string,
+    id: r.id,
     from: r.from,
     to: r.to,
     except: parseExcept(r),
@@ -257,6 +271,10 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
 
 function isNodeKind(value: unknown): value is NodeKind {
   return typeof value === "string" && KIND_SET.has(value);
+}
+
+function isNodeRole(value: unknown): value is NodeRole {
+  return typeof value === "string" && ROLE_VALUES.has(value);
 }
 
 function kindError(ruleId: unknown): Error {
@@ -316,9 +334,7 @@ function parseRoleArray(
 
 /** Heal a deprecated role alias to canonical; throw only on genuinely-unknown. */
 function healRole(entry: unknown, ruleId: string, warn: Warn): NodeRole {
-  if (typeof entry === "string" && ROLE_VALUES.has(entry)) {
-    return entry as NodeRole;
-  }
+  if (isNodeRole(entry)) return entry;
   if (typeof entry === "string") {
     const target = roleAliasTarget(entry);
     if (target) {

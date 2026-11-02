@@ -1,4 +1,4 @@
-export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 export const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 

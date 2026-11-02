@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an rpc is judged on its p50 instead of its p95",
+      "file": "apps/console/src/pages/ConfigPerf.tsx",
+      "find": "return row.p95 > budget.maxMs",
+      "replace": "return row.p50 > budget.maxMs",
+      "kills": [
+        "the perf tab an rpc over its budget shows the warning badge"
+      ]
+    },
+    {
+      "name": "a route is judged on a different percentile than its p95",
+      "file": "apps/console/src/pages/ConfigPerf.tsx",
+      "find": "return row.p95 > ROUTE_BUDGET_MS;",
+      "replace": "return row.p50 > ROUTE_BUDGET_MS;",
+      "kills": [
+        "the perf tab a route past three seconds shows the warning badge and a quick one does not"
+      ]
+    },
+    {
+      "name": "the toggle keeps asking for the 15 minute window",
+      "file": "apps/console/src/pages/ConfigPerf.tsx",
+      "find": "window: WINDOWS[index]! }",
+      "replace": "window: WINDOWS[0] }",
+      "kills": [
+        "the perf tab the 24 h toggle shows that window's rows"
+      ]
+    },
+    {
+      "name": "the p95 column is hidden on a phone too",
+      "file": "apps/console/src/pages/ConfigPerf.tsx",
+      "find": "hideOnPhone={i !== KEPT_INDEX}",
+      "replace": "hideOnPhone={true}",
+      "kills": [
+        "the perf tab on a phone only the name and the p95 column stay visible"
+      ]
+    }
+  ]
+}

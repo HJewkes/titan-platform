@@ -254,16 +254,18 @@ describe("verifyProof", () => {
 
   it("refuses non-string input without throwing", () => {
     const { keys } = setup();
-    const bad = { statementB64: 5, signatureB64: null } as unknown as ProofInput;
+    const bad = { statementB64: 5, signatureB64: null };
     expect(refusal(verifyProof(bad, keys, NOW, AUD))).toBe("malformed");
-    expect(refusal(verifyProof(undefined as unknown as ProofInput, keys, NOW, AUD))).toBe("malformed");
+    expect(refusal(verifyProof(undefined, keys, NOW, AUD))).toBe("malformed");
   });
 
   it("refuses a deeply nested payload without throwing", () => {
     const { publicKey, privateKey, keys } = setup();
-    const deep = JSON.parse(`${'{"a":'.repeat(5000)}1${"}".repeat(5000)}`) as Record<string, unknown>;
+    // Spliced in as text: JSON.stringify of 5000 levels overflows a process main thread's stack, which is smaller than
+    // a worker thread's.
+    const deep = `${'{"a":'.repeat(5000)}1${"}".repeat(5000)}`;
     const base = statementFor(publicKey);
-    const text = JSON.stringify({ ...base, items: [{ ...item(), payload: deep }] });
+    const text = JSON.stringify({ ...base, items: [{ ...item(), payload: "DEEP" }] }).replace('"DEEP"', deep);
     expect(refusal(verifyProof(proofFrom(privateKey, text), keys, NOW, AUD))).toBe("malformed");
   });
 

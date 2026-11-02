@@ -1,4 +1,5 @@
-import { LAYERED_FIELDS, LIMIT_DEFAULTS, clampToBounds, type LayeredField } from "./defaults.js";
+import { z } from "zod";
+import { LAYERED_FIELDS, LIMIT_DEFAULTS, clampToBounds, isLayeredField, type LayeredField } from "./defaults.js";
 import type { LimitsBlock, ParsedLimits } from "./parse.js";
 import type { Grant, Lift, LimitsOverride, PoolLimits } from "./schema.js";
 
@@ -88,9 +89,37 @@ function contributions(block: LimitsBlock, pool: PoolLimits, input: ResolveInput
   ];
 }
 
+const CODE_SOURCES: Record<ResolvedField, LimitLayer> = {
+  human_uses: "code",
+  ceiling_five_hour: "code",
+  reserve_seven_day: "code",
+  per_day_points: "code",
+  per_run_points: "code",
+  sonnet_band_points: "code",
+  dispatch_seven_day_points: "code",
+  dispatch_five_hour_points: "code",
+  pick_margin_five_hour: "code",
+  present_ceiling_five_hour: "code",
+  present_within_minutes: "code",
+};
+
+/** The folded values as `ResolvedLimits` carries them; the code layer sets every field, so none is absent. */
+const foldedValues = z.object({
+  human_uses: z.boolean(),
+  ceiling_five_hour: z.number(),
+  reserve_seven_day: z.number(),
+  per_day_points: z.number().nullable(),
+  sonnet_band_points: z.number(),
+  dispatch_seven_day_points: z.number(),
+  dispatch_five_hour_points: z.number(),
+  pick_margin_five_hour: z.number(),
+  present_ceiling_five_hour: z.number(),
+  present_within_minutes: z.number(),
+});
+
 function fold(layers: readonly Contribution[]) {
   const values: Record<string, unknown> = {};
-  const sources = {} as Record<ResolvedField, LimitLayer>;
+  const sources = { ...CODE_SOURCES };
   const applied = new Set<string>();
   for (const { layer, values: set, tag } of layers) {
     for (const field of LAYERED_FIELDS) {
@@ -106,11 +135,11 @@ function fold(layers: readonly Contribution[]) {
 function clampAll(values: Record<string, unknown>): ResolvedField[] {
   const clamped: ResolvedField[] = [];
   for (const [field, value] of Object.entries(values)) {
-    if (typeof value !== "number") continue;
+    if (typeof value !== "number" || !isLayeredField(field)) continue;
     const bounded = clampToBounds(field, value);
     if (bounded === value) continue;
     values[field] = bounded;
-    clamped.push(field as ResolvedField);
+    clamped.push(field);
   }
   return clamped;
 }
@@ -151,14 +180,14 @@ export function resolveLimits(parsed: ParsedLimits, input: ResolveInput): Resolv
   const { values, sources, applied } = fold(contributions(parsed.limits, pool, input));
   const clamped = clampAll(values);
   const limits = {
-    ...(values as Pick<ResolvedLimits, LayeredField>),
+    ...foldedValues.parse(values),
     pool: input.pool,
     config_dir: pool.config_dir,
     per_run_points: null,
     lift: pool.lift ?? null,
     band_fallback: profile?.band_fallback ?? null,
     context_tokens: profile?.context_tokens ?? null,
-    sources: { ...sources, per_run_points: "code" as LimitLayer },
+    sources,
     applied,
     clamped,
   };

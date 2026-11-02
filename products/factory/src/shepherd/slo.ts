@@ -44,7 +44,7 @@ export function readRegistry(path: string): MetricsEntryRead {
   const result = validateEntry(parse(readFileSync(path, "utf8")), "read");
   if (!result.ok) throw new Error(`${path}: ${result.errors.join("; ")}`);
   if (result.entry.schema !== METRICS_SCHEMA_ID) throw new Error(`${path}: schema: expected ${METRICS_SCHEMA_ID}`);
-  return result.entry as MetricsEntryRead;
+  return result.entry;
 }
 
 function judge(metric: Metric, value: number | null): SloStatus {

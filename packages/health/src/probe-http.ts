@@ -1,3 +1,4 @@
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { parseHealthReport } from "./contract.js";
 import type { HealthSample } from "./sample.js";
 
@@ -141,7 +142,7 @@ async function identityMismatch(
 function observePaths(payload: unknown, paths: string[]): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const path of paths) {
-    const value = path.split(".").reduce<unknown>((node, key) => (isRecord(node) ? node[key] : undefined), payload);
+    const value = path.split(".").reduce<unknown>((node, key) => (isObjectLike(node) ? node[key] : undefined), payload);
     if (value !== undefined) picked[path] = value;
   }
   return picked;
@@ -158,7 +159,7 @@ function parseJson(body: string): unknown {
 // undici wraps the socket error (ECONNREFUSED, ENOTFOUND) as the cause of a generic "fetch failed".
 function transportReason(error: unknown): string {
   const cause = error instanceof Error ? error.cause : undefined;
-  if (isRecord(cause) && typeof cause.code === "string") return cause.code;
+  if (isObjectLike(cause) && typeof cause.code === "string") return cause.code;
   return errorMessage(error);
 }
 
@@ -166,6 +167,3 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

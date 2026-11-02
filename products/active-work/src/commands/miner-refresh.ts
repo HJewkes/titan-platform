@@ -18,6 +18,7 @@ const ArgsSchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   verify_hashes: z.boolean().optional(),
   backfill_all: z.boolean().optional(),
+  reset_workspace_spans: z.boolean().optional(),
 });
 type Args = z.infer<typeof ArgsSchema>;
 
@@ -37,6 +38,7 @@ const WorkspaceSchema = z.object({
   }),
   edges: z.object({ holds: z.number(), mentions: z.number(), sharesTag: z.number() }),
   orphanRatio: z.number(),
+  legacySpansRetired: z.number(),
 });
 
 const ResultSchema = z.object({
@@ -99,6 +101,11 @@ export default defineCommand<Args, Result>({
         description:
           'Re-extract every stale audit facet and segment every stale session this pass instead of bounded batches.',
       },
+      reset_workspace_spans: {
+        long: '--reset-workspace-spans',
+        description:
+          'Empty the workspace span table and rebuild it from the files this pass, leaving transcripts alone.',
+      },
     },
   },
   async run(args) {
@@ -110,6 +117,7 @@ export default defineCommand<Args, Result>({
           verifyHashes: args.verify_hashes,
           facetLimit: args.backfill_all ? Infinity : undefined,
           episodeLimit: args.backfill_all ? Infinity : undefined,
+          resetWorkspaceSpans: args.reset_workspace_spans,
         }),
       { onWait: (holder) => process.stderr.write(describeLockWait(holder)) },
     );

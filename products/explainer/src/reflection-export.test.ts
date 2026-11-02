@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +53,41 @@ describe("exportReflection", () => {
     expect(text).toContain("- Reviews wait too long. (slow/gate-wait/review)");
     expect(text).toContain("- Batch the small merges.");
     expect(text).not.toContain("Lane one");
+  });
+
+  it("strips speech markup from the exported text and keeps the cited facts", async () => {
+    const { config, outDir } = setup();
+    const marked: ReflectionScript = {
+      beats: [{ id: "b1", chapter: "reflection", spoken: "Reviews wait eighteen point eight three [minutes](=time) on average.", fact_ids: ["slow/gate-wait/review"] }],
+    };
+
+    const result = await exportReflection(config, { ...run(outDir), script: marked });
+
+    const text = readFileSync(result.file, "utf8");
+    expect(text).toContain("- Reviews wait eighteen point eight three minutes on average. (slow/gate-wait/review)");
+    expect(text).not.toContain("(=time)");
+  });
+
+  it("titles and keys the deposit by the day it is given", async () => {
+    const { config, outDir } = setup();
+
+    await exportReflection(config, { ...run(outDir), day: "2030-01-02" });
+
+    const [name] = deposits(config.spoolDir);
+    const filed = readFileSync(path.join(config.spoolDir, name!), "utf8");
+    expect(filed).toContain("daily-reflection:2030-01-02");
+    expect(filed).toContain("Daily reflection for 2030-01-02");
+    expect(readFileSync(path.join(outDir, "reflection.md"), "utf8")).toContain("# Reflection for 2030-01-02");
+  });
+
+  it("files nothing and says why when the run has no digest day", async () => {
+    const { config, outDir } = setup();
+
+    const result = await exportReflection(config, { ...run(outDir), day: undefined });
+
+    expect(result.filed).toBe("none");
+    expect(result.notes.join(" ")).toContain("no digest day");
+    expect(existsSync(config.spoolDir) ? deposits(config.spoolDir) : []).toEqual([]);
   });
 
   it("writes a dated retro file instead of a deposit in retro-file mode, once", async () => {

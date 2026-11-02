@@ -27,8 +27,8 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 });
 
 const EVERY_REFUSAL: RefusalRule[] = [
-  "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "number-vague", "device-added",
-  "label-bare", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
+  "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "range-split", "number-vague", "device-added",
+  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
@@ -70,11 +70,12 @@ describe("renderRewritePrompt", () => {
     expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain(only);
   });
 
-  it("directs against new lists of three and bare-number labels", () => {
+  it("directs against new lists of three and numbers moved to labels", () => {
     const prompt = renderRewritePrompt(chapter, chapterBeats, plan(1));
 
     expect(prompt).toMatch(/do not build a new list of three/);
-    expect(prompt).toMatch(/with the noun it counts/);
+    expect(prompt).toMatch(/Never put a number in `labels_added`/);
+    expect(prompt).toContain('- Numbers: this beat speaks "12", "two". Keep the one its claim turns on and cut the others with the clause they count; put none of them in labels_added.');
   });
 
   it("tells a triad beat to label every item without singling one out", () => {
@@ -84,13 +85,31 @@ describe("renderRewritePrompt", () => {
     expect(prompt).not.toMatch(/the one that matters/i);
   });
 
+  it("names the cue word a collapsing list holds as the item that stays in the line", () => {
+    const cuedList: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", triads: ["the desk, the row and the label."] }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, cuedList);
+
+    expect(prompt).toContain('- The screen cues on "desk": the list item that holds each one is the item you keep in the line.');
+    expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain("- The screen cues on");
+  });
+
+  it("asks a beat to say its stock phrases in plain words, naming each", () => {
+    const withPhrases: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", shape: [5, 18], phrases: ["stays", "the catch"] }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, withPhrases);
+
+    expect(prompt).toContain('- Stock phrases: "stays", "the catch". Say what each one means in plain words of your own.');
+    expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain("- Stock phrases:");
+  });
+
   it("tells a refused beat in plain words why its last version was not used", () => {
     const prompt = renderRewritePrompt(chapter, chapterBeats, refusedPlan(["sentence-cap", "list-emptied", "number-lost"]));
 
     expect(notesIn(prompt)).toEqual([
       "- Your last version was not used: a sentence was too long to say in one breath; split it.",
       "- Your last version was not used: keep one item of the list in the line.",
-      "- Your last version was not used: the number left the line without its noun in a label; label it with the noun it counts.",
+      "- Your last version was not used: a number the screen shows left the line; keep saying it, and put no number in a label.",
     ]);
   });
 

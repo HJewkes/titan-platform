@@ -102,3 +102,20 @@ export function snapshotOutputs(root) {
     .filter((dir) => existsSync(join(base, dir, "package.json")))
     .flatMap((dir) => packageSnapshots(join(base, dir)));
 }
+
+function dtsFilesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? dtsFilesUnder(join(dir, d.name)) : d.name.endsWith(".d.ts") ? [join(dir, d.name)] : [],
+  );
+}
+
+/** Committed packages/<dir>/api snapshots that no exports entry of a public package produces any more. */
+export function orphanSnapshots(root, planned) {
+  const base = join(root, "packages");
+  const wanted = new Set(planned.map((f) => f.path));
+  return readdirSync(base)
+    .sort()
+    .flatMap((dir) => dtsFilesUnder(join(base, dir, "api")))
+    .filter((file) => !wanted.has(file));
+}

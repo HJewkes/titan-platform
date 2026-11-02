@@ -8,6 +8,7 @@ import { stepIdMatches } from "./definition.js";
 import { gateStaleness } from "./gate-batch.js";
 import { pendingGateId, repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
+import { MAX_NOTE_CHARS } from "./note-limits.js";
 import { ROUND_SUBMIT_MAX_AGE_MS, RoundFeedbackSchema, shipAtHead } from "./shepherd/round-merge.js";
 import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";
 
@@ -96,8 +97,6 @@ const FeedbackWords = z.object({
   answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })),
   variants: z.array(FrameWords).default([]),
 });
-/** The most of the owner's note the gate payload carries; the rest stays in feedback.json. */
-export const MAX_NOTE_CHARS = 4000;
 
 const refused = (reason: RefusalCode, detail: string): AnswerCheck => ({ kind: "refused", reason, detail });
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");

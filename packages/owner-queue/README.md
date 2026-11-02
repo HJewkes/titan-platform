@@ -139,6 +139,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `maxQuestions` or `firstRound` below 1) throw, and each manifest is parsed with `RoundSchema`
   before it is returned. A `binding` maps each question id to its item ids and each
   shown option label back to the item's option id.
+- Plan rounds: `buildPlanRound({ unit, round, task, repo, asks, storybookUrl?, supersedes? })`
+  returns the round.json a coordinator files with `titan-console decisions file -`: a
+  questions-only round@2 manifest plus the console's `planApprovals` (and `supersedes` when
+  given). Each ask `{ gate, scope, title, context }` (gate `ci-policy`, `skill` or `visual`)
+  becomes one pick-one in its own section, with options `Approve this <gate> change for <task>
+  as pinned below` and `Revise: send the plan back for <task>`, and one binding whose
+  `approve` is the first. The owner's approve pick records the task, repo, gate and scope
+  verbatim as a TP-4284 plan approval. No question carries a recommendation, because the
+  planner does not recommend its own approval. An empty `asks` or a non-loopback `storybookUrl` throws.
 - `fromRoundQuestions(manifest, roundId, { openedAt, bindings? })` reads each question of a
   round@2 manifest as an open OwnerItem: id `round:<roundId>/<questionId>`, source
   `round:<roundId>#<questionId>`, the question's `ask:` key, and for a merge-bound pick-one the

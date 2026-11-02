@@ -13,8 +13,8 @@
     {
       "name": "the resolver rows stay out of the doctrine hash",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "bands: loadSpeechBands(), rows };",
-      "replace": "bands: loadSpeechBands() };",
+      "find": "bands: loadSpeechBands(), rows, sims: sorted(sims) };",
+      "replace": "bands: loadSpeechBands(), sims: sorted(sims) };",
       "kills": [
         "resolve stage spec re-keys when a resolver row changes, so a cached resolve never outlives the table it was chosen by"
       ]
@@ -22,8 +22,8 @@
     {
       "name": "the chapter links stay out of the resolve key",
       "file": "products/explainer/src/workflow/stage-spec.ts",
-      "find": "resolve: [\"code\", \"slots\", \"layout\", \"chapter-links\"]",
-      "replace": "resolve: [\"code\", \"slots\", \"layout\"]",
+      "find": "resolve: [\"code\", \"slots\", \"layout\", \"chapter-links\", \"facts\", \"custom-layers\"]",
+      "replace": "resolve: [\"code\", \"slots\", \"layout\", \"facts\", \"custom-layers\"]",
       "kills": [
         "resolve stage spec keys on the chapter links when the script stage wrote them, so a new companion re-resolves the cards"
       ]

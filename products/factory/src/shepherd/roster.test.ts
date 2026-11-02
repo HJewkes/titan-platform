@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { agentChatCleanupAgents } from "./cleanup-ports.js";
 import { agentChatAgents } from "./agents.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
-import { createRosterReader, mutating, ROSTER_TTL_MS, type RosterReader } from "./roster.js";
+import { createRosterReader, mutating, ROSTER_TTL_MS } from "./roster.js";
+import type { RosterReader } from "./ports.js";
 
 const row = (name: string): AgentRow => ({
   name,

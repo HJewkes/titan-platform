@@ -247,7 +247,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
+| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides, template-fill and chart-integrity gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render` | in-process, no model call: the template fill to a storyboard, `compileTimeline`, the composition page and `renderVideo` behind the pre-capture QA gate (below) | script, resolved, words, audio (+ code, slots, generated-slots when a run has them) → mp4, vtt, render-manifest, timeline, page |
 | `qa` | in-process, no model call: render-qa's gate at the cue moments and the 2 Hz sweep over the served page tree in Chromium, the gate profile's verdict, the DOM probe, and ffprobe and ffmpeg for the MP4's length and frame change (below) | mp4, timeline, words, script, resolved, page (+ visual, code, slots when a run has them) → qa, qa-crops, framediff and qa-probe past 64 kB |
@@ -291,6 +291,17 @@ off unless the host passes a `layerRepairer`: no agent-chat binary on `PATH` or 
 because the installed `beat-builder` profile predates its TSX variant. They turn on by default after TP-2608 ships
 that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
+
+**Custom layers on the page, and the text check** (TP-4418). The page draws a custom layer in the stage box between
+empty chrome bands, the same box a stage kind fills, so the layer's `inset: 0` clears the chrome. Its anchors are
+still cells of the full frame. After each commit the layer host raises any text under the page's `--beat-floor`
+(40 px, qa's small-text floor) to the floor. After the compile gate and the cue check, the host's `layerTextCheck`
+(`chromiumLayerTextCheck`, Chromium, $0) renders the layer alone on the composition page. It seeks to each cue
+word's planned time plus 1 s and to the beat's end. At each moment it applies qa's own `small-text` and
+`under-chrome` findings at qa's thresholds, and a `bad-text` rule for visible `NaN`, `undefined`, `null` or `[object`.
+A layer that breaks a rule is rebuilt once, with a `rebuild` field naming each element, its text and the rule. The
+rebuild's spend joins the build's. A rebuild that does not compile, drops a cue target or still breaks a rule fails
+resolve with one row per beat, element and rule. `layerTextCheck: null` turns the check off; the test host does.
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
@@ -369,12 +380,18 @@ the template fill as resolve gated it (cited `code`, the owner's `slots` pin, el
 `boardFromFill` makes the storyboard: each beat's spec type and slots, its planned seconds and its script cue words.
 `storyboardIds` (`src/render/beat-ids.ts`) is the one place script ids become `beat-01`, `beat-02`, ... in script
 order; it renames the `words.json` beats and links each `<script id>.wav` of the `audio` tree under its new name, and
-qa's lead-line set goes through it too. A custom-layer beat is drawn from its template spec, with a stage note, until
-TP-2607 C4 renders custom layers. `compileTimeline` writes `timeline.json`; the built composition page is copied into
+qa's lead-line set goes through it too. A custom-layer beat is never template-filled (`isCustomRow` is the one
+predicate resolve's gate and render share): the board holds it by spec type with no slots, its built layer from the
+`custom-layers` tree draws it, and a run with no built layer for it fails naming the beat. `compileTimeline` writes `timeline.json`; the built composition page is copied into
 the `page` tree, with the render variant's style pack as `style-pack.css` (`:root { --pack-<slot>: var(--<token>); }`)
 linked from its head, and served beside the timeline; `renderVideo` renders it behind the run type's gate profile
 (`qa { mode: "gate", gate: loadQaGate(type) }`, or `"skip"` with `noQa`). The stage stores `mp4`, `vtt`,
-`render-manifest`, `timeline` and the `page` tree it served, which is the tree qa serves again. Render variant params:
+`render-manifest`, `timeline` and the `page` tree it served, which is the tree qa serves again. The pre-capture gate
+samples the cue moments and the 2 Hz sweep. After encode, the stage runs the qa stage's report core (`qa/qa-core.ts`)
+on the MP4, the page it captured and the qa stage's inputs, with the run type's timing, then every row of
+`QA_GATE_ROWS` (`qa/qa-gates.ts`, the same list the qa stage's checks read). The rows show on render's record as
+`qa:<row>`. A failing gate row refuses the render and keeps `qa.json` as the failed record's `qa-report`, so render
+refuses whatever the qa stage would fail (TP-4536). Render variant params:
 `workers` (capture workers, `min(16, cores)` by default, part of the key since worker count is still part of a
 render's identity), `twoRun` (render twice at the same worker count and report whether the MP4 bytes match, the
 `two-run` check, never a gate) and `noQa` (the manifest records `qaGate: "skipped"`). The page and capture sit behind
@@ -383,6 +400,16 @@ still has a `render` block is refused, naming where each retired command went: `
 the spike page's `vite build` (the composition page, built once per source sha in the explainer cache) and `render.ts`
 (`renderVideo`: capture, mix, `captions.vtt`, `render-manifest.json` and its QA gate). Its mid and end−1 s contact
 sheet (`sheet`) is dropped until the beat-aware sheets (TP-3000), and `render-json` is now `render-manifest`.
+
+**Stage fit (TP-4408).** A template beat in the stage box fits itself to it: `useStageFit` (`beats/stage/stageFit.ts`)
+searches `--beat-fit` (beats.css) from 1 down to 0.2 on every render, and every text token shrinks with it to the 40 px
+type floor qa's G8 gate enforces, never under it. A stat card reserves its settled figure's width, so the fit does
+not change while the figure counts up. Content still past the box at the floor is a row (`overflow-row.ts`): the beat,
+the element by slot id and class (`figures-2 beat-stat-label`), the px per side and a hint such as `shorten ... to <= 12
+chars`. Before the QA gate and any capture, `renderVideo` runs the stage-fit scan (`render/stage-fit-scan.ts`): it
+opens the page with `?stage-fit=report`, which records each row on `window.__stageOverflows` and draws on, seeks every
+beat at 2 Hz and at its settled end, and throws one `StageOverflow` that lists every row. Outside report mode the page
+still throws at the first row, so a capture never draws content under the chrome.
 
 **The sheets stage (TP-4018).** The port of the host's `write_video_meta.py`. ffprobe reads the MP4's duration and
 ffmpeg grabs a 480 px poster at `posterAtS`, 30 % in rounded to a tenth of a second. `buildSidecar` writes
@@ -425,8 +452,15 @@ with thresholds from the run's type profile `pacing` (optional `pictureChangeFai
 `readingMinS` 1.5 default when a type leaves them out): `picture-change` (the longest gap between a beat's cut and the
 cues whose frames move; warns above `pictureChangeMaxS`, fails above `pictureChangeFailS`), `static-window` (a still
 picture over `staticMaxS` outside a held beat or a reading hold), `cue-onset` (each cue within `cueOnsetS` of its STT
-word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). The
-spike's G1, G7, G8, G9, G10, G12 and G13 are reported; the module doc says why the others are not ported. `timing`
+word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). TP-4325
+gates three on-screen word checks too: the spike's G9 (a headline at most 10 words, a label at most 3), G10 (no
+display text repeats 5 or more narration words in a row) and `words-per-frame` (at most 20 prose words on screen together
+at any sampled moment of a prose beat; `code-walk`, `docs-vs-code` and `fix` beats are not counted). The spike's G1, G7, G8, G12 and G13 are reported; the
+module doc says why the others are not ported. TP-4329 reports two temporal-contiguity checks
+(`qa/reference-timing.ts`): `early-reveal` (no text element holding a cue's word shows more than one sentence before
+that word is said) and `hold-through-reference` (a text element stays on screen until 0.5 s past the last word of its
+beat's narration that names it). Both match an element to the narration by word, not by element id, so a cue that
+highlights text already on screen can read as an early reveal; they stay reported until real renders calibrate them. `timing`
 also carries `static_window_count` and `picture_change_gap_max`, ar target 3's metric (TP-4033).
 The body never fails on a finding: its gates read `qa.json`, so a held error fails
 the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
@@ -470,7 +504,7 @@ same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render` | `duration-agreement`: the manifest's page and mix lengths agree within 1e-6 s (renderVideo refuses first; this re-asserts it over the stored manifest) | `two-run`: two renders at the same worker count gave the same MP4 bytes, when the variant sets `twoRun` |
-| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes; `headline-label-words` (G9), `narration-shared-run` (G10): that `timing` gate passes; `words-per-frame`: at most 20 words on screen at any sampled moment of a beat that is not a code beat; the WCAG 2.2 AA checks (decision 551): `narration-facts` (an on-screen number or headline name the narration never says, 1.2.5), `photosensitive-flash` (more than three general or red flashes a second, 2.3.1), `text-contrast` (text under 4.5:1, or 3:1 from 24 px, 1.4.3) and `chart-mark-contrast` (a chart mark under 3:1 on its ground, 1.4.11) | `captions-complete`, `captions-words`, `captions-lines`, `captions-cps`, `captions-onset`: captions are optional (decision 551); `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates not gated above, and `early-reveal` and `hold-through-reference` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), the QA timing gates (TP-2669), and the variety lints
@@ -482,6 +516,9 @@ TP-690; until then `explainer stage <name> --json` prints a stage's record with 
 (exit 1), which is what a check engine reads.
 
 **Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
+definition version is a frozen base value plus a hash of the `stage-bumps/` files that name the stage: a change to
+what a stage makes adds a bump file instead of editing a value, so parallel pull requests never race for the next
+one (`stage-bumps/README.md`; CI's `stage-version:check` refuses a lowered or reused version). The
 config is the run's settings for that stage (script model; judge and rounds; render's workers, switches, gate profile
 and style CSS) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
 does not reproduce its audio byte for byte, so a stage downstream of TTS keys on the shas TTS actually wrote. The
@@ -649,6 +686,17 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 `c6-10-rule`, and ch2 shows 13 items over 72 s. Exit codes are the same as `eval l0`:
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
+
+`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>]`
+scores a script at $0 against `doctrine/writing-check.json`, reading each row's status at the script's own length
+bucket. `--format text` takes one beat per line. Rows print by dimension with value, band, human standing, status,
+verdict and up to 3 offending spans. Human standing is a percentile: the share of held-out human windows at that length
+at or below the script's value, read through the 5-point quantile curve in the table. `p62 n=17` adds the window count
+when fewer than 20 stand behind it. The human reference is speech transcripts, not written scripts, and the header says
+so. Under 150 words every row is reported only. Exit 0, 1 when a gate row fails, 2 on bad usage.
+Warning and report-only rows never change the exit code, and dropped rows print no value. It writes nothing unless
+`--bench` is given; then it freezes the script and appends one `writing:<row>` structure row per metric and a
+`writing-check` run record, with the table's sha in the `rules_sha` column.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
@@ -898,6 +946,18 @@ new stage key.
   filled slots with the owner's overrides laid on; a refused fill fails it. `word-budget` fails on any beat or
   block over its cap. `slot-overrides` refuses an owner override the chosen beat spec would not accept (below).
   `template-fill` fails when `fillScript` refuses a beat, naming it; a fallback passes and is listed in the detail.
+  `chart-integrity` (`chart-integrity.ts`, TP-4332) reads each filled `chart` and `replot` beat's optional `baseline`,
+  `axisBreak`, `scale` and `legend` slots: it fails bars on a baseline above zero or with a broken axis (CH-11, CH-13),
+  a `sequential` colour scale whose CIELAB L* is not strictly monotonic or a `diverging` one not light at one interior
+  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The `chart`
+  page kind draws all four (`beats/chart-frame.tsx`, TP-4337): its axis starts at `baseline` and names it when it is
+  not zero, `axisBreak` draws a break mark at the origin, `scale` colours each point by value (a diverging scale
+  centred on the baseline) and `legend` keys each series to its colour. `replot` has no page kind yet.
+  A line chart of more than 7 points closes its column gap and gives its plot 320 px, since its labels wrap to two
+  lines; a legend takes another 120 px from the plot. So a line chart of up to 12 points fits its stage box, with or
+  without a legend (TP-4338).
+  A bar chart of more than 9 rows packs to 44 px rows on a 6 px gap, and with a legend to 40 px rows on 4 px, so a
+  bar chart of up to 12 rows fits its stage box, with or without a legend (TP-4343).
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

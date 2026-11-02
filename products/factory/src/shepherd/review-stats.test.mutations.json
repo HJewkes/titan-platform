@@ -31,8 +31,8 @@
     {
       "name": "the v2 migration keeps the watermark, so v1 rows are never read again",
       "file": "products/factory/src/shepherd/review-stats-store.ts",
-      "find": "  DELETE FROM review_meta WHERE key = 'refreshed_through';",
-      "replace": "",
+      "find": "up: (db) => db.exec(V2) },\n  { version: 3, name: \"factory:review_stats_scope_check\", up: (db) => db.exec(V3) },",
+      "replace": "up: (db) => db.exec(V2.replace(/DELETE[^;]*;/, \"\")) },\n  { version: 3, name: \"factory:review_stats_scope_check\", up: (db) => db.exec(V3.replace(/DELETE[^;]*;/, \"\")) },",
       "kills": [
         "review labels migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again"
       ]

@@ -31,6 +31,12 @@ interface Call {
   init: RequestInit;
 }
 
+function onlyCall(calls: Call[]): Call {
+  const [call] = calls;
+  if (call === undefined) throw new Error("expected a fetch call");
+  return call;
+}
+
 let home: string;
 let profile: AccountProfile;
 let file: string;
@@ -93,7 +99,7 @@ function expectCanaryAbsent(text: string): void {
 }
 
 function expectNoCanary(...values: unknown[]): void {
-  for (const value of values) expectCanaryAbsent(value instanceof Error ? errorText(value) : (JSON.stringify(value) ?? ""));
+  for (const value of values) expectCanaryAbsent(value instanceof Error ? errorText(value) : `${JSON.stringify(value)}`);
   expectCanaryAbsent(JSON.stringify(deposits));
   expectCanaryAbsent(output.text());
 }
@@ -168,7 +174,7 @@ describe("refreshIfNeeded exchanges the refresh token the way Claude Code does",
     await refresh(fetch);
 
     expect(calls).toHaveLength(1);
-    const [{ url, init }] = calls as [Call];
+    const { url, init } = onlyCall(calls);
     expect(url).toBe(TOKEN_URL);
     expect(init.method).toBe("POST");
     expect(init.redirect).toBe("error");
@@ -190,7 +196,7 @@ describe("refreshIfNeeded exchanges the refresh token the way Claude Code does",
 
     await refresh(fetch);
 
-    const body = JSON.parse(String((calls[0] as Call).init.body));
+    const body = JSON.parse(String(onlyCall(calls).init.body));
     expect(body.client_id).toBe(clientId);
     expect(body.scope).toBe("user:inference");
   });
@@ -419,10 +425,10 @@ describe("refreshIfNeeded yields to another writer", () => {
     const primary = path.join(profile.configDir, REFRESH_LOCK);
     const realRmdir = fs.rmdirSync;
     const racer: { release?: (() => void) | null } = {};
-    const rmdir = vi.spyOn(fs, "rmdirSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
-      (realRmdir as (...args: unknown[]) => void)(target, ...rest);
-      if (String(target) === primary && racer.release === undefined) racer.release = acquireRefreshLock(profile.configDir, uid);
-    }) as typeof fs.rmdirSync);
+    const rmdir = vi.spyOn(fs, "rmdirSync").mockImplementation((...args: Parameters<typeof fs.rmdirSync>) => {
+      realRmdir(...args);
+      if (String(args[0]) === primary && racer.release === undefined) racer.release = acquireRefreshLock(profile.configDir, uid);
+    });
     const { fetch, calls } = fakeFetch(() => granted());
 
     const result = await refresh(fetch);
@@ -524,10 +530,10 @@ describe("refreshIfNeeded trusts only its own regular file as the lock holder re
       throw new Error("EXDEV");
     });
     const realRm = fs.rmSync;
-    vi.spyOn(fs, "rmSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
-      if (String(target) === holderFile()) throw new Error("EACCES");
-      return (realRm as (...args: unknown[]) => void)(target, ...rest);
-    }) as typeof fs.rmSync);
+    vi.spyOn(fs, "rmSync").mockImplementation((...args: Parameters<typeof fs.rmSync>) => {
+      if (String(args[0]) === holderFile()) throw new Error("EACCES");
+      return realRm(...args);
+    });
     const { fetch } = fakeFetch(() => granted({ refresh_token: NEW_REFRESH_TOKEN }));
 
     const result = await refresh(fetch);
@@ -573,7 +579,7 @@ describe("refreshIfNeeded failures are values with no token, and file one deposi
   ] as const)("reports %s as %s and leaves the file alone", async (_name, failure, respond) => {
     const original = JSON.stringify(expiringCredentials());
     writeText(original);
-    const { fetch } = fakeFetch(respond as () => Promise<Response>);
+    const { fetch } = fakeFetch(respond);
 
     const result = await refresh(fetch);
 

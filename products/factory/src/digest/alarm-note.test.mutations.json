@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stale note is left when the alarm stops",
+      "file": "products/factory/src/digest/run.ts",
+      "find": "if (note === undefined) return rmSync(join(dir, ALARM_NOTE_FILE), { force: true });",
+      "replace": "if (note === undefined) return;",
+      "kills": [
+        "the planner alarm note no alarm writes no file (or clears a stale one)"
+      ]
+    },
+    {
+      "name": "the note lists no gates",
+      "file": "products/factory/src/digest/gate-alarm.ts",
+      "find": "const lines = alarm.listed.map(",
+      "replace": "const lines = [].map(",
+      "kills": [
+        "the planner alarm note a firing alarm writes owner-gate-alarm.md listing the stale gates"
+      ]
+    }
+  ]
+}

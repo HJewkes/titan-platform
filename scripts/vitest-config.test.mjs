@@ -34,6 +34,11 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   }
 });
 
+// Uncapped, an in-process vite build gives each fork a rolldown pool per core, and idle workers spin in sched_yield (TP-4604).
+it("caps rolldown's thread pools for everything the test run starts", () => {
+  for (const pool of ["ROLLDOWN_WORKER_THREADS", "RAYON_NUM_THREADS"]) expect(Number(process.env[pool]), pool).toBeGreaterThan(0);
+});
+
 // A scoped CI run selects projects by name; one left off the list silently runs none of its tests.
 it("names every project in a scoped CI run", () => {
   const scoped = vitestArgs({ mode: "scoped", dirs: [] });
@@ -46,6 +51,39 @@ it("runs every active-work __tests__ file in exactly one project", () => {
   const files = globSync("products/active-work/__tests__/**/*.test.ts", { cwd: ROOT });
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
+});
+
+// A spawn forks its whole parent; in threads, the repo files' git calls forked the multi-GB vitest process (TP-4521).
+it("runs the git-spawning repo tier in forks with the worker heap cap", () => {
+  const repo = config.test.projects.find((project) => project.test.name === "repo");
+  expect(repo.test.pool).toBe("forks");
+  expect(repo.test.execArgv).toEqual(expect.arrayContaining([expect.stringMatching(/^--max-old-space-size=\d+$/)]));
+});
+
+const SHARED_GRAPH_PROJECTS = ["factory", "explainer", "console"];
+const sharedGraphFiles = () =>
+  ["products/factory/src", "products/explainer/src", "apps/console/{src,scripts,server}"].flatMap((dir) => globSync(`${dir}/**/*.test.{ts,tsx}`, { cwd: ROOT }));
+
+it("runs every factory, explainer and console test file in exactly one project", () => {
+  const files = sharedGraphFiles();
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
+});
+
+// Under isolate:false, vi.mock misses a module the worker already loaded, so the test runs against the real one (TP-4441).
+it("keeps every file that mocks a module or stubs HOME out of the isolate:false projects", () => {
+  const isolating = sharedGraphFiles().filter((file) => /vi\.(mock|doMock)\(|stubEnv\(["']HOME/.test(readFileSync(join(ROOT, file), "utf8")));
+  expect(isolating.length).toBeGreaterThan(0);
+  for (const file of isolating) expect(projectsRunning(file).filter((name) => SHARED_GRAPH_PROJECTS.includes(name)), file).toEqual([]);
+});
+
+// As threads these graphs held the shared vitest process at 3 GB, and Node forks all of it for every git child another
+// thread worker spawned: the spawn-heavy files ran up to 2x slower (TP-4526).
+it("runs the isolate:false projects in their own capped forks, not in the shared vitest process", () => {
+  for (const name of SHARED_GRAPH_PROJECTS) {
+    const project = config.test.projects.find((candidate) => candidate.test.name === name);
+    expect(project?.test, name).toMatchObject({ pool: "forks", isolate: false, execArgv: [expect.stringMatching(/^--max-old-space-size=/)] });
+  }
 });
 
 function projectsRunning(file) {
@@ -63,7 +101,7 @@ it("loads the factory test setup and the wait budget for every test", () => {
 
 // Every test runs these, so a pull request touching one must run the whole suite, not just scripts/.
 it("runs the full suite for a pull request that changes a file every test loads", () => {
-  const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs", "scripts/vitest-file-watchdog.mjs"];
+  const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs", "scripts/vitest-file-watchdog.mjs", "scripts/vitest-file-timing.mjs"];
   for (const path of loadedByEveryTest) expect(testScope([path], readWorkspace()), path).toEqual({ mode: "full", reason: path });
 });
 

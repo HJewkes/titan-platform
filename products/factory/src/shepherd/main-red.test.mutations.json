@@ -18,6 +18,33 @@
       "kills": [
         "sh-spawn-fixer tells the fixer a flaky-test fix registers test-only with no mutation spec, and that a rerun thaw leaves the root-cause task"
       ]
+    },
+    {
+      "name": "the fixer is named from the run's own merge sha, not the episode's first red",
+      "file": "products/factory/src/shepherd/main-red.ts",
+      "find": "const name = fixerName(input.repo, redSha);",
+      "replace": "const name = fixerName(input.repo, input.mergeSha);",
+      "kills": [
+        "sh-spawn-fixer two concurrent spawnFixer calls with different merge shas keep one fixer"
+      ]
+    },
+    {
+      "name": "the episode row is not read again after the roster, before the spawn",
+      "file": "products/factory/src/shepherd/main-red.ts",
+      "find": "if (live && !episodeFix(live) && !onRoster) await spawn();",
+      "replace": "if (!onRoster) await spawn();",
+      "kills": [
+        "sh-spawn-fixer spawns nothing when another run records the episode's fixer while the roster is read"
+      ]
+    },
+    {
+      "name": "a fixer whose record lost to another fixer is never retired",
+      "file": "products/factory/src/shepherd/main-red.ts",
+      "find": "if (!fixers.retire) return",
+      "replace": "if (true) return",
+      "kills": [
+        "sh-spawn-fixer retires the fixer it spawned when another fixer was recorded for the episode during the spawn"
+      ]
     }
   ]
 }

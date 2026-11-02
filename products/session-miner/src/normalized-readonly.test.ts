@@ -4,6 +4,7 @@ import path from "node:path";
 import { openSessionGraph } from "@titan-design/session-graph";
 import { hasTable } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "./cli.js";
 import { resolveConfig } from "./config.js";
 import { seedInsightGraph } from "./insights/fixture.js";
@@ -29,7 +30,7 @@ async function ask(args: string[]): Promise<{ code: number; data: unknown; error
   let stdout = "";
   const io = { stdout: (t: string) => void (stdout += t), stderr: () => undefined, env: {} };
   const code = await runCli(["--state", path.join(dir, "state"), "--corpus", path.join(dir, "corpus"), "--graph", foreign, "--json", ...args], io);
-  const out = JSON.parse(stdout) as { data: unknown; error?: string };
+  const out = z.object({ data: z.unknown().optional(), error: z.string().optional() }).parse(JSON.parse(stdout));
   return { code, data: out.data, error: out.error };
 }
 

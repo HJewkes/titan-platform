@@ -76,16 +76,27 @@ export async function built(mt: MutantTree, rebuild: Rebuild): Promise<boolean> 
   return (await runInTree(mt.ctx, mt.tree, rebuild.script, rebuild.args, mt.sandboxUser)).status === 0;
 }
 
+// A pnpm workspace file outside every package (a root script) is plain source no dist/ copy holds, and the whole-repo build it
+// would fall back to fails in the sandbox, so it needs no rebuild.
+async function mutantRebuild(mt: MutantTree, file: string): Promise<Rebuild | null> {
+  if (mt.pnpm && (await owningPackage(mt.ctx, mt.base, file)) === null) return null;
+  return rebuildOf(mt, file);
+}
+
+async function rebuilt(mt: MutantTree, rebuild: Rebuild | null): Promise<boolean> {
+  return rebuild === null || built(mt, rebuild);
+}
+
 /** Applies one mutation from the merge-base text, rebuilds, runs the spec's test file, then restores and rebuilds again. */
 async function runMutant(mt: MutantTree, spec: SpecUnderTest, mutation: Mutation, index: number): Promise<MutantRun> {
   const baseText = await readBlob(mt.ctx, mt.base, mutation.file);
   if (baseText === null) throw new RunError(`mutants: ${mutation.file} is missing at the merge base`);
-  const rebuild = await rebuildOf(mt, mutation.file);
+  const rebuild = await mutantRebuild(mt, mutation.file);
   writeInTree(mt.tree, mutation.file, mutated(baseText, mutation));
-  const run: MutantRun = { spec: spec.path, name: mutation.name, built: await built(mt, rebuild) };
+  const run: MutantRun = { spec: spec.path, name: mutation.name, built: await rebuilt(mt, rebuild) };
   if (run.built) run.report = await testReport(mt.ctx, mt.tree, [spec.testFile], mt.command, `mutant-${index}`, mt.sandboxUser);
   writeInTree(mt.tree, mutation.file, baseText);
-  if (!(await built(mt, rebuild))) throw new RunError(`mutants: rebuilding after restoring ${mutation.file} failed`);
+  if (!(await rebuilt(mt, rebuild))) throw new RunError(`mutants: rebuilding after restoring ${mutation.file} failed`);
   return run;
 }
 

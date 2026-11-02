@@ -108,15 +108,18 @@ describe("emphasis gate verdict", () => {
     expect(emphasisGateVerdict(gateInput())).toEqual({ pass: true, detail: "0 of 4 emphasis cues fail" });
   });
 
-  it("fails naming the first failures by beat and cue", () => {
+  it("fails naming every failing cue by beat, cue, target and reason, with the repair", () => {
     const beats = emphasisScript().beats;
     delete beats[0]!.visual.beat;
     delete beats[1]!.visual.beat;
     beats.push({ ...beats[0]!, id: "b4-walk" }, { ...beats[1]!, id: "b5-map" });
 
-    expect(emphasisGateVerdict(gateInput({ beats }))).toEqual({
-      pass: false,
-      detail: "8 of 8 emphasis cues fail: b1-walk#0 no-beat-spec, b1-walk#1 no-beat-spec, b2-map#0 no-beat-spec, b2-map#1 no-beat-spec, b4-walk#0 no-beat-spec and 3 more",
-    });
+    const verdict = emphasisGateVerdict(gateInput({ beats }));
+
+    expect(verdict.pass).toBe(false);
+    expect(verdict.detail).toMatch(/^8 of 8 emphasis cues fail: b1-walk#0 \S+ no-beat-spec \(the beat names no beat spec \(visual\.beat\)\); /);
+    expect(verdict.detail).toContain("b5-map#1 ");
+    expect(verdict.detail).not.toContain("more");
+    expect(verdict.detail).toMatch(/\. Hint: name the beat's beat spec in visual\.beat$/);
   });
 });

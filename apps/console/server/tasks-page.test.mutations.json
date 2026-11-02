@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "work.tasks sends every open task again",
+      "file": "apps/console/server/task-list.ts",
+      "find": "const LIMIT = 50;",
+      "replace": "const LIMIT = 1_000_000;",
+      "kills": [
+        "work.tasks over a workspace of thousands of open tasks answers the default read with 50 rows under 100 KB, counting every open task"
+      ]
+    },
+    {
+      "name": "a list row carries notes and deliverables again",
+      "file": "apps/console/server/tasks.ts",
+      "find": ".map((task) => listRow(stagedRow(task, evidence)));",
+      "replace": ".map((task) => ({ ...task, ...listRow(stagedRow(task, evidence)) }));",
+      "kills": [
+        "work.tasks over a workspace of thousands of open tasks answers the default read with 50 rows under 100 KB, counting every open task",
+        "work.tasks over a workspace of thousands of open tasks answers the selected initiative's open tasks only, under the same budget"
+      ]
+    },
+    {
+      "name": "the initiative filter is ignored",
+      "file": "apps/console/server/task-list.ts",
+      "find": "(!initiative || row.slug === initiative) &&",
+      "replace": "",
+      "kills": [
+        "work.tasks over a workspace of thousands of open tasks answers the selected initiative's open tasks only, under the same budget"
+      ]
+    }
+  ]
+}

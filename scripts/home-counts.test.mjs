@@ -1,8 +1,14 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { fillCounts, homeCounts, roundedTestCount } from "../site/home-counts.data.mjs";
+
+const roots = [];
+
+afterAll(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+});
 
 function touch(root, path, text = "") {
   mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -12,6 +18,7 @@ function touch(root, path, text = "") {
 /** Two publishable packages, one private package and one product, with no test files yet. */
 function workspace() {
   const root = mkdtempSync(join(tmpdir(), "home-counts-"));
+  roots.push(root);
   const $tiers = { 0: ["packages/alpha", "packages/beta", "packages/hidden"], product: ["products/app"] };
   touch(root, ".codewatch/check.json", JSON.stringify({ rules: [{ type: "layered-deps", $tiers }] }));
   touch(root, "apps/.gitkeep");

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "exit 69 is not read as an unreachable broker",
+      "file": "packages/agent-dispatch/src/dispatch.ts",
+      "find": "if (result.status === BROKER_UNAVAILABLE_EXIT) return true;",
+      "replace": "if (false) return true;",
+      "kills": [
+        "broker unavailable ls raises BrokerUnavailableError on exit 69 with any text"
+      ]
+    },
+    {
+      "name": "the no-autostart probe line is not read as an unreachable broker",
+      "file": "packages/agent-dispatch/src/dispatch.ts",
+      "find": "/^broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one$/m,",
+      "replace": "/^$NEVER/m,",
+      "kills": [
+        "broker unavailable ls raises BrokerUnavailableError on the no-autostart probe line, exit 1"
+      ]
+    }
+  ]
+}

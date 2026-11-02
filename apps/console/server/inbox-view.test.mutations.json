@@ -13,8 +13,8 @@
     {
       "name": "a deploy-pause-clear deposit gets no console tap",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",
-      "replace": "new Set([\"merge-at-head\", \"close-pr\"]);",
+      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\"]);",
+      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\"]);",
       "kills": [
         "a deposit's typed op becomes an owner-op tap for a deploy-pause-clear"
       ]
@@ -22,8 +22,8 @@
     {
       "name": "a factory-config-set deposit gets a console tap before its effect lands",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",
-      "replace": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\", \"factory-config-set\"]);",
+      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\"]);",
+      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"factory-config-set\"]);",
       "kills": [
         "a deposit's typed op stays on the terminal for a kind with no console tap yet"
       ]

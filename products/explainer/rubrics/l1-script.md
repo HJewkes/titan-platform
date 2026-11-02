@@ -19,6 +19,14 @@ does not count.
 
 Be strict: a script that narrates its own review process scores at most 2 on J1.
 
+Specificity: every beat names a concrete thing, such as a file, a command, a person or a worked example. A beat that
+says "some", "many", "things" or "various parts" where the facts name the thing is vague. Two or more vague beats cap
+J6 at 3; quote them as its evidence.
+
+Endings: a beat ends when its point is made. A beat that closes on a moral, a lesson or a summing-up button ("That is
+the whole point.", "And that changes everything.") restates instead of moving on, and the script ends on its last
+point, not a recap. Two or more such closers cap J7 at 3; quote them as its evidence.
+
 ## Reported rows: the cold-viewer dimensions (J8 to J12)
 
 These five rows are scored on every audition candidate and every run, and reported only. They never fail a run, gate a

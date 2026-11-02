@@ -81,7 +81,7 @@ function readHostTargets(readFile: (path: string) => string, path: string): Host
   try {
     text = readFile(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
   return hostJsonSchema.parse(JSON.parse(text)).health?.targets ?? [];
@@ -91,12 +91,16 @@ function overlay(defaults: HealthTarget[], overrides: HostTarget[]): HealthTarge
   const byName = new Map(defaults.map((t) => [t.name, t]));
   for (const override of overrides) {
     const base = byName.get(override.name);
-    if (!base && !override.url) return undefined;
-    byName.set(override.name, { timeoutMs: DEFAULT_TIMEOUT_MS, ...base, ...stripUndefined(override) } as HealthTarget);
+    const url = override.url ?? base?.url;
+    if (!url) return undefined;
+    byName.set(override.name, {
+      name: override.name,
+      url,
+      timeoutMs: override.timeoutMs ?? base?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      expectPort: override.expectPort ?? base?.expectPort,
+      observe: override.observe ?? base?.observe,
+      pidStateDir: override.pidStateDir ?? base?.pidStateDir,
+    });
   }
   return [...byName.values()];
-}
-
-function stripUndefined<T extends object>(value: T): Partial<T> {
-  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
 }

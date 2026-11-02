@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the newest snapshot is the basis whatever tree it holds",
+      "file": "packages/code-graph/src/incremental.ts",
+      "find": "if (!best || shared > best.shared) best = { id: snap.id, fingerprints, shared };",
+      "replace": "if (!best) best = { id: snap.id, fingerprints, shared };",
+      "kills": ["an unchanged tree re-parses nothing when a different tree was indexed after it"]
+    }
+  ]
+}
