@@ -88,8 +88,11 @@ async function answeredUnder(dbPath: string, runId: string, definition: typeof o
   try {
     await host.adopt();
     if (host.runtime.status(runId)?.status === "paused") host.runtime.signal(runId, "approve", { approve: true }, OWNER);
-    await vi.waitFor(() => expect(["completed", "recovery_required", "failed"]).toContain(host.runtime.status(runId)?.status));
-    return host.runtime.status(runId) as WorkflowRun;
+    return await vi.waitFor(() => {
+      const run = host.runtime.status(runId);
+      if (!run || !["completed", "recovery_required", "failed"].includes(run.status)) throw new Error(`run ${runId} has not settled`);
+      return run;
+    });
   } finally {
     host.close();
   }
