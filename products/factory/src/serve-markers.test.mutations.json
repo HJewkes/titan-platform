@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the marker shadow is on by default",
+      "file": "products/factory/src/config.ts",
+      "find": "enabled: z.boolean().default(false)",
+      "replace": "enabled: z.boolean().default(true)",
+      "kills": ["serve wires the marker shadow from markers.shadow serve with no markers config sets no marker shadow and writes no log row"]
+    },
+    {
+      "name": "serve's marker shadow has no carry probe",
+      "file": "products/factory/src/serve-markers.ts",
+      "find": ", carryProbe: carryProbeSource(mirrorOf, diffPin) }",
+      "replace": " }",
+      "kills": ["serve wires the marker shadow from markers.shadow a verdict:merge call under the enabled shadow pins through the mirror instead of reading 'no diff pin source'"]
+    },
+    {
+      "name": "a shadow failure reaches the run",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "      // A sink that throws must not reach the run either.\n    }\n    return undefined;",
+      "replace": "      // A sink that throws must not reach the run either.\n    }\n    throw error;",
+      "kills": ["serve wires the marker shadow from markers.shadow serve with markers.shadow.enabled writes a verdict row and a marker beside step_results for a ci-wait run"]
+    }
+  ]
+}
