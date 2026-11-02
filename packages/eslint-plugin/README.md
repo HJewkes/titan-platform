@@ -41,8 +41,9 @@ next, so an agent that hits the rule can fix the code without asking.
   flag. It cannot follow a time through an imported helper (TP-4262).
 - `recipe-step-in-loop` (opt-in, not in `recommended`): `ctx.dispatch`, `ctx.seed`, `ctx.assisted`,
   `ctx.authorize`, `step(ctx, …)` and `codeStep(ctx, …)` are reported inside a `for`, `while` or
-  `do` loop or a `map`/`forEach`/`flatMap`/`reduce`/`filter`/`some`/`every` callback, unless the loop
-  sits in an `all(...)` that is itself in no loop. A `mapItems` callback is a fan-out, not a loop. It
+  `do` loop or a `map`/`forEach`/`flatMap`/`reduce`/`filter`/`some`/`every` callback, unless it is in a `.map` or `.flatMap`
+  callback written directly as an argument of an `all(...)` that is itself in no loop (a loop deeper in
+  that callback is still reported). A `mapItems` callback is a fan-out, not a loop. It
   matches the name `ctx` and reads one function at a time, so a helper that holds the step op and is
   called in a loop is not seen; the runtime orphan trap (TP-3108 S5) covers that.
 - `recommended`: a flat config enabling the five rules other than `max-line-length`, `no-test-clock-budget`, `no-wall-clock-motion` and `recipe-step-in-loop` at `error` under the `titan` namespace.
