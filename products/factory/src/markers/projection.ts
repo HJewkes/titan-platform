@@ -25,7 +25,7 @@ function pick(root: unknown, segments: readonly string[]): { present: boolean; v
   let current = root;
   for (const segment of segments) {
     if (typeof current !== "object" || current === null || !Object.hasOwn(current, segment)) return { present: false };
-    current = (current as Record<string, unknown>)[segment];
+    current = Reflect.get(current, segment);
   }
   return current === undefined ? { present: false } : { present: true, value: current };
 }

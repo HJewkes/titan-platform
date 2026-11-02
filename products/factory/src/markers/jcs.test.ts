@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { jcs } from "./jcs.js";
 
@@ -23,7 +24,7 @@ describe("jcs", () => {
 
   it("jcs sorts keys by UTF-16 code unit, as RFC 8785 §3.2.3's example orders them", () => {
     const input = { "\u20ac": "Euro", "\r": "CR", "\ufb33": "Hebrew", "1": "One", "\u{1F600}": "Emoji", "\u0080": "Control", "\u00f6": "o-diaeresis" };
-    const order = [...jcs(input).matchAll(/"((?:[^"\\]|\\.)*)":"[^"]*"/g)].map((match) => JSON.parse(`"${match[1]}"`) as string);
+    const order = [...jcs(input).matchAll(/"((?:[^"\\]|\\.)*)":"[^"]*"/g)].map((match) => z.string().parse(JSON.parse(`"${match[1]}"`)));
     expect(order).toEqual(["\r", "1", "\u0080", "\u00f6", "\u20ac", "\u{1F600}", "\ufb33"]);
     expect(jcs({ b: 1, a: { d: 1, c: 2 } })).toBe('{"a":{"c":2,"d":1},"b":1}');
   });

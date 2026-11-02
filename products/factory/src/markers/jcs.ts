@@ -29,11 +29,10 @@ function writeObject(value: object, path: Set<object>): string {
   path.add(value);
   try {
     if (Array.isArray(value)) return `[${value.map((item) => write(item === undefined ? null : item, path)).join(",")}]`;
-    const record = value as Record<string, unknown>;
-    const members = Object.keys(record)
-      .filter((key) => record[key] !== undefined)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-      .map((key) => `${JSON.stringify(key)}:${write(record[key], path)}`);
+    const members = Object.entries(value)
+      .filter(([, member]) => member !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, member]) => `${JSON.stringify(key)}:${write(member, path)}`);
     return `{${members.join(",")}}`;
   } finally {
     path.delete(value);

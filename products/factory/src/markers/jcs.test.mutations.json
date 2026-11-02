@@ -11,8 +11,8 @@
     {
       "name": "keys sort by locale",
       "file": "products/factory/src/markers/jcs.ts",
-      "find": ".sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))",
-      "replace": ".sort((a, b) => a.localeCompare(b))",
+      "find": ".sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))",
+      "replace": ".sort(([a], [b]) => a.localeCompare(b))",
       "kills": ["jcs sorts keys by UTF-16 code unit, as RFC 8785 §3.2.3's example orders them"]
     },
     {
