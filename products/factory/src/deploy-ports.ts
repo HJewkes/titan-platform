@@ -4,12 +4,15 @@ import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { errorCode } from "@titan-design/rpc-protocol/narrow";
+import { openDatabase } from "@titan-design/store-sqlite";
+import { resolveDbPath } from "./config.js";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";
 import type { CommandResult } from "./run-command.js";
 import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window.js";
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
+import { openIntentsIn } from "./registry/intent-readers.js";
 import type { PauseClearPorts } from "./owner-ops/pause-clear.js";
 import { systemServicePorts } from "./service-ports.js";
 
@@ -107,7 +110,17 @@ async function probeServe(port: number, timeoutMs: number): Promise<Probe> {
   }
 }
 
-export function systemDeployPorts(checkout: string): DeployPorts {
+/** Read-only, so a running serve is never disturbed; a missing db or table throws and the deploy refuses. */
+function openIntentsAt(dbPath: string, steps: readonly string[]): Record<string, number> {
+  const db = openDatabase(dbPath, { readonly: true });
+  try {
+    return openIntentsIn(db, steps);
+  } finally {
+    db.close();
+  }
+}
+
+export function systemDeployPorts(checkout: string, env: NodeJS.ProcessEnv = process.env): DeployPorts {
   const gitEnv = gitChildEnv(process.env);
   return {
     ...systemServicePorts(),
@@ -123,6 +136,7 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     createExclusive,
     rename,
     isAlive: isProcessAlive,
+    openIntents: (steps) => openIntentsAt(resolveDbPath({ env }), steps),
   };
 }
 
