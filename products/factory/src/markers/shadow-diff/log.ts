@@ -129,7 +129,7 @@ export function logSink(db: Db, now: () => string): ShadowSink {
   };
 }
 
-interface ShadowLogRow {
+export interface ShadowLogRow {
   id: number;
   at: string;
   kind: string;
