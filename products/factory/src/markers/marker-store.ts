@@ -194,3 +194,18 @@ export function readMarkerValues(db: Db, store: BlobStore, id: number): MarkerVa
   if (marker.outputDigest && !output) missing.push("output");
   return output ? { reads, output, missing } : { reads, missing };
 }
+
+/**
+ * The current marker per identity of `step` that was written under another version than `version`: what a bump leaves
+ * behind. Superseded rows are not listed, since a newer row at the same identity already answers for them.
+ */
+export function markersBehindVersion(db: Db, step: string, version: string): { item: string; fact: string; id: number }[] {
+  return db
+    .prepare<[string, string], { item: string; fact: string; id: number }>(
+      `SELECT m.item, m.fact, m.id FROM factory_marker m
+       WHERE m.step = ? AND m.version <> ?
+         AND m.id = (SELECT MAX(n.id) FROM factory_marker n WHERE n.item = m.item AND n.fact = m.fact AND n.pin_class = m.pin_class AND n.pin = m.pin)
+       ORDER BY m.id`,
+    )
+    .all(step, version);
+}
