@@ -32,7 +32,7 @@ export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition,
   // An entry-level failure names no step.
   const site = { runId: ctx.runId, stepId: "", fact: "", memoKey: "" };
   const end = async (): Promise<void> => {
-    await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log));
+    void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log)));
     // D-M2-01 measures every entry from these, so they are sent however the entry settled.
     await swallow(deps, site, () => deps.sink({ ...site, kind: "entry-end", counters: { ...meter.counters } }));
   };
