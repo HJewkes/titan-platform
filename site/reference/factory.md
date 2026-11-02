@@ -194,6 +194,17 @@ titan-factory context-audit --assert-rule "Rule marker A." implementer,reviewer
   prompt contains the marker. Only the system prompt counts, not instructions files, so a rule
   still held only in a CLAUDE.md fails.
 
+## Marker shadow (SHD-2)
+
+The marker shadow writes beside the run record and compares itself with it; it never decides anything. Each compared step leaves one row in the append-only `factory_shadow_log` table, in one of the pin families `tree`, `diff` or `observed`.
+
+- **Classes.** Fact rows are `hit` (would fast-forward, same projection), `false-hit` (would fast-forward, different projection), `miss` (would run, ran) or `unmarked` (no verdict). Carry rows are `carry-agrees` or `pin-differs`. A `false-hit` that was materially valid but not fully valid is counted apart as `materialOnly`: an under-declared material input.
+- **Causes.** Every `pin-differs` row carries one of `rebase-context`, `conflict-merge-up`, `whitespace`, `ambiguous-base`, or else `unclassified`.
+- **Verbs.** `titan-factory markers shadow-diff [--since 48h] [--json]` prints the counts. The JSON `counts` object (per family: `classes`, `causes`, `materialOnly`) is the published input to F12 (D-M6-01) and D-M3-17. `titan-factory markers shadow-gate [--json]` exits 0 on pass and 1 when blocked. Both open the database read-only.
+- **The gate.** It passes only when, over the trailing 48 hours, no gated family has a `false-hit`, `unmarked`, `call-site-orphan`, `shadow-error` or `budget-exceeded` row, no `pin-differs` row is `unclassified`, each family with a fact entry has at least one compared row, and the shadow has been on for 48 hours. A family with no fact entry reports `vacuous` and does not block.
+
+The gate never turns the shadow off; D-M3-26 does. Nothing reads the gate's result, and running it leaves the database untouched. SHD-1 (D-M8-01, TP-2760) follows. The comparator and the log live in `products/factory/src/markers/shadow-diff/` and are deleted by D-M8-09.
+
 ## What it deliberately does not do
 
 It does not create relay items, and it requests no agent except the Shepherd reviewer,
