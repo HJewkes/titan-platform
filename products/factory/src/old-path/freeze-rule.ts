@@ -22,13 +22,13 @@ const Milestones = z.object({
   milestones: z.array(z.object({ id: z.string(), exited: z.union([z.boolean(), z.string().min(1)]) })),
 });
 
-export type CarveOut = { tag: string } | { stale: string } | undefined;
-export type ExitedRead = { exited: Set<string> } | { unread: string };
+type CarveOut = { tag: string } | { stale: string } | undefined;
+type ExitedRead = { exited: Set<string> } | { unread: string };
 
 /** What the task read yielded; the pure rule takes it as data so it never reads a task itself. */
-export type TaskRead = { tags: string[] } | { absent: true } | { unread: string };
+type TaskRead = { tags: string[] } | { absent: true } | { unread: string };
 
-export type OldPathVerdict =
+type OldPathVerdict =
   | { status: "clear" }
   | { status: "carved"; touches: string[]; tag: string; active: boolean }
   | {
@@ -38,7 +38,7 @@ export type OldPathVerdict =
       active: boolean;
     };
 
-export interface OldPathInput {
+interface OldPathInput {
   repo: string;
   files: PrFile[];
   task: TaskRead;
