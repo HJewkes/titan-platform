@@ -29,6 +29,7 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "skill-path": "D21",
   "ci-policy-weakened": "D21",
   "ci-policy-malformed": "D21",
+  "attest-unmet": "D6",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
   "head-mismatch": "D5",

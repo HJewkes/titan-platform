@@ -3,7 +3,7 @@
 // hash or bump, or carry an attestation for the new closure (TP-3106 S6). `--write` refreshes the committed lock.
 // The closure walk is TypeScript, so this runs the factory's built products/factory/dist/registry/closure-main.js: build first.
 // On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5).
-// Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, then CLOSURE_BASE, then origin/main)
+// Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, CLOSURE_BASE, origin/$GITHUB_BASE_REF on a PR, then origin/main)
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -60,6 +60,12 @@ export function runCheck({ git, readFile, check, base, prNumber }) {
   return { ...result, failures: [...result.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
 }
 
+/** argv, then CLOSURE_BASE, then the pull request's base branch (so a stacked PR is judged against its parent), then origin/main. */
+export function resolveBase(argv, env) {
+  const prBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : undefined;
+  return argv[0] || env.CLOSURE_BASE || prBase || DEFAULT_BASE;
+}
+
 function closureMain(args, input) {
   if (!existsSync(CLOSURE_MAIN)) throw new Error(`${CLOSURE_MAIN} is missing; run pnpm build first`);
   return execFileSync(process.execPath, [CLOSURE_MAIN, ROOT, ...args], { encoding: "utf8", input });
@@ -74,7 +80,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
   const readFile = (path) => readFileSync(join(ROOT, path), "utf8");
   const check = (input) => JSON.parse(closureMain([], JSON.stringify(input)));
   const prNumber = readPrNumber(env, (path) => readFileSync(path, "utf8"));
-  const { failures, notices } = runCheck({ git, readFile, check, base: argv[0] || env.CLOSURE_BASE || DEFAULT_BASE, prNumber });
+  const { failures, notices } = runCheck({ git, readFile, check, base: resolveBase(argv, env), prNumber });
   for (const notice of notices) console.log(`registry:closure: ${notice}`);
   for (const failure of failures) console.error(`registry:closure: ${failure}`);
   if (failures.length > 0) process.exitCode = 1;

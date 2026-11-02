@@ -23,6 +23,7 @@ function rereadInput(runId: string, evidence: MergeEvidence, { visualPaths, visu
     ...(visualPaths && { visualPaths }),
     ...(visualBaselines && { visualBaselines }),
     ...(evidence.ciPolicy && { ciPolicy: evidence.ciPolicy }),
+    ...(evidence.attestVerdicts && { attest: evidence.attestVerdicts }),
     ...(evidence.grantWithheld && { grantWithheld: evidence.grantWithheld }),
     ...(record.proofUnverified !== undefined && { proofUnverified: record.proofUnverified }),
     ...(record.proofBase !== undefined && { proofBase: record.proofBase }),
