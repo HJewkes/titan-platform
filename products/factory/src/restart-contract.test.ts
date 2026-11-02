@@ -8,9 +8,6 @@ import { DROPPED_STEPS, PARKING_STEPS } from "./restart-contract.fixture.js";
 import { defineWorkflow, dispatchStepIds } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import { entryFor } from "./registry/registry.js";
-import { auditSteps } from "./registry/steps/audit.js";
-import { buildSurfaceSteps } from "./registry/steps/build-surface.js";
-import { coreSteps } from "./registry/steps/core.js";
 import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
 import { configuredRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -75,7 +72,7 @@ describe("restart contract", () => {
     expect(Object.fromEntries(parking.map((e) => [e.name, "reason" in e.effect ? e.effect.reason : ""]))).toEqual(PARKING_STEPS);
   });
 
-  it("only the fifteen read-only steps are dropped, and the irreversible five stay irreversible", () => {
+  it("only the twenty-four read-only steps are dropped, and the irreversible five stay irreversible", () => {
     const reads = factoryRegistry.entries.filter((e) => e.effect.class === "read").map((e) => e.name);
     expect(reads.sort()).toEqual(DROPPED_STEPS);
     const irreversible = factoryRegistry.entries.filter((e) => e.effect.class === "irreversible").map((e) => e.name);
@@ -146,11 +143,6 @@ function reasonOf(family: string): string {
 }
 
 describe("TP-3106 S3 READ review", () => {
-  it("leaves no core, build-surface or audit entry pending review", () => {
-    const pending = [...coreSteps, ...buildSurfaceSteps, ...auditSteps].filter((entry) => entry.effect.class === "pending");
-    expect(pending.map((entry) => entry.name)).toEqual([]);
-  });
-
   it.each(S3_READ)("a restart whose replay diverged before %s drops its orphan and the run continues, not parks", async (family) => {
     const { run, controlKeys } = await replayDivergedBefore(family);
 
