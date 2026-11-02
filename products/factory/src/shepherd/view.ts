@@ -3,6 +3,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
+import { attestedField } from "./attest-field.js";
 import { autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import type { ShepherdEvent } from "./events.js";
@@ -205,7 +206,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
-    lastNone: liveLastNone(run, steps), ...autoPassField(steps), ...riskTierAt(steps, headSha),
+    lastNone: liveLastNone(run, steps), ...autoPassField(steps), ...attestedField(steps), ...riskTierAt(steps, headSha),
   };
 }
 
