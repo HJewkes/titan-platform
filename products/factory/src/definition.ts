@@ -42,14 +42,29 @@ export function assertDistinctStepIds(definition: WorkflowDefinition): void {
   }
 }
 
+/** What the registered-step checks read of a step registry: the names its entries answer to. */
+export interface RegisteredSteps {
+  readonly entries: readonly { readonly name: string; readonly op: StepKind }[];
+}
+
+const isRegistered = (registry: RegisteredSteps, stepId: string): boolean =>
+  declarationFor(registry.entries.map((entry) => ({ id: entry.name, kind: entry.op })), stepId) !== undefined;
+
+/** A recipe declares only steps the registry knows, so a step cannot reach a run without its effect class and kind. */
+export function assertRegistered(definition: WorkflowDefinition, registry: RegisteredSteps): void {
+  const missing = definition.steps.filter((step) => !isRegistered(registry, step.id)).map((step) => step.id);
+  if (missing.length > 0) throw new Error(`workflow ${definition.name}: declared steps with no registry entry: ${missing.join(", ")}`);
+}
+
 /** Step ids of the dispatch steps, the ones a route must cover. */
 export function dispatchStepIds(definition: WorkflowDefinition): string[] {
   return definition.steps.filter((step) => step.kind === "dispatch").map((step) => step.id);
 }
 
-/** Wraps the runtime context so a call whose id or kind differs from the declaration fails the run. */
-export function guardedContext(ctx: WorkflowContext, definition: WorkflowDefinition): WorkflowContext {
+/** Wraps the runtime context so a call whose id or kind differs from the declaration, or that has no registry entry, fails the run. */
+export function guardedContext(ctx: WorkflowContext, definition: WorkflowDefinition, registry?: RegisteredSteps): WorkflowContext {
   const check = (stepId: string, kind: StepKind): void => {
+    if (registry && !isRegistered(registry, stepId)) throw new Error(`workflow ${definition.name}: ${kind}("${stepId}") is not a registered step`);
     const declared = declarationFor(definition.steps, stepId);
     if (declared?.kind !== kind) {
       throw new Error(`workflow ${definition.name}: ${kind}("${stepId}") does not match a declared ${kind} step`);
