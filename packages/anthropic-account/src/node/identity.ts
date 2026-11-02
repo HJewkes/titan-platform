@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 
 /** A file's text, or undefined when it cannot be read. Injected so tests never touch a real login. */
 export type ReadText = (file: string) => string | undefined;
@@ -19,9 +20,10 @@ const nonEmpty = (value: unknown): value is string => typeof value === "string" 
 function identityIn(text: string | undefined): string | undefined {
   if (text === undefined) return undefined;
   try {
-    const account = (JSON.parse(text) as { oauthAccount?: Record<string, unknown> } | null)?.oauthAccount;
-    const user = account?.accountUuid;
-    const org = account?.organizationUuid;
+    const parsed: unknown = JSON.parse(text);
+    const account: unknown = isRecord(parsed) ? parsed.oauthAccount : undefined;
+    const user = isRecord(account) ? account.accountUuid : undefined;
+    const org = isRecord(account) ? account.organizationUuid : undefined;
     return nonEmpty(user) && nonEmpty(org) ? `${user}/${org}` : undefined;
   } catch {
     return undefined;
