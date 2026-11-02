@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "merge has no intent reader",
+      "file": "products/factory/src/registry/intent-readers.ts",
+      "find": "{ merge: openMergeIntents }",
+      "replace": "{}",
+      "kills": [
+        "intent readers every irreversible fact entry has an intent reader"
+      ]
+    }
+  ]
+}
