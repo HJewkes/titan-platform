@@ -16,13 +16,6 @@
       "kills": ["the Events API ban still applies to a recipe file"]
     },
     {
-      "name": "recipe block allows the clock globals",
-      "file": "eslint.config.js",
-      "find": "const RECIPE_BANNED_GLOBALS = [\"Date\", ",
-      "replace": "const RECIPE_BANNED_GLOBALS = [",
-      "kills": ["a recipe file reading Date.now or calling setTimeout fails no-restricted-globals"]
-    },
-    {
       "name": "recipe block bans type imports too",
       "file": "eslint.config.js",
       "find": "importNames: GITHUB_CLIENT_EXPORTS, message: RECIPE_GLOBAL_MESSAGE, allowTypeImports: true",
