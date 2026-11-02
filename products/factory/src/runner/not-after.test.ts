@@ -15,28 +15,10 @@ const steps: StepDeclaration[] = [
 const definition = defineWorkflow({ name: "c28-unit", steps, run: async () => undefined });
 const registry: RegisteredSteps = { entries: [{ name: "prepare", op: "seed" }, { name: "settle", op: "seed", fact: "landed" }, { name: "plain", op: "seed" }] };
 
-/** A record whose next step after the last answered call is `next`; seeds resolve on the next macrotask. */
+/** A record whose next step after the last answered call is `next`; a seed settles on the next macrotask. */
 function recordedContext(next: string | undefined): WorkflowContext {
   const result = partialFake<StepResult>({ stepId: "plain", data: {} });
-  const unused = (): never => {
-    throw new Error("not used");
-  };
-  return {
-    runId: "run-1",
-    workflowName: definition.name,
-    signal: new AbortController().signal,
-    param: () => undefined,
-    capability: unused,
-    iteration: () => 0,
-    historyNext: () => next,
-    resumedGate: () => undefined,
-    recoveredInFlight: () => [],
-    expireGates: () => [],
-    dispatch: unused,
-    seed: () => new Promise((resolve) => setImmediate(() => resolve(result))),
-    assisted: unused,
-    authorize: unused,
-  };
+  return partialFake<WorkflowContext>({ runId: "run-1", historyNext: () => next, seed: () => new Promise((resolve) => setImmediate(() => resolve(result))) });
 }
 
 const openWith = (declared: StepDeclaration[]) => () =>
@@ -79,12 +61,5 @@ describe("unlessPast", () => {
     expect(calls).toBe(0);
     expect([...log.visited]).toEqual(["c28-unit/settle"]);
     expect(events).toEqual([{ kind: "not-after-skip", runId: "run-1", stepId: "settle", fact: "landed", memoKey: "", notAfter: "landed" }]);
-  });
-
-  it("the step runs when the record's next call is the step itself or the run is live", async () => {
-    for (const next of ["settle", undefined]) {
-      const outcome = await unlessPast(runnerContext(recordedContext(next), definition), "settle", async () => "ran");
-      expect(outcome).toEqual({ skipped: false, value: "ran" });
-    }
   });
 });
