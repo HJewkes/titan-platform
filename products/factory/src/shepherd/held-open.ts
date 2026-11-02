@@ -26,7 +26,7 @@ export function heldOpenBy({ tags, notes, plan }: TaskSlicing, lastSlice = false
   return listed.length > 0 ? heldBySlices(listed, tags, notes) : `it is tagged ${sliceTag}`;
 }
 
-function heldBySlices(slices: string[], tags: string[], notes: string): string {
+function heldBySlices(slices: string[], tags: readonly string[], notes: string): string {
   const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
   const moved = movedSlices(notes);
   const unlanded = slices.filter((n) => !landed.has(n) && !moved.has(n));
