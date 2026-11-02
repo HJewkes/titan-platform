@@ -18,7 +18,6 @@ export const shepherdSteps = [
   step("sh-fix-proof-waived", "dispatch", "software", effect("item", `${RECORD}: whether the owner waived a head's fix-proof`)),
   step("sh-review-intent", "dispatch", "software", effect("pr", `${WRITE}: posts the review intent through the broker`)),
   step("sh-review", "dispatch", "AGENT", effect("external", `${WRITE}: dispatches a reviewer agent`)),
-  step("sh-await-verdict", "dispatch", "AGENT", effect("item", `${RECORD}: the reviewer's verdict at a head`)),
   step("sh-late-verdict", "dispatch", "AGENT", effect("item", `${RECORD}: a timed-out reviewer's verdict read once more`)),
   step("sh-correct-verdict", "dispatch", "AGENT", effect("item", `${RECORD}: a corrected verdict`)),
   step("sh-seat-recheck", "dispatch", "software", effect("item", `${RECORD}: the seat check over a held MERGE`)),
