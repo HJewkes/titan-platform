@@ -198,7 +198,7 @@ async function prepare(deps: ShadowDeps, entry: FactEntry, item: PrKey, site: Sh
 }
 
 function previousAt(deps: ShadowDeps, fact: string, item: PrKey, pin: string): string | null {
-  return markerHistory(deps.db, { item: itemKey(item), fact }).findLast((marker) => marker.pin !== pin)?.projectionDigest ?? null;
+  return markerHistory(deps.db, { item: itemKey(item), fact }).filter((marker) => marker.pin !== pin).at(-1)?.projectionDigest ?? null;
 }
 
 /** What the step saw of each material input; an input with no valid verdict is left out, so it later reads as changed. */
