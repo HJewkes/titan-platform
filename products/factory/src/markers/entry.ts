@@ -9,7 +9,7 @@ import { itemKey } from "./pins.js";
 import { itemOf, shadowContext, swallow, type ShadowDeps } from "./shadow.js";
 import { evaluateFact, type Verdict } from "./validity.js";
 
-export interface EntryDeps extends ShadowDeps {
+interface EntryDeps extends ShadowDeps {
   closedRuns: Set<string>;
   /** `<run id>#<marker id>` of every orphan this host has sent, so a second drive of the run sends none again. */
   sentOrphans: Set<string>;
@@ -17,21 +17,15 @@ export interface EntryDeps extends ShadowDeps {
   recordedOf: (runId: string) => readonly string[];
 }
 
-export interface Entry {
+interface Entry {
   ctx: WorkflowContext;
   /** Runs the orphan trap once the drive settles; it never rejects, retries or re-drives. */
   end(): Promise<void>;
 }
 
-const logs = new WeakMap<WorkflowContext, EntryLog>();
-
-/** The entry log behind a shadowed context, for callers (a `not-after` skip) that record a visit the shadow never sees. */
-export const entryLogOf = (ctx: WorkflowContext): EntryLog | undefined => logs.get(ctx);
-
 export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition, deps: EntryDeps): Entry {
   const log: EntryLog = { runId: ctx.runId, recorded: deps.recordedOf(ctx.runId), visited: new Set(), reached: 0, failClosed: false };
   const shadowed = shadowContext(ctx, deps, { definition, log });
-  logs.set(shadowed, log);
   // An entry-level failure names no step.
   const site = { runId: ctx.runId, stepId: "", fact: "", memoKey: "" };
   return { ctx: shadowed, end: async () => void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log))) };

@@ -42,7 +42,7 @@ interface ShadowScope {
 }
 
 /** A static call-site id: the workflow and the declared step (family) id, never the iteration. */
-export const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `${definition.name}/${declarationFor(definition.steps, stepId)?.id ?? stepId}`;
+const callSiteOf = (definition: WorkflowDefinition, stepId: string): string => `${definition.name}/${declarationFor(definition.steps, stepId)?.id ?? stepId}`;
 
 interface Prepared {
   pin: Exclude<Pin, { unpinnable: string }>;
