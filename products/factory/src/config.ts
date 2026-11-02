@@ -214,6 +214,20 @@ export const GithubConfigSchema = z
   .refine((g) => g.pollingIntervalMs <= g.backstopIntervalMs, { message: "pollingIntervalMs must not exceed backstopIntervalMs", path: ["pollingIntervalMs"] })
   .refine((g) => !(g.ingress === "on" && g.sources === "polling"), { message: "ingress on needs sources webhook: under polling the route answers 404", path: ["ingress"] });
 
+/**
+ * The M1b marker shadow (TP-3111): off when absent or `enabled` is false. On, serve computes marker verdicts beside each
+ * fact step and logs them to `factory_shadow_log`; it changes no run. `entryBudget` overrides the shadow's per-entry caps.
+ * Read once at serve start.
+ */
+export const MarkersConfigSchema = z.strictObject({
+  shadow: z.strictObject({
+    enabled: z.boolean().default(false),
+    entryBudget: z.strictObject({ evaluations: z.number().int().positive(), shadowMs: z.number().int().positive() }).optional(),
+  }),
+});
+
+export type MarkersConfig = z.infer<typeof MarkersConfigSchema>;
+
 /** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
 const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
 
@@ -230,6 +244,7 @@ export const FactoryConfigSchema = z.object({
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
   autoresearch: ArConfigSchema.optional(),
+  markers: MarkersConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
