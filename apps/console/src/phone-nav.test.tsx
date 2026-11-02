@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { pendingTimers } from "./pending-timers.test-helpers.js";
+import { drainTimers, pendingTimers } from "./pending-timers.test-helpers.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { SNAPSHOT_FORMAT, type Snapshot } from "@titan-design/rpc-client";
@@ -10,6 +10,7 @@ import { VIEWS } from "./views.js";
 afterEach(async () => {
   await unmountPages();
   vi.unstubAllGlobals();
+  await drainTimers();
   // A timer still queued here fires after jsdom is torn down and fails the whole run as an unhandled error (TP-4713).
   expect(pendingTimers()).toEqual([]);
 });

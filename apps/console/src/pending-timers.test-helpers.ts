@@ -56,3 +56,12 @@ install("clearImmediate", (handle: Parameters<typeof clearImmediate>[0]) => {
 
 /** The timers started and neither fired nor cleared, oldest first, for an `afterEach` that asserts none are left. */
 export const pendingTimers = (): string[] => [...pending.values()];
+
+/**
+ * Lets the scheduler's queued `setImmediate` and then a `setTimeout` run. Which of the two goes first depends on
+ * load, so a lone `setTimeout` drain can leave the immediate to fire after jsdom is torn down (TP-4713).
+ */
+export async function drainTimers(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
