@@ -226,6 +226,11 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
   ].filter(Boolean);
 }
 
+/** What main prints last and exits with, given the failed steps' messages. */
+export function runVerdict(failures) {
+  return failures.length > 0 ? { summary: failureSummary(failures), exitCode: 1 } : { summary: null, exitCode: 0 };
+}
+
 const gitLines = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
 
 function changedFiles(base) {
@@ -325,8 +330,9 @@ async function main() {
     console.error(`verify:changed: ${outcome.message}`);
     failures.push(outcome.message);
   }
-  if (failures.length > 0) console.error(failureSummary(failures));
-  process.exitCode = failures.length > 0 ? 1 : 0;
+  const verdict = runVerdict(failures);
+  if (verdict.summary) console.error(verdict.summary);
+  process.exitCode = verdict.exitCode;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

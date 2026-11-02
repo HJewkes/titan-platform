@@ -6,6 +6,7 @@ import {
   countLoc,
   describeOutcome,
   failureSummary,
+  runVerdict,
   locRuleFrom,
   locScope,
   locViolations,
@@ -184,6 +185,12 @@ describe("planCommands", () => {
     expect(failureSummary(["capabilities:check failed (exit status 1)", "lint:types failed (exit status 2)"])).toBe(
       "verify:changed: 2 steps failed: capabilities:check failed (exit status 1); lint:types failed (exit status 2)",
     );
+  });
+
+  it("exits 1 with the summary when any step failed and 0 with none otherwise", () => {
+    // Mutant caught: a failing run that prints no closing summary.
+    expect(runVerdict([])).toEqual({ summary: null, exitCode: 0 });
+    expect(runVerdict(["a failed (exit status 1)"])).toEqual({ summary: "verify:changed: 1 step failed: a failed (exit status 1)", exitCode: 1 });
   });
 
   it("records the scoped dirs on the lint:types step", () => {

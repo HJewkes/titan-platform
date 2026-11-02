@@ -25,16 +25,16 @@
       "find": "signal ? `killed by ${signal}` : `exit status ${status}`",
       "replace": "`exit status ${status}`",
       "kills": [
-        "names the signal that killed a step, which has a null exit status"
+        "planCommands names the signal that killed a step, which has a null exit status"
       ]
     },
     {
       "name": "a failing run ends without the summary line",
       "file": "scripts/verify-changed.mjs",
-      "find": "if (failures.length > 0) console.error(failureSummary(failures));\n",
-      "replace": "",
+      "find": "failures.length > 0 ? { summary: failureSummary(failures), exitCode: 1 }",
+      "replace": "failures.length > 0 ? { summary: null, exitCode: 1 }",
       "kills": [
-        "closes a failing run with one line naming every failed step"
+        "planCommands exits 1 with the summary when any step failed and 0 with none otherwise"
       ]
     }
   ]
