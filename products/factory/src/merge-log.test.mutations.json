@@ -7,7 +7,7 @@
       "find": "such a step writes no marker. */",
       "replace": "such a step writes no marker; merge_op. */",
       "kills": [
-        "only C7's intent check and the landed pin read merge_op, and nothing writes it yet"
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
       ]
     },
     {
@@ -16,7 +16,16 @@
       "find": "WHERE kind = 'result' AND outcome = 'merged' AND",
       "replace": "WHERE kind = 'result' AND",
       "kills": [
-        "only C7's intent check and the landed pin read merge_op, and nothing writes it yet"
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
+      ]
+    },
+    {
+      "name": "the open-intent reader counts result rows as intents",
+      "file": "products/factory/src/registry/intent-readers.ts",
+      "find": "FROM merge_op i WHERE i.kind = 'intent'",
+      "replace": "FROM merge_op i WHERE i.kind IN ('intent', 'result')",
+      "kills": [
+        "merge_op consumers only C7's intent check, the landed pin and the deploy's open-intent reader read merge_op, and nothing writes it yet"
       ]
     }
   ]
