@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "compare output digests instead of projections",
+      "file": "products/factory/src/markers/shadow-diff/compare.ts",
+      "find": "const liveProjection = projectionDigest(call.entry, call.liveOutput);",
+      "replace": "const liveProjection = projectionDigest({ ...call.entry, projection: Object.keys(call.liveOutput as object) }, call.liveOutput);",
+      "kills": ["compareCall a would-fast-forward call whose live projection matches is a hit"]
+    },
+    {
+      "name": "return a row for a memo hit",
+      "file": "products/factory/src/markers/shadow-diff/compare.ts",
+      "find": "if (call.memoHit || !rule",
+      "replace": "if (!rule",
+      "kills": ["compareCall a memo hit and an Unavailable output give no row"]
+    },
+    {
+      "name": "treat unmarked as miss",
+      "file": "products/factory/src/markers/shadow-diff/compare.ts",
+      "find": "if (!call.verdict) return \"unmarked\";",
+      "replace": "",
+      "kills": ["compareCall a call with no verdict is unmarked"]
+    },
+    {
+      "name": "take the family from the step instead of the fact",
+      "file": "products/factory/src/markers/shadow-diff/compare.ts",
+      "find": "factRule(call.entry.fact)",
+      "replace": "factRule(call.entry.name)",
+      "kills": ["compareCall a would-fast-forward call whose live projection matches is a hit"]
+    }
+  ]
+}

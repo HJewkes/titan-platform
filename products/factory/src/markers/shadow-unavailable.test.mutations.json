@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an Unavailable output is recorded as a marker",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "if (output === undefined || isPoolUnavailable(output)) return;",
+      "replace": "if (output === undefined) return;",
+      "kills": [
+        "an Unavailable step on the marker table A17: an Unavailable step writes no marker and counts no re-drive, against the marker table"
+      ]
+    }
+  ]
+}

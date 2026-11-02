@@ -44,6 +44,14 @@ export interface AutoPassed {
   detail: string;
 }
 
+/** An attestation row a PR merged on, with the roster rows that met it. */
+export interface AttestedLine {
+  ref: string;
+  step: string;
+  closure: string;
+  meeters: { name: string; shape: "correctness" | "adversary" }[];
+}
+
 /** One coordinator's merges and spawns in the window, read from Shepherd's runs and the broker roster. */
 export interface SeatLine {
   seat: string;
@@ -113,6 +121,8 @@ export interface DigestModel {
   proofFixtures?: ProofFixture[];
   /** Owner gates passed on a demotion rule in the window (TP-3697); absent when none was. */
   autoPassed?: AutoPassed[];
+  /** Attestation rows met on PRs in the last 7 days, not the slot window (TP-3110); absent when none was. */
+  attested?: AttestedLine[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
   /** Every gate waiting on the owner, oldest first, for the stale-gate alarm; `waiting` is this list cut to five. Absent when none is. */

@@ -2,7 +2,7 @@ import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecor
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, recordedOutcome, requireAuthority, type AuthorityGate } from "./authorize.js";
-import { NO_CAPABILITIES, seedBody } from "./capabilities.js";
+import { CapabilityOutsideStepError, NO_CAPABILITIES, inStepBody, seedBody } from "./capabilities.js";
 import { renderGuarded } from "./guarded-render.js";
 import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
@@ -56,6 +56,7 @@ export class RunContext implements WorkflowContext {
   }
 
   capability(name: string): unknown {
+    if (!inStepBody()) throw new CapabilityOutsideStepError(name);
     return (this.deps.capabilities ?? NO_CAPABILITIES).get(name);
   }
 

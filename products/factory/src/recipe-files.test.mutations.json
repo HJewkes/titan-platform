@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a recipe file that calls a step op drops off the list",
+      "file": "products/factory/src/recipe-files.json",
+      "find": "  \"audit/workflow.ts\",\n",
+      "replace": "",
+      "kills": ["every factory source file that calls a step op is listed as a recipe file, and every listed file exists"]
+    }
+  ]
+}

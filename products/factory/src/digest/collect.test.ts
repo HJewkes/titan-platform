@@ -246,4 +246,17 @@ describe("owner gates passed on a demotion rule", () => {
 
     expect(model.autoPassed).toBeUndefined();
   });
+
+  it("attestations merged in the last 7 days are listed, older ones are not", async () => {
+    const meeters = [{ name: "rev-a", shape: "correctness" as const }];
+    const at = (days: number) => new Date(NOW.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = [
+      watchRow({ pr: 5, attested: [{ step: "ci-wait", closure: "4e0d912b0000", meeters, at: at(3) }] }),
+      watchRow({ pr: 6, attested: [{ step: "ci-wait", closure: "aaaaaaaa0000", meeters, at: at(8) }] }),
+    ];
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => rows }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.attested).toEqual([{ ref: "acme/widgets#5", step: "ci-wait", closure: "4e0d912b0000", meeters }]);
+  });
 });

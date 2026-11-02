@@ -7,7 +7,7 @@ import type { WatchRow } from "../shepherd/view-schema.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type AgentSpan, type FlowPorts } from "./flow.js";
 import { prKey, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatLedger, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
+import type { AgentChatLedger, Ask, AttestedLine, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, PoolLine, ProofFixture, Stuck } from "./model.js";
 import { seatLines } from "./seats.js";
 
 export interface GateFact {
@@ -103,7 +103,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     spend,
     ...(chat && decidedSection(chat)),
-    ...waitingSection(rows, now), ...autoPassSection(rows, since),
+    ...waitingSection(rows, now), ...autoPassSection(rows, since), ...attestSection(rows, now),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
     ...measured,
     gaps,
@@ -114,6 +114,15 @@ function autoPassSection(rows: readonly WatchRow[], since: Date): Pick<DigestMod
   const inWindow = (row: WatchRow) => (row.autoPassed ?? []).filter((line) => Date.parse(line.at) >= since.getTime());
   const passed: AutoPassed[] = rows.flatMap((row) => inWindow(row).map(({ rule, headSha, detail }) => ({ ref: refOf(row), rule, headSha, detail })));
   return passed.length > 0 ? { autoPassed: passed } : {};
+}
+
+const ATTEST_DAYS = 7;
+
+function attestSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "attested"> {
+  const since = now.getTime() - ATTEST_DAYS * 24 * 60 * 60 * 1000;
+  const inWindow = (row: WatchRow) => (row.attested ?? []).filter((line) => Date.parse(line.at) >= since);
+  const met: AttestedLine[] = rows.flatMap((row) => inWindow(row).map(({ step, closure, meeters }) => ({ ref: refOf(row), step, closure, meeters })));
+  return met.length > 0 ? { attested: met } : {};
 }
 
 function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting" | "ownerGateAlarm"> {

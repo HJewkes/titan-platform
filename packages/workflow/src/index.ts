@@ -75,4 +75,4 @@ export { gateIdFor, memoKey } from "./context.js";
 export type { RunTraceSources } from "./trace-projection.js";
 export { projectRunTrace } from "./trace-projection.js";
 export type { WorkflowCapability } from "./capabilities.js";
-export { CapabilityLeakError, CapabilityVault } from "./capabilities.js";
+export { CapabilityLeakError, CapabilityOutsideStepError, CapabilityVault } from "./capabilities.js";
