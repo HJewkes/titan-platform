@@ -39,7 +39,7 @@ export interface SeatDigestPorts {
 }
 
 /** How long an unacknowledged digest waits before its one retry; the broker usually delivered it, so the retry is a courtesy. */
-export const UNACKED_RETRY_MS = 5 * 60_000;
+const UNACKED_RETRY_MS = 5 * 60_000;
 
 interface Unacked {
   text: string;
