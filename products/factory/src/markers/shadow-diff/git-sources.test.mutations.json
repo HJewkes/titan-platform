@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the whitespace diff runs without HARDENED_GIT_ENV",
+      "file": "products/factory/src/markers/shadow-diff/git-sources.ts",
+      "find": "  return serialiseDiff(await git(exec, [",
+      "replace": "  return serialiseDiff(await git((args, options) => exec(args, { ...options, env: {} }), [",
+      "kills": [
+        "a whitespace-only follow-up head probes as core-different and whitespace-blind-equal"
+      ]
+    },
+    {
+      "name": "headIsMerge reads the first parent only",
+      "file": "products/factory/src/markers/shadow-diff/git-sources.ts",
+      "find": "\"rev-list\", \"--parents\", \"-n\", \"1\", head]",
+      "replace": "\"rev-list\", \"--first-parent\", \"--parents\", \"-n\", \"1\", head]",
+      "kills": [
+        "a hand-resolved conflict merge of main probes as a merge whose merge-up proof fails"
+      ]
+    },
+    {
+      "name": "the diff pin cache is keyed across heads",
+      "file": "products/factory/src/markers/shadow-diff/git-sources.ts",
+      "find": "const key = `${item.repo.toLowerCase()}@${head}`;",
+      "replace": "const key = item.repo.toLowerCase();",
+      "kills": [
+        "two diff-pin reads of one head inside the cache window fetch once"
+      ]
+    },
+    {
+      "name": "the diff pin fetches into the seat clone",
+      "file": "products/factory/src/markers/shadow-diff/git-sources.ts",
+      "find": "  if (existsSync(join(mirror, \"HEAD\"))) return mirror;",
+      "replace": "  if (seatClone(repo) !== undefined) return seatClone(repo)!;",
+      "kills": [
+        "the mirror is created once and the seat clone's refs are untouched"
+      ]
+    }
+  ]
+}
