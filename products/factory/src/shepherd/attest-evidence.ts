@@ -35,8 +35,15 @@ interface AttestSubject {
 
 export type AttestJudgment = ReturnType<typeof judgeAttestations> | { unread: string };
 
+interface RunFacts {
+  registration: Registration;
+  authors: { agentId: string; name: string }[];
+  roster: readonly ReviewerAgent[];
+  lineage: Lineage;
+}
+
 /** What the judge needs beyond the claims; a store, roster or lineage that cannot be read names why. */
-async function runFacts(readers: AttestReaders, runId: string): Promise<{ registration: Registration; authors: { agentId: string; name: string }[]; roster: readonly ReviewerAgent[]; lineage: Lineage } | { unread: string }> {
+async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts | { unread: string }> {
   if (!readers.roster) return { unread: "no roster reader is wired to name a meeter" };
   try {
     const store = readers.store.get();
