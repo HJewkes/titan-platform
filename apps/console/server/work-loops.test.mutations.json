@@ -18,6 +18,15 @@
       "kills": [
         "work.loops reports an old active-work daemon as unavailable, not as an empty board"
       ]
+    },
+    {
+      "name": "the tier answer drops the ledger's rank",
+      "file": "apps/console/server/loop-board.ts",
+      "find": "({ id, tier: moved, tierRank: tier_rank })",
+      "replace": "({ id, tier: moved, tierRank: null })",
+      "kills": [
+        "work.loop-tier passes the owner's move to active-work's loop.tier and answers the new tier and rank, read from the ledger's tier_rank"
+      ]
     }
   ]
 }

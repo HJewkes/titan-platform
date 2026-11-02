@@ -2,7 +2,7 @@ import { z } from "zod";
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
-import { loopBoard, loopTierAnswer } from "./loop-board.js";
+import { loopBoard, loopTierWire } from "./loop-board.js";
 import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
@@ -114,7 +114,7 @@ const READS = {
 
 /** The active-work writes the console may call, kept apart so `READS` stays write-free. Only owner-write commands call them. */
 const WRITES = {
-  "loop.tier": loopTierAnswer,
+  "loop.tier": loopTierWire,
 };
 
 export type ReadName = keyof typeof READS;

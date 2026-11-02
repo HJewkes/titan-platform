@@ -96,12 +96,12 @@ describe("work.loop-tier", () => {
     expect(calls).toEqual([]);
   });
 
-  it("passes the owner's move to active-work's loop.tier and answers the new tier", async () => {
+  it("passes the owner's move to active-work's loop.tier and answers the new tier and rank, read from the ledger's tier_rank", async () => {
     const commands = commandsOver(await fakeActiveWork());
 
     const { envelope } = await invokeCommand(commands["work.loop-tier"], MOVE, OWNER);
 
     expect(calls).toEqual([{ command: "loop.tier", args: MOVE }]);
-    expect(envelope.ok ? envelope.data : envelope.error).toMatchObject({ id: "loop-c", tier: "S" });
+    expect(envelope.ok ? envelope.data : envelope.error).toEqual({ id: "loop-c", tier: "S", tierRank: 1 });
   });
 });

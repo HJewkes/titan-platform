@@ -116,7 +116,8 @@ const LOOP_BOARD = {
 /** The board, or a tier move; the move is stateless, answered at the head of its tier, and the board never changes. */
 function loopAnswer(command: string, args: Args) {
   if (command === "loop.board") return LOOP_BOARD;
-  return { id: args.id, tier: args.tier === "unsorted" ? null : args.tier, tierRank: args.tier === "unsorted" ? null : 1 };
+  const unsorted = args.tier === "unsorted";
+  return { id: args.id, tier: unsorted ? null : args.tier, tier_rank: unsorted ? null : 1, tier_set: { at: "2031-03-04T09:00:00.000Z", by: "owner" } };
 }
 
 const NOTES = [
