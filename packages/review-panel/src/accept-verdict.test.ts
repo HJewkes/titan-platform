@@ -271,6 +271,46 @@ describe("acceptVerdict CI-policy line", () => {
   });
 });
 
+describe("acceptVerdict Attests line", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}\n`;
+  const CI_WAIT = `ci-wait@${"a".repeat(12)}`;
+  const MERGE_STEP = `merge@${"b".repeat(12)}`;
+
+  it("a MERGE carries the steps its Attests line names", () => {
+    const text = `Checked.\nAttests: ci-wait@${"0".repeat(12)}\nAttests: ${CI_WAIT}, ${MERGE_STEP}, ci-wait@${"c".repeat(12)}\n\n${block("MERGE")}CI-policy: unchanged`;
+
+    const result = acceptVerdict(input, [said(text)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "unchanged" }, attests: [CI_WAIT, MERGE_STEP] });
+  });
+
+  it("a FIX_FIRST drops an Attests line", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\nAttests: ${CI_WAIT}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+    expect(result).not.toHaveProperty("attests");
+  });
+
+  it("a malformed Attests token is dropped and the MERGE still counts", () => {
+    const text = `Checked.\nAttests: ci-wait@${"a".repeat(11)}, Merge@${"b".repeat(12)}, ${CI_WAIT}x, ${MERGE_STEP}\n\n${block("MERGE")}`;
+
+    const result = acceptVerdict(input, [said(text)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", attests: [MERGE_STEP] });
+  });
+
+  it("an Attests line inside a fence is not read", () => {
+    const fenced = acceptVerdict(input, [said(`Checked.\n\`\`\`\nAttests: ${CI_WAIT}\n\`\`\`\n\n${block("MERGE")}`)]);
+    const below = acceptVerdict(input, [said(`Checked.\n\n${block("MERGE")}Attests: ${CI_WAIT}`)]);
+
+    expect(fenced).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(fenced).not.toHaveProperty("attests");
+    expect(below).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(below).not.toHaveProperty("attests");
+  });
+});
+
 describe("acceptVerdict CI-policy prose beside a correct block", () => {
   const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
   const block = `Verdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}`;
