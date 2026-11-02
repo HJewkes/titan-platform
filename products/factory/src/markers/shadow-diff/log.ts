@@ -7,6 +7,13 @@ import type { Verdict } from "../validity.js";
 
 const KINDS = ["verdict", "shadow-error", "call-site-orphan", "budget-exceeded", "entry-end", "not-after-skip", "advisory", "compare"];
 
+type KeyColumn = "id" | "kind" | "run_id" | "marker_id" | "memo_key";
+
+/** A row already holds this row's unique key: the id, the (run, marker) of an orphan, or the (run, memo key) of a compare. */
+const keyTaken = (ref: (column: KeyColumn) => string): string => `EXISTS (SELECT 1 FROM factory_shadow_log WHERE id = ${ref("id")}
+    OR (${ref("kind")} = 'call-site-orphan' AND kind = 'call-site-orphan' AND run_id = ${ref("run_id")} AND marker_id = ${ref("marker_id")})
+    OR (${ref("kind")} = 'compare' AND kind = 'compare' AND run_id = ${ref("run_id")} AND memo_key = ${ref("memo_key")}))`;
+
 const SHADOW_LOG_DDL = `
   CREATE TABLE factory_shadow_log (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,12 +39,14 @@ const SHADOW_LOG_DDL = `
   CREATE TRIGGER factory_shadow_log_no_update BEFORE UPDATE ON factory_shadow_log BEGIN SELECT RAISE(ABORT, 'append-only'); END;
   CREATE TRIGGER factory_shadow_log_no_delete BEFORE DELETE ON factory_shadow_log BEGIN SELECT RAISE(ABORT, 'append-only'); END;
   CREATE TRIGGER factory_shadow_log_no_replace BEFORE INSERT ON factory_shadow_log
-    FOR EACH ROW WHEN EXISTS (SELECT 1 FROM factory_shadow_log WHERE id = NEW.id)
+    FOR EACH ROW WHEN ${keyTaken((column) => `NEW.${column}`)}
   BEGIN SELECT RAISE(ABORT, 'append-only'); END;`;
 
 /**
  * TP-3111's SHD-2 disagreement log; 50 follows the marker table at 49. Append-only like `factory_marker`, with no retention
  * before D-M8-09 deletes it. The orphan index makes a call-site orphan durable once per (run, marker) across restarts.
+ * The replace trigger checks every unique key, not only the id: REPLACE on a secondary-key clash deletes the old row
+ * without firing the delete trigger, and the trigger fires before any conflict clause, so callers skip a taken key themselves.
  */
 export function shadowLogMigration(version = 50): Migration {
   return { version, name: "factory:shadow_log", up: (db) => db.exec(SHADOW_LOG_DDL) };
@@ -101,8 +110,11 @@ function fieldsOf(event: ShadowEvent, family: string | null): LogFields {
   }
 }
 
-const INSERT = `INSERT OR IGNORE INTO factory_shadow_log (at, kind, family, run_id, memo_key, item, step, fact, class, cause, material_valid, full_valid, drift, marker_id, detail)
-  VALUES (@at, @kind, @family, @runId, @memoKey, @item, @step, @fact, @class, @cause, @materialValid, @fullValid, @drift, @markerId, @detail)`;
+const PARAM: Record<KeyColumn, string> = { id: "NULL", kind: "@kind", run_id: "@runId", marker_id: "@markerId", memo_key: "@memoKey" };
+
+const INSERT = `INSERT INTO factory_shadow_log (at, kind, family, run_id, memo_key, item, step, fact, class, cause, material_valid, full_valid, drift, marker_id, detail)
+  SELECT @at, @kind, @family, @runId, @memoKey, @item, @step, @fact, @class, @cause, @materialValid, @fullValid, @drift, @markerId, @detail
+  WHERE NOT ${keyTaken((column) => PARAM[column])}`;
 
 const flag = (value: boolean | undefined): number | null => (value === undefined ? null : Number(value));
 

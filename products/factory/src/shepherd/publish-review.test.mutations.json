@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unmet attestation does not post the MERGE again",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": "if (attestUnmet.length > 0) await publishReview(",
+      "replace": "if (attestUnmet.length < 0) await publishReview(",
+      "kills": ["sh-publish-review posts the MERGE again as action_required once its evidence finds an attestation unmet"]
+    }
+  ]
+}
