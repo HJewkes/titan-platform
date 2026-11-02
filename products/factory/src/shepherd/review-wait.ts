@@ -72,8 +72,8 @@ export async function whileBrokerBooting<T>(timing: BrokerDownTiming, signal: Ab
 class ReviewerRosterUnread extends Error {
   override readonly name = "ReviewerRosterUnread";
 
-  constructor(budgetMs: number) {
-    super(`ReviewerAskTimedOut (roster unread after ${minutes(budgetMs)})`);
+  constructor(cause: ReviewerAskTimedOut, budgetMs: number) {
+    super(`ReviewerAskTimedOut (roster unread after ${minutes(budgetMs)})`, { cause });
   }
 }
 
@@ -86,7 +86,7 @@ export async function whileRosterSlow<T>(timing: PollTiming, signal: AbortSignal
       return await read();
     } catch (error) {
       if (!(error instanceof ReviewerAskTimedOut)) throw error;
-      if (timing.now() - startedAt >= budgetMs) throw new ReviewerRosterUnread(budgetMs);
+      if (timing.now() - startedAt >= budgetMs) throw new ReviewerRosterUnread(error, budgetMs);
     }
     await timing.sleep(timing.pollMs, signal);
   }

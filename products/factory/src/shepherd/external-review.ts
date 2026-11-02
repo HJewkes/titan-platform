@@ -147,7 +147,7 @@ export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | 
 /** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
 const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
 
-const transient = (error: unknown): boolean =>
+export const transient = (error: unknown): boolean =>
   TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});

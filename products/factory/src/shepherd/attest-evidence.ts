@@ -4,9 +4,11 @@ import type { ReviewerAgent } from "@titan-design/review-panel";
 import { judgeAttestations } from "../registry/attest.js";
 import { readClaims } from "./attest-read.js";
 import { errorClass } from "./error-class.js";
+import { transient } from "./external-review.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
 import { separateLineages } from "./reviewer-lineage.js";
+import { whileBrokerBooting, whileRosterSlow, type BrokerDownTiming } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
@@ -42,7 +44,13 @@ interface RunFacts {
   lineage: Lineage;
 }
 
-/** What the judge needs beyond the claims; a store, roster or lineage that cannot be read names why. */
+/** A broker failure that may clear with time, or a retry budget such a failure ran out: the run's infrastructure failed, not the head. */
+const brokerFailure = (error: unknown): boolean => transient(error) || (error instanceof Error && transient(error.cause));
+
+/**
+ * What the judge needs beyond the claims; a store, roster or lineage that cannot be read names why. A broker failure is
+ * thrown instead, so the evidence step fails the run rather than gating the owner on infrastructure (decision 515).
+ */
 async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts | { unread: string }> {
   if (!readers.roster) return { unread: "no roster reader is wired to name a meeter" };
   try {
@@ -53,14 +61,29 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
     const lineage = readers.lineage ? await readers.lineage() : { rows: roster, complete: true };
     return { registration, authors: store.authorsOf(runId), roster, lineage };
   } catch (error) {
+    if (brokerFailure(error)) throw error;
     return { unread: `the meeters' facts are unreadable: ${errorClass(error)}` };
   }
 }
 
-/** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage. */
-export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, wiring: { dispatch?: { roster(): Promise<readonly ReviewerAgent[]> }; lineage?: () => Promise<Lineage> }) {
-  const { dispatch, lineage } = wiring;
-  const readers: AttestReaders = { store, ...(dispatch && { roster: () => dispatch.roster() }), ...(lineage && { lineage }) };
+/** How long the roster read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
+export interface RosterPatience {
+  timing: BrokerDownTiming;
+  budgetMs: number;
+  signal: AbortSignal;
+}
+
+const patientRoster = (roster: () => Promise<readonly ReviewerAgent[]>, { timing, budgetMs, signal }: RosterPatience) => () =>
+  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, roster));
+
+interface JudgeWiring {
+  dispatch?: { roster(): Promise<readonly ReviewerAgent[]> };
+  lineage?: () => Promise<Lineage>;
+}
+
+/** The evidence step's judge, naming meeters from the dispatch's roster, read with `patience`, and the wired lineage. */
+export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage }: JudgeWiring, patience: RosterPatience) {
+  const readers: AttestReaders = { store, ...(dispatch && { roster: patientRoster(() => dispatch.roster(), patience) }), ...(lineage && { lineage }) };
   return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
 }
 
