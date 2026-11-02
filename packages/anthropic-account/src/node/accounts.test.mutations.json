@@ -20,12 +20,22 @@
       ]
     },
     {
+      "name": "status --json drops the schema field",
+      "file": "packages/anthropic-account/src/cli/status-command.ts",
+      "find": "{ schema: STATUS_SCHEMA, accounts:",
+      "replace": "{ accounts:",
+      "kills": [
+        "prints one row per login in the schema 2 golden shape"
+      ]
+    },
+    {
       "name": "a shared login takes the default label instead of the personal one",
       "file": "packages/anthropic-account/src/node/accounts.ts",
       "find": "(members.find((member) => member.label !== DEFAULT_LABEL) ?? members[0])",
       "replace": "members[0]",
       "kills": [
-        "gives two config dirs on one login a single row naming both dirs"
+        "gives two config dirs on one login a single row naming both dirs",
+        "renders default and personal as one cell under the personal label"
       ]
     }
   ]
