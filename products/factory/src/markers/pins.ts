@@ -77,9 +77,10 @@ function observedPin(pinClass: PinClass, kinds: readonly string[], item: PrKey, 
 const DURATION = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/;
 
 function ttlPin(ttl: string | undefined, now: string): Pin {
-  const parts = ttl === undefined ? null : DURATION.exec(ttl);
-  if (parts === null || parts.slice(1).every((part) => part === undefined)) return { unpinnable: `no usable TTL: ${ttl ?? "none"}` };
-  const [hours, minutes, seconds] = parts.slice(1).map((part) => Number(part ?? 0));
+  // Unmatched groups are undefined at run time, which RegExpExecArray's string[] does not say.
+  const groups: (string | undefined)[] = (ttl === undefined ? null : DURATION.exec(ttl))?.slice(1) ?? [];
+  if (groups.every((group) => group === undefined)) return { unpinnable: `no usable TTL: ${ttl ?? "none"}` };
+  const [hours, minutes, seconds] = groups.map((group) => Number(group ?? 0));
   const ms = ((hours! * 60 + minutes!) * 60 + seconds!) * 1000;
   return { pinClass: "observed", pin: "ttl", expiresAt: new Date(Date.parse(now) + ms).toISOString() };
 }

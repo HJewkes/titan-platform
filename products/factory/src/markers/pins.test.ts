@@ -78,7 +78,7 @@ describe("pinFor", () => {
 
   it("an observed pin moves when an event of a producer kind for that subject is appended, and not for another subject or kind", async () => {
     const db = memory();
-    const pin = async () => (await pinOf("mergeability", { db })) as { pin: string; pinSeq: number };
+    const pin = () => pinOf("mergeability", { db });
     const before = await pin();
 
     log(db, "HeadPushed", "o/r#8");
