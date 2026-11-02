@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a marker that differs from the registry kind passes",
+      "file": "products/factory/src/registry/doc-markers.ts",
+      "find": "else if (kind !== marker)",
+      "replace": "else if (false)",
+      "kills": ["doc markers a doc marking an AGENT step OWNER fails"]
+    },
+    {
+      "name": "a non-software step missing from the table passes",
+      "file": "products/factory/src/registry/doc-markers.ts",
+      "find": "kind && kind !== \"software\" && !rows.has(id)",
+      "replace": "false",
+      "kills": ["doc markers an OWNER step missing from its recipe doc's table fails, and a mention elsewhere does not count"]
+    },
+    {
+      "name": "a row naming no registered step passes",
+      "file": "products/factory/src/registry/doc-markers.ts",
+      "find": "if (!kind) problems.push",
+      "replace": "if (false) problems.push",
+      "kills": ["doc markers a row naming no registered step fails, and a software step needs no row"]
+    },
+    {
+      "name": "rows are read from anywhere in the doc, not the Steps section",
+      "file": "products/factory/src/registry/doc-markers.ts",
+      "find": "text.split(/^## /m).find((part) => /^Steps\\s*\\n/.test(part)) ?? \"\"",
+      "replace": "text",
+      "kills": ["doc markers an OWNER step missing from its recipe doc's table fails, and a mention elsewhere does not count"]
+    }
+  ]
+}
