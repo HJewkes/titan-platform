@@ -2,6 +2,7 @@
 // `pnpm registry:closure`: a factory fact step whose import closure changed against the base must change its schema
 // hash or bump, or carry an attestation for the new closure (TP-3106 S6). `--write` refreshes the committed lock.
 // The closure walk is TypeScript, so this runs the factory's built products/factory/dist/registry/closure-main.js: build first.
+// On a pull request, an attestation row the base lacks must name that PR, so one PR cannot attest for another (TP-3110 S5).
 // Usage: node scripts/step-closure-check.mjs [--write] [base]   (base: argv, then CLOSURE_BASE, then origin/main)
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -24,9 +25,39 @@ export function readBaseLock(git, base) {
   }
 }
 
+/** The base's attestation rows, or none when the base has no attestations file. */
+export function readBaseAttestations(git, base) {
+  try {
+    return JSON.parse(git(["show", `${base}:${ATTESTATIONS_PATH}`]));
+  } catch {
+    return [];
+  }
+}
+
+/** The pull request number from the Actions event payload; undefined off a pull request. */
+export function readPrNumber(env, readFile) {
+  if (!env.GITHUB_EVENT_PATH) return undefined;
+  return JSON.parse(readFile(env.GITHUB_EVENT_PATH)).pull_request?.number;
+}
+
+const sameRow = (a, b) => a.step === b.step && a.closure === b.closure && a.pr === b.pr;
+
+/** Rows the working tree adds over the base: each must name this PR. Skipped when there is no PR. */
+export function judgeAddedRows(baseRows, rows, prNumber) {
+  const added = rows.filter((row) => !baseRows.some((old) => sameRow(old, row)));
+  const label = (row) => `${row.step}@${String(row.closure).slice(0, 12)}`;
+  const notices = added.map((row) => `attest required: ${label(row)}`);
+  if (prNumber === undefined) return { failures: [], notices };
+  const failures = added.filter((row) => row.pr !== prNumber).map((row) => `${label(row)}: an added attestation row names PR ${row.pr}, not this PR #${prNumber}`);
+  return { failures, notices };
+}
+
 /** Base from git, the committed lock and attestations from the working tree; `check` computes and judges. */
-export function runCheck({ git, readFile, check, base }) {
-  return check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations: JSON.parse(readFile(ATTESTATIONS_PATH)) });
+export function runCheck({ git, readFile, check, base, prNumber }) {
+  const attestations = JSON.parse(readFile(ATTESTATIONS_PATH));
+  const result = check({ base: readBaseLock(git, base), committed: JSON.parse(readFile(LOCK_PATH)), attestations });
+  const added = judgeAddedRows(readBaseAttestations(git, base), attestations, prNumber);
+  return { ...result, failures: [...result.failures, ...added.failures], notices: [...result.notices, ...added.notices] };
 }
 
 function closureMain(args, input) {
@@ -42,7 +73,8 @@ function main(argv = process.argv.slice(2), env = process.env) {
   const git = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const readFile = (path) => readFileSync(join(ROOT, path), "utf8");
   const check = (input) => JSON.parse(closureMain([], JSON.stringify(input)));
-  const { failures, notices } = runCheck({ git, readFile, check, base: argv[0] || env.CLOSURE_BASE || DEFAULT_BASE });
+  const prNumber = readPrNumber(env, (path) => readFileSync(path, "utf8"));
+  const { failures, notices } = runCheck({ git, readFile, check, base: argv[0] || env.CLOSURE_BASE || DEFAULT_BASE, prNumber });
   for (const notice of notices) console.log(`registry:closure: ${notice}`);
   for (const failure of failures) console.error(`registry:closure: ${failure}`);
   if (failures.length > 0) process.exitCode = 1;
