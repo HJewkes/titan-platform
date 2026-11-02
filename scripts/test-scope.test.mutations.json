@@ -45,6 +45,51 @@
       "kills": [
         "scopeForEvent reads the lockfile at the PR's base and head when the diff changes it"
       ]
+    },
+    {
+      "name": "a scope at the threshold leaves validate",
+      "file": "scripts/test-scope.mjs",
+      "find": "countFiles(scope.dirs) > SHARD_ABOVE_FILES",
+      "replace": "countFiles(scope.dirs) >= SHARD_ABOVE_FILES",
+      "kills": [
+        "placement keeps a scope at the threshold in validate"
+      ]
+    },
+    {
+      "name": "the full suite runs in validate",
+      "file": "scripts/test-scope.mjs",
+      "find": "if (scope.mode === \"full\") return \"shards\";",
+      "replace": "if (scope.mode === \"full\") return \"validate\";",
+      "kills": [
+        "placement always shards the full suite and places an empty scope nowhere"
+      ]
+    },
+    {
+      "name": "validate runs a sharded scope too",
+      "file": "scripts/test-scope.mjs",
+      "find": "argv.includes(\"--skip-sharded\") &&",
+      "replace": "false &&",
+      "kills": [
+        "runRequest leaves a sharded scope to the matrix when validate asks to skip it"
+      ]
+    },
+    {
+      "name": "every shard runs the whole scope",
+      "file": "scripts/test-scope.mjs",
+      "find": "return shard ? [...vitestArgs(scope, env), shard]",
+      "replace": "return false ? [...vitestArgs(scope, env), shard]",
+      "kills": [
+        "runRequest passes a shard through to vitest after the scope's own arguments"
+      ]
+    },
+    {
+      "name": "node_modules test files count toward the scope",
+      "file": "scripts/test-scope.mjs",
+      "find": "exclude: (path) => path.endsWith(\"node_modules\")",
+      "replace": "exclude: () => false",
+      "kills": [
+        "countTestFiles counts test files in the dirs by vitest's suffixes, skipping node_modules and other dirs"
+      ]
     }
   ]
 }
