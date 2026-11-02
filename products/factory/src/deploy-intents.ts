@@ -5,7 +5,7 @@ import { factoryRegistry } from "./registry/steps/index.js";
 import type { CommandResult } from "./run-command.js";
 
 /** Per step, its intents with no terminal result; throws when the factory db cannot be read. */
-export type OpenIntents = (steps: readonly string[]) => Readonly<Record<string, number>>;
+type OpenIntents = (steps: readonly string[]) => Readonly<Record<string, number>>;
 
 export interface IntentPorts {
   git: (args: readonly string[]) => Promise<CommandResult>;
