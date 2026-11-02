@@ -997,8 +997,8 @@ describe("the attestation guard", () => {
 
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ ...input, ...byReviewer("rev-1") }), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
 
-    const { result } = JSON.parse(outcome.ok ? outcome.output : "{}") as { result: MergeEvidence };
-    expect(result.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: meeter-is-author" });
+    const output: unknown = JSON.parse(outcome.ok ? outcome.output : "{}");
+    expect(output).toMatchObject({ result: { record: { decision: { outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: meeter-is-author" } } } });
   });
 
   it("an independent reviewer's Attests line lets MRG-AU-RV allow, and the record lists the meeter", async () => {
