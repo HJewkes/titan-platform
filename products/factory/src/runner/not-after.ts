@@ -11,7 +11,7 @@ interface RunnerScope {
 
 const scopes = new WeakMap<WorkflowContext, RunnerScope>();
 
-export type UnlessPast<R> = { skipped: true } | { skipped: false; value: R };
+type UnlessPast<R> = { skipped: true } | { skipped: false; value: R };
 
 /** The context a recipe body runs with: it knows the recipe's declarations and counts its in-flight calls for `unlessPast`. */
 export function runnerContext(ctx: WorkflowContext, definition: WorkflowDefinition, shadow?: NotAfterShadow): WorkflowContext {
