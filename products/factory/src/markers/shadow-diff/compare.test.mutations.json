@@ -5,7 +5,7 @@
       "name": "compare output digests instead of projections",
       "file": "products/factory/src/markers/shadow-diff/compare.ts",
       "find": "const liveProjection = projectionDigest(call.entry, call.liveOutput);",
-      "replace": "const liveProjection = outputDigest(call.liveOutput);",
+      "replace": "const liveProjection = projectionDigest({ ...call.entry, projection: Object.keys(call.liveOutput as object) }, call.liveOutput);",
       "kills": ["compareCall a would-fast-forward call whose live projection matches is a hit"]
     },
     {

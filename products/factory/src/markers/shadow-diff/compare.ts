@@ -1,7 +1,7 @@
 import { isPoolUnavailable } from "@titan-design/github";
 import type { FactEntry } from "../../registry/entry.js";
 import { factRule, type PinClass } from "../../registry/pin-classes.js";
-import { outputDigest, projectionDigest } from "../projection.js";
+import { projectionDigest } from "../projection.js";
 import type { Verdict } from "../validity.js";
 
 export type CompareClass = "hit" | "false-hit" | "miss" | "miss-same-output" | "unmarked";
