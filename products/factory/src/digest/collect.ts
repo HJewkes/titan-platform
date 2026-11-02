@@ -120,7 +120,8 @@ const ATTEST_DAYS = 7;
 
 function attestSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "attested"> {
   const since = now.getTime() - ATTEST_DAYS * 24 * 60 * 60 * 1000;
-  const met: AttestedLine[] = rows.flatMap((row) => (row.attested ?? []).filter((line) => Date.parse(line.at) >= since).map(({ step, closure, meeters }) => ({ ref: refOf(row), step, closure, meeters })));
+  const inWindow = (row: WatchRow) => (row.attested ?? []).filter((line) => Date.parse(line.at) >= since);
+  const met: AttestedLine[] = rows.flatMap((row) => inWindow(row).map(({ step, closure, meeters }) => ({ ref: refOf(row), step, closure, meeters })));
   return met.length > 0 ? { attested: met } : {};
 }
 

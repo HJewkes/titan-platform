@@ -1,10 +1,11 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { StepResult } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { attestedField } from "./attest-field.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 
 const evidence = (head: string, attested: unknown[], completedAt: string): StepResult =>
-  ({ stepId: `${MERGE_EVIDENCE_STEP}:${head}`, completedAt, data: { result: { record: { attested } } } }) as unknown as StepResult;
+  partialFake<StepResult>({ stepId: `${MERGE_EVIDENCE_STEP}:${head}`, completedAt, data: { result: { record: { attested } } } });
 
 const met = { step: "ci-wait", closure: "4e0d912b0000", meeters: [{ name: "rev-a", agentId: "a1", shape: "correctness" }] };
 
