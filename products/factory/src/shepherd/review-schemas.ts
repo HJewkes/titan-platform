@@ -122,7 +122,11 @@ export const MergeEvidenceSchema = z.looseObject({
   visualDelta: VisualDeltaSchema.optional(),
   attest: z.union([z.looseObject({ unread: z.string() }), z.looseObject({ unmet: z.array(z.looseObject({ step: z.string(), why: z.string() })) })]).optional(),
   attestVerdicts: z
-    .looseObject({ attests: z.array(z.string()), adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()) }).optional(), adversaryPlanned: z.literal(true).optional() })
+    .looseObject({
+      attests: z.array(z.string()),
+      adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()) }).optional(),
+      adversaryPlanned: z.literal(true).optional(),
+    })
     .optional(),
 });
 

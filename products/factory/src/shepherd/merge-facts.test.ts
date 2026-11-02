@@ -15,7 +15,7 @@ import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, mergeEvidence,
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
-import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
+import { REVIEW_STEPS, mergeVerdict, reviewRoutes, type ReviewWiring } from "./review.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, lineageMigration, type Registration, type ShepherdStoreRef, type TaskKind } from "./store.js";
@@ -993,7 +993,7 @@ describe("the attestation guard", () => {
     store.bind(db);
     new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "rev-1", policy: AUTO, kind: "correctness" });
     const deps: ShepherdDeps = { port: githubPort(claiming().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
-    const route = reviewRoutes(deps, { dispatch: partialFake<ReviewerDispatch>({ roster: async () => roster }) }).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
+    const route = reviewRoutes(deps, partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: async () => roster }) })).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
 
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ ...input, ...byReviewer("rev-1") }), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
 

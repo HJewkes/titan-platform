@@ -2,6 +2,7 @@ import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type Check
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
+import { attestUnmetReason, type AttestDecided } from "./attest-read.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
@@ -110,9 +111,6 @@ export interface MergeEvidence extends GrantWithheldField {
   attestVerdicts?: AttestVerdicts;
 }
 
-/** What the attestation judge came to at the head, as the guard reads it; absent means the head claims no row. */
-type AttestDecided = { unmet: readonly { step: string; why: string }[] } | { unread: string };
-
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
 export interface DecidableEvidence extends GrantWithheldField {
   head: string;
@@ -180,8 +178,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour);
   if (policyGate) return policyGate;
-  const unmetGate = attestGate(evidence.attest);
-  if (unmetGate) return unmetGate;
+  const unmet = attestUnmetReason(evidence.attest);
+  if (unmet !== undefined) return { outcome: "gate", rule: guardRule("attest-unmet"), reason: unmet };
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
@@ -245,19 +243,6 @@ function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour): GateDeci
   if (github.length === 0) return undefined;
   return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }
-
-/**
- * A head that adds or changes an attestation row merges only when an independent reviewer's MERGE at that head attests
- * each row, and the adversary's too where the class has one; claims that cannot be read gate as unmet.
- */
-function attestGate(attest: AttestDecided | undefined): GateDecision | undefined {
-  if (attest === undefined) return undefined;
-  if ("unread" in attest) return { outcome: "gate", rule: guardRule("attest-unmet"), reason: `${ATTEST_UNMET_PREFIX}unread: ${attest.unread}` };
-  if (attest.unmet.length === 0) return undefined;
-  return { outcome: "gate", rule: guardRule("attest-unmet"), reason: `${ATTEST_UNMET_PREFIX}${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}` };
-}
-
-const ATTEST_UNMET_PREFIX = "attestation unmet: ";
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
 function runFact(run: CheckRun): CheckRunFact {
