@@ -8,6 +8,7 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
+import { ATTESTATIONS_PATH } from "./attest-read.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
@@ -108,6 +109,20 @@ describe("sh-publish-review", () => {
     await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
 
     expect(posted(fake)[0]).toEqual({ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "action_required" });
+  });
+
+  it("posts the MERGE again as action_required once its evidence finds an attestation unmet", async () => {
+    const fake = fakeGitHub();
+    const row = { step: "ci-wait", closure: fakeSha("publish-review-closure"), pr: 1 };
+    fake.files.set(`${A}:${ATTESTATIONS_PATH}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
+
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+
+    expect(posted(fake).slice(0, 2)).toEqual([
+      { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "success" },
+      { name: REVIEW_CHECK_NAME, headSha: A, conclusion: "action_required" },
+    ]);
+    expect(fake.createdCheckRuns[1]!.request.title).toBe(`Attestation unmet at ${A.slice(0, 12)}: ci-wait`);
   });
 
   it("posts a FIX_FIRST as failure at the reviewed head", async () => {
