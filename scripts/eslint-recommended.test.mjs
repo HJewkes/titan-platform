@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,5 +138,59 @@ describe("the root lint config with the bare gray-matter import ban", () => {
     const result = await lintMatterFixture("products/other/src/bare-import.ts");
 
     expect(result.errorCount).toBe(0);
+  });
+});
+
+describe("the root lint config with the recipe-file capability ban", () => {
+  // The fixture reuses real names from recipe-files.json, because the block's file list is read from that file.
+  const RECIPE_FIXTURE = join(REPO, "scripts", "fixtures", "recipe-capabilities");
+  const RECIPE_SRC = join("products", "factory", "src");
+  const lintRecipeFixture = fixtureLinter(RECIPE_FIXTURE);
+  const recipe = (file) => lintRecipeFixture(join(RECIPE_SRC, file));
+
+  it("a recipe file importing node:fs, or a value from the GitHub client, fails no-restricted-imports", async () => {
+    const fs = await recipe("audit/workflow.ts");
+    const client = await recipe("build-surface/workflow.ts");
+
+    expect(fs.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-imports", severity: 2 })]);
+    expect(client.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-imports", severity: 2 })]);
+  });
+
+  it("a recipe file reading Date.now or calling setTimeout fails no-restricted-globals", async () => {
+    const result = await recipe("build-surface/slice-run.ts");
+
+    expect(result.messages.map((message) => [message.ruleId, message.message])).toEqual([
+      ["no-restricted-globals", expect.stringContaining("step body")],
+      ["no-restricted-globals", expect.stringContaining("step body")],
+    ]);
+  });
+
+  it("an inline eslint-disable in a recipe file does not suppress the error", async () => {
+    const result = await recipe("definition.ts");
+
+    expect(result.messages.filter((message) => message.severity === 2)).toEqual([expect.objectContaining({ ruleId: "no-restricted-globals" })]);
+    expect(result.messages).toContainEqual(expect.objectContaining({ ruleId: null, message: expect.stringContaining("noInlineConfig") }));
+  });
+
+  it("a type-only import of the GitHub client in a recipe file passes", async () => {
+    const result = await recipe("shepherd/approval-carry.ts");
+
+    expect(result.errorCount).toBe(0);
+  });
+
+  // A fixture outside the list, or on the baseline, never reaches the block, so its test would pass whatever the block says.
+  it("every recipe fixture is a listed recipe file off the baseline", async () => {
+    const eslint = new ESLint({ cwd: RECIPE_FIXTURE, overrideConfigFile: CONFIG });
+    const fixtures = readdirSync(join(RECIPE_FIXTURE, RECIPE_SRC), { recursive: true }).filter((file) => file.endsWith(".ts"));
+    const configs = await Promise.all(fixtures.map((file) => eslint.calculateConfigForFile(join(RECIPE_FIXTURE, RECIPE_SRC, file))));
+
+    expect(fixtures.length).toBeGreaterThan(0);
+    expect(fixtures.filter((_, index) => !configs[index]?.rules?.["no-restricted-globals"])).toEqual([]);
+  });
+
+  it("the Events API ban still applies to a recipe file", async () => {
+    const result = await recipe("shepherd/account-hold.ts");
+
+    expect(result.messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-syntax", severity: 2, message: expect.stringContaining("never an event source") })]);
   });
 });
