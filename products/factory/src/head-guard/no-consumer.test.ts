@@ -3,7 +3,7 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** M1a ships emitters only (TP-3097 I10): nothing outside head-guard/ reads the epoch until a rung registers a consumer. */
+/** TP-3097 I10: nothing outside head-guard/ reads the epoch but its one registered consumer, M1b's marker pin encoder (TP-3107 S2). */
 const READS = /\breadEpoch\b/;
 
 function sourceFiles(dir: string): string[] {
@@ -16,13 +16,15 @@ function sourceFiles(dir: string): string[] {
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
-/** Pure: whether a src-relative path is the guard itself or a test, the only places a read may appear. */
+const CONSUMERS = new Set(["markers/pins.ts"]);
+
+/** Pure: whether a src-relative path is the guard itself, its registered consumer or a test, the only places a read may appear. */
 function mayRead(path: string): boolean {
-  return path.startsWith("head-guard/") || path.endsWith(".test.ts");
+  return path.startsWith("head-guard/") || CONSUMERS.has(path) || path.endsWith(".test.ts");
 }
 
 describe("head epoch reads", () => {
-  it("lets only head-guard/ and tests mention readEpoch", () => {
+  it("lets only head-guard/, markers/pins.ts and tests mention readEpoch", () => {
     const readers = sourceFiles(SRC)
       .map((path) => relative(SRC, path).split(sep).join("/"))
       .filter((path) => !mayRead(path))
@@ -40,5 +42,10 @@ describe("head epoch reads", () => {
   it("counts a service file as a reader and exempts the guard and tests", () => {
     expect(["serve.ts", "shepherd/x.ts", "head-guards.ts"].filter(mayRead)).toEqual([]);
     expect(["head-guard/guard.ts", "serve.test.ts"].every(mayRead)).toBe(true);
+  });
+
+  it("admits the pin encoder as the one consumer and refuses a second marker file", () => {
+    expect(mayRead("markers/pins.ts")).toBe(true);
+    expect(["markers/validity.ts", "markers/pins.tsx", "markers/pins.ts.bak", "other/markers/pins.ts"].filter(mayRead)).toEqual([]);
   });
 });
