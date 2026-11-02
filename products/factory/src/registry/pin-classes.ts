@@ -2,7 +2,7 @@
 export const PIN_CLASSES = ["tree", "diff", "observed", "item", "landed"] as const;
 export type PinClass = (typeof PIN_CLASSES)[number];
 
-interface FactRule {
+export interface FactRule {
   pinClass: PinClass;
   /** The class on a visual item, where it differs: owner:approved is tree-pinned there and diff-pinned elsewhere. */
   visualPinClass?: PinClass;
@@ -16,7 +16,7 @@ interface FactRule {
  * v9.1 §2.3's identity table, and the only place a fact's pin class is set (§2.7: a rule file).
  * A key is an exact fact name, or `<prefix>:*` for a family.
  */
-const FACT_PIN_CLASS: Readonly<Record<string, FactRule>> = {
+export const FACT_PIN_CLASS: Readonly<Record<string, FactRule>> = {
   "head:pushed": { pinClass: "tree" },
   "ci:green": { pinClass: "tree" },
   "proof:reproduced": { pinClass: "tree" },

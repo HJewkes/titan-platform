@@ -12,10 +12,14 @@ const UNIT = /^(?:packages|products|apps)\/[^/]+\//;
 /** The paths `scripts/test-affected.mjs` forces a full rerun on, plus CI and the scripts tree. */
 const SHARED = [/(^|\/)package\.json$/, /(^|\/)pnpm-lock\.yaml$/, /(^|\/)tsconfig[^/]*\.json$/, /(^|\/)(vitest|vite)\.config\.[^/]+$/, /^\.github\//, /^scripts\//];
 
+/** The `packages/*`, `products/*` or `apps/*` directory a path sits in, or null for a root path. */
+export function pathUnit(path: string): string | null {
+  return UNIT.exec(path)?.[0] ?? null;
+}
+
 /** The unit a path belongs to, or null for a shared path: any root path, or one on the shared list. */
 function unitOf(path: string): string | null {
-  if (SHARED.some((pattern) => pattern.test(path))) return null;
-  return UNIT.exec(path)?.[0] ?? null;
+  return SHARED.some((pattern) => pattern.test(path)) ? null : pathUnit(path);
 }
 
 /** Pure: a shared path on either side wins over a unit overlap, which wins over disjoint units. */

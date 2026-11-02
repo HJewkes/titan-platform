@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { DROPPED_STEPS, PARKING_STEPS } from "./restart-contract.fixture.js";
-import { dispatchStepIds } from "./definition.js";
+import { defineWorkflow, dispatchStepIds } from "./definition.js";
+import { openFactoryHost } from "./host.js";
 import { entryFor } from "./registry/registry.js";
 import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
 import { configuredRoutes, factoryWorkflows } from "./workflows.js";
@@ -71,7 +72,7 @@ describe("restart contract", () => {
     expect(Object.fromEntries(parking.map((e) => [e.name, "reason" in e.effect ? e.effect.reason : ""]))).toEqual(PARKING_STEPS);
   });
 
-  it("only the six read-only steps are dropped, and the irreversible five stay irreversible", () => {
+  it("only the twenty-four read-only steps are dropped, and the irreversible five stay irreversible", () => {
     const reads = factoryRegistry.entries.filter((e) => e.effect.class === "read").map((e) => e.name);
     expect(reads.sort()).toEqual(DROPPED_STEPS);
     const irreversible = factoryRegistry.entries.filter((e) => e.effect.class === "irreversible").map((e) => e.name);
@@ -82,5 +83,78 @@ describe("restart contract", () => {
     const blankParks = Object.entries(PARK_ROUTES_WITHOUT_RECONCILE).filter(([, reason]) => reason.trim() === "");
     const blankSteps = Object.entries(RESTART_WRITE_STEPS).filter(([, reason]) => !reason.includes(":") || detailOf(reason) === "");
     expect([...blankParks, ...blankSteps].map(([id]) => id)).toEqual([]);
+  });
+});
+
+/** TP-3106 S3: each reviewed READ row of core, build-surface and audit, and the class the review gave it. */
+const S3_READ = ["update-backoff", "base-wait", "merge-settle", "await-new-head", "snapshot", "bs-plan", "bs-await-land", "audit-load", "audit-inventory-data"];
+const S3_KEPT = ["bs-preflight", "bs-extract-check", "bs-report-check", "bs-gates", "bs-health", "bs-review-check", "audit-answerability", "audit-baseline"];
+
+let dbs = 0;
+
+/** A workflow that blocks on `orphan`, then runs a merge and a landing; `skip` makes a replay take the branch that never reaches it. */
+function divergingWorkflow(family: string, orphan: string, skip: () => boolean) {
+  return defineWorkflow({
+    name: "diverging",
+    steps: [{ id: family, kind: "dispatch" }, { id: "merge", kind: "dispatch" }, { id: "sh-landed", kind: "dispatch" }],
+    run: async (ctx) => {
+      if (!skip()) await ctx.dispatch(orphan, "wait");
+      await ctx.dispatch("merge:r4:0", "merge");
+      await ctx.dispatch("sh-landed", "landed");
+    },
+  });
+}
+
+const blockOn = (stuck: string, ids: readonly string[]): StepRoute[] => ids.map((match) => ({
+  match,
+  onRestart: "repeat",
+  runner: { run: (input) => (input.stepId === stuck ? new Promise(() => undefined) : Promise.resolve({ ok: true, output: `${input.stepId} done` })) },
+}));
+
+async function finish(dbPath: string, workflow: ReturnType<typeof defineWorkflow>, runId?: string) {
+  const host = openFactoryHost({ dbPath, workflows: [workflow], routes: blockOn("none", dispatchStepIds(workflow)) });
+  try {
+    await host.adopt();
+    return await host.runtime.wait(runId ?? host.runtime.start(workflow.name));
+  } finally {
+    host.close();
+  }
+}
+
+/** Blocks a run on `<family>:r3:0`, restarts the host, and replays down the branch that never reaches it. */
+async function replayDivergedBefore(family: string) {
+  const orphan = `${family}:r3:0`;
+  let replaying = false;
+  const workflow = divergingWorkflow(family, orphan, () => replaying);
+  const dbPath = join(home, `diverged-${dbs++}.sqlite3`);
+  const first = openFactoryHost({ dbPath, workflows: [workflow], routes: blockOn(orphan, dispatchStepIds(workflow)) });
+  const runId = first.runtime.start(workflow.name);
+  await vi.waitFor(() => expect(first.runtime.status(runId)?.activeSteps[orphan]).toBeDefined());
+  first.close();
+  replaying = true;
+  const run = await finish(dbPath, workflow, runId);
+  const control = await finish(join(home, `control-${dbs++}.sqlite3`), divergingWorkflow(family, orphan, () => true));
+  return { run, orphan, controlKeys: Object.keys(control.stepResults).sort() };
+}
+
+function reasonOf(family: string): string {
+  const effect = entryFor(factoryRegistry, family)?.effect;
+  return effect && "reason" in effect ? detailOf(effect.reason) : "it has no reason";
+}
+
+describe("TP-3106 S3 READ review", () => {
+  it.each(S3_READ)("a restart whose replay diverged before %s drops its orphan and the run continues, not parks", async (family) => {
+    const { run, controlKeys } = await replayDivergedBefore(family);
+
+    expect(run.status).toBe("completed");
+    expect(run.activeSteps).toEqual({});
+    expect(Object.keys(run.stepResults).sort()).toEqual(controlKeys);
+  });
+
+  it.each(S3_KEPT.map((family) => [family, reasonOf(family)]))("%s's orphan still parks because %s", async (family) => {
+    const { run, orphan } = await replayDivergedBefore(family);
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe(`replay never reached recovered step ${orphan}`);
   });
 });

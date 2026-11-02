@@ -9,13 +9,6 @@
       "kills": ["restart contract the registry's parking dispatch entries equal the independent fixture, reasons included"]
     },
     {
-      "name": "the merge-order unreserve step is classified read",
-      "file": "products/factory/src/registry/steps/shepherd.ts",
-      "find": "effect(\"item\", `${WRITE}: deletes the run's merge-order reservation`)",
-      "replace": "READ_EFFECT",
-      "kills": ["restart contract the registry's parking dispatch entries equal the independent fixture, reasons included"]
-    },
-    {
       "name": "abandonsOrphan never drops an orphan",
       "file": "products/factory/src/registry/steps/index.ts",
       "find": "effect.class === \"read\";",
@@ -30,11 +23,24 @@
       "kills": ["restart contract lists every dispatch step that is not orphan-safe in RESTART_WRITE_STEPS, and nothing else"]
     },
     {
-      "name": "sh-scope-check is not declared",
-      "file": "products/factory/src/shepherd/review.ts",
-      "find": "  ...SCOPE_CHECK_STEPS,\n",
-      "replace": "",
-      "kills": ["restart contract lists every dispatch step that is not orphan-safe in RESTART_WRITE_STEPS, and nothing else"]
+      "name": "merge-settle classified as a write",
+      "file": "products/factory/src/registry/steps/core.ts",
+      "find": "step(\"merge-settle\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"merge-settle\", \"dispatch\", \"software\", { class: \"effect\", target: \"item\", reason: \"writes outside the run: mutant\" })",
+      "kills": [
+        "restart contract only the twenty-four read-only steps are dropped, and the irreversible five stay irreversible",
+        "TP-3106 S3 READ review a restart whose replay diverged before merge-settle drops its orphan and the run continues, not parks"
+      ]
+    },
+    {
+      "name": "bs-await-land classified as a write",
+      "file": "products/factory/src/registry/steps/build-surface.ts",
+      "find": "step(\"bs-await-land\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"bs-await-land\", \"dispatch\", \"software\", { class: \"effect\", target: \"item\", reason: \"writes outside the run: mutant\" })",
+      "kills": [
+        "restart contract only the twenty-four read-only steps are dropped, and the irreversible five stay irreversible",
+        "TP-3106 S3 READ review a restart whose replay diverged before bs-await-land drops its orphan and the run continues, not parks"
+      ]
     }
   ]
 }
