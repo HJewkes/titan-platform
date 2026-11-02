@@ -96,6 +96,8 @@ export default tseslint.config(
       "scripts/fixtures/gray-matter/**",
       // Holds deliberate recipe-file violations; scripts/eslint-recommended.test.mjs lints it from its own directory.
       "scripts/fixtures/recipe-capabilities/**",
+      // Holds a loop under an inline disable in a capability-baseline file; scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/recipe-loops/**",
     ],
   },
   js.configs.recommended,
@@ -118,6 +120,7 @@ export default tseslint.config(
   {
     files: RECIPE_FILES,
     ignores: RECIPE_LOOP_BASELINE,
+    linterOptions: { noInlineConfig: true },
     rules: { "titan/recipe-step-in-loop": "error" },
   },
   // A recipe sees no client, filesystem or clock: those exist only in step bodies. Inline directives are off per file, the per-file form of --no-inline-config. The block re-lists the Events API selectors because a later block replaces the rule's options.

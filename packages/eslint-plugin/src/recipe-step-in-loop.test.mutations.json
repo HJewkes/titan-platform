@@ -2,13 +2,22 @@
   "v": 1,
   "mutations": [
     {
-      "name": "any ancestor all allows, so all inside a loop passes",
+      "name": "any ancestor all allows, so a loop deep inside all passes",
       "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
       "find": "  return all !== null && nearestLoop(all) === null;",
       "replace": "  return all !== null;",
       "kills": [
         "recipe-step-in-loop invalid all([...]) called inside a while loop is an error",
         "recipe-step-in-loop invalid all over a map inside a while loop is an error"
+      ]
+    },
+    {
+      "name": "fan-out owner search crosses any parent",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (parent.type !== \"ArrayExpression\" && parent.type !== \"SpreadElement\") return null;\n",
+      "replace": "",
+      "kills": [
+        "recipe-step-in-loop invalid a .map nested in a .map under all is an error"
       ]
     },
     {

@@ -5,6 +5,7 @@ const STEP_OPS = new Set(["dispatch", "seed", "assisted", "authorize"]);
 const STEP_WRAPPERS = new Set(["step", "codeStep"]);
 const LOOP_STATEMENTS = new Set(["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"]);
 const LOOP_CALLBACKS = new Set(["map", "forEach", "flatMap", "reduce", "filter", "some", "every"]);
+const FAN_OUT_METHODS = new Set(["map", "flatMap"]);
 const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
 type Node = Rule.Node;
@@ -45,16 +46,28 @@ function nearestLoop(node: Node): Node | null {
   return null;
 }
 
-function enclosingAll(node: Node): Node | null {
-  for (let at = parentOf(node); at !== null; at = parentOf(at)) {
-    if (at.type === "CallExpression" && at.callee.type === "Identifier" && at.callee.name === "all") return at;
+function isAllCall(node: Node): boolean {
+  return node.type === "CallExpression" && node.callee.type === "Identifier" && node.callee.name === "all";
+}
+
+/** The `all(...)` that a `.map` call is a direct argument of, through array literals and spreads only. */
+function fanOutOwner(mapCall: Node): Node | null {
+  let at: Node | null = mapCall;
+  while (at !== null) {
+    const parent = parentOf(at);
+    if (parent === null) return null;
+    if (isAllCall(parent)) return parent;
+    if (parent.type !== "ArrayExpression" && parent.type !== "SpreadElement") return null;
+    at = parent;
   }
   return null;
 }
 
-/** A loop inside the arguments of an `all(...)` that sits in no loop of its own is the sanctioned fan-out. */
+/** Only a `.map` or `.flatMap` callback written directly as an argument of `all(...)` is the fan-out; any loop deeper in it is not. */
 function isSanctioned(loop: Node): boolean {
-  const all = enclosingAll(loop);
+  const mapCall = FUNCTIONS.has(loop.type) ? parentOf(loop) : null;
+  if (mapCall?.type !== "CallExpression" || !FAN_OUT_METHODS.has(calleeName(mapCall) ?? "")) return false;
+  const all = fanOutOwner(mapCall);
   return all !== null && nearestLoop(all) === null;
 }
 

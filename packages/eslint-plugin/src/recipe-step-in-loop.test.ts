@@ -20,5 +20,8 @@ tsRuleTester.run("recipe-step-in-loop", recipeStepInLoop, {
     { name: "all over a map inside a while loop is an error", code: "while (more) { await all(items.map((item) => ctx.seed(item))); }", errors: [error] },
     { name: "step and codeStep wrappers in a forEach", code: "items.forEach((item) => { step(ctx, item); codeStep(ctx, item); });", errors: [error, error] },
     { name: "authorize in a reduce callback", code: "items.reduce((acc, item) => acc + ctx.authorize(item), 0);", errors: [error] },
+    { name: "a for loop inside an IIFE inside all is an error", code: "await all([(async () => { for (const i of items) await ctx.dispatch(i); })()]);", errors: [error] },
+    { name: "a while loop inside an all(items.map(…)) callback is an error", code: "await all(items.map(async (item) => { while (pending) await ctx.dispatch(item); }));", errors: [error] },
+    { name: "a .map nested in a .map under all is an error", code: "await all(xs.map((x) => ys.map((y) => ctx.dispatch(y))));", errors: [error] },
   ],
 });
