@@ -198,10 +198,10 @@ jobs:
   # Main's full suite as three parallel shards beside validate, so main's wall time is the slowest of them (TP-4401).
   # A pull request whose scope passes SHARD_ABOVE_FILES runs it here too, and validate keeps the smaller scopes; each
   # shard places the scope itself with the same script, so the two jobs agree without one waiting on the other (TP-4730).
-  # A shard with nothing placed on it stops after the plan step and reports success. Branch protection requires
-  # validate; on a pull request a red shard blocks the logged merge paths, which hold every check at the head green.
-  # Shepherd judges main by the required contexts, so each shard is listed under mainContexts in
-  # .github/required-checks.json and a red shard still freezes main; renaming the job or the matrix must update that list.
+  # A shard with nothing placed on it stops after the plan step and reports success, never skipped, so each shard is a
+  # required pull request context in .github/required-checks.json: a large scope's tests run nowhere else.
+  # Shepherd judges main by the required contexts, so each shard is also listed under mainContexts there and a red shard
+  # still freezes main; renaming the job or the matrix must update both lists and the ruleset.
   # Each shard repeats install, a turbo-cached build,
   # the debs and Chromium; the restore-key fallback to the previous main's turbo cache makes the build a replay.
   test-shard:
@@ -214,8 +214,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The scope diffs the pull request's base against its head; main runs everything and needs no history.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          # The scope diffs the pull request's base against its head, as validate does, so both jobs place it alike.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { countTestFiles, placement, runRequest, SHARD_ABOVE_FILES, vitestArgs } from "./test-scope.mjs";
 
 // A scope of ~1800 files took up to 680 s in validate alone, against its 600 s job budget (TP-4730).
@@ -64,5 +65,24 @@ describe("runRequest", () => {
     const args = runRequest(scoped, "shards", ["--run", "--shard=2/3"], { CI: "true" });
 
     expect(args).toEqual([...vitestArgs(scoped, { CI: "true" }), "--shard=2/3"]);
+  });
+});
+
+// Both jobs place the scope from the same diff; a shallow shard checkout read no diff and ran the full suite (TP-4730).
+describe("ci.yml's test jobs", () => {
+  const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
+  const checkoutDepth = (job) => ci.jobs[job].steps.find((step) => step.uses?.startsWith("actions/checkout@")).with?.["fetch-depth"];
+
+  it("check out the full history in validate and in every shard", () => {
+    expect(checkoutDepth("validate")).toBe(0);
+    expect(checkoutDepth("test-shard")).toBe(0);
+  });
+
+  it("run the shards on pull requests, which then require each shard", () => {
+    const policy = JSON.parse(readFileSync(new URL("../.github/required-checks.json", import.meta.url), "utf8"));
+    const shards = ci.jobs["test-shard"].strategy.matrix.shard.map((shard) => `test-shard (${shard})`);
+
+    expect(ci.jobs["test-shard"].if).toBeUndefined();
+    expect(policy.branches.main.contexts).toEqual(expect.arrayContaining(shards));
   });
 });

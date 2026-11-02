@@ -2,7 +2,7 @@
   "version": 1,
   "branches": {
     "main": {
-      "contexts": ["dag-check", "hub-compose", "validate"],
+      "contexts": ["dag-check", "hub-compose", "test-shard (1)", "test-shard (2)", "test-shard (3)", "validate"],
       "mainContexts": ["test-shard (1)", "test-shard (2)", "test-shard (3)"]
     }
   }
