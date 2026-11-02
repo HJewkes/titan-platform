@@ -1,6 +1,7 @@
 import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { CapabilityOutsideStepError } from "./capabilities.js";
 import { inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
@@ -60,7 +61,7 @@ describe("ctx.capability", () => {
     const h = harness();
     let seen: unknown;
 
-    await finished(h, async (ctx) => void (seen = callThrough(ctx.capability("github-bot"))));
+    await finished(h, async (ctx) => void (await ctx.seed("use", async () => ({ data: { used: (seen = callThrough(ctx.capability("github-bot"))) } }))));
 
     expect(seen).toBe("ok");
     h.rt.shutdown();
@@ -69,7 +70,7 @@ describe("ctx.capability", () => {
   it("an unconfigured name fails the run without naming any secret", async () => {
     const h = harness();
 
-    const runId = await finished(h, async (ctx) => void ctx.capability("missing"));
+    const runId = await finished(h, async (ctx) => void (await ctx.seed("use", async () => ({ data: { missing: String(ctx.capability("missing")) } }))));
 
     expect(h.rt.status(runId)).toMatchObject({ status: "failed", error: "unknown capability: missing" });
     h.rt.shutdown();
@@ -86,6 +87,73 @@ describe("ctx.capability", () => {
     expect(h.rt.status(runId)?.status).toBe("completed");
     expect(everythingStored(h, runId)).not.toContain(SENTINEL);
     expect(h.prompts).toEqual(["hello ok"]);
+    h.rt.shutdown();
+  });
+});
+
+function refusalOf(ask: () => unknown): unknown {
+  try {
+    ask();
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
+
+describe("ctx.capability is scoped to a step body", () => {
+  it("a workflow body that asks for a capability outside a step body is refused, naming the capability and not the secret", async () => {
+    const h = harness();
+    let refusal: unknown;
+
+    const runId = await finished(h, async (ctx) => void (refusal = refusalOf(() => ctx.capability("github-bot"))));
+
+    expect(refusal).toBeInstanceOf(CapabilityOutsideStepError);
+    expect(refusal).toMatchObject({ capability: "github-bot", message: "capability github-bot asked outside a step body" });
+    expect(JSON.stringify({ refusal, message: (refusal as Error).message, stack: (refusal as Error).stack })).not.toContain(SENTINEL);
+    expect(h.rt.status(runId)?.status).toBe("completed");
+    h.rt.shutdown();
+  });
+
+  it("a seed body gets the handle, and a capability asked after the seed returns is refused", async () => {
+    const h = harness();
+    let inside: unknown;
+    let after: unknown;
+
+    await finished(h, async (ctx) => {
+      await ctx.seed("use", async () => {
+        await Promise.resolve();
+        inside = callThrough(ctx.capability("github-bot"));
+        return { data: {} };
+      });
+      after = refusalOf(() => ctx.capability("github-bot"));
+    });
+
+    expect(inside).toBe("ok");
+    expect(after).toBeInstanceOf(CapabilityOutsideStepError);
+    h.rt.shutdown();
+  });
+
+  it("two seeds running at once under Promise.all each get the handle, and the recipe between them does not", async () => {
+    const h = harness();
+    const seen: unknown[] = [];
+    let between: unknown;
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+
+    await finished(h, async (ctx) => {
+      const waitThenAsk = async (): Promise<{ data: Record<string, string> }> => {
+        await gate;
+        seen.push(callThrough(ctx.capability("github-bot")));
+        return { data: {} };
+      };
+      const both = Promise.all([ctx.seed("a", waitThenAsk), ctx.seed("b", waitThenAsk)]);
+      between = refusalOf(() => ctx.capability("github-bot"));
+      release();
+      await both;
+    });
+
+    expect(seen).toEqual(["ok", "ok"]);
+    expect(between).toBeInstanceOf(CapabilityOutsideStepError);
     h.rt.shutdown();
   });
 });
@@ -134,7 +202,11 @@ describe("a step that would leak the capability", () => {
   it("a dispatch templating it through vars never renders or runs the prompt", async () => {
     const h = harness();
 
-    const runId = await finished(h, async (ctx) => void (await ctx.dispatch("ask", "key {{k}}", { vars: { k: tokenOf(ctx.capability("github-bot")) } })));
+    const runId = await finished(h, async (ctx) => {
+      let k = "";
+      await ctx.seed("get", async () => ({ data: { got: (k = tokenOf(ctx.capability("github-bot"))) === "" ? "no" : "yes" } }));
+      await ctx.dispatch("ask", "key {{k}}", { vars: { k } });
+    });
 
     expect(h.rt.status(runId)).toMatchObject({ status: "failed", error: "capability secret refused in ask prompt vars" });
     expect(h.prompts).toEqual([]);

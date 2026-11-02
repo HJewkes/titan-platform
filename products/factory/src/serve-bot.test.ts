@@ -41,13 +41,16 @@ function tokenFile(mode: number): string {
   return file;
 }
 
-/** A bot step in miniature: it asks the capability for the bot and records what it got. */
+/** A bot step in miniature: its seed asks the capability for the bot and records what it got. */
 function botProbe(seen: BotAccess[]) {
   return defineWorkflow({
     name: "bot-probe",
     steps: [],
     run: async (ctx) => {
-      seen.push(botAccess(ctx));
+      await ctx.seed("bot", async () => {
+        seen.push(botAccess(ctx));
+        return { data: {} };
+      });
     },
   });
 }
@@ -112,7 +115,7 @@ describe("serve's bot identity (V5)", () => {
     expect(await runProbe(server, seen)).toEqual({ state: "blocked", reason: "refused" });
   });
 
-  it("hands a readable token's client to bot steps through the capability, and /health never shows the token", async () => {
+  it("a bot step asks for the bot inside its seed and gets it, and /health never shows the token", async () => {
     const seen: BotAccess[] = [];
     const server = await serveWithBot(tokenFile(0o600), seen);
 
