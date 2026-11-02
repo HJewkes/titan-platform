@@ -2,5 +2,6 @@
   { "step": "ci-wait", "closure": "9c698c2a9cd57c6286fddb7dbd6b95efbb227c5b44680e634ab240aeb02f1da1", "pr": 3155 },
   { "step": "merge", "closure": "4d4eb9a150745a326083ce9e1bbcd9459a537655f651b69d8cb5cac536876c5c", "pr": 3155 },
   { "step": "sh-await-verdict", "closure": "be7d5ac7dde974588e57b07e312069fb486b4f77caebaacf845b1b1ba517a66f", "pr": 3155 },
-  { "step": "ci-wait", "closure": "db3df79935780d7138c0d19f1e1b9b27c75f494725cd2a6bd138d99107d0d5fd", "pr": 3172 }
+  { "step": "ci-wait", "closure": "db3df79935780d7138c0d19f1e1b9b27c75f494725cd2a6bd138d99107d0d5fd", "pr": 3172 },
+  { "step": "ci-wait", "closure": "4a05e155bb9f36cf30b5d53c1d6d85400754bf7ad14a3434a7f41a590aaa267d", "pr": 3173 }
 ]
