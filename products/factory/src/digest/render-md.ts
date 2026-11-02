@@ -1,6 +1,6 @@
 import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import type { Ask, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
+import type { Ask, AttestedLine, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
 import { alarmLine, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { DEFAULT_CAPS, type RankedDigest } from "./rank.js";
 
@@ -103,6 +103,13 @@ function autoPassLines(passed: DigestModel["autoPassed"]): string[] {
   return section("Passed without you (FYI)", passed.map((p) => `- ${p.ref} ${p.rule} at ${p.headSha.slice(0, 12)}: ${clip(p.detail, REASON_WORDS)}`), "");
 }
 
+function attestLines(attested: DigestModel["attested"]): string[] {
+  if (attested === undefined) return [];
+  const meeters = (line: AttestedLine) => line.meeters.map((m) => `${m.shape === "correctness" ? "reviewer" : "adversary"} ${m.name}`).join(", ");
+  const item = (line: AttestedLine) => `${line.step}@${line.closure.slice(0, 8)} (${line.ref.slice(line.ref.indexOf("#"))}; ${meeters(line)})`;
+  return ["", `Attestations (7 d): ${attested.map(item).join("; ")}`];
+}
+
 function body(d: RankedDigest, decidedShown: number): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
@@ -113,6 +120,7 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...section("Seats (merged, spawned)", d.seats.map((s) => `- ${s.seat}: ${s.merges}, ${s.spawns}`), "No coordinator merged or spawned."),
     ...section("Spend", spend, "No pool readings."),
     ...autoPassLines(d.autoPassed),
+    ...attestLines(d.attested),
     ...proofFixtureLines(d.proofFixtures, d.generatedAt),
     ...waitingLines(d.waiting),
     ...flowLines(d.flow),

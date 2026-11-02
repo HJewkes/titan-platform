@@ -18,6 +18,24 @@
       "kills": [
         "locScope matches excludes with code-graph's pattern semantics, globs included"
       ]
+    },
+    {
+      "name": "a signal kill reads as an exit status",
+      "file": "scripts/verify-changed.mjs",
+      "find": "signal ? `killed by ${signal}` : `exit status ${status}`",
+      "replace": "`exit status ${status}`",
+      "kills": [
+        "planCommands names the signal that killed a step, which has a null exit status"
+      ]
+    },
+    {
+      "name": "a failing run ends without the summary line",
+      "file": "scripts/verify-changed.mjs",
+      "find": "failures.length > 0 ? { summary: failureSummary(failures), exitCode: 1 }",
+      "replace": "failures.length > 0 ? { summary: null, exitCode: 1 }",
+      "kills": [
+        "planCommands exits 1 with the summary when any step failed and 0 with none otherwise"
+      ]
     }
   ]
 }

@@ -1248,6 +1248,10 @@ A fact entry's `body` module is hashed with everything it imports, workspace sou
 
 `FactoryHostOptions.markerShadow` wraps each workflow's guarded context in `shadowContext`. Before each call to a step that has a fact entry, the shadow sends the fact's marker verdict to the option's `sink`: either the call would fast-forward or it would run. The step then runs live, unchanged. Afterwards the shadow appends a marker joined to the run id and memo key, unless the current row already records the same digests. The option is off by default and serve does not set it, so `step_results` stays authoritative. A shadow error goes to the sink and never reaches the run.
 
+### Inserting a step (C28): `src/runner/not-after.ts`
+
+A step inserted before a live call site would park every in-flight run whose record continues past that point, since strict replay refuses a call the record does not hold. Declare the step with `notAfter: "<fact>"` and call it through `unlessPast(ctx, stepId, () => …)`. When the run's record continues past this point without the step, the run took that path before the step existed, so `unlessPast` skips the call and returns `{ skipped: true }`; otherwise the step runs or replays as usual. The host refuses a `notAfter` naming a fact no registered step meets, and one on a recipe's first declaration (no call has been answered yet, so the rule cannot tell). `unlessPast` throws for an undeclared step and inside concurrent children (`all`). With the marker shadow on, a skip counts as a visit for the orphan trap and sends a `not-after-skip` line, and a live run whose `notAfter` fact already has a valid marker sends an `advisory` line.
+
 ## Land core: `src/workflows/land.ts`
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:

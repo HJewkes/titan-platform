@@ -43,3 +43,22 @@ export async function briefClaimsAt(port: GitHubPort, target: { repo: RepoSlug; 
     return {};
   }
 }
+
+/** What the attestation judge came to at a head, as the merge guard reads it; absent means the head claims no row. */
+export type AttestDecided = { unmet: readonly { step: string; why: string }[] } | { unread: string };
+
+/**
+ * A head that adds or changes an attestation row merges only when an independent reviewer's MERGE at that head attests
+ * each row, and the adversary's too where the class has one; claims that cannot be read gate as unmet.
+ */
+export function attestUnmetReason(attest: AttestDecided | undefined): string | undefined {
+  if (attest === undefined) return undefined;
+  if ("unread" in attest) return `attestation unmet: unread: ${attest.unread}`;
+  return attest.unmet.length === 0 ? undefined : `attestation unmet: ${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}`;
+}
+
+/** The steps the `shepherd/review` check names as unmet; an unread file names itself. */
+export function attestUnmetSteps(attest: AttestDecided | undefined): string[] {
+  if (attest === undefined) return [];
+  return "unread" in attest ? ["attestations.json unread"] : attest.unmet.map(({ step }) => step);
+}

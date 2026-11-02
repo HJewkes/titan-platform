@@ -323,9 +323,11 @@ Key exports:
 - `no-commented-code`: `noCommentedCode`
 - `no-internal-module-mock`: `noInternalModuleMock`
 - `no-test-clock-budget`: `noTestClockBudget`
-- `no-wall-clock-motion`: `DEFAULT_MOTION_PATHS`, `noWallClockMotion`
+- `no-wall-clock-motion`: `noWallClockMotion`
+- `recipe-step-in-loop`: `recipeStepInLoop`
 - `todo-needs-issue`: `todoNeedsIssue`
 - `index`: `recommended`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/eslint-plugin)
 
 <a id="cap-evidence"></a>
 
