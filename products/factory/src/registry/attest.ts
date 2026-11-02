@@ -47,14 +47,14 @@ interface Unmet {
   why: UnmetReason;
 }
 
-const TOKEN = /^([a-z0-9-]+)@([0-9a-f]{12})$/;
+const TOKEN = /^(?<step>[a-z0-9-]+)@(?<closure12>[0-9a-f]{12})$/;
 
 /** Well-formed tokens only, the first per step; a malformed token names nothing. */
 function parseAttestTokens(tokens: readonly string[]): AttestToken[] {
   const parsed: AttestToken[] = [];
   for (const token of tokens) {
-    const match = TOKEN.exec(token.trim());
-    if (match && !parsed.some((seen) => seen.step === match[1])) parsed.push({ step: match[1] as string, closure12: match[2] as string });
+    const { step, closure12 } = TOKEN.exec(token.trim())?.groups ?? {};
+    if (step !== undefined && closure12 !== undefined && !parsed.some((seen) => seen.step === step)) parsed.push({ step, closure12 });
   }
   return parsed;
 }
