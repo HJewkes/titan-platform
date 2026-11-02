@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "core is checked before ambiguous",
+      "file": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+      "find": "  if (reviewed.kind === \"ambiguous\" ||",
+      "replace": "  if ((reviewed as { core?: string }).core === (current as { core?: string }).core) return coreEqual(probe);\n  if (reviewed.kind === \"ambiguous\" ||",
+      "kills": [
+        "an ambiguous base on either side is ambiguous-base"
+      ]
+    },
+    {
+      "name": "a failed merge-up proof on a merge counts as agreement",
+      "file": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+      "find": "if (probe.mergeUp.ok) return",
+      "replace": "if (probe.mergeUp.ok || probe.headIsMerge) return",
+      "kills": [
+        "equal core on a merge whose merge-up proof fails is conflict-merge-up; on a non-merge it is rebase-context"
+      ]
+    },
+    {
+      "name": "the default is rebase-context",
+      "file": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+      "find": ": differs(\"unclassified\")",
+      "replace": ": differs(\"rebase-context\")",
+      "kills": [
+        "any other difference is unclassified, and no probe is unprobed"
+      ]
+    },
+    {
+      "name": "the exclusion2 flag is dropped",
+      "file": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+      "find": "{ class: \"carry-agrees\", exclusion2: true }",
+      "replace": "{ class: \"carry-agrees\", exclusion2: false }",
+      "kills": [
+        "equal full hashes agree; equal core plus a proved merge-up agrees as exclusion 2"
+      ]
+    }
+  ]
+}
