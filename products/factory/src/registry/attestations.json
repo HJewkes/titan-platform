@@ -10,5 +10,7 @@
   { "step": "ci-wait", "closure": "ebcccc6f737c6a84eb502b4e452a7a891f43c8881886b96bd5a9bd4691cb9af8", "pr": 3173 },
   { "step": "ci-wait", "closure": "4a6da5186ca9f4c23948f0deec426e6475b3b760a841c694e1838bc3bb071c04", "pr": 3177 },
   { "step": "ci-wait", "closure": "2769d86a26943c1e4f9750ab03dcebd228dd9a6331d970696439c6ea26a67f83", "pr": 3188 },
-  { "step": "sh-await-verdict", "closure": "a6e5ac596415f766aeaec85d478085ee5edbec2e7b364b3681e10a045af1756f", "pr": 3188 }
+  { "step": "sh-await-verdict", "closure": "a6e5ac596415f766aeaec85d478085ee5edbec2e7b364b3681e10a045af1756f", "pr": 3188 },
+  { "step": "ci-wait", "closure": "fdf4769765fe8c665f0ab45a9b27f8fd92287fcea0ecc1cdd4c6bda006cdd89e", "pr": 3193 },
+  { "step": "sh-await-verdict", "closure": "0822b8ba161cfa6c96594bef7d7985e4fd2b3a56735bc07c8c348e3768341f69", "pr": 3193 }
 ]
