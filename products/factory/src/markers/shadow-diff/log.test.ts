@@ -102,6 +102,20 @@ describe("shadow disagreement log", () => {
     expect(rows(db)).toHaveLength(1);
   });
 
+  it("INSERT OR REPLACE on a taken orphan or compare key aborts and keeps the original row", () => {
+    const db = memory();
+    logSink(db, () => AT)(orphan);
+    const replace = db.prepare("INSERT OR REPLACE INTO factory_shadow_log (at, kind, run_id, memo_key, marker_id) VALUES (?, ?, ?, ?, ?)");
+    replace.run(AT, "compare", "run-1", "seed:ci-wait:0", null);
+
+    expect(() => replace.run("2026-11-02T13:00:00.000Z", "call-site-orphan", "run-1", null, 7)).toThrow(/append-only/);
+    expect(() => replace.run("2026-11-02T13:00:00.000Z", "compare", "run-1", "seed:ci-wait:0", null)).toThrow(/append-only/);
+    expect(rows(db).map(({ id, kind, at }) => ({ id, kind, at }))).toEqual([
+      { id: 1, kind: "call-site-orphan", at: AT },
+      { id: 2, kind: "compare", at: AT },
+    ]);
+  });
+
   it("a sink write that throws never reaches the caller", async () => {
     const db = memory();
     const sink = logSink(db, () => AT);

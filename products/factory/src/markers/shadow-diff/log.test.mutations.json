@@ -9,10 +9,10 @@
       "kills": ["shadow disagreement log a verdict with drift is material-valid and not full-valid; an input-changed verdict is neither"]
     },
     {
-      "name": "a re-sent orphan insert is not ignored",
+      "name": "the sink does not skip a taken key",
       "file": "products/factory/src/markers/shadow-diff/log.ts",
-      "find": "INSERT OR IGNORE INTO factory_shadow_log",
-      "replace": "INSERT INTO factory_shadow_log",
+      "find": "WHERE NOT ${keyTaken((column) => PARAM[column])}",
+      "replace": "WHERE 1",
       "kills": ["shadow disagreement log the same call-site-orphan sent twice, across two sink instances on one database, writes one row"]
     },
     {
@@ -23,11 +23,18 @@
       "kills": ["shadow disagreement log the log refuses update and delete"]
     },
     {
-      "name": "budget-exceeded writes no row",
+      "name": "the replace guard ignores the orphan key",
       "file": "products/factory/src/markers/shadow-diff/log.ts",
-      "find": "  return (event) => {\n",
-      "replace": "  return (event) => {\n    if (event.kind === \"budget-exceeded\") return;\n",
-      "kills": ["shadow disagreement log every shadow event kind is written as one log row"]
+      "find": "AND kind = 'call-site-orphan' AND",
+      "replace": "AND kind = 'call-site-orphan' AND 0 AND",
+      "kills": ["shadow disagreement log INSERT OR REPLACE on a taken orphan or compare key aborts and keeps the original row"]
+    },
+    {
+      "name": "the replace guard ignores the compare key",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "AND kind = 'compare' AND",
+      "replace": "AND kind = 'compare' AND 0 AND",
+      "kills": ["shadow disagreement log INSERT OR REPLACE on a taken orphan or compare key aborts and keeps the original row"]
     }
   ]
 }

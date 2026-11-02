@@ -27,6 +27,8 @@ export interface ReviewCheckInput {
   autoMergeArmed: boolean;
   /** Set for the Version Packages PR, whose preflight stands in for the reviewer. */
   releaseBlockers?: number;
+  /** The claimed attestation steps the merge guard found unmet at this head; any blocks the success. */
+  attestUnmet?: string[];
 }
 
 interface ReviewCheck {
@@ -69,6 +71,8 @@ export function reviewCheck(input: ReviewCheckInput): ReviewCheck {
   if (input.autoMergeArmed) return at("action_required", `MERGE at ${short(head)} held: auto-merge is armed`, "Disarm GitHub auto-merge so Shepherd's guards decide the merge.");
   const blockers = input.releaseBlockers;
   if (blockers !== undefined && blockers !== 0) return at("action_required", `Release preflight at ${short(head)}: ${blockers} blockers`, "The release preflight found blockers at this head.");
+  const unmet = input.attestUnmet ?? [];
+  if (unmet.length > 0) return at("action_required", `Attestation unmet at ${short(head)}: ${unmet.join(", ")}`, "No independent reviewer's MERGE at this head attests every row it claims.");
   const rule = input.carryRule ?? "tree-equal";
   if (carried) return at("success", `MERGE at ${short(head)}, carried from ${short(carriedFrom)} (${rule})`, CARRIED_BECAUSE[rule]);
   return at("success", `MERGE at ${short(head)}`, blockers === undefined ? "The review passed at this exact head." : "The release preflight passed at this exact head.");
