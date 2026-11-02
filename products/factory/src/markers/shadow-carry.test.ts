@@ -13,7 +13,7 @@ import { logSink, readLog } from "./shadow-diff/log.js";
 import type { ShadowEvent, ShadowSink } from "./shadow.js";
 
 const PARAMS = { repo: "Fixture/Repo", pr: "7" };
-const [REVIEWED, WS_HEAD, OTHER_HEAD, SHA] = ["a", "b", "c", "d"].map((char) => char.repeat(40)) as [string, string, string, string];
+const [REVIEWED, WS_HEAD, OTHER_HEAD, SHA] = ["a".repeat(40), "b".repeat(40), "c".repeat(40), "d".repeat(40)];
 const NOW = "2026-11-01T12:00:00.000Z";
 const PROBE_MS = 500;
 const dirs: string[] = [];
@@ -29,7 +29,7 @@ const fixture = defineWorkflow({
     { id: "ci-wait", kind: "dispatch" },
   ],
   run: async (ctx) => {
-    for (const head of JSON.parse(ctx.param("carried") ?? "[]") as string[]) await ctx.dispatch(`sh-merge-evidence:${head}`, "evidence", { schema: z.looseObject({ result: z.unknown() }) });
+    for (const head of z.array(z.string()).parse(JSON.parse(ctx.param("carried") ?? "[]"))) await ctx.dispatch(`sh-merge-evidence:${head}`, "evidence", { schema: z.looseObject({ result: z.unknown() }) });
     await ctx.dispatch("ci-wait", "wait", { schema: z.looseObject({ verdict: z.string() }) });
   },
 });

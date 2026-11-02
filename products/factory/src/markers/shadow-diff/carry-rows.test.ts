@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { carriedThisEntry, carryRow, type CarriedMerge } from "./carry-rows.js";
 
 const ITEM = { repo: "Fixture/Repo", pr: 7 };
-const [REVIEWED, HEAD, EARLIER] = ["a", "b", "c"].map((char) => char.repeat(40)) as [string, string, string];
+const [REVIEWED, HEAD, EARLIER] = ["a".repeat(40), "b".repeat(40), "c".repeat(40)];
 const CARRIED: CarriedMerge = { fromHead: REVIEWED, head: HEAD, rule: "remerge-empty", memoKey: `sh-merge-evidence:${HEAD}:0` };
 
 const evidence = (head: string) => ({ data: { result: { record: { head, carry: { fromHead: REVIEWED, head } } } } });
