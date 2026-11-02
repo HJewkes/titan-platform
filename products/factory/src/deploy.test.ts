@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployBuildLogPath, deployWindowPath } from "./deploy-output.js";
@@ -11,6 +12,8 @@ import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployHoldPath, deployPausePath, readDeployHolds, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./run-command.js";
+import { mergeLogMigration } from "./merge-log.js";
+import { openIntentsIn } from "./registry/intent-readers.js";
 
 const CHECKOUT = "/srv/repo";
 const STATE = "/xdg/state/titan-factory";
@@ -82,6 +85,8 @@ interface MachineInit {
   wedged?: boolean;
   /** Withdrawing the resolved deploy alarms throws this. */
   resolveFails?: string;
+  /** The factory db `openIntents` reads; an Error is thrown as an unreadable db. Absent throws too. */
+  intents?: Db | Error;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -253,6 +258,11 @@ function fakeMachine(init: MachineInit = {}) {
       return true;
     },
     isAlive: (pid) => init.alive?.includes(pid) ?? false,
+    openIntents: (steps) => {
+      calls.push(`openIntents ${steps.join(",")}`);
+      if (init.intents === undefined || init.intents instanceof Error) throw init.intents ?? new Error("this fake has no factory db");
+      return openIntentsIn(init.intents, steps);
+    },
   };
   const record = () => parseDeployRecord(files.get(RECORD));
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
@@ -733,6 +743,81 @@ describe("titan-factory service deploy", () => {
 
     expect(code).toBe(0);
     expect(machine.files.has(`${STATE}/deploy.lock`)).toBe(false);
+  });
+});
+
+describe("service deploy irreversible step versions (TP-3110)", () => {
+  const LOCK = "products/factory/src/registry/closure.lock.json";
+  const [HASH, NEW_HASH] = ["a".repeat(64), "b".repeat(64)];
+  const lockOf = (merge: { schemaHash: string; bump: number }): string =>
+    JSON.stringify({ "ci-wait": { closure: "c".repeat(64), schemaHash: "d".repeat(64), bump: 0 }, merge: { closure: "e".repeat(64), ...merge } });
+  const locks = (before: { schemaHash: string; bump: number }, after: { schemaHash: string; bump: number }) => ({ [`${BASE}:${LOCK}`]: lockOf(before), [`${TIP}:${LOCK}`]: lockOf(after) });
+  const dbs: Db[] = [];
+  afterEach(() => dbs.splice(0).forEach((db) => db.close()));
+
+  /** One merge intent per element, followed by its result rows in order. */
+  function intentDb(intents: readonly (readonly ("merged" | "failed" | "unknown")[])[]): Db {
+    const db = openDatabase(":memory:");
+    dbs.push(db);
+    runMigrations(db, [mergeLogMigration(1)]);
+    const insert = db.prepare("INSERT INTO merge_op (kind, intent_id, path, repo, pr, head_sha, reason_kind, reason_id, actor, at, outcome, merge_commit) VALUES (?, ?, 'lander', 'acme/widgets', ?, ?, 'item', 'synthetic-item', 'lander', '2026-01-01T00:00:00Z', ?, ?)");
+    intents.forEach((results, pr) => {
+      const id = insert.run("intent", null, pr, CORE, null, null).lastInsertRowid;
+      for (const outcome of results) insert.run("result", id, pr, CORE, outcome, outcome === "merged" ? STRAY : null);
+    });
+    return db;
+  }
+
+  it("a deploy that bumps merge while a merge intent has no result is refused and names the step", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: intentDb([[]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toBe("error: deploy refused: merge changes version (aaaaaaaaaaaa+b0 -> aaaaaaaaaaaa+b1) while 1 intent(s) for it have no result; wait for them to settle (titan-factory shepherd status) and redeploy\n");
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("the same deploy proceeds once the intent has a merged result", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: intentDb([["merged"]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(machine.calls).toContain("openIntents merge");
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+  });
+
+  it("an unknown result keeps the intent open", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: NEW_HASH, bump: 0 }), intents: intentDb([["unknown"], ["unknown", "failed"]]) });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("merge changes version (aaaaaaaaaaaa+b0 -> bbbbbbbbbbbb+b0) while 1 intent(s) for it have no result");
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("a deploy that changes no irreversible step's version never reads the db", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 0 }), intents: intentDb([[]]) });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.calls.filter((call) => call.startsWith("openIntents"))).toEqual([]);
+    expect(machine.record()).toMatchObject({ outcome: "deployed" });
+  });
+
+  it("an unreadable factory db refuses a deploy that moves an irreversible step's version", async () => {
+    const machine = fakeMachine({ blobs: locks({ schemaHash: HASH, bump: 0 }, { schemaHash: HASH, bump: 1 }), intents: new Error("unable to open database file") });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("merge changes version (aaaaaaaaaaaa+b0 -> aaaaaaaaaaaa+b1) and its open intents cannot be read (unable to open database file)");
+    expect(machine.mutations()).toEqual([]);
   });
 });
 

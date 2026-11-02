@@ -137,7 +137,7 @@ export const ownCheckout = (): string => fileURLToPath(new URL("../../../", impo
 
 function deployPortsFor({ io, deps }: Verbs): { checkout: string; ports: DeployPorts } {
   const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
-  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout), incident: configuredDeployIncident(io.env), resolveAlarms: configuredDeployResolve(io.env) } };
+  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout, io.env), incident: configuredDeployIncident(io.env), resolveAlarms: configuredDeployResolve(io.env) } };
 }
 
 function registerServiceDeploy(service: Command, verbs: Verbs): void {
