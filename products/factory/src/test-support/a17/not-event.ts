@@ -20,4 +20,14 @@ export const NOT_EVENT: readonly NotEvent[] = [
     title: "watchServe when reads are unavailable (A17: a rate-limited probe never rolls back)",
     reason: "M0 deploy probe: asserts the serve watch window on an unavailable read, with no GitHub event input",
   },
+  {
+    file: "registry/registry.test.ts",
+    title: "A17: recipes call only registered steps: a workflow declaring an unregistered step does not open",
+    reason: "TP-3106 S7: asserts host registration against the step registry, with no GitHub event input",
+  },
+  {
+    file: "definition.test.ts",
+    title: "A17: a call to an unregistered step id fails the run",
+    reason: "TP-3106 S7: asserts the run guard against the step registry, with no GitHub event input",
+  },
 ];

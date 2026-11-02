@@ -33,7 +33,7 @@ import { composeRoutes } from "./compose-routes.js";
 import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { abandonsOrphan } from "./registry/steps/index.js";
-import { assertDistinctStepIds, dispatchStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
+import { assertDistinctStepIds, assertRegistered, dispatchStepIds, guardedContext, type RegisteredSteps, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -61,6 +61,8 @@ export type FactoryRoutes = readonly StepRoute[] & {
 export interface FactoryHostOptions {
   dbPath: string;
   workflows: readonly WorkflowDefinition[];
+  /** When set, every workflow in `workflows` may declare and call only steps it has an entry for. Routes' own workflows are outside it. */
+  registry?: RegisteredSteps;
   routes: FactoryRoutes;
   now?: () => number;
   leaseMs?: number;
@@ -160,10 +162,13 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     onEvent: composeRoutes({ onEvent: options.onEvent }, options.routes).onEvent,
     capabilities: options.capabilities,
   });
+  const registered = new Set(options.workflows);
   for (const definition of [...options.workflows, ...(options.routes.workflows ?? [])]) {
     assertDistinctStepIds(definition);
+    const registry = registered.has(definition) ? options.registry : undefined;
+    if (registry) assertRegistered(definition, registry);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
-    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan, strictReplay: true });
+    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition, registry)), { abandonsOrphan, strictReplay: true });
   }
   return runtime;
 }
