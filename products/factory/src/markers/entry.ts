@@ -2,6 +2,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import type { WorkflowDefinition } from "../definition.js";
 import type { PrKey } from "../head-guard/epoch-store.js";
 import { isFactEntry } from "../registry/entry.js";
+import { newMeter, type EntryBudget } from "./budget.js";
 import { entryFor } from "../registry/registry.js";
 import { markerHistory, type MarkerRow } from "./marker-store.js";
 import { findOrphans, type EntryLog } from "./orphan-trap.js";
@@ -15,20 +16,27 @@ interface EntryDeps extends ShadowDeps {
   sentOrphans: Set<string>;
   /** The run's memo keys in recording order, read once when the entry begins. */
   recordedOf: (runId: string) => readonly string[];
+  entryBudget?: EntryBudget;
 }
 
 interface Entry {
   ctx: WorkflowContext;
-  /** Runs the orphan trap once the drive settles; it never rejects, retries or re-drives. */
+  /** Runs the orphan trap and sends `entry-end` once the drive settles; it never rejects, retries or re-drives. */
   end(): Promise<void>;
 }
 
 export function beginEntry(ctx: WorkflowContext, definition: WorkflowDefinition, deps: EntryDeps): Entry {
   const log: EntryLog = { runId: ctx.runId, recorded: deps.recordedOf(ctx.runId), visited: new Set(), reached: 0, failClosed: false };
-  const shadowed = shadowContext(ctx, deps, { definition, log });
+  const meter = newMeter(deps.entryBudget);
+  const shadowed = shadowContext(ctx, deps, { definition, log, meter });
   // An entry-level failure names no step.
   const site = { runId: ctx.runId, stepId: "", fact: "", memoKey: "" };
-  return { ctx: shadowed, end: async () => void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log))) };
+  const end = async (): Promise<void> => {
+    void (await swallow(deps, site, () => trapOrphans(ctx, definition, deps, log)));
+    // D-M2-01 measures every entry from these, so they are sent however the entry settled.
+    await swallow(deps, site, () => deps.sink({ ...site, kind: "entry-end", counters: { ...meter.counters } }));
+  };
+  return { ctx: shadowed, end };
 }
 
 /** O3: before M6 the requirement set is the facts the workflow's declared fact steps meet. */
