@@ -87,7 +87,8 @@ interface JudgeWiring {
 
 /** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage, each read with `patience`. */
 export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage, deploySkew }: JudgeWiring, patience: RosterPatience) {
-  const readers: AttestReaders = { store, ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }), ...(deploySkew && { deploySkew }) };
+  const reads = { ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }) };
+  const readers: AttestReaders = { store, ...reads, ...(deploySkew && { deploySkew }) };
   return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
 }
 
