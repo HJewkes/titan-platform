@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the broker principal absent from the roster proves nothing",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
+      "replace": "if (rows.length === 0 && name === `${HUMAN}-root`) return new Set([name]);",
+      "kills": [
+        "the evidence record's attestations names the independent reviewer that met a row and why the row it left out is unmet"
+      ]
+    },
+    {
+      "name": "any name absent from the roster is a lineage root",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
+      "replace": "if (rows.length === 0) return new Set([name]);",
+      "kills": [
+        "the evidence record's attestations records a reviewer whose spawner is absent from the roster as unmet: meeter-is-author"
+      ]
+    }
+  ]
+}
