@@ -25,10 +25,17 @@ function reasonOf({ reservation, shared }: Blocker): string {
   return `merge order: waiting behind #${reservation.pr} (${what})`;
 }
 
-/** A failed read keeps the reservation blocking; its TTL still ends it. */
-export async function stillOpen(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
+/**
+ * Whether a reserving PR still orders others: open and based on the default branch. TP-4741: a stacked PR can merge only
+ * after its base does, so a main-based PR ordered behind it deadlocked (tp#3203 behind #3193 and #3194); once retargeted
+ * to the default branch it orders again. A failed read keeps the reservation blocking; its TTL still ends it.
+ */
+export async function stillOrders(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
   const read = await port.getPr(repo, pr).catch(() => undefined);
-  return read === undefined || (read.state === "open" && !read.merged);
+  if (read === undefined) return true;
+  if (read.state !== "open" || read.merged) return false;
+  const main = await port.defaultBranch(repo).catch(() => undefined);
+  return main === undefined || read.baseRef === main;
 }
 
 /** A PR's changed paths, read once per head and only when the read is whole; an unread list is read again next time. */
@@ -57,7 +64,7 @@ interface GuardTarget {
  * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
  * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
  * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation. A
- * reservation whose run a person holds, or that still waits for its own turn, orders nothing. Each new wait is logged as `order-wait`.
+ * reservation whose run a person holds, that still waits for its own turn, or whose PR is stacked, orders nothing. Each new wait is logged as `order-wait`.
  * TP-4569: a run whose order wait hit the merging stall limit is not held behind a holder whose resolved head is only
  * in review, which on 10-29 kept a chain of resolved heads in `merging` through an 87 min review round.
  */
@@ -74,7 +81,7 @@ export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
     const waitedOut = order.waitedOut(runId);
     for (const blocker of blockers({ repo, runId, ...(await pathsAt(port, repo, pr, head)) }, reservations, rule, now(), driving, waiting)) {
       if (waitedOut && order.inResolvedReview(blocker.reservation)) continue;
-      if (await stillOpen(port, repo, blocker.reservation.pr)) return blocker;
+      if (await stillOrders(port, repo, blocker.reservation.pr)) return blocker;
     }
     return undefined;
   };
