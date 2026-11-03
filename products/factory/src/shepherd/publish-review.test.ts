@@ -8,7 +8,7 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
-import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { attestationsFileOf } from "./attest-read.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
@@ -114,7 +114,7 @@ describe("sh-publish-review", () => {
   it("posts the MERGE again as action_required once its evidence finds an attestation unmet", async () => {
     const fake = fakeGitHub();
     const row = { step: "ci-wait", closure: fakeSha("publish-review-closure"), pr: 1 };
-    fake.files.set(`${A}:${ATTESTATIONS_PATH}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
+    fake.files.set(`${A}:${attestationsFileOf(1)}`, { content: JSON.stringify([row]), blobSha: "attest-a" });
 
     await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
 
