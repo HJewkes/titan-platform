@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a closure.lock.json outside the registry is not a registry path",
+      "file": "products/factory/src/shepherd/attest-skew.ts",
+      "find": " || path.endsWith(`/${CLOSURE_LOCK}`)",
+      "replace": "",
+      "kills": [
+        "deploy skew for the attest read (TP-4752) waits on a closure.lock.json change outside the registry directory"
+      ]
+    },
+    {
+      "name": "an incomplete compare list clears the skew",
+      "file": "products/factory/src/shepherd/attest-skew.ts",
+      "find": "  if (!compared.complete) return",
+      "replace": "  if (false) return",
+      "kills": [
+        "deploy skew for the attest read (TP-4752) waits when the compare lists fewer files than it changed"
+      ]
+    },
+    {
+      "name": "a failed compare judges",
+      "file": "products/factory/src/shepherd/attest-skew.ts",
+      "find": "  if (typeof compared === \"string\") return `deploy skew unread",
+      "replace": "  if (typeof compared === \"string\") return undefined; if (false) return `deploy skew unread",
+      "kills": [
+        "deploy skew for the attest read (TP-4752) waits when the compare could not be read, never judging on a failed read"
+      ]
+    },
+    {
+      "name": "another repo's PR waits on this build's skew",
+      "file": "products/factory/src/shepherd/attest-skew.ts",
+      "find": "    if (factoryRepo === undefined || repo.toLowerCase() !== factoryRepo.toLowerCase()) return undefined;\n",
+      "replace": "",
+      "kills": [
+        "deploy skew for the attest read (TP-4752) reads no skew for another repo's PR, whose attestations this build's registry does not lay out"
+      ]
+    }
+  ]
+}
