@@ -293,6 +293,7 @@ graph TD
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> anthropicAccount
   fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed

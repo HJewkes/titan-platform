@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { ACCOUNTS_JSON, HEALTH_JSON, ROSTER_JSON, STATUS_LINES } from "./fixture.js";
-import { parseAccounts, parseRoster, parseSlots, parseStatusLine } from "./inputs.js";
+import { readAccounts } from "@titan-design/anthropic-account/node";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeAccountHome, writeAccountHome } from "./account-home.js";
+import { FIXTURE_ACCOUNTS, HEALTH_JSON, NOW_MS, ROSTER_JSON, STATUS_LINES } from "./fixture.js";
+import { accountUsageOf, parseRoster, parseSlots, parseStatusLine } from "./inputs.js";
 
 describe("parseRoster", () => {
   it("reads every agent with its account dir, presence and transcript context", () => {
@@ -23,13 +25,29 @@ describe("parseRoster", () => {
   });
 });
 
-describe("parseAccounts", () => {
-  it("keeps both windows, the reading age and the stale flag", () => {
-    const [first, second, third] = parseAccounts(ACCOUNTS_JSON);
+describe("accountUsageOf over readAccounts", () => {
+  let home: string;
+  beforeEach(() => {
+    home = writeAccountHome();
+  });
+  afterEach(() => removeAccountHome(home));
 
-    expect(first).toMatchObject({ fiveHour: { usedPct: 62 }, sevenDay: { usedPct: 21 }, ageSeconds: 40, stale: false });
-    expect(second).toMatchObject({ stale: true, fiveHour: { usedPct: 91, resetsAtMs: null } });
-    expect(third).toMatchObject({ fiveHour: null, ageSeconds: null });
+  const read = () => readAccounts({ home, env: {}, now: NOW_MS, platform: "linux", uid: process.getuid?.() ?? 0 }).map(accountUsageOf);
+
+  it("keeps both windows, the reading age and the stale flag of each login in a temp home", () => {
+    const byDir = (suffix: string) => read().find((row) => row.configDirs.some((dir) => dir.endsWith(suffix)));
+
+    expect(byDir("acct-a")).toMatchObject({ fiveHour: { usedPct: 62 }, sevenDay: { usedPct: 21 }, ageSeconds: 40, stale: false, authFail: false });
+    expect(byDir("acct-b")).toMatchObject({ stale: true, fiveHour: { usedPct: 91, resetsAtMs: null } });
+    expect(byDir("/.claude")).toMatchObject({ fiveHour: null, ageSeconds: null, authFail: false });
+  });
+
+  it("matches the fixture accounts the panel renders, apart from the home path", () => {
+    const strip = (rows: typeof FIXTURE_ACCOUNTS) => rows.map(({ configDirs, ...rest }) => ({ chips: configDirs.map((d) => d.split("/").pop()), ...rest }));
+
+    expect(strip(read()).sort((a, b) => String(a.chips).localeCompare(String(b.chips)))).toEqual(
+      strip(FIXTURE_ACCOUNTS).sort((a, b) => String(a.chips).localeCompare(String(b.chips))),
+    );
   });
 });
 

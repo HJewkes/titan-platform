@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "five-hour window read from the seven-day figure",
+      "file": "products/fleet-panel/src/inputs.ts",
+      "find": "fiveHour: usageWindow(row.windows.five_hour)",
+      "replace": "fiveHour: usageWindow(row.windows.seven_day)",
+      "kills": [
+        "accountUsageOf over readAccounts keeps both windows, the reading age and the stale flag of each login in a temp home"
+      ]
+    }
+  ]
+}

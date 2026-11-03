@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { readAccounts, type ReadAccountsOptions } from "@titan-design/anthropic-account/node";
 import type { FeedSources } from "./feed.js";
-import { parseAccounts, parseRoster, parseSlots, parseStatusLine, type RosterEntry } from "./inputs.js";
+import { accountUsageOf, parseRoster, parseSlots, parseStatusLine, type RosterEntry } from "./inputs.js";
 
 const run = promisify(execFile);
 
@@ -64,11 +65,16 @@ async function statusLine(entry: RosterEntry, env: NodeJS.ProcessEnv) {
   }
 }
 
-export function nodeSources(address: BrokerAddress, env: NodeJS.ProcessEnv, runner: CliRunner = execRunner): FeedSources {
+export function nodeSources(
+  address: BrokerAddress,
+  env: NodeJS.ProcessEnv,
+  runner: CliRunner = execRunner,
+  accountOptions: ReadAccountsOptions = {},
+): FeedSources {
   const cli = async (args: string[]) => (await runner(address.cli, args, cliOptions(env))).stdout;
   return {
     roster: async () => parseRoster(await cli(["agent", "ls", "--json"])),
-    accounts: async () => parseAccounts(await cli(["agent", "budget", "--accounts", "--json"])),
+    accounts: async () => readAccounts({ env, ...accountOptions }).map(accountUsageOf),
     slots: async () => {
       const res = await fetch(`http://127.0.0.1:${address.port}/health`, { signal: AbortSignal.timeout(5_000) });
       if (!res.ok) throw new Error(`/health answered ${res.status}`);
