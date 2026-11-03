@@ -20,6 +20,8 @@ const roster = [agent("impl-a", "human"), agent("rev-1", "human"), agent("adv-1"
 const identity = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
 
 type Files = Record<number, unknown>;
+/** One PR's rows as an array or raw text, or several PR files by number. */
+type Side = unknown[] | string | Files;
 
 /** Sets each PR's `<pr>.json` at `ref`, as JSON unless it is already a string. */
 function setFiles(fake: FakeGitHub, ref: string, files: Files): void {
@@ -30,12 +32,12 @@ function setFiles(fake: FakeGitHub, ref: string, files: Files): void {
 }
 
 /** The base and head as PR files: an array is PR 1's own file, an object names each file by its PR. */
-function world(base: unknown, head: unknown): FakeGitHub {
+function world(base: Side | undefined, head: Side): FakeGitHub {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("attest-test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1)]);
   fake.prFiles.set(1, [{ path: attestationsFileOf(1), status: "added" }]);
-  const asFiles = (side: unknown): Files => (Array.isArray(side) || typeof side === "string" ? { 1: side } : (side as Files));
+  const asFiles = (side: Side): Files => (Array.isArray(side) || typeof side === "string" ? { 1: side } : side);
   if (base !== undefined) setFiles(fake, "main", asFiles(base));
   setFiles(fake, HEAD, asFiles(head));
   return fake;
