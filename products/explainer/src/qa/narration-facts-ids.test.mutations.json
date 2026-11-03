@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "narration-facts reads no shown number as a cited id",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "filter((n) => !citesId(n, citedIds) && !heard(",
+      "replace": "filter((n) => !heard(",
+      "kills": [
+        "a bare id number the screen shows need not be said when it is the number of a pull request the beat cites",
+        "a bare id number the screen shows need not be said when it is the number of a task the beat cites"
+      ]
+    },
+    {
+      "name": "a quantity that equals a cited id's number reads as a citation",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "/^\\d+$/.test(mention) && citedIds.has(value)",
+      "replace": "citedIds.has(value)",
+      "kills": [
+        "a real number beside a cited id must still be said when it is a quantity that equals a cited id's number"
+      ]
+    },
+    {
+      "name": "every shown number reads as a cited id",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "/^\\d+$/.test(mention) && citedIds.has(value)",
+      "replace": "true",
+      "kills": [
+        "a bare id number the screen shows must be said when the beat cites no id with that number",
+        "a real number beside a cited id must still be said"
+      ]
+    }
+  ]
+}

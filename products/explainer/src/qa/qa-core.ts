@@ -4,6 +4,7 @@ import { parseTimeline } from "../composition/timeline.js";
 import { renameWordsBeats, storyboardIds } from "../render/beat-ids.js";
 import { RENDER_FPS } from "../render/render-video.js";
 import { ResolvedSchema } from "../resolve-stage.js";
+import { citedIdNumbers } from "../spoken-ids.js";
 import { readTiming } from "../timing.js";
 import { captionReport } from "./caption-check.js";
 import { contrastReport } from "./contrast-check.js";
@@ -58,6 +59,17 @@ function heldBeats(sources: QaSources, ids: ReadonlyMap<string, string>): Set<st
   return new Set(beats.filter((beat) => beat.band === "held" || (beat.heldS ?? 0) > 0).flatMap((beat) => ids.get(beat.id) ?? []));
 }
 
+const CitingScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), fact_ids: z.array(z.string()).default([]), new_terms: z.array(z.string()).default([]) })) });
+
+/** The PR and task id numbers each beat cites, by storyboard id, so narration-facts reads one shown bare as a citation. */
+function citedIdsByBeat(sources: QaSources, ids: ReadonlyMap<string, string>): Map<string, Set<number>> {
+  const { beats } = CitingScriptSchema.parse(sources.script);
+  return new Map(beats.flatMap((beat) => {
+    const board = ids.get(beat.id);
+    return board === undefined ? [] : [[board, citedIdNumbers([...beat.fact_ids, ...beat.new_terms])] as const];
+  }));
+}
+
 /** A series too large to sit inline in qa.json goes to its own artifact; returns its sha. */
 function storedIfLarge(sources: QaSources, name: string, value: unknown): string | undefined {
   const text = JSON.stringify(value);
@@ -73,6 +85,7 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
   const probe = storedIfLarge(sources, "qa-probe", probed);
   const ids = timelineIds(sources);
   const words = readTiming(renameWordsBeats(sources.words, ids));
+  const cited = citedIdsByBeat(sources, ids);
   const timing = timingReport({ timeline, words, held: heldBeats(sources, ids), diffs, fps: RENDER_FPS, probed, profile: config.timing ?? timingProfile() });
   return {
     sweep: config.sweep !== false,
@@ -82,7 +95,7 @@ async function measure(sources: QaSources, engine: QaEngine, timeline: QaTimelin
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(sources.mp4), timeline),
     captions: captionReport(sources.vtt, sources.words),
-    narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" ")),
+    narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" "), (beat) => cited.get(beat) ?? new Set()),
     flash: await engine.flashScan(sources.mp4),
     contrast: contrastReport(parseTimeline(sources.timeline).beats, [...inspection.held.errors, ...inspection.held.info], CONTRAST, options),
   };
