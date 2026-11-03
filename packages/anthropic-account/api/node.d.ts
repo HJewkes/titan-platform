@@ -115,6 +115,8 @@ declare function usageFilePath(configDir: string): string;
 interface ReadUsageOptions {
     now?: number;
     windows?: readonly string[];
+    pollerFirstSeconds?: number;
+    dropReset?: boolean;
 }
 declare function readUsage(configDir: string, options?: ReadUsageOptions): UsageFileRead | null;
 declare function writeReading(configDir: string, reading: UsageReading): string;
