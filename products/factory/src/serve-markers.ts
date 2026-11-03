@@ -1,11 +1,14 @@
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import type { Logger } from "@titan-design/daemon";
 import type { Db } from "@titan-design/store-sqlite";
 import type { MarkersConfig } from "./markers/config.js";
 import type { FactoryHostOptions } from "./host.js";
+import { startMarkerGcSweep } from "./markers/shadow-diff/gc-sweep.js";
 import { carryProbeSource, diffPinSource, markerMirrors, treeOfSource } from "./markers/shadow-diff/git-sources.js";
 import { logSink } from "./markers/shadow-diff/log.js";
 import type { ShadowSink } from "./markers/shadow.js";
+import type { Sweep } from "./sweep.js";
 
 type MarkerShadow = NonNullable<FactoryHostOptions["markerShadow"]>;
 type SeatClone = (repo: string) => string | undefined;
@@ -21,6 +24,12 @@ export function markerShadowOptions(config: MarkersConfig | undefined, db: () =>
   const madeMirrors = (): Promise<readonly string[]> => Promise.resolve(mirrorsUnder(join(stateDir, "marker-git")));
   const options: MarkerShadow = { sink: lazyLogSink(db, now), diffPin, treeOf: treeOfSource(madeMirrors), carryProbe: carryProbeSource(mirrorOf, diffPin) };
   return config.shadow.entryBudget === undefined ? options : { ...options, entryBudget: config.shadow.entryBudget };
+}
+
+/** The blob GC runs beside the shadow and only with it: off, the shadow writes no marker, so there is nothing to collect. */
+export function markerGcSweep(config: MarkersConfig | undefined, db: Db, dbPath: string, log: Logger, now: () => number = Date.now): Sweep | undefined {
+  if (config?.shadow.enabled !== true) return undefined;
+  return startMarkerGcSweep(db, { blobDir: join(dirname(dbPath), "marker-blobs") }, log, now);
 }
 
 function lazyLogSink(db: () => Db, now: () => number): ShadowSink {
