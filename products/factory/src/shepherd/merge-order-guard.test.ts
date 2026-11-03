@@ -93,6 +93,27 @@ describe("the merge-order guard", () => {
     expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
   });
 
+  it("lets a main-based PR through without an order-wait while the reserving PR is stacked (TP-4741)", async () => {
+    const r = rig();
+    r.fake.pr(2301).baseRef = "topic-2300";
+
+    const reason = await reasonFor(r);
+
+    expect(reason).toBeUndefined();
+    expect(r.store.eventsOf("run-y").filter((event) => event.kind === "order-wait")).toEqual([]);
+  });
+
+  it("orders behind the reserving PR again once it is retargeted from its stack to main (TP-4741)", async () => {
+    const r = rig();
+    r.fake.pr(2301).baseRef = "topic-2300";
+    const whileStacked = await reasonFor(r);
+
+    r.fake.pr(2301).baseRef = "main";
+
+    expect(whileStacked).toBeUndefined();
+    expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
+  });
+
   it("logs one order-wait event per wait, not one per poll, so the timeline shows what the merge waits on", async () => {
     const r = rig();
     const guard = mergeOrderGuard({ order: () => r.order, registrations: () => r.store, rules: ON, now: () => r.clock.now });
