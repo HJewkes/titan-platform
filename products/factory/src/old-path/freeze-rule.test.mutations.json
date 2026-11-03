@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the removed exemption is dropped",
+      "file": "products/factory/src/old-path/freeze-rule.ts",
+      "find": "file.status !== \"removed\" && ",
+      "replace": "",
+      "kills": [
+        "a PR that only deletes old-path files, or renames them out of the root, touches nothing frozen; a rename into the root does"
+      ]
+    },
+    {
+      "name": "any superseded-at value is accepted, including an exited milestone",
+      "file": "products/factory/src/old-path/freeze-rule.ts",
+      "find": "if (exited.has(target)) stale ??= tag;\n    else return { tag };",
+      "replace": "return { tag };",
+      "kills": ["superseded-at naming an exited milestone is a stale carve-out and refuses"]
+    },
+    {
+      "name": "the freeze is keyed on M1a instead of M1b",
+      "file": "products/factory/src/old-path/freeze-rule.ts",
+      "find": "const FREEZE_MILESTONE = \"M1b\";",
+      "replace": "const FREEZE_MILESTONE = \"M1a\";",
+      "kills": [
+        "a PR touching products/factory/src/shepherd whose task has no carve-out tag is refused once M1b has exited",
+        "before M1b exits an untagged touch is recorded as advisory and does not refuse"
+      ]
+    },
+    {
+      "name": "an unread milestones.json reads as inactive",
+      "file": "products/factory/src/old-path/freeze-rule.ts",
+      "find": "const active = \"unread\" in read || exited.has(FREEZE_MILESTONE);",
+      "replace": "const active = exited.has(FREEZE_MILESTONE);",
+      "kills": ["an unread milestones.json reads the freeze as active"]
+    },
+    {
+      "name": "the root matches without the trailing slash",
+      "file": "products/factory/src/old-path/freeze-rule.ts",
+      "find": "path.startsWith(`${root}/`)",
+      "replace": "path.startsWith(root)",
+      "kills": [
+        "agent-chat src outside burndown is not frozen, and products/factory/src/shepherd-x is not under the shepherd root"
+      ]
+    }
+  ]
+}

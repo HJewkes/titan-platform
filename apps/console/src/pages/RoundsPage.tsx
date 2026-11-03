@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import {
   Alert,
+  Collapse,
+  CollapseButton,
+  CollapseContent,
   DateTime,
   EmptyState,
   HStack,
@@ -38,7 +41,7 @@ const SECTIONS: Record<RoundStatus, { title: string; subtitle: string; empty: st
   withdrawn: { title: "Withdrawn rounds", subtitle: "Superseded or closed before an answer; nothing to answer", empty: "No withdrawn rounds" },
 };
 
-/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones, then the withdrawn ones. */
+/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones, the withdrawn ones, and last, folded, the ones that do not parse. */
 export function RoundsPage({ query }: { query?: string }): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
@@ -52,8 +55,9 @@ export function RoundsPage({ query }: { query?: string }): ReactNode {
       {truncated ? <Alert status="warning" message={`Showing the first ${list.data.rounds.length} rounds; the rounds dir holds more.`} /> : null}
       {set === null ? null : <SetFilter set={set} count={rounds.length} />}
       {STATUS_ORDER.map((status) => (
-        <RoundsSection key={status} status={status} rounds={rounds.filter((round) => round.status === status)} />
+        <RoundsSection key={status} status={status} rounds={rounds.filter((round) => round.valid && round.status === status)} />
       ))}
+      <InvalidSection rounds={rounds.filter((round) => !round.valid)} />
     </VStack>
   );
 }
@@ -80,7 +84,33 @@ function RoundsSection({ status, rounds }: { status: RoundStatus; rounds: readon
   return (
     <Section testID={`rounds-${status}`}>
       <SectionHeader title={title} subtitle={subtitle} />
-      <SectionContent>{rounds.length === 0 ? <EmptyState title={empty} /> : <RoundsResponsive rounds={rounds} />}</SectionContent>
+      <SectionContent>{rounds.length === 0 ? <EmptyLine text={empty} /> : <RoundsResponsive rounds={rounds} />}</SectionContent>
+    </Section>
+  );
+}
+
+/** An empty group is one muted line, not an empty-state heading louder than the rounds above it. */
+function EmptyLine({ text }: { text: string }): ReactNode {
+  return (
+    <Typography variant="body2" color="secondary">
+      {text}
+    </Typography>
+  );
+}
+
+/** A round that does not parse still says an import went wrong, but folded, so its reason never crowds the rounds waiting on the owner. */
+function InvalidSection({ rounds }: { rounds: readonly RoundSummary[] }): ReactNode {
+  if (rounds.length === 0) return null;
+  return (
+    <Section testID="rounds-invalid">
+      <Collapse>
+        <CollapseButton>
+          <Typography variant="subtitle1">{`Invalid rounds (${rounds.length})`}</Typography>
+        </CollapseButton>
+        <CollapseContent>
+          <RoundsResponsive rounds={rounds} />
+        </CollapseContent>
+      </Collapse>
     </Section>
   );
 }
@@ -215,11 +245,11 @@ function WithdrawnReason({ id, reason }: { id: string; reason: string }): ReactN
   );
 }
 
-/** An invalid round has no unit to show, so its row carries the schema's reason instead. */
+/** An invalid round has no unit to show, so its row carries the schema's reason instead, cut to one line; the round's own page has all of it. */
 function UnitLine({ round }: { round: RoundSummary }): ReactNode {
   if (!round.valid) {
     return (
-      <Typography variant="caption" color="error">
+      <Typography variant="caption" color="error" className="block w-full truncate" testID={`round-reason-${round.id}`}>
         {round.reason}
       </Typography>
     );

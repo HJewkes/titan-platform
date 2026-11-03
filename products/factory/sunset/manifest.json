@@ -7,6 +7,10 @@
    "path": "products/factory/src/shepherd"
   },
   {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff"
+  },
+  {
    "repo": "agent-chat",
    "path": "src"
   },
@@ -21,6 +25,14 @@
    "path": "products/factory/src/shepherd",
    "fate": "kept",
    "reason": "default: a file added after the manifest; its entry is owed (TP-3180), listed by the check's defaulted notice"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8",
+   "reason": "default: the SHD-2 comparator and disagreement log are deleted by D-M8-09; SHD-1 (D-M8-01) follows"
   },
   {
    "repo": "agent-chat",
@@ -3242,6 +3254,132 @@
    "path": "products/factory/src/shepherd/why-asked.ts",
    "fate": "kept",
    "reason": "observability read model; no deletion task names it and A14 (`why`) builds on it"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/carry-rows.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/compare.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/git-sources.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/log.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/pin-cause.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/report.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
   },
   {
    "repo": "agent-chat",
