@@ -39,7 +39,7 @@ describe("the knowledge list on a phone", () => {
     const lines = screen.getByTestId(`knowledge-card-${NOTE}`).children;
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe(screen.getByTestId(`knowledge-card-meta-${NOTE}`));
-    expect(within(lines[1] as HTMLElement).getByText("orbit-relay")).toBeTruthy();
+    expect(within(screen.getByTestId(`knowledge-card-meta-${NOTE}`)).getByText("orbit-relay")).toBeTruthy();
   });
 
   it("gives each card's title and initiative links a 44px tap target", async () => {
