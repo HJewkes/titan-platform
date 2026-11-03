@@ -69,4 +69,21 @@ describe("readAccounts", () => {
     expect(rows.map((row) => row.config_dirs)).toEqual([[dir("default"), dir("personal")], [dir("agents")], [dir("server")], [dir("workout")]]);
     expect(rows.filter((row) => row.identity === undefined).map((row) => row.account)).toEqual(["server", "workout"]);
   });
+
+  it("dates a status line redrawing old figures by its last API response and marks it stale", () => {
+    loginAs("agents", "user-b");
+    const lastResponse = SECONDS - 35 * 3600;
+    fs.mkdirSync(sessionsDir(dir("agents")), { recursive: true });
+    const body = {
+      session_id: "session-a",
+      written_at: SECONDS - 10,
+      rate_limits: { seven_day: { used_percentage: 12, resets_at: WEEK_RESET } },
+      prompt_cache: { ttl: "5m", expires_at: lastResponse + 300 },
+    };
+    fs.writeFileSync(path.join(sessionsDir(dir("agents")), "session-a.json"), JSON.stringify(body));
+
+    const [row] = readAccounts({ home, env: {}, now: NOW, uid });
+
+    expect(row).toMatchObject({ source: "status-line", age_seconds: 35 * 3600, stale: true });
+  });
 });

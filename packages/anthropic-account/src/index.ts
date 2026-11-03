@@ -1,4 +1,4 @@
-export { POLL_SESSION_ID, POLL_SOURCE, parseUsageReading, usageFromOAuthResponse } from "./usage.js";
+export { POLL_SESSION_ID, POLL_SOURCE, parseObservedReading, parseUsageReading, usageFromOAuthResponse } from "./usage.js";
 export type { OAuthUsageOptions, UsageReading, UsageWindow } from "./usage.js";
 export { loginStateFromCredentials, needsRefresh } from "./login.js";
 export type { LoginState, RefusedReason } from "./login.js";

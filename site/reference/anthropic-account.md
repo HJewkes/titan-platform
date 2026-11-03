@@ -76,6 +76,9 @@ epoch seconds and percentages run from 0 to 100.
 
 `rate_limits` is an open map, so a new window name parses without a release.
 `parseUsageReading(input)` returns the reading or `null`, and drops keys it does not know.
+`parseObservedReading(input)` does the same but also keeps a status line's
+`prompt_cache: { ttl?, expires_at? }` stamp, which dates its figures by the last API response.
+A malformed stamp is dropped and the reading kept. `readReadings` parses with it.
 
 `usageFromOAuthResponse(body, { writtenAt, account? })` takes the parsed response body. Each
 top-level key whose value is `{ utilization: number, resets_at: string | null }` becomes a
