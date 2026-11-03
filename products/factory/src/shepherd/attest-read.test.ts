@@ -142,6 +142,31 @@ describe("briefClaimsAt", () => {
 
     expect(claims).toEqual({ attestClaims: [{ step: "merge", closure: MERGE_STEP.closure }] });
   });
+
+  it("lists the claimed step's closure files this PR changed, and none it left alone", async () => {
+    const fake = world([], [CI_WAIT]);
+    fake.prFiles.set(1, [{ path: attestationsFileOf(1), status: "added" }, { path: "src/ci-wait.ts", status: "modified" }, { path: "src/unrelated.ts", status: "modified" }]);
+    const members = (step: string) => (step === "ci-wait" ? ["src/ci-wait.ts", "src/helper.ts"] : undefined);
+
+    const claims = await briefClaimsAt(githubPort(fake.wire), { repo: REPO, pr: 1, head: HEAD }, members);
+
+    expect(claims).toEqual({ attestClaims: [{ step: "ci-wait", closure: CI_WAIT.closure, changedFiles: ["src/ci-wait.ts"] }] });
+  });
+
+  it("reads a ci-wait claim's closure from the registry when no reader is given", async () => {
+    const fake = world([], [CI_WAIT]);
+    fake.prFiles.set(1, [{ path: "products/factory/src/workflows/land-ci-wait.ts", status: "modified" }]);
+
+    const claims = await briefClaimsAt(githubPort(fake.wire), { repo: REPO, pr: 1, head: HEAD });
+
+    expect(claims.attestClaims?.[0]?.changedFiles).toEqual(["products/factory/src/workflows/land-ci-wait.ts"]);
+  });
+
+  it("asks nothing when the head claims no row", async () => {
+    const claims = await briefClaimsAt(githubPort(world([CI_WAIT], [CI_WAIT]).wire), { repo: REPO, pr: 1, head: HEAD }, () => ["src/ci-wait.ts"]);
+
+    expect(claims).toEqual({});
+  });
 });
 
 describe("the evidence record's attestations", () => {

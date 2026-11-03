@@ -88,7 +88,7 @@ export type { FixProofUnverified, NoReproProceed, WorkflowCiInput, WorkflowCiPro
 export { CLASS_TAG, IMPORTANT_TAG, MAX_SCOPE_PATHS, usableScope } from "./briefs/scoped-rereview.js";
 export type { ReviewScope, ScopeHunk } from "./briefs/scoped-rereview.js";
 export { PROBES_HEADING, hasProbesLine } from "./briefs/adversary.js";
-export { ATTESTS_HEADING, MAX_ATTEST_CLAIMS, attestRule, attestTokens, type AttestClaim } from "./briefs/attest.js";
+export { ATTESTS_HEADING, MAX_ATTEST_CLAIMS, MAX_CLAIM_FILES, attestRule, attestTokens, type AttestClaim } from "./briefs/attest.js";
 export type { AdversaryHoldContext } from "./briefs/adversary.js";
 export { SPAWN_REFUSED_REASON, memberName, reviewPullRequest } from "./review-pull-request.js";
 export type { ReviewClock, ReviewOptions, ReviewPorts, ReviewRequest } from "./review-pull-request.js";
