@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-D14 and the guard read no cited ids",
+      "file": "products/explainer/src/lint-screen.ts",
+      "find": "unspokenFacts(beat.id, texts, spokenOf(beat), citedIdNumbers([...beat.fact_ids, ...beat.new_terms]))",
+      "replace": "unspokenFacts(beat.id, texts, spokenOf(beat))",
+      "kills": [
+        "a cited id the screen shows as a bare number may leave the line, since qa reads it as a citation",
+        "a cited id the screen shows as a bare number may leave the line when the screen shows two of them"
+      ]
+    },
+    {
+      "name": "the guard lets any number the screen shows leave the line",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...shownUnspoken(before, after),\n",
+      "replace": "",
+      "kills": [
+        "a real number the screen shows is still refused when it leaves the line, though it looks like an id",
+        "a real number the screen shows is still refused when it leaves the line beside a cited id that may go"
+      ]
+    }
+  ]
+}

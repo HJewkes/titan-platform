@@ -84,6 +84,13 @@ export function spokenIds(beat: IdBeat): IdMention[] {
   ]);
 }
 
+/**
+ * The numbers of the PR and task ids a beat cites ("pr/acme/depot#6420/merged" gives 6420). Shown bare on screen, such
+ * a number cites its source the way "PR 6420" does, so a line that names the change by what it did need not say it.
+ */
+export const citedIdNumbers = (terms: readonly string[]): Set<number> =>
+  new Set(terms.flatMap((term) => termSpellings(term).slice(0, 1)).filter((digits) => digits.length >= MIN_CITED_DIGITS).map(Number));
+
 /** Whether a declared term or fact id names an item by id, not by a word a line would say. */
 export const isIdTerm = (term: string): boolean =>
   termSpellings(term).length > 0 || new RegExp(`^(?:${SCRIPT_ID.source})$`, "u").test(term.trim()) || new RegExp(`^(?:${TASK_ID.source})$`, "u").test(term.trim());
