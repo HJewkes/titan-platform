@@ -1,26 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
-import {
-  Alert,
-  Button,
-  ButtonText,
-  EmptyState,
-  HStack,
-  Input,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Section, SectionContent, SectionHeader, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Skeleton } from "../shell/Loading.js";
 import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";

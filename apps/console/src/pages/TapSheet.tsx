@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, Drawer, DrawerBody, DrawerFooter, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, Drawer, DrawerBody, DrawerFooter, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
@@ -146,7 +147,7 @@ function SheetBody<R extends TapReady>({ sheet, reading, command, renderReadBack
   // The outcome leads, so a short phone sheet never scrolls it out of sight below the read-back.
   return (
     <>
-      {sheet.status === "acting" ? <Spinner size="sm" label="Sending" /> : null}
+      {sheet.status === "acting" ? <Spinner size="sm" label="Sending" mutation /> : null}
       {sheet.status === "acted" ? <Alert status={LANDED.has(sheet.acted.outcome.status) ? "success" : "warning"} message={sheet.acted.message} testID={`${testID}-outcome`} /> : null}
       {sheet.status === "acted" && sheet.acted.next !== undefined ? <Typography variant="body2" testID={`${testID}-next`}>{`Now: ${sheet.acted.next.detail}`}</Typography> : null}
       {sheet.status === "failed" ? <TerminalFallback message={`Not done: ${sheet.error}`} command={command} testID={testID} /> : null}

@@ -1,20 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  EmptyState,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, EmptyState, Link, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArRunSummary } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";

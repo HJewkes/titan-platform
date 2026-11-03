@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Alert, Spinner, Typography } from "@titan-design/react-ui";
+import { Alert, Typography } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { Enlarge, useNearViewport } from "./RoundFrame.js";

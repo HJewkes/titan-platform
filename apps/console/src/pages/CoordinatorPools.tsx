@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, HStack, Section, SectionContent, SectionHeader, Skeleton, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Skeleton } from "../shell/Loading.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 
 type PoolsResult = ServedCommands["coord.pools"]["result"];

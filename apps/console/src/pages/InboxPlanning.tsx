@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, Section, SectionContent, SectionHeader, Spinner, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
 import type { InboxItem } from "./InboxPage.js";
 import { PHONE_TAP } from "./phone.js";

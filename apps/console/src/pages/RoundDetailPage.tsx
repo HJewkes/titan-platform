@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { LiveViewedProvider } from "../data/live-viewed.js";
 import { useQuery } from "../data/rpc.js";

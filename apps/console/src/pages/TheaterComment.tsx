@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObjec
 import { Alert, Button, ButtonText, HStack, Input, Radio, RadioGroup, VStack } from "@titan-design/react-ui";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
+import { useWait } from "../shell/Loading.js";
 
 type Verdict = "ship" | "needs-changes";
 export type NoteAbout = "content" | "video";
@@ -81,6 +82,7 @@ function useNoteBar(videoId: string, videoRef: VideoRef) {
   const [text, setText] = useState("");
   const [about, setAbout] = useState<NoteAbout>("content");
   const [sending, setSending] = useState(false);
+  useWait(sending, true);
   const [error, setError] = useState<string | null>(null);
   const deliver = async (input: NoteInput): Promise<boolean> => {
     setSending(true);

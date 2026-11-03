@@ -164,6 +164,17 @@ export default tseslint.config(
       ],
     },
   },
+  // The console times every visible loader as an owner wait (TP-4755); a loader imported straight from react-ui goes untimed.
+  {
+    files: ["apps/console/src/**/*.{ts,tsx}"],
+    ignores: ["apps/console/src/shell/Loading.tsx", "apps/console/src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: [{ name: "@titan-design/react-ui", importNames: ["Spinner", "Skeleton"], message: "Import Spinner and Skeleton from src/shell/Loading.tsx, which times each visible loader as a wait." }] },
+      ],
+    },
+  },
   // A hook called conditionally or after an early return breaks React's call order; only the rules-of-hooks rule is on, not the plugin's compiler rules.
   {
     files: ["apps/*/src/**/*.{ts,tsx}"],
