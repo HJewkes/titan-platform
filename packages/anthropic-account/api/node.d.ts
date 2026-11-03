@@ -1,34 +1,6 @@
 import { A as AccountProfile, b as AccountUsage, L as LoginState, U as UsageReading, R as RefusedReason, d as ObservedReading } from './merge.js';
 import 'zod';
 
-declare const CONFIG_DIRS_ENV = "CLAUDE_CONFIG_DIRS";
-declare const PROFILE_ROOT_ENV = "CLAUDE_PROFILE_ROOT";
-interface DiscoverOptions {
-    home?: string;
-    env?: Readonly<Record<string, string | undefined>>;
-}
-declare function discoverProfiles(options?: DiscoverOptions): AccountProfile[];
-
-interface ReadAccountsOptions extends DiscoverOptions {
-    now?: number;
-    /** The login a config dir bills; defaults to accountIdentity. */
-    identify?: (configDir: string) => string | undefined;
-    /** The uid that must own each credentials file. Defaults to this process's. */
-    uid?: number;
-    platform?: NodeJS.Platform;
-}
-/** One row per Anthropic login, every discovered profile included, each naming all its config dirs. */
-declare function readAccounts(options?: ReadAccountsOptions): AccountUsage[];
-
-/** A file's text, or undefined when it cannot be read. Injected so tests never touch a real login. */
-type ReadText = (file: string) => string | undefined;
-/**
- * CC-1289: the Anthropic login a config dir bills, `accountUuid/organizationUuid`, or undefined
- * when none can be read. Claude Code keeps the default dir's login in `~/.claude.json` when
- * CLAUDE_CONFIG_DIR is unset, so that file is read first and `<dir>/.claude.json` second.
- */
-declare function accountIdentity(configDir: string, home?: string, read?: ReadText): string | undefined;
-
 declare const KEYCHAIN_SERVICE = "Claude Code-credentials";
 interface KeychainExecResult {
     status: number | null;
@@ -42,6 +14,33 @@ interface KeychainOptions {
     home?: string;
 }
 declare function keychainService(configDir: string, home: string): string;
+
+declare const CONFIG_DIRS_ENV = "CLAUDE_CONFIG_DIRS";
+declare const PROFILE_ROOT_ENV = "CLAUDE_PROFILE_ROOT";
+interface DiscoverOptions {
+    home?: string;
+    env?: Readonly<Record<string, string | undefined>>;
+}
+declare function discoverProfiles(options?: DiscoverOptions): AccountProfile[];
+
+interface ReadAccountsOptions extends DiscoverOptions, KeychainOptions {
+    now?: number;
+    /** The login a config dir bills; defaults to accountIdentity. */
+    identify?: (configDir: string) => string | undefined;
+    /** The uid that must own each credentials file. Defaults to this process's. */
+    uid?: number;
+}
+/** One row per Anthropic login, every discovered profile included, each naming all its config dirs. */
+declare function readAccounts(options?: ReadAccountsOptions): AccountUsage[];
+
+/** A file's text, or undefined when it cannot be read. Injected so tests never touch a real login. */
+type ReadText = (file: string) => string | undefined;
+/**
+ * CC-1289: the Anthropic login a config dir bills, `accountUuid/organizationUuid`, or undefined
+ * when none can be read. Claude Code keeps the default dir's login in `~/.claude.json` when
+ * CLAUDE_CONFIG_DIR is unset, so that file is read first and `<dir>/.claude.json` second.
+ */
+declare function accountIdentity(configDir: string, home?: string, read?: ReadText): string | undefined;
 
 declare const CREDENTIALS_FILE = ".credentials.json";
 declare const MAX_CREDENTIALS_BYTES: number;
@@ -149,8 +148,6 @@ declare function usageFilePath(configDir: string): string;
 interface ReadUsageOptions {
     now?: number;
     windows?: readonly string[];
-    pollerFirstSeconds?: number;
-    dropReset?: boolean;
 }
 declare function readUsage(configDir: string, options?: ReadUsageOptions): UsageFileRead | null;
 declare function readReadings(configDir: string): ObservedReading[];

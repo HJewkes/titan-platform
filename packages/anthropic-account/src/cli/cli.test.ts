@@ -132,17 +132,17 @@ describe("status", () => {
     expect(stderr).toEqual([`anthropic-account: agents: ${text}`]);
   });
 
-  it("prints JSON with the token-free login state and the windows", async () => {
+  it("prints schema 2 JSON with each account's login health and windows", async () => {
     login("default");
     writeReadingFile("default", 23, 41.5, 30);
     emptyProfile("agents");
 
     expect(await run(["status", "--json"])).toBe(2);
 
-    const [first, second] = JSON.parse(stdout.join("")).profiles;
-    expect(first).toMatchObject({ label: "default", login: { status: "present", expiresAt: NOW + 2 * HOUR } });
-    expect(first.usage).toMatchObject({ age_seconds: 30, rate_limits: { five_hour: { used_percentage: 23 } } });
-    expect(second).toMatchObject({ label: "agents", login: { status: "missing" }, usage: null });
+    const { schema, accounts } = JSON.parse(stdout.join(""));
+    expect(schema).toBe(2);
+    expect(accounts[0]).toMatchObject({ account: "default", auth_fail: false, age_seconds: 30, windows: { five_hour: { used_pct: 23 } } });
+    expect(accounts[1]).toMatchObject({ account: "agents", auth_fail: true, source: null, windows: {} });
   });
 
   it("prints the status-line format for the current account and each other one", async () => {
@@ -327,8 +327,17 @@ describe("darwin reads logins from the Keychain", () => {
     expect(await run(["poll", "--write"], fakeFetch(usageOk), {}, onDarwin(fakeCredentials()))).toBe(0);
     expect(await run(["status", "--json"], fakeFetch(usageOk), {}, onDarwin(fakeCredentials()))).toBe(0);
 
-    expect(JSON.parse(stdout[1] ?? "").profiles[0].login.status).toBe("present");
+    expect(JSON.parse(stdout[1] ?? "").accounts[0]).toMatchObject({ source: "oauth-usage", auth_fail: false });
     expect(filesUnderHome()).not.toContain(CANARY);
+  });
+
+  it("status --json fails auth for an expired, unrefreshable Keychain login", async () => {
+    emptyProfile("default");
+    const lapsed = fakeCredentials({ expiresAt: NOW - HOUR, refreshToken: undefined });
+
+    expect(await run(["status", "--json"], fakeFetch(usageOk), {}, onDarwin(lapsed))).toBe(2);
+
+    expect(JSON.parse(stdout[0] ?? "").accounts[0].auth_fail).toBe(true);
   });
 });
 
@@ -357,8 +366,8 @@ describe("output never carries a token", () => {
 
     expect(await run(["status", "--json"])).toBe(0);
 
-    const profiles = JSON.parse(stdout.join("")).profiles;
-    expect(profiles.map((profile: { label: string }) => profile.label)).toEqual(["default", "unlabelled"]);
-    expect(profiles[0].usage).toMatchObject({ rate_limits: { five_hour: { used_percentage: 23 } } });
+    const accounts = JSON.parse(stdout.join("")).accounts;
+    expect(accounts.map((row: { account: string }) => row.account)).toEqual(["default", "unlabelled"]);
+    expect(accounts[0]).toMatchObject({ windows: { five_hour: { used_pct: 23 } } });
   });
 });

@@ -4,17 +4,17 @@ import type { LoginState } from "../login.js";
 import { mergeAccountReadings, type AccountUsage } from "../merge.js";
 import { DEFAULT_LABEL, type AccountProfile } from "../profile.js";
 import { accountIdentity } from "./identity.js";
+import type { KeychainOptions } from "./keychain.js";
 import { readLoginState } from "./login.js";
 import { discoverProfiles, type DiscoverOptions } from "./profiles.js";
 import { readReadings } from "./usage-file.js";
 
-export interface ReadAccountsOptions extends DiscoverOptions {
+export interface ReadAccountsOptions extends DiscoverOptions, KeychainOptions {
   now?: number;
   /** The login a config dir bills; defaults to accountIdentity. */
   identify?: (configDir: string) => string | undefined;
   /** The uid that must own each credentials file. Defaults to this process's. */
   uid?: number;
-  platform?: NodeJS.Platform;
 }
 
 // On macOS Claude Code keeps the login in the Keychain, so a missing file is not a failure.
@@ -23,9 +23,14 @@ function loginFailed(state: LoginState, platform: NodeJS.Platform): boolean {
   return state.status === "refused" || (state.status === "expired" && !state.canRefresh);
 }
 
+function keychainOptions(options: ReadAccountsOptions): KeychainOptions {
+  return { platform: options.platform, keychainExec: options.keychainExec, home: options.home };
+}
+
 function readLoginFailed(configDir: string, now: number, options: ReadAccountsOptions): boolean {
   try {
-    return loginFailed(readLoginState(configDir, { now, uid: options.uid }), options.platform ?? process.platform);
+    const login = readLoginState(configDir, { ...keychainOptions(options), now, uid: options.uid });
+    return loginFailed(login, options.platform ?? process.platform);
   } catch {
     return true;
   }
