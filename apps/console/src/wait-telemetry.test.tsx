@@ -23,7 +23,7 @@ function pendingSource() {
   const answers: Array<(ok: boolean) => void> = [];
   const source: DataSource = {
     call: () => new Promise((resolve) => answers.push((ok) => resolve(ok ? { ok: true, data: {} } : { ok: false, error: "refused", code: 500 }))),
-    subscribe: () => ({ close: () => {} }) as never,
+    subscribe: () => ({ close: () => {} }),
   };
   const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
   return { source, answer: async (ok = true) => (answers.shift()?.(ok), await settled()) };
