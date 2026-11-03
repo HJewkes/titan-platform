@@ -295,6 +295,11 @@ interface MergeIntoBranchRequest {
     message?: string;
 }
 
+/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
+declare class GitHubConflictError extends Error {
+    constructor(message: string);
+}
+
 /** `owner/name`. */
 type RepoSlug = string;
 type MergeMethod = "merge" | "squash" | "rebase";
@@ -566,10 +571,6 @@ interface GitHubPort {
     listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
     /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
     listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
-}
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-declare class GitHubConflictError extends Error {
-    constructor(message: string);
 }
 interface GitHubPortOptions {
     /**

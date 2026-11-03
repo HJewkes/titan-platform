@@ -18,6 +18,8 @@ import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
 import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
+import { checkPutFile, putFile } from "./put-file.js";
+export { GitHubConflictError } from "./put-file.js";
 export type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 
@@ -268,14 +270,6 @@ export interface GitHubPort {
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
 
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-export class GitHubConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GitHubConflictError";
-  }
-}
-
 export interface GitHubPortOptions {
   /**
    * The login `upsertComment` owns comments as, for example `my-app[bot]`. Set it under a GitHub App installation
@@ -342,28 +336,10 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
   };
 }
 
-function checkPutFile(request: PutFileRequest): PutFileRequest {
-  checkPath(request.path);
-  checkRef("branch", request.branch);
-  if (request.expectedBlobSha !== null) checkSha("expectedBlobSha", request.expectedBlobSha);
-  return request;
-}
-
 function tail(log: string, lines: number): string {
   const all = log.split(/\r?\n/);
   if (all.at(-1) === "") all.pop();
   return all.slice(-lines).join("\n");
-}
-
-async function putFile(wire: GitHubWire, repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>> {
-  const current = await wire.getContent(repo, request.path, request.branch);
-  if (current && current.content === request.content) return { blobSha: current.blobSha, done: false, skipped: "unchanged" };
-  const currentSha = current?.blobSha ?? null;
-  if (currentSha !== request.expectedBlobSha) {
-    throw new GitHubConflictError(`${request.path} on ${request.branch} is blob ${currentSha ?? "absent"}, expected ${request.expectedBlobSha ?? "absent"}`);
-  }
-  const written = await wire.putContent(repo, request);
-  return { blobSha: written.blobSha, done: true };
 }
 
 async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {
