@@ -116,6 +116,25 @@ The top-level `github` block in the config file (`sources`, `ingress`, `pollingI
 polling or webhook intake. Polling is the default and a permanent, supported configuration. The keys, bounds, effective-mode
 table and what `health.sources` reports are in [GitHub event sources](/guides/factory#github-event-sources).
 
+## Marker shadow
+
+The top-level `markers` block turns on the M1b marker shadow. It is off when the block is absent:
+
+```json
+{ "markers": { "shadow": { "enabled": true, "entryBudget": { "evaluations": 200, "shadowMs": 2000 } } } }
+```
+
+- **`shadow.enabled`** defaults to `false`. When it is on, serve computes a marker verdict beside each fact step and
+  writes markers next to `step_results`. It logs each verdict, compare row and shadow error to `factory_shadow_log`. A
+  run's own results never change, and a shadow failure is logged rather than raised.
+- **`shadow.entryBudget`** overrides the per-entry caps the shadow stops at. Both fields are positive integers.
+  When it is absent, the shadow uses its own defaults.
+- Diff pins are read from a bare mirror for each repo, at `<state dir>/marker-git/<owner>__<name>.git`. The mirror is
+  cloned on first use from the `origin` of the repo's seat clone, or of its `shepherd.repos` path. The seat clone
+  itself is never fetched into.
+
+The block is strict, so an unknown key fails the config load. Serve reads it once at start.
+
 ## Scorecard
 
 `scorecard` prints the factory scorecard, one row per metric, from ledgers only. It ports

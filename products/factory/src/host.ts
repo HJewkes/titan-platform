@@ -80,7 +80,7 @@ export interface FactoryHostOptions {
   onEvent?: (event: WorkflowEvent) => void;
   /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
   capabilities?: Record<string, WorkflowCapability>;
-  /** Computes marker verdicts and appends markers beside `step_results` (M1b). Absent by default; serve does not set it (TP-3111 does). */
+  /** Computes marker verdicts and appends markers beside `step_results` (M1b). Absent by default; serve sets it only under `markers.shadow.enabled`. */
   markerShadow?: { sink: ShadowSink; diffPin?: PinSources["diffPin"]; treeOf?: PinSources["treeOf"]; carryProbe?: CarryProbe; entryBudget?: EntryBudget };
 }
 
