@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { guardBeat, termsToKeep } from "./rewrite-guard.js";
+import { planRegisterEdits } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { ScriptSchema, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
@@ -151,7 +152,7 @@ describe("the terms the prompt asks a rewrite to keep", () => {
     const beat = spelledBeat("Then ticket TP-7001 stays open.", [TICKET]);
     const chapter = { id: beat.chapter, label: "Blocker", question: "Why does the queue wait?" };
 
-    const prompt = renderRewritePrompt(chapter, [beat], { round: 1, directives: [{ beat: beat.id, chapter: beat.chapter, numbers: ["seventy oh one"] }] });
+    const prompt = renderRewritePrompt(chapter, [beat], planRegisterEdits({ beats: [beat] }, []));
 
     expect(prompt).toContain("Terms to keep: (none)");
     expect(prompt).toContain('- Ids: this beat says "TP seventy oh one". Cut each one');
