@@ -67,37 +67,14 @@ export interface ReadUsageOptions {
   // Only a reading carrying every one of these windows counts, so a newer reading that
   // lacks one falls back to an older one that has it.
   windows?: readonly string[];
-  // A fresh poller file (written at most this many seconds ago) wins over any newer
-  // status-line session file, which may have seen fewer windows.
-  pollerFirstSeconds?: number;
-  // Drop a reading whose seven_day window has already reset: its figure describes a past week.
-  dropReset?: boolean;
 }
 
-interface Candidate {
-  reading: UsageReading;
-  file: string;
-}
-
-function hasPassedReset(reading: UsageReading, nowSeconds: number): boolean {
-  const resetsAt = reading.rate_limits.seven_day?.resets_at;
-  return resetsAt !== undefined && resetsAt <= nowSeconds;
-}
-
-function wanted(reading: UsageReading | null, options: ReadUsageOptions, nowSeconds: number): reading is UsageReading {
-  if (reading === null) return false;
-  if (!(options.windows ?? []).every((window) => reading.rate_limits[window] !== undefined)) return false;
-  return !(options.dropReset === true && hasPassedReset(reading, nowSeconds));
-}
-
-function newestReading(dir: string, names: string[], options: ReadUsageOptions, nowSeconds: number): Candidate | null {
-  let newest: Candidate | null = null;
+function newestReading(dir: string, names: string[], windows: readonly string[]): { reading: UsageReading; file: string } | null {
+  let newest: { reading: UsageReading; file: string } | null = null;
   for (const name of names) {
     const file = path.join(dir, name);
     const reading = readReadingFile(file);
-    if (!wanted(reading, options, nowSeconds)) continue;
-    const fresh = options.pollerFirstSeconds !== undefined && name === USAGE_FILE && nowSeconds - reading.written_at <= options.pollerFirstSeconds;
-    if (fresh) return { reading, file };
+    if (reading === null || !windows.every((window) => reading.rate_limits[window] !== undefined)) continue;
     if (newest === null || reading.written_at > newest.reading.written_at) newest = { reading, file };
   }
   return newest;
@@ -109,10 +86,10 @@ export function readUsage(configDir: string, options: ReadUsageOptions = {}): Us
   try {
     const dir = sessionsDir(configDir);
     const names = listReadingFiles(dir);
-    const nowSeconds = Math.floor((options.now ?? Date.now()) / 1000);
-    const newest = names === null ? null : newestReading(dir, names, options, nowSeconds);
+    const newest = names === null ? null : newestReading(dir, names, options.windows ?? []);
     if (newest === null) return null;
-    return { ...newest, ageSeconds: Math.max(0, nowSeconds - newest.reading.written_at) };
+    const ageSeconds = Math.max(0, Math.floor((options.now ?? Date.now()) / 1000) - newest.reading.written_at);
+    return { ...newest, ageSeconds };
   } catch (error) {
     throw redactedError(error, "reading usage failed");
   }
