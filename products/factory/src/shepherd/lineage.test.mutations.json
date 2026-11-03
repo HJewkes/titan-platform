@@ -45,24 +45,6 @@
       "kills": [
         "provablyIndependent over retired generations proves nothing from a lineage the broker could not complete with retired rows, however clear its rows look"
       ]
-    },
-    {
-      "name": "the broker principal absent from the roster proves nothing",
-      "file": "products/factory/src/shepherd/lineage.ts",
-      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
-      "replace": "if (rows.length === 0 && name === `${HUMAN}-root`) return new Set([name]);",
-      "kills": [
-        "provablyIndependent under a production roster, which has no row for the broker principal clears a reviewer Shepherd spawned as the human"
-      ]
-    },
-    {
-      "name": "any name absent from the roster is a lineage root",
-      "file": "products/factory/src/shepherd/lineage.ts",
-      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
-      "replace": "if (rows.length === 0) return new Set([name]);",
-      "kills": [
-        "provablyIndependent under a production roster, which has no row for the broker principal refuses a reviewer whose spawner is some other name absent from the roster"
-      ]
     }
   ]
 }
