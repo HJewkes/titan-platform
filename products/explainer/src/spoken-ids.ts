@@ -95,8 +95,10 @@ export const citedIdNumbers = (terms: readonly string[]): Set<number> =>
 export const isIdTerm = (term: string): boolean =>
   termSpellings(term).length > 0 || new RegExp(`^(?:${SCRIPT_ID.source})$`, "u").test(term.trim()) || new RegExp(`^(?:${TASK_ID.source})$`, "u").test(term.trim());
 
+export const SPOKEN_IDS_ROW = "Q-V15";
+
 /** Q-V15: no spoken line says a PR, task or script id. */
-export const spokenIdsCheck: L0Check = ({ script }) => [countRow("Q-V15", script.beats.filter((beat) => spokenIds(beat).length > 0).map((beat) => beat.id))];
+export const spokenIdsCheck: L0Check = ({ script }) => [countRow(SPOKEN_IDS_ROW,script.beats.filter((beat) => spokenIds(beat).length > 0).map((beat) => beat.id))];
 
 /** The Q-V15 repair: each id a line says, and where the id goes instead. */
 export function spokenIdsHint(script: ScriptV1, row: L0Result): string {

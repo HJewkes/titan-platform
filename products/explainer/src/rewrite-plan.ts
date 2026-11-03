@@ -4,6 +4,7 @@ import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
 import { collapsible, cuedWordsIn, numberUnits } from "./rewrite-spans.js";
 import type { ScriptBeat } from "./script-schema.js";
+import { spokenIds } from "./spoken-ids.js";
 import { humanSignalRowsAt } from "./writing-statuses.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
@@ -38,6 +39,8 @@ export interface BeatDirective {
   triads?: string[];
   /** The over-represented phrases the beat speaks, in order, while the phrases row fails and warns at this length. */
   phrases?: string[];
+  /** The PR, task or script ids the beat says aloud, each once; a daily says none (TP-4697). */
+  ids?: string[];
   /** Planned sentence lengths in words, shortest first. */
   shape?: number[];
   /** Why the previous round refused this beat's rewrite, each rule once; the prompt says it in plain words. */
@@ -66,7 +69,7 @@ export interface PlanOptions {
   refused?: ReadonlyMap<string, readonly RefusalRule[]>;
 }
 
-type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual">;
+type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual" | "fact_ids" | "new_terms">;
 
 const SHORT_WORDS = 5;
 // The model overshoots a planned length, so a long sentence is planned this far under the cap.
@@ -231,11 +234,20 @@ function phrasesFor(beat: PlanBeat, aimed: boolean): Pick<BeatDirective, "phrase
 }
 
 /**
+ * A beat that says an id is directed to cut it whatever the register rows say: ids rode only on beats directed for
+ * another row, so a beat the bands left alone kept its id once the bands were met (TP-4697).
+ */
+function idsFor(beat: PlanBeat): Pick<BeatDirective, "ids"> {
+  const ids = [...new Set(spokenIds(beat).map((id) => id.text))];
+  return ids.length > 0 ? { ids } : {};
+}
+
+/**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
  * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
  * beat still under the mean floor while a shape row fails. While phrases is aimed, each beat that speaks a stock
- * phrase is directed to replace it, directed for another row or not; a directed beat also carries why the previous
- * round refused it.
+ * phrase is directed to replace it, directed for another row or not, and each beat that says an id is directed to cut
+ * it; a directed beat also carries why the previous round refused it.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS, refused } = options;
@@ -244,7 +256,7 @@ export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: 
   const aimed = phrasesAimed(script.beats, rows);
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
-    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed) };
+    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed), ...idsFor(beat) };
     if (Object.keys(directive).length === 0) return [];
     return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }];
   });

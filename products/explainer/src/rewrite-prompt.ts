@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import { termsToKeep } from "./rewrite-guard.js";
 import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
 import { cuedWordsIn } from "./rewrite-spans.js";
-import { spokenIds } from "./spoken-ids.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
 
 export interface RewritePromptDeps {
@@ -67,8 +66,15 @@ function cuedItemLines(triads: readonly string[], beat: PromptBeat): string[] {
   return [`- The screen cues on ${quoted(cued)}: the list item that holds each one is the item you keep in the line.`];
 }
 
+/**
+ * A daily says no id aloud (TP-4697). A cut id that leaves nothing in its place took beats under their fill floor, so
+ * the line asks for the words that say what the change did.
+ */
+const idLine = (ids: readonly string[]): string =>
+  `- Ids: this beat says ${quoted(ids)}. Cut each one and say in its place, in a few words, what that change or task did, so the line stays about as long; the screen shows the id, so put none in labels_added and add no number.`;
+
 function directiveLines(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, phrases, shape, refused } = directive;
+  const { numbers, triads, phrases, ids, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
@@ -82,6 +88,7 @@ function directiveLines(beat: PromptBeat, directive: BeatDirective, round: Regis
         ]
       : []),
     ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
+    ...(ids ? [idLine(ids)] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }
@@ -93,13 +100,6 @@ function cueWords(beat: PromptBeat): string[] {
   return [...new Set(ordered.map((cue) => cue.split("#")[0]!))];
 }
 
-/** A daily says no id aloud (TP-4697): each id the line says is one to cut, with what the change did said instead. */
-function idLines(beat: PromptBeat): string[] {
-  const ids = [...new Set(spokenIds(beat).map((id) => id.text))];
-  if (ids.length === 0) return [];
-  return [`- Ids: this beat says ${quoted(ids)}. Cut each one and name the change by what it did; the screen shows the id, so put none in labels_added.`];
-}
-
 function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string {
   return [
     `## ${beat.id}`,
@@ -108,7 +108,6 @@ function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterE
     `Terms to keep: ${termsToKeep(beat).join(", ") || "(none)"}`,
     "Directive:",
     ...directiveLines(beat, directive, round),
-    ...idLines(beat),
   ].join("\n");
 }
 
