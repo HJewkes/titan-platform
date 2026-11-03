@@ -1,4 +1,4 @@
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { DispatchError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { redactCredentials } from "../redact.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
-import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
+import { clearReviewWait, noteReviewWait, transient } from "./review-wait.js";
 import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
@@ -143,12 +143,6 @@ async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: read
  * (`wait`, naming the `seat`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
  */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
-
-/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
-const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
-
-const transient = (error: unknown): boolean =>
-  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
