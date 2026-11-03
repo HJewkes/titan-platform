@@ -4,8 +4,8 @@
     {
       "name": "temp home writes a fresh reading where the fixture has a stale one",
       "file": "products/fleet-panel/src/account-home.ts",
-      "find": ""s-reviewer-b", 1_100,",
-      "replace": ""s-reviewer-b", 10,",
+      "find": "\"s-reviewer-b\", 1_100,",
+      "replace": "\"s-reviewer-b\", 10,",
       "kills": [
         "buildSnapshot draws the same account strips from a temp home's readAccounts as from the fixture rows"
       ]
