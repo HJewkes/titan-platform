@@ -48,6 +48,17 @@ function slowestFirst<T extends RpcStats | RouteStats>(rows: readonly T[]): T[] 
   return [...rows].sort((a, b) => b.p95 - a.p95);
 }
 
+/** The ranked owner waits; the CLI ranks the same day files without a daemon. */
+function waitsCommand(recorder: PerfRecorder | undefined) {
+  return readCommand({
+    name: "perf.waits",
+    description: "Per command, the loaders the owner looked at over the last 15 minutes, 24 hours or 7 days: waits, total owner ms, p50, p95, max, cold and mutation counts, and waits past the command's budget; most owner time first",
+    args: z.object({ window: z.enum(["15m", "24h", "7d"]).default("24h") }),
+    result: z.object({ window: z.enum(["15m", "24h", "7d"]), waits: z.array(waitStats) }),
+    run: async ({ window }) => ({ window, waits: rankWaits((await recorder?.waits(window)) ?? []) }),
+  });
+}
+
 export function perfCommands(recorder: PerfRecorder | undefined, commandNames: CommandNames = () => []) {
   return {
     // A deposit: it changes no owner state, so it needs no owner-write flag, and the LAN gate still asks for a credential.
@@ -74,12 +85,6 @@ export function perfCommands(recorder: PerfRecorder | undefined, commandNames: C
         upstreams: slowestFirst((await recorder?.upstreams(window)) ?? []),
       }),
     }),
-    "perf.waits": readCommand({
-      name: "perf.waits",
-      description: "Per command, the loaders the owner looked at over the last 15 minutes, 24 hours or 7 days: waits, total owner ms, p50, p95, max, cold and mutation counts, and waits past the command's budget; most owner time first",
-      args: z.object({ window: z.enum(["15m", "24h", "7d"]).default("24h") }),
-      result: z.object({ window: z.enum(["15m", "24h", "7d"]), waits: z.array(waitStats) }),
-      run: async ({ window }) => ({ window, waits: rankWaits((await recorder?.waits(window)) ?? []) }),
-    }),
+    "perf.waits": waitsCommand(recorder),
   };
 }

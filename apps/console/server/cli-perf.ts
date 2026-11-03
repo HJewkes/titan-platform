@@ -44,12 +44,12 @@ export function perfWaitsArgs(argv: readonly string[]): PerfWaitsArgs | null {
 const seconds = (ms: number): string => (ms / 1000).toFixed(1);
 
 /** One line per command: names and numbers only, so a line can go into a task as it is. */
-export function waitLine(stats: WaitStats, rank: number): string {
+function waitLine(stats: WaitStats, rank: number): string {
   const breach = stats.overBudget > 0 ? `, ${stats.overBudget} over the ${stats.budgetMs} ms budget` : "";
   return `${rank}. ${stats.command}: ${seconds(stats.ownerMs)} s over ${stats.waits} waits, p50 ${Math.round(stats.p50)} ms, p95 ${Math.round(stats.p95)} ms, ${stats.cold} cold, ${stats.mutation} on a write${breach}`;
 }
 
-export function formatWaits(ranked: readonly WaitStats[], { top, window }: Pick<PerfWaitsArgs, "top" | "window">): string {
+function formatWaits(ranked: readonly WaitStats[], { top, window }: Pick<PerfWaitsArgs, "top" | "window">): string {
   if (ranked.length === 0) return `no waits recorded in the last ${window}`;
   return [`owner waits, last ${window}, most owner time first:`, ...ranked.slice(0, top).map((stats, i) => waitLine(stats, i + 1))].join("\n");
 }

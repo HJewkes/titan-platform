@@ -135,17 +135,22 @@ function ofKind<K extends LogRow["kind"]>(rows: readonly LogRow[], kind: K): Ext
   return rows.filter((row): row is Extract<LogRow, { kind: K }> => row.kind === kind);
 }
 
+/** Holds the newest `ringSize` rows for the 15 minute window and logs each one. */
+function ringKeeper(ring: LogRow[], ringSize: number, log: (row: LogRow) => void): (row: LogRow) => void {
+  return (row) => {
+    ring.push(row);
+    if (ring.length > ringSize) ring.shift();
+    log(row);
+  };
+}
+
 export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   const { dir, now = Date.now, ringSize = 2000, flushMs = 5000, flushRows = 200, retentionDays = 7 } = options;
   const ring: LogRow[] = [];
   const log = createBatchWriter(dir, flushMs, flushRows);
   const pruned = pruneOldLogs(dir, now(), retentionDays).catch(() => {});
 
-  function keep(row: LogRow): void {
-    ring.push(row);
-    if (ring.length > ringSize) ring.shift();
-    log.add(row);
-  }
+  const keep = ringKeeper(ring, ringSize, log.add);
   const rowsIn = (window: SummaryWindow) => windowRows(window, now() - WINDOW_MS[window], ring, log.flush, dir);
 
   return {

@@ -169,9 +169,13 @@ export default tseslint.config(
     files: ["apps/console/src/**/*.{ts,tsx}"],
     ignores: ["apps/console/src/shell/Loading.tsx", "apps/console/src/**/*.test.{ts,tsx}"],
     rules: {
-      "no-restricted-imports": [
+      // A selector, not no-restricted-imports, which would also refuse tree-graph.ts's namespace import that feature-detects an export.
+      "no-restricted-syntax": [
         "error",
-        { paths: [{ name: "@titan-design/react-ui", importNames: ["Spinner", "Skeleton"], message: "Import Spinner and Skeleton from src/shell/Loading.tsx, which times each visible loader as a wait." }] },
+        {
+          selector: "ImportDeclaration[source.value='@titan-design/react-ui'] > ImportSpecifier[imported.name=/^(Spinner|Skeleton)$/]",
+          message: "Import Spinner and Skeleton from src/shell/Loading.tsx, which times each visible loader as a wait.",
+        },
       ],
     },
   },

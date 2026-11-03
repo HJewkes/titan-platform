@@ -4,8 +4,8 @@
     {
       "name": "a hidden loader never ends its wait",
       "file": "apps/console/src/data/waits.ts",
-      "find": "if (episode.shown === 0 && open.get(mutation) === episode) finish(mutation, episode);",
-      "replace": "if (episode.shown < 0 && open.get(mutation) === episode) finish(mutation, episode);",
+      "find": "if (episode.shown !== 0 || state.open.get(mutation) !== episode) return;",
+      "replace": "if (episode.shown >= 0 || state.open.get(mutation) !== episode) return;",
       "kills": [
         "a page's spinner starts a wait on show and writes one row on hide",
         "a page's spinner ends the wait when the page unmounts while it still shows"
@@ -23,8 +23,8 @@
     {
       "name": "every call counts as a wait, loader or not",
       "file": "apps/console/src/data/waits.ts",
-      "find": "      const call: Call = { command, action };\n      inFlight.add(call);",
-      "replace": "      const call: Call = { command, action };\n      inFlight.add(call);\n      emit({ kind: \"wait\", view, commands: [command], ms: 0, phase: \"cold\", mutation: action });",
+      "find": "      const call: Call = { command, action };\n      state.inFlight.add(call);",
+      "replace": "      const call: Call = { command, action };\n      state.inFlight.add(call);\n      emit({ kind: \"wait\", view: state.view, commands: [command], ms: 0, phase: \"cold\", mutation: action });",
       "kills": [
         "a background refetch writes no wait row when no loader shows"
       ]

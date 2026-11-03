@@ -22,7 +22,7 @@ function harness() {
 function pendingSource() {
   const answers: Array<(ok: boolean) => void> = [];
   const source: DataSource = {
-    call: () => new Promise((resolve) => answers.push((ok) => resolve(ok ? { ok: true, data: {} } : { ok: false, error: "refused" }))),
+    call: () => new Promise((resolve) => answers.push((ok) => resolve(ok ? { ok: true, data: {} } : { ok: false, error: "refused", code: 500 }))),
     subscribe: () => ({ close: () => {} }) as never,
   };
   const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
