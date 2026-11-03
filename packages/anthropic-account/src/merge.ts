@@ -1,9 +1,6 @@
-import { POLL_SESSION_ID, type UsageReading, type UsageWindow } from "./usage.js";
+import { POLL_SESSION_ID, type ObservedReading, type UsageWindow } from "./usage.js";
 
-/** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
-export interface ObservedReading extends UsageReading {
-  prompt_cache?: { ttl?: string; expires_at?: number };
-}
+export type { ObservedReading };
 
 export interface AccountWindow {
   used_pct: number;

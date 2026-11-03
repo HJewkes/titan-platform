@@ -37,6 +37,15 @@
         "gives two config dirs on one login a single row naming both dirs",
         "renders default and personal as one cell under the personal label"
       ]
+    },
+    {
+      "name": "the reading parser drops the prompt-cache stamp",
+      "file": "packages/anthropic-account/src/node/usage-file.ts",
+      "find": "const reading = parseObservedReading(JSON.parse(bytes.toString(\"utf8\")));",
+      "replace": "const reading = parseUsageReading(JSON.parse(bytes.toString(\"utf8\")));",
+      "kills": [
+        "dates a status line redrawing old figures by its last API response and marks it stale"
+      ]
     }
   ]
 }

@@ -21,6 +21,7 @@ each failure once a day per profile through an injected owner-queue deposit call
 ```sh
 anthropic-account poll [--write [--refresh]]
 anthropic-account status [--json | --statusline]
+anthropic-account install|uninstall [--dry-run]
 ```
 
 - `poll` sends one usage request per profile and prints its windows. `--write` stores each
@@ -46,15 +47,17 @@ for `status`, missing), 64 a usage error. Each account whose login is not presen
 
 ## Installing the poll timer
 
-The bin installs and enables nothing. The templates in `systemd/` run
-`poll --write --refresh` every 150 s. On the host, its operator runs:
+`anthropic-account install` writes the units from `systemd/` into
+`~/.config/systemd/user` and runs `systemctl --user daemon-reload` and
+`enable --now anthropic-account-poll.timer`. On macOS it writes a launchd agent
+(`com.titan.anthropic-account-poll`, every 150 s, `poll --write` with no `--refresh`) to
+`~/Library/LaunchAgents` and bootstraps it. `uninstall` disables or boots out and removes
+the same files. `--dry-run` prints the paths, contents and commands and changes nothing.
+The units run `~/.local/bin/anthropic-account`, so install the package there first:
 
 ```sh
 npm install -g --prefix ~/.local @titan-design/anthropic-account
-mkdir -p ~/.config/systemd/user
-cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll* ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now anthropic-account-poll.timer
+anthropic-account install
 journalctl --user -u anthropic-account-poll.service -n 20
 ```
 

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the record title keeps the display heading",
+      "file": "apps/console/src/pages/KnowledgeRecordPage.tsx",
+      "find": "<PageHeader title={record.title} />",
+      "replace": "<Typography variant=\"h2\">{record.title}</Typography>",
+      "kills": [
+        "a knowledge record titles the record at the size of every other page's heading"
+      ]
+    }
+  ]
+}

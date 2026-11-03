@@ -1,4 +1,4 @@
-import { A as AccountProfile, b as AccountUsage, L as LoginState, U as UsageReading, R as RefusedReason } from './merge.js';
+import { A as AccountProfile, b as AccountUsage, L as LoginState, U as UsageReading, R as RefusedReason, d as ObservedReading } from './merge.js';
 import 'zod';
 
 declare const CONFIG_DIRS_ENV = "CLAUDE_CONFIG_DIRS";
@@ -139,7 +139,7 @@ interface ReadUsageOptions {
     dropReset?: boolean;
 }
 declare function readUsage(configDir: string, options?: ReadUsageOptions): UsageFileRead | null;
-declare function readReadings(configDir: string): UsageReading[];
+declare function readReadings(configDir: string): ObservedReading[];
 declare function writeReading(configDir: string, reading: UsageReading): string;
 
 export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, pollAll, pollUsage, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
@@ -161,11 +161,28 @@ declare const usageReadingSchema: z.ZodObject<{
     source: z.ZodOptional<z.ZodString>;
     account: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
+declare const observedReadingSchema: z.ZodObject<{
+    session_id: z.ZodString;
+    written_at: z.ZodNumber;
+    rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
+        used_percentage: z.ZodNumber;
+        resets_at: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>;
+    source: z.ZodOptional<z.ZodString>;
+    account: z.ZodOptional<z.ZodString>;
+    prompt_cache: z.ZodCatch<z.ZodOptional<z.ZodObject<{
+        ttl: z.ZodOptional<z.ZodString>;
+        expires_at: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>>;
+}, z.core.$strip>;
 type UsageWindow = z.infer<typeof windowSchema>;
 type UsageReading = z.infer<typeof usageReadingSchema>;
+/** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
+type ObservedReading = z.infer<typeof observedReadingSchema>;
 declare const POLL_SESSION_ID = "usage-poll";
 declare const POLL_SOURCE = "oauth-usage";
 declare function parseUsageReading(input: unknown): UsageReading | null;
+declare function parseObservedReading(input: unknown): ObservedReading | null;
 interface OAuthUsageOptions {
     writtenAt: number;
     account?: string;
@@ -199,13 +216,6 @@ interface AccountProfile {
 declare const DEFAULT_LABEL = "default";
 declare function accountLabel(configDir: string): string;
 
-/** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
-interface ObservedReading extends UsageReading {
-    prompt_cache?: {
-        ttl?: string;
-        expires_at?: number;
-    };
-}
 interface AccountWindow {
     used_pct: number;
     resets_at?: number;
@@ -235,4 +245,4 @@ type AccountReadings = Pick<AccountUsage, "account" | "config_dirs" | "identity"
 /** One account's usage from its readings: a fresh poller is the record; others lend or raise windows. */
 declare function mergeAccountReadings(input: AccountReadings, now: number): AccountUsage;
 
-export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, type AccountReadings as a, type AccountUsage as b, type AccountWindow as c, type ObservedReading as d, POLL_SOURCE as e, type UsageWindow as f, accountLabel as g, loginStateFromCredentials as l, mergeAccountReadings as m, needsRefresh as n, parseUsageReading as p, usageFromOAuthResponse as u };
+export { type AccountProfile as A, DEFAULT_LABEL as D, type LoginState as L, type OAuthUsageOptions as O, POLL_SESSION_ID as P, type RefusedReason as R, type UsageReading as U, type AccountReadings as a, type AccountUsage as b, type AccountWindow as c, type ObservedReading as d, POLL_SOURCE as e, type UsageWindow as f, accountLabel as g, parseUsageReading as h, loginStateFromCredentials as l, mergeAccountReadings as m, needsRefresh as n, parseObservedReading as p, usageFromOAuthResponse as u };

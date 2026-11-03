@@ -192,10 +192,10 @@ You need to read a Claude Code account's state without touching a token: parse a
 
 Key exports:
 
-- `usage`: `POLL_SESSION_ID`, `POLL_SOURCE`, `parseUsageReading`, `usageFromOAuthResponse`
+- `usage`: `POLL_SESSION_ID`, `POLL_SOURCE`, `parseObservedReading`, `parseUsageReading`, `usageFromOAuthResponse`
 - `login`: `loginStateFromCredentials`, `needsRefresh`
 - `profile`: `DEFAULT_LABEL`, `accountLabel`
-- `redact`: `REDACTED`, `redactSecrets`
+- `redact`: `redactSecrets`
 - `identity`: `groupByIdentity`
 - `merge`: `mergeAccountReadings`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
