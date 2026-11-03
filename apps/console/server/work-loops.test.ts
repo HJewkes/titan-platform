@@ -1,12 +1,17 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { activeWorkClient, failure } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import { consoleCommands } from "./commands.js";
+import { resolveConfig } from "./config.js";
 import { fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { REFUSALS, type ConsoleContext } from "./owner-guard.js";
 import { shepherdReader } from "./shepherd.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
+import { createSources } from "./upstreams.js";
 import type { WorkOptions } from "./work.js";
 import { loopBoardResult } from "./work-loops.js";
 
@@ -58,7 +63,7 @@ describe("work.loops", () => {
   it("reports an old active-work daemon as unavailable, not as an empty board", async () => {
     const read = await readBoard(OWNER, { served: false });
 
-    expect(read && { board: read.board, unavailable: read.unavailable }).toEqual({ board: null, unavailable: "active-work ≥ 0.23 needed" });
+    expect(read && { board: read.board, unavailable: read.unavailable }).toEqual({ board: null, unavailable: "active-work ≥ 0.25 needed" });
   });
 
   it("answers an error when the daemon is down, never an empty or unavailable board", async () => {
@@ -103,5 +108,20 @@ describe("work.loop-tier", () => {
 
     expect(calls).toEqual([{ command: "loop.tier", args: MOVE }]);
     expect(envelope.ok ? envelope.data : envelope.error).toEqual({ id: "loop-c", tier: "S", tierRank: 1 });
+  });
+
+  it("reaches loop.tier through the cached active-work source the host builds", async () => {
+    await fakeActiveWork();
+    const home = await mkdtemp(path.join(tmpdir(), "console-loop-tier-"));
+    try {
+      const sources = createSources({ ...resolveConfig({}, home), activeWorkPort: daemon?.port ?? 0 });
+
+      const { envelope } = await invokeCommand(commandsOver(sources.activeWork)["work.loop-tier"], MOVE, OWNER);
+
+      expect(envelope.ok ? envelope.data : envelope.error).toEqual({ id: "loop-c", tier: "S", tierRank: 1 });
+      expect(calls).toEqual([{ command: "loop.tier", args: MOVE }]);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });

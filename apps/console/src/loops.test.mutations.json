@@ -27,6 +27,15 @@
       "kills": [
         "loops page moves a card back when the console refuses the tier write"
       ]
+    },
+    {
+      "name": "a drop in the Unsorted tray still sends before",
+      "file": "apps/console/src/pages/LoopsPage.tsx",
+      "find": "  if (to === \"unsorted\") return undefined;\n",
+      "replace": "",
+      "kills": [
+        "loops page drops a card onto a card in the Unsorted tray with no before, since the tray has no order"
+      ]
     }
   ]
 }

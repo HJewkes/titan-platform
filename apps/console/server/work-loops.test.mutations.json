@@ -27,6 +27,15 @@
       "kills": [
         "work.loop-tier passes the owner's move to active-work's loop.tier and answers the new tier and rank, read from the ledger's tier_rank"
       ]
+    },
+    {
+      "name": "the active-work cache drops the write",
+      "file": "apps/console/server/active-work-cache.ts",
+      "find": "  return through;\n}",
+      "replace": "  return { read };\n}",
+      "kills": [
+        "work.loop-tier reaches loop.tier through the cached active-work source the host builds"
+      ]
     }
   ]
 }

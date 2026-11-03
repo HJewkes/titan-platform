@@ -68,7 +68,14 @@ function moveWithMenu(title: string, option: string): void {
   fireEvent.click(screen.getByRole("option", { name: option }));
 }
 
-const BATTERY = "The battery chapters read as one";
+/** Drops the dragged loop onto the card of another; jsdom has no DataTransfer, so the drop carries a stand-in. */
+function dropOnCard(dragged: string, onto: string): void {
+  const card = document.querySelector(`[data-loop-id="${onto}"]`);
+  if (card === null) throw new Error(`no card ${onto}`);
+  fireEvent.drop(card, { dataTransfer: { getData: () => dragged } });
+}
+
+const BATTERY ="The battery chapters read as one";
 
 describe("loops page", () => {
   it("shows every tier labelled advisory, with each placed loop in its tier", async () => {
@@ -99,6 +106,22 @@ describe("loops page", () => {
     expect(idsIn("S")).toContain("loop-c");
     await waitFor(() => expect(calls.filter((call) => call.name === "work.loops")).toHaveLength(2));
     expect(calls.find((call) => call.name === "work.loop-tier")?.args).toEqual({ id: "loop-c", tier: "S" });
+  });
+
+  it("drops a card onto another card to place it ahead of that card", async () => {
+    const calls = await renderLoops();
+
+    dropOnCard("loop-c", "loop-a");
+
+    await waitFor(() => expect(calls.find((call) => call.name === "work.loop-tier")?.args).toEqual({ id: "loop-c", tier: "S", before: "loop-a" }));
+  });
+
+  it("drops a card onto a card in the Unsorted tray with no before, since the tray has no order", async () => {
+    const calls = await renderLoops();
+
+    dropOnCard("loop-c", "loop-g");
+
+    await waitFor(() => expect(calls.find((call) => call.name === "work.loop-tier")?.args).toEqual({ id: "loop-c", tier: "unsorted" }));
   });
 
   it("moves a card back when the console refuses the tier write", async () => {
@@ -133,6 +156,6 @@ describe("loops page", () => {
   it("says a newer active-work is needed when the daemon has no loop.board", async () => {
     mountLoops({ activeWork: OLD_DAEMON });
 
-    expect((await screen.findByTestId("loops-unavailable")).textContent).toContain("active-work ≥ 0.23 needed");
+    expect((await screen.findByTestId("loops-unavailable")).textContent).toContain("active-work ≥ 0.25 needed");
   });
 });

@@ -151,7 +151,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
     }),
     "work.loops": readCommand({
       name: "work.loops",
-      description: "The platform's open-loops board from active-work's loop.board: each loop's advisory tier, status, seat and motion, and the tech tree; unavailable on a daemon older than active-work 0.23",
+      description: "The platform's open-loops board from active-work's loop.board: each loop's advisory tier, status, seat and motion, and the tech tree; unavailable on a daemon older than active-work 0.25",
       args: z.object({}),
       result: loopBoardResult,
       run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),

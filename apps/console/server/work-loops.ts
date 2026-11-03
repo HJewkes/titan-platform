@@ -6,7 +6,7 @@ import type { ConsoleContext } from "./owner-guard.js";
 import { keepsSlug, type WorkOptions } from "./work.js";
 
 /** What the page says until the host's active-work daemon serves `loop.board`. */
-const OLD_DAEMON = "active-work ≥ 0.23 needed";
+const OLD_DAEMON = "active-work ≥ 0.25 needed";
 
 export const loopBoardResult = z.object({
   fetchedAt: z.string(),

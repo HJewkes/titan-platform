@@ -45,5 +45,16 @@ export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation,
   function read(command: ReadName, args: Record<string, unknown> = {}): Promise<unknown> {
     return CACHED.has(command) ? cache.read({ command, args }) : inner.read(command, args);
   }
-  return { read };
+  if (inner.write === undefined) return { read };
+  const write = inner.write.bind(inner);
+  // A write moves the tree, so the next read must not be served the answer from before it.
+  const through: ActiveWork = {
+    read,
+    async write(command, args) {
+      const answer = await write(command, args);
+      cache.stale();
+      return answer;
+    },
+  };
+  return through;
 }
