@@ -20,7 +20,7 @@ import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 import { withLineage } from "./inbox-lineage.js";
-import type { ShipLineage } from "./ship-lineage.js";
+import type { LineageReader, ShipLineage } from "./ship-lineage.js";
 import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -303,10 +303,17 @@ export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[
   return markAged(oneRowPerRound(onePerPr(foldCoveredGates(order.map((item) => inboxItem(item, joins))))), now).sort(byInboxOrder);
 }
 
-/** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
-function joinedRows(order: readonly OwnerItem[], rows: readonly WatchRow[]): WatchRow[] {
-  const byRun = byRunId(rows);
-  return [...new Set(order.flatMap((item) => rowOfItem(item, byRun) ?? []))];
+/** Only the rows a shown item joins get a strip, so a run nobody is asked about, or one only a collapsed row asks about, costs no reads. */
+function joinedRows(items: readonly OwnerItem[], byRun: ReadonlyMap<string, WatchRow>): WatchRow[] {
+  return [...new Set(items.flatMap((item) => rowOfItem(item, byRun) ?? []))];
+}
+
+function withStrips(items: readonly InboxItem[], byRun: ReadonlyMap<string, WatchRow>, strips: ReadonlyMap<string, GateStrip>): InboxItem[] {
+  return items.map((item) => {
+    const row = rowOfItem(item, byRun);
+    const gates = row === undefined ? undefined : strips.get(row.runId);
+    return gates === undefined ? item : { ...item, gates };
+  });
 }
 
 interface Read<T> {
@@ -330,22 +337,41 @@ interface OwnerQueueRead {
   roster: RosterRead;
 }
 
+interface QueueReads {
+  /** Absent, no item gets a gate strip. */
+  strips?: GateStripReader;
+  /** Absent or false, the planning items are placed and counted but get no strip or lineage, as the page shows them collapsed. */
+  planning?: boolean;
+  /** A tap re-reads one item to check its action, which no lineage changes, so it skips the GitHub read (TP-4754). */
+  lineage?: boolean;
+}
+
+/** Strips and lineage cost a GitHub read per PR head, so only the items the read will send get them. */
+async function withReads(items: InboxItem[], live: readonly WatchRow[], lineageOf: LineageReader | undefined, { strips, planning = false, lineage = true }: QueueReads): Promise<InboxItem[]> {
+  const shown = planning ? items : items.filter((item) => item.section !== "planning");
+  const byRun = byRunId(live);
+  const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(shown, byRun));
+  const stripped = withStrips(shown, byRun, gates);
+  const read = lineage ? await withLineage(stripped, lineageOf) : stripped;
+  const at = new Map(shown.map((item, index) => [item, read[index]!]));
+  return items.map((item) => at.get(item) ?? item);
+}
+
 /** The roster names the live askers a deposit or chat item waits on; unread, every such item reads as non-blocking. */
-async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, strips?: GateStripReader): Promise<OwnerQueueRead> {
+async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, reads: QueueReads = {}): Promise<OwnerQueueRead> {
   const [approvals, live, roster] = await Promise.all([
     readFlow(sources),
     readOrGap("shepherd", () => shepherd.list("active"), []),
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
-  const order = approvals.flow.order;
-  const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const items = await withLineage(inboxItems(order, live.value, { strips: gates, liveAgents, now: now() }), sources.rounds.lineage);
+  const placed = inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() });
+  const items = await withReads(placed, live.value, sources.rounds.lineage, reads);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 
-export async function readInbox(sources: InboxSources): Promise<InboxList> {
-  return (await readOwnerQueue(sources)).list;
+export async function readInbox(sources: InboxSources, reads: Omit<QueueReads, "strips"> = {}): Promise<InboxList> {
+  return (await readOwnerQueue(sources, reads)).list;
 }
 
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
@@ -369,7 +395,9 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
 /** The finished runs are read beside the queue rather than after it, since each read waits seconds on its upstream. */
 async function readInboxView(sources: InboxSources, strips: GateStripReader, cache: InboxReadCache, args: { planning?: boolean }): Promise<InboxView> {
   const finished = readOrGap("shepherd finished", () => cache.finished.read(), []);
-  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue({ ...sources, factory: cache.factory }, strips), readNudges(sources)]);
+  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
+  const cached = { ...sources, factory: cache.factory, rounds };
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cached, { strips, planning: args.planning === true }), readNudges(sources)]);
   const derived = await readDerived(sources, reads, finished);
   const { items, ...rest } = list;
   return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
