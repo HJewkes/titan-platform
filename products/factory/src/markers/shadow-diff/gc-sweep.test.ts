@@ -7,13 +7,11 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { workflowMigration } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBlob, type BlobStore } from "../blob-store.js";
-import { DEFAULT_RETAIN_LANDED_DAYS } from "../gc.js";
 import { writeMarker, type MarkerInput } from "../marker-store.js";
 import { INLINE_LIMIT_BYTES, markerTableMigration } from "../marker-table.js";
 import { openItemsOf, startMarkerGcSweep } from "./gc-sweep.js";
 
 const LANDED_AT = "2026-11-01T12:00:00.000Z";
-const PAST_RETENTION_MS = Date.parse(LANDED_AT) + (DEFAULT_RETAIN_LANDED_DAYS + 1) * 24 * 60 * 60 * 1000;
 
 let dir: string;
 let db: Db;
@@ -61,9 +59,8 @@ describe("the marker GC sweep", () => {
     run("completed", { repo: "owner/name", pr: "2" });
     mark("owner/name#1", { output: openBytes });
     mark("owner/name#2", { output: closedBytes });
-    land("owner/name#2");
 
-    await startMarkerGcSweep(db, store, silentLogger, () => PAST_RETENTION_MS).stop();
+    await startMarkerGcSweep(db, store, silentLogger, () => Date.parse(LANDED_AT)).stop();
 
     expect(getBlob(db, store, digestOf(openBytes))).toEqual(openBytes);
     expect(getBlob(db, store, digestOf(closedBytes))).toBeUndefined();
