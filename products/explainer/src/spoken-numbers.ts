@@ -25,8 +25,8 @@ const yearStep: NormalizeStep = { name: "years", apply: (text) => text.replace(Y
 
 const smallNumberStep: NormalizeStep = { name: "small-numbers", apply: (text) => text.replace(/\b\d{1,2}\b/g, (digits) => numberToWords(Number(digits))) };
 
-// How an identifier such as PR 2324 is voiced. Pairs is "twenty-three twenty-four", digits is "two three two four",
-// cardinal is "two thousand three hundred twenty-four". The owner's answer to Q2 is a change to ID_STYLE alone.
+// How an identifier such as PR 2324 is voiced, should a line still say one: Q-V15 fails any that does (TP-4697).
+// Pairs is "twenty-three twenty-four", digits is "two three two four", cardinal is "two thousand three hundred twenty-four".
 type IdStyle = "pairs" | "digits" | "cardinal";
 const ID_STYLE: IdStyle = "pairs";
 

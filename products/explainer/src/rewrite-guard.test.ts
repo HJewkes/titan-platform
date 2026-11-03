@@ -319,23 +319,28 @@ describe("guardBeat", () => {
 });
 
 describe("guardBeat entities and inherited sentences", () => {
-  const WITH_ID = "The desk server checks each scan. M10 shrinks the charter. The ledger keeps them.";
+  const WITH_NAME = "The desk server checks each scan. Then the Kestrel desk shrinks the charter. The ledger keeps them.";
   const moved = (labelsAdded: string[]): BeatRewrite => ({
-    spoken: "The desk server checks each scan. The charter shrinks. The ledger keeps them.",
+    spoken: "The desk server checks each scan. Then the charter shrinks. The ledger keeps them.",
     labelsAdded,
   });
 
   it("accepts an entity moved to an appended label", () => {
-    expect(rules(beatWith({}, WITH_ID), moved(["M10 shrinks the charter"]))).not.toContain("entity");
+    expect(rules(beatWith({}, WITH_NAME), moved(["Kestrel shrinks the charter"]))).not.toContain("entity");
   });
 
   it("rejects a dropped entity that no label carries", () => {
-    expect(rules(beatWith({}, WITH_ID), moved([]))).toContain("entity");
+    expect(rules(beatWith({}, WITH_NAME), moved([]))).toContain("entity");
   });
 
-  it("does not let a longer id in a label carry a shorter one", () => {
-    const before = beatWith({}, WITH_ID.replace("M10", "F1"));
-    expect(rules(before, moved(["F12 shrinks the charter"]))).toContain("entity");
+  it("does not let a longer name in a label carry a shorter one", () => {
+    expect(rules(beatWith({}, WITH_NAME), moved(["Kestrels shrink the charter"]))).toContain("entity");
+  });
+
+  it("lets a script id leave the line with no label to carry it", () => {
+    const before = beatWith({}, "The desk server checks each scan. Then M10 shrinks the charter. The ledger keeps them.");
+
+    expect(rules(before, moved([]))).not.toContain("entity");
   });
 
   describe("sentence-cap", () => {

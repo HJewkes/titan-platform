@@ -8,7 +8,8 @@ import { numberRanges } from "./rewrite-spans.js";
 /** Runs before the guard: a new sentence the cap would refuse is split at a clause joint first (TP-4685). */
 export { splitOverlong } from "./rewrite-split.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
-import { numberForms, termSpellings } from "./spoken-numbers.js";
+import { isIdTerm, spokenIds, type IdMention } from "./spoken-ids.js";
+import { numberForms } from "./spoken-numbers.js";
 
 export type BeatRejectionRule =
   | "empty"
@@ -28,6 +29,7 @@ export type BeatRejectionRule =
   | "cue-order"
   | "new-term"
   | "fact-id"
+  | "id-changed"
   | "sentence-cap";
 
 export interface BeatRejection {
@@ -97,15 +99,20 @@ const formsIn = (spoken: string): string[] => numbersIn(spoken).flatMap(numberFo
 /** The number mentions that left the spoken line, in that form, with repeats. */
 const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(formsIn(before), formsIn(after.spoken));
 
+const cut = (text: string, spans: readonly Pick<TextSpan, "index" | "text">[]): string =>
+  [...spans].sort((a, b) => a.index - b.index).reduceRight((rest, span) => rest.slice(0, span.index) + " " + rest.slice(span.index + span.text.length), text);
+
 /**
- * The original line without its number mentions and every word an appended label speaks. The terms rule reads this,
- * so neither "5000 rows" cut from the line nor 2324 respelled from "two thousand three hundred twenty-four" to
- * "twenty-three twenty-four" counts a number word as a dropped content term, and a list item moved to a label does
- * not count its words. The number rows decide whether a number may go at all.
+ * The original line without its number mentions, its ids and every word an appended label speaks. The terms rule
+ * reads this, so neither "5000 rows" cut from the line nor 2324 respelled from "two thousand three hundred twenty-four"
+ * to "twenty-three twenty-four" counts a number word as a dropped content term, an id cut from the line does not count
+ * its "pull request" or "ticket", and a list item moved to a label does not count its words. The number rows decide
+ * whether a number may go at all.
  */
-function withoutCarried(before: string, after: BeatRewrite): string {
-  const text = spokenText([before]).text;
-  const line = countSpans(text).reduceRight((rest, span) => rest.slice(0, span.index) + rest.slice(span.index + span.text.length), text);
+function withoutCarried(before: ScriptBeat, after: BeatRewrite): string {
+  const text = spokenText([before.spoken]).text;
+  const withoutIds = cut(text, spokenIds(before));
+  const line = cut(withoutIds, countSpans(withoutIds));
   const spokenByLabels = contentTerms(after.labelsAdded.join(" "));
   return line.replace(/[\p{L}\p{N}'’-]+/gu, (word) => {
     const terms = [...contentTerms(word)];
@@ -312,27 +319,20 @@ export function rewrittenBeat(before: ScriptBeat, after: BeatRewrite): ScriptBea
   return { ...before, spoken: after.spoken, visual: { ...before.visual, labels: [...before.visual.labels, ...after.labelsAdded] } };
 }
 
-// A spelled number ends at a word, not a hyphen: "sixty-four twenty" is not said by "sixty-four twenty-one".
-const NUMBER_ENDS = "(?!-\\p{L})";
+/** A term as a line says it, word for word. */
+const saidForm = (spoken: string, term: string): string | undefined => (hasWord(norm(spoken), norm(term)) ? term : undefined);
 
-/** A term as a line says it: word for word, or, for a term naming a numbered item, that number in any spelling. */
-function saidForm(spoken: string, term: string): string | undefined {
-  const line = norm(spoken);
-  return hasWord(line, norm(term)) ? term : termSpellings(term).find((form) => hasWord(line, norm(form), NUMBER_ENDS));
-}
+/** The terms a line must keep saying: a PR, task or script id may leave it (TP-4697), so it is not one. */
+const namedIn = ({ new_terms, fact_ids }: Pick<ScriptBeat, "new_terms" | "fact_ids">): string[] =>
+  [...new Set([...new_terms, ...fact_ids])].filter((term) => !isIdTerm(term));
 
-const namedIn = ({ new_terms, fact_ids }: Pick<ScriptBeat, "new_terms" | "fact_ids">): string[] => [...new Set([...new_terms, ...fact_ids])];
-
-/**
- * Only what the original said can stop being spoken, since a declared fact id is not a word any line holds. An item
- * the beat cites stays named at least once: "TP forty-one oh three" cut to "TP forty-one" is a different ticket.
- */
+/** Only what the original said can stop being spoken, since a declared fact id is not a word any line holds. */
 const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
   namedIn(before)
     .filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)
     .map((term) => ({ rule: "new-term", detail: `"${term}" is named in this beat and no longer spoken` }));
 
-/** What the beat names, as its line says it, for the prompt: a model told to keep a fact id pastes it into the line. */
+/** What the beat names, as its line says it, for the prompt: a model told to keep a fact id pastes it into the line; ids are left out. */
 export const termsToKeep = (beat: Pick<ScriptBeat, "spoken" | "new_terms" | "fact_ids">): string[] =>
   [...new Set(namedIn(beat).flatMap((term) => saidForm(beat.spoken, term) ?? []))];
 
@@ -347,6 +347,17 @@ const factIdRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =
     .filter((kind) => holdsFactId(spoken, kind) && !holdsFactId(before.spoken, kind))
     .map((kind) => ({ rule: "fact-id", detail: `a "${kind}/" fact id was pasted into the line` }));
 
+/**
+ * An id may leave the line whole, but one the rewrite says must be one the original said: "TP seventy oh one" cut to
+ * "TP seventy" names a different ticket.
+ */
+function idRejections(before: ScriptBeat, spoken: string): BeatRejection[] {
+  const said = new Set(spokenIds(before).map((id) => id.key));
+  return spokenIds({ ...before, spoken })
+    .filter((id) => !said.has(id.key))
+    .map((id) => ({ rule: "id-changed" as const, detail: `"${id.text}" is an id the original did not say` }));
+}
+
 function capRejections(before: string, spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {
   const ceiling = maxVettedSentenceWords ?? MAX_VETTED_SENTENCE_WORDS;
   const inherited = new Set(sentencesOf(before).map(norm));
@@ -355,10 +366,10 @@ function capRejections(before: string, spoken: string, { speechClean, maxVettedS
     .map((sentence) => ({ rule: "sentence-cap", detail: `a sentence runs past ${MAX_SENTENCE_WORDS} words without a clean speech verdict: "${sentence.slice(0, 40)}"` }));
 }
 
-/** A dropped entity moved to an appended label still reaches the screen, so it is not lost. */
-const entityInLabel = (rule: string, detail: string, after: BeatRewrite): boolean => {
+/** A dropped entity moved to an appended label still reaches the screen, and one that was part of an id may go with it. */
+const entityAllowed = (rule: string, detail: string, after: BeatRewrite, ids: readonly IdMention[]): boolean => {
   const entity = detail.replace(/^dropped /, "");
-  return rule === "entity" && after.labelsAdded.some((label) => hasWord(label, entity));
+  return rule === "entity" && [...after.labelsAdded, ...ids.map((id) => id.text)].some((text) => hasWord(text, entity));
 };
 
 /**
@@ -367,9 +378,10 @@ const entityInLabel = (rule: string, detail: string, after: BeatRewrite): boolea
  */
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
   const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, minLengthSlack: DEFAULT_LENGTH_SLACK, ...opts.guard };
+  const ids = spokenIds(before);
   const generic: BeatRejection[] = guardRewrite(before.spoken, after.spoken, "", guard)
-    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" || entityInLabel(rule, detail, after) ? [] : [{ rule, detail }]));
-  const terms: BeatRejection[] = guardRewrite(withoutCarried(before.spoken, after), after.spoken, "", guard)
+    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" || entityAllowed(rule, detail, after, ids) ? [] : [{ rule, detail }]));
+  const terms: BeatRejection[] = guardRewrite(withoutCarried(before, after), after.spoken, "", guard)
     .flatMap(({ rule, detail }) => (rule === "terms" ? [{ rule, detail }] : []));
   const lists = namedLists(before.spoken);
   return [
@@ -385,6 +397,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
     ...factIdRejections(before, after.spoken),
+    ...idRejections(before, after.spoken),
     ...capRejections(before.spoken, after.spoken, opts),
   ];
 }

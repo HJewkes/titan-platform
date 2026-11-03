@@ -8,6 +8,7 @@ import type { StructureRow } from "./eval-store.js";
 import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
 import { registerCheck } from "./lint-register.js";
+import { spokenIdsCheck } from "./spoken-ids.js";
 import { spokenDigitsCheck } from "./spoken-numbers.js";
 import { spokenTokenCheck } from "./lint-spoken-tokens.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
@@ -69,7 +70,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
 
 export const L0_CHECKS: readonly L0Check[] = [
   mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, ledgerCheck, spineCheck,
-  heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, spokenTokenCheck, headlineCheck, assertionCheck, claimsCheck, coverageCheck, reflectionCheck,
+  heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, spokenIdsCheck, spokenTokenCheck, headlineCheck, assertionCheck, claimsCheck, coverageCheck, reflectionCheck,
   varietyScriptCheck,
   numbersSpokenCheck, frameWordsCheck, labelEchoCheck, cueGapCheck, heldCountCheck, fillFloorCheck,
   headingWordsCheck, firstMotionCheck,
