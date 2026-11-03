@@ -3,6 +3,7 @@ import type { GitHubPort } from "@titan-design/github";
 import type { ReviewerAgent } from "@titan-design/review-panel";
 import { judgeAttestations } from "../registry/attest.js";
 import { readClaims } from "./attest-read.js";
+import type { DeploySkew } from "./attest-skew.js";
 import { errorClass } from "./error-class.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
@@ -23,6 +24,8 @@ export interface AttestReaders {
   roster?: () => Promise<readonly ReviewerAgent[]>;
   /** Absent means the roster stands for the lineage, as the hold satisfier reads it. */
   lineage?: () => Promise<Lineage>;
+  /** Absent reads no skew, as a build with no deploy pacer behind it; serve wires `deploySkew()`. */
+  deploySkew?: DeploySkew;
 }
 
 interface AttestSubject {
@@ -34,7 +37,8 @@ interface AttestSubject {
   attest?: AttestVerdicts;
 }
 
-export type AttestJudgment = ReturnType<typeof judgeAttestations> | { unread: string };
+/** `deploySkew` names why the read waits for a deploy: the running build may read the claims as main no longer lays them out. */
+export type AttestJudgment = ReturnType<typeof judgeAttestations> | { unread: string } | { deploySkew: string };
 
 interface RunFacts {
   registration: Registration;
@@ -75,21 +79,34 @@ interface RosterPatience {
 const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () =>
   whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
 
-interface JudgeWiring {
+export interface AttestSkewWiring {
+  /** Main's registry commits the running build lacks; absent reads no skew, so the attest step judges at once (TP-4752). */
+  deploySkew?: DeploySkew;
+}
+
+interface JudgeWiring extends AttestSkewWiring {
   dispatch?: { roster(): Promise<readonly ReviewerAgent[]> };
   lineage?: () => Promise<Lineage>;
 }
 
 /** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage, each read with `patience`. */
-export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage }: JudgeWiring, patience: RosterPatience) {
-  const readers: AttestReaders = { store, ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }) };
+export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage, deploySkew }: JudgeWiring, patience: RosterPatience) {
+  const reads = { ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }) };
+  const readers: AttestReaders = { store, ...reads, ...(deploySkew && { deploySkew }) };
   return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
 }
 
-/** Undefined when the head claims no row; the meeters are named only from the roster, never from the reviewer's text. */
+/**
+ * Undefined when the head claims no row; the meeters are named only from the roster, never from the reviewer's text. A
+ * claim or an unread file is judged only once the running build holds main's registry commits, since a build behind them
+ * may read main's layout wrong and name every row unmet (TP-4752).
+ */
 export async function attestAtHead(port: GitHubPort, readers: AttestReaders, subject: AttestSubject, baseRef: string): Promise<AttestJudgment | undefined> {
   const read = await readClaims(port, { repo: subject.repo, base: baseRef, head: subject.head });
-  if ("unread" in read || read.claimed.length === 0) return "unread" in read ? read : undefined;
+  if (!("unread" in read) && read.claimed.length === 0) return undefined;
+  const skew = await readers.deploySkew?.(subject.repo).catch((error: unknown) => `deploy skew unread: ${errorClass(error)}`);
+  if (skew !== undefined) return { deploySkew: skew };
+  if ("unread" in read) return read;
   const facts = await runFacts(readers, subject.runId);
   if ("unread" in facts) return facts;
   const { registration, authors, roster, lineage } = facts;

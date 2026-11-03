@@ -7,7 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { attestJudge } from "./attest-evidence.js";
+import { attestJudge, type AttestSkewWiring } from "./attest-evidence.js";
 import { briefClaimsAt } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitVerdictStep } from "./await-verdict-step.js";
@@ -169,7 +169,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;

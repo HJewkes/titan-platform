@@ -8,6 +8,7 @@
   "attest-field.ts",
   "attest-read.ts",
   "attest-schema.ts",
+  "attest-skew.ts",
   "author-types.ts",
   "await-verdict-step.ts",
   "await-verdict.ts",

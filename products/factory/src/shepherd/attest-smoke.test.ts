@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GhExec } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { ReviewerAgent } from "@titan-design/review-panel";
 import { partialFake } from "@titan-design/test-kit";
@@ -9,8 +9,10 @@ import { factoryMigrations } from "../host.js";
 import { fakeLocator } from "../test-support/fakes.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { attestJudge } from "./attest-evidence.js";
-import { attestationsFileOf } from "./attest-read.js";
+import { attestationsFileOf, LEGACY_ATTESTATIONS_PATH } from "./attest-read.js";
+import { deploySkew } from "./attest-skew.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
+import { headWaits } from "./freeze-wait.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { mergeOrderGuard } from "./merge-order-guard.js";
 import { MergeOrder, type MergeOrderRules } from "./merge-order.js";
@@ -188,5 +190,53 @@ describe("attest smoke: a stacked PR's merge-order reservation", () => {
     const reason = await guard.reason(githubPort(fake.wire), REPO, MAIN_BASED, "main", fakeSha("main-based"), "topic-main-based");
 
     expect(reason).toBeUndefined();
+  });
+});
+
+describe("attest smoke: main holds a registry commit the running build lacks", () => {
+  const BUILD = fakeSha("running-build");
+  const DEPLOYED = fakeSha("deployed-build");
+  const LAYOUT_COMMIT = ["products/factory/src/registry/attestations.json", "products/factory/src/registry/attestations/2.json"];
+
+  /** The reads a build without the per-PR reader made on 11-03: main's deleted legacy file reads [], the head's stale copy every row. */
+  function skewedWorld(): FakeGitHub {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: HEAD, mergeSha: fakeSha("smoke-merge") });
+    fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
+    fake.prFiles.set(1, [{ path: LEGACY_ATTESTATIONS_PATH, status: "modified" }]);
+    fake.files.set(`${HEAD}:${LEGACY_ATTESTATIONS_PATH}`, { content: JSON.stringify([OLD_ROW, CI_WAIT]), blobSha: "b-legacy" });
+    return fake;
+  }
+
+  /** `gh compare <sha>...main`: one layout commit ahead of the running build, none ahead of the deployed one. */
+  const compare: GhExec = async (args) => ({ code: 0, stdout: args.some((arg) => arg.includes(DEPLOYED)) ? "0\n0\n" : `1\n${LAYOUT_COMMIT.length}\n${LAYOUT_COMMIT.join("\n")}\n`, stderr: "" });
+
+  async function judgedOn(build: string) {
+    const fake = skewedWorld();
+    const port = githubPort(fake.wire);
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 5_000, brokerDownWaitMs: 15 * 60_000 };
+    const skew = deploySkew({ sha: build, repo: REPO, exec: compare });
+    const judge = attestJudge(port, store, { dispatch: { roster: async () => roster }, lineage: wholeRoster, deploySkew: skew }, { timing, budgetMs: 60_000, signal: new AbortController().signal });
+    return mergeEvidence(port, request("rev-1"), noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest: judge });
+  }
+
+  it("TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate", async () => {
+    const result = await judgedOn(BUILD);
+
+    expect(result.record.attestWaiting).toMatch(/^deploy skew: main is 1 commit\(s\) ahead of build .*registry/);
+    expect(result.record.attestUnmet).toBeUndefined();
+    expect(result.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-deploy-skew" } });
+    expect(result.record.decision.reason).not.toContain("closure-mismatch");
+    const waits = headWaits(async () => undefined);
+    expect(waits.transient(result.record.decision)).toBe(true);
+    expect(waits.kind?.(result.record.decision)).toBe("thaw");
+  });
+
+  it("TP-4752: once the deploy holds main's registry commits, the same head is judged as before", async () => {
+    const result = await judgedOn(DEPLOYED);
+
+    expect(result.record.attestWaiting).toBeUndefined();
+    expect(result.record.attestUnmet).toEqual([{ step: "ci-wait", why: "closure-mismatch" }]);
+    expect(result.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" } });
   });
 });

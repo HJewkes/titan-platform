@@ -47,6 +47,8 @@ export interface EvidenceRecord {
   attestUnmet?: { step: string; why: string }[];
   /** Why the claims or the meeters' facts could not be read. */
   attestUnread?: string;
+  /** Why the attest read waited for a deploy instead of judging (TP-4752). */
+  attestWaiting?: string;
 }
 
 /** The parts of the evidence step's input a record names. */
@@ -63,9 +65,10 @@ interface RecordObserved {
 type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
-function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread"> {
+function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
   if (attest === undefined) return {};
   if ("unread" in attest) return { attestUnread: attest.unread };
+  if ("deploySkew" in attest) return { attestWaiting: attest.deploySkew };
   const attested = attest.met.map(({ step, closure, meeters }) => ({
     step,
     closure,
