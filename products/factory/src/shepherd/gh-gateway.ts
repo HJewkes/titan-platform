@@ -1,7 +1,7 @@
 import { GhError, octokitRest, type GatewayBudget, type GitHubClient, type RepoSlug, type Rest } from "@titan-design/github";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import { z } from "zod";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { GhGateway, GhReadAnswer } from "./gh-gateway-port.js";
 import { coded } from "./register-args.js";

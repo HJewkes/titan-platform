@@ -12,14 +12,15 @@ import { mainDeployQueue } from "./shepherd/redeploy.js";
 
 type RedSeatConfig = NonNullable<FactoryConfig["shepherd"]>["redSeat"];
 
-/** A red event goes out over agent-chat, so no configured `agentChatBin` means serve watches main only after its own merges. */
+/** A red event goes out over agent-chat, so no configured `agentChatBin` means serve watches main only after its own merges. The seats are re-read per call, so an edit to `hubSeat` or `redSeat` applies without a restart. */
 export function configuredMainWatch(env: NodeJS.ProcessEnv): MainWatchPorts | undefined {
-  const { agentChatBin, hubSeat, redSeat } = loadConfig(configPath(env)).shepherd ?? {};
+  const shepherd = () => loadConfig(configPath(env)).shepherd ?? {};
+  const { agentChatBin } = shepherd();
   if (!agentChatBin) return undefined;
   const agents = agentChatAgents(agentChatBin, { timeoutMs: AGENT_CALL_TIMEOUT_MS });
   const liveNames = async () => new Set((await agents.roster()).filter(receivesMessages).map((row) => row.name));
   const deploy = factoryDeploy(env);
-  return { hubSeat: () => hubSeat, redSeat: (repo) => redSeatFor(redSeat, repo), send: (seat, text) => agents.message(seat, text), liveNames, ...(deploy && { deploy }) };
+  return { hubSeat: () => shepherd().hubSeat, redSeat: (repo) => redSeatFor(shepherd().redSeat, repo), send: (seat, text) => agents.message(seat, text), liveNames, ...(deploy && { deploy }) };
 }
 
 /** The same bin, state dir and ancestry probe Shepherd's redeploy step queues with, so both write one deploy-wanted.json. */

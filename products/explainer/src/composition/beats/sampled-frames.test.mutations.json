@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the stat card rises 24 px again while its figure counts",
+      "file": "products/explainer/src/composition/beats/StatBeat.tsx",
+      "find": "const CARD_RISE_PX = 0;",
+      "replace": "const CARD_RISE_PX = 24;",
+      "kills": ["a template on the frames qa samples a stat figure counts in the one place it first shows, so qa reads the count as one figure"]
+    },
+    {
+      "name": "the outro clips its text at the end again",
+      "file": "products/explainer/src/composition/beats/OutroBeat.tsx",
+      "find": "<div className=\"beat-outro\">",
+      "replace": "<div className=\"beat-outro\" style={{ clipPath: t > 5 ? \"inset(0 0 90% 0)\" : \"none\" }}>",
+      "kills": [
+        "a template on the frames qa samples a closing button holds its text uncut through the video's last frame",
+        "a template on the frames qa samples a closing outro holds its text uncut through the video's last frame"
+      ]
+    }
+  ]
+}

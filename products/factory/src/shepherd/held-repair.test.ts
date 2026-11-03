@@ -10,11 +10,12 @@ import { H1, REPO, gateId, gateOpened, spaceUpdates } from "../test-support/land
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("held-fix");
 const HOLD = "visual-gate2: the owner reviews the contrast baseline";

@@ -1,4 +1,5 @@
 import type { PrKey, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
+import { z } from 'zod';
 
 import { runCommand, type RunCommand } from '../discover/run-command.js';
 import type { WorkspaceGraph } from './graph.js';
@@ -47,22 +48,18 @@ function failBackoffMs(): number {
     : DEFAULT_FAIL_BACKOFF_MS;
 }
 
-interface GhReview {
-  state?: string;
-  submittedAt?: string | null;
-}
+/** A wrong-typed field fails the parse, which the caller reports like any other `gh` failure. */
+const GhPrSchema = z.looseObject({
+  state: z.string().nullish(),
+  mergedAt: z.string().nullish(),
+  closedAt: z.string().nullish(),
+  reviews: z
+    .array(z.looseObject({ state: z.string().nullish(), submittedAt: z.string().nullish() }))
+    .nullish(),
+  commits: z.array(z.looseObject({ committedDate: z.string().nullish() })).nullish(),
+});
 
-interface GhCommit {
-  committedDate?: string | null;
-}
-
-interface GhPr {
-  state?: string;
-  mergedAt?: string | null;
-  closedAt?: string | null;
-  reviews?: GhReview[];
-  commits?: GhCommit[];
-}
+type GhPr = z.infer<typeof GhPrSchema>;
 
 interface CheckedRow {
   pr_ref: string;
@@ -98,8 +95,8 @@ function selectPrs(
 ): PrKey[] {
   const backoff = failBackoffMs();
   const rows = graph.db
-    .prepare('SELECT pr_ref, state, outcome_checked_at FROM pr')
-    .all() as CheckedRow[];
+    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at FROM pr')
+    .all();
   const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
   const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
   return prs
@@ -120,7 +117,12 @@ async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
     const reason = result.stderr.trim().split('\n')[0] || `exit ${String(result.code)}`;
     throw new Error(reason);
   }
-  return toResolved(JSON.parse(result.stdout) as GhPr);
+  const parsed = GhPrSchema.safeParse(JSON.parse(result.stdout));
+  if (!parsed.success) {
+    const at = parsed.error.issues[0]?.path.join('.') || 'top level';
+    throw new Error(`unexpected gh pr view output at ${at}`);
+  }
+  return toResolved(parsed.data);
 }
 
 export function ghPrResolver(graph: WorkspaceGraph, options: PrOutcomeOptions = {}): PrResolver {

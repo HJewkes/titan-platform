@@ -1,12 +1,19 @@
 import { randomInt, seededRandom } from "./seeded.js";
 
+// Slices rather than indexes so an element that is itself undefined still swaps.
+function swap<T>(items: T[], i: number, j: number): void {
+  const atI = items.slice(i, i + 1);
+  items.splice(i, 1, ...items.slice(j, j + 1));
+  items.splice(j, 1, ...atI);
+}
+
 /** Picks n distinct entries from the pool, in an order fixed by the seed. n is capped at the pool size. */
 export function pickControls<T>(pool: readonly T[], seed: string | number, n: number): T[] {
   const random = seededRandom(`pick:${seed}`);
   const shuffled = [...pool];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomInt(random, i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j] as T, shuffled[i] as T];
+    swap(shuffled, i, j);
   }
   return shuffled.slice(0, Math.max(0, n));
 }

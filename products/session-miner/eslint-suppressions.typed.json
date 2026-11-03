@@ -1,0 +1,12 @@
+{
+  "products/session-miner/src/commands/playbook.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/miner.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  }
+}

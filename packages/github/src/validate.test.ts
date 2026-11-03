@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fakeSha } from "./fake.js";
 import type { GhExec } from "./exec.js";
 import { ghCliWire } from "./gh-cli.js";
-import { githubPort, type GitHubPort, type MergeMethod } from "./port.js";
+import { githubPort, type GitHubPort } from "./port.js";
 import { GitHubInputError } from "./validate.js";
 
 const REPO = "octo/demo";
@@ -45,7 +45,7 @@ const refusals: [string, string, (port: GitHubPort) => Promise<unknown>][] = [
   ["path", "a percent-encoded dot-dot segment", (port) => port.getFile(REPO, "docs/%2e%2e/secret", "main")],
   ["path", "a path that is only an encoded slash", (port) => port.getFile(REPO, "%2F", "main")],
   ["ref", "traversal in a ref", (port) => port.getFile(REPO, "docs/a.md", "../main")],
-  ["method", "an unknown merge method", (port) => port.merge(REPO, 1, SHA, "force" as MergeMethod)],
+  ["method", "an unknown merge method", (port) => Reflect.apply(port.merge, port, [REPO, 1, SHA, "force"])],
 ];
 
 describe("port input validation", () => {

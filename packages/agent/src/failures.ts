@@ -74,9 +74,9 @@ function parseRetryAt(text: string, options: ClassifyOptions): Date | undefined 
 }
 
 /** `result` carries the text on a success message, `errors` on every failure subtype. */
-function errorText(result: SDKResultMessage): string {
+function errorText(result: { subtype: string; result?: string; errors?: readonly unknown[] }): string {
   if (result.subtype === "success") return result.result ?? "";
-  return (result.errors ?? []).filter((e) => typeof e === "string" && e.length > 0).join("\n");
+  return (result.errors ?? []).filter((e): e is string => typeof e === "string" && e.length > 0).join("\n");
 }
 
 /**
@@ -99,6 +99,6 @@ function cacheCreationFrom(result: SDKResultMessage | undefined): AgentUsage["ca
   return { ephemeral5m: split.ephemeral_5m_input_tokens, ephemeral1h: split.ephemeral_1h_input_tokens };
 }
 
-export function sumModelCost(modelUsage: Record<string, ModelUsage>): number {
+export function sumModelCost(modelUsage: Record<string, Partial<Pick<ModelUsage, "costUSD">>>): number {
   return Object.values(modelUsage).reduce((total, m) => total + (m.costUSD ?? 0), 0);
 }

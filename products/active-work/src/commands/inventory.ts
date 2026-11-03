@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { listInitiativeSlugs } from '../lint/index.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { scanInventory } from '../workspace-index/inventory.js';
+import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';
 import { WIRE_CLASSES, type WireClass } from '../workspace-index/wire.js';
 import { defineCommand } from '../registry/index.js';
@@ -51,7 +51,7 @@ export default defineCommand<Args, Result>({
     const activeRoot = getActiveRoot();
     const [slugs, files, humanOnly] = await Promise.all([
       listInitiativeSlugs(activeRoot),
-      scanInventory(activeRoot),
+      inventoryCache.scan(activeRoot),
       humanOnlyPredicate(activeRoot, ctx.warnings),
     ]);
     const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly);

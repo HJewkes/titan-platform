@@ -24,14 +24,20 @@ export function ownerAtHeadNote(rows: readonly OwnerAtHeadRow[], multiLine: bool
   return `${OWNER_AT_HEAD_LEAD}${rows.length > 0 ? rows.join(", ") : NONE}.`;
 }
 
+/** Every name a prompt's marker lines carry, unknown ones and `none` included; undefined when it has no marker. */
+export function ownerAtHeadNamesIn(prompt: string): string[] | undefined {
+  const marked = prompt.split("\n").slice(1).filter((line) => line.startsWith(OWNER_AT_HEAD_LEAD));
+  if (marked.length === 0) return undefined;
+  return marked.flatMap((line) => line.slice(OWNER_AT_HEAD_LEAD.length).replace(/\.$/, "").split(", "));
+}
+
 /**
  * The rows a prompt's marker lines name; undefined when it has none. A marker naming neither `none` nor a known row reads
  * as `owner-at-head`, so a mangled marker fails closed, and text posing as a marker can only make a gate stricter.
  */
 export function ownerAtHeadRowsIn(prompt: string): string[] | undefined {
-  const marked = prompt.split("\n").slice(1).filter((line) => line.startsWith(OWNER_AT_HEAD_LEAD));
-  if (marked.length === 0) return undefined;
-  const named = marked.flatMap((line) => line.slice(OWNER_AT_HEAD_LEAD.length).replace(/\.$/, "").split(", "));
+  const named = ownerAtHeadNamesIn(prompt);
+  if (named === undefined) return undefined;
   const rows = named.filter(isOwnerAtHeadRow);
   return rows.length > 0 || named.every((row) => row === NONE) ? rows : ["owner-at-head"];
 }

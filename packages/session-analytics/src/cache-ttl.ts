@@ -153,7 +153,7 @@ export function cacheTtlReport(db: Db, options: CostReportOptions = {}, prices: 
 }
 
 export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
-  const rows = db.prepare(TTL_ROWS).all(window) as Omit<TtlRequestRow, "role" | "profile">[];
+  const rows = db.prepare<[object], Omit<TtlRequestRow, "role" | "profile">>(TTL_ROWS).all(window);
   const contexts = readSessionContexts(db, [...new Set(rows.map((row) => row.sessionId))]);
   const tags = tagSessions(contexts);
   return rows.map((row) => ({

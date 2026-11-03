@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a decode is never charged to the step's pixel budget",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "  m.budget -= decoded.width * decoded.height;\n",
+      "replace": "",
+      "kills": ["measuring snapshot pairs under the step's fixed caps measures the first of three 64×64 pairs under a two-image budget, and neither reads nor decodes the others"]
+    },
+    {
+      "name": "an exhausted budget still reads the blobs",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "  if (m.budget < 1) return OVER_BUDGET;\n",
+      "replace": "",
+      "kills": ["measuring snapshot pairs under the step's fixed caps measures the first of three 64×64 pairs under a two-image budget, and neither reads nor decodes the others"]
+    },
+    {
+      "name": "a decode's pixel limit ignores the budget left",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "const limit = Math.min(m.maxPixels, m.budget);",
+      "replace": "const limit = m.maxPixels;",
+      "kills": ["measuring snapshot pairs under the step's fixed caps refuses a head larger than the budget left after its base, as over the step's budget"]
+    },
+    {
+      "name": "the blob read drops maxBytes",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "m.refs[side], { maxBytes: m.maxBytes })",
+      "replace": "m.refs[side])",
+      "kills": ["measuring snapshot pairs under the step's fixed caps records a blob over maxBytes as unmeasured without the fake serving it"]
+    },
+    {
+      "name": "pairs over maxSnapshots are measured anyway",
+      "file": "products/factory/src/shepherd/visual-delta-measure.ts",
+      "find": "  if (pairs.length > cap) return",
+      "replace": "  if (false) return",
+      "kills": ["measuring snapshot pairs under the step's fixed caps records every pair unmeasured with no blob or merge-base read when they number over maxSnapshots"]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
 import { INDEX_VERSION, type CheckRule } from "@titan-design/code-graph";
 import { EXIT, collectCliArgs, createRegistry, invokeCommand, type BaseContext } from "@titan-design/registry";
 import { createLiveSource, type SnapshotStore } from "./live-source.js";
@@ -123,7 +124,8 @@ describe("the live source's model cache", () => {
   it("keeps the three most recently used snapshots and reloads an evicted one", () => {
     const { store, loads } = countingStore();
     const source = createLiveSource({ openStore: () => store });
-    const [a, b, c, d] = snapshotIds as [number, number, number, number];
+    const [a, b, c, d] = snapshotIds;
+    if (a === undefined || b === undefined || c === undefined || d === undefined) throw new Error("beforeAll indexes four snapshots");
 
     for (const id of [a, b, c, a, d]) source.model(id);
 
@@ -158,7 +160,7 @@ describe("the live source's model cache", () => {
     const rows = Array.from({ length: 60 }, (_, i) => ({
       id: 60 - i, ref: "main", commitHash: null, takenAt: "2026-01-01T00:00:00Z", indexVersion: INDEX_VERSION, attrs: {},
     }));
-    const store = { listSnapshots: ({ limit = 50 } = {}) => rows.slice(0, limit) } as unknown as SnapshotStore;
+    const store = partialFake<SnapshotStore>({ listSnapshots: ({ limit = 50 } = {}) => rows.slice(0, limit) });
 
     expect(createLiveSource({ openStore: () => store }).snapshots()).toHaveLength(60);
   });

@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
 import {
@@ -134,7 +135,7 @@ function settingsFrom(options: RefreshOptions): Settings {
 function parseObject(text: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+    return isRecord(value) ? value : null;
   } catch {
     return null;
   }
@@ -240,7 +241,8 @@ async function exchange(body: string, settings: Settings): Promise<{ tokens: Tok
 
 // Spread keeps every key in its place, so only the refreshed values differ from the base.
 function serialize(base: CredentialsBase, tokens: TokenResponse, now: number): { text: string; expiresAt: number } {
-  const oauth = base.credentials.claudeAiOauth as Record<string, unknown>;
+  const stored = base.credentials.claudeAiOauth;
+  const oauth = isRecord(stored) ? stored : {};
   const expiresAt = now + tokens.expires_in * 1000;
   const updated: Record<string, unknown> = { ...oauth, accessToken: tokens.access_token, expiresAt };
   if (tokens.refresh_token !== undefined) updated.refreshToken = tokens.refresh_token;

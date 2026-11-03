@@ -1,27 +1,18 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fixCarry, type FixCarryResult } from "./fix-carry.js";
 
 const REPO = "acme/widgets";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let origin: string;
 let stateDir: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 function write(file: string, text: string): void {
@@ -40,15 +31,14 @@ const body = (count: number, tag: string): string => Array.from({ length: count 
 
 /** An approved head on `feature` that changed src/a.ts and src/b.ts, with main moved on by an unrelated commit and merged in. */
 function approvedAndMergedUp(): { h1: string; h2: string } {
-  commit("src/a.ts", body(60, "a"));
-  commit("src/b.ts", body(60, "b"));
-  commit("src/untouched.ts", body(10, "u"));
-  git("checkout", "-q", "-B", "feature", "HEAD");
-  commit("src/a.ts", body(60, "a").replace("a 1\n", "a one\n"));
-  const h1 = commit("src/b.ts", body(60, "b").replace("b 1\n", "b one\n"));
-  git("checkout", "-q", "-B", "main", "main");
-  commit("other.txt", "main moved\n");
-  git("checkout", "-q", "feature");
+  const [, , , , , h1 = ""] = withHistory(origin, [
+    { files: { "src/a.ts": body(60, "a") }, message: "edit src/a.ts" },
+    { files: { "src/b.ts": body(60, "b") }, message: "edit src/b.ts" },
+    { files: { "src/untouched.ts": body(10, "u") }, message: "edit src/untouched.ts" },
+    { files: { "other.txt": "main moved\n" }, message: "edit other.txt" },
+    { branch: "feature", from: ":3", files: { "src/a.ts": body(60, "a").replace("a 1\n", "a one\n") }, message: "edit src/a.ts" },
+    { branch: "feature", files: { "src/b.ts": body(60, "b").replace("b 1\n", "b one\n") }, message: "edit src/b.ts" },
+  ]);
   git("merge", "-q", "--no-ff", "--no-edit", "main");
   return { h1, h2: git("rev-parse", "HEAD") };
 }
@@ -60,7 +50,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "fix-carry-"));
   origin = join(root, "origin");
   stateDir = join(root, "state");
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 

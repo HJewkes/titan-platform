@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { InvalidArgumentError, type Command } from "commander";
-import type { CliIo } from "./cli.js";
+import type { CliIo } from "./cli-types.js";
 import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import { EXIT } from "./exit-codes.js";
 import { readCoverage } from "./shepherd/coverage-read.js";

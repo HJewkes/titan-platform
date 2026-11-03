@@ -5,6 +5,7 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { expectLinearTime, LINEARITY_CPU_MS } from "../test-support/linear-time.js";
+import { expectLinearWork } from "../test-support/work-count.js";
 import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
@@ -212,8 +213,9 @@ describe("a command that only reads, mentions or writes another name", () => {
   });
 });
 
+// Each step of the walk reads its letter through counted string calls, so a walk that revisits states counts more.
 describe("an option word the walk reads both ways", () => {
-  cpuBudgetIt("reads a long run of either-letters in linear time", LINEARITY_CPU_MS, () => {
+  it("reads a long run of either-letters in linear time", async () => {
     const prepare = (n: number) => {
       const words = tokenize(`stat ${"-t ".repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
       const cmd = unwrap(words);
@@ -221,13 +223,13 @@ describe("an option word the walk reads both ways", () => {
     };
 
     expect(prepare(20_000)()).toBe("module_path");
-    expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
+    await expectLinearWork((n) => { const run = prepare(n); return () => void run(); }, 20_000);
   });
 
-  cpuBudgetIt.each([
+  it.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
     ["stat, whose -t ends options in BSD stat", "stat", "-t a "],
-  ])("slots the operands once when many readings end options: %s", LINEARITY_CPU_MS, (_how, name, unit) => {
+  ])("slots the operands once when many readings end options: %s", async (_how, name, unit) => {
     const prepare = (n: number) => {
       const words = tokenize(`${name} ${unit.repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
       const cmd = unwrap(words);
@@ -235,7 +237,7 @@ describe("an option word the walk reads both ways", () => {
     };
 
     expect(prepare(20_000)()).toBe("module_path");
-    expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
+    await expectLinearWork((n) => { const run = prepare(n); return () => void run(); }, 20_000);
   });
 
   it("fails closed on an option word too long to walk", () => {
@@ -431,8 +433,8 @@ describe("arithmetic that mentions a hooked parameter", () => {
     expect(arithmeticHooked("i = i + 1")).toBeNull();
   });
 
-  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
-    expectLinearTime((n) => {
+  it("reads a long word in linear time", async () => {
+    await expectLinearWork((n) => {
       const value = `$((${"a[".repeat(n)}`;
       const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
@@ -560,15 +562,22 @@ describe("every math write operator, spacing and side around a computed name", (
     expect(hooked(line)).toBeNull();
   });
 
+  const longText = (unit: string) => (n: number) => {
+    const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
+    return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
+  };
+
+  // The operator scan reads through counted string calls. The rows below it stay on CPU time: the `#` pattern scan's
+  // counted searches overcount it, and the bracket scan reads by index, which no count sees.
+  it("reads a long text without a hit in linear time: spaced operators between literal names", async () => {
+    await expectLinearWork(longText("a ++ b -- c = d "), 10_000);
+  });
+
   cpuBudgetIt.each([
-    ["spaced operators between literal names", "a ++ b -- c = d ", 10_000],
     ["many # patterns", "${x#*}", 10_000],
     ["subscripts that never open", "]=", 30_000],
   ])("reads a long text without a hit in linear time: %s", LINEARITY_CPU_MS, (_how, unit, top) => {
-    expectLinearTime((n) => {
-      const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
-      return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
-    }, top);
+    expectLinearTime(longText(unit), top);
   });
 });
 

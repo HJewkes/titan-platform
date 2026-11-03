@@ -1,5 +1,5 @@
 import type { Extractor as CoreExtractor } from "@titan-design/code-parser";
-import type { ProfileCategory } from "@titan-design/style-profile";
+import { PROFILE_CATEGORIES, type ProfileCategory } from "@titan-design/style-profile";
 
 export type { ParsedFile } from "@titan-design/code-parser";
 
@@ -14,6 +14,19 @@ export type ObservationCategory =
   | "reviewVoice"
   | "idioms"
   | "complexity";
+
+const OBSERVATION_CATEGORIES: readonly ObservationCategory[] = [
+  ...PROFILE_CATEGORIES,
+  "control-flow",
+  "error-handling",
+  "reviewVoice",
+  "idioms",
+  "complexity",
+];
+
+export function isObservationCategory(value: string): value is ObservationCategory {
+  return OBSERVATION_CATEGORIES.some((category) => category === value);
+}
 
 export interface Observation {
   /** Feature type, e.g. "naming.variable", "naming.function" */

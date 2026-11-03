@@ -25,6 +25,8 @@ const recommendation = (answer: string | number | string[]) => ({ answer, ration
 const RAMP = { id: "ramp", kind: "pick-one", prompt: "Which ramp by default?", options: ["Staged", "Single"], required: true, signsOff: "ramp-part", recommendation: recommendation("Staged") };
 const HOLD = { id: "hold", kind: "scale", prompt: "How clear is the hold step?", min: 1, max: 5, recommendation: recommendation(4) };
 const COLUMNS = { id: "columns", kind: "pick-many", prompt: "Which columns?", options: ["Segment", "Rate", "Hold"], recommendation: recommendation(["Segment", "Hold"]) };
+/** A plan approval bound to RAMP's recommended option, so only the binding keeps the round from the one tap. */
+const RAMP_PLAN = { planApprovals: [{ questionId: "ramp", approve: "Staged", task: "example/TP-1", repo: "example-org/example-repo", gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] } }] };
 const NOTES = { id: "notes", kind: "text", prompt: "Anything else?" };
 const SHIP = {
   id: "ship", kind: "pick-one", prompt: "Ship example/kiln#3 at 0123456789ab?", options: ["Ship", "Don't ship"], required: true, page: "example/kiln#3", signsOff: "ship-part",
@@ -33,8 +35,9 @@ const SHIP = {
 
 type QuestionFixture = Record<string, unknown> & { id: string };
 
-function manifest(unit: string, questions: readonly QuestionFixture[], recommendations = "after-answer") {
+function manifest(unit: string, questions: readonly QuestionFixture[], recommendations = "after-answer", extra: Record<string, unknown> = {}) {
   return {
+    ...extra,
     schema: "titan-review/round@2", unit, round: 1, storybookUrl: "http://127.0.0.1:6006", context: "A synthetic kiln round.", widths: [1280], variants: [], recommendations,
     sections: [{
       id: "main", title: "Main", deciding: "The defaults.", changed: "Nothing real.", context: "Synthetic.", questionIds: questions.map((question) => question.id),
@@ -47,11 +50,11 @@ function manifest(unit: string, questions: readonly QuestionFixture[], recommend
 let root: string;
 let dir: string;
 
-async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 7 * HOUR, recommendations = "after-answer" } = {}): Promise<string> {
+async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 7 * HOUR, recommendations = "after-answer", extra = {} } = {}): Promise<string> {
   const roundDir = path.join(dir, id);
   await mkdir(roundDir);
   const file = path.join(roundDir, "round.json");
-  await writeFile(file, JSON.stringify(manifest(id.replace(/-r1$/, ""), questions, recommendations)));
+  await writeFile(file, JSON.stringify(manifest(id.replace(/-r1$/, ""), questions, recommendations, extra)));
   const opened = new Date(NOW - ageMs);
   await utimes(file, opened, opened);
   return createHash("sha256").update(await readFile(file)).digest("hex");
@@ -219,6 +222,20 @@ describe("rounds.answer-rec", () => {
     expect((await changed.run()).envelope).toMatchObject({ ok: false, error: "round.json has changed since it was shown; reload the round" });
     expect(withdrawn.recorded).toEqual([]);
     expect(await exists(path.join(dir, "kiln-r1", "feedback.json"))).toBe(false);
+  });
+
+  it("is refused for a round whose question records a plan approval, offered no tap by the nudge, and writes nothing", async () => {
+    const manifestSha256 = await stageRound("plan-r1", [RAMP], { extra: RAMP_PLAN });
+    const reason = 'question "ramp" records a plan approval, answered on the round page where its scope shows';
+    const tap = answerRec({ id: "plan-r1", manifestSha256 });
+
+    const [nudge] = await nudgesNow();
+    const { envelope } = await tap.run();
+
+    expect(nudge).toMatchObject({ roundId: "plan-r1", oneTap: false, withoutTap: reason });
+    expect(envelope).toMatchObject({ ok: false, error: `no one-tap answer: ${reason}` });
+    expect(tap.heard).toEqual([]);
+    expect(await exists(path.join(dir, "plan-r1", "feedback.json"))).toBe(false);
   });
 
   it("is refused without the owner-write class", async () => {

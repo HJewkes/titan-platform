@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { quoteIdent, type Db } from "../open.js";
 
 /**
@@ -11,13 +12,26 @@ import { quoteIdent, type Db } from "../open.js";
 export interface SpanFtsOptions {
   /** Base name; tables are `<name>_span` and `<name>_fts`. */
   name?: string;
+  /**
+   * Create the FTS table with `contentless_delete=1` (SQLite 3.43+), so purges
+   * delete FTS rows instead of stranding them. Default false: the table and its
+   * orphan behaviour stay as they were.
+   */
+  contentlessDelete?: boolean;
+}
+
+const MIN_CONTENTLESS_DELETE = [3, 43];
+
+function supportsContentlessDelete(version: string): boolean {
+  const [major = 0, minor = 0] = version.split(".").map(Number);
+  return major > MIN_CONTENTLESS_DELETE[0]! || (major === MIN_CONTENTLESS_DELETE[0] && minor >= MIN_CONTENTLESS_DELETE[1]!);
 }
 
 function names(name: string): { span: string; fts: string } {
   return { span: quoteIdent(`${name}_span`), fts: quoteIdent(`${name}_fts`) };
 }
 
-export function spanFtsTablesDdl({ name = "search" }: SpanFtsOptions = {}): string {
+export function spanFtsTablesDdl({ name = "search", contentlessDelete = false }: SpanFtsOptions = {}): string {
   const { span, fts } = names(name);
   return `
     CREATE TABLE IF NOT EXISTS ${span} (
@@ -30,7 +44,7 @@ export function spanFtsTablesDdl({ name = "search" }: SpanFtsOptions = {}): stri
       UNIQUE (owner_ref, field, source_id, byte_offset)
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${name}_span_owner`)} ON ${span}(owner_ref);
-    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content='');
+    CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, content=''${contentlessDelete ? ", contentless_delete=1" : ""});
   `;
 }
 
@@ -111,15 +125,26 @@ export class SpanFtsTables {
   private readonly hasFtsRow;
   private readonly searchStmt;
   /** One prepared statement per scope shape, since the predicate list varies. */
-  private readonly scopedSearchStmts = new Map<string, ReturnType<Db["prepare"]>>();
+  private readonly scopedSearchStmts = new Map<string, Database.Statement<unknown[], RawSpanHit>>();
   private readonly deleteAllFts;
   private readonly deleteSpansStmt;
+  private readonly deleteSourceSpansStmt;
+  private readonly purgeOwnerTxn;
+  private readonly purgeSourceTxn;
   private readonly countSpans;
   private readonly countFts;
   private readonly indexTxn;
 
-  constructor(db: Db, { name = "search" }: SpanFtsOptions = {}) {
+  constructor(db: Db, { name = "search", contentlessDelete = false }: SpanFtsOptions = {}) {
     const { span, fts } = names(name);
+    if (contentlessDelete) {
+      const version = db.prepare("SELECT sqlite_version()").pluck().get();
+      if (typeof version !== "string" || !supportsContentlessDelete(version)) {
+        throw new Error(
+          `contentlessDelete needs SQLite ${MIN_CONTENTLESS_DELETE.join(".")} or later; this build is ${String(version)}`,
+        );
+      }
+    }
     this.db = db;
     this.tableNames = { span, fts };
     // Contentless FTS retains orphan rowids after a purge. Never reuse one: old
@@ -129,24 +154,38 @@ export class SpanFtsTables {
        VALUES ((SELECT MAX(id) + 1 FROM (SELECT COALESCE(MAX(span_id), 0) AS id FROM ${span} UNION ALL SELECT COALESCE(MAX(rowid), 0) AS id FROM ${fts})), ?, ?, ?, ?, ?)
        ON CONFLICT (owner_ref, field, source_id, byte_offset) DO NOTHING`,
     );
-    this.findSpan = db.prepare(
+    this.findSpan = db.prepare<[string, string, number, number], { span_id: number }>(
       `SELECT span_id FROM ${span} WHERE owner_ref = ? AND field = ? AND source_id = ? AND byte_offset = ?`,
     );
     this.insertFts = db.prepare(`INSERT INTO ${fts} (rowid, text) VALUES (?, ?)`);
     this.hasFtsRow = db.prepare(`SELECT 1 FROM ${fts} WHERE rowid = ?`);
-    this.searchStmt = db.prepare(
+    this.searchStmt = db.prepare<[string, number], RawSpanHit>(
       `SELECT s.span_id, s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, f.rank
        FROM ${fts} f JOIN ${span} s ON s.span_id = f.rowid
        WHERE ${fts} MATCH ? ORDER BY f.rank LIMIT ?`,
     );
     this.deleteAllFts = db.prepare(`INSERT INTO ${fts}(${fts}) VALUES ('delete-all')`);
     this.deleteSpansStmt = db.prepare(`DELETE FROM ${span} WHERE owner_ref = ?`);
-    this.countSpans = db.prepare(`SELECT count(*) AS n FROM ${span}`);
-    this.countFts = db.prepare(`SELECT count(*) AS n FROM ${fts}`);
+    this.deleteSourceSpansStmt = db.prepare(`DELETE FROM ${span} WHERE source_id = ?`);
+    const deleteOwnerFts = db.prepare(`DELETE FROM ${fts} WHERE rowid IN (SELECT span_id FROM ${span} WHERE owner_ref = ?)`);
+    const deleteSourceFts = db.prepare(`DELETE FROM ${fts} WHERE rowid IN (SELECT span_id FROM ${span} WHERE source_id = ?)`);
+    // FTS rows go first: once the spans are gone there is no way to find their rowids.
+    this.purgeOwnerTxn = db.transaction((ownerRef: string): number => {
+      if (contentlessDelete) deleteOwnerFts.run(ownerRef);
+      return this.deleteSpansStmt.run(ownerRef).changes;
+    });
+    this.purgeSourceTxn = db.transaction((sourceId: number): number => {
+      if (contentlessDelete) deleteSourceFts.run(sourceId);
+      return this.deleteSourceSpansStmt.run(sourceId).changes;
+    });
+    this.countSpans = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${span}`);
+    this.countFts = db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${fts}`);
     // One transaction, so a failed FTS insert cannot strand a span row with no FTS row.
     this.indexTxn = db.transaction((span: SpanInput, text: string): number => {
       const inserted = this.insertSpan.run(span.ownerRef, span.field, span.sourceId, span.byteOffset, span.byteLength);
-      const spanId = (this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset) as { span_id: number }).span_id;
+      const found = this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset);
+      if (found === undefined) throw new Error("span row missing right after insert");
+      const spanId = found.span_id;
       if (inserted.changes === 1 || this.hasFtsRow.get(spanId) === undefined) this.insertFts.run(spanId, text);
       return spanId;
     });
@@ -171,9 +210,7 @@ export class SpanFtsTables {
    * filter out of a global top-N.
    */
   search(query: string, limit = 50, scope?: SpanScope): SpanHit[] {
-    const rows = (
-      scope ? this.scopedStatement(scope).all([query, ...scopeValues(scope), limit]) : this.searchStmt.all(query, limit)
-    ) as RawSpanHit[];
+    const rows = scope ? this.scopedStatement(scope).all([query, ...scopeValues(scope), limit]) : this.searchStmt.all(query, limit);
     return rows.map((r) => ({
       spanId: r.span_id,
       ownerRef: r.owner_ref,
@@ -193,7 +230,7 @@ export class SpanFtsTables {
    * process. Keyed on the field *count* and whether a prefix is present, which
    * is everything that changes the SQL.
    */
-  private scopedStatement(scope: SpanScope): ReturnType<Db["prepare"]> {
+  private scopedStatement(scope: SpanScope): Database.Statement<unknown[], RawSpanHit> {
     const fieldCount = scope.fields?.length ?? 0;
     const key = `${hasPrefix(scope) ? 1 : 0}:${scope.fields === undefined ? "all" : fieldCount}`;
     const cached = this.scopedSearchStmts.get(key);
@@ -206,7 +243,7 @@ export class SpanFtsTables {
     if (scope.fields !== undefined) {
       predicates.push(fieldCount === 0 ? "0" : `s.field IN (${new Array(fieldCount).fill("?").join(", ")})`);
     }
-    const statement = this.db.prepare(
+    const statement = this.db.prepare<unknown[], RawSpanHit>(
       `SELECT s.span_id, s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, f.rank
        FROM ${fts} f JOIN ${span} s ON s.span_id = f.rowid
        WHERE ${predicates.join(" AND ")} ORDER BY f.rank LIMIT ?`,
@@ -215,16 +252,24 @@ export class SpanFtsTables {
     return statement;
   }
 
-  /** Drop an owner's spans. Their FTS rows become orphans, hidden by the join, until `clearIndex` and a re-stream. */
+  /**
+   * Drop an owner's spans. Without `contentlessDelete` their FTS rows become
+   * orphans, hidden by the join, until `clearIndex` and a re-stream.
+   */
   purgeOwner(ownerRef: string): number {
-    return this.deleteSpansStmt.run(ownerRef).changes;
+    return this.purgeOwnerTxn(ownerRef);
+  }
+
+  /** Drop every span of one source (transcript or file), with the same FTS behaviour as `purgeOwner`. */
+  purgeSource(sourceId: number): number {
+    return this.purgeSourceTxn(sourceId);
   }
 
   /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
   orphanRatio(): number {
-    const fts = (this.countFts.get() as { n: number }).n;
+    const fts = this.countFts.get()?.n ?? 0;
     if (fts === 0) return 0;
-    const spans = (this.countSpans.get() as { n: number }).n;
+    const spans = this.countSpans.get()?.n ?? 0;
     return Math.max(0, fts - spans) / fts;
   }
 

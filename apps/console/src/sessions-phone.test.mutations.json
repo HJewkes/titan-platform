@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone gets the sessions table instead of cards",
+      "file": "apps/console/src/pages/SessionsPage.tsx",
+      "find": "const phone = useMediaQuery(BELOW_MD);",
+      "replace": "const phone = false;",
+      "kills": [
+        "the sessions list on a phone stacks each session into a card with its agent, tasks, PR and figures instead of the table"
+      ]
+    },
+    {
+      "name": "a ref link keeps only its text's width on a phone",
+      "file": "apps/console/src/pages/SessionFormat.tsx",
+      "find": "<Link color=\"primary\" className={PHONE_TAP_ID_LINK} onPress={() => open(route)}>",
+      "replace": "<Link color=\"primary\" onPress={() => open(route)}>",
+      "kills": [
+        "the sessions list on a phone gives the session, agent and task links a 44px tap target, and the short agent and task links 44px of width"
+      ]
+    },
+    {
+      "name": "Load more adds no cards for the older page",
+      "file": "apps/console/src/pages/SessionsPage.tsx",
+      "find": "<OlderCards key={before} agent={agent} before={before} />",
+      "replace": "null",
+      "kills": [
+        "the sessions list on a phone adds the older page as cards on Load more"
+      ]
+    },
+    {
+      "name": "a desktop gets session cards instead of the table",
+      "file": "apps/console/src/pages/SessionsPage.tsx",
+      "find": "const phone = useMediaQuery(BELOW_MD);",
+      "replace": "const phone = true;",
+      "kills": [
+        "the sessions list on a phone keeps the table on a desktop"
+      ]
+    }
+  ]
+}

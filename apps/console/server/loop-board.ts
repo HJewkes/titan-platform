@@ -81,6 +81,11 @@ export const loopTierArgs = z.object({
 /** `loop.tier`'s answer: the moved loop's tier and rank as the ledger now holds them. */
 export const loopTierAnswer = z.object({ id: z.string(), tier, tierRank: z.number().nullable() });
 
+/** What active-work's `loop.tier` sends: the ledger's snake-case `tier_rank`, read into the console's `loopTierAnswer`. */
+export const loopTierWire = z
+  .object({ id: z.string(), tier, tier_rank: z.number().nullable() })
+  .transform(({ id, tier: moved, tier_rank }) => ({ id, tier: moved, tierRank: tier_rank }));
+
 export type LoopBoard = z.infer<typeof loopBoard>;
 export type BoardLoop = z.infer<typeof boardLoop>;
 export type LoopTierArgs = z.infer<typeof loopTierArgs>;

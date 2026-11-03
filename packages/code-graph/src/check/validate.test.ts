@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { validateRules } from "./validate.js";
 import { NODE_KINDS, NODE_ROLES } from "../types.js";
 import { ALL_ROLES } from "../roles.js";
-import type { CheckRule, LayeredDepsRule, MetricMaxRule, MetricProductMaxRule } from "./types.js";
+import type { CheckRule } from "./types.js";
+
+function rulesOf<T extends CheckRule["type"]>(type: T, rules: readonly CheckRule[]): Extract<CheckRule, { type: T }>[] {
+  return rules.filter((r): r is Extract<CheckRule, { type: T }> => r.type === type);
+}
 
 describe("validateRules", () => {
   it("rejects non-object input", () => {
@@ -23,7 +27,7 @@ describe("validateRules", () => {
         { id: "a", type: "metric-max", metric: "loc", max: 100, exclude: ["t"] },
         { id: "b", type: "forbid-import", from: "x/**", to: "y/**" },
       ],
-    }) as CheckRule[];
+    });
     expect(rules).toHaveLength(2);
     expect(rules[0]!.type).toBe("metric-max");
     expect(rules[1]!.type).toBe("forbid-import");
@@ -68,9 +72,9 @@ describe("validateRules", () => {
   });
 
   it.each(NODE_ROLES)("accepts role %s in excludeRoles", (role) => {
-    const rules = validateRules({
+    const rules = rulesOf("metric-max", validateRules({
       rules: [{ id: "r", type: "metric-max", metric: "loc", max: 1, excludeRoles: [role] }],
-    }) as MetricMaxRule[];
+    }));
     expect(rules[0]!.excludeRoles).toEqual([role]);
   });
 
@@ -250,12 +254,12 @@ describe("validateRules", () => {
 describe("validateRules — schema healing", () => {
   it("heals a deprecated metric name and warns instead of erroring", () => {
     const warnings: string[] = [];
-    const [rule] = validateRules(
+    const [rule] = rulesOf("metric-max", validateRules(
       {
         rules: [{ id: "r", type: "metric-max", metric: "fan-in", max: 10 }],
       },
       { onWarn: (m) => warnings.push(m) },
-    ) as MetricMaxRule[];
+    ));
     expect(rule!.metric).toBe("fan_in");
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/fan-in.*deprecated.*fan_in/);
@@ -263,7 +267,7 @@ describe("validateRules — schema healing", () => {
 
   it("heals deprecated metric names inside metric-product-max", () => {
     const warnings: string[] = [];
-    const [rule] = validateRules(
+    const [rule] = rulesOf("metric-product-max", validateRules(
       {
         rules: [
           {
@@ -275,14 +279,14 @@ describe("validateRules — schema healing", () => {
         ],
       },
       { onWarn: (m) => warnings.push(m) },
-    ) as MetricProductMaxRule[];
+    ));
     expect(rule!.metrics).toEqual(["loc", "cognitive_max"]);
     expect(warnings).toHaveLength(1);
   });
 
   it("heals a deprecated role alias and warns instead of erroring", () => {
     const warnings: string[] = [];
-    const [rule] = validateRules(
+    const [rule] = rulesOf("metric-max", validateRules(
       {
         rules: [
           {
@@ -295,7 +299,7 @@ describe("validateRules — schema healing", () => {
         ],
       },
       { onWarn: (m) => warnings.push(m) },
-    ) as MetricMaxRule[];
+    ));
     expect(rule!.excludeRoles).toEqual(["test", "fixture"]);
     expect(warnings).toHaveLength(2);
   });
@@ -318,29 +322,29 @@ describe("validateRules — schema healing", () => {
 
   it("parses and heals excludeRoles on a layered-deps rule", () => {
     const warnings: string[] = [];
-    const [rule] = validateRules(
+    const [rule] = rulesOf("layered-deps", validateRules(
       {
         rules: [
           { id: "r", type: "layered-deps", layers: [["a"], ["b"]], excludeRoles: ["tests"] },
         ],
       },
       { onWarn: (m) => warnings.push(m) },
-    ) as LayeredDepsRule[];
+    ));
     expect(rule!.excludeRoles).toEqual(["test"]);
     expect(warnings).toHaveLength(1);
   });
 
   it("accepts exemptTypeOnly as a boolean on a layered-deps rule", () => {
-    const [rule] = validateRules({
+    const [rule] = rulesOf("layered-deps", validateRules({
       rules: [{ id: "r", type: "layered-deps", layers: [["a"], ["b"]], exemptTypeOnly: true }],
-    }) as LayeredDepsRule[];
+    }));
     expect(rule!.exemptTypeOnly).toBe(true);
   });
 
   it("leaves exemptTypeOnly unset by default", () => {
-    const [rule] = validateRules({
+    const [rule] = rulesOf("layered-deps", validateRules({
       rules: [{ id: "r", type: "layered-deps", layers: [["a"], ["b"]] }],
-    }) as LayeredDepsRule[];
+    }));
     expect(rule!.exemptTypeOnly).toBeUndefined();
   });
 

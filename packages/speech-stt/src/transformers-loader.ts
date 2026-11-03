@@ -1,5 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 const TRANSFORMERS_PEER = "@huggingface/transformers";
 
@@ -20,12 +21,8 @@ export async function loadTransformersModule(
   } catch (err) {
     throw new Error(missingPeerMessage(feature), { cause: err });
   }
-  if (!isRecord(mod)) throw new Error(missingPeerMessage(feature));
+  if (!isObjectLike(mod)) throw new Error(missingPeerMessage(feature));
   return mod;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 interface CachedFile {

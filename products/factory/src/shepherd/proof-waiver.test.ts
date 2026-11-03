@@ -18,11 +18,12 @@ import { sleep } from "../workflows/land.js";
 import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK } from "./fix-proof.js";
 import { SEAT_NOTICE_STEPS, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { proofWaiverMigration } from "./proof-waiver.js";
+import { proofWaiverMigration } from "./proof-waiver-table.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef } from "./store.js";
 

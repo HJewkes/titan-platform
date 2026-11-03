@@ -1,24 +1,4 @@
-import { isAbsolute, join } from "node:path";
-
-/** The same four system directories titan-factory.service puts after node's own. */
-export const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-
-/** systemd expands `%` specifiers in every value below, so a literal one is doubled. */
-const noSpecifiers = (value: string): string => value.replace(/%/g, "%%");
-
-/** systemd splits on whitespace and reads C escapes inside double quotes. */
-export function quoteIfNeeded(value: string): string {
-  return /[\s"'\\]/.test(value) ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : value;
-}
-
-/** ExecStart also expands `$VAR`, so a literal `$` is doubled there. */
-export const execArg = (value: string): string => quoteIfNeeded(noSpecifiers(value).replace(/\$/g, "$$$$"));
-
-/** XDG says a relative XDG_CONFIG_HOME is invalid and must be ignored. */
-export function userUnitDir({ env, home }: { env: NodeJS.ProcessEnv; home: string }): string {
-  const config = env.XDG_CONFIG_HOME && isAbsolute(env.XDG_CONFIG_HOME) ? env.XDG_CONFIG_HOME : join(home, ".config");
-  return join(config, "systemd", "user");
-}
+import { execArg, noSpecifiers, quoteIfNeeded } from "@titan-design/daemon/service";
 
 interface OneshotServiceOptions {
   description: string;

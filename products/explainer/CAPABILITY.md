@@ -9,6 +9,8 @@ You are building a step of the explainer video pipeline and need its file contra
 `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and
 `attributeFindings` maps gate findings to the beat each names by beat number.
 `claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
+`spokenTokenCheckWith(lexicon)` (Q-V14) fails a spoken line with a print device, or a path, code token, unit or acronym that no lexicon entry or phoneme override voices.
+`assertionCheckWith(tagger)` (Q-D7) fails a beat headline with no subject and finite verb, over ten words, or written after its narration.
 Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
@@ -64,6 +66,7 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `cueElement` resolves a cue target to exactly one emphasis element, and
 `fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
+`chartFrameProblems` refuses a chart or replot slot set with bars off a zero baseline or on a broken axis, a colour scale whose lightness (`lightness`, CIELAB L*) is out of order (`isMonotonicScale`), or a legend where direct labels fit, behind the resolve `chart-integrity` gate.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
 `placeBeatSystem` lands a system's steps in order in a profile's blocks.
@@ -97,6 +100,8 @@ it voids any verdict without a verbatim quote, plants a name-only canary beat pe
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
 `explainer eval calibrate` prints that report.
+`explainer eval writing-calibrate` derives `doctrine/writing-check.json` from a corpus manifest: per-row AUC, human false-positive rate and status per length bucket, numbers only.
+`explainer eval writing` scores a script against that table at the script's own length: per row its value, band, human standing, status, verdict and offending spans, exit 1 only when a gate row fails.
 For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included (plus docs-skim and lifetime-history facts when the review has them), and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 `renderCompanion` renders a repo run's companion doc (the martini-glass bowl) from those facts, one section per repo-tour block (`COMPANION_SECTIONS`), with each chapter's link into it and warnings rather than throws (`W-NO-SUMMARY`).
 `companionChapters` maps script chapters to the blocks their spine rows play, so a digest cut links into the tour's doc; the script stage writes both as `companion` and `chapter-links`.

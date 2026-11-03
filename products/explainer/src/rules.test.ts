@@ -23,7 +23,12 @@ const registry = loadRuleRegistry();
 const packageRoot = dirname(dirname(DEFAULT_RULES_PATH));
 // The spine lints emit only for a run that has a spine, so the registry cross-check supplies the pilot one.
 const pilotSpine = parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-explainer/spine.md", import.meta.url), "utf8"));
-const emittedCheckIds = new Set(runL0(ScriptSchema.parse(scriptWith()), layout, L0_CHECKS, undefined, pilotSpine).map((row) => row.check_id));
+const emittedBy = (profile: string) => runL0(ScriptSchema.parse({ ...scriptWith(), profile }), layout, L0_CHECKS, undefined, pilotSpine).map((row) => row.check_id);
+const emittedCheckIds = new Set([...emittedBy("repo-tour"), ...emittedBy("daily-overview")]);
+
+// TP-4470's script preflight rows: Q-D14 to Q-D19 run on every type since TP-4475; the rest still on daily-overview only.
+const SCRIPT_PREFLIGHT_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19", "Q-D20", "Q-D21", "Q-D22"];
+const EVERY_TYPE_IDS = ["Q-D14", "Q-D15", "Q-D16", "Q-D17", "Q-D18", "Q-D19"];
 
 const rule = (overrides: Partial<Rule> = {}): Rule => ({
   id: "Q-V1",
@@ -74,18 +79,19 @@ describe("L0 rules scoped by structure", () => {
     const outside = checksScopedAway(registry, { structure: "scqa", profile: "pr-overview" });
 
     expect(["Q-W8", "Q-F3", "Q-F4", "Q-F5", "Q-E15"].every((id) => outside.has(id))).toBe(true);
-    expect(checksScopedAway(registry, { profile: "pr-overview" }).size).toBe(0);
+    expect([...checksScopedAway(registry, { profile: "pr-overview" })].sort()).toEqual(SCRIPT_PREFLIGHT_IDS.filter((id) => !EVERY_TYPE_IDS.includes(id)));
+    expect(SCRIPT_PREFLIGHT_IDS.filter((id) => checksScopedAway(registry, { profile: "daily-overview" }).has(id))).toEqual([]);
   });
 });
 
 describe("the shipped Q-rule registry", () => {
-  it("holds the 75 rules: 55 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
+  it("holds the 85 rules: 65 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(75);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([55, 13, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15", "Q-V11", "Q-V12"]);
+    expect(registry.rules).toHaveLength(85);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([65, 13, 7]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15", "Q-V11"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {

@@ -349,3 +349,43 @@ describe('task.apply', () => {
     });
   });
 });
+
+describe('task.apply draft promotion', () => {
+  const GOOD = 'the gate refuses short entries and the tests prove it';
+  const REMOVE_DRAFT = [{ slug: SLUG, id: 'SI-1', ops: [{ remove_tag: 'draft' }] }];
+  const agent = (root: string): CommandContext => ({ ...ctx(root), caller: 'agent' });
+
+  it('an agent removing draft from a draft with no done_when fails that line and the tag stays', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, 'SI-1', SLUG, { tags: ['draft'] });
+      await seedTask(root, 'SI-2');
+      const plan = await writePlan(root, [...REMOVE_DRAFT, { slug: SLUG, id: 'SI-2', ops: [{ add_tag: 'x' }] }]);
+      const report = path.join(root, 'report.jsonl');
+      const out = await invokeCommand(taskApply, { plan, report }, agent(root));
+      expect(out.exitCode).not.toBe(0);
+      const lines = (await fs.readFile(report, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      expect(lines[0]).toMatchObject({ id: 'SI-1', result: 'failed' });
+      expect(lines[0].error).toContain('cannot leave draft');
+      expect(lines[1]).toMatchObject({ id: 'SI-2', result: 'applied' });
+      expect((await readTask(root, 'SI-1')).tags).toContain('draft');
+    });
+  });
+
+  it('an agent removing draft from a draft with a usable done_when is applied', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, 'SI-1', SLUG, { tags: ['draft'], done_when: GOOD });
+      const plan = await writePlan(root, REMOVE_DRAFT);
+      const out = summaryOf((await invokeCommand(taskApply, { plan }, agent(root))).envelope);
+      expect(out.counts.applied).toBe(1);
+      expect((await readTask(root, 'SI-1')).tags).not.toContain('draft');
+    });
+  });
+
+  it('a human removing draft from a draft with no done_when is applied', async () => {
+    await withTempActiveRoot(async (root) => {
+      await seedTask(root, 'SI-1', SLUG, { tags: ['draft'] });
+      const plan = await writePlan(root, REMOVE_DRAFT);
+      expect(summaryOf((await apply(root, plan)).envelope).counts.applied).toBe(1);
+    });
+  });
+});

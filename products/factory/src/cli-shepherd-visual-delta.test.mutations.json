@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the unsupported count misses the measure's side prefix",
+      "file": "products/factory/src/shepherd/visual-delta-command.ts",
+      "find": "shot.reason?.endsWith(UNSUPPORTED_FORMAT) === true",
+      "replace": "shot.reason === \"unsupported PNG format\"",
+      "kills": ["titan-factory shepherd visual-delta with no serve answering, in an agent env prints the measured delta as JSON and counts the shot the decoder refused as an unsupported format"]
+    },
+    {
+      "name": "visual-delta is declared a write, so an agent shell is refused",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.visual-delta\": \"read\",",
+      "replace": "\"shepherd.visual-delta\": \"write\",",
+      "kills": [
+        "titan-factory shepherd visual-delta with no serve answering, in an agent env prints the measured delta as JSON and counts the shot the decoder refused as an unsupported format",
+        "titan-factory shepherd visual-delta with no serve answering, in an agent env measures nothing when --head is not the PR's head, and says its files are unread",
+        "titan-factory shepherd visual-delta with no serve answering, in an agent env refuses a repo with no shepherd.visualThreshold, as there are no snapshot paths to measure"
+      ]
+    },
+    {
+      "name": "--head is ignored and the PR's current head is measured",
+      "file": "products/factory/src/shepherd/visual-delta-command.ts",
+      "find": "const at = head ?? read.headSha;",
+      "replace": "const at = read.headSha;",
+      "kills": ["titan-factory shepherd visual-delta with no serve answering, in an agent env measures nothing when --head is not the PR's head, and says its files are unread"]
+    },
+    {
+      "name": "a repo with no threshold measures under an empty one",
+      "file": "products/factory/src/shepherd/visual-delta-command.ts",
+      "find": "const threshold = services.visualThreshold?.(repo);",
+      "replace": "const threshold = services.visualThreshold?.(repo) ?? { mode: \"off\" as const, snapshotPaths: [], apiPaths: [], tokenPaths: [], harnessPaths: [] };",
+      "kills": ["titan-factory shepherd visual-delta with no serve answering, in an agent env refuses a repo with no shepherd.visualThreshold, as there are no snapshot paths to measure"]
+    },
+    {
+      "name": "the read posts a comment on the PR",
+      "file": "products/factory/src/shepherd/visual-delta-command.ts",
+      "find": "  return { repo, pr, head: at, unsupportedFormat",
+      "replace": "  await services.port.upsertComment(repo, pr, \"<!-- calibration -->\", \"calibration\");\n  return { repo, pr, head: at, unsupportedFormat",
+      "kills": ["titan-factory shepherd visual-delta with no serve answering, in an agent env writes nothing to GitHub: no comment, merge, ref or branch update"]
+    }
+  ]
+}

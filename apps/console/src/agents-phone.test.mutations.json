@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone gets the roster table instead of cards",
+      "file": "apps/console/src/pages/AgentsPage.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <RosterCards agents={agents} /> : <RosterTable agents={agents} />;",
+      "replace": "return <RosterTable agents={agents} />;",
+      "kills": [
+        "the agents pages on a phone stacks the roster into cards with each agent's name, state, work and spawner instead of the table"
+      ]
+    },
+    {
+      "name": "the route tabs keep their dense height on a phone",
+      "file": "apps/console/src/pages/AgentParts.tsx",
+      "find": "<Tab key={key} className={PHONE_TAP}>",
+      "replace": "<Tab key={key}>",
+      "kills": [
+        "the agents pages on a phone gives the roster tabs a 44px tap target"
+      ]
+    },
+    {
+      "name": "the detail card cuts a long name off on a phone too",
+      "file": "apps/console/src/pages/AgentDetailPage.tsx",
+      "find": "truncate whitespace-nowrap max-md:whitespace-normal max-md:break-words\"",
+      "replace": "truncate whitespace-nowrap\"",
+      "kills": [
+        "the agents pages on a phone wraps a long agent name on the detail card instead of cutting it off"
+      ]
+    },
+    {
+      "name": "a phone gets the runs table instead of cards",
+      "file": "apps/console/src/pages/AgentDetailPage.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <RunCards sessions={sessions} /> : <RunsTable sessions={sessions} />;",
+      "replace": "return <RunsTable sessions={sessions} />;",
+      "kills": [
+        "the agents pages on a phone lists the agent's runs as cards linking to each session"
+      ]
+    },
+    {
+      "name": "a desktop gets roster cards instead of the table",
+      "file": "apps/console/src/pages/AgentsPage.tsx",
+      "find": "return useMediaQuery(BELOW_MD) ? <RosterCards agents={agents} /> : <RosterTable agents={agents} />;",
+      "replace": "return <RosterCards agents={agents} />;",
+      "kills": [
+        "the agents pages on a phone keeps the roster table on a desktop"
+      ]
+    }
+  ]
+}

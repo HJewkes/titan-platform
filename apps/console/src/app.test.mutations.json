@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the Loops view is left off the rail",
-      "file": "apps/console/src/router.ts",
+      "file": "apps/console/src/view-keys.ts",
       "find": "\"initiatives\", \"tasks\", \"loops\", \"tree\",",
       "replace": "\"initiatives\", \"tasks\", \"tree\",",
       "kills": [

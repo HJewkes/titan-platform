@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import { CopyDetectionSkipped, cachedByHead, gitPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
@@ -14,15 +14,6 @@ import { systemGit, type Git } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "acme/widgets";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 const POLICY_FILE = "products/factory/src/shepherd/registration-hold.ts";
 const MIGRATION_FILE = "products/factory/src/shepherd/store-migrations.ts";
@@ -33,7 +24,7 @@ let stateDir: string;
 let reads: number;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 const lines = (count: number, edited?: number): string => Array.from({ length: count }, (_, i) => (i === edited ? `edited ${i}` : `line ${i}`)).join("\n") + "\n";
@@ -128,7 +119,7 @@ beforeEach(() => {
   origin = join(root, "origin");
   stateDir = join(root, "state");
   reads = 0;
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 

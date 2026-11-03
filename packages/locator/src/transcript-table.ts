@@ -61,7 +61,7 @@ export async function resumePoint(
   try {
     stat = await fs.stat(absolutePath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { state: "missing", start: 0, size: 0 };
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") return { state: "missing", start: 0, size: 0 };
     throw err;
   }
   const size = stat.size;

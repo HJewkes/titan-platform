@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
+      "import": "./dist/hooks/index.js"
     }
   },
   "files": [
@@ -35,7 +39,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@titan-design/fix-proof": "workspace:^"
+    "@titan-design/fix-proof": "workspace:^",
+    "@titan-design/worktree": "workspace:^"
   },
   "devDependencies": {
     "@titan-design/test-kit": "workspace:*"

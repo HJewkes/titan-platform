@@ -12,6 +12,7 @@ import {
   type CommandRegistry,
   type JsonEnvelope,
 } from "@titan-design/registry";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { resolveConfig, type ConfigOverrides, type MinerConfig } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
 import { runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
@@ -21,6 +22,9 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
+import { defaultProfilesRoot } from "./friction-transcripts.js";
+import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
+import { attachReportIntake } from "./report-intake-run.js";
 import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
 export interface CliIo {
@@ -29,6 +33,8 @@ export interface CliIo {
   env?: NodeJS.ProcessEnv;
   /** Where self-improve-daily's model calls go; tests pass a fake so no model is called. */
   runnerFor?: RunnerFor;
+  /** Where friction-daily withdraws and files; tests pass a fake so no inbox is touched. */
+  consoleInbox?: ConsoleInboxPort;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -45,7 +51,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
   program.hook("preAction", () => {
     try {
-      resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+      resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       io.stderr(`error: ${message}\n`);
@@ -80,8 +86,9 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
   }
   sub.action(async (...handlerArgs: unknown[]) => {
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
-    const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;
-    const root = program.opts() as RootOptions & { json?: boolean };
+    const rawOpts = handlerArgs[cmd.cli?.positional?.length ?? 0];
+    const opts = isObjectLike(rawOpts) ? rawOpts : {};
+    const root = program.opts<RootOptions & { json?: boolean }>();
     const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli" });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
@@ -119,7 +126,7 @@ function emit(io: CliIo, envelope: JsonEnvelope<unknown>, format: "human" | "jso
 }
 
 function attachLongRunning(program: Command, io: CliIo): void {
-  const config = () => resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+  const config = () => resolveConfig(configOverrides(program.opts<RootOptions>()), io.env);
   program
     .command("serve")
     .description("Run the daemon: /rpc, /mcp, /events on loopback")
@@ -135,7 +142,7 @@ function attachGraphRefresh(program: Command, io: CliIo, onExit: (code: number) 
     .argument("<refresh...>", "the owner's refresh command, after --")
     .option("--lock <file>", "lock file (default <state>/graph-refresh.lock)")
     .action(async (argv: string[], opts: { lock?: string }) => {
-      const root = program.opts() as RootOptions;
+      const root = program.opts<RootOptions>();
       // An unset variable in a unit's `--graph "${VAR}"` arrives empty, which would otherwise check the miner's own index.
       if (root.graph === "") {
         io.stderr("error: --graph is empty\n");
@@ -165,6 +172,44 @@ function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => 
   attachGraphRefresh(program, io, onExit);
   attachToolGapWeekly(program, io, onExit);
   attachSelfImproveDaily(program, io, onExit);
+  attachFrictionDaily(program, io, onExit);
+  attachReportIntake(program, () => resolveConfig(configOverrides(program.opts()), io.env), io, onExit);
+}
+
+interface FrictionDailyFlags {
+  since: string;
+  dryRun?: boolean;
+  archiveDir?: string;
+  profiles?: string;
+}
+
+function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  program
+    .command("friction-daily")
+    .description("Daily pass: rank the window's friction from worker transcripts, then from worker reports, archive the rows, file one owner inbox item")
+    .option("--since <window>", "how far back to read, as <n>h or <n>d", "24h")
+    .option("--dry-run", "print the top clusters; write and file nothing")
+    .option("--archive-dir <dir>", "where <date>.jsonl and <date>.md go (default <active-work>/titan-platform/artifacts/friction-daily)")
+    .option("--profiles <dir>", "root of the Claude profiles whose <profile>/projects transcripts are read (default ~/.claude-profiles)")
+    .action(async (opts: FrictionDailyFlags) => {
+      const windowMs = parseWindowMs(opts.since);
+      if (windowMs === null) {
+        io.stderr("error: --since takes <n>h or <n>d\n");
+        return onExit(EXIT.USAGE);
+      }
+      const config = resolveConfig(configOverrides(program.opts()), io.env);
+      const result = await runFrictionDaily({
+        eventsDb: config.eventsDb,
+        profilesRoot: opts.profiles ?? defaultProfilesRoot(),
+        archiveDir: opts.archiveDir ?? defaultFrictionArchive(config.initiativesRoot),
+        now: new Date(),
+        windowMs,
+        dryRun: opts.dryRun === true,
+        inbox: io.consoleInbox ?? titanConsoleInbox,
+      });
+      io.stdout(program.opts().json === true ? `${JSON.stringify(result)}\n` : renderFrictionResult(result));
+      onExit(EXIT.OK);
+    });
 }
 
 function attachToolGapWeekly(program: Command, io: CliIo, onExit: (code: number) => void): void {

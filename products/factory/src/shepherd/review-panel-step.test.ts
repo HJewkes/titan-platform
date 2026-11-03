@@ -61,6 +61,15 @@ describe("the sh-review-panel step", () => {
     expect(members.find((member) => member.shape === "perf")).not.toHaveProperty("profile");
   });
 
+  it("records the adversary member's Attests tokens on its MERGE, so the merge guard can judge them", async () => {
+    const adversary = { shape: "adversary" as const, result: { ...verdict("adversary", "MERGE").result, attests: ["ci-wait@a1b2c3d4e5f6"] } };
+    const results = [verdict("correctness", "MERGE"), adversary, verdict("perf", "MERGE")];
+
+    const members = panelMerge(await aggregateStep(results), results).members;
+
+    expect(members.find((member) => member.shape === "adversary")?.attests).toEqual(["ci-wait@a1b2c3d4e5f6"]);
+  });
+
   it("sends the head back on a split panel, with each member's findings under its shape and the class last for the fixer's brief", async () => {
     const adversary = "Retries skip the token check.\n\nDefect class: unchecked retry path";
 

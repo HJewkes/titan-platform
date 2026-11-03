@@ -101,9 +101,16 @@ const BROKER_DOWN_LINES = [
   /^broker restarting: .* was NOT sent; retry it within \d+ s\.$/m,
   // A bare connect failure on the socket, for a CLI that surfaces the errno.
   /^(?:Error: )?connect (?:ECONNREFUSED|ENOENT) \S*\.sock$/m,
+  // The probe under AGENT_CHAT_NO_AUTOSTART=1, which every call here sets; `agent ls` and the other
+  // legacy verbs exit 1 on it, so only their port and ask verbs carry BROKER_UNAVAILABLE_EXIT.
+  /^broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one$/m,
 ];
 
+/** agent-chat's EX_UNAVAILABLE, which its port verbs, `ask` and `answers` exit with when no broker listens or it predates the verbs. */
+export const BROKER_UNAVAILABLE_EXIT = 69;
+
 export function isBrokerUnavailable(result: SafeExecResult): boolean {
+  if (result.status === BROKER_UNAVAILABLE_EXIT) return true;
   return (
     result.status !== 0 &&
     BROKER_DOWN_LINES.some((pattern) => pattern.test(result.stderr))
@@ -144,12 +151,32 @@ export interface LaunchedBy {
   launchReason?: string;
 }
 
+/** The roles agent-chat's `--role` accepts. */
+export type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+export interface AgentRecord {
+  role?: AgentRole;
+  task?: string;
+}
+
+export function agentRecordArgs({ role, task }: AgentRecord): string[] {
+  if (task !== undefined && !TASK_ID_PATTERN.test(task)) throw new DispatchError(`invalid task id: '${task}'`);
+  return [...(task === undefined ? [] : ["--task", task]), ...(role === undefined ? [] : ["--role", role])];
+}
+
 export function launchedByArgs({ launchedBy, launchReason }: LaunchedBy): string[] {
   if (launchedBy === undefined) return [];
   return ["--launched-by", launchedBy, ...(launchReason === undefined ? [] : ["--launch-reason", launchReason])];
 }
 
-export interface DispatchRequest extends LaunchedBy {
+export interface DispatchRequest extends LaunchedBy, AgentRecord {
   agentChatBinPath: string;
   /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
   peerName: string;
@@ -167,6 +194,8 @@ export interface DispatchRequest extends LaunchedBy {
   configDir?: string;
   /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
   profilesDir?: string;
+  /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+  worktree?: string;
 }
 
 export interface DispatchResult {
@@ -186,11 +215,12 @@ export interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-export function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
+export function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
   peerName: string;
   profile: string;
   briefing?: string;
   configDir?: string;
+  worktree?: string;
 }): string[] {
   return [
     "agent",
@@ -199,8 +229,10 @@ export function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
+    ...(req.worktree === undefined ? [] : ["--worktree", req.worktree]),
     ...placementArgs(req),
     ...launchedByArgs(req),
+    ...agentRecordArgs(req),
     "--brief-stdin",
   ];
 }

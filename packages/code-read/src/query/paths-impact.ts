@@ -177,12 +177,14 @@ function deletedResolved(rows: readonly PathImpact[], comparison: Comparison): n
   return rows.reduce((sum, r) => sum + (r.status === "not-indexed" ? (comparison.findings.get(r.path)?.resolved ?? 0) : 0), 0);
 }
 
+const FINDING_DELTA_KEYS = ["new", "worsened", "improved", "resolved"] as const satisfies readonly (keyof FindingDelta)[];
+
 function rollupDelta(indexed: readonly Indexed[], deleted: number): NonNullable<ImpactRollup["delta"]> {
   const findings: FindingDelta = { new: 0, worsened: 0, improved: 0, resolved: 0 };
   let score = 0;
   for (const { delta: d, hotspot } of indexed) {
     score += d!.score ?? hotspot.score;
-    for (const key of Object.keys(findings) as (keyof FindingDelta)[]) findings[key] += d!.findings[key];
+    for (const key of FINDING_DELTA_KEYS) findings[key] += d!.findings[key];
   }
   findings.resolved += deleted;
   return { score, findings };

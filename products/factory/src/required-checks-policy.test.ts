@@ -1,6 +1,6 @@
 import { FakeHttpError, fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { checksDrift, readChecksPolicy, type ChecksDrift, type ChecksPolicyRead } from "./required-checks-policy.js";
+import { checksDrift, readChecksPolicy, readMainOnlyContexts, type ChecksDrift, type ChecksPolicyRead } from "./required-checks-policy.js";
 
 const REPO = "octo/demo";
 const PATH = ".github/required-checks.json";
@@ -19,6 +19,12 @@ describe("readChecksPolicy", () => {
     const fake = worldWith(policy({ main: { contexts: ["validate", "dag-check"] } }));
 
     expect(await read(fake)).toEqual({ readable: true, contexts: ["validate", "dag-check"] });
+  });
+
+  it("leaves main-only contexts out of the contexts a pull request is gated on", async () => {
+    const fake = worldWith(policy({ main: { contexts: ["validate"], mainContexts: ["test-shard (1)"] } }));
+
+    expect(await read(fake)).toEqual({ readable: true, contexts: ["validate"] });
   });
 
   it("reads unreadable, naming the path, when the file is absent at the base ref", async () => {
@@ -84,5 +90,39 @@ describe("checksDrift", () => {
     const drift: ChecksDrift = checksDrift(["b", "a"], ["a", "b"]);
 
     expect(drift).toEqual({ missing: [], extra: [] });
+  });
+});
+
+describe("readMainOnlyContexts", () => {
+  const readMainOnly = (fake: FakeGitHub) => readMainOnlyContexts(githubPort(fake.wire), REPO, "main");
+
+  it("reads the main-only contexts listed for the branch", async () => {
+    const fake = worldWith(policy({ main: { contexts: ["validate"], mainContexts: ["test-shard (1)", "test-shard (2)"] } }));
+
+    expect(await readMainOnly(fake)).toEqual({ readable: true, contexts: ["test-shard (1)", "test-shard (2)"] });
+  });
+
+  it.each([
+    ["no policy file", null],
+    ["a branch the file does not list", policy({ develop: { contexts: ["validate"], mainContexts: ["x"] } })],
+    ["a branch with no main-only contexts", policy({ main: { contexts: ["validate"] } })],
+  ])("names none for %s", async (_name, content) => {
+    expect(await readMainOnly(worldWith(content))).toEqual({ readable: true, contexts: [] });
+  });
+
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["a blank main-only context", policy({ main: { contexts: ["validate"], mainContexts: [" "] } })],
+  ])("reads unreadable for %s", async (_name, content) => {
+    expect((await readMainOnly(worldWith(content))).readable).toBe(false);
+  });
+
+  it("reads unreadable when getFile fails", async () => {
+    const fake = worldWith(null);
+    fake.wire.getContent = async () => {
+      throw new FakeHttpError(502, "bad gateway");
+    };
+
+    expect((await readMainOnly(fake)).readable).toBe(false);
   });
 });

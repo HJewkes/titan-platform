@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/rpc-protocol";
 import { RpcError, createRpcClient, liveSource, type LiveStatus, type RpcClient } from "./index.js";
-import { createTestRegistry, startTestDaemon, type Commands, type TestDaemon } from "./test-fixtures.js";
+import { createTestRegistry, startTestDaemon, type Commands, type LooseSlugCommands, type TestDaemon } from "./test-fixtures.js";
 
 let daemon: TestDaemon;
 let client: RpcClient<Commands>;
@@ -32,7 +32,8 @@ describe("liveSource against a real daemon", () => {
 
   it("maps a thrown command error and invalid args to RpcError with their exit codes", async () => {
     const missing = await client.call("task.get", { slug: "zzz" }).catch((err: unknown) => err);
-    const invalid = await client.call("task.get", { slug: 7 as unknown as string }).catch((err: unknown) => err);
+    const loose = createRpcClient<LooseSlugCommands>(liveSource({ fetch: daemon.fetch }));
+    const invalid = await loose.call("task.get", { slug: 7 }).catch((err: unknown) => err);
     expect(missing).toBeInstanceOf(RpcError);
     expect(missing).toMatchObject({ command: "task.get", code: EXIT.NOINPUT, message: "No task zzz" });
     expect(invalid).toMatchObject({ code: EXIT.DATAERR });

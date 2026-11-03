@@ -130,7 +130,7 @@ function briefFor(config: PlannerConfig, stateDir: string, pieces: readonly Dige
   const path = join(stateDir, `${config.name}-digest.md`);
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(path, buildDigest(pieces, config.digestMaxTokens));
-  return digestPreamble(path, config.digestMaxTokens) + brief;
+  return digestPreamble(path, config.digestMaxTokens, pieces) + brief;
 }
 
 function spawn(config: PlannerConfig, ports: WakePorts, brief: string): ReturnType<PlannerRun> {

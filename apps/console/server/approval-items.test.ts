@@ -101,10 +101,15 @@ describe("roundQueueItems", () => {
     expect(items.gaps).toEqual([]);
   });
 
-  it("reports a round only review-schema 0.3 reads as a gap, not as queue items", async () => {
+  it("asks a round only review-schema 0.3 reads, its Ship question pinned to the head it names, with no gap", async () => {
     const items = roundQueueItems([roundOf(await fixtureRounds(), "td920-packet-r1")]);
 
-    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
+    expect(items.gaps).toEqual([]);
+    expect(items.open.map((item) => [item.id, item.kind])).toEqual([
+      ["round:td920-packet-r1/bundle", "review"],
+      ["round:td920-packet-r1/ship", "approve"],
+    ]);
+    expect(items.open[1]?.keys).toContain(`pr:acme/widgets#42@${"a1".repeat(20)}`);
   });
 
   it("lists a withdrawn round's questions as withdrawn, with their hidden picks kept hidden", async () => {

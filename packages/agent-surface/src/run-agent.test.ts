@@ -114,6 +114,12 @@ describe("the launcher resolving the binary it execs", () => {
 });
 
 describe("the launcher stamping the launched process", () => {
+  const pidPair = (stdout: string): [unknown, unknown] => {
+    const pair: unknown = JSON.parse(stdout);
+    if (!Array.isArray(pair)) throw new Error(`expected a pair, got ${stdout}`);
+    return [pair[0], pair[1]];
+  };
+
   const reportsLauncher = (name: string) =>
     fs.writeFileSync(fakeClaude, `process.stdout.write(JSON.stringify([process.env.${name}, String(process.ppid)]))\n`);
 
@@ -121,7 +127,7 @@ describe("the launcher stamping the launched process", () => {
     reportsLauncher("TITAN_AGENT_LAUNCHER_PID");
     writePlan({ TITAN_AGENT_LAUNCHER_PID: "1" });
 
-    const [launcher, parent] = JSON.parse(launch().stdout) as [string, string];
+    const [launcher, parent] = pidPair(launch().stdout);
 
     expect(launcher).toBe(parent);
   });
@@ -130,10 +136,7 @@ describe("the launcher stamping the launched process", () => {
     reportsLauncher("HOST_LAUNCHER_PID");
     writePlan({ HOST_LAUNCHER_PID: "1" });
 
-    const [launcher, parent] = JSON.parse(launch({}, ["--launcher-pid-env", "HOST_LAUNCHER_PID"]).stdout) as [
-      string,
-      string,
-    ];
+    const [launcher, parent] = pidPair(launch({}, ["--launcher-pid-env", "HOST_LAUNCHER_PID"]).stdout);
 
     expect(launcher).toBe(parent);
   });

@@ -41,7 +41,7 @@
     },
     {
       "name": "stricterPolicy unions the two sides' baselines",
-      "file": "products/factory/src/shepherd/policy.ts",
+      "file": "products/factory/src/shepherd/policy-schema.ts",
       "find": "  if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;\n",
       "replace": "  const either = trusted.visualBaselines ?? other.visualBaselines;\n  if (either) stricter.visualBaselines = { check: either.check, paths: [...new Set([...(trusted.visualBaselines?.paths ?? []), ...(other.visualBaselines?.paths ?? [])])] };\n",
       "kills": [

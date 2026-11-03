@@ -1,0 +1,14 @@
+{
+ "phrases": {
+  "correct": 18,
+  "labelled": 20
+ },
+ "neg-synthetic": {
+  "correct": 19,
+  "labelled": 20
+ },
+ "downtoners": {
+  "correct": 9,
+  "labelled": 20
+ }
+}

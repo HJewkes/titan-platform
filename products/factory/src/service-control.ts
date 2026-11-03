@@ -1,15 +1,11 @@
 import { dirname, join, resolve } from "node:path";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";
 import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
-import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
-
-export interface CommandResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+import type { CommandResult } from "./run-command.js";
+import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, unreadableRefusal, type PlistOptions } from "./service.js";
 
 /** Every effect a service verb has on the machine; tests pass fakes, so none of them reaches launchd or systemd. */
 export interface ServicePorts {
@@ -111,13 +107,15 @@ interface JobState {
   pid?: number;
   /** systemd's `ActiveState (SubState)`; launchd has no equivalent. */
   state?: string;
+  /** systemctl could not answer (no user bus, permission, timeout), so loaded is unknown; carries its stderr or `exit N`. */
+  unreadable?: string;
 }
 
 /** A unit counts as loaded once systemd has a unit file for it and it is not inactive, so a failed unit is still restarted on install. */
 async function unitState(ports: ServicePorts): Promise<JobState> {
   const unit = await ports.systemctl(["--user", "show", UNIT_NAME, "--property=LoadState,ActiveState,SubState,MainPID"]);
   const value = (key: string): string => new RegExp(`^${key}=(.*)$`, "m").exec(unit.stdout)?.[1] ?? "";
-  if (unit.code !== 0 || value("LoadState") !== "loaded") return { loaded: false };
+  if (unit.code !== 0 || value("LoadState") !== "loaded") return { loaded: false, ...(unit.code === 0 ? {} : { unreadable: unit.stderr.trim() || `exit ${unit.code}` }) };
   const pid = Number(value("MainPID"));
   return { loaded: value("ActiveState") !== "inactive", state: `${value("ActiveState")} (${value("SubState")})`, ...(pid > 0 ? { pid } : {}) };
 }
@@ -224,6 +222,7 @@ export async function installService(ports: ServicePorts, io: ServiceIo, options
   const refused = preflight(ports, options);
   if (refused !== undefined) return fail(io, refused);
   const job = await jobState(ports);
+  if (job.unreadable !== undefined) return fail(io, unreadableRefusal(ports.uid, job.unreadable));
   if (options.dryRun) return printInstallPlan(ports, io, file, job, options.plist);
   if (!(await bootoutIfLoaded(ports, io, job))) return FAILURE;
   ports.mkdir(options.plist.logDir);
@@ -269,8 +268,9 @@ export async function uninstallService(ports: ServicePorts, io: ServiceIo): Prom
 /** systemd still lists a unit whose file is gone until the next daemon-reload. */
 async function uninstallUnit(ports: ServicePorts, io: ServiceIo): Promise<number> {
   const file = installedServiceFile(ports);
-  const known = (await unitState(ports)).state !== undefined || ports.exists(file);
-  if (!known) {
+  const unit = await unitState(ports);
+  if (unit.unreadable !== undefined) return fail(io, unreadableRefusal(ports.uid, unit.unreadable));
+  if (unit.state === undefined && !ports.exists(file)) {
     io.stdout(`${UNIT_NAME} was not installed\n`);
     return 0;
   }
@@ -289,7 +289,8 @@ export async function serviceStatus(ports: ServicePorts, io: ServiceIo, port: nu
   const healthy = health?.ok === true;
   const running = job.pid === undefined ? "no process" : `pid ${job.pid}`;
   const shownState = job.state ?? (job.loaded ? "loaded" : undefined);
-  io.stdout(`${serviceName(ports)}: ${shownState === undefined ? "not loaded" : `${shownState}, ${running}`}\n`);
+  const absent = job.unreadable === undefined ? "not loaded" : `unreadable: ${job.unreadable}`;
+  io.stdout(`${serviceName(ports)}: ${shownState === undefined ? absent : `${shownState}, ${running}`}\n`);
   io.stdout(`health: ${healthy ? healthSummary(health, port) : `no answer on port ${port}`}\n`);
   if (!healthy) return FAILURE;
   return health.github === "ok" ? 0 : fail(io, `/health answers on port ${port} but its GitHub check is not ok: ${String(health.github)}`);
@@ -317,8 +318,8 @@ function healthSummary(health: Record<string, unknown>, port: number): string {
 }
 
 function buildSummary(build: unknown): string | undefined {
-  if (typeof build !== "object" || build === null) return undefined;
-  const { sha, behindMain } = build as Record<string, unknown>;
+  if (!isObjectLike(build)) return undefined;
+  const { sha, behindMain } = build;
   if (typeof sha !== "string") return undefined;
   const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;
   return `build ${sha.slice(0, 12)}${sha.endsWith(DIRTY_SUFFIX) ? DIRTY_SUFFIX : ""}, ${behind}`;

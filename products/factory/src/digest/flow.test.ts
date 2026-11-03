@@ -10,6 +10,7 @@ const hoursAgo = (h: number): string => new Date(NOW.getTime() - h * 3_600_000).
 const merged = (n: number, task: string, mergedHoursAgo: number) =>
   watchRow({ pr: n, runId: `run-${n}`, task, phase: "done", phaseSince: hoursAgo(mergedHoursAgo), outcome: { kind: "merged", reason: null } });
 const span = (profile: string, startedHoursAgo: number, endedHoursAgo?: number): AgentSpan => ({
+  name: `${profile}-${startedHoursAgo}`,
   profile,
   startedAt: hoursAgo(startedHoursAgo),
   live: endedHoursAgo === undefined,
@@ -84,7 +85,7 @@ describe("flow numbers in the digest", () => {
   });
 
   it("withholds the rate when a non-live implementer has no end time, rather than counting only the live ones", async () => {
-    const spans = [span("implementer", 3), { profile: "implementer", startedAt: hoursAgo(5), live: false }];
+    const spans = [span("implementer", 3), { name: "implementer-x", profile: "implementer", startedAt: hoursAgo(5), live: false }];
 
     const model = await collect([merged(1, "demo/T-1", 1)], {}, spans);
     const markdown = renderMarkdown(rankDigest(model));
@@ -115,7 +116,7 @@ describe("flow numbers in the digest", () => {
     });
 
     expect(model.flow).toBeUndefined();
-    expect(model.gaps).toContain("flow roster: broker down");
+    expect(model.gaps).toContain("agent-chat roster: broker down");
   });
 
   it("renders both numbers and the missing count", async () => {

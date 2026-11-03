@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a classified Shepherd read is classified as a write",
+      "file": "products/factory/src/registry/steps/shepherd.ts",
+      "find": "step(\"sh-held-wait\", \"dispatch\", \"software\", READ_EFFECT)",
+      "replace": "step(\"sh-held-wait\", \"dispatch\", \"software\", { class: \"effect\", target: \"item\", reason: \"writes outside the run: mutant\" })",
+      "kills": [
+        "Shepherd READ review (TP-3106 S4) a restart whose replay diverged before sh-held-wait drops its orphan and the run continues, not parks",
+        "restart contract only the twenty-four read-only steps are dropped, and the irreversible five stay irreversible"
+      ]
+    },
+    {
+      "name": "a kept Shepherd write is classified read",
+      "file": "products/factory/src/registry/steps/shepherd.ts",
+      "find": "step(\"sh-freeze-wait\", \"dispatch\", \"software\", effect(",
+      "replace": "step(\"sh-freeze-wait\", \"dispatch\", \"software\", READ_EFFECT ?? effect(",
+      "kills": ["Shepherd READ review (TP-3106 S4) sh-freeze-wait's orphan still parks because it thaws the freeze when main reads green"]
+    }
+  ]
+}

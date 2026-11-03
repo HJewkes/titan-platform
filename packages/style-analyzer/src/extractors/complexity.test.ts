@@ -53,7 +53,7 @@ describe("ComplexityExtractor", () => {
             o.metadata?.functionName === "processData",
         );
         expect(lengthObs).toHaveLength(1);
-        expect(lengthObs[0]!.value as number).toBeGreaterThanOrEqual(5);
+        expect(Number(lengthObs[0]!.value)).toBeGreaterThanOrEqual(5);
       });
     });
 
@@ -75,7 +75,7 @@ describe("ComplexityExtractor", () => {
             o.metadata?.functionName === "deeplyNested",
         );
         expect(depthObs).toHaveLength(1);
-        expect(depthObs[0]!.value as number).toBeGreaterThanOrEqual(4);
+        expect(Number(depthObs[0]!.value)).toBeGreaterThanOrEqual(4);
       });
     });
 
@@ -97,7 +97,7 @@ describe("ComplexityExtractor", () => {
             o.metadata?.functionName === "classify",
         );
         expect(classifyObs).toHaveLength(1);
-        expect(classifyObs[0]!.value as number).toBeGreaterThanOrEqual(5);
+        expect(Number(classifyObs[0]!.value)).toBeGreaterThanOrEqual(5);
       });
     });
 
@@ -107,7 +107,7 @@ describe("ComplexityExtractor", () => {
           (o) => o.type === "complexity.fileLength",
         );
         expect(fileObs).toHaveLength(1);
-        expect(fileObs[0]!.value as number).toBeGreaterThan(0);
+        expect(Number(fileObs[0]!.value)).toBeGreaterThan(0);
       });
     });
 
@@ -175,7 +175,7 @@ describe("ComplexityExtractor", () => {
           o.metadata?.functionName === "deeply_nested",
       );
       expect(depthObs).toBeDefined();
-      expect(depthObs!.value as number).toBeGreaterThanOrEqual(4);
+      expect(Number(depthObs!.value)).toBeGreaterThanOrEqual(4);
     });
   });
 });

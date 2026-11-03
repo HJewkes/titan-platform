@@ -1,18 +1,21 @@
 import { join } from "node:path";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { changedPaths, runtimeTouched, showAt } from "./deploy-range.js";
+import { versionRefusal, type IntentPorts } from "./deploy-intents.js";
 import { announce, resolveAlarms, type NoticePorts } from "./deploy-notices.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployHeld } from "./deploy-hold-gate.js";
 import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
-import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import { restartService, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
-export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts {
+export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts, IntentPorts {
   /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
   healthWithin: (port: number, timeoutMs: number) => Promise<Probe>;
   /** `git clone --branch main <remote> <dest>`, run from the parent of `dest`; only called when the checkout is absent. */
@@ -91,11 +94,13 @@ const LOCKFILE = "pnpm-lock.yaml";
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
 
+const isDeployRecord = (value: unknown): value is DeployRecord => isObjectLike(value) && typeof value.outcome === "string" && typeof value.target === "string";
+
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
   try {
-    const value = JSON.parse(text) as Partial<DeployRecord> | null;
-    return typeof value?.outcome === "string" && typeof value.target === "string" ? (value as DeployRecord) : undefined;
+    const value: unknown = JSON.parse(text);
+    return isDeployRecord(value) ? value : undefined;
   } catch {
     return undefined;
   }
@@ -210,6 +215,8 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   if (head !== target && (await isAncestor(ports, target, head))) return pastTarget(ports, head, target);
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports.git, from, target);
+  const versions = await versionRefusal(ports, from, target);
+  if (versions !== undefined) return refuse(versions);
   const go = { target, running, closure, touched: await runtimeTouched(ports.git, touchedPaths(changed, closure), from, target), prepareOnly };
   const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
   return native === undefined ? { kind: "go", go } : refuse(native);

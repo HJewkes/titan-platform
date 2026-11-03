@@ -22,6 +22,22 @@ describe("template fill: chart beats", () => {
     expect(found.reveals).toEqual([{ target: "series-1", atCue: "Monday" }]);
   });
 
+  it("each cued bar reveals on its own cue", () => {
+    // Arrange
+    const spoken = "North sorted three, south sorted five, and east sorted only two.";
+    const visual = { beat: "chart", labels: ["north: 3", "south: 5", "east: 2"], cues: [cue("series-1", "North"), cue("series-3", "east")] };
+
+    // Act
+    const found = fillSolo(visual, spoken);
+
+    // Assert
+    expect(found.slots.kind).toBe("bar");
+    expect(found.reveals).toEqual([
+      { target: "series-1", atCue: "North" },
+      { target: "series-3", atCue: "east" },
+    ]);
+  });
+
   it("draws three points whose names are not dates as bars", () => {
     // Arrange / Act
     const found = fillSolo({ beat: "chart", labels: ["north: 3", "south: 5", "east: 2"] });
@@ -88,5 +104,23 @@ describe("template fill: stat and stakes beats", () => {
 
     // Assert
     expect(found.slots).toEqual({ cost: "Every lost label costs a courier a trip", figures: [{ id: "figures-1", value: 3, label: "trips a week" }] });
+  });
+});
+
+describe("template fill: stat beats", () => {
+  it("keeps a flush currency sign or version v with its number, not in the label", () => {
+    // Arrange
+    const visual = { beat: "stat", labels: ["Spend: $1261", "Per unit: $13.41", "Table: v1", "Shipped: 4,821"], cues: [] };
+
+    // Act
+    const found = fillSolo(visual, "Spend was high, a unit cost little, the table is new, and we shipped plenty.");
+
+    // Assert
+    expect(found.slots["figures"]).toEqual([
+      { id: "figures-1", label: "Spend:", prefix: "$", value: 1261 },
+      { id: "figures-2", label: "Per unit:", prefix: "$", value: 13.41 },
+      { id: "figures-3", label: "Table:", prefix: "v", value: 1 },
+      { id: "figures-4", label: "Shipped:", value: 4821 },
+    ]);
   });
 });

@@ -93,7 +93,7 @@ function countDirectRecursion(root: Node): number {
       if (name && body && callsName(body, name)) count++;
     }
     for (const child of node.namedChildren) {
-      if (child) visit(child);
+      visit(child);
     }
   };
   visit(root);
@@ -107,7 +107,7 @@ function callsName(node: Node, name: string): boolean {
     if (fn?.type === "identifier" && fn.text === name) return true;
   }
   for (const child of node.namedChildren) {
-    if (child && callsName(child, name)) return true;
+    if (callsName(child, name)) return true;
   }
   return false;
 }
@@ -130,7 +130,7 @@ function countSearchInLoop(
   }
   const childInLoop = inLoop || loopTypes.has(node.type);
   for (const child of node.namedChildren) {
-    if (child) count += countSearchInLoop(child, loopTypes, childInLoop);
+    count += countSearchInLoop(child, loopTypes, childInLoop);
   }
   return count;
 }
@@ -143,7 +143,6 @@ function maxLoopDepth(
 ): number {
   let max = depth;
   for (const child of node.namedChildren) {
-    if (!child) continue;
     const next = loopTypes.has(child.type) ? depth + 1 : depth;
     const childMax = maxLoopDepth(child, loopTypes, next);
     if (childMax > max) max = childMax;

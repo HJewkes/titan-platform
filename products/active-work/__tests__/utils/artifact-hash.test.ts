@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -69,6 +69,21 @@ describe('artifact hash manifest', () => {
     const { promises: fs } = await import('node:fs');
     await fs.writeFile(path.join(dir, '.artifact-hashes.yml'), '{ not: valid: yaml');
     expect(await readArtifactHashes(dir)).toEqual({});
+  });
+
+  it('reads a manifest holding a list as empty, and the next write repairs it', async () => {
+    writeFileSync(path.join(dir, '.artifact-hashes.yml'), '- one\n- two\n');
+    expect(await readArtifactHashes(dir)).toEqual({});
+
+    await recordArtifactHash(dir, 'brief.md', 'b');
+
+    expect(await readArtifactHashes(dir)).toEqual({ 'brief.md': hashContent('b') });
+  });
+
+  it('drops a non-string hash and keeps the entries beside it', async () => {
+    writeFileSync(path.join(dir, '.artifact-hashes.yml'), 'brief.md: abc\nartifacts.yml: 7\n');
+
+    expect(await readArtifactHashes(dir)).toEqual({ 'brief.md': 'abc' });
   });
 
   it('updates an existing entry without disturbing others', async () => {

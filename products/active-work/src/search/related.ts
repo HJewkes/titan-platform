@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { deriveQuery, type DerivedQuery } from './derive-query.js';
-import { graphDocumentFrequency } from './document-frequency.js';
+import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
@@ -194,7 +194,9 @@ async function relatedFromIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
 ): Promise<RelatedResult> {
-  const query = deriveQuery(input.text, graphDocumentFrequency(graph));
+  const { df, maxDfFor } = graphTermStatistics(graph);
+  const maxDf = maxDfFor(input.classes ?? RELATED_DEFAULT_CLASSES);
+  const query = deriveQuery(input.text, df, { maxDf });
   if (query.terms.length === 0) {
     return degradedResult(query, { source: 'query', reason: 'empty', message: 'no query terms' });
   }

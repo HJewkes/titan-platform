@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "--since is ignored",
+      "file": "products/factory/src/blocker/command.ts",
+      "find": "since: new Date(now - (since ?? 0) * 60_000)",
+      "replace": "since: new Date(now)",
+      "kills": ["titan-factory blocker raise files a blocker deposit with since and blocks", "titan-factory blocker list --json shows only open blockers"]
+    },
+    {
+      "name": "the per-asker cap is off by one",
+      "file": "products/factory/src/blocker/command.ts",
+      "find": "if (mine.length >= MAX_OPEN_PER_ASKER) {",
+      "replace": "if (mine.length > MAX_OPEN_PER_ASKER) {",
+      "kills": ["titan-factory blocker a sixth open raise by one asker is refused by the cap"]
+    },
+    {
+      "name": "clear does not record the actor",
+      "file": "products/factory/src/blocker/command.ts",
+      "find": "{ asker: opts.as, actor: opts.actor, keys",
+      "replace": "{ asker: opts.as, actor: opts.as, keys",
+      "kills": ["titan-factory blocker clear withdraws and logs the actor"]
+    },
+    {
+      "name": "list keeps withdrawn blockers",
+      "file": "products/factory/src/blocker/deposit.ts",
+      "find": "for (const item of (await readSpool(dir)).items) if (await isOpen(dir, item.id)) open.push(item);",
+      "replace": "for (const item of (await readSpool(dir)).items) open.push(item);",
+      "kills": ["titan-factory blocker list --json shows only open blockers", "titan-factory blocker clear withdraws and logs the actor"]
+    },
+    {
+      "name": "list is not sorted oldest first",
+      "file": "products/factory/src/blocker/deposit.ts",
+      "find": ".sort((a, b) => sinceMs(a) - sinceMs(b))",
+      "replace": "",
+      "kills": ["titan-factory blocker list --json shows only open blockers"]
+    }
+  ]
+}

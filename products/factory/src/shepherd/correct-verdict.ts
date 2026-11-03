@@ -49,7 +49,7 @@ async function askOnce(dispatch: ReviewerDispatch, input: CorrectVerdictInput, t
   const prompt = correctionPrompt({ repo, pr, head, refusal: malformed.refusal, ...(ownerBrief && { ownerBrief }), ...(malformed.quotes && { quotes: malformed.quotes }) });
   const note = (text: string) => noteReviewWait(repo, pr, `waiting for the broker to resume ${row.name} for its correction: ${text}`);
   try {
-    await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, () => dispatch.resume(row.name, prompt)));
+    await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, () => dispatch.resume(row.name, prompt, signal)));
   } finally {
     clearReviewWait(repo, pr);
   }

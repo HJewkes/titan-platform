@@ -5,10 +5,10 @@ import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 interface Rewrite {
   before: string;
   after: string;
-  labels?: string[];
 }
 
-// An invented parcel desk, written choppy and crowded, with the joined line a compliant rewrite returns for each beat.
+// An invented parcel desk, written choppy and crowded, with the joined line a compliant rewrite returns for each beat:
+// it cuts the numbers it stops saying, and puts none of them on screen.
 export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   h1: ["ch1", {
     before: "The desk refuses ghost labels. A courier asks for a label. The desk looks for the parcel row. It waits for the ledger. Then it prints.",
@@ -17,7 +17,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   h2: ["ch1", {
     before: "The desk held 12 parcels today. It sent 3 back to the dock. The rest went out on time. Each had a ledger row.",
     after: "The desk held 12 parcels today. It sent parcels back to the dock, and the rest went out on time because each had a ledger row.",
-    labels: ["3 sent back"],
   }],
   h3: ["ch1", {
     before: "It checks the scan, the row and the label. Nothing is skipped. The courier never sees a guess. The check is fast.",
@@ -26,7 +25,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   w1: ["ch2", {
     before: "The scanner app sends 40 scans a minute. The desk server takes 2 seconds for each. It queues the rest. Nothing is lost.",
     after: "Nothing is lost. The scanner app sends 40 scans a minute to the desk server, which takes a moment for each and queues the rest.",
-    labels: ["2 seconds a scan"],
   }],
   w2: ["ch2", {
     before: "The ledger keeps a row per parcel. The row names the dock. It names the courier too. The desk reads both.",
@@ -35,7 +33,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   w4: ["ch2", {
     before: "The ledger answers in 9 milliseconds. It holds 50 rows per dock. The desk trusts that answer. It never caches it.",
     after: "The desk trusts that answer. The ledger answers in 9 milliseconds though it holds rows per dock, and the desk never caches it.",
-    labels: ["50 rows per dock"],
   }],
   k1: ["ch3", {
     before: "A row can be fresh, stale or missing. The desk reads its state. It prints only on fresh. It holds the rest.",
@@ -44,7 +41,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   k2: ["ch3", {
     before: "The desk retries 3 times. It waits 4 seconds between tries. Then it gives up. The courier gets a refusal.",
     after: "Then it gives up. The desk retries 3 times and waits between tries, and after that the courier at the counter gets a clear refusal.",
-    labels: ["4 seconds between tries"],
   }],
   k3: ["ch3", {
     before: "A refusal is not an error. The parcel may be late. The scan may come later. The desk can wait.",
@@ -53,7 +49,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   c1: ["ch4", {
     before: "So the desk checks 70 scans a day. It refuses 6 of them. Every refusal is a ghost label. None of them print.",
     after: "None of them print. So the desk checks 70 scans a day, and every refusal it makes is a ghost label that never reaches the courier.",
-    labels: ["6 refused a day"],
   }],
   c2: ["ch4", {
     before: "It reads the scan, checks the row and prints the label. That order matters. The courier trusts it. So does the dock.",
@@ -62,7 +57,6 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   c3: ["ch4", {
     before: "Check the row first, then print. The desk did it 8 times this hour. It caught 2 ghost labels. None reached a courier.",
     after: "Check the row first, then print. The desk did that 8 times this hour and caught a couple of ghost labels before any reached a courier.",
-    labels: ["2 ghost labels caught"],
   }],
 };
 
@@ -72,13 +66,26 @@ export function choppy(extra: Record<string, Record<string, unknown>> = {}): Scr
   return tour(Object.entries(BEATS).map(([id, [chapter, { before }]]): BeatSpec => [id, chapter, "WHAT", before, { fact_ids: [`F-${id}`], ...extra[id] }]));
 }
 
+// A cue mid-line that the original and its compliant rewrite both speak. A joined line runs longer than its choppy
+// original, so without one it opens a cue gap past qa's picture-change line and the round reverts it (Q-D17).
+const CUES: Record<string, string> = {
+  h1: "parcel", h2: "dock", h3: "skipped", w1: "desk", w2: "dock", w4: "rows",
+  k1: "state", k2: "between", k3: "late", c1: "refusal", c2: "prints", c3: "hour",
+};
+
+const cueOf = (id: string) => ({ visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "stat", cues: [{ action: "V6", target: "rows-1", atCue: CUES[id] }] } });
+
+/** `choppy` with each beat cued on a word its compliant rewrite keeps; a beat `extra` gives its own line or visual has no cue. */
+export const cuedChoppy = (extra: Record<string, Record<string, unknown>> = {}): ScriptV1 =>
+  choppy(Object.fromEntries(Object.keys(BEATS).map((id) => [id, extra[id]?.spoken === undefined && extra[id]?.visual === undefined ? { ...cueOf(id), ...extra[id] } : extra[id]])));
+
 type ReplyBeat = { id: string; spoken: string; labels_added: string[] };
 export type Rewriter = (id: string, prompt: string) => ReplyBeat | undefined;
 
 /** A continuation beat the fake script model split off (`h1-2`) repeats its first part's words, so it takes that rewrite too. */
 export const compliant: Rewriter = (id) => {
   const rewrite = REWRITES.get(id) ?? REWRITES.get(id.replace(/-\d+$/, ""));
-  return rewrite && { id, spoken: rewrite.after, labels_added: rewrite.labels ?? [] };
+  return rewrite && { id, spoken: rewrite.after, labels_added: [] };
 };
 
 export const promptBeatIds = (prompt: string): string[] => [...prompt.matchAll(/^## (\S+)$/gm)].map((m) => m[1]!);

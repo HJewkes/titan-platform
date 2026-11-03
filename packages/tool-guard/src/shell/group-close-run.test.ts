@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -57,28 +57,31 @@ describe("a run of closing braces hands the group's printed text on (TP-3349)", 
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-function runsPush(line: string, runner: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "group-close-run-"));
-  try {
+/** Whether `line` under `runner` asks a fake `git` to push; a describe adds its rows and runs them all through one driver (TP-4453). */
+const runsPushOracle = () =>
+  shellOracle("group-close-run-", (dir, line: string, runner: string) => {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\n[ "$*" = "push origin HEAD:main" ] && touch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "-c", line], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "-c", line], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 const RUNNERS = ["bash", "zsh -f", "dash", "zsh --emulate sh"];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("the shells run the push a closing-brace run prints (TP-3349)", () => {
-  it.each(CLOSE_RUNS.flatMap((line) => RUNNERS.map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
+  const rows = CLOSE_RUNS.flatMap((line) => RUNNERS.map((runner): [string, string] => [line, runner]));
+  const runsPush = runsPushOracle();
+  for (const [line, runner] of [...rows, [NAMED_AFTER_RUN, "bash"] as const]) runsPush.add(line, runner);
+  runsPush.beforeAll();
+
+  it.each(rows)("%s runs the push under %s", (line, runner) => {
+    expect(runsPush.get(line, runner)).toBe(true);
   });
 
   it(`${NAMED_AFTER_RUN} runs the push under bash`, () => {
-    expect(runsPush(NAMED_AFTER_RUN, "bash")).toBe(true);
+    expect(runsPush.get(NAMED_AFTER_RUN, "bash")).toBe(true);
   });
 });

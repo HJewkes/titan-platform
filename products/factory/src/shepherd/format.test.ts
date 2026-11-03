@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SHEPHERD_COMMAND_MAP } from "./commands.js";
 import { formatShepherd } from "./format.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const HEAD = "a".repeat(40);
 

@@ -1,5 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
+import { attestRule, type AttestClaim } from "./briefs/attest.js";
 import { quoteLines } from "./briefs/quotes.js";
 import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
@@ -20,7 +21,7 @@ export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 export type ScopeRefusal = "scope_untagged" | "repeated_finding";
 
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing" | ScopeRefusal;
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | ScopeRefusal;
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -80,6 +81,8 @@ export interface ReviewerBriefInput extends WorkflowCiInput {
   ownerPicks?: readonly OwnerPick[];
   /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
   sourceCheckout?: string;
+  /** The attestation rows this PR adds; read from a file its author wrote, so only grammar-valid ones reach the prompt. */
+  attestClaims?: readonly AttestClaim[];
 }
 
 /** One recorded owner answer: the question it settles and the choice the owner made. */
@@ -248,6 +251,7 @@ function verdictRuleLines(input: ReviewerBriefInput, scope: ReviewScope | undefi
     ...ownerPickLines(input.ownerPicks ?? []),
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
     CI_POLICY_RULE,
+    ...attestRule(input.attestClaims ?? []),
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? [], scope),
     ...convergenceLines(input.convergence),
@@ -309,6 +313,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   bad_head: "its Head line was not 40 lowercase hex characters",
   wrong_target: "its block named another repo, PR or head",
   ci_policy_malformed: "its CI-policy line held more than the exact form",
+  ci_policy_prose: "a prose line used the CI-policy label, or the exact line was not right after Head",
   probes_missing: "it had no Probes line above the Verdict line",
   scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
   repeated_finding: "a blocking item restates an earlier finding",

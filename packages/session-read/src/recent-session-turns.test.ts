@@ -356,9 +356,9 @@ describe("readRecentSessionTurns with the text projection", () => {
   it("rejects an unknown projection before reading", async () => {
     const conversation = identity("claude-code", "bad-projection");
     const source = claudeSource("/does/not/exist.jsonl", conversation);
-    const projection = "spoken" as unknown as "text";
+    const invalid = Object.assign(options(), { projection: "spoken" });
 
-    await expect(readRecentSessionTurns(source, options({ projection }))).rejects.toThrow(/projection must be one of/);
+    await expect(readRecentSessionTurns(source, invalid)).rejects.toThrow(/projection must be one of/);
   });
 });
 

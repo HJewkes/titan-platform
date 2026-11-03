@@ -1,5 +1,6 @@
 import { DELEGATE_RESOLVER_CLASSES } from "@titan-design/authority";
 import { openDatabase } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -117,7 +118,7 @@ describe.each([
 
   it("a delegates list changed after create does not widen the gate", () => {
     const delegates: string[] = ["coordinator"];
-    const rule = { ...OWNER_ONLY, delegates } as GateRule;
+    const rule = Object.assign(partialFake<GateRule>(), OWNER_ONLY, { delegates });
     const { run } = resolveAs({ class: "worker", id: "w-fixture", channel: "test-cli" }, rule, ALLOW);
     delegates.push("worker");
 

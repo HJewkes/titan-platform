@@ -1,14 +1,14 @@
 # Repo tour (VT §2): the explain-repo default (decision 326.1). SCQA verdict with a fixed C4 chapter
 # skeleton; the chapter order never moves, because chapters are the viewer's navigation (VT §2.2).
 # Coverage restores the owner's seven subjects (VT §7.2) and the titan verdict (VT §5.3).
+# No runtime of its own: an assigned video keeps the 600 s band (480-720) by decision 551.
 schema: type-profile/v1
 type: repo-tour
-version: 0.3.1
+version: 0.3.2
 family: review-repo
 intent: "After one watch the viewer can say what the repo is for, how it is laid out, where execution starts, its 2-4 key features and where each lives, one or two things worth knowing, and what titan should adopt, adapt or avoid, and where to read first."
-audience: { default: owner-internal, allow: [owner-internal, public-youtube] }
+audience: { default: owner-internal, allow: [owner-internal, public-youtube], kind: assigned }
 inputs: { adapters: [gatherReview], preconditions: [] }
-runtime: { targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 }
 structure:
   order: fixed
   macro: scqa-c4

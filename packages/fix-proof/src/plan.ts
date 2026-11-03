@@ -224,7 +224,7 @@ export function planFixProof(input: PlanInput): PlanResult {
   try {
     entries = parseNameStatus(input.nameStatus);
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
   const headDiffers = input.headConfig !== undefined && (input.headConfig ?? null) !== (input.baseConfig ?? null);
   return rejectDashedTests(buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries), input.headFiles ?? []));

@@ -17,7 +17,7 @@ interface TtsToken {
 
 const g2p = misakiEnglish();
 
-// Each misakiEnglish() reloads the dictionary (~0.6 s measured); CI load once stretched one test past vitest's 5 s default.
+// The first misakiEnglish() grows the dictionary (~0.6 s measured); CI load once stretched one test past vitest's 5 s default.
 const LOAD_TIMEOUT_MS = 20_000;
 
 describe("misakiEnglish", { timeout: LOAD_TIMEOUT_MS }, () => {

@@ -9,7 +9,7 @@ import { treeDigest } from "../review-pr/build-cases.js";
 import { localCloneGit } from "../review-pr/bundle.js";
 import { EvalCaseSchema, UnitSpecSchema } from "../spec/index.js";
 import { buildMergedPr, git, type MergedPr } from "./test-fixture.js";
-import { IMPLEMENT_TASK_UNIT, writeImplementTaskCases, type ImplementTaskSource } from "./write-case.js";
+import { IMPLEMENT_TASK_UNIT, writeImplementTaskCases, type ImplementTaskSource, type LaterFixAttachment } from "./write-case.js";
 
 const UNIT_PATH = fileURLToPath(new URL("../../units/implement-task/unit.json", import.meta.url));
 const PRIVATE_SLUG = "household-ledger";
@@ -101,6 +101,24 @@ describe("implement-task case writer", () => {
 
     await expect(writing).rejects.toThrow(/private case refused \(private-marker\)/);
     expect(existsSync(join(out, "cases"))).toBe(false);
+  });
+
+  it("stores a later fix's test under fix-<pr>, hashed as the fix wrote it, beside an untouched primary test of the same path", async () => {
+    const pr = setUp();
+    const fixed = "it('x', () => expect(x).toBe(3));\n";
+    const fix: LaterFixAttachment = { pr: 7, fixSource: "fix-touch", sourceSha: "f".repeat(40), tests: [{ path: "src/x.test.ts", bytes: Buffer.from(fixed) }], support: [{ path: "src/fixtures/y.json", bytes: Buffer.from("{}\n") }] };
+
+    const [written] = (await writeImplementTaskCases([sourceOf(pr)], { outDir: out, policy, gitFor: () => localCloneGit(clone), seed: "test", laterFixesFor: () => [fix] })).cases;
+
+    const id = written?.id ?? "";
+    expect(written?.expected).toMatchObject({
+      hiddenTests: [{ path: "src/x.test.ts", sha256: sha256("it('x', () => {});\n"), sourcePr: 42 }],
+      laterFixTests: [{ path: "src/x.test.ts", sha256: sha256(fixed), sourcePr: 7, sourceSha: "f".repeat(40), fixSource: "fix-touch" }],
+      laterFixSupport: [{ path: "src/fixtures/y.json", sha256: sha256("{}\n"), sourcePr: 7, sourceSha: "f".repeat(40), fixSource: "fix-touch" }],
+    });
+    expect(readFileSync(join(out, "hidden", id, "src/x.test.ts"), "utf8")).toBe("it('x', () => {});\n");
+    expect(readFileSync(join(out, "hidden", id, "fix-7", "src/x.test.ts"), "utf8")).toBe(fixed);
+    expect(readFileSync(join(out, "hidden", id, "fix-7", "src/fixtures/y.json"), "utf8")).toBe("{}\n");
   });
 
   it("refuses an out dir inside a git work tree", async () => {

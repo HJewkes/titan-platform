@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ANCHOR_CONFIGS } from "./anchors.js";
-import { Clusterer } from "./clusterer.js";
+import { Clusterer, parseClustererSnapshot } from "./clusterer.js";
 import { DrainTreeRegistry } from "./registry.js";
 import { templateId } from "./template-id.js";
 
@@ -130,5 +130,43 @@ describe("DrainTreeRegistry", () => {
     expect(registry.getTree("Bash").clusterCount).toBe(1);
     expect(registry.partitions.sort()).toEqual(["Bash", "Read"]);
     expect(Object.keys(registry.snapshot()).sort()).toEqual(["Bash", "Read"]);
+  });
+});
+
+describe("parseClustererSnapshot", () => {
+  const stored = () => {
+    const clusterer = new Clusterer();
+    clusterer.cluster(bash("TypeError: Cannot find module src/a.ts"));
+    return { clusterer, snapshot: clusterer.snapshot() };
+  };
+
+  it("snapshot round-trips through parse", () => {
+    const { clusterer, snapshot } = stored();
+    const parsed = parseClustererSnapshot(JSON.parse(JSON.stringify(snapshot)));
+    expect(parsed).toEqual(snapshot);
+    const restored = Clusterer.fromSnapshot(parsed);
+    const original = clusterer.cluster(bash("TypeError: Cannot find module src/b.ts"));
+    expect(restored.cluster(bash("TypeError: Cannot find module src/b.ts")).templateId).toBe(original.templateId);
+  });
+
+  it("a wrong version is refused", () => {
+    expect(() => parseClustererSnapshot({ ...stored().snapshot, version: 2 })).toThrow(/invalid clusterer snapshot.*version/s);
+  });
+
+  it("a wrong-shaped partition is refused", () => {
+    const value = { version: 1, partitions: [{ partition: "Bash", nextClusterId: 2, clusters: [] }] };
+    expect(() => parseClustererSnapshot(value)).toThrow(/invalid clusterer snapshot.*templateIds/s);
+  });
+
+  it("unknown keys survive", () => {
+    const { snapshot } = stored();
+    const [part] = snapshot.partitions;
+    const [cluster] = part!.clusters;
+    const value = {
+      ...snapshot,
+      savedBy: "future",
+      partitions: [{ ...part, weight: 3, clusters: [{ ...cluster, lastSeen: 7 }] }],
+    };
+    expect(parseClustererSnapshot(value)).toEqual(value);
   });
 });

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 
 /**
  * Did the launcher actually start in the pane just opened?
@@ -53,8 +54,7 @@ export const psProbe: ProcessProbe = async tty => {
     return stdout.split("\n").filter(line => line.trim() !== "");
   } catch (err) {
     // ps exits 1 with no output when nothing is on the tty, which is an answer.
-    const failed = err as { code?: unknown; stdout?: unknown };
-    if (failed.code === 1 && failed.stdout === "") return [];
+    if (isObjectLike(err) && err.code === 1 && err.stdout === "") return [];
     throw err;
   }
 };
@@ -87,7 +87,7 @@ async function lookOnce(pane: PaneReader, probe: ProcessProbe, marker: LaunchMar
 const pause = (ms: number): Promise<void> =>
   new Promise(resolve => {
     const timer = setTimeout(resolve, ms);
-    timer.unref?.();
+    timer.unref();
   });
 
 const tail = (contents: string): string =>

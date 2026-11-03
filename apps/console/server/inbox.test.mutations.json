@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the owner is capped like any seat",
+      "file": "apps/console/server/inbox.ts",
+      "find": "OWNER_ASKERS.has(asker) || exempt.includes(asker)",
+      "replace": "OWNER_ASKERS.size < 0 || exempt.includes(asker)",
+      "kills": [
+        "the open-deposit cap never caps the owner, whether filed as the owner login or the owner actor"
+      ]
+    },
+    {
+      "name": "a withdrawn deposit still counts against the cap",
+      "file": "apps/console/server/inbox.ts",
+      "find": "[...answerFileNames(id), withdrawnFileName(id)]",
+      "replace": "[...answerFileNames(id)]",
+      "kills": [
+        "the open-deposit cap does not count a withdrawn deposit"
+      ]
+    },
+    {
+      "name": "the refusal names none of the asker's open ids",
+      "file": "apps/console/server/inbox.ts",
+      "find": ": ${ids.join(\" \")}",
+      "replace": "",
+      "kills": [
+        "titan-console inbox file refuses a seat's sixth open ask, exits non-zero and lists its five open ids to merge or withdraw"
+      ]
+    },
+    {
+      "name": "a seat may hold a sixth open ask",
+      "file": "apps/console/server/inbox.ts",
+      "find": "ids.length < MAX_OPEN_DEPOSITS_PER_ASKER",
+      "replace": "ids.length <= MAX_OPEN_DEPOSITS_PER_ASKER",
+      "kills": [
+        "the open-deposit cap answers 429 to an asker's open deposit number 6, and still files for another asker",
+        "the open-deposit cap caps an automation asker missing from the exempt list",
+        "the open-deposit cap lets only one of several racing deposits take the last slot",
+        "titan-console inbox file refuses a seat's sixth open ask, exits non-zero and lists its five open ids to merge or withdraw"
+      ]
+    },
+    {
+      "name": "an exempt automation asker is capped like any seat",
+      "file": "apps/console/server/inbox.ts",
+      "find": "OWNER_ASKERS.has(asker) || exempt.includes(asker)",
+      "replace": "OWNER_ASKERS.has(asker)",
+      "kills": [
+        "the open-deposit cap accepts a sixth open deposit from an automation asker on the exempt list"
+      ]
+    }
+  ]
+}

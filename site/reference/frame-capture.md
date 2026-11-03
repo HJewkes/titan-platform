@@ -52,7 +52,7 @@ import { captureFrames, mixAudio, startEncoder } from "@titan-design/frame-captu
 await mixAudio([{ id: "intro", durationS: 4 }], (id) => `audio/${id}.wav`, "mix.wav");
 const encoder = startEncoder("out.mp4", 30, "mix.wav");
 const result = await captureFrames(
-  { url: "http://127.0.0.1:4173/", fps: 30, width: 1920, height: 1080, workers: 8 },
+  { url: "http://127.0.0.1:4173/", fps: 30, width: 1920, height: 1080, workers: 8, spillDir: "out" },
   (_, png) => encoder.write(png),
 );
 await encoder.finish();
@@ -74,6 +74,9 @@ console.log(result.frames, result.pageDurationS);
   fixture a 16-worker render then differs from a sequential one on 0 frames (real-render
   confirmation pending). Without it, a chunk can start mid-beat and its first frames can
   differ by a few levels of anti-aliasing.
+- `FramesOptions.spillDir` is required with `workers` above 1. Chunks are contiguous, so frames
+  after the head chunk wait in one append-only file per chunk, not in memory. Give it real disk:
+  a tmpfs `/tmp` would hold the video in RAM.
 - `openCapturePage` listens for page errors before it navigates, so a page that throws while it
   loads fails the open instead of answering every seek with a blank frame. The same list,
   `CapturePage.errors`, fails a later frame. A `duration` that is missing, NaN or not positive

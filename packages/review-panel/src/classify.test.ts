@@ -5,7 +5,7 @@ import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
 const facts = (paths: string[], extra: Partial<PrFacts> = {}): PrFacts =>
-  ({ repo: "o/r", number: 1, head: "h", base: "b", kind: "feature", changedFiles: paths.map((p) => file(p)), ...extra }) as PrFacts;
+  ({ repo: "o/r", pr: 1, head: "h", base: "b", kind: "feature", changedFiles: paths.map((p) => file(p)), ...extra });
 
 describe("classifyPr", () => {
   it("treats CODEOWNERS and workflow edits as authority", () => {
@@ -28,6 +28,17 @@ describe("classifyPr", () => {
       ]),
     );
     expect(result).toEqual({ class: "g10", touches: ["authority"] });
+  });
+
+  it("A17: a canonicaliser change is a rule-file change, so it takes the adversarial class", () => {
+    for (const path of ["packages/github/src/diff-hash.ts", "packages/github/src/git-diff-hash.ts", "packages/github/src/git-merge-tree.ts"]) {
+      expect(classifyPr(facts([path, "packages/github/src/diff-hash.test.ts"]))).toMatchObject({ class: "g10", touches: expect.arrayContaining(["authority"]) });
+    }
+  });
+
+  it("A17: a pin-class change is a rule-file change, so it takes the adversarial class", () => {
+    const result = classifyPr(facts(["products/factory/src/registry/pin-classes.ts", "products/factory/src/registry/pin-classes.test.ts"]));
+    expect(result).toMatchObject({ class: "g10", touches: expect.arrayContaining(["authority"]) });
   });
 
   it("classifies tp#747's required-checks policy files as authority and policy", () => {

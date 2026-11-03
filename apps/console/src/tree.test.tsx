@@ -110,7 +110,7 @@ describe("tree page", () => {
 
     fireEvent.click(nodeButton("Queue depth"));
 
-    // console.build is the shell's own version read.
-    expect([...new Set(calls)].sort()).toEqual(["console.build", "work.loops"]);
+    // console.build and blockers.banner are the shell's own reads.
+    expect([...new Set(calls)].sort()).toEqual(["blockers.banner", "console.build", "work.loops"]);
   });
 });

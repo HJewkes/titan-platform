@@ -1,9 +1,6 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { Registration } from "./store.js";
 
-/** `shepherd.taskClose`: `keep` closes a registered PR's task on every merge; `last-slice-only` only on its last slice (TP-4274). */
-export type TaskClose = "keep" | "last-slice-only";
-
 /** One line of the PR body, in any case: `Last slice: yes` or `Last slice: no`. */
 const LAST_SLICE_LINE = /^[ \t]*last slice:[ \t]*(yes|no)[ \t]*$/im;
 

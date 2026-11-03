@@ -3,6 +3,7 @@ import type { OwnerAnswer, OwnerItem, QueueSource, ResolveResult } from "@titan-
 import { queueResponseSchema, toOwnerItem, type QueueRow } from "./agent-chat-item.js";
 import { pollTail } from "./poll-tail.js";
 import { QueueReadError } from "./queue-read-error.js";
+import { readPath } from "../narrow.js";
 
 /** agent-chat's loopback auth header; the value is the 0600 `ui.token` and never leaves this process. */
 export const TOKEN_HEADER = "X-Agent-Chat-Token";
@@ -19,13 +20,18 @@ export interface BrokerEndpoint {
 const SOURCE = "agent-chat /api/queue";
 const CLOSED_REASON = /is not an open item|no item with id/;
 
-async function call(endpoint: BrokerEndpoint, path: string, init: RequestInit = {}): Promise<Response> {
+const textAt = (reply: unknown, key: string): string | undefined => {
+  const value = readPath(reply, key);
+  return typeof value === "string" ? value : undefined;
+};
+
+async function call(endpoint: BrokerEndpoint, path: string, init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> } = {}): Promise<Response> {
   const baseUrl = endpoint.baseUrl();
   if (!baseUrl) throw new QueueReadError(SOURCE, "not-running", "no broker port to read (is the agent-chat broker running?)");
   const token = endpoint.token();
   if (!token) throw new QueueReadError(SOURCE, "unauthorized", "no ui.token to send");
   // The broker's daemon guard refuses an Origin-less write that names no client.
-  const headers = { ...(init.headers as Record<string, string>), [TOKEN_HEADER]: token, [CLIENT_HEADER]: "titan-factory" };
+  const headers = { ...init.headers, [TOKEN_HEADER]: token, [CLIENT_HEADER]: "titan-factory" };
   let res: Response;
   try {
     res = await (endpoint.fetch ?? fetch)(`${baseUrl}${path}`, { ...init, headers });
@@ -54,9 +60,9 @@ async function resolve(endpoint: BrokerEndpoint, msgId: string, answer: OwnerAns
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const reply = (await res.json().catch(() => ({}))) as { ok?: boolean; reason?: string; error?: string };
-  if (res.ok && reply.ok === true) return { ok: true };
-  const reason = reply.reason ?? reply.error ?? `answered ${res.status}`;
+  const reply: unknown = await res.json().catch(() => ({}));
+  if (res.ok && readPath(reply, "ok") === true) return { ok: true };
+  const reason = textAt(reply, "reason") ?? textAt(reply, "error") ?? `answered ${res.status}`;
   return CLOSED_REASON.test(reason) ? { ok: false, reason: "closed" } : { ok: false, reason: "rejected", detail: reason };
 }
 

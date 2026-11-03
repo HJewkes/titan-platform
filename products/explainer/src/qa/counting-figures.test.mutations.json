@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "sibling figures are keyed by element alone",
+      "file": "products/explainer/src/qa/counting-figures.ts",
+      "find": "return `${element}@${index}`;",
+      "replace": "return `${element}@0`;",
+      "kills": [
+        "sibling counting figures four sibling stat figures counting up are each judged on the value they settle on"
+      ]
+    },
+    {
+      "name": "a counting figure keeps its first value as settled",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "settled.set(key, settle(first.get(key)!, text));",
+      "replace": "settled.set(key, first.get(key)!);",
+      "kills": [
+        "sibling counting figures a sibling figure that settles on an unspoken number is still a finding"
+      ]
+    },
+    {
+      "name": "an unchanging number is keyed by its place as a count",
+      "file": "products/explainer/src/qa/counting-figures.ts",
+      "find": "return (values.get(key)?.size ?? 0) > 1 && !shared.has(key) ? key : undefined;",
+      "replace": "return values.has(key) && !shared.has(key) ? key : undefined;",
+      "kills": [
+        "step numbers rising into place a number that moves more than a few pixels as it enters is held for its whole stay"
+      ]
+    },
+    {
+      "name": "a figure with no probed position counts as a figure",
+      "file": "products/explainer/src/qa/counting-figures.ts",
+      "find": "element === undefined || !anchor ||",
+      "replace": "element === undefined ||",
+      "kills": [
+        "narration facts report a number changing in an element with no probed position is plain text, not a count"
+      ]
+    }
+  ]
+}

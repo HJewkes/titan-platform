@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tree names match review as a substring",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-names.ts",
+      "find": "return tokens[0] === \"rv\" || tokens.some((t) => REVIEWER_TREE_TOKENS.has(t));",
+      "replace": "return tokens[0] === \"rv\" || /review/.test(name.toLowerCase());",
+      "kills": [
+        "isReviewerTreeName classifies previewer-x as an implementer tree",
+        "isReviewerTreeName classifies preview-x as an implementer tree"
+      ]
+    },
+    {
+      "name": "tree names count rv anywhere",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-names.ts",
+      "find": "return tokens[0] === \"rv\" || tokens.some((t) => REVIEWER_TREE_TOKENS.has(t));",
+      "replace": "return tokens.includes(\"rv\") || tokens.some((t) => REVIEWER_TREE_TOKENS.has(t));",
+      "kills": [
+        "isReviewerTreeName classifies a-rv as an implementer tree"
+      ]
+    },
+    {
+      "name": "the spawn side counts a bare review token",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-names.ts",
+      "find": "const REVIEWER_TOKENS = new Set([\"reviewer\", \"rv\"]);",
+      "replace": "const REVIEWER_TOKENS = new Set([\"reviewer\", \"rv\", \"review\"]);",
+      "kills": [
+        "isReviewerSpawn leaves out a bare review token, which only tree counting reads"
+      ]
+    }
+  ]
+}

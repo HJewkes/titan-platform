@@ -71,7 +71,8 @@ describe("claudePrintWorker", () => {
 
     const build = await claude.build(PACKET, {});
 
-    expect(build.usage.usd).toBeCloseTo(0.02 + 0.025, 10);
+    // Cache read at the dated claude-sonnet-5-5 row from 2026-10-07 ($0.10/MTok); the build is priced at its own time.
+    expect(build.usage.usd).toBeCloseTo(0.01 + 0.025, 10);
     expect(build.usage).toMatchObject({ cacheReadTokens: 100_000, cacheWriteTokens: 10_000 });
   });
 

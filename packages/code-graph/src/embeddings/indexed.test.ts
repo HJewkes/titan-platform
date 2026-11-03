@@ -3,8 +3,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { HashEmbedder, OllamaEmbedder, type EmbedRole, type Embedder } from "@titan-design/embed";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
+import { FIXTURE_TSCONFIG, openTestStore } from "../incremental.test-helpers.js";
 import { indexPaths } from "../indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "../store.js";
+import type { CodeGraphStore } from "../store.js";
 import { SYMBOL_EMBEDDING_NAMESPACE } from "./cache.js";
 import { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings.js";
 
@@ -45,11 +47,13 @@ function countingEmbedder(model = "nomic-embed-text"): Embedder & { calls: strin
 function fakeOllama(prefixes?: { document?: string; query?: string }): { embedder: OllamaEmbedder; inputs: string[] } {
   const hash = new HashEmbedder();
   const inputs: string[] = [];
-  const fetchImpl = (async (_url: string, init: RequestInit) => {
-    const { input } = JSON.parse(String(init.body)) as { input: string[] };
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body: unknown = JSON.parse(String(init?.body));
+    if (!isRecord(body) || !Array.isArray(body.input)) throw new Error("the embed request has no input list");
+    const input = body.input.map(String);
     inputs.push(...input);
     return new Response(JSON.stringify({ embeddings: await hash.embed(input) }), { status: 200 });
-  }) as typeof fetch;
+  };
   return { embedder: new OllamaEmbedder({ dimensions: hash.dimensions, fetch: fetchImpl, prefixes }), inputs };
 }
 
@@ -66,8 +70,8 @@ describe("embeddings over an indexed snapshot", () => {
     root = await fs.mkdtemp(path.join(tmpdir(), "code-graph-emb-"));
     await fs.mkdir(path.join(root, "src"), { recursive: true });
     await fs.writeFile(path.join(root, "src/time.ts"), DURATION_TS);
-    store = openCodeGraph(path.join(root, "graph.sqlite3"));
-    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false }));
+    store = openTestStore(path.join(root, "graph.sqlite3"));
+    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, tsConfig: FIXTURE_TSCONFIG }));
   });
 
   afterEach(async () => {
@@ -136,7 +140,7 @@ describe("embeddings over an indexed snapshot", () => {
     const second = await embedSnapshot(store, snapshotId, raw.embedder);
 
     expect(second).toMatchObject({ newlyEmbedded: 3, reused: 0 });
-    const rows = store.db.prepare("SELECT DISTINCT model FROM blob_cache ORDER BY model").all() as { model: string }[];
+    const rows = store.db.prepare<[], { model: string }>("SELECT DISTINCT model FROM blob_cache ORDER BY model").all();
     expect(rows.map((r) => r.model)).toEqual([nomic.embedder.model, raw.embedder.model].sort());
   });
 

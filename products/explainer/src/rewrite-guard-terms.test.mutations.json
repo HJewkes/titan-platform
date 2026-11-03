@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a term counts as said only word for word, so a spelled id reads as lost",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "termSpellings(term).find((form) => hasWord(line, norm(form), NUMBER_ENDS))",
+      "replace": "undefined",
+      "kills": [
+        "a term declared as a fact id rejects a rewrite that loses the ticket's number",
+        "an item the beat cites but does not introduce rejects a rewrite that stops naming the ticket"
+      ]
+    },
+    {
+      "name": "a term the original never said can still be lost",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": ".filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)",
+      "replace": ".filter((term) => saidForm(spoken, term) === undefined)",
+      "kills": [
+        "a term declared as a fact id does not hold a rewrite to a fact id the original never said"
+      ]
+    },
+    {
+      "name": "a spelled number's prefix counts as saying the number",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "const NUMBER_ENDS = \"(?!-\\\\p{L})\";",
+      "replace": "const NUMBER_ENDS = \"\";",
+      "kills": [
+        "a term written with its digits is lost when the rewrite says a different number"
+      ]
+    },
+    {
+      "name": "the guard lets a fact id pasted into the line through",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...factIdRejections(before, after.spoken),\n",
+      "replace": "",
+      "kills": [
+        "a term declared as a fact id rejects the fact id pasted into the line, even with its number still in it"
+      ]
+    },
+    {
+      "name": "a number kept in a new spelling counts as dropped terms",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "const line = countSpans(text).reduceRight(",
+      "replace": "const line = [].reduceRight(",
+      "kills": [
+        "a number respelled by the rewrite does not count the old spelling's words as dropped content terms"
+      ]
+    }
+  ]
+}

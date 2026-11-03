@@ -14,13 +14,13 @@ describe("the kind sheet's cells", () => {
     assert.deepEqual(cells, [["first", 3.5], ["settled", 4.9]]);
   });
 
-  // Mutation: settle every kind at its end less 0.1 s; an outro's settled frame lands in its fade and reads blank.
-  test("settle an outro kind before its 1 s fade, not in it", () => {
-    const timeline = parseTimeline({ durationS: 8, beats: [beat("a", "outro", 0, 4), beat("b", "button", 4, 4)] });
+  // Mutation: settle every kind at its end less 0.1 s; a hook's settled frame lands in its exit and reads cut.
+  test("settle a hook before its 0.3 s exit, and an outro, which holds to its end, at its end less 0.1 s", () => {
+    const timeline = parseTimeline({ durationS: 8, beats: [beat("a", "hook", 0, 4), beat("b", "outro", 4, 4)] });
 
     const settled = kindCells(timeline).filter((c) => c.tag === "settled").map((c) => Number(c.t.toFixed(3)));
 
-    assert.deepEqual(settled, [2.9, 6.9]);
+    assert.deepEqual(settled, [3.6, 7.9]);
   });
 
   test("start a beat with no reveals 0.6 s in", () => {

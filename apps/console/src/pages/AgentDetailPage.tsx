@@ -22,7 +22,11 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
+import { migrationHint } from "./SessionFormat.js";
+import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP_LINK } from "./phone.js";
 
 type SessionsList = ConsoleCommands["sessions.list"]["result"];
 type SessionRow = SessionsList["sessions"][number];
@@ -59,7 +63,8 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
   return (
     <VStack gap={4}>
       <Trail name={name} />
-      {entry ? <AgentCard agent={entry} /> : <Alert status="info" message={`No agent named ${name} in the broker's roster or its last 1,000 events.`} />}
+      {entry ? <AgentCard agent={entry} /> : null}
+      {entry ? <AgentRetire agent={entry} /> : <Alert status="info" message={`No agent named ${name} in the broker's roster or its last 1,000 events.`} />}
       <RouteTabs route={route} tabs={TABS} current={tab} />
       {tab === "runs" ? <Runs name={name} /> : <MessageFeed agent={name} empty={`No messages to or from ${name} in the broker's last 1,000 events.`} />}
     </VStack>
@@ -69,7 +74,9 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
 function Trail({ name }: { name: string }): ReactNode {
   return (
     <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "agents" })}>Agents</BreadcrumbItem>
+      <BreadcrumbItem className={PHONE_TAP_LINK} onPress={() => open({ view: "agents" })}>
+        Agents
+      </BreadcrumbItem>
       <BreadcrumbItem isCurrentPage>{name}</BreadcrumbItem>
     </Breadcrumbs>
   );
@@ -77,6 +84,24 @@ function Trail({ name }: { name: string }): ReactNode {
 
 /** Card and Avatar stand in for react-ui's AgentCard until TP-858 is released. */
 function AgentCard({ agent }: { agent: RosterEntry }): ReactNode {
+  return (
+    <Card testID="agent-card">
+      <CardContent>
+        <HStack gap={3} align="center">
+          <Avatar size="lg" colorFromName={agent.name} alt={agent.name} />
+          <div className="min-w-0 flex-1">
+            <VStack gap={1}>
+              <AgentHeading agent={agent} />
+              <AgentDetails agent={agent} />
+            </VStack>
+          </div>
+        </HStack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentDetails({ agent }: { agent: RosterEntry }): ReactNode {
   const facts = [
     agent.spawnedBy ? `Spawned by ${agent.spawnedBy}` : null,
     agent.taskId ? `Task ${agent.taskId}` : null,
@@ -84,25 +109,42 @@ function AgentCard({ agent }: { agent: RosterEntry }): ReactNode {
     agent.costUsd === null ? null : `Cost ${formatCost(agent.costUsd)}`,
   ].filter((fact): fact is string => fact !== null);
   return (
-    <Card testID="agent-card">
-      <CardContent>
-        <HStack gap={3} align="center">
-          <Avatar size="lg" colorFromName={agent.name} alt={agent.name} />
-          <VStack gap={1}>
-            <HStack gap={2} align="center">
-              <Typography variant="h5">{agent.name}</Typography>
-              <StatePill state={agent.state} />
-            </HStack>
-            {agent.workingOn ? <Typography variant="body2">{agent.workingOn}</Typography> : null}
-            {facts.length > 0 ? (
-              <Typography variant="caption" color="secondary">
-                {facts.join(" · ")}
-              </Typography>
-            ) : null}
-          </VStack>
-        </HStack>
-      </CardContent>
-    </Card>
+    <>
+      {agent.workingOn ? (
+        <Typography variant="body2">
+          <Ellipsis text={agent.workingOn} />
+        </Typography>
+      ) : null}
+      {facts.length > 0 ? (
+        <Typography variant="caption" color="secondary">
+          <Ellipsis text={facts.join(" · ")} />
+        </Typography>
+      ) : null}
+    </>
+  );
+}
+
+function AgentHeading({ agent }: { agent: RosterEntry }): ReactNode {
+  return (
+    <HStack gap={2} align="center">
+      <div className="min-w-0">
+        <Typography variant="h5">
+          <Ellipsis text={agent.name} testID="agent-card-name" />
+        </Typography>
+      </div>
+      <StatePill state={agent.state} />
+    </HStack>
+  );
+}
+
+/** One line that ellipsizes in a narrow desktop card, the title carrying the full text; a phone's card is too narrow to cut, so it wraps. */
+const ONE_LINE = "block min-w-0 max-w-full truncate whitespace-nowrap max-md:whitespace-normal max-md:break-words";
+
+function Ellipsis({ text, testID }: { text: string; testID?: string }): ReactNode {
+  return (
+    <span className={ONE_LINE} title={text} data-testid={testID}>
+      {text}
+    </span>
   );
 }
 
@@ -111,19 +153,50 @@ function Runs({ name }: { name: string }): ReactNode {
   if (runs.status === "loading") return <Spinner size="sm" label="Loading sessions" />;
   if (runs.data === undefined) return <Alert status="error" message={`Could not load sessions: ${runs.error.message}`} />;
   const { sessions, degraded } = runs.data;
-  if (degraded) return <GraphDegraded reason={degraded.reason} detail={degraded.detail} />;
+  if (degraded) return <GraphDegraded degraded={degraded} />;
   if (sessions.length === 0) return <Typography variant="body2">{`No sessions recorded for ${name}.`}</Typography>;
-  return <RunsTable sessions={sessions} />;
+  return <RunRows sessions={sessions} />;
 }
 
-function GraphDegraded({ reason, detail }: { reason: GraphReason; detail: string }): ReactNode {
-  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}. A session still opens by id from a task or agent page.`;
+function GraphDegraded({ degraded }: { degraded: SessionsList["degraded"] & object }): ReactNode {
+  const { reason, detail } = degraded;
+  const message = `The session list is unavailable: the session graph is ${GRAPH_STATE[reason]}.${migrationHint(degraded)} A session still opens by id from a task or agent page.`;
   return (
     <Alert status="warning" message={message}>
       <Typography variant="caption" color="secondary">
         {detail}
       </Typography>
     </Alert>
+  );
+}
+
+/** One tree, not a CSS swap of two, as on the Tasks list. */
+function RunRows({ sessions }: { sessions: readonly SessionRow[] }): ReactNode {
+  return useMediaQuery(BELOW_MD) ? <RunCards sessions={sessions} /> : <RunsTable sessions={sessions} />;
+}
+
+function RunCards({ sessions }: { sessions: readonly SessionRow[] }): ReactNode {
+  return (
+    <VStack>
+      {sessions.map((session) => (
+        <RunCard key={session.sessionId} session={session} />
+      ))}
+    </VStack>
+  );
+}
+
+function RunCard({ session }: { session: SessionRow }): ReactNode {
+  const tasks = session.taskIds.length > 0 ? session.taskIds.join(", ") : "no task";
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`run-card-${session.sessionId}`}>
+      <Link color="primary" className={PHONE_TAP_LINK} testID={`run-link-${session.sessionId}`} onPress={() => open({ view: "sessions", id: session.sessionId })}>
+        <DateTime value={session.startedAt} format="datetime" fallback="unknown" />
+      </Link>
+      <Typography variant="body1" className="break-words">
+        {session.title ?? "–"}
+      </Typography>
+      <Typography variant="caption" color="secondary" className="break-words">{`${tasks} · ${session.turnCount} turns · ${formatCost(session.costUsd)}`}</Typography>
+    </VStack>
   );
 }
 

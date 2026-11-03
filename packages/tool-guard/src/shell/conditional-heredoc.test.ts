@@ -8,6 +8,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { ParseError, tokenize } from "./lexer.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -73,7 +74,14 @@ const bashOnPath = spawnSync("bash", ["-c", "true"]).status === 0;
 describe.skipIf(!bashOnPath)("bash on a heredoc opener inside [[ ]]", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2600-b-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-  const bashN = (command: string) => spawnSync("bash", ["-n", "-c", command], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("tool-guard-tp-2600-b-rows-", (_dir, command: string) => ({
+    run: { program: "bash", args: ["-n", "-c", command], cwd: scratch, input: "" },
+    read: (run) => run,
+  }));
+  const bashN = (command: string) => oracle.get(command);
+  for (const command of [...PATTERN_TEXT, ...ALLOWED]) oracle.add(command);
+  oracle.beforeAll();
 
   it.each(PATTERN_TEXT)("bash -n accepts %j, reading the opener as pattern text", (command) => {
     expect(bashN(command).status).toBe(0);

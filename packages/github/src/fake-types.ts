@@ -80,6 +80,8 @@ export interface FakeGitHub {
   /** Job id to its steps, for `getJobSteps`; a job with none seeded answers 404. */
   jobSteps: Map<number, JobStep[]>;
   files: Map<string, { content: string; blobSha: string }>;
+  /** `ref:path` to a binary file's bytes for `getContentBytes`; a key absent here falls back to `files`, UTF-8 encoded. */
+  bytes: Map<string, Uint8Array>;
   /** The login `createComment` posts as and `getAuthenticatedLogin` answers with. */
   actor: string;
   /** PR number to its changed files. `listPrFiles` returns at most 3,000 of them, like GitHub. */

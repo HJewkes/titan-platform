@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { caseHash, scorecardKeyHash, suiteHash, unitHash, variantHash } from "./hash.js";
 import { EvalCaseSchema, ScorecardSchema, SuiteSpecSchema, UnitSpecSchema, VariantSpecSchema, parseSpec } from "./spec/index.js";
-import { readFixture } from "./test-fixtures.js";
+import type { EvalCase, Scorecard, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
+import { asRecord, readFixtureObject, unvalidated } from "./test-fixtures.js";
 
 /** Every leaf changes; an absent field gains a value. */
 function mutate(value: unknown): unknown {
@@ -17,66 +18,65 @@ function mutate(value: unknown): unknown {
 interface Coverage {
   name: string;
   keys: string[];
-  fixture: Record<string, unknown>;
-  hash: (spec: never) => string;
+  /** Whether replacing this field with a mutated value changes the hash. */
+  moves: (key: string) => boolean;
   /** The fields the design leaves out of identity; any other schema field must move the hash. */
   excluded: string[];
 }
 
-const scorecard = readFixture<{ keys: Record<string, unknown> }>("scorecard.json");
+function coverage<T extends object>(name: string, keys: string[], fixture: Record<string, unknown>, hash: (spec: T) => string, excluded: string[]): Coverage {
+  const moves = (key: string) => hash(unvalidated<T>({ ...fixture, [key]: mutate(fixture[key]) })) !== hash(unvalidated<T>(fixture));
+  return { name, keys, moves, excluded };
+}
+
+const scorecard = readFixtureObject("scorecard.json");
 
 const COVERAGE: Coverage[] = [
-  { name: "unit", keys: Object.keys(UnitSpecSchema.shape), fixture: readFixture("unit.json"), hash: unitHash, excluded: ["title", "description", "acceptance", "visibility"] },
-  {
-    name: "case", keys: Object.keys(EvalCaseSchema.shape), fixture: readFixture("cases/standup-note.json"), hash: caseHash,
-    excluded: ["id", "unit", "tags", "humanMinutes", "solvable", "visibility"],
-  },
-  { name: "variant", keys: Object.keys(VariantSpecSchema.shape), fixture: readFixture("variants/single-pass.json"), hash: variantHash, excluded: ["id", "notes", "parents"] },
-  { name: "suite", keys: Object.keys(SuiteSpecSchema.shape), fixture: readFixture("suite.json"), hash: suiteHash, excluded: ["id", "version"] },
-  { name: "scorecard key", keys: Object.keys(ScorecardSchema.shape.keys.shape), fixture: scorecard.keys, hash: scorecardKeyHash, excluded: ["env"] },
+  coverage<UnitSpec>("unit", Object.keys(UnitSpecSchema.shape), readFixtureObject("unit.json"), unitHash, ["title", "description", "acceptance", "visibility"]),
+  coverage<EvalCase>("case", Object.keys(EvalCaseSchema.shape), readFixtureObject("cases/standup-note.json"), caseHash, ["id", "unit", "tags", "humanMinutes", "solvable", "visibility"]),
+  coverage<VariantSpec>("variant", Object.keys(VariantSpecSchema.shape), readFixtureObject("variants/single-pass.json"), variantHash, ["id", "notes", "parents"]),
+  coverage<SuiteSpec>("suite", Object.keys(SuiteSpecSchema.shape), readFixtureObject("suite.json"), suiteHash, ["id", "version"]),
+  coverage<Scorecard["keys"]>("scorecard key", Object.keys(ScorecardSchema.shape.keys.shape), asRecord(scorecard.keys), scorecardKeyHash, ["env"]),
 ];
 
-describe.each(COVERAGE)("the $name hash", ({ keys, fixture, hash, excluded }) => {
+describe.each(COVERAGE)("the $name hash", ({ keys, moves, excluded }) => {
   it("names only real schema fields as excluded", () => {
     expect(keys).toEqual(expect.arrayContaining(excluded));
   });
 
   it.each(keys)("moves when %s changes, unless the design excludes it", (key) => {
-    const changed = { ...fixture, [key]: mutate(fixture[key]) };
-
-    const moved = hash(changed as never) !== hash(fixture as never);
-
-    expect(moved).toBe(!excluded.includes(key));
+    expect(moves(key)).toBe(!excluded.includes(key));
   });
 });
 
 describe("locations inside hashed fields", () => {
   it("leaves a case's fixture path out but not its tree hash", () => {
-    const evalCase = readFixture<Record<string, unknown>>("cases/standup-note.json");
+    const evalCase = readFixtureObject("cases/standup-note.json");
     const tree = { kind: "tree", path: "fixtures/a", treeSha256: "a".repeat(64) };
 
-    const base = caseHash({ ...evalCase, fixture: tree } as never);
+    const base = caseHash(unvalidated<EvalCase>({ ...evalCase, fixture: tree }));
 
-    expect(caseHash({ ...evalCase, fixture: { ...tree, path: "fixtures/b" } } as never)).toBe(base);
-    expect(caseHash({ ...evalCase, fixture: { ...tree, treeSha256: "b".repeat(64) } } as never)).not.toBe(base);
+    expect(caseHash(unvalidated<EvalCase>({ ...evalCase, fixture: { ...tree, path: "fixtures/b" } }))).toBe(base);
+    expect(caseHash(unvalidated<EvalCase>({ ...evalCase, fixture: { ...tree, treeSha256: "b".repeat(64) } }))).not.toBe(base);
   });
 
   it("leaves a variant's topology module path out but not its source hash", () => {
-    const variant = readFixture<{ topology: Record<string, string> }>("variants/single-pass.json");
-    const base = variantHash(variant as never);
+    const variant = readFixtureObject("variants/single-pass.json");
+    const topology = asRecord(variant.topology);
+    const base = variantHash(unvalidated<VariantSpec>(variant));
 
-    expect(variantHash({ ...variant, topology: { ...variant.topology, module: "elsewhere.ts" } } as never)).toBe(base);
-    expect(variantHash({ ...variant, topology: { ...variant.topology, sourceSha256: "c".repeat(64) } } as never)).not.toBe(base);
+    expect(variantHash(unvalidated<VariantSpec>({ ...variant, topology: { ...topology, module: "elsewhere.ts" } }))).toBe(base);
+    expect(variantHash(unvalidated<VariantSpec>({ ...variant, topology: { ...topology, sourceSha256: "c".repeat(64) } }))).not.toBe(base);
   });
 });
 
 describe("references to other specs", () => {
-  const variant = readFixture<Record<string, unknown> & { steps: Record<string, unknown> }>("variants/single-pass.json");
+  const variant = readFixtureObject("variants/single-pass.json");
   const childRef = { id: "child-unit", version: "1.0.0" };
-  const withChild = (child: unknown) => ({ ...variant, steps: { ...variant.steps, delegate: { kind: "unit", unit: childRef, variant: child } } });
+  const withChild = (child: unknown) => ({ ...variant, steps: { ...asRecord(variant.steps), delegate: { kind: "unit", unit: childRef, variant: child } } });
 
   it("moves a parent variant's hash when its pinned child variant changes", () => {
-    expect(variantHash(withChild("d".repeat(64)) as never)).not.toBe(variantHash(withChild("e".repeat(64)) as never));
+    expect(variantHash(unvalidated<VariantSpec>(withChild("d".repeat(64))))).not.toBe(variantHash(unvalidated<VariantSpec>(withChild("e".repeat(64)))));
   });
 
   it.each([
@@ -92,8 +92,8 @@ describe("references to other specs", () => {
   });
 
   it("moves a case's hash when it changes split, because the suite lists cases by hash alone", () => {
-    const evalCase = readFixture<Record<string, unknown>>("cases/standup-note.json");
+    const evalCase = readFixtureObject("cases/standup-note.json");
 
-    expect(caseHash({ ...evalCase, split: "holdout" } as never)).not.toBe(caseHash(evalCase as never));
+    expect(caseHash(unvalidated<EvalCase>({ ...evalCase, split: "holdout" }))).not.toBe(caseHash(unvalidated<EvalCase>(evalCase)));
   });
 });

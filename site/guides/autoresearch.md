@@ -54,6 +54,7 @@ in this process against the local database.
 | `status [runId] [--json]` | With no run, one line per run. With a run, one line per rung from `none` to `L3` naming the ideas that stopped there, then the ladders still running. `--json` prints the read model. |
 | `add-idea <runId> --file <proposal.json>` | Queues an owner proposal, in the planner's proposal shape, for an unfinished run. The run reads it at its next round. |
 | `milestone <runId>` | Starts one validator look at the run's best head. **It needs serve:** counting looks and starting one must happen in one process. |
+| `plan-dry-run <target> [--min-pool n]` | Runs only a round-1 planner turn, against an empty digest, and checks its ops the way the run would: parse, queue-ops schema, quotas. It prints a JSON report and exits 1 on any miss. Nothing is pinned, no baseline or implementer runs, and no run is recorded, so a brief or contract defect costs one planner turn. It always runs in this process. |
 
 Exit codes:
 

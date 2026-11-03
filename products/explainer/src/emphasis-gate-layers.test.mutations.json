@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a custom beat is held to its beat spec, not its built layer",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "if (layer !== undefined) return",
+      "replace": "if (layer === null) return",
+      "kills": [
+        "emphasis target gate on custom layers holds a custom beat's cues to the ids its built layer exposes, not to slots its beat spec would need"
+      ]
+    },
+    {
+      "name": "a target a custom layer does not expose passes",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "if (exposed.includes(cue.target)) return placement",
+      "replace": "if (exposed.length >= 0) return placement",
+      "kills": [
+        "emphasis target gate on custom layers fails a custom beat's cue whose target its built layer does not expose, naming what it does expose"
+      ]
+    },
+    {
+      "name": "the verdict lists only the first five failures",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "failures.map(failureLine).join",
+      "replace": "failures.slice(0, 5).map(failureLine).join",
+      "kills": [
+        "emphasis gate verdict on many failures lists all seven failing cues past the fifth, each with its target and reason, and one hint per kind of failure"
+      ]
+    }
+  ]
+}

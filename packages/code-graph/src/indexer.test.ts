@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
+import { FIXTURE_TSCONFIG, openTestStore } from "./incremental.test-helpers.js";
 import { indexPaths } from "./indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "./store.js";
+import type { CodeGraphStore } from "./store.js";
 
 const A_TS = "export const A = 1;\n";
 const B_TS = `import { A } from "./a.js";
@@ -60,7 +60,7 @@ async function makeProject(): Promise<{ root: string; store: CodeGraphStore }> {
   await fs.writeFile(path.join(root, "src/a.ts"), A_TS);
   await fs.writeFile(path.join(root, "src/b.ts"), B_TS);
   await fs.writeFile(path.join(root, "src/index.ts"), INDEX_TS);
-  return { root, store: openCodeGraph(path.join(root, "graph.sqlite3")) };
+  return { root, store: openTestStore(path.join(root, "graph.sqlite3")) };
 }
 
 describe("indexPaths", () => {

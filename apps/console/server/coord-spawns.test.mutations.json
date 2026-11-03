@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "one malformed meta fails the whole read",
+      "file": "apps/console/server/coord-spawns.ts",
+      "find": "CASE WHEN json_valid(meta) THEN meta ELSE '{}' END AS m",
+      "replace": "meta AS m",
+      "kills": [
+        "readLifecycleRows reads lifecycle rows since the cut-off, skips messages, and survives a malformed meta"
+      ]
+    },
+    {
+      "name": "a reviewer counts as the PR's implementer",
+      "file": "apps/console/server/coord-spawns.ts",
+      "find": "implementer: row.role === null || row.role === \"implementer\"",
+      "replace": "implementer: true",
+      "kills": [
+        "foldSpawns drops adopted sessions, marks reviewers as non-implementers and strips the initiative from a task"
+      ]
+    },
+    {
+      "name": "an adopted session counts as a spawned agent",
+      "file": "apps/console/server/coord-spawns.ts",
+      "find": " || row.origin === \"adopted\"",
+      "replace": "",
+      "kills": [
+        "foldSpawns drops adopted sessions, marks reviewers as non-implementers and strips the initiative from a task"
+      ]
+    },
+    {
+      "name": "a respawn leaves the older run live",
+      "file": "apps/console/server/coord-spawns.ts",
+      "find": "if (previous) previous.live = false;",
+      "replace": "",
+      "kills": [
+        "foldSpawns ends the older run of a respawned name and applies a later exit to the newest spawn"
+      ]
+    }
+  ]
+}

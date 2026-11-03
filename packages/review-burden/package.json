@@ -31,7 +31,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@titan-design/fix-proof": "workspace:^"
+    "@titan-design/fix-proof": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^"
   },
   "scripts": {
     "build": "tsup",

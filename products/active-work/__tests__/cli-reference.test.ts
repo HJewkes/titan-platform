@@ -34,7 +34,7 @@ function scratchProductRoot(): string {
 
 describe('gen-cli-reference', () => {
   it('writes a non-empty docs/cli-reference.md', () => {
-    expect(existsSync(path.join(productRoot, 'dist/cli.js')), 'run pnpm build first').toBe(true);
+    expect(existsSync(path.join(productRoot, 'dist/program.js')), 'run pnpm build first').toBe(true);
     const root = scratchProductRoot();
 
     const run = spawnSync(process.execPath, [path.join(root, 'scripts/gen-cli-reference.mjs')], {

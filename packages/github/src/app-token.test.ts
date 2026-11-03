@@ -33,6 +33,16 @@ function scripted(answer: (call: Call) => GhResult): { exec: GhExec; calls: Call
   return { calls, exec: async (args, input, options) => (calls.push({ args, input, options }), answer({ args, input, options })) };
 }
 
+function messageOf(error: unknown): string {
+  if (!(error instanceof Error)) throw new Error("expected an Error");
+  return error.message;
+}
+
+function asGhError(error: unknown): GhError {
+  if (!(error instanceof GhError)) throw new Error("expected a GhError");
+  return error;
+}
+
 // Built at runtime so the repo never holds a literal PEM private-key header.
 const pemBlock = (label: string, body: string) => ["BEGIN", "END"].map((edge) => `-----${edge} ${label}-----`).join(`\n${body}\n`);
 const ok = (body: unknown): GhResult => ({ code: 0, stdout: `HTTP/2.0 201 Created\r\n\r\n${JSON.stringify(body)}`, stderr: "" });
@@ -41,7 +51,7 @@ const request = { name: "shepherd", headSha: HEAD, conclusion: "success" as cons
 
 describe("appInstallationToken", () => {
   it("signs an RS256 JWT that verifies, issued 60 s back and valid under 10 minutes", () => {
-    const [header, payload, signature] = signAppJwt(77, PEM, NOW).split(".") as [string, string, string];
+    const [header = "", payload = "", signature = ""] = signAppJwt(77, PEM, NOW).split(".");
 
     const claims = JSON.parse(Buffer.from(payload, "base64url").toString());
     const verified = createVerify("RSA-SHA256").update(`${header}.${payload}`).verify(publicKey, Buffer.from(signature, "base64url"));
@@ -90,8 +100,8 @@ describe("appInstallationToken", () => {
 
     for (const gh of [failed, bare, leaky]) {
       const error = await appInstallationToken(credentials, gh.exec).catch((caught: Error) => caught);
-      expect((error as Error).message).toContain("installation token exchange failed");
-      expect((error as Error).message).not.toContain(TOKEN);
+      expect(messageOf(error)).toContain("installation token exchange failed");
+      expect(messageOf(error)).not.toContain(TOKEN);
     }
   });
 
@@ -102,8 +112,8 @@ describe("appInstallationToken", () => {
 
     const error = await appInstallationToken(credentials, exec).catch((caught: Error) => caught);
 
-    expect((error as Error).message).toContain("could not run");
-    expect((error as Error).message).not.toMatch(/eyJ/);
+    expect(messageOf(error)).toContain("could not run");
+    expect(messageOf(error)).not.toMatch(/eyJ/);
   });
 
   it("refuses a body that is not JSON without echoing it", async () => {
@@ -111,8 +121,8 @@ describe("appInstallationToken", () => {
 
     const error = await appInstallationToken(credentials, gh.exec).catch((caught: Error) => caught);
 
-    expect((error as Error).message).toMatch(/not JSON/);
-    expect((error as Error).message).not.toContain(TOKEN);
+    expect(messageOf(error)).toMatch(/not JSON/);
+    expect(messageOf(error)).not.toContain(TOKEN);
   });
 
   it("refuses a non-RSA key", async () => {
@@ -129,10 +139,10 @@ describe("appInstallationToken", () => {
     const error = await appInstallationToken(credentials, gh.exec).catch((caught: Error) => caught);
 
     const jwt = gh.calls[0]!.options!.env!.GH_TOKEN!;
-    expect((error as Error).message).toContain("HTTP");
-    expect((error as Error).message).not.toContain(jwt);
-    expect((error as Error).message).not.toContain(PEM);
-    expect((error as Error).message).not.toContain(PEM.split("\n")[1]!);
+    expect(messageOf(error)).toContain("HTTP");
+    expect(messageOf(error)).not.toContain(jwt);
+    expect(messageOf(error)).not.toContain(PEM);
+    expect(messageOf(error)).not.toContain(PEM.split("\n")[1]!);
   });
 });
 
@@ -159,7 +169,7 @@ describe("createCheckRun", () => {
     const port = githubPort(wireWith(gh));
 
     for (const conclusion of ["neutral", "cancelled", "SUCCESS", ""]) {
-      const attempt = port.createCheckRun(REPO, { ...request, conclusion: conclusion as "success" });
+      const attempt = port.createCheckRun(REPO, Object.assign({ ...request }, { conclusion }));
       await expect(attempt).rejects.toBeInstanceOf(GitHubInputError);
     }
 
@@ -175,8 +185,8 @@ describe("createCheckRun", () => {
     const error = await githubPort(wireWith(gh)).createCheckRun(REPO, request).catch((caught: Error) => caught);
     for (const { level, original } of spies) console[level] = original;
 
-    expect((error as Error).message).toContain("HTTP 403");
-    expect([(error as Error).message, (error as Error).stack ?? "", ...logged].join("\n")).not.toContain(TOKEN);
+    expect(messageOf(error)).toContain("HTTP 403");
+    expect([messageOf(error), error instanceof Error ? (error.stack ?? "") : "", ...logged].join("\n")).not.toContain(TOKEN);
     expect(PEM).not.toContain(TOKEN);
   });
 
@@ -187,9 +197,9 @@ describe("createCheckRun", () => {
     const minting = await githubPort(wireWith(gh, async () => { throw new Error("mint failed"); })).createCheckRun(REPO, request).catch((caught: Error) => caught);
 
     expect(failure).toBeInstanceOf(GhError);
-    expect((failure as GhError).status).toBe(422);
-    expect((failure as GhError).message).not.toContain(TOKEN);
-    expect((minting as Error).message).toBe("mint failed");
+    expect(asGhError(failure).status).toBe(422);
+    expect(asGhError(failure).message).not.toContain(TOKEN);
+    expect(messageOf(minting)).toBe("mint failed");
   });
 
   it("refuses when the wire has no token provider", async () => {
@@ -297,7 +307,7 @@ describe("fake createCheckRun round trip", () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
 
-    await expect(port.createCheckRun(REPO, { ...request, conclusion: "neutral" as "success" })).rejects.toBeInstanceOf(GitHubInputError);
+    await expect(port.createCheckRun(REPO, Object.assign({ ...request }, { conclusion: "neutral" }))).rejects.toBeInstanceOf(GitHubInputError);
     await port.createCheckRun(REPO, request);
 
     expect(fake.calls).toEqual(["createCheckRun"]);
@@ -315,7 +325,7 @@ describe("token shape scrub", () => {
   it("scrubs a bare token in stderr with empty stdout, with or without a newline", async () => {
     for (const echoed of [`denied ${SHAPED}`, `denied ${SHAPED}\n`, `denied ${JWT}\n`]) {
       expect(await exchange("", echoed)).not.toMatch(/ghs_A1b2|eyJhbGci/);
-      const error = (await checkRun({ code: 1, stdout: "", stderr: echoed })) as GhError;
+      const error = asGhError(await checkRun({ code: 1, stdout: "", stderr: echoed }));
       expect(error.result.stderr).not.toMatch(/ghs_A1b2|eyJhbGci/);
     }
   });
@@ -338,7 +348,7 @@ describe("token shape scrub", () => {
   it("redacts a token quoted by a rejecting appToken provider", async () => {
     const error = await checkRun(ok({ id: 1 }), async () => { throw new Error(`mint failed for ${SHAPED}`); });
 
-    expect((error as Error).message).toBe("mint failed for [redacted]");
+    expect(messageOf(error)).toBe("mint failed for [redacted]");
   });
 
   it("leaves ordinary text alone", () => {
@@ -429,8 +439,8 @@ describe("token shape scrub", () => {
       const error = await githubPort(ghCliWire(scripted(() => result).exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
 
       expect(error).toBeInstanceOf(GhError);
-      expect((error as GhError).message).toMatch(/failed \(1\): \[redacted\] \(HTTP 403\)$/);
-      expect((error as GhError).message).not.toMatch(/A1b2|C3d4/);
+      expect(messageOf(error)).toMatch(/failed \(1\): \[redacted\] \(HTTP 403\)$/);
+      expect(messageOf(error)).not.toMatch(/A1b2|C3d4/);
     }
   });
 
@@ -446,7 +456,7 @@ describe("token shape scrub", () => {
     const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
       const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
       const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
-      return (error as GhError).message;
+      return messageOf(error);
     };
 
     it.each([
@@ -489,8 +499,8 @@ describe("token shape scrub", () => {
 
       const error = await ghCliWire(exec, { budget: rateBudget() }).listIssueComments(REPO, 7).catch((caught: Error) => caught);
 
-      expect((error as Error).message).toContain("refusing to follow");
-      expect((error as Error).message).not.toContain(hex);
+      expect(messageOf(error)).toContain("refusing to follow");
+      expect(messageOf(error)).not.toContain(hex);
     });
   });
 
@@ -500,7 +510,7 @@ describe("token shape scrub", () => {
     const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
       const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
       const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
-      return (error as GhError).message;
+      return messageOf(error);
     };
 
     it.each([

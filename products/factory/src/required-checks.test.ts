@@ -4,6 +4,7 @@ import { openFactoryHost, type FactoryHost } from "./host.js";
 import { requireBaseRequiredChecks, requireRequiredChecks } from "./required-checks.js";
 import { H1, approveUntilSettled, landScenario } from "./test-support/land.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./shepherd/merge-facts.js";
+import { fakeLocator } from "./test-support/fakes.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("required-checks-head");
@@ -24,7 +25,7 @@ function failRulesWith(fake: FakeGitHub, error: Error): void {
 }
 
 function evidenceInput(): MergeEvidenceInput {
-  const locator = { sourceId: "transcript-1" } as unknown as MergeEvidenceInput["verdict"]["locator"];
+  const locator = fakeLocator({ sourceId: "transcript-1" });
   return { runId: "run-1", repo: REPO, pr: 1, head: HEAD, verdict: { value: "MERGE", head: HEAD, locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: ["merge-on-green-approve"] };
 }
 

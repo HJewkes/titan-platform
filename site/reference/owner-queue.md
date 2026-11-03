@@ -56,8 +56,10 @@ const list = rank(mergeByKeys([gate, ask]));
 Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
 holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
 `recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
-`personal`, `unblocks`, `expiresAt`, `audience`, plus `depositId`. `asker` and `depositId` are
-required; `keys` and `unblocks` default to empty and `personal` to false.
+`personal`, `unblocks`, `unblocksNow`, `expiresAt`, `audience`, plus `depositId`. `asker` and
+`depositId` are required; `keys` and `unblocks` default to empty and `personal` to false.
+`unblocksNow` is optional: one trimmed line of at most 200 characters on what the answer
+unblocks right now. The console lists a deposit without it as planning, never blocking.
 
 `audience` is `"owner"` or `"operator"` and says which reader the item is for; an item with
 none is the owner's. It selects a view and grants no authority. `forAudience(items, audience)`
@@ -321,6 +323,43 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
 - **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.
+
+## Plan rounds
+
+`buildPlanRound(input)` drafts the round that asks the owner a merge gate's WHAT question at
+plan time. Each ask is one gate a planned PR would hit at merge, with the exact scope the
+owner approves. The result is the whole round.json: the round@2 manifest plus the console's
+own `planApprovals` field, and `supersedes` when given.
+
+```ts
+import { buildPlanRound } from "@titan-design/owner-queue";
+
+const round = buildPlanRound({
+  unit: "plan-example-tp-1",
+  round: 1,
+  task: "example/TP-1",
+  repo: "example-org/example-repo",
+  asks: [{ gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] }, title: "The skill file", context: "One new skill." }],
+});
+// JSON.stringify(round) is what `titan-console decisions file -` reads
+```
+
+- **One question per ask.** Each ask is a pick-one in its own section. Its options are
+  `Approve this <gate> change for <task> as pinned below` and
+  `Revise: send the plan back for <task>`. The labels name the gate and the task, and pass
+  the same normaliser as review rounds, so no label is shared or reads as a blanket sign-off.
+- **Bindings.** `planApprovals[i]` is `{ questionId, approve, task, repo, gate, scope }`, with
+  `approve` the question's first option and `scope` a copy of the ask's. The console records
+  exactly that entry when the owner picks `approve`; a Revise pick records nothing.
+- **Scopes.** `ci-policy` takes `{ ciPolicyKeys, files: [{ path, blob }] }`, with `blob` the
+  40-hex git blob sha at head or `null` for an absent file. `skill` and `visual` take
+  `{ paths }`. The builder does not validate scopes; the console and the factory each parse
+  them strictly.
+- **No recommendation.** The planner does not recommend its own approval, so the round is
+  `recommendations: "shown"` with none to show.
+- **Errors.** An empty `asks` list or a non-loopback `storybookUrl` (default
+  `http://127.0.0.1:6006/`) throws, and the manifest is parsed with `RoundSchema` before it is
+  returned.
 
 ## Relation keys
 

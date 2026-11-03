@@ -5,11 +5,12 @@ import path from "node:path";
 import { EXIT, successEnvelope } from "@titan-design/rpc-protocol";
 import { exportSnapshot } from "./node/index.js";
 import { RpcError, createRpcClient, liveSource, parseSnapshot, staticSource, type DataSource, type SnapshotResolver } from "./index.js";
-import { TASKS, createTestRegistry, listTasks, registryCaller, startTestDaemon, type Commands, type Task, type TestDaemon } from "./test-fixtures.js";
+import { TASKS, createTestRegistry, listTasks, registryCaller, startTestDaemon, type Commands, type LooseSlugCommands, TaskListArgs, TasksSchema, type TestDaemon } from "./test-fixtures.js";
 
 /** Report-app code: it knows the command map and nothing about where answers come from. */
 async function reportView(source: DataSource) {
   const client = createRpcClient<Commands>(source);
+  const loose = createRpcClient<LooseSlugCommands>(source);
   const failure = (err: unknown) => (err instanceof RpcError ? { failed: err.code, message: err.message } : err);
   return {
     open: await client.call("task.list", { status: "open" }),
@@ -17,7 +18,7 @@ async function reportView(source: DataSource) {
     task: await client.call("task.get", { slug: "b" }),
     tagged: await client.call("task.find", { filter: { status: "open", tags: ["ui"] } }),
     missing: await client.call("task.get", { slug: "zzz" }).catch(failure),
-    invalid: await client.call("task.get", { slug: 7 as unknown as string }).catch(failure),
+    invalid: await loose.call("task.get", { slug: 7 }).catch(failure),
   };
 }
 
@@ -70,13 +71,13 @@ describe("static export parity", () => {
   });
 
   it("answers from a dataset through a resolver sharing the daemon's query core", async () => {
-    const resolve: SnapshotResolver<Task[]> = (command, args, tasks) =>
+    const resolve: SnapshotResolver = (command, args, dataset) =>
       command === "task.list"
-        ? successEnvelope(listTasks(tasks, args as Parameters<typeof listTasks>[1]))
+        ? successEnvelope(listTasks(TasksSchema.parse(dataset), TaskListArgs.parse(args)))
         : { ok: false, error: `${command} is not available in a static dataset`, code: EXIT.UNAVAILABLE };
     const file = path.join(dir, "dataset.json");
     await exportSnapshot(file, registryCaller(createTestRegistry()), { dataset: TASKS });
-    const offline = createRpcClient<Commands>(staticSource({ snapshot: await loadSnapshot(file), resolve: resolve as SnapshotResolver }));
+    const offline = createRpcClient<Commands>(staticSource({ snapshot: await loadSnapshot(file), resolve }));
     const live = createRpcClient<Commands>(liveSource({ origin: daemon.origin }));
 
     expect(await offline.call("task.list", { status: "open" })).toEqual(await live.call("task.list", { status: "open" }));

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "adjacent-delta divides by the longest sentence, not the mean",
+      "file": "products/explainer/src/lint-writing.ts",
+      "find": "/ (total / lengths.length);",
+      "replace": "/ Math.max(...lengths);",
+      "kills": [
+        "adjacentDelta is the mean step over the mean length, hand-counted on sentences of 2, 6, 2 and 8 words"
+      ]
+    }
+  ]
+}

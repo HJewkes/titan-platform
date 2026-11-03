@@ -15,8 +15,8 @@ import {
 
 const A_SRC = ["const zero = 0;", "function foo() {", "  return 1;", "}", "export { foo };"].join("\n");
 
-function edge(srcId: string, dstId: string, kind: string, weight: number): GraphEdge {
-  return { srcId, dstId, kind, attrs: { weight } } as GraphEdge;
+function edge(srcId: string, dstId: string, kind: GraphEdge["kind"], weight: number): GraphEdge {
+  return { srcId, dstId, kind, attrs: { weight } };
 }
 
 const REF_EDGES: GraphEdge[] = [

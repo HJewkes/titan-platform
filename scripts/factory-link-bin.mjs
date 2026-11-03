@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Puts titan-factory on PATH: a symlink in a user bin directory that points at the built bin.
+// Puts the platform bins on PATH: a symlink per BINS row in a user bin directory that points at the built bin.
 // Usage: node scripts/factory-link-bin.mjs [--bin-dir <dir>] [--force]
 import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
@@ -7,7 +7,12 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BIN_NAME = "titan-factory";
+
+/** Every bin `pnpm factory:install` links: the name on PATH and the built entry it points at, relative to the checkout. */
+export const BINS = [
+  { name: "titan-factory", entry: join("products", "factory", "dist", "bin.js") },
+  { name: "titan-miner", entry: join("products", "session-miner", "dist", "bin.js") },
+];
 
 export function parseArgs(argv, home = homedir()) {
   const opts = { binDir: join(home, ".local", "bin"), force: false };
@@ -27,9 +32,9 @@ function currentTarget(link) {
 }
 
 /** A link that points at another checkout is someone's working install, so only --force repoints it. */
-export function linkBin({ target, binDir, force }) {
+export function linkBin({ name, target, binDir, force }) {
   if (!existsSync(target)) throw new Error(`${target} is not built; run pnpm --filter "@titan-design/factory..." build`);
-  const link = join(binDir, BIN_NAME);
+  const link = join(binDir, name);
   const current = currentTarget(link);
   if (current === target) return { link, status: "unchanged" };
   if (current === "file") throw new Error(`${link} exists and is not a symlink; remove it or pass --bin-dir`);
@@ -40,13 +45,20 @@ export function linkBin({ target, binDir, force }) {
   return { link, status: current === "absent" ? "linked" : "repointed" };
 }
 
+/** Links every BINS row, checking they are all built first so a missing one leaves the bin directory untouched. */
+export function linkAll({ root, binDir, force, bins = BINS }) {
+  const rows = bins.map(({ name, entry }) => ({ name, target: join(root, entry) }));
+  for (const { target } of rows) {
+    if (!existsSync(target)) throw new Error(`${target} is not built; run pnpm --filter "@titan-design/factory..." --filter "@titan-design/session-miner..." build`);
+  }
+  return rows.map((row) => ({ ...row, ...linkBin({ ...row, binDir, force }) }));
+}
+
 export const onPath = (binDir, pathVar) => (pathVar ?? "").split(delimiter).some((entry) => entry !== "" && resolve(entry) === binDir);
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const target = join(ROOT, "products", "factory", "dist", "bin.js");
-  const { link, status } = linkBin({ target, ...opts });
-  console.log(`${status} ${link} -> ${target}`);
+  for (const { link, status, target } of linkAll({ root: ROOT, ...opts })) console.log(`${status} ${link} -> ${target}`);
   if (!onPath(opts.binDir, process.env.PATH)) console.log(`${opts.binDir} is not on PATH; add it, e.g. export PATH="${opts.binDir}:$PATH"`);
   console.log("next: titan-factory service install --mcp");
 }

@@ -4,17 +4,19 @@ import { closePr, type ClosePrDeps } from "../owner-ops/close-pr.js";
 import { runLogged, type OwnerOpsLedger } from "../owner-ops/ledger.js";
 import { mergeAtHead, type MergeAtHeadDeps } from "../owner-ops/merge-at-head.js";
 import { clearPause, type PauseClearDeps } from "../owner-ops/pause-clear.js";
+import { retireAgent, type RetireAgentDeps } from "../owner-ops/retire-agent.js";
 import { refused, type Outcome } from "./outcome.js";
 import type { OpRead } from "./record.js";
 
-/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, the standing answers, the ledger and the deploy state. */
-type OpContext = MergeAtHeadDeps & ClosePrDeps & PauseClearDeps;
+/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, the standing answers, the ledger, agent-chat and the deploy state. */
+type OpContext = MergeAtHeadDeps & ClosePrDeps & RetireAgentDeps & PauseClearDeps;
 export type OpEffect<C = OpContext> = (actionId: string, read: OpRead, context: C) => Promise<Outcome>;
 type OpEffects<C = OpContext> = Readonly<Partial<Record<OwnerOpKind, OpEffect<C>>>>;
 
 /** The ops the console may run, as data: each later slice adds its kind's effect here, and a kind with none is refused. */
 export const OP_EFFECTS: OpEffects = Object.freeze({
   "merge-at-head": mergeAtHead,
+  "retire-agent": retireAgent,
   "close-pr": closePr,
   "deploy-pause-clear": clearPause,
 });

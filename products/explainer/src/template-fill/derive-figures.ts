@@ -1,18 +1,19 @@
 import type { ScriptBeat } from "../script-schema.js";
 import { chapterTitle } from "./derive-rows.js";
-import { chartPoint, cueWords, dayLabel, isDateName, itemReveals } from "./label-parse.js";
-import type { BeatScope, Derivation } from "./types.js";
+import { chartPoint, dayLabel, isDateName, itemReveals } from "./label-parse.js";
+import type { BeatScope, Derivation, Reveal } from "./types.js";
 
-const FIGURE = /(-?\d[\d,]*(?:\.\d+)?)\s*(%)?/;
+// A currency sign or a version `v` written flush against its number belongs to it, not to the label.
+const FIGURE = /([$€£¥]|\bv(?=\d))?(-?\d[\d,]*(?:\.\d+)?)\s*(%)?/;
 // A trend needs three points; fewer by day still read as bars (the sample builder's GRAPH_POINTS_MIN).
 const GRAPH_POINTS_MIN = 3;
 
-/** A label's first number as a figure, `%` as its unit when it follows, the rest of the label as its label. */
+/** A label's first number as a figure, a flush currency sign or `v` as its prefix, `%` as its unit when it follows, the rest of the label as its label. */
 function figureOf(label: string, id: string): Record<string, unknown> | undefined {
   const found = FIGURE.exec(label);
   if (!found) return undefined;
   const rest = `${label.slice(0, found.index)} ${label.slice(found.index + found[0].length)}`.replace(/\s+/g, " ").trim();
-  return { id, value: Number(found[1]!.replace(/,/g, "")), ...(found[2] ? { unit: found[2] } : {}), label: rest || label };
+  return { id, value: Number(found[2]!.replace(/,/g, "")), ...(found[1] ? { prefix: found[1] } : {}), ...(found[3] ? { unit: found[3] } : {}), label: rest || label };
 }
 
 /** One figure a label when every label carries a number. */
@@ -30,9 +31,13 @@ export function deriveStakes(beat: ScriptBeat): Derivation {
   return { slots: { cost: beat.visual.assertion, figures }, reveals: itemReveals(beat, "figures", figures.length) };
 }
 
+/** Bars grow from the first bar's cue; a later bar with a cue word of its own grows on that word instead. */
+const barReveals = (beat: ScriptBeat, count: number): Reveal[] =>
+  itemReveals(beat, "series", count).filter((reveal, i, all) => i === 0 || reveal.atCue !== all[i - 1]!.atCue);
+
 /**
  * `name: number` labels as a chart: a line when there are 3 or more points and every name is a date (ISO days read
- * `MM-DD`), each point on its cue; else bars, revealed on the first bar's cue only, as the sample builder cues them.
+ * `MM-DD`), each point on its cue; else bars, each cued bar on its own cue.
  */
 export function deriveChart(beat: ScriptBeat, scope: BeatScope): Derivation {
   const { labels } = beat.visual;
@@ -42,5 +47,5 @@ export function deriveChart(beat: ScriptBeat, scope: BeatScope): Derivation {
   const line = pairs.length >= GRAPH_POINTS_MIN && pairs.every((point) => isDateName(point.name));
   const series = pairs.map((point, i) => ({ id: `series-${i + 1}`, label: line ? dayLabel(point.name) : point.name, value: point.value }));
   if (line) return { slots: { kind: "line", ...chapterTitle(scope), series }, reveals: itemReveals(beat, "series", series.length) };
-  return { slots: { kind: "bar", series }, reveals: [{ target: "series-1", atCue: cueWords(beat, 1)[0]! }] };
+  return { slots: { kind: "bar", series }, reveals: barReveals(beat, series.length) };
 }

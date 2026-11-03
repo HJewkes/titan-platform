@@ -1,0 +1,14 @@
+{
+  "durationS": 3,
+  "beats": [
+    {
+      "id": "long-labels", "kind": "stat", "startS": 0, "durationS": 3, "headline": "Four synthetic figures, each with a long label",
+      "slots": { "figures": [
+        { "id": "figures-1", "label": "widgets polished: #", "value": 4821 },
+        { "id": "figures-2", "label": "gadgets checked:", "value": 377 },
+        { "id": "figures-3", "label": "per finished gizmo: #", "value": 12.5 },
+        { "id": "figures-4", "label": "sprockets in reserve: #", "value": 9 }
+      ] }
+    }
+  ]
+}

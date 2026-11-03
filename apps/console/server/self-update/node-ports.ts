@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync, existsSync, lstatSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync, lstatSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -187,6 +187,20 @@ function isAlive(pid: number): boolean {
   }
 }
 
+function fileSize(file: string): number | undefined {
+  try {
+    return statSync(file).size;
+  } catch {
+    return undefined;
+  }
+}
+
+/** syncfs(2) on the release's filesystem: one call flushes the whole worktree without walking node_modules file by file. */
+async function syncFs(dir: string): Promise<string | undefined> {
+  const synced = await run("sync", ["-f", dir]);
+  return synced.code === 0 ? undefined : synced.stderr.trim() || `exit ${synced.code}`;
+}
+
 const readFile = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, "utf8") : undefined);
 const listDirs = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
 
@@ -204,6 +218,8 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     mkdir: (dir) => void mkdirSync(dir, { recursive: true, mode: 0o700 }),
     writeFile: (file, text) => writeFileSync(file, text, { mode: 0o600 }),
     writeShim,
+    syncFs,
+    fileSize,
     readFile,
     remove: (file) => rmSync(file, { force: true }),
     createExclusive,

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { LIST_PRICE_CAVEAT } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig, type MinerConfig } from "../config.js";
 import { createMinerContext } from "../context.js";
@@ -37,16 +38,16 @@ async function cli(args: string[]): Promise<{ code: number; stdout: string; stde
   return { code, stdout, stderr };
 }
 
-interface Envelope {
-  ok: boolean;
-  data: { question: string; caveat: string; filters: Record<string, unknown>; answer: { totals: { sessions: number } } & Record<string, unknown> };
-}
+const envelopeSchema = z.object({
+  ok: z.boolean(),
+  data: z.object({ question: z.string(), caveat: z.string(), filters: z.record(z.string(), z.unknown()), answer: z.looseObject({ totals: z.looseObject({ sessions: z.number() }) }) }),
+});
 
-async function ask(name: string, flags: string[] = WINDOW_FLAGS): Promise<Envelope["data"]> {
+async function ask(name: string, flags: string[] = WINDOW_FLAGS): Promise<z.output<typeof envelopeSchema>["data"]> {
   const { code, stdout, stderr } = await cli(["--json", "insights", name, ...flags]);
   expect(stderr).toBe("");
   expect(code).toBe(0);
-  const envelope = JSON.parse(stdout) as Envelope;
+  const envelope = envelopeSchema.parse(JSON.parse(stdout));
   expect(envelope.ok).toBe(true);
   return envelope.data;
 }
@@ -116,7 +117,7 @@ describe.each(GRAPH_QUESTIONS.map((q) => [q.id, q] as const))("insights question
 describe("question answers", () => {
   it("Q1 reports spend by action per role and honours --mechanical", async () => {
     const data = await ask(spendByAction.name, [...WINDOW_FLAGS, "--mechanical", "dispatch"]);
-    const answer = data.answer as unknown as { byAction: { role: string }[]; mechanicalShare: { classes: string[]; costUsd: number } };
+    const answer = spendByAction.schema.parse(data.answer);
 
     expect(answer.byAction.map((r) => r.role).sort()).toEqual(["worker:coordinator", "worker:implementer", "worker:reviewer"]);
     expect(answer.mechanicalShare.classes).toEqual(["dispatch"]);
@@ -128,22 +129,22 @@ describe("question answers", () => {
     writeFileSync(log, "");
 
     const data = await ask(handoffThreshold.name, [...WINDOW_FLAGS, "--k", "100000", "--k", "200000", "--reviewer-prs", "4", "--broker-log", log]);
-    const handoff = (data.answer as unknown as { handoffThreshold: { configuredK: number[]; reviewers: { prs: number } } }).handoffThreshold;
+    const handoff = handoffThreshold.schema.parse(data.answer).handoffThreshold;
 
     expect(handoff.configuredK).toEqual([100_000, 200_000]);
     expect(handoff.reviewers.prs).toBe(4);
   });
 
   it("Q3 reprices each role's 1h writes at the 5m rate", async () => {
-    const answer = (await ask(cacheTtl.name)).answer as unknown as { byRole: { key: string; repriceSavingUsd: number }[] };
+    const answer = cacheTtl.schema.parse((await ask(cacheTtl.name)).answer);
 
     expect(answer.byRole.map((r) => r.key).sort()).toEqual(["worker:coordinator", "worker:implementer", "worker:reviewer"]);
     expect(answer.byRole.every((r) => r.repriceSavingUsd > 0)).toBe(true);
   });
 
   it("Q4 cuts the coordinator's wakes into episodes and honours --episode-role", async () => {
-    const seat = (await ask(wakeEconomics.name)).answer as unknown as { wakeEpisodes: { roles: string[]; episodes: number } };
-    const reviewer = (await ask(wakeEconomics.name, [...WINDOW_FLAGS, "--episode-role", "worker:reviewer"])).answer as unknown as { wakeEpisodes: { roles: string[] } };
+    const seat = wakeEconomics.schema.parse((await ask(wakeEconomics.name)).answer);
+    const reviewer = wakeEconomics.schema.parse((await ask(wakeEconomics.name, [...WINDOW_FLAGS, "--episode-role", "worker:reviewer"])).answer);
 
     expect(seat.wakeEpisodes.episodes).toBe(2);
     expect(reviewer.wakeEpisodes.roles).toEqual(["worker:reviewer"]);
@@ -184,7 +185,7 @@ describe("insights surfaces", () => {
       });
 
       expect(res.status).toBe(400);
-      expect(((await res.json()) as { error: string }).error).toMatch(error);
+      expect(z.object({ error: z.string() }).parse(await res.json()).error).toMatch(error);
     } finally {
       await handle.close();
     }

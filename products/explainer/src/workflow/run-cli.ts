@@ -209,7 +209,7 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .addOption(new Option("--from <stage>", "first stage to run; earlier stages reuse the base run's outputs").choices(STAGES).default("script"))
     .addOption(new Option("--to <stage>", "last stage to run; a run that stops before export never reaches the theater").choices(STAGES).default("export"))
     .option("--base <runId>", "the run whose outputs stand in for the stages before --from (default: the latest run, unless --pin is given)")
-    .option("--pin <name=sha>", "an artifact from the store, laid over the base run's (repeatable)", shaPair("--pin"), {})
+    .option("--pin <name=sha>", "an artifact from the store, laid over the base run's (repeatable); seed-draft=<sha> with --from script repairs that stored draft instead of drafting", shaPair("--pin"), {})
     .option("--variant <stage=file>", "a stage variant file, explainer.variant/v1 (repeatable)", pairs("--variant", (name, file) => (stageName("--variant", name), file)), {})
     .option("--sample <stage=k>", "the sample index for a stage, part of its cache key (repeatable)", pairs("--sample", (name, k) => (stageName("--sample", name), sampleIndex(k))), {})
     .option("--video <id>", "the video this run belongs to (default: the base run's, or a new video)")

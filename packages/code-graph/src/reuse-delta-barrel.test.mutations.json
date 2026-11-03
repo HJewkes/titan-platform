@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a membership delta compares re-resolution against the stored edge target",
+      "file": "packages/code-graph/src/reuse-delta.ts",
+      "find": "return resolveRelativeId(srcId, specifier, membership.after) !== resolveRelativeId(srcId, specifier, membership.before);",
+      "replace": "return resolveRelativeId(srcId, specifier, membership.after) !== targetFileId(edge);",
+      "kills": ["re-parses only the added file when importers reach symbols through a barrel or import a stylesheet"]
+    },
+    {
+      "name": "an added file never changes how a relative specifier resolves",
+      "file": "packages/code-graph/src/reuse-delta.ts",
+      "find": "return resolveRelativeId(srcId, specifier, membership.after) !== resolveRelativeId(srcId, specifier, membership.before);",
+      "replace": "return false;",
+      "kills": ["re-points an importer through a barrel when an added file shadows the barrel's re-export"]
+    }
+  ]
+}

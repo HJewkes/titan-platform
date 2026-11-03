@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "drop the no-new-loop clause",
+      "file": "products/evals/src/review-workflow/scorecard.ts",
+      "find": "const reasons = newLoops(candidate, incumbent);",
+      "replace": "const reasons: string[] = [];",
+      "kills": [
+        "compare on the reliability track rejects a candidate that adds a loop even when its sessions per head do not rise"
+      ]
+    },
+    {
+      "name": "drop the seed floor",
+      "file": "products/evals/src/review-workflow/scorecard.ts",
+      "find": "const reasons = [...seedMisses(candidate), ...trackReasons];",
+      "replace": "const reasons = [...trackReasons];",
+      "kills": [
+        "compare on the reliability track rejects a candidate that misses tp#747 though its retry rows alone changed"
+      ]
+    },
+    {
+      "name": "accept equal catch whatever the cost",
+      "file": "products/evals/src/review-workflow/scorecard.ts",
+      "find": "return candidate.sessionsPerHead < incumbent.sessionsPerHead ? [] : [\"same catch without lower cost\"];",
+      "replace": "return [];",
+      "kills": [
+        "compare on the verdict track rejects a plan change that catches as much at no lower cost"
+      ]
+    }
+  ]
+}

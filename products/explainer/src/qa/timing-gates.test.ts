@@ -74,6 +74,36 @@ describe("static-window gate", () => {
     expect(gate.pass).toBe(true);
   });
 
+  describe("a text revealed between two probe samples", () => {
+    // 26 characters, so a 2 s reading hold at 13 chars/s.
+    const label = "Ledger rows land each hour";
+    const probed = [moment(1, []), moment(1.8, [label]), moment(7, [label])];
+    /** Still from frame 46 to 197: 95 frames (3.17 s) past a hold that starts at 1.425 s, 84 past one at 1.8 s. */
+    const stillAfterReveal = diffs(8, (n) => n >= 46 && n <= 197);
+
+    it("starts the hold at the cue that revealed it, not at the sample that first showed it", () => {
+      const cued = { beats: [beat("b1", 0, 8, [{ name: "ledger", atS: 1.425 }])] };
+
+      const gate = staticWindow(input({ timeline: cued, diffs: stillAfterReveal, probed }));
+
+      expect(gate).toMatchObject({ value: 3.167, pass: false, beats: ["b1"] });
+    });
+
+    it("starts the hold where the picture starts to move when no cue falls between the samples", () => {
+      const settledThenEntering = diffs(8, (n) => (n > FPS && n < 43) || (n >= 46 && n <= 197));
+
+      const gate = staticWindow(input({ timeline: eight, diffs: settledThenEntering, probed }));
+
+      expect(gate).toMatchObject({ value: 3.167, pass: false });
+    });
+
+    it("keeps the first sample when nothing between the samples marks the reveal", () => {
+      const gate = staticWindow(input({ timeline: eight, diffs: stillAfterReveal, probed }));
+
+      expect(gate).toMatchObject({ value: 2.8, pass: true });
+    });
+  });
+
   it("reads its line from the profile, so a profile allowing 4 s passes the 3.1 s picture", () => {
     const base = fixedProfile();
     const lax = fixedProfile({ pacing: { ...base.pacing, staticMaxS: 4 } });
@@ -169,5 +199,60 @@ describe("G10 shared words", () => {
     const gate = timingReport(input({ words, probed: [moment(1, [display])] })).gates.find((g) => g.id === "G10");
 
     expect(gate?.pass).toBe(pass);
+  });
+});
+
+const gateOf = (over: Partial<TimingInput>, id: string) => timingReport(input(over)).gates.find((g) => g.id === id);
+
+describe("G9 headline and label words", () => {
+  it.each([
+    ["fails", "h1", "", "One two three four five six seven eight nine ten eleven", false],
+    ["passes", "h1", "", "One two three four five six seven eight nine ten", true],
+    ["fails", "span", "label", "four words on chip", false],
+    ["passes", "span", "label", "three word chip", true],
+  ])("%s a %s.%s holding %j", (_verdict, tag, cls, value, pass) => {
+    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [{ ...text(value), tag, cls }], boxes: [] }];
+
+    const gate = gateOf({ probed }, "G9");
+
+    expect(gate?.pass).toBe(pass);
+  });
+});
+
+describe("words-per-frame", () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+
+  it.each([
+    ["fails", 21, false],
+    ["passes", 20, true],
+  ])("%s %i prose words on screen together across texts", (_verdict, n, pass) => {
+    const probed = [moment(1, [many(10), many(n - 10)])];
+
+    const gate = gateOf({ probed }, "words-per-frame");
+
+    expect(gate).toMatchObject({ value: n, pass, beats: pass ? [] : ["b1"] });
+  });
+
+  it("frame chrome does not count toward words per frame", () => {
+    // Arrange
+    const chrome = (cls: string, words: number) => ({ ...text(many(words)), cls, element: `span.${cls}` });
+    const probed = [moment(1, [many(15)])];
+    probed[0]!.texts.push(chrome("xp-chapter", 4), chrome("xp-chapter-count", 3), chrome("xp-chip-kind", 2), chrome("ex-list-tick", 1), chrome("ex-list-ref", 2), chrome("ex-map-step", 2));
+
+    // Act
+    const gate = gateOf({ probed }, "words-per-frame");
+
+    // Assert
+    expect(gate).toMatchObject({ value: 15, pass: true });
+  });
+
+  it("leaves a code-walk beat's highlighted lines out of the count", () => {
+    const timeline = { beats: [{ ...beat("b1", 0, 4), kind: "code-walk" }] };
+    const codeLine = { ...text(many(40)), tag: "span", cls: "tok-kw", element: "span.tok-kw" };
+    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [codeLine], boxes: [] }];
+
+    const gate = gateOf({ timeline, probed }, "words-per-frame");
+
+    expect(gate).toMatchObject({ value: null, pass: true });
   });
 });

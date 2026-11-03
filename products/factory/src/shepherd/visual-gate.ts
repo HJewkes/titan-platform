@@ -1,17 +1,7 @@
 import type { MergeFacts } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
 import { oneLine } from "../gate-brief.js";
-
-/** A check that diffs rendered output against committed baselines: a rendered change must change a file under `paths`. */
-export interface VisualBaselines {
-  check: string;
-  paths: string[];
-}
-
-export interface VisualPolicy {
-  visualPaths: readonly string[] | undefined;
-  visualBaselines: VisualBaselines | undefined;
-}
+import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 
 const SHOWN_VISUAL_PATHS = 10;
 const MAX_SHOWN_PATH = 200;
@@ -38,7 +28,7 @@ export function visualMatches(paths: readonly string[], visualPaths: readonly st
   return paths.filter((path) => !cannotRender(path) && isVisual(path));
 }
 
-function caseFoldedMatcher(globs: readonly string[]): (path: string) => boolean {
+export function caseFoldedMatcher(globs: readonly string[]): (path: string) => boolean {
   try {
     const matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));
     return (path) => matches(path.toLowerCase());
@@ -64,10 +54,13 @@ export function baselineCheckGreen(merge: MergeFacts, check: string, allowedApps
   return runs.length > 0 && runs.every((run) => run.conclusion === "success");
 }
 
-/** The note an allow carries when visual files were cleared by the baseline check, so the evidence comment records why. */
-export function visualClearance(changedPaths: readonly string[], head: string, { visualPaths, visualBaselines }: VisualPolicy): string {
+/**
+ * The note an allow carries when visual files were cleared by the baseline check, so the evidence comment records why;
+ * `judged` says what a visual threshold measured, in place of "changed no baseline".
+ */
+export function visualClearance(changedPaths: readonly string[], head: string, { visualPaths, visualBaselines }: VisualPolicy, judged = "changed no baseline"): string {
   if (visualPaths === undefined || visualBaselines === undefined) return "";
   const visual = visualMatches(changedPaths, visualPaths);
   if (visual.length === 0) return "";
-  return `; visual files ${shownPaths(visual)} changed no baseline and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${head}`;
+  return `; visual files ${shownPaths(visual)} ${judged} and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${head}`;
 }

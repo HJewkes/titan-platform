@@ -2,7 +2,7 @@ import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, type RoutedStepInput, type StepRoute, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import type { HeldCheck } from "./hold.js";
+import type { HeldCheck } from "./hold-timing.js";
 import { stepName } from "./stats.js";
 import { disjointVerdict } from "./train-shadow-disjoint.js";
 import { shadowRefresh, shadowsIn, trainShadowMigration, trainShadowRef, type ShadowDeps } from "./train-shadow.js";

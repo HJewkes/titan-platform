@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   isTerminalExecutionPhase,
@@ -46,10 +47,8 @@ function event<K extends Exclude<ExecutionTransition<string>["kind"], "prepare">
   occurredAt: string,
   fields: Omit<Extract<ExecutionTransition<string>, { kind: K }>, "kind" | "executionId" | "eventId" | "expectedRevision" | "occurredAt">,
 ): Extract<ExecutionTransition<string>, { kind: K }> {
-  return { kind, executionId: "execution-1", eventId: `execution-1:${kind}:${expectedRevision}`, expectedRevision, occurredAt, ...fields } as Extract<
-    ExecutionTransition<string>,
-    { kind: K }
-  >;
+  const envelope = { kind, executionId: "execution-1", eventId: `execution-1:${kind}:${expectedRevision}`, expectedRevision, occurredAt };
+  return Object.assign(partialFake<Extract<ExecutionTransition<string>, { kind: K }>>(), envelope, fields);
 }
 
 function running(): ExecutionRecord<string> {
@@ -254,9 +253,9 @@ describe("identity and ownership fencing", () => {
     (malformedTerminal.terminal as { outcome: string }).outcome = "vanished";
     expectCode(() => apply(record, malformedTerminal), "invalid_transition");
 
-    const malformedKind = event("begin_dispatch", 3, T3, { fence }) as unknown as { kind: string };
-    malformedKind.kind = "teleport";
-    expectCode(() => apply(record, malformedKind as ExecutionTransition<string>), "invalid_transition");
+    const malformedKind = event("begin_dispatch", 3, T3, { fence });
+    Reflect.set(malformedKind, "kind", "teleport");
+    expectCode(() => apply(record, malformedKind), "invalid_transition");
   });
 
   it("rejects an untyped success terminal without a result", () => {
@@ -265,7 +264,7 @@ describe("identity and ownership fencing", () => {
       fence,
       terminal: { outcome: "succeeded", result: "placeholder" },
     });
-    delete (transition.terminal as { result?: string }).result;
+    Reflect.deleteProperty(transition.terminal, "result");
     expectCode(() => apply(record, transition), "invalid_transition");
   });
 

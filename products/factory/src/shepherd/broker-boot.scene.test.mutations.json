@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the first unreachable-broker read holds the run",
+      "file": "products/factory/src/shepherd/review-wait.ts",
+      "find": "if (left <= 0) throw new ReviewerBrokerStillDown",
+      "replace": "if (true) throw new ReviewerBrokerStillDown",
+      "kills": [
+        "a broker that is not listening yet when serve boots (TP-4641) waits out a broker that comes up after two refused roster reads, then dispatches the reviewer with no hold"
+      ]
+    },
+    {
+      "name": "an unreachable broker is waited out with no bound",
+      "file": "products/factory/src/shepherd/review-wait.ts",
+      "find": "if (left <= 0) throw new ReviewerBrokerStillDown",
+      "replace": "if (false) throw new ReviewerBrokerStillDown",
+      "kills": [
+        "a broker that is not listening yet when serve boots (TP-4641) holds once, naming the unavailable broker, only after the wait runs out, however long the broker stays down"
+      ]
+    },
+    {
+      "name": "the hold reason names only the error class",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "(error instanceof ReviewerBrokerStillDown ? error.message : failureOf(error))",
+      "replace": "failureOf(error)",
+      "kills": [
+        "a broker that is not listening yet when serve boots (TP-4641) holds once, naming the unavailable broker, only after the wait runs out, however long the broker stays down"
+      ]
+    }
+  ]
+}

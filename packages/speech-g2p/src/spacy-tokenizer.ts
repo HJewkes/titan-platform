@@ -2,6 +2,7 @@
 // `Tokenizer._tokenize_affixes` (tokenizer.pyx:164-210), over the English tokenizer data dumped from
 // en_core_web_sm 3.8.0. spaCy is MIT-licensed; see NOTICE.
 import { readFileSync } from "node:fs";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import {
   PATTERN_NAMES,
   PY_SPACE_CLASS,
@@ -36,16 +37,12 @@ interface Match {
   key: string;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-
 function isPatternSpec(v: unknown): v is PatternSpec | null {
-  return v === null || (isRecord(v) && typeof v.pattern === "string" && typeof v.flags === "number");
+  return v === null || (isObjectLike(v) && typeof v.pattern === "string" && typeof v.flags === "number");
 }
 
 function isTokenizerData(v: unknown): v is SpacyTokenizerData {
-  if (!isRecord(v) || !isRecord(v.rules) || !isRecord(v.patterns)) return false;
+  if (!isObjectLike(v) || !isObjectLike(v.rules) || !isObjectLike(v.patterns)) return false;
   const patterns = v.patterns;
   const rulesOk = Object.values(v.rules).every(
     (parts) => Array.isArray(parts) && parts.every((p) => typeof p === "string"),

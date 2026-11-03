@@ -36,6 +36,16 @@
       "kills": [
         "custom-layer builds in explainer.resolve re-keys the resolve stage when the builder's base prompt changes, so every layer is rebuilt"
       ]
+    },
+    {
+      "name": "a build missing a cue target is never rebuilt",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (missing.length === 0) return { build };",
+      "replace": "if (missing.length >= 0) return { build };",
+      "kills": [
+        "the compile gate on custom-layer builds rebuilds once a layer that exposes no element for a cue target, telling the rebuild which, and stores the rebuild",
+        "the compile gate on custom-layer builds fails the beat naming the cue targets its layer still does not expose after one rebuild"
+      ]
     }
   ]
 }

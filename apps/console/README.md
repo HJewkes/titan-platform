@@ -56,12 +56,13 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
-| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. Set it to the tailnet name: the certificate must cover every name, so the defaults fail start. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; login links name the first one the certificate covers. Set it to the tailnet name: the certificate must cover every name, so the defaults fail start. A port, an IP or a loopback name is refused |
 | `TITAN_CONSOLE_TLS_CERT` | none | PEM certificate the LAN listener serves, such as the `.crt` from `tailscale cert`. Required with `TITAN_CONSOLE_HOST`; set with `_KEY` or not at all |
 | `TITAN_CONSOLE_TLS_KEY` | none | Its PEM key; refused unless it is this user's and mode 0600. Both files are re-read within a minute of a change |
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
+| `TITAN_CONSOLE_CAP_EXEMPT_ASKERS` | `titan-factory` | Comma list of exact automation asker names the five-open-asks cap skips (see "Owner inbox deposits"); empty exempts nobody |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
 | `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from, and the tree `config.compareTree` imports; unset, `config.surfaces` answers a gap for them and `config.compareTree` answers `not-configured`. It must be an absolute or `~/` path. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
 | `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
@@ -88,6 +89,24 @@ swap it writes a `titan-console` shim to `~/.local/bin`, so seats run the servin
 step, the alarm and the optional owner install commands are in [docs/self-update.md](docs/self-update.md);
 the bootstrap and units are in `deploy/`.
 
+## What shipped digest
+
+The coordinator view's "what shipped" section reads a digest that `titan-console shipped build` writes once a day
+(`--date <YYYY-MM-DD>` picks the day window; the day starts at 07:00 local). The only model call in the build runs on
+the Claude login named by `CLAUDE_CONFIG_DIR`. The agents account is the intended one.
+
+The units are `deploy/systemd/titan-console-shipped.{service,timer}`. The timer fires at 07:10 local and builds the
+window that just closed, so the service passes yesterday's date. The service ships a placeholder
+`CLAUDE_CONFIG_DIR`; put the agents account's config dir in a drop-in. They are **not installed or enabled** by
+anything in this repo; the owner installs them by hand:
+
+```sh
+mkdir -p ~/.config/systemd/user/titan-console-shipped.service.d
+cp deploy/systemd/titan-console-shipped.{service,timer} ~/.config/systemd/user/
+printf '[Service]\nEnvironment=CLAUDE_CONFIG_DIR=<agents account config dir>\n' > ~/.config/systemd/user/titan-console-shipped.service.d/20-account.conf
+systemctl --user daemon-reload && systemctl --user enable --now titan-console-shipped.timer
+```
+
 ## LAN mode
 
 With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,
@@ -104,13 +123,15 @@ Then every route, the page and `/health` included, needs a session cookie or
 `Authorization: Bearer <secret>`, and answers 401 without one. `/mcp` is never served there.
 
 ```sh
-titan-console login-link     # prints https://<first LAN name>:7500/auth/login?code=...
+titan-console login-link     # prints https://<first name the cert covers>:7500/auth/login?code=...
 titan-console token rotate   # rewrites lan.token at 0600; every session and link ends
 ```
 
 - **`login-link`** mints a code from the token file, so it needs no running daemon. It works
   once and for ten minutes, and a daemon that restarts after minting refuses it. Run it with
-  the same `TITAN_CONSOLE_PORT`, `_STATE`, `_TOKEN` and `_LAN_NAMES` as the service. The link
+  the same `TITAN_CONSOLE_PORT`, `_STATE` and `_TOKEN` as the service. It reads the certificate
+  (`TITAN_CONSOLE_TLS_CERT`, else the one `.crt` under `<state>/tls`) and names the first of
+  `_LAN_NAMES` it covers, else the certificate's own name, never a name it does not cover. The link
   is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
   nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
   code as JSON, and that sets a Secure, HttpOnly, SameSite=Strict cookie that lasts 30 days.
@@ -162,7 +183,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `GET /media/rounds/<id>/audio/<key>` | `rounds.audio`: the `.wav`, `.mp3`, `.ogg` or `.m4a` sound the round's variant `<key>` declares as `audio`, with byte ranges, refused exactly as `rounds.clip` refuses. A blind-ab round never parses, so none of its takes is served |
 | `POST /rpc/rounds.reveal` | `{ id, manifestSha256, questionId }` in; `{ recommendation, recorded }` out: one question's withheld recommendation in an open `after-answer` round, so the owner can see it before answering (decision 513). An `owner-write`: the reveal is appended to the round's `revealed.json` sidecar (`recorded` is false when it was already there), and `rounds.get` keeps stripping. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, for a sent, withdrawn or `shown` round, an unknown question or one with no recommendation |
 | `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general?, addressed?, followUps?, variants? }` in; an answer may carry `recommendationSeen: true` when it was given while a revealed recommendation showed, refused (65) unless `revealed.json` records that question's reveal; `{ status: "submitted", path, sha256, headSha, addressed?, followUps?, superseded? }` or `{ status: "already-submitted" }` out; `superseded` lists what became of each round the manifest's `supersedes` names (see "Withdrawing rounds"). `followUps` names side questions the owner marked follow-up: they never block Ship, their ids go to a `follow-ups.json` sidecar, and each answered one is filed into the inbox spool as a `review` item keyed `round-follow-up` with the answer text and the round and PR (`followUps.filed[].item` is null where none was written); a later round of the unit does not ask for them to be addressed. `variants` carries the owner's feedback per frame, `{ key, verdict?, comment?, annotations? }`: a verdict of `chosen`, `rejected`, `maybe` or null, a comment of at most 2000 characters, and at most 12 pins in review-schema 0.3's `Annotation` shape, each id `<key>-<n>` and each note at most 500 characters. The server adds each frame's source and related questions, and a frame not sent is written undecided. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, an unknown or repeated frame key, a pin not numbered on its own frame or placed outside it, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 256 KiB. A Ship is refused while a frame of that PR holds a comment, a pin or a Rejected verdict, and a Send back takes a comment or pin on one of its own PR's frames as its note. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
-| `POST /rpc/rounds.answer-rec` | `{ id, manifestSha256 }` in; `rounds.submit`'s result out: the round nudge's one tap (TP-4044) answers every question of an open round with its recommendation. An `owner-write` that never writes `feedback.json` itself: it hands the answers, each tagged `recommendationSeen`, to `rounds.submit`'s own pipeline, so the decision log, the listeners and the seat notice hear it as a phone answer, and the feedback's `general` reads `answered-by-rec: ...`. In an `after-answer` round each question is first recorded in `revealed.json`, as the nudge stated it. Refused (65) for a sent or withdrawn round, a `round.json` whose sha256 differs, a question with no recommendation that answers it (a text question has none), or a Ship question, which is answered on the round page |
+| `POST /rpc/rounds.answer-rec` | `{ id, manifestSha256 }` in; `rounds.submit`'s result out: the round nudge's one tap (TP-4044) answers every question of an open round with its recommendation. An `owner-write` that never writes `feedback.json` itself: it hands the answers, each tagged `recommendationSeen`, to `rounds.submit`'s own pipeline, so the decision log, the listeners and the seat notice hear it as a phone answer, and the feedback's `general` reads `answered-by-rec: ...`. In an `after-answer` round each question is first recorded in `revealed.json`, as the nudge stated it. Refused (65) for a sent or withdrawn round, a `round.json` whose sha256 differs, a question with no recommendation that answers it (a text question has none), a Ship question, or a question `planApprovals` binds; both are answered on the round page, where the Ship's blockers and the approval's scope show |
 | `POST /rpc/autoresearch.runs` | Every autoresearch run titan-factory holds: `[{ runId, target, phase, round, rounds, status, startedAt, completedAt, best, spend }]`, where `round` is the current round (0 before the first) and `rounds` the planned count, read from the factory on `TITAN_CONSOLE_FACTORY_PORT`. A factory that is down or refuses answers an error envelope, never an empty list. The factory side is provisional until its read model lands |
 | `POST /rpc/autoresearch.run` | `{ runId }` in; that run's `ArRunView` (`server/autoresearch-view.ts`): target and metric config, settings, baseline, best, rounds with their ladders, registries and cells. Each round carries `exempt: { bold?, followup? }`, the planner's `[EXEMPT]` reasons, read as `{}` when absent. A round may carry `planner?: { agent, sessionId?, mode?: "spawn" | "resume", usage?: { usd, cacheReadTokens?, cacheWrite5mTokens?, cacheWrite1hTokens?, retries } }`, the agent that planned it (C-256 S3e, TP-3954). The run may carry `stopReason?`, the engine's `ar-end` code or a thrown run's error code, and each idea `lineageDepth?`, its parent-chain length (C-256 S4c). Each ladder carries `implementer: { agent, sessionId?, resumedFrom?, mode?, account? }` (design gap G2), read as `null` when absent, and `l0.checks?: [{ name, ok, code?, ms? }]` (G6). Each outcome may carry `against: { sigma, pairs, locked?, case?, head?, bandWidth? }` (G7), `lane?`, `fork?: "exploit" | "explore"` (G3) and `usage?: { implementUsd, evalUsd, microUsd }` (G4); dead-end and bug rows may carry `ideaId?` and `round?` (TP-3867). These C-256 S3a fields are all optional, so a run recorded before S3a still parses. `target` may carry the adapter's `repo` (`owner/name`) and `ratchetPrefix`; with `repo` a kept idea's ratchet move links to its GitHub commits. `validator: { maxLooks, looks: [{ look, at, sha, aggregate: { metrics, gates }, provenance }] }` (design gap G17) is optional, and only the held-out validator panel reads it. Fields the console does not pin are stripped |
 | `POST /rpc/autoresearch.diff` | `{ runId, ideaId }` in; `{ stat: { files, insertions, deletions }, patch, truncated }`, the idea's diff with the patch capped by the factory |
@@ -378,10 +399,24 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 - **Caps.** A request body over 192 KB answers 413 before the daemon buffers it. A deposit over
   64 KB, measured as the spool stores it, answers 400. The body cap is three times the stored
   one because a client that writes non-ASCII as `\uXXXX` escapes sends six bytes for each
-  two-byte character (U+0080 to U+07FF) and twelve for each four-byte astral one. An
-  asker with 200 open deposits, those with no answer or withdrawal beside them, gets 429
-  (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
-  open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.
+  two-byte character (U+0080 to U+07FF) and twelve for each four-byte astral one. Every
+  asker gets 429 (`EXIT.TEMPFAIL`) once the spool holds 2000 open deposits, those with no
+  answer or withdrawal beside them. Deposits run one at a time, so racing calls cannot pass a
+  cap together.
+- **Five open asks per seat.** An asker's sixth open deposit gets 429, so `inbox file` exits 1.
+  The message lists that asker's five open ids; merge two asks into one or withdraw one
+  (`titan-console inbox withdraw <id> --reason ... --as <asker> --actor <seat>`), then file
+  again. Answered and withdrawn deposits do not count, and a repeat `depositId` still answers
+  its id. The owner, asker `hjewkes` or `owner`, is never capped. Nor is an automation asker
+  named in `TITAN_CONSOLE_CAP_EXEMPT_ASKERS`, a comma list of exact names (no patterns). Unset,
+  it is `titan-factory`, which files the deploy and planner alarms; set it empty to exempt
+  nobody. An exempt asker still dedupes: a repeat `depositId` answers its existing id, and open
+  deposits sharing an `alarm:` key fold into one item (see "Repeat alarms").
+- **`unblocksNow`.** One line, trimmed, at most 200 characters, saying what the answer
+  unblocks right now (`"unblocksNow":"merging example/repo#7"`). A deposit without it lists
+  under Planning, never Blocking, whatever its asker or op: an ask with nothing waiting on it
+  is planning. Deposits filed before the field existed are planning too. The older `unblocks`
+  array of task keys only ranks items and never makes one blocking.
 - **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
   identity, and a LAN credential names no agent. One agent can file under another's name, and
   can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
@@ -391,8 +426,11 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
   and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`,
-  `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes from the
-  factory. Any other kind stays on the terminal until its factory effect lands. A `close-pr` tap
+  `retire-agent`, `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes
+  from the factory. Any other kind stays on the terminal until its factory effect lands. A
+  `retire-agent` op is offered only as a plain retire. The agent must still hold the name under the
+  op's `agentId`, its session must have exited, and it must work on no live Shepherd run. A
+  `force: true` op always stays on the terminal. A `close-pr` tap
   closes the PR only at the head the owner was shown and keeps its branch, so reopening it is one
   click on GitHub. A `deploy-pause-clear` tap ("Clear deploy pause") reads back the failure pause a
   rolled-back deploy left: when, over which target, and why. Clearing it lets the deploy pacer resume,
@@ -400,6 +438,14 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
   deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
   cleared by this tap; the read-back says when one will keep deploys held.
+- **Retire from the agent page.** An agent page offers Retire for an exited agent that agent-chat
+  spawned (`taps.prepare` and `taps.act`, keyed by `{kind: "retire-agent", name}`, behind the same
+  `TITAN_CONSOLE_INBOX_ACTIONS` switch and owner-write guard). It needs no deposit: the console
+  takes the agent id from its own roster and reads the rest back from the factory's preview, as the
+  inbox's `retire-agent` op does. A live agent and a seat get a line saying why there is no tap.
+  The record names only the `op`, so the factory treats it like any other `retire-agent` op. The
+  record and outcome files are the audit; the decision log gets nothing. There is never a forced
+  retire. The Agents roster has a "Finished, not retired" filter.
 
   A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
   "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
@@ -635,6 +681,33 @@ never a side. Ship rounds keep their own layout.
   sent as `revisionRequested: true`. The round sends once the question's comment says what to change.
 
 ![A/B question at 1440](docs/question-ab-1440.png)
+
+### Plan approvals
+
+A plan round's question can record a TP-4284 plan approval, so a planned CI-policy, skill or visual
+change needs no owner gate at merge. The round lists `planApprovals` in its `round.json`: the
+console's own field, lifted off before review-schema's strict parse, as `supersedes` is. Each entry
+names a pick-one (`questionId`), the option that approves (`approve`), and the factory's entry
+verbatim: `task`, `repo`, `gate`, and `scope`. For `ci-policy` the scope is
+`{ciPolicyKeys, files: [{path, blob}]}`, where `blob` is `git hash-object` of the intended file, or
+null for a file absent at head. For `skill` or `visual` it is `{paths}`. A round whose entry names no
+pick-one, or an option the question lacks, is refused. `titan-factory shepherd plan-round` drafts
+such a round from a plan's file list; the Shepherd guide's "Asking at plan time" covers it.
+
+- **Shown before it is approved.** The round page draws each binding beside its question: the
+  approve option, the gate, task and repo, then the CI-policy keys and each pinned file (its blob
+  prefix, or "absent at head"), or the skill or visual paths. The approve pick records exactly
+  what the page showed.
+
+- **The owner's submit only.** Once `rounds.submit` writes the answer, each question answered with
+  its `approve` option writes one `plan-approval` action record (`round` is the round id) into the
+  inbox actions dir. It is posted to the factory's `/owner/console-action`, which writes the row as
+  the console's owner-remote, keyed by the record's sha256. Only a feedback.json bound to the
+  round.json bytes on disk counts. Needs `TITAN_CONSOLE_INBOX_ACTIONS=1`.
+- **Once.** A record is named for its round and question and written once, so a second submit
+  (refused as `already-submitted`) and a repost both read back `already`. The start-up sweep
+  reposts only a record the submit wrote while the factory was unreachable. It never writes one
+  from a feedback.json that no submit wrote, such as a relayed or decided answer.
 
 ## Withdrawing rounds
 
@@ -904,6 +977,41 @@ consumed with no merge), a gate whose row's stall reason reads "replay diverged"
 Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
 behind look the same in the item.
 
+The **Blocking** section holds only items whose answer unblocks running work, as one rule per source
+(`server/inbox-blocking.ts`, TP-4352). A hitl gate blocks when its live Shepherd row is pending on that gate at a PR head
+and is not replay-diverged. A deposit without an `unblocksNow` line never blocks (TP-4353). One with it and a `resolve-gate`, `merge-at-head` or `release-hold` op blocks when that live
+row sits at the op's head; a `close-pr` or `retire-agent` op never blocks; any other deposit, and an agent-chat ask,
+blocks while its asker is live in the broker's roster (an unread roster makes none of them live). An open round
+blocks. Morning (frozen, decision 530) and active-work tasks never block. Everything else is listed under Planning. A
+round of several questions is one row with id `round:<round id>` and a `questionCount`; its round page holds the
+questions.
+
+Four more rules trim what still blocks. A PR keeps one blocking row: an item asking about a PR (its live row's, its
+op's, or its `pr:` key's; a round pins none) yields to any newer blocking item about the same PR, so a Planning item
+never demotes a live blocker. An sh-sent-back gate clears on the implementer's next head, so it blocks only when a
+deposit whose op itself blocks asks the owner to act on its PR. A `personal`
+deposit and an agent-chat `approve` over a day old never block. A blocking item open past four days carries
+`aged: true`; the page lists it under "Older than 4 days" inside Blocking, after the fresh ones, never hidden.
+
+### Linking to one item
+
+`#/inbox/<encodeURIComponent(item id)>` opens the inbox on one item (TP-4389), with the id exactly as `inbox.list`
+returns it: `gate:<run>/<step>`, `deposit:<hex>`, `round:<round id>`. The row is scrolled to the middle of the screen,
+drawn as an accent card with a Linked badge, and keeps its own tap. Planning opens by itself when the item is listed
+there. An id no longer in the list, answered, withdrawn or never real, shows "This item is no longer open" with the id,
+above the whole inbox, and adds that its source may be unreadable when the list has a gap.
+
+```sh
+titan-console inbox link 'gate:<run>/approve-merge'
+# https://<first LAN name>:7500/#/inbox/gate%3A<run>%2Fapprove-merge
+```
+
+`inbox link` reads config alone, never the daemon, so run it with the service's `TITAN_CONSOLE_PORT`, `_HOST` and
+`_LAN_NAMES`. With a LAN listener it prints `https://` on the first of `TITAN_CONSOLE_LAN_NAMES` (this machine's
+hostname when unset, the bound address when there is none); with no `TITAN_CONSOLE_HOST` it prints the loopback
+`http://127.0.0.1:<port>` link, since no other device can reach the console then. A phone needs a session first:
+open a `login-link` once and the cookie lasts 30 days.
+
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
 `owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
@@ -938,10 +1046,11 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged"; a waiver: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
+| 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `pause-cleared` (with `clearedPause`, `stillHeld`) | "Deploy pause cleared; the deploy pacer may deploy within about a minute", or that deploys stay held by hand, with the hold's reason |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
-| 409 `moved` | "PR moved to `abc1234`, read again"; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
+| 409 `moved` | "PR moved to `abc1234`, read again"; with `currentAgentId`, the name is now a different agent; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
 | 409 `refused` `deploying` | the reason: a deployer holds the deploy lock, so tap again once it ends |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
@@ -1046,6 +1155,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
 | `#/` | Home | Upstream health, status counts, a read-only needs-you list and the last day's activity | TP-1061 |
+| `#/inbox`, `#/inbox/<item id>` | Inbox | Every pending owner decision; with an item id, that item scrolled into view and marked Linked (see "Linking to one item") | TP-4389 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
@@ -1118,7 +1228,7 @@ What holds a frame still:
 | --- | --- |
 | Data | `server/twin/answers.ts` answers the broker, sessions, Shepherd, inbox, reviews, theater and task reads by hand. Each `answer()` is typed by the command's own args and result from `ConsoleCommands`, so a fixture that drifts fails `pnpm typecheck`. Work and rounds reads are the real commands over `server/fixtures.ts` and `fixtures/rounds`, recorded in process. |
 | The clock | `Date` is frozen at 2031-03-05 12:00:30 UTC (`server/twin/clock.ts`) and `Math.random` is seeded; the server-side reads take the same clock. The second shot runs one second later, so a page that prints the clock fails. Ages to the minute do not move. |
-| Fonts | react-ui imports its web fonts from Google Fonts, which the twin refuses, so text is set in the system sans. Frames are stable on one machine; another machine's sans may differ. |
+| Fonts | react-ui ships Inter, Nunito Sans, Space Grotesk and JetBrains Mono, and the build inlines them, so the twin needs no network and refuses any request, a font one included. Text from a react-ui component that sets no font family (table cells, links, tabs, avatar initials) is still set in the system sans, so another machine's sans may differ there. |
 | Motion and media | Reduced motion, animations stopped at the shot, the caret hidden, and a video's native controls hidden (their loading spinner never stops). |
 | Locale and layout | UTC, `en-US`, device scale 1, dark colour scheme. Round fixtures are read from a copy with pinned mtimes. |
 

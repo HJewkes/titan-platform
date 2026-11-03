@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ClaudeTranscriptDecoder } from "./claude-decoder.js";
 import { readClaudeObservations, readClaudeText } from "./claude-read.js";
 import { claudeProjectSlug, claudeSourceId, findClaudeSessionSource } from "./claude-source.js";
+import { objectAt } from "./fixture.js";
 import type {
   NormalizedMessageObservation,
   NormalizedSessionObservation,
@@ -113,8 +114,7 @@ describe("readClaudeObservations", () => {
   });
 
   it("carries the cache-write split by time to live, and omits it when only the total is reported", async () => {
-    const message = records[3]?.message as { usage: Record<string, unknown> };
-    message.usage.cache_creation = { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 2 };
+    objectAt(records, 3, "message", "usage").cache_creation = { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 2 };
     writeFileSync(filePath, render(records), "utf8");
 
     const { observations } = await collect(source);

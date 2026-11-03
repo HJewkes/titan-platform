@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowStatus } from "@titan-design/workflow";
@@ -126,6 +126,7 @@ describe("a serve stopped mid-step hands its run to the next serve", () => {
       expect([...first.events, ...successor.events].filter((event) => event.type === "workflow_recovery_required")).toEqual([]);
       expect(chores).toHaveLength(1);
       expect(chores).not.toContain(first.pid);
+      expect(readdirSync(join(paths.stateDir, "chores"))).toEqual([]);
     },
     CASE_MS,
   );

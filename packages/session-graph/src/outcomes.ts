@@ -2,6 +2,7 @@ import { REVIEW_TABLE } from "./review-schema.js";
 import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 import { countRounds } from "./review-rounds.js";
+import { parseStringList } from "./stored-json.js";
 
 /** A PR the graph holds, as the resolver needs it to ask a forge. */
 export interface PrKey {
@@ -80,7 +81,7 @@ const APPLY_OUTCOME = `
   WHERE pr_ref = @prRef`;
 
 export function prsNeedingOutcome(graph: SessionGraph): PrKey[] {
-  const rows = graph.db.prepare(PRS_NEEDING_OUTCOME).all() as { pr_ref: string; repo: string; number: number }[];
+  const rows = graph.db.prepare<[], { pr_ref: string; repo: string; number: number }>(PRS_NEEDING_OUTCOME).all();
   return rows.map((r) => ({ prRef: r.pr_ref, repo: r.repo, number: r.number }));
 }
 
@@ -101,7 +102,7 @@ export async function enrichPrs(graph: SessionGraph, resolver: PrResolver | unde
 
 function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): number {
   const apply = graph.db.prepare(APPLY_OUTCOME);
-  const stored = graph.db.prepare("SELECT commit_times FROM pr WHERE pr_ref = ?");
+  const stored = graph.db.prepare<[string], { commit_times: string | null }>("SELECT commit_times FROM pr WHERE pr_ref = ?");
   return graph.db.transaction(() => {
     let applied = 0;
     for (const [prRef, fields] of resolved) {
@@ -131,9 +132,9 @@ function forgeRounds(fields: ResolvedPr, storedTimes: () => string[] | null): nu
   return counted ?? fields.reviewRounds ?? null;
 }
 
-function storedCommitTimes(row: unknown): string[] | null {
-  const times = (row as { commit_times: string | null } | undefined)?.commit_times;
-  return times ? (JSON.parse(times) as string[]) : null;
+function storedCommitTimes(row: { commit_times: string | null } | undefined): string[] | null {
+  const times = row?.commit_times;
+  return times ? parseStringList(times) : null;
 }
 
 const FORGE_VERDICTS: Record<string, string> = { APPROVED: "approve", CHANGES_REQUESTED: "changes_requested" };

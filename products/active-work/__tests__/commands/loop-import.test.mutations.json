@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "import keeps an existing tier",
+      "file": "products/active-work/src/sessions/ledger-file.ts",
+      "find": "    if (keepTier && (TIER_KEYS as readonly string[]).includes(key)) continue;\n",
+      "replace": "",
+      "kills": ["loop import keeps a tier the owner set when a newer sweep imports the same loop"]
+    }
+  ]
+}

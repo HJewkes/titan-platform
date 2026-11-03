@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "change list omits HEAD moves",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-tree-guard.ts",
+      "find": "return before.head === after.head ? changed : [\"HEAD\", ...changed];",
+      "replace": "return changed;",
+      "kills": ["treeFingerprint and treeChange names HEAD when the reviewer commits"]
+    },
+    {
+      "name": "fingerprint ignores file content",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-tree-guard.ts",
+      "find": "entries.set(file, `${code}:${contentHash(path.join(cwd, file))}`);",
+      "replace": "entries.set(file, code);",
+      "kills": ["treeFingerprint and treeChange names a further edit to a file that was already dirty"]
+    },
+    {
+      "name": "fingerprint reads a non-repo as a repo",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-tree-guard.ts",
+      "find": "if (status === null) return undefined;",
+      "replace": "",
+      "kills": ["treeFingerprint and treeChange is undefined outside a git tree"]
+    },
+    {
+      "name": "dirty text shows every path",
+      "file": "packages/agent-dispatch/src/isolation/reviewer-tree-guard.ts",
+      "find": "paths.slice(0, PATHS_SHOWN).join(\", \")",
+      "replace": "paths.join(\", \")",
+      "kills": ["reviewerDirtyText lists five paths and counts the rest"]
+    }
+  ]
+}

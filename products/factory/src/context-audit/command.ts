@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { InvalidArgumentError, type Command } from "commander";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
 import { assertRule, buildReport, formatReport, type AuditedSession } from "./report.js";
 import { scanTranscript } from "./scan.js";

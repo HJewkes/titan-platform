@@ -70,16 +70,20 @@ export interface ConsoleAnswersOptions {
   roundsDir: string;
   /** The console inbox's action records; set, it mounts the console-action route. */
   actionsDir?: string;
+  /** `shepherd.agentChatBin`, which a console retire-agent op runs through. */
+  agentChatBin?: string;
   /** Files an owner inbox item, such as the notice that a merge approval was voided. */
   tellOwner?: TellOwner;
 }
 
 /** `shepherd.consoleAnswers` from the factory config, telling the owner through the console's deposit spool; absent means the route is not mounted. */
 export function configuredConsoleAnswers(env: NodeJS.ProcessEnv): ConsoleAnswersOptions | undefined {
-  const configured = loadConfig(configPath(env)).shepherd?.consoleAnswers;
+  const shepherd = loadConfig(configPath(env)).shepherd;
+  const configured = shepherd?.consoleAnswers;
   if (configured === undefined) return undefined;
   const inbox = ownerInboxDir(env);
-  return { ...configured, tellOwner: async (deposit) => void (await writeDeposit(inbox, deposit)) };
+  const tellOwner: TellOwner = async (deposit) => void (await writeDeposit(inbox, deposit));
+  return { ...configured, tellOwner, ...(shepherd?.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
 }
 
 /**

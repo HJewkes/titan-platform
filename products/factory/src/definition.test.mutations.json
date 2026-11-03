@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "guardedContext lets an unregistered step id through",
+      "file": "products/factory/src/definition.ts",
+      "find": "if (registry && !isRegistered(registry, stepId))",
+      "replace": "if (false)",
+      "kills": ["guardedContext registry A17: a call to an unregistered step id fails the run"]
+    },
+    {
+      "name": "the host opens a workflow that declares an unregistered step",
+      "file": "products/factory/src/definition.ts",
+      "find": "if (missing.length > 0) throw",
+      "replace": "if (false) throw",
+      "kills": ["registered recipes A17: recipes call only registered steps: a workflow declaring an unregistered step does not open"]
+    }
+  ]
+}

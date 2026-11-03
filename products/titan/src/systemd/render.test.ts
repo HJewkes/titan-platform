@@ -1,21 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { execArg, quoteIfNeeded, renderCalendarTimer, renderOneshotService, userUnitDir } from "./render.js";
+import { renderCalendarTimer, renderOneshotService } from "./render.js";
 
 const lines = (text: string) => text.split("\n");
-
-describe("systemd value quoting", () => {
-  it("doubles a literal specifier and variable sign in an ExecStart argument", () => {
-    expect(execArg("50%/$HOME")).toBe("50%%/$$HOME");
-  });
-
-  it("double-quotes a value with whitespace and escapes its quotes and backslashes", () => {
-    expect(quoteIfNeeded('/srv/my dir/a"b\\c')).toBe('"/srv/my dir/a\\"b\\\\c"');
-  });
-
-  it("leaves a plain path unquoted", () => {
-    expect(quoteIfNeeded("/usr/bin/restic")).toBe("/usr/bin/restic");
-  });
-});
 
 describe("renderOneshotService", () => {
   it("emits only the lines whose options are set and no [Install] section", () => {
@@ -47,6 +33,35 @@ describe("renderOneshotService", () => {
   });
 });
 
+describe("renderOneshotService over awkward values", () => {
+  it("renders spaces, quotes, percent, dollar, unicode and empty values exactly as before the helpers moved", () => {
+    const text = renderOneshotService({
+      description: "100% é",
+      argv: ["/bin/x", "a b", 'q"r', "it's", "50%/$HOME", "caf\u00e9 \u2603", ""],
+      environment: { A: "x y", B: "", C: "%h" },
+      environmentFile: "/srv/%i.env",
+      errLog: "/srv/e %n.log",
+    });
+
+    expect(text).toBe(
+      [
+        "[Unit]",
+        "Description=100%% é",
+        "",
+        "[Service]",
+        "Type=oneshot",
+        'ExecStart=/bin/x "a b" "q\\"r" "it\'s" 50%%/$$HOME "café ☃" ',
+        'Environment="A=x y"',
+        "Environment=B=",
+        "Environment=C=%%h",
+        "EnvironmentFile=/srv/%%i.env",
+        "StandardError=append:/srv/e %%n.log",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("renderCalendarTimer", () => {
   it("names its calendar, catch-up policy and unit, and installs under timers.target", () => {
     const timer = lines(renderCalendarTimer({ description: "nightly", onCalendar: "*-*-* 02:30:00", persistent: true, unit: "x.service" }));
@@ -56,12 +71,5 @@ describe("renderCalendarTimer", () => {
     expect(timer).toContain("Unit=x.service");
     expect(timer).toContain("WantedBy=timers.target");
     expect(timer.some((entry) => entry.startsWith("AccuracySec="))).toBe(false);
-  });
-});
-
-describe("userUnitDir", () => {
-  it("uses XDG_CONFIG_HOME when it is absolute and ignores a relative one", () => {
-    expect(userUnitDir({ env: { XDG_CONFIG_HOME: "/srv/cfg" }, home: "/srv/me" })).toBe("/srv/cfg/systemd/user");
-    expect(userUnitDir({ env: { XDG_CONFIG_HOME: "cfg" }, home: "/srv/me" })).toBe("/srv/me/.config/systemd/user");
   });
 });

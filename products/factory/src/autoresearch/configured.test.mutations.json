@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "withAutoresearch drops the routes' own host hooks",
+      "file": "products/factory/src/autoresearch/configured.ts",
+      "find": "...wiring.host, ...composeRoutes(routes, wiring.host) }",
+      "replace": "...wiring.host }",
+      "kills": [
+        "a configured factory binds a host and hears an event through both the routes' own hooks and autoresearch's"
+      ]
+    }
+  ]
+}

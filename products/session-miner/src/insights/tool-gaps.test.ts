@@ -170,6 +170,14 @@ describe("readBashCommand", () => {
     expect(await readBashCommand({ ...call, path: path.join(dir, "missing.jsonl") })).toBeNull();
   });
 
+  it("treats a truncated transcript line as absent", async () => {
+    const line = JSON.stringify({ message: { content: [{ type: "tool_use", id: "tu-t", input: { command: "ls" } }] } });
+    const torn = line.slice(0, line.length - 10);
+    writeFileSync(path.join(dir, "torn.jsonl"), torn);
+
+    expect(await readBashCommand({ sessionId: "s", toolUseId: "tu-t", path: path.join(dir, "torn.jsonl"), byteOffset: 0, byteLength: Buffer.byteLength(torn), heads: null })).toBeNull();
+  });
+
   it("expands the ~/ the graph stores source keys with", async () => {
     const line = JSON.stringify({ message: { content: [{ type: "tool_use", id: "tu-h", input: { command: "agent-chat agent ls | head" } }] } });
     writeFileSync(path.join(dir, "home.jsonl"), `${line}\n`);

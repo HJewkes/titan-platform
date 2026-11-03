@@ -7,6 +7,7 @@ import { KnowledgeGraph } from "./KnowledgeGraph.js";
 import { KnowledgeRecordPage } from "./KnowledgeRecordPage.js";
 import { KnowledgeSearch } from "./KnowledgeSearch.js";
 import { KnowledgeTable } from "./KnowledgeTable.js";
+import { PHONE_TAP, usePhoneInputSize } from "./phone.js";
 
 type KnowledgeRow = ConsoleCommands["work.notes"]["result"]["records"][number];
 
@@ -27,9 +28,9 @@ export function KnowledgePage({ route }: { route: Route }): ReactNode {
     <VStack gap={4}>
       <Tabs index={tab} onChange={(index) => open({ view: "knowledge", ...(index === 0 ? {} : { query: `tab=${TABS[index]}` }) })}>
         <TabList>
-          <Tab>Browse</Tab>
-          <Tab>Search</Tab>
-          <Tab>Graph</Tab>
+          <Tab className={PHONE_TAP}>Browse</Tab>
+          <Tab className={PHONE_TAP}>Search</Tab>
+          <Tab className={PHONE_TAP}>Graph</Tab>
         </TabList>
       </Tabs>
       <TabBody tab={TABS[tab]!} params={params} />
@@ -101,5 +102,5 @@ function SinceInput({ params }: { params: URLSearchParams }): ReactNode {
     setDraft(text);
     if (text === "" || DATE.test(text)) setFilter(params, "since", text || null);
   };
-  return <Input value={draft} onChangeText={change} placeholder="Changed since YYYY-MM-DD" accessibilityLabel="Changed since" className="w-56" />;
+  return <Input value={draft} onChangeText={change} placeholder="Changed since YYYY-MM-DD" accessibilityLabel="Changed since" size={usePhoneInputSize()} className="w-56" />;
 }

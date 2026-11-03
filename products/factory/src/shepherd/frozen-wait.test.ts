@@ -8,14 +8,15 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { codeRoute, sleep } from "../workflows/land.js";
 import { SettleResult } from "../workflows/land-settle.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { isFrozenOnlyGate, isNoFactsGate } from "./freeze-wait.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const HOUR = 60 * 60_000;
 const SEAT = "trusted-seat";

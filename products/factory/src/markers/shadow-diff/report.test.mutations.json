@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "unclassified passes",
+      "file": "products/factory/src/markers/shadow-diff/report.ts",
+      "find": "new Set([\"unclassified\", \"unprobed\"])",
+      "replace": "new Set([\"unprobed\"])",
+      "kills": ["one unclassified pin-differs row blocks, naming its run and head"]
+    },
+    {
+      "name": "the coverage check is dropped",
+      "file": "products/factory/src/markers/shadow-diff/report.ts",
+      "find": "options.now - first < options.windowMs",
+      "replace": "false",
+      "kills": ["a shadow first on 30 h ago blocks on coverage"]
+    },
+    {
+      "name": "a family with no rows passes",
+      "file": "products/factory/src/markers/shadow-diff/report.ts",
+      "find": "blockers.length > 0 || empty",
+      "replace": "blockers.length > 0",
+      "kills": ["the observed family with no fact entry is vacuous and does not block; the tree family with no rows blocks"]
+    },
+    {
+      "name": "rows outside the window are counted",
+      "file": "products/factory/src/markers/shadow-diff/report.ts",
+      "find": "Date.parse(row.at) >= window.since && ",
+      "replace": "",
+      "kills": ["rows outside the window are not counted"]
+    }
+  ]
+}

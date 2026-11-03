@@ -6,11 +6,12 @@ import { H1, REPO } from "../test-support/land.js";
 import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { appendEvent } from "./events.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { ShepherdStore, shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("stopped-fix");
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "demo-seat" };

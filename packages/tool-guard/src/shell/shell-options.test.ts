@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import type { SpawnSyncOptions } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +7,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { shellOracle, spawnInGroup } from "../test-support/shell-rows.js";
 import { zshOptionWord } from "./shell-options.js";
 
 const REPO = "/home/you/projects/app";
@@ -154,29 +154,11 @@ const SHELLS_HERE = new Set([...KNOWN_SHELLS].filter(has));
 
 /**
  * Runs `line` under `runner` in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it
- * created `mk`, as the fake `git` on PATH does too. A run that hangs is cut off.
+ * created `mk`, as the fake `git` on PATH does too. Each shell leads its own process group, killed when it exits, and
+ * a run that hangs is cut off. A describe adds its rows and runs them all through one driver (TP-4453).
  */
-/**
- * Runs a shell as the leader of its own process group, then kills the group, so nothing it
- * forked outlives the call. zsh forks a pipeline's left side, and that child stays blocked on
- * zsh's sync pipe after the shell exits; 1,514 of them piled up on basement and stalled the
- * agent-chat broker, which scans every process.
- */
-function spawnInGroup(program: string, args: string[], options: SpawnSyncOptions): void {
-  // spawnSync honours detached (libuv starts a new session) though its type leaves it out.
-  const inGroup: SpawnSyncOptions & { detached: boolean } = { ...options, detached: true };
-  const { pid } = spawnSync(program, args, inGroup);
-  if (pid <= 0) return;
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch {
-    // ESRCH: nothing in the group outlived the shell.
-  }
-}
-
-function runs(line: string, runner = "bash", script = "touch mk"): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shell-options-"));
-  try {
+const runsOracle = () =>
+  shellOracle("shell-options-", (dir, line: string, runner: string, script: string) => {
     fs.writeFileSync(path.join(dir, "s.sh"), `${line}\n`);
     fs.writeFileSync(path.join(dir, "x.sh"), `${script}\n`);
     fs.writeFileSync(path.join(dir, "ok.sh"), "true\n");
@@ -185,13 +167,11 @@ function runs(line: string, runner = "bash", script = "touch mk"): boolean {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnInGroup(program, [...flags, "s.sh"], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "s.sh"], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 const alive = (pid: number): boolean => {
   try {
@@ -218,21 +198,29 @@ describe("spawnInGroup", () => {
 });
 
 describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its options (TP-3221)", () => {
-  it.each(
-    PUSH_ROUTES.filter(([, line]) => !line.includes("--emulate=") && !line.startsWith("="))
-      .map(([form, line]) => [form, line.replaceAll(TEXT, "'touch mk'").replace("/usr/bin/zsh", "zsh")] as const),
-  )("runs the text behind %s", (_form, line) => {
-    const shell = line.split(" ").find((w) => KNOWN_SHELLS.has(w)) ?? "";
-    if (!SHELLS_HERE.has(shell)) return;
-    expect(runs(line)).toBe(true);
+  const routes = PUSH_ROUTES.filter(([, line]) => !line.includes("--emulate=") && !line.startsWith("=")).map(
+    ([form, line]) => [form, line.replaceAll(TEXT, "'touch mk'").replace("/usr/bin/zsh", "zsh")] as const,
+  );
+  const shellOf = (line: string): string => line.split(" ").find((w) => KNOWN_SHELLS.has(w)) ?? "";
+  const EQUALS = "zsh -f -c \"=zsh --emulate ksh -c 'touch mk'\"";
+  const EMULATE_SH = "zsh --emulate=sh -c 'touch mk'";
+  const ran = runsOracle();
+  for (const [, line] of routes) if (SHELLS_HERE.has(shellOf(line))) ran.add(line, "bash", "touch mk");
+  if (SHELLS_HERE.has("zsh")) ran.add(EQUALS, "bash", "touch mk");
+  ran.add(EMULATE_SH, "bash", "touch mk");
+  ran.beforeAll();
+
+  it.each(routes)("runs the text behind %s", (_form, line) => {
+    if (!SHELLS_HERE.has(shellOf(line))) return;
+    expect(ran.get(line, "bash", "touch mk")).toBe(true);
   });
 
   it.skipIf(!SHELLS_HERE.has("zsh"))("runs the text behind an EQUALS zsh's --emulate, under zsh", () => {
-    expect(runs("zsh -f -c \"=zsh --emulate ksh -c 'touch mk'\"")).toBe(true);
+    expect(ran.get(EQUALS, "bash", "touch mk")).toBe(true);
   });
 
   it("runs nothing behind --emulate=sh, so its denial only over-reads", () => {
-    expect(runs("zsh --emulate=sh -c 'touch mk'")).toBe(false);
+    expect(ran.get(EMULATE_SH, "bash", "touch mk")).toBe(false);
   });
 });
 
@@ -278,12 +266,19 @@ describe("a shell's stdin source is read from one model (TP-3241)", () => {
 });
 
 describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the descriptor its operand names (TP-3241)", () => {
-  it.each(FD_FILE_LINES.filter(shellHere))("%s runs the file, and only it", (line) => {
-    expect([runs(`${line} ./x.sh`), runs(`${line} ./ok.sh`)]).toEqual([true, false]);
+  const fileLines = FD_FILE_LINES.filter(shellHere);
+  const unknowable = UNKNOWABLE.filter(([line]) => shellHere(line ?? ""));
+  const ran = runsOracle();
+  for (const line of fileLines) for (const file of ["./x.sh", "./ok.sh"]) ran.add(`${line} ${file}`, "bash", "touch mk");
+  for (const [line, setup] of unknowable) ran.add(`${setup}; ${line}`, "bash", "touch mk");
+  ran.beforeAll();
+
+  it.each(fileLines)("%s runs the file, and only it", (line) => {
+    expect([ran.get(`${line} ./x.sh`, "bash", "touch mk"), ran.get(`${line} ./ok.sh`, "bash", "touch mk")]).toEqual([true, false]);
   });
 
-  it.each(UNKNOWABLE.filter(([line]) => shellHere(line ?? "")))("%s runs the script %s sets up", (line, setup) => {
-    expect(runs(`${setup}; ${line}`)).toBe(true);
+  it.each(unknowable)("%s runs the script %s sets up", (line, setup) => {
+    expect(ran.get(`${setup}; ${line}`, "bash", "touch mk")).toBe(true);
   });
 });
 
@@ -350,9 +345,15 @@ describe("every source on the descriptor a shell runs is read (TP-3241)", () => 
 });
 
 describe.skipIf(!["bash", "zsh", "dash"].every((shell) => SHELLS_HERE.has(shell)))("each shell runs the sources the model reads (TP-3241)", () => {
+  const runs = runsOracle();
+  const pushLine = (line: Row[1]) => unescaped(line("touch mk", "./x.sh"));
+  const harmlessLine = (line: Row[1]) => unescaped(line("true", "./ok.sh"));
+  for (const [, line] of SOURCE_ROWS) for (const runner of ALL) for (const text of [pushLine(line), harmlessLine(line)]) runs.add(text, runner, "touch mk");
+  runs.beforeAll();
+
   it.each(SOURCE_ROWS)("%s runs the push in the shells listed, and the harmless line in none", (_form, line, pushers) => {
-    const ran = ALL.filter((runner) => runs(unescaped(line("touch mk", "./x.sh")), runner));
-    const harmless = ALL.filter((runner) => runs(unescaped(line("true", "./ok.sh")), runner));
+    const ran = ALL.filter((runner) => runs.get(pushLine(line), runner, "touch mk"));
+    const harmless = ALL.filter((runner) => runs.get(harmlessLine(line), runner, "touch mk"));
     expect([ran, harmless]).toEqual([pushers, []]);
   });
 });
@@ -406,9 +407,13 @@ describe("a shell a runner starts inherits its stdin and descriptors (TP-3250)",
 });
 
 describe.skipIf(!["bash", "zsh"].every((shell) => SHELLS_HERE.has(shell)))("each shell runs the push a runner hands on (TP-3250)", () => {
+  const runs = runsOracle();
+  for (const [, line] of RUNNER_ROWS) for (const runner of BZ) for (const text of [line(PUSH, "./x.sh"), line("echo hi", "./ok.sh")]) runs.add(text, runner, PUSH);
+  runs.beforeAll();
+
   it.each(RUNNER_ROWS)("%s runs git push in the shells listed, and the harmless line in none", (_form, line, pushers) => {
-    const ran = BZ.filter((runner) => runs(line(PUSH, "./x.sh"), runner, PUSH));
-    const harmless = BZ.filter((runner) => runs(line("echo hi", "./ok.sh"), runner, PUSH));
+    const ran = BZ.filter((runner) => runs.get(line(PUSH, "./x.sh"), runner, PUSH));
+    const harmless = BZ.filter((runner) => runs.get(line("echo hi", "./ok.sh"), runner, PUSH));
     expect([ran, harmless]).toEqual([pushers, []]);
   });
 });

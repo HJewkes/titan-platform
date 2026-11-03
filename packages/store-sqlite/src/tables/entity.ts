@@ -1,4 +1,4 @@
-import { SQL_NOW, nowIso, quoteIdent, type Db } from "../open.js";
+import { SQL_NOW, nowIso, parseJsonObject, quoteIdent, type Db } from "../open.js";
 
 /**
  * Two entity shapes, because the projects that converged on "kind + name +
@@ -106,7 +106,7 @@ function toEntityRow(raw: RawEntityRow): EntityRow {
     kind: raw.kind,
     name: raw.name,
     parentRef: raw.parent_ref,
-    attrs: raw.attrs === null ? null : (JSON.parse(raw.attrs) as Record<string, unknown>),
+    attrs: raw.attrs === null ? null : parseJsonObject(raw.attrs),
     tValid: raw.t_valid,
     tInvalid: raw.t_invalid,
     tCreated: raw.t_created,
@@ -130,9 +130,9 @@ export class EntityTable {
          kind = excluded.kind, name = excluded.name, parent_ref = excluded.parent_ref,
          attrs = excluded.attrs, t_expired = NULL, t_invalid = NULL`,
     );
-    this.getStmt = db.prepare(`SELECT * FROM ${t} WHERE ref = ?`);
+    this.getStmt = db.prepare<[string], RawEntityRow>(`SELECT * FROM ${t} WHERE ref = ?`);
     this.expireStmt = db.prepare(`UPDATE ${t} SET t_expired = ? WHERE ref = ? AND t_expired IS NULL`);
-    this.byKindStmt = db.prepare(`SELECT * FROM ${t} WHERE kind = ? AND t_expired IS NULL ORDER BY ref`);
+    this.byKindStmt = db.prepare<[string], RawEntityRow>(`SELECT * FROM ${t} WHERE kind = ? AND t_expired IS NULL ORDER BY ref`);
   }
 
   /** Insert or overwrite the entity; a previously expired ref comes back live with its original `t_valid`. */
@@ -148,7 +148,7 @@ export class EntityTable {
   }
 
   get(ref: string): EntityRow | undefined {
-    const raw = this.getStmt.get(ref) as RawEntityRow | undefined;
+    const raw = this.getStmt.get(ref);
     return raw === undefined ? undefined : toEntityRow(raw);
   }
 
@@ -157,6 +157,6 @@ export class EntityTable {
   }
 
   listByKind(kind: string): EntityRow[] {
-    return (this.byKindStmt.all(kind) as RawEntityRow[]).map(toEntityRow);
+    return this.byKindStmt.all(kind).map(toEntityRow);
   }
 }

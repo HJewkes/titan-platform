@@ -155,7 +155,7 @@ describe("reviewPullRequest", () => {
 
     expect(world.spawns).toHaveLength(1);
     expect(world.resumes).toHaveLength(1);
-    expect(world.resumes[0]?.brief).toContain("its CI-policy line held more than the exact form");
+    expect(world.resumes[0]?.brief).toContain("a prose line used the CI-policy label");
     expect(result.outcome).toBe("MERGE");
   });
 

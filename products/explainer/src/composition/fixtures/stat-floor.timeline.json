@@ -1,0 +1,14 @@
+{
+  "durationS": 6,
+  "beats": [
+    {
+      "id": "label-past-floor", "kind": "stat", "startS": 0, "durationS": 3,
+      "slots": { "figures": [
+        { "id": "figures-1", "label": "a synthetic label too long for a card", "value": 7 },
+        { "id": "figures-2", "label": "a synthetic label far too long for any one card", "value": 3 },
+        { "id": "figures-3", "label": "another synthetic label too long for a card", "value": 5 }
+      ] }
+    },
+    { "id": "line-past-floor", "kind": "held", "startS": 3, "durationS": 3, "slots": { "line": "UnbreakableSyntheticIdentifierThatNoStageBoxCanHoldOnOneLineEvenAtTheTypeFloorBecauseItRunsOnAndOnPastEveryEdgeOfTheFrame" } }
+  ]
+}

@@ -3,6 +3,7 @@ import path from "node:path";
 import type { CroppedFinding, CueRecord, Finding, MediaScan, ProbedMoment } from "@titan-design/render-qa";
 import { z } from "zod";
 import { RENDER_FPS } from "../render/render-video.js";
+import type { FlashReport } from "./flash-scan.js";
 import type { QaEngine, QaPage } from "./qa-engine.js";
 
 /** A synthetic overlap: two labels of the fake page drawn over each other. */
@@ -41,6 +42,8 @@ export interface FakeQaOptions {
   diffAt?: (frame: number) => number;
   /** What ffmpeg's detect filters find in the MP4; nothing by default. */
   mediaScan?: MediaScan;
+  /** What the flash scan finds in the MP4; no flash by default. */
+  flash?: FlashReport;
 }
 
 /** The fake render's MP4 is JSON naming its own length (run-fakes.test-helpers' render.ts writes it). */
@@ -57,19 +60,27 @@ async function fakeCrops(errors: CroppedFinding[], dir: string): Promise<void> {
   }
 }
 
-/** A page that records each time it inspects and probes, and answers from the options. */
+/** A page that records each time it inspects and probes, and answers from the options. Its clock, like the real one, never goes back. */
 function fakePage(options: FakeQaOptions, inspected: number[], probed: number[]): QaPage {
+  let nowS = 0;
+  const advanceTo = (t: number): void => {
+    if (t < nowS) throw new Error(`virtual time cannot go back from ${nowS * 1000} to ${t * 1000} ms`);
+    nowS = t;
+  };
   return {
     inspectAt: async (t) => {
+      advanceTo(t);
       inspected.push(t);
       const runs = options.contentRuns ?? 3;
       return { textRuns: runs, contentRuns: runs, findings: options.findingsAt?.(t) ?? [] };
     },
     probe: async (moments) =>
       moments.map(({ beat, t }) => {
+        advanceTo(t);
         probed.push(t);
         return { beat, t, ...(options.probeAt?.(t) ?? FULL_STAGE) };
       }),
+    frame: async (t) => (advanceTo(t), Buffer.from(`png:${t}`)),
     crops: fakeCrops,
     close: async () => undefined,
   };
@@ -91,6 +102,7 @@ export function fakeQa(options: FakeQaOptions = {}): FakeQa {
     },
     durationS: async (mp4) => mp4S(mp4),
     mediaScan: async () => options.mediaScan ?? { black: [], silence: [], freeze: [] },
+    flashScan: async () => options.flash ?? { method: "fake", general: { maxPerS: 0, windows: [] }, red: { maxPerS: 0, windows: [] } },
     frameDiffs: async (mp4) => Array.from({ length: Math.round(mp4S(mp4) * RENDER_FPS) }, (_, n) => (n === 0 ? 0 : (options.diffAt?.(n) ?? 0.02))),
   };
 }

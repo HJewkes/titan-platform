@@ -74,6 +74,11 @@ export function checkPositiveInt(field: string, value: number): number {
   return value;
 }
 
+/** An absent cap stays absent; a present one must be a positive safe integer. */
+export function checkMaxBytes(maxBytes: number | undefined): number | undefined {
+  return maxBytes === undefined ? undefined : checkPositiveInt("maxBytes", maxBytes);
+}
+
 export function checkPath(path: string): string {
   const bad = path.length === 0 || path.startsWith("/") || PATH_FORBIDDEN.test(path) || hasControl(path) || path.split("/").some((part) => part === ".." || part === "." || part === "");
   if (bad) throw new GitHubInputError("path", path, "expected a relative path with no ., .. or empty segment, and no ?, # or %");
@@ -100,6 +105,7 @@ export function checkMarker(marker: string): string {
 
 /** A check run posted under an App token may only end in these; anything else is refused before a wire call. */
 export function checkConclusion(conclusion: string): CheckConclusion {
-  if (!(CHECK_CONCLUSIONS as readonly string[]).includes(conclusion)) throw new GitHubInputError("conclusion", conclusion, `expected one of ${CHECK_CONCLUSIONS.join(", ")}`);
-  return conclusion as CheckConclusion;
+  const match = CHECK_CONCLUSIONS.find((allowed) => allowed === conclusion);
+  if (match === undefined) throw new GitHubInputError("conclusion", conclusion, `expected one of ${CHECK_CONCLUSIONS.join(", ")}`);
+  return match;
 }

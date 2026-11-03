@@ -26,7 +26,7 @@ export function collectTypeDecls(root: Node): TypeDecls {
       if (name && !out.has(name)) out.set(name, node);
     }
     for (const child of node.namedChildren) {
-      if (child) walk(child);
+      walk(child);
     }
   };
   walk(root);
@@ -44,7 +44,7 @@ export function propStatsOf(fn: Node, types: TypeDecls): PropStats | null {
   if (fn.type === "method_definition") return null;
   const params = fn.childForFieldName("parameters");
   if (!params) return null;
-  const first = params.namedChildren.find((p) => p !== null && PARAM_TYPES.has(p.type));
+  const first = params.namedChildren.find((p) => PARAM_TYPES.has(p.type));
   if (!first) return { propCount: 0, boolPropCount: 0, unreadProps: 0 };
   const annotation = first.childForFieldName("type")?.namedChild(0);
   const members: Members = new Map();
@@ -70,7 +70,7 @@ function collectMembers(type: Node, types: TypeDecls, seen: Set<string>, out: Me
     }
     case "intersection_type":
       return type.namedChildren
-        .map((part) => part !== null && collectMembers(part, types, seen, out))
+        .map((part) => collectMembers(part, types, seen, out))
         .some(Boolean);
     case "type_identifier":
     case "generic_type":
@@ -94,22 +94,22 @@ function collectNamed(type: Node, types: TypeDecls, seen: Set<string>, out: Memb
   if (body) addMembers(body, out);
   let resolved = out.size > 0;
   for (const clause of decl.namedChildren) {
-    if (clause?.type !== "extends_type_clause") continue;
+    if (clause.type !== "extends_type_clause") continue;
     for (const base of clause.namedChildren) {
-      if (base && collectMembers(base, types, seen, out)) resolved = true;
+      if (collectMembers(base, types, seen, out)) resolved = true;
     }
   }
   return resolved || !hasExtends(decl);
 }
 
 function hasExtends(decl: Node): boolean {
-  return decl.namedChildren.some((c) => c?.type === "extends_type_clause");
+  return decl.namedChildren.some((c) => c.type === "extends_type_clause");
 }
 
 /** Own members first, so a redeclared inherited member keeps its own annotation. */
 function addMembers(body: Node, out: Members): void {
   for (const member of body.namedChildren) {
-    if (!member || !MEMBER_TYPES.has(member.type)) continue;
+    if (!MEMBER_TYPES.has(member.type)) continue;
     const name = member.childForFieldName("name");
     if (!name || out.has(keyText(name))) continue;
     const type = member.type === "property_signature" ? member.childForFieldName("type")?.namedChild(0) : null;
@@ -136,7 +136,7 @@ function unionLeaves(type: Node): string[] {
     return inner ? unionLeaves(inner) : [];
   }
   if (type.type !== "union_type") return [type.text];
-  return type.namedChildren.flatMap((part) => (part ? unionLeaves(part) : []));
+  return type.namedChildren.flatMap((part) => unionLeaves(part));
 }
 
 /** Members never read in `fn`; 0 when the props are forwarded whole or through `...rest`. */
@@ -156,14 +156,14 @@ function countUnread(pattern: Node, fn: Node, names: readonly string[]): number 
  */
 function propertyReads(param: Node, fn: Node): Set<string> | null {
   const reads = new Set<string>();
-  let escapes = false;
+  const use = { escapes: false };
   walkReferences(fn, (ref, shadowed) => {
     if (ref.type !== "identifier" || ref.text !== param.text || ref.id === param.id || shadowed.has(ref.text)) return;
     const keys = keysReadAt(ref);
     if (keys) keys.forEach((key) => reads.add(key));
-    else escapes = true;
+    else use.escapes = true;
   });
-  return escapes ? null : reads;
+  return use.escapes ? null : reads;
 }
 
 function keysReadAt(use: Node): string[] | null {
@@ -196,7 +196,6 @@ function destructuredReads(pattern: Node, fn: Node): Set<string> | null {
 function patternBindings(pattern: Node): Map<string, Node | null> | null {
   const out = new Map<string, Node | null>();
   for (const element of pattern.namedChildren) {
-    if (!element) continue;
     if (element.type === "rest_pattern") return null;
     if (element.type === "shorthand_property_identifier_pattern") out.set(element.text, element);
     else if (element.type === "object_assignment_pattern") {

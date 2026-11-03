@@ -38,6 +38,14 @@ describe("script/v1", () => {
     expect(issues(script)).toEqual([]);
   });
 
+  it("accepts a cue on a word the beat declares a reading for", () => {
+    // Catches: resolving cues against the raw line, where the word sits inside "[minute](=time)".
+    const cues = [{ action: "V9", target: "ledger-row", atCue: "minute" }];
+    const script = scriptWith({ spoken: "The ledger takes one scan a [minute](=time).", visual: { assertion: "The ledger keeps every scan", job: "numbers", cues } });
+
+    expect(issues(script)).toEqual([]);
+  });
+
   it("rejects an off-map cue whose nth use is past the beat's words", () => {
     const cues = [{ action: "V9", target: "ledger-row", atCue: "ledger#2" }];
     const script = scriptWith({ visual: { assertion: "The ledger keeps every scan", job: "numbers", cues } });

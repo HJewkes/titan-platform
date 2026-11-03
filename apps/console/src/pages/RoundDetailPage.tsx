@@ -14,6 +14,7 @@ import { RoundSetNav } from "./RoundSetNav.js";
 import { PagedSections } from "./RoundPager.js";
 import { RoundKeyLegend } from "./RoundKeys.js";
 import { ROUND_KEYS } from "./round-keys.js";
+import { PlanApprovalsProvider } from "./PlanApprovalScope.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
@@ -39,7 +40,9 @@ function RoundBody({ round }: { round: ValidRound }): ReactNode {
   const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
   return (
     <LiveViewedProvider key={round.id}>
-      <RoundFramesProvider roundId={round.id} manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></RoundFramesProvider>
+      <RoundFramesProvider roundId={round.id} manifest={round.manifest}>
+        <PlanApprovalsProvider manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></PlanApprovalsProvider>
+      </RoundFramesProvider>
     </LiveViewedProvider>
   );
 }

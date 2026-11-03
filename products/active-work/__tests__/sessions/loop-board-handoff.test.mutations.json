@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a loop opened at a handoff keeps its origin as its source",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "  return loop.origin === 'handoff' || loop.origin === 'teleport' ? loop.origin : 'session';\n",
+      "replace": "  return 'session';\n",
+      "kills": ["buildBoard marks a loop opened at a handoff as source handoff"]
+    },
+    {
+      "name": "only a handoff newer than the last motion advances it",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "!(latest.ms > motionMs)",
+      "replace": "!(latest.ms < motionMs)",
+      "kills": ["buildBoard advances last motion from a seat handoff newer than the ledger date"]
+    },
+    {
+      "name": "only the owning seat's handoff advances motion",
+      "file": "products/active-work/src/sessions/loop-board.ts",
+      "find": "loop.ownerSeat === null ? undefined : newest.get(loop.ownerSeat)",
+      "replace": "[...newest.values()].at(0)",
+      "kills": ["buildBoard leaves last motion alone when the handoff is from a different seat"]
+    }
+  ]
+}

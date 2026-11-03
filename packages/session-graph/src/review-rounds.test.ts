@@ -43,7 +43,7 @@ const resolveOrigins: OriginResolver = () => ({ origins });
 const forge = (answers: Record<string, ResolvedPr>): PrResolver => () => new Map(Object.entries(answers));
 const refresh = (options: RefreshOptions = {}) => refreshCorpus(graph, corpus(), { resolveOrigins, ...options });
 const rounds = (prRef = DEMO) => graph.db.prepare("SELECT review_rounds, review_rounds_gh, review_rounds_chat FROM pr WHERE pr_ref = ?").get(prRef);
-const verdictRefs = () => (graph.db.prepare("SELECT pr_ref FROM pr_review WHERE surface = 'chat' ORDER BY source_key").all() as { pr_ref: string | null }[]).map((r) => r.pr_ref);
+const verdictRefs = () => graph.db.prepare<[], { pr_ref: string | null }>("SELECT pr_ref FROM pr_review WHERE surface = 'chat' ORDER BY source_key").all().map((r) => r.pr_ref);
 
 function reviewTeam(): void {
   origins = {

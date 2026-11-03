@@ -1,4 +1,6 @@
 import { useBeatTime } from "@titan-design/react-ui/motion";
+import { litBox, useLit } from "./stage/emphasis.js";
+import { rise } from "./stage/entrance.js";
 import { fadeUp, progress, SMALL_EXIT_S } from "./stage/video.js";
 
 /**
@@ -47,8 +49,9 @@ function tickScale(t: number, atS: number): number {
 
 function ListRow({ item, t }: { item: ListItem; t: number }) {
   const tick = tickScale(t, item.atS);
+  const lit = useLit()(item.id, t);
   return (
-    <li className="ex-list-row" data-reveal={item.id} data-mark={item.mark} style={fadeUp(t, item.atS, 24)}>
+    <li className="ex-list-row" data-reveal={item.id} data-mark={item.mark} style={{ ...fadeUp(t, item.atS, 24), ...litBox(lit, { base: "var(--color-surface-raised)" }) }}>
       <span className="ex-list-box">
         <span className="ex-list-tick" data-qa-glyph="" style={{ opacity: tick > 0 ? 1 : 0, transform: `scale(${tick})` }}>{MARK_GLYPH[item.mark]}</span>
       </span>
@@ -61,11 +64,11 @@ function ListRow({ item, t }: { item: ListItem; t: number }) {
 /** In at 0 s, out (at the exit scale of the entrance) so it is gone by `yieldsAtS`, absolutely placed over the rows. */
 function yieldingHeading(t: number, yieldsAtS: number) {
   const out = progress(t, Math.max(0, yieldsAtS - SMALL_EXIT_S), SMALL_EXIT_S);
-  const { opacity, transform } = fadeUp(t, 0);
-  return { position: "absolute" as const, opacity: opacity * (1 - out), transform };
+  const entered = progress(t, 0);
+  return { position: "absolute" as const, ...rise(Math.min(entered, 1 - out), 32) };
 }
 
-/** Rows tick in on their cues under a heading. */
+/** Rows tick in on their cues under a heading, and light when a later cue names them again. */
 export function ListFrame({ heading, items, headingYieldsAtS, leadLine = false }: ListFrameProps) {
   const { t } = useBeatTime();
   const style = headingYieldsAtS === undefined ? fadeUp(t, 0) : yieldingHeading(t, headingYieldsAtS);

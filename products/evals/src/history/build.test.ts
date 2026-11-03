@@ -1,10 +1,12 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fixtureEnv, withHistory } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
-import { lines, scratchRepo, type ScratchRepo } from "../corpus/test-fixture.js";
+import { lines, scratchRepo } from "../corpus/test-fixture.js";
 import type { ExclusionPolicy } from "../private/exclusion.js";
 import { buildHistory, writeHistory, type HistoryInputs } from "./build.js";
 import { openGraph, type GraphReader } from "./graph.js";
@@ -17,20 +19,19 @@ const POLICY: ExclusionPolicy = { repos: ["widgets"], initiatives: ["eng"], mark
 let root: string;
 let graph: GraphReader;
 
-/** Squash-lands a PR branch off main's tip as `<message>` and publishes its `refs/pull/<n>/head`. */
-function landPr(repo: ScratchRepo, n: number, files: Record<string, string>, message: string, at: string): void {
-  repo.git(["checkout", "-q", "-b", `pr${n}`]);
-  const head = repo.commit(files, `work for ${n}`, at);
-  repo.git(["update-ref", `refs/pull/${n}/head`, head]);
-  repo.git(["checkout", "-q", "main"]);
-  repo.commit(files, message, at);
-}
-
+/** PRs 7 and 9 squash-land on main off its tip, each with its branch head published as `refs/pull/<n>/head`. */
 function buildOrigin(dir: string): void {
   const origin = scratchRepo(dir);
-  origin.commit({ "src/a.ts": lines(3) }, "init", "2026-01-01T00:00:00Z");
-  landPr(origin, 7, { "src/x.ts": lines(15), "src/x.test.ts": lines(10) }, "Add x (#7)", "2026-01-02T00:00:00Z");
-  landPr(origin, 9, { "src/y.ts": lines(2) }, "Add y (#9)\n\nPart of STPX-3.", "2026-01-03T00:00:00Z");
+  const pr7 = { "src/x.ts": lines(15), "src/x.test.ts": lines(10) };
+  const pr9 = { "src/y.ts": lines(2) };
+  const [, head7, , head9] = withHistory(origin.dir, [
+    { files: { "src/a.ts": lines(3) }, message: "init" },
+    { files: pr7, message: "work for 7", branch: "pr7", from: "main" },
+    { files: pr7, message: "Add x (#7)" },
+    { files: pr9, message: "work for 9", branch: "pr9", from: "main" },
+    { files: pr9, message: "Add y (#9)\n\nPart of STPX-3." },
+  ]);
+  execFileSync("git", ["-C", origin.dir, "update-ref", "--stdin"], { input: `update refs/pull/7/head ${head7}\nupdate refs/pull/9/head ${head9}\n`, env: fixtureEnv() });
 }
 
 function writeGraph(path: string): void {

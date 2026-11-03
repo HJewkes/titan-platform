@@ -1,9 +1,9 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource, RpcError, type RpcClient } from "@titan-design/rpc-client";
-import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
 import { FixTaskRefused, type FixTaskFields, type FixTasks, type FlakeFields } from "./main-red.js";
 import { toPresence } from "./presence.js";
-import { createRosterReader, mutating, type RosterReader } from "./roster.js";
+import { createRosterReader, mutating } from "./roster.js";
+import type { CleanupAgents, CleanupTasks, RosterReader, TaskState } from "./ports.js";
 
 export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
 export const DEFAULT_ACTIVE_WORK_PORT = 7400;

@@ -25,6 +25,7 @@ export {
   BRANCH_PREFIX,
   DEFAULT_BASE_PATH,
   DEFAULT_FETCH_TIMEOUT_MS,
+  DEFAULT_GH_TIMEOUT_MS,
   DEFAULT_WORKTREE_BUDGET,
   RECLAIM_GRACE_MS,
   type WorktreeOptions,
@@ -32,7 +33,7 @@ export {
 } from "./options.js";
 export { parkWorktree, type ParkOptions, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingObservation, type ParkLocalBackingCandidate, type ParkLocalBackingReader } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
-export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
+export { describeRefusal, inspectForRelease, type IgnoredFilesPolicy, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {
   DEFAULT_SETUP_TIMEOUT_MS,
   NPMRC_FILE,

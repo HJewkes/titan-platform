@@ -11,7 +11,7 @@ import { MAX_ENCODED_BYTES } from "./transport.js";
 
 const COMMON_USAGE = "--base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
 export const USAGE = `usage: fix-proof run|exec|judge ${COMMON_USAGE}`;
-const RUN_USAGE = `usage: fix-proof run ${COMMON_USAGE}`;
+const RUN_USAGE = `usage: fix-proof run [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
 const EXEC_USAGE = `usage: fix-proof exec --side base|head|mutants --out <dir> [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
 const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] [--base-ref <branch>] ${COMMON_USAGE}`;
 
@@ -42,12 +42,15 @@ function sideOf(value: string | undefined): Side | typeof MUTANTS_REPORT {
   throw new Error(EXEC_USAGE);
 }
 
-function execOptions(values: Values, cwd: string): ExecMutantsOptions {
-  const options: ExecMutantsOptions = { ...common(values, cwd), out: path.resolve(cwd, values.out ?? "") };
+function withSandboxUser<T extends object>(options: T, values: Values, usage: string): T & { sandboxUser?: string } {
   const sandboxUser = values[SANDBOX_FLAG];
   if (sandboxUser === undefined) return options;
-  if (!SANDBOX_USER_PATTERN.test(sandboxUser)) throw new Error(EXEC_USAGE);
+  if (!SANDBOX_USER_PATTERN.test(sandboxUser)) throw new Error(usage);
   return { ...options, sandboxUser };
+}
+
+function execOptions(values: Values, cwd: string): ExecMutantsOptions {
+  return withSandboxUser({ ...common(values, cwd), out: path.resolve(cwd, values.out ?? "") }, values, EXEC_USAGE);
 }
 
 // Reads at most a little past the decoder's cap, so an oversized report file is refused without loading it whole.
@@ -74,7 +77,12 @@ function judgeReports(values: Values, cwd: string): JudgeReports {
 }
 
 const COMMANDS: Readonly<Record<string, Command>> = {
-  run: { usage: RUN_USAGE, flags: [], required: [], act: (values, cwd, runner) => runner(common(values, cwd)) },
+  run: {
+    usage: RUN_USAGE,
+    flags: [SANDBOX_FLAG],
+    required: [],
+    act: (values, cwd, runner) => runner(withSandboxUser(common(values, cwd), values, RUN_USAGE)),
+  },
   exec: {
     usage: EXEC_USAGE,
     flags: ["side", "out", SANDBOX_FLAG],

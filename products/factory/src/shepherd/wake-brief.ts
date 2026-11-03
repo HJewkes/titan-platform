@@ -8,9 +8,10 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { noRunWake } from "./ci-norun.js";
 import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
-import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
+import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, ordinal, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
 import type { MergeBaseException } from "./merge-base-exception.js";
 export { withMergeBaseException } from "./merge-base-exception.js";
+import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
@@ -169,11 +170,6 @@ const FixFirst = z.looseObject({ text: z.string().optional(), earlier: z.array(F
 
 export { defectClassSection };
 
-function ordinal(n: number): string {
-  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-  return `${n}${suffix}`;
-}
-
 const STRUCTURAL = "Do not patch the items one by one: fix the defect class at the one boundary where a single change covers every instance, then check that each blocking item in the findings is covered by it.";
 const NO_CLASS = "The reviewer named no defect class. Name the class these items share and the boundary where one fix covers it in your final message, then fix it there.";
 
@@ -315,6 +311,8 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {
+      const stale = staleBaseWake(head, pr.baseRef, input.payload);
+      if (stale) return stale;
       const conflict = await conflictFiles(port, input, pr);
       return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
     }

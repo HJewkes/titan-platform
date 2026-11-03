@@ -14,14 +14,22 @@ export interface CroppedFinding extends HeldFinding {
   crop?: string
 }
 
+/**
+ * The padded rect clipped to the frame. A rect wholly past an edge (an element painted off-frame) has no on-frame
+ * area, so it gets the band of padding width at that edge rather than an empty clip, which playwright refuses.
+ */
+function frameClip({ x, y, w, h }: { x: number; y: number; w: number; h: number }, { W, H }: InspectOptions) {
+  const x0 = Math.max(0, Math.min(x - CROP_PAD_PX, W - CROP_PAD_PX))
+  const y0 = Math.max(0, Math.min(y - CROP_PAD_PX, H - CROP_PAD_PX))
+  const x1 = Math.min(W, Math.max(x + w + CROP_PAD_PX, CROP_PAD_PX))
+  const y1 = Math.min(H, Math.max(y + h + CROP_PAD_PX, CROP_PAD_PX))
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
 /** Draws the finding's rectangle on the page, screenshots a padded clip around it, and removes the box. */
 async function annotatedCrop(page: Page, held: HeldFinding, path: string, opts: InspectOptions): Promise<void> {
   const { x, y, w, h } = held.finding.at
-  const clip = {
-    x: Math.max(0, x - CROP_PAD_PX), y: Math.max(0, y - CROP_PAD_PX),
-    width: Math.min(opts.W, x + w + CROP_PAD_PX) - Math.max(0, x - CROP_PAD_PX),
-    height: Math.min(opts.H, y + h + CROP_PAD_PX) - Math.max(0, y - CROP_PAD_PX),
-  }
+  const clip = frameClip(held.finding.at, opts)
   await page.evaluate(({ x, y, w, h, label }) => {
     const box = document.createElement('div')
     box.id = '__qa-annotation'

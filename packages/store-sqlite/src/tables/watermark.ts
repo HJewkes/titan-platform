@@ -92,7 +92,7 @@ export class WatermarkTable {
   constructor(db: Db, { name = "watermark" }: WatermarkOptions = {}) {
     const t = quoteIdent(name);
     this.ensureStmt = db.prepare(`INSERT INTO ${t} (source_key) VALUES (?) ON CONFLICT (source_key) DO NOTHING`);
-    this.getStmt = db.prepare(`SELECT * FROM ${t} WHERE source_key = ?`);
+    this.getStmt = db.prepare<[string], RawWatermarkRow>(`SELECT * FROM ${t} WHERE source_key = ?`);
     this.advanceStmt = db.prepare(
       `UPDATE ${t} SET last_offset = @lastOffset, prefix_hash = @prefixHash, last_indexed_at = ${SQL_NOW},
          file_size = @fileSize, file_mtime = @fileMtime, content_hash = COALESCE(@contentHash, content_hash),
@@ -101,17 +101,19 @@ export class WatermarkTable {
     );
     this.statusStmt = db.prepare(`UPDATE ${t} SET status = ?, status_reason = ? WHERE source_key = ?`);
     this.rewindStmt = db.prepare(`UPDATE ${t} SET last_offset = 0, prefix_hash = NULL WHERE source_key = ?`);
-    this.listStmt = db.prepare(`SELECT * FROM ${t} ORDER BY source_id`);
+    this.listStmt = db.prepare<[], RawWatermarkRow>(`SELECT * FROM ${t} ORDER BY source_id`);
   }
 
   /** The row for a source, created at offset 0 on first sight. The id is stable for the table's life. */
   ensure(sourceKey: string): WatermarkRow {
     this.ensureStmt.run(sourceKey);
-    return toRow(this.getStmt.get(sourceKey) as RawWatermarkRow);
+    const raw = this.getStmt.get(sourceKey);
+    if (raw === undefined) throw new Error(`watermark row missing right after ensure: ${sourceKey}`);
+    return toRow(raw);
   }
 
   get(sourceKey: string): WatermarkRow | undefined {
-    const raw = this.getStmt.get(sourceKey) as RawWatermarkRow | undefined;
+    const raw = this.getStmt.get(sourceKey);
     return raw === undefined ? undefined : toRow(raw);
   }
 
@@ -143,6 +145,6 @@ export class WatermarkTable {
   }
 
   list(): WatermarkRow[] {
-    return (this.listStmt.all() as RawWatermarkRow[]).map(toRow);
+    return this.listStmt.all().map(toRow);
   }
 }

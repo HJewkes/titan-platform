@@ -12,19 +12,20 @@ import { sleep } from "../workflows/land.js";
 import type { SpawnRequest } from "./agents.js";
 import { demotionOffForTest } from "../test-support/gate-demotions.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
-import { DEFAULT_DIAGNOSIS_PROFILE, DIAGNOSIS_SPAWN_ATTEMPTS, diagnosisName, spawnDiagnosis, type DiagnosisPorts, type DiagnosisTiming } from "./no-verdict-diagnosis.js";
+import { DEFAULT_DIAGNOSIS_PROFILE, DIAGNOSIS_SPAWN_ATTEMPTS, diagnosisName, spawnDiagnosis, type DiagnosisTiming } from "./no-verdict-diagnosis.js";
+import type { DiagnosisPorts } from "./spawn-ports.js";
 import { freshNoVerdictState, noteReviewerStep, type ReviewerSeen } from "./no-verdict-round.js";
 import type { ObservedPr } from "./observe.js";
-import type { EffectivePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Escalated } from "./route-table.js";
 import { countRound, type Routed } from "./routed.js";
 import { SpawnDeferred, spawnGate } from "./spawn-gate.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("diagnosis-head");
@@ -259,10 +260,10 @@ function timing(clock = { at: 0 }): DiagnosisTiming & { slept: number[] } {
   return { now: () => clock.at, sleep: sleepFor, signal: new AbortController().signal, slept };
 }
 
-/** Ports whose spawns pass the factory's spawn gate, which admitted another agent 23762 ms before the planner asks at `load5`. */
+/** Ports whose spawns pass the factory's spawn gate, which admitted another agent 23762 ms before the planner asks at `load5`, under a configured 60 s window. */
 function gatedPorts(clock: { at: number }, load5 = 1): ReturnType<typeof diagnosisPorts> {
   const reading = { load5: 1 };
-  const gate = spawnGate({ now: () => clock.at, read: () => ({ ...reading }), limits: { load5: 28 }, log: () => undefined });
+  const gate = spawnGate({ now: () => clock.at, read: () => ({ ...reading }), limits: { load5: 28, windowMs: 60_000 }, log: () => undefined });
   gate.admit("rv-other");
   reading.load5 = load5;
   clock.at = 23_762;

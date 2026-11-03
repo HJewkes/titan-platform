@@ -1,4 +1,6 @@
+import type { CaptionRule } from "./caption-check.js";
 import type { Check } from "../workflow/records.js";
+import { MAX_FLASHES_PER_S, type FlashReport } from "./flash-scan.js";
 import { QaReportSchema, qaSummary, type MediaScanReport, type QaReport } from "./qa-report.js";
 import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
 
@@ -63,3 +65,53 @@ export const mediaScanVerdict = (kind: keyof MediaScanReport, label: string) => 
   const shown = found.slice(0, DETAIL_FINDINGS).map(({ startS, endS, beats }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s [${beats.join(",")}]`).join("; ");
   return { pass: found.length === 0, detail: found.length === 0 ? `no ${label}` : `${found.length} ${label}: ${shown}` };
 };
+
+/** One caption rule's findings: none passes; a qa.json from before the caption check fails, as a missing gate does. */
+export const captionVerdict = (rule: CaptionRule) => (input: QaCheckInput): Verdict => {
+  const { captions } = report(input);
+  if (captions === undefined) return { pass: false, detail: "qa.json has no captions report" };
+  const found = captions.findings.filter((finding) => finding.rule === rule);
+  const shown = found.slice(0, DETAIL_FINDINGS).map((finding) => finding.message).join("; ");
+  return { pass: found.length === 0, detail: found.length === 0 ? `${captions.cues} cues, no ${rule} finding` : `${found.length} caption ${rule}: ${shown}` };
+};
+
+/** On-screen facts the narration never says: none passes; a qa.json from before the check fails, as a missing gate does. */
+export function narrationFactsVerdict(input: QaCheckInput): Verdict {
+  const { narrationFacts } = report(input);
+  if (narrationFacts === undefined) return { pass: false, detail: "qa.json has no narrationFacts report" };
+  const { beats, findings } = narrationFacts;
+  const shown = findings.slice(0, DETAIL_FINDINGS).map(({ beat, kind, fact }) => `[${beat}] ${kind} "${fact}"`).join("; ");
+  return { pass: findings.length === 0, detail: findings.length === 0 ? `${beats} beats, every on-screen fact narrated` : `${findings.length} unspoken: ${shown}` };
+}
+
+function flashDetail(label: string, { maxPerS, windows }: FlashReport["general"]): string {
+  const shown = windows.slice(0, DETAIL_FINDINGS).map(({ startS, endS }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s`).join(", ");
+  return `${label} ${maxPerS}/s${windows.length > 0 ? ` over ${MAX_FLASHES_PER_S} at ${shown}` : ""}`;
+}
+
+/** WCAG 2.3.1: more than three general or red flashes in any one second fails; a qa.json from before the scan fails. */
+export function flashVerdict(input: QaCheckInput): Verdict {
+  const { flash } = report(input);
+  if (flash === undefined) return { pass: false, detail: "qa.json has no flash scan" };
+  const pass = flash.general.windows.length === 0 && flash.red.windows.length === 0;
+  return { pass, detail: `${flashDetail("general", flash.general)}; ${flashDetail("red", flash.red)} (${flash.method})` };
+}
+
+/** Text runs under the WCAG text ratios: none passes; a qa.json from before the check fails, as a missing gate does. */
+export function textContrastVerdict(input: QaCheckInput): Verdict {
+  const { contrast } = report(input);
+  if (contrast === undefined) return { pass: false, detail: "qa.json has no contrast report" };
+  const { below } = contrast.text;
+  const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, text, px, ratio, need }) => `[${beat}] "${text}" ${px} px ${ratio}:1 (needs ${need}:1)`).join("; ");
+  return { pass: below.length === 0, detail: below.length === 0 ? "no text under the contrast thresholds" : `${below.length} text runs under contrast: ${shown}` };
+}
+
+/** Chart marks under the non-text ratio against their ground: none passes; a qa.json from before the check fails. */
+export function chartMarkContrastVerdict(input: QaCheckInput): Verdict {
+  const { contrast } = report(input);
+  if (contrast === undefined) return { pass: false, detail: "qa.json has no contrast report" };
+  const { checked, below } = contrast.marks;
+  const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, mark, colour, ground, ratio }) => `[${beat}] ${mark} ${colour} on ${ground} ${ratio.toFixed(2)}:1`).join("; ");
+  const need = contrast.thresholds.nonText;
+  return { pass: below.length === 0, detail: below.length === 0 ? `${checked} chart marks at ${need}:1 or more` : `${below.length}/${checked} chart marks under ${need}:1: ${shown}` };
+}

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** Runs the helper with `input` on stdin; rejects on a non-zero exit or when the helper cannot start. */
 export type HelperRunner = (file: string, args: readonly string[], input?: Uint8Array) => Promise<string>
@@ -38,16 +39,13 @@ export const helperSearchOrder = (): readonly string[] => [ROOT_HELPER_PATH, def
 
 const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"])
 
-const errorCode = (error: unknown): string => {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === "string" ? code : "UNKNOWN"
-}
+const codeOrUnknown = (error: unknown): string => errorCode(error) ?? "UNKNOWN"
 
 export const defaultStat: StatPort = (path) => {
   try {
     return lstatSync(path, { throwIfNoEntry: false })
   } catch (error) {
-    if (ABSENT_CODES.has(errorCode(error))) return undefined
+    if (ABSENT_CODES.has(codeOrUnknown(error))) return undefined
     throw error
   }
 }
@@ -136,7 +134,7 @@ function checkedHelper({ helperPaths = helperSearchOrder(), stat = defaultStat, 
   try {
     helper = pickHelper(helperPaths, stat, getuid())
   } catch (error) {
-    report(`owner presence refused: lstat of the helper path failed with ${errorCode(error)}\n`)
+    report(`owner presence refused: lstat of the helper path failed with ${codeOrUnknown(error)}\n`)
     return undefined
   }
   if ("refusal" in helper) {

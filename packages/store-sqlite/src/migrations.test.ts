@@ -92,11 +92,11 @@ describe("forward-schema guard", () => {
   });
 
   it("names both versions on the error so a caller can report them", () => {
-    let caught: SchemaTooNewError | null = null;
+    let caught: unknown = null;
     try {
       openDatabase(dbPath, { schemaVersion: 1 });
     } catch (err) {
-      caught = err as SchemaTooNewError;
+      caught = err;
     }
 
     expect(caught).toMatchObject({ name: "SchemaTooNewError", storedVersion: 2, knownVersion: 1 });

@@ -47,7 +47,11 @@ async function startVite(root: string, daemon: TestDaemon, server: ServerOptions
   }
 }
 
-const portOf = (vite: ViteDevServer): number => (vite.httpServer!.address() as { port: number }).port;
+const portOf = (vite: ViteDevServer): number => {
+  const address = vite.httpServer!.address();
+  if (address === null || typeof address === "string") throw new Error("dev server is not listening on a TCP port");
+  return address.port;
+};
 
 describe("daemonHeaders", () => {
   const daemon = new URL("http://127.0.0.1:7400");

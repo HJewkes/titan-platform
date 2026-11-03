@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const { version } = createRequire(import.meta.url)('./package.json') as { version: string };
 
 export default defineConfig({
-  entry: ['src/cli.ts', 'src/aw.ts'],
+  entry: ['src/cli.ts', 'src/aw.ts', 'src/program.ts'],
   format: ['esm'],
   target: 'node22',
   clean: true,

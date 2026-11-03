@@ -157,18 +157,27 @@ async function guarded<T>(session: Session, run: () => Promise<T>): Promise<T> {
 const defined = (vars: Record<string, string | undefined>): Record<string, string> =>
   Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));
 
+/** R6: a measurement is only evidence for the sha it ran at, so a tree that sits elsewhere is refused before it runs. */
+async function assertAtHead(tree: string, head: string): Promise<void> {
+  const actual = await execGit(["rev-parse", "HEAD"], tree);
+  if (actual !== head) throw new Error(`[head] ${tree} is at ${actual}, not the requested ${head}`);
+}
+
 function rungOf(target: Target, name: string) {
   const rung = target.rungs[name];
   if (!rung) throw new Error(`[rung] ${name} is not in target.rungs`);
   return rung;
 }
 
+/** The runner's load gate may hold a session this long before real work starts; only work after its marker counts against timeoutMin. */
+const LOAD_WAIT_ALLOWANCE_MS = 3 * 60 * 60_000;
+
 /** Eval and micro scripts are frozen, so they run from the evaluator checkout; `{runnerRoot}` points them at the idea's code. */
 async function runRung(session: Session, name: string, vars: Record<string, string | undefined>, signal: AbortSignal): Promise<unknown> {
   const rung = rungOf(session.target, name);
   const argv = renderCommand(rung.cmd, defined({ ...vars, maxUsd: rung.maxUsd?.toString() }));
   const timeoutMs = rung.timeoutMin === undefined ? undefined : rung.timeoutMin * 60_000;
-  return guarded(session, async () => lastLine(await runCommand(argv, { cwd: session.evaluatorTree, signal, timeoutMs }), argv));
+  return guarded(session, async () => lastLine(await runCommand(argv, { cwd: session.evaluatorTree, signal, timeoutMs, waitAllowanceMs: LOAD_WAIT_ALLOWANCE_MS }), argv));
 }
 
 async function paramsOf(bounds: Bounds, idea: Idea, diff: readonly DiffFile[], tree: string, revs: [string, string]) {
@@ -320,6 +329,7 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
     evalCase: async (input, signal) => {
       const pinned = await session.of(input);
       const { target } = pinned;
+      await assertAtHead(input.tree, input.head);
       const vars = { caseSet: target.caseSets[input.case], case: input.case, key: input.key, runnerRoot: join(input.tree, target.runnerRoot) };
       return resultSchemaFor(target.metric).parse(await runRung(pinned, input.rung, vars, signal));
     },

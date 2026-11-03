@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { SessionEvent } from "./events.js";
 import { DEFAULT_EMIT_POLICY, LineReader, type EmitPolicy } from "./line-reader.js";
-import type { Json } from "./text.js";
+import { asObject } from "./text.js";
 
 /**
  * Hand-written transcript fixture: one line of every event type the reader
@@ -178,8 +178,25 @@ export function eventsForLines(lines: Record<string, unknown>[], policy: EmitPol
   let byteOffset = 0;
   for (const line of lines) {
     const byteLength = Buffer.byteLength(JSON.stringify(line), "utf8");
-    reader.handle(line as Json, { byteOffset, byteLength });
+    reader.handle(line, { byteOffset, byteLength });
     byteOffset += byteLength + 1;
   }
   return events;
+}
+
+/** Walks `path` from `root` and returns the object found there; a fixture that drifted fails loudly. */
+export function objectAt(root: unknown, ...path: (string | number)[]): Record<string, unknown> {
+  let current = root;
+  for (const part of path) {
+    current = typeof part === "number" ? (Array.isArray(current) ? current[part] : undefined) : asObject(current)?.[part];
+  }
+  const object = asObject(current);
+  if (!object) throw new Error(`fixture has no object at ${path.join(".")}`);
+  return object;
+}
+
+/** Narrows a lookup a test has already arranged to succeed. */
+export function defined<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("fixture lookup came back empty");
+  return value;
 }

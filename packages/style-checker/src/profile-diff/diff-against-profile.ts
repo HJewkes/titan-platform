@@ -29,19 +29,18 @@ function getSeverity(
   return tier === "off" ? "info" : tier;
 }
 
+function isProfileCategory(value: string | undefined): value is ProfileCategory {
+  return PROFILE_CATEGORIES.some((c) => c === value);
+}
+
 function resolveProfileRule(
   profile: Profile,
   observationType: string,
 ): { convention: unknown; confidence: number } | undefined {
   const [category, rule] = observationType.split(".");
-  if (!PROFILE_CATEGORIES.includes(category as ProfileCategory)) return undefined;
-  const section = profile[category as ProfileCategory];
-  if (!section || typeof section !== "object") return undefined;
-  const ruleObj = rule === undefined ? undefined : section[rule];
+  if (!isProfileCategory(category)) return undefined;
+  const ruleObj = rule === undefined ? undefined : profile[category][rule];
   if (!ruleObj || typeof ruleObj !== "object") return undefined;
-  if (ruleObj.convention === undefined || ruleObj.confidence === undefined) {
-    return undefined;
-  }
   return { convention: ruleObj.convention, confidence: ruleObj.confidence };
 }
 

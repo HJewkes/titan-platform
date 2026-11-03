@@ -42,7 +42,7 @@
     {
       "name": "the tests member's brief never asks whether each test fails without its change",
       "file": "packages/review-panel/src/briefs/tests.ts",
-      "find": "return why === \"no-repro-test-only\" ? [TEST_ONLY_MEMBER] : [];",
+      "find": "return proceeds === undefined ? [] : [PROCEED_MEMBER[proceeds]];",
       "replace": "return [];",
       "kills": [
         "a test-only head on a g10-adversary hold with a vacuous proof (tp#2258) merges on a fresh tests member's MERGE, with no waiver and the G10 bar met"

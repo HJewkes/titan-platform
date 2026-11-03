@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shown line is cut at 160 characters",
+      "file": "products/factory/src/console-action/exact-line.ts",
+      "find": "toString(16).toUpperCase()}}`));",
+      "replace": "toString(16).toUpperCase()}}`)).slice(0, 160);",
+      "kills": [
+        "exactLine gives back every generated string exactly, and shows none of the characters a screen could hide or break on"
+      ]
+    },
+    {
+      "name": "the escape lists only controls and format characters",
+      "file": "products/factory/src/console-action/exact-line.ts",
+      "find": "\\p{Zp}\\p{Default_Ignorable_Code_Point}\\u2800]|(?! )\\p{Zs}|\\p{Cs}/gu;",
+      "replace": "\\p{Zp}]|\\p{Cs}/gu;",
+      "kills": [
+        "exactLine escapes the invisible characters a deny-list of controls and format characters misses"
+      ]
+    }
+  ]
+}

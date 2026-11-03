@@ -4,9 +4,10 @@ import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } fr
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrRequest } from "./pr-list.js";
-import type { CheckRun, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
+import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
+import { fakeContentBytes } from "./fake-bytes.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
 
@@ -55,7 +56,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
   const reads = new Map<number, number>();
-  const fake: FakeGitHub = {
+  const state: Omit<FakeGitHub, "wire" | "gitExec"> = {
     effects,
     runStatuses: runStatus,
     jobReruns: [],
@@ -74,6 +75,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     jobLogs: new Map(),
     jobSteps: new Map(),
     files: new Map(),
+    bytes: new Map(),
     actor: "shepherd-bot",
     prFiles: new Map(),
     prChangedFiles: new Map(),
@@ -103,14 +105,14 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },
-  } as Omit<FakeGitHub, "wire" | "gitExec"> as FakeGitHub;
+  };
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
   const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
     const fault = (fake.calls.push(name), fake.readFaults[name]?.shift());
     if (fault) throw fault;
     return answer();
   };
-  fake.wire = {
+  const wire: GitHubWire = {
     getRef: async (_repo, branch) => record("getRef", fake.refs.get(branch) ?? null),
     createRef: async (_repo, branch, sha) => {
       record("createRef", undefined);
@@ -128,6 +130,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
+    getContentBytes: async (_repo, path, ref, maxBytes) => record("getContentBytes", fakeContentBytes(fake, path, ref, maxBytes)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
@@ -186,7 +189,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
   };
-  fake.gitExec = fakeLsRemote(prs, () => read("lsRemote", () => undefined));
+  const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
   return fake;
 }
 

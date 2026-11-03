@@ -8,7 +8,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import type { ShepherdPhases } from "./phases.js";
-import type { EffectivePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef } from "./store.js";

@@ -21,13 +21,13 @@ const DENY_RULE_IDS = [
   "CFG-OR", "CFG-CO", "CFG-WK", "CFG-HD", "CFG-AU",
   "HV-CO", "HV-WK", "HV-HD", "HV-AU",
   "MRG-DC", "REL-DC", "SEC-DC", "UNT-DC", "PUB-DC", "EXT-DC", "HW-DC", "HWS-DC",
-  "DSR-DC", "DSL-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
+  "DSR-DC", "DSL-DC", "RET-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
   "ANS-OT", "ANS-OR", "ANS-CO", "ANS-WK", "ANS-HD", "ANS-AU", "ANS-DC",
 ];
 
 const ACTION_CODES: Record<string, ActionClass> = {
   MRG: "merge", REL: "release", SEC: "secret-read", UNT: "untrusted-ingest", PUB: "private-to-public", EXT: "private-egress",
-  HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", DSX: "destructive-foreign",
+  HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", RET: "agent-retire", DSX: "destructive-foreign",
   SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb", ANS: "answer-question",
 };
 const ACTOR_CODES: Record<string, ActorClass> = {
@@ -40,13 +40,31 @@ function request(action: ActionClass, actor: ActorClass, tainted = false): Autho
 
 function requestFor(ruleId: string): AuthorityRequest {
   const [actionCode = "", actorCode = ""] = ruleId.split("-");
-  return request(ACTION_CODES[actionCode] as ActionClass, ACTOR_CODES[actorCode] as ActorClass);
+  const action = ACTION_CODES[actionCode];
+  const actor = ACTOR_CODES[actorCode];
+  if (action === undefined || actor === undefined) throw new Error(`unknown rule id ${ruleId}`);
+  return request(action, actor);
 }
 
 describe("the approved table", () => {
-  it("holds 44 allow, 6 gate and 66 deny rows", () => {
+  it("holds 51 allow, 6 gate and 67 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 45, gate: 6, deny: 66 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 51, gate: 6, deny: 67 });
+  });
+
+  // Kills: retire-agent riding destructive-local's DSL-OR deny, or RET-OR flipped to gate or deny.
+  it("lets the owner retire an agent from the console while other local destruction stays denied there", () => {
+    expect(evaluate(DEFAULT_TABLE, request("agent-retire", "owner-remote"))).toEqual({ verdict: "allow", ruleId: "RET-OR" });
+    expect(evaluate(DEFAULT_TABLE, request("destructive-local", "owner-remote"))).toMatchObject({ verdict: "deny", ruleId: "DSL-OR" });
+  });
+
+  // Kills: a RET row for any actor but owner-remote drifting from the destructive-local policy it replaced.
+  it("gives every other actor the same retire policy destructive-local gave it", () => {
+    const shape = (id: string) => {
+      const { verdict, condition, evidence } = DEFAULT_TABLE.rules.find((rule) => rule.id === id)!;
+      return { verdict, condition, evidence };
+    };
+    for (const actor of ["OT", "CO", "WK", "HD", "AU", "DC"]) expect(shape(`RET-${actor}`)).toEqual(shape(`DSL-${actor}`));
   });
 
   it("denies exactly the hand-listed rows", () => {
@@ -68,7 +86,8 @@ describe("the approved table", () => {
 
 describe("evaluate", () => {
   it("denies an action no rule names, with no rule id", () => {
-    const unknown = request("teleport" as ActionClass, "owner-terminal");
+    const unknown = request("merge", "owner-terminal");
+    Reflect.set(unknown, "action", "teleport");
     expect(evaluate(DEFAULT_TABLE, unknown)).toMatchObject({ verdict: "deny", ruleId: null });
   });
 
@@ -140,8 +159,9 @@ describe("evaluate with a malformed actor", () => {
   ];
 
   it.each(malformed)("denies %s instead of throwing", (_name, actor) => {
-    const request = { action: "merge", actor, tainted: false, subject: {} } as unknown as AuthorityRequest;
-    const decision = evaluate(DEFAULT_TABLE, request);
+    const malformed = request("merge", "owner-terminal");
+    Reflect.set(malformed, "actor", actor);
+    const decision = evaluate(DEFAULT_TABLE, malformed);
     expect(decision.verdict).toBe("deny");
   });
 });
@@ -150,7 +170,8 @@ describe("evaluate with a polluted Object.prototype.class", () => {
   it("denies an actor that does not own a class instead of reading the inherited one", () => {
     Object.defineProperty(Object.prototype, "class", { value: "owner-terminal", configurable: true });
     try {
-      const polluted = { action: "merge", actor: { id: "a1" }, tainted: false, subject: {} } as unknown as AuthorityRequest;
+      const polluted = request("merge", "owner-terminal");
+      Reflect.set(polluted, "actor", { id: "a1" });
       expect(evaluate(DEFAULT_TABLE, polluted)).toMatchObject({ verdict: "deny", ruleId: null });
     } finally {
       delete (Object.prototype as { class?: unknown }).class;

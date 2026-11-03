@@ -1,13 +1,13 @@
 import { consoleLogger } from "@titan-design/daemon";
 import type { Command } from "commander";
-import type { CliDeps, Verbs } from "./cli.js";
+import type { CliDeps, Verbs } from "./cli-types.js";
 import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { EXIT } from "./exit-codes.js";
 import { resolveGate } from "./gate-resolve.js";
 import type { FactoryRoutes, PendingGate, ResumeReport } from "./host.js";
-import { resolveCommand } from "./registry.js";
+import { resolveCommand } from "./resolve-command.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 
 export const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
@@ -44,7 +44,7 @@ export function registerServe(program: Command, { io, deps, dbPath }: Verbs): vo
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action(async (opts: { port: number }) => {
       for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);
-      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env), reconciler: deps.reconciler?.(io.env), bot: deps.bot }, deps.stop);
+      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), ciTimingFallback: deps.ciTimingFallback?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env), reconciler: deps.reconciler?.(io.env), bot: deps.bot }, deps.stop);
       deps.exitAfterServe?.();
     });
 }

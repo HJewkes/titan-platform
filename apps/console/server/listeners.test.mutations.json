@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the visual accept gate pattern loses its anchors",
-      "file": "apps/console/server/listeners.ts",
+      "file": "apps/console/server/round-gate-cover.ts",
       "find": "const VISUAL_ACCEPT = /(^|\\/)sh-visual-accept(:\\d+)?$/;",
       "replace": "const VISUAL_ACCEPT = /sh-visual-accept/;",
       "kills": [
@@ -13,12 +13,21 @@
     },
     {
       "name": "the approve-merge gate pattern loses its anchors",
-      "file": "apps/console/server/listeners.ts",
+      "file": "apps/console/server/round-gate-cover.ts",
       "find": "const APPROVE_MERGE = /(^|\\/)approve-merge(:\\d+)?$/;",
       "replace": "const APPROVE_MERGE = /approve-merge/;",
       "kills": [
         "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate run-1/approve-merge-x",
         "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate run-1/xapprove-merge"
+      ]
+    },
+    {
+      "name": "the answer path matches the repo only as the round spells it",
+      "file": "apps/console/server/round-gate-cover.ts",
+      "find": "row.repo.toLowerCase() === pin.repo.toLowerCase()",
+      "replace": "row.repo === pin.repo",
+      "kills": [
+        "the gate-answer listener after rounds.submit posts to the gate when Shepherd spells the repo and head in another case than the round, as the inbox folds it (TP-4356)"
       ]
     }
   ]

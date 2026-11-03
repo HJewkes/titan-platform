@@ -54,7 +54,7 @@ export function openGate<T = unknown>(store: GateStore, options: OpenGateOptions
   if (options.evidenceRef !== undefined) input.evidenceRef = options.evidenceRef;
   if (options.questions !== undefined) input.questions = options.questions;
   if (options.rule !== undefined) input.rule = options.rule;
-  if (options.schema) input.schema = toJSONSchema(options.schema) as Record<string, unknown>;
+  if (options.schema) input.schema = toJSONSchema(options.schema);
 
   const record = store.create(input);
   return {

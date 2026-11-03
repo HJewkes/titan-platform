@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a codec blip frame is diffed as itself",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": "prev && isCodecBlip(prev, held, next) ? prev : held",
+      "replace": "held",
+      "kills": [
+        "frameDiffs through the exec seam a one-frame codec blip on a still picture a keyframe blip that strays 5 levels and returns the next frame is no change"
+      ]
+    },
+    {
+      "name": "a blip may move pixels any number of levels",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": " && maxLevelChange(prev, frame) <= BLIP_LEVELS",
+      "replace": "",
+      "kills": [
+        "frameDiffs through the exec seam a one-frame codec blip on a still picture a one-frame flash that moves pixels 40 levels still counts as change"
+      ]
+    },
+    {
+      "name": "a blip need not return to the frame before",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": "changedShare(prev, next) === 0 && ",
+      "replace": "",
+      "kills": [
+        "frameDiffs through the exec seam a one-frame codec blip on a still picture a small step that stays on the next frame still counts as change"
+      ]
+    }
+  ]
+}

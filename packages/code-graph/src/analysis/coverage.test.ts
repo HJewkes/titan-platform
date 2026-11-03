@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   attributeCoverage,
+  coveredFunctionStarts,
   type IstanbulCoverage,
   type SymbolSpan,
 } from "./coverage.js";
@@ -90,5 +91,25 @@ describe("attributeCoverage", () => {
   it("emits nothing for a file with no functions", () => {
     const cov: IstanbulCoverage = { "/repo/z.ts": { fnMap: {}, f: {} } };
     expect(attributeCoverage(cov, () => "z.ts", new Map())).toEqual([]);
+  });
+});
+
+describe("coveredFunctionStarts", () => {
+  it("lists the start lines of functions hit at least once, by repo path", () => {
+    const cov: IstanbulCoverage = {
+      "/repo/a.ts": { fnMap: { "0": fn(2), "1": fn(8), "2": fn(14) }, f: { "0": 3, "1": 0, "2": 1 } },
+      "/repo/cold.ts": { fnMap: { "0": fn(1) }, f: { "0": 0 } },
+      "/elsewhere/b.ts": { fnMap: { "0": fn(1) }, f: { "0": 1 } },
+    };
+    const fileIdOf = (abs: string) => (abs.startsWith("/repo/") ? abs.slice("/repo/".length) : null);
+
+    const starts = coveredFunctionStarts(cov, fileIdOf);
+
+    expect([...starts]).toEqual([["a.ts", new Set([2, 14])]]);
+  });
+
+  it("treats a function with no hit count as not run", () => {
+    const cov: IstanbulCoverage = { "/repo/m.ts": { fnMap: { "0": fn(4) }, f: {} } };
+    expect(coveredFunctionStarts(cov, () => "m.ts").size).toBe(0);
   });
 });

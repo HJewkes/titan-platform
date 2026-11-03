@@ -15,6 +15,8 @@ const CorpusV3RowSchema = z.object({
   title: z.string(),
   brief_text: z.string().nullable(),
   follow_up_fixes: z.array(z.number().int()),
+  // Read only by the later-fix resolver; older corpus builds lack it.
+  fix_touch_14d: z.array(z.number().int()).optional(),
 });
 
 export type CorpusV3Row = z.infer<typeof CorpusV3RowSchema>;
@@ -33,7 +35,7 @@ export type TestChange = "tests-and-source" | "test-only" | "no-test-change";
 
 /** Facts that need the repo's clone; the export answers them with git and planFixProof. */
 export interface CandidateFacts {
-  hasPnpmLock(row: CorpusV3Row): Promise<boolean>;
+  hasSupportedLock(row: CorpusV3Row): Promise<boolean>;
   mergeParents(row: CorpusV3Row): Promise<number>;
   testChange(row: CorpusV3Row): Promise<TestChange>;
 }
@@ -74,7 +76,7 @@ function parseJson(line: string): unknown {
 }
 
 /** A task-file brief is the task's title and done_when; a subject-only row has its PR title. */
-const briefOf = (row: CorpusV3Row): string => row.brief_text ?? row.title;
+export const briefOf = (row: CorpusV3Row): string => row.brief_text ?? row.title;
 
 /** A brief edited after the merge can name the answer: the PR number, the merge sha, or where it landed. */
 export function leaksAnswer(brief: string, row: Pick<CorpusV3Row, "pr_number" | "merge_commit">): boolean {
@@ -93,7 +95,7 @@ function rowSkip(row: CorpusV3Row, options: SelectOptions): SkipReason | undefin
 }
 
 async function factSkip(row: CorpusV3Row, facts: CandidateFacts): Promise<SkipReason | undefined> {
-  if (!(await facts.hasPnpmLock(row))) return "unsupported-runner";
+  if (!(await facts.hasSupportedLock(row))) return "unsupported-runner";
   if ((await facts.mergeParents(row)) > 1) return "tangled";
   const change = await facts.testChange(row);
   return change === "tests-and-source" ? undefined : change;

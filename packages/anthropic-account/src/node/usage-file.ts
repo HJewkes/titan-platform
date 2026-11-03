@@ -5,6 +5,7 @@ import { redactSecrets } from "../redact.js";
 import { POLL_SESSION_ID, parseUsageReading, type UsageReading } from "../usage.js";
 import { readGatedFile } from "./gated-read.js";
 import { redactedError } from "./redact-error.js";
+import { errorCode } from "./narrow.js";
 
 export const USAGE_FILE = `${POLL_SESSION_ID}.json`;
 export const MAX_READING_BYTES = 256 * 1024;
@@ -27,7 +28,7 @@ function listReadingFiles(dir: string): string[] | null {
   try {
     return fs.readdirSync(dir).filter((name) => name.endsWith(".json"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (errorCode(error) === "ENOENT") return null;
     throw error;
   }
 }

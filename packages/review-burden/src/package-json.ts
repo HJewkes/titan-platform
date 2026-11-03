@@ -1,3 +1,4 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { PackageJsonChange } from "./config.js";
 
 type Manifest = Record<string, unknown>;
@@ -56,10 +57,6 @@ function missing(before: string[], after: string[]): string[] {
 
 function stringOf(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Manifest {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function recordOf(value: unknown): Manifest {

@@ -1,7 +1,14 @@
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
+
 /** The path is gone, or one of its parent components is now a file. Every other I/O error is real. */
 export function isMissing(error: unknown): boolean {
   const code = errorCode(error);
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/** The path's name is longer than the filesystem allows, so nothing can exist there. */
+export function isNameTooLong(error: unknown): boolean {
+  return errorCode(error) === "ENAMETOOLONG";
 }
 
 /**
@@ -15,6 +22,6 @@ export function isStaleLine(error: unknown): boolean {
   return error instanceof Error && error.message.includes("runs past the end");
 }
 
-function errorCode(error: unknown): unknown {
-  return typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined;
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

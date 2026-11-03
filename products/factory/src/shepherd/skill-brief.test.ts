@@ -7,7 +7,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { approveMergeAsk } from "../workflows/land-approval.js";
 import type { Verdict } from "./phases.js";
-import { shepherdGatePolicy, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy, shepherdLandOptions } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("skill-brief-head");
