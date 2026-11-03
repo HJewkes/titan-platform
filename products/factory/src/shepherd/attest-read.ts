@@ -1,12 +1,22 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, RepoEntry, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { statusOf } from "../required-checks.js";
 import { claimedRows, type Attestation } from "../registry/attest.js";
 
-export const ATTESTATIONS_PATH = "products/factory/src/registry/attestations.json";
+/** One file per PR, `<pr>.json`, so two PRs that each add rows never touch the same file (TP-4745). */
+export const ATTESTATIONS_DIR = "products/factory/src/registry/attestations";
+/** The single file every PR appended to before TP-4745; a ref with no attestations directory still holds its rows here. */
+export const LEGACY_ATTESTATIONS_PATH = "products/factory/src/registry/attestations.json";
+const PR_FILE = /^[1-9][0-9]*\.json$/;
 
-/** The PR's author writes this file, so a row in any other shape makes the whole file unread rather than partly claimed. */
+/** The path a PR writes its own rows to. */
+export const attestationsFileOf = (pr: number): string => `${ATTESTATIONS_DIR}/${pr}.json`;
+
+/** The PR's author writes these files, so a row in any other shape makes the whole read unread rather than partly claimed. */
 const AttestationsFile = z.array(z.strictObject({ step: z.string().min(1), closure: z.string().min(1), pr: z.number().int().positive() }));
+
+/** A directory entry no PR file could be, or a listed file that reads as absent: the layout itself is malformed. */
+class MalformedLayout extends Error {}
 
 interface ClaimRefs {
   repo: RepoSlug;
@@ -16,19 +26,46 @@ interface ClaimRefs {
 
 type ClaimsRead = { claimed: Attestation[] } | { unread: string };
 
-/** A file absent at a ref holds no rows there. */
-async function rowsAt(port: GitHubPort, repo: RepoSlug, ref: string): Promise<Attestation[]> {
-  const file = await port.getFile(repo, ATTESTATIONS_PATH, ref);
-  return file === null ? [] : AttestationsFile.parse(JSON.parse(file.content));
+/** The ref's PR files, or undefined when the ref has no attestations directory; anything else in it is malformed. */
+async function listingAt(port: GitHubPort, repo: RepoSlug, ref: string): Promise<RepoEntry[] | undefined> {
+  const entries = await port.listFiles(repo, ATTESTATIONS_DIR, ref);
+  const stray = entries?.find((entry) => !PR_FILE.test(entry.path.slice(ATTESTATIONS_DIR.length + 1)));
+  if (stray) throw new MalformedLayout(`${stray.path} is not a <pr>.json file`);
+  return entries ?? undefined;
 }
 
-/** The rows the head adds or changes against the base; a read or parse that fails on either side names the file unread. */
-export async function readClaims(port: GitHubPort, { repo, base, head }: ClaimRefs): Promise<ClaimsRead> {
+/** Every row of `paths` at `ref`, a listed file read as absent being malformed; an absent legacy file holds no rows. */
+async function rowsOf(port: GitHubPort, repo: RepoSlug, ref: string, paths: readonly string[]): Promise<Attestation[]> {
+  const files = await Promise.all(paths.map(async (path) => ({ path, file: await port.getFile(repo, path, ref) })));
+  return files.flatMap(({ path, file }) => {
+    if (file === null && path !== LEGACY_ATTESTATIONS_PATH) throw new MalformedLayout(`${path} is listed but absent`);
+    return file === null ? [] : AttestationsFile.parse(JSON.parse(file.content));
+  });
+}
+
+/** The paths to read at a ref: its PR files, or the legacy file where the ref predates the directory. */
+const pathsOf = (entries: readonly RepoEntry[] | undefined): string[] => (entries === undefined ? [LEGACY_ATTESTATIONS_PATH] : entries.map((entry) => entry.path));
+
+/**
+ * The union of rows at the base and the head. A head file with the base file's blob holds only rows the base holds, so
+ * no row of it can be claimed and it is not read again.
+ */
+async function bothSides(port: GitHubPort, { repo, base, head }: ClaimRefs): Promise<[Attestation[], Attestation[]]> {
+  const [baseEntries, headEntries] = await Promise.all([listingAt(port, repo, base), listingAt(port, repo, head)]);
+  const unchanged = new Set((baseEntries ?? []).map((entry) => `${entry.path}\0${entry.blobSha}`));
+  const headChanged = headEntries?.filter((entry) => !unchanged.has(`${entry.path}\0${entry.blobSha}`));
+  return Promise.all([rowsOf(port, repo, base, pathsOf(baseEntries)), rowsOf(port, repo, head, pathsOf(headChanged))]);
+}
+
+const malformed = (error: unknown): boolean => error instanceof z.ZodError || error instanceof SyntaxError || error instanceof MalformedLayout;
+
+/** The rows the head adds or changes against the base; a listing, read or parse that fails on either side names the rows unread. */
+export async function readClaims(port: GitHubPort, refs: ClaimRefs): Promise<ClaimsRead> {
   try {
-    const [before, after] = await Promise.all([rowsAt(port, repo, base), rowsAt(port, repo, head)]);
+    const [before, after] = await bothSides(port, refs);
     return { claimed: claimedRows(before, after) };
   } catch (error) {
-    return { unread: `${ATTESTATIONS_PATH} is unreadable: ${error instanceof z.ZodError || error instanceof SyntaxError ? "malformed" : statusOf(error)}` };
+    return { unread: `${ATTESTATIONS_DIR} is unreadable: ${malformed(error) ? "malformed" : statusOf(error)}` };
   }
 }
 
@@ -60,5 +97,5 @@ export function attestUnmetReason(attest: AttestDecided | undefined): string | u
 /** The steps the `shepherd/review` check names as unmet; an unread file names itself. */
 export function attestUnmetSteps(attest: AttestDecided | undefined): string[] {
   if (attest === undefined) return [];
-  return "unread" in attest ? ["attestations.json unread"] : attest.unmet.map(({ step }) => step);
+  return "unread" in attest ? ["attestations unread"] : attest.unmet.map(({ step }) => step);
 }
