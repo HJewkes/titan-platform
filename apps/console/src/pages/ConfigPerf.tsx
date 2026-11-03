@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Badge, BadgeText, EmptyState, HStack, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, EmptyState, HStack, Section, SectionContent, SectionHeader, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { DEFAULT_LIMITS, budgetFor } from "../../server/perf/budgets.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 import { PHONE_TAP } from "./phone.js";
@@ -17,6 +18,7 @@ function rpcOverBudget(row: { name: string; p95: number; bytesMax: number }): bo
 }
 
 type Summary = ServedCommands["perf.summary"]["result"];
+type Waits = ServedCommands["perf.waits"]["result"]["waits"];
 const WINDOWS = ["15m", "24h"] as const;
 /** The sort key stays on a phone; every other number waits for a wider screen. */
 const KEPT_LABEL = "p95 ms";
@@ -42,7 +44,20 @@ export function PerfTab(): ReactNode {
       ) : (
         <SummaryTables summary={summary.data} />
       )}
+      <WaitsBlock window={WINDOWS[index]!} />
     </VStack>
+  );
+}
+
+/** What the owner sat through behind a loader, by command, most owner time first. */
+function WaitsBlock({ window }: { window: (typeof WINDOWS)[number] }): ReactNode {
+  const waits = useQuery("perf.waits", { window });
+  if (waits.status === "loading") return <Spinner size="sm" label="Loading waits" />;
+  if (waits.data === undefined) return <Alert status="error" message={`Could not load waits: ${waits.error.message}`} />;
+  return (
+    <Block id="perf-waits" title="Waits" subtitle="Seconds the owner looked at a spinner, skeleton or busy button, per command" empty="No wait recorded" count={waits.data.waits.length}>
+      <WaitTable rows={waits.data.waits} />
+    </Block>
   );
 }
 
@@ -155,6 +170,19 @@ function RpcTable({ rows }: { rows: Summary["rpcs"] }): ReactNode {
         <TableRow key={row.name} testID={`perf-rpc-${row.name}`}>
           <NameCell name={row.name} over={rpcOverBudget(row)} />
           <Nums values={[row.p50, row.p95, row.bytesP50, row.errors, row.count]} />
+        </TableRow>
+      ))}
+    </PerfTable>
+  );
+}
+
+function WaitTable({ rows }: { rows: Waits }): ReactNode {
+  return (
+    <PerfTable labels={["Command", "Owner s", KEPT_LABEL, "p50 ms", "Over budget", "Waits"]}>
+      {rows.map((row) => (
+        <TableRow key={row.command} testID={`perf-wait-${row.command}`}>
+          <NameCell name={row.command} over={row.p95 > row.budgetMs} />
+          <Nums values={[row.ownerMs / 1000, row.p95, row.p50, row.overBudget, row.waits]} />
         </TableRow>
       ))}
     </PerfTable>

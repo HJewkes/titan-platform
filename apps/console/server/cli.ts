@@ -6,6 +6,7 @@
 // `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
 // and proposes ones the decisions file cites as answered, `rounds nudge` prints each round waiting over six hours once,
 // `rounds subscribe` tells a seat of answers,
+// `perf waits` ranks the owner's waits behind loaders,
 // `storybooks gc` sweeps the Storybook store, `shipped build` writes the day's theme digest, `config import` / `config compare-tree` run the coordinator config
 // store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
@@ -13,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
 import { inboxLink, inboxLinkArgs } from "./cli-inbox-link.js";
+import { PERF_USAGE, perfWaitsArgs, perfWaitsCli } from "./cli-perf.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
 import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
 import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
@@ -78,6 +80,7 @@ const USAGE = `usage: titan-console                    serve the console
                                         write <stateDir>/shipped/<date>.json; an unchanged PR set is a
                                         no-op without --force, --dry-run calls no model and writes
                                         nothing, and a logged-out claude exits 2
+${PERF_USAGE}
 ${CONFIG_USAGE}
 ${SELF_UPDATE_USAGE}`;
 
@@ -139,6 +142,7 @@ const storybooksGc = storybooksGcArgs(argv);
 const shippedBuild = shippedBuildArgs(argv);
 const configVerb = configArgs(argv);
 const selfUpdateVerbArgs = selfUpdateArgs(argv);
+const perfWaits = perfWaitsArgs(argv);
 if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
@@ -153,6 +157,7 @@ else if (roundsNudge !== null) await nudgeRoundsCli(resolveConfig(), roundsNudge
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (storybooksGc !== null) await storybooksGcCli(resolveConfig(), storybooksGc);
 else if (shippedBuild !== null) await shippedBuildCli(resolveConfig(), shippedBuild);
+else if (perfWaits !== null) console.log(await perfWaitsCli(resolveConfig(), perfWaits));
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);
 else if (selfUpdateVerbArgs !== null) process.exitCode = await selfUpdateVerb(resolveConfig, selfUpdateVerbArgs);
 else if (args === "--help" || args === "help") console.log(USAGE);

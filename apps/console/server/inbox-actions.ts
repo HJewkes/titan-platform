@@ -150,8 +150,9 @@ function noActionReason(action: InboxAction): string {
   return `a ${action.kind} item is not acted on from the inbox yet`;
 }
 
+/** A tap checks one item's action, which no lineage changes, so it skips the lineage's GitHub read (TP-4754). */
 async function liveItem(sources: InboxSources, itemId: string): Promise<{ item: InboxItem; readAt: string }> {
-  const list = await readInbox(sources);
+  const list = await readInbox(sources, { lineage: false });
   const item = list.items.find((each) => each.id === itemId);
   return item === undefined ? refuse(`no inbox item ${itemId}; it may have been answered, read the inbox again`) : { item, readAt: list.readAt };
 }

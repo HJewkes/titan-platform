@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
