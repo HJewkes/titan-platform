@@ -120,11 +120,11 @@ describe("attest smoke: carrying a MERGE onto a head that claims a row", () => {
   const REVIEWED = fakeSha("smoke-reviewed");
   const MERGE_UP: CarryResult = { equal: true, base: fakeSha("main"), headTree: "tree-a", mergeTree: "tree-a", firstParent: REVIEWED };
   const AGENT = { agentId: "rv-1", sessionId: "s-1" };
-  const merged: Verdict = {
+  const merged = partialFake<Verdict>({
     kind: "MERGE",
     headSha: REVIEWED,
     evidence: { head: REVIEWED, merge: { head: REVIEWED, verdict: { value: "MERGE", head: REVIEWED }, resolver: AGENT, dispatchedReviewer: AGENT, seatGrants: ["merge-on-green-approve"] }, record: { verdictLocator: { sourceId: "synthetic" } } },
-  } as unknown as Verdict;
+  });
 
   /** A context whose claims step is the real route reading the fake GitHub; every other step answers as a clean merge-up. */
   function carryCtx(fake: FakeGitHub): { ctx: WorkflowContext; asked: string[] } {
