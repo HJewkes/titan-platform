@@ -37,7 +37,7 @@ export function behindMain(options: BehindMainOptions): BehindMain {
 const COMPARE_JQ = '.ahead_by, (.files | if type == "array" then length else -1 end), (.files[]? | .filename, (.previous_filename // empty))';
 
 /** Main against a build sha: the commits ahead, every path they change, and whether that list is whole. */
-export interface MainCompare {
+interface MainCompare {
   ahead: number;
   files: string[];
   /** GitHub listed every changed file: a missing, empty or capped list may hide one. */

@@ -25,7 +25,7 @@ export function isNoFactsGate(decision: GateDecision): boolean {
 }
 
 /** The attest read waits for a deploy (TP-4752); land waits at the head and re-reads it each round instead of asking the owner. */
-export function isDeploySkewGate(decision: GateDecision): boolean {
+function isDeploySkewGate(decision: GateDecision): boolean {
   const row: MergeGuardRow = "attest-deploy-skew";
   return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === row;
 }

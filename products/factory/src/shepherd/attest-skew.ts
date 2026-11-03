@@ -9,7 +9,7 @@ const CLOSURE_LOCK = "closure.lock.json";
 /** Why the attest read waits for a deploy, or undefined once the running build holds every registry commit on main (TP-4752). */
 export type DeploySkew = (repo: string) => Promise<string | undefined>;
 
-export interface DeploySkewOptions {
+interface DeploySkewOptions {
   /** The running build's sha; defaults to `buildSha()`. */
   sha?: string;
   /** The repo the build is from; defaults to `FACTORY_REPO`. Only its PRs are judged by this build's registry. */

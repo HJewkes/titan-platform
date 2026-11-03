@@ -2,7 +2,7 @@ import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type Check
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
-import { attestUnmetReason, type AttestDecided } from "./attest-read.js";
+import { attestGate, type AttestDecided } from "./attest-read.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
@@ -178,9 +178,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour);
   if (policyGate) return policyGate;
-  if (evidence.attest !== undefined && "deploySkew" in evidence.attest) return { outcome: "gate", rule: guardRule("attest-deploy-skew"), reason: `attestation waits: ${evidence.attest.deploySkew}` };
-  const unmet = attestUnmetReason(evidence.attest);
-  if (unmet !== undefined) return { outcome: "gate", rule: guardRule("attest-unmet"), reason: unmet };
+  const attest = attestGate(evidence.attest);
+  if (attest !== undefined) return { outcome: "gate", rule: guardRule(attest.row), reason: attest.reason };
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
