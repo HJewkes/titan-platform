@@ -5,7 +5,7 @@ import type { BlobStore } from "../blob-store.js";
 import { collectMarkerBlobs, DEFAULT_RETAIN_LANDED_DAYS } from "../gc.js";
 import { itemKey } from "../pins.js";
 
-export const MARKER_GC_MS = 24 * 60 * 60 * 1000;
+const MARKER_GC_MS = 24 * 60 * 60 * 1000;
 
 interface RunItemRow {
   repo: unknown;
