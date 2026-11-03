@@ -115,3 +115,42 @@ describe("usageFromOAuthResponse", () => {
     expect(serialized.toLowerCase()).not.toContain(CANARY.toLowerCase());
   });
 });
+
+describe("usageFromOAuthResponse limits", () => {
+  const limits = [
+    { kind: "weekly_all", percent: 41.5, severity: "warning" },
+    { kind: "weekly_scoped", percent: 87.6, severity: "critical", scope: { model: { display_name: "Example Model" } } },
+  ];
+
+  it("keeps the scoped cap and takes the weekly severity from weekly_all", () => {
+    const reading = usageFromOAuthResponse({ ...oauthUsage, limits }, { writtenAt: WRITTEN_AT });
+
+    expect(reading?.scoped).toEqual({ model: "Example Model", used_pct: 87.6, severity: "critical" });
+    expect(reading?.rate_limits.seven_day?.severity).toBe("warning");
+  });
+
+  it("reads a body without limits as before", () => {
+    const reading = usageFromOAuthResponse(oauthUsage, { writtenAt: WRITTEN_AT });
+
+    expect(reading).not.toHaveProperty("scoped");
+    expect(reading?.rate_limits.seven_day).not.toHaveProperty("severity");
+  });
+
+  it("ignores a limit kind it does not know", () => {
+    const body = { ...oauthUsage, limits: [{ kind: "daily_burst", percent: 99, severity: "critical" }, ...limits] };
+
+    const reading = usageFromOAuthResponse(body, { writtenAt: WRITTEN_AT });
+
+    expect(reading?.scoped?.used_pct).toBe(87.6);
+    expect(reading?.rate_limits.seven_day?.severity).toBe("warning");
+  });
+
+  it("drops a scoped model name or severity that is not plain text", () => {
+    const hostile = [{ kind: "weekly_scoped", percent: 5, severity: FAKE_JWT, scope: { model: { display_name: FAKE_ACCESS_TOKEN + "\n" } } }];
+
+    const reading = usageFromOAuthResponse({ ...oauthUsage, limits: hostile }, { writtenAt: WRITTEN_AT });
+
+    expect(reading).not.toHaveProperty("scoped");
+  });
+});
+
