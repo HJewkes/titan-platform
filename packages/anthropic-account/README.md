@@ -33,9 +33,9 @@ anthropic-account install|uninstall [--dry-run]
   refresh lock. Leave it off to keep the poller read-only on credentials. A failed refresh
   is printed to stderr; it does not file an owner-queue deposit.
 - `status` reads local files only: each profile's login state and newest reading.
-  `--json` prints them as one document, and `--statusline` prints the format
-  `~/.claude/scripts/rate-limits.sh` prints, from the newest reading that has both the
-  five-hour and the weekly window.
+  `--json` prints `{ schema: 2, accounts }`, one row per Anthropic login naming all its
+  config dirs (`readAccounts`). `--statusline` prints the format
+  `~/.claude/scripts/rate-limits.sh` prints, from the same rows.
 
 Profiles are `~/.claude` and each dir under `~/.claude-profiles`, or under
 `CLAUDE_PROFILE_ROOT` when it is set; a non-empty `CLAUDE_CONFIG_DIRS` replaces the scan.

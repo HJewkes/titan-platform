@@ -193,6 +193,33 @@ after parsing, and also when a read fails partway through. Invalid JSON is
 the process's uid; on a platform without one every file is refused as `foreign-owner`. An
 unexpected filesystem error is thrown through `redactSecrets`, with no `cause`.
 
+### Logins on darwin
+
+On a Mac, Claude Code keeps each config dir's OAuth login in the macOS Keychain, not in
+`.credentials.json`. On darwin, `readLoginState` and `pollUsage` therefore read the
+Keychain item instead of the file. Both take `{ platform?, keychainExec?, home? }`, which
+default to `process.platform`, a runner for `/usr/bin/security`, and `os.homedir()`.
+
+- They run `security find-generic-password -s <service> -w`. It only reads the item, and the
+  package never writes, adds or deletes a Keychain item.
+- `keychainService(configDir, home)` gives the service name. It is `Claude Code-credentials`
+  for `<home>/.claude`. Any other dir gets `Claude Code-credentials-` plus the first eight
+  hex digits of the SHA-256 of its absolute path. Both dirs are resolved with
+  `fs.realpathSync` first, as the darwin `rate-limits.sh` status-line reader resolves them
+  with `pwd -P`, so a symlinked dir names the same item as its target. A dir that does not
+  exist is hashed as its absolute path.
+- Exit 44 (no such item) gives `missing`. Any other non-zero exit, a spawn failure or a
+  timeout makes `readLoginState` throw `reading the Keychain item failed`, and makes
+  `pollUsage` fail with `io`. stderr is never piped, and the child's output is never quoted.
+  stdout is capped at 64 KiB and zeroed after parsing, as the file's bytes are.
+- Nothing refreshes on darwin. A token that has expired, or expires within the poll margin,
+  is reported as expired. `anthropic-account poll --refresh` skips the refresh step there, so
+  Claude Code stays the only writer of the Keychain item.
+
+`readAccounts` takes the same three options and passes them on, so its `auth_fail` on darwin
+is judged from the Keychain login. Every other platform reads `.credentials.json` as
+described above.
+
 `writeReading(configDir, reading)` writes `<configDir>/status-cache/sessions/usage-poll.json`
 and returns its path. It throws a `TypeError` with a fixed message, and writes nothing,
 unless the reading passes `parseUsageReading` with `session_id` `usage-poll` and its JSON
@@ -424,15 +451,18 @@ Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
   no `onFailure`, so no owner-queue deposit is filed: this package is tier 0 and
   owner-queue is tier 2. A tier-2 or product caller wires `writeDeposit`.
 - `status` reads local files only, with no request. It prints each profile's login state
-  and newest reading with its age. `--json` prints `{ profiles: [{ label, configDir, login,
-  usage }] }`, where `login` is the token-free `LoginState` (or `{ status: "unreadable" }`)
-  and `usage` is `{ written_at, age_seconds, rate_limits }` or `null`.
-- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints: first
-  `5h|weekly|5h_reset|weekly_reset|||||age_s` for the account in `CLAUDE_CONFIG_DIR` (or
-  `~/.claude`), or `unknown|unknown|||||||`, then `other|<label>|5h|weekly|age_s|` for each
-  other profile whose reading has both windows. Like `rate-limits.sh`, each line uses the
-  newest reading that has both `five_hour` and `seven_day`, falling back past a newer one
-  that lacks either. Percentages are floored. It always exits 0 and writes no stderr.
+  and newest reading with its age. `--json` prints `{ schema: 2, accounts: [...] }`, one
+  `AccountUsage` row per login from `readAccounts`. Each row has `account`, `config_dirs`,
+  `identity` when the login could be read, `source`, `windows` (`{ used_pct, resets_at?,
+  rolled? }` each), `age_seconds`, `stale` and `auth_fail`. Schema 1's `{ profiles }`
+  document is gone.
+- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints, from the
+  same `readAccounts` rows: first `5h|weekly|5h_reset|weekly_reset|||||age_s` for the login
+  holding `CLAUDE_CONFIG_DIR` (or `~/.claude`), or `unknown|unknown|||||||`, then
+  `other|<account>|5h|weekly|age_s|` for each other login with a `seven_day` window. A
+  login shared by `~/.claude` and a named profile is one cell, under the named profile's
+  label. A rolled window counts as absent, and an absent `five_hour` leaves its fields
+  empty. Percentages are floored. It always exits 0 and writes no stderr.
 
 | exit | when |
 |---|---|

@@ -3,6 +3,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
 import { makeTempHome, removeTempHome, writeFileWithMode } from "../fixtures/temp-home.js";
+import { runCli, type CliContext } from "../cli/cli.js";
+import { redactSecrets } from "../redact.js";
 import { readAccounts } from "./accounts.js";
 import { accountIdentity } from "./identity.js";
 import { CREDENTIALS_FILE } from "./login.js";
@@ -48,6 +50,13 @@ function arrangeFleet(): void {
   reading("workout", "usage-poll", 90, 7);
 }
 
+async function cli(argv: string[], env: Record<string, string> = {}): Promise<string[]> {
+  const out: string[] = [];
+  const context: CliContext = { env, home, uid, now: () => NOW, out: (line) => out.push(line), err: () => undefined };
+  await runCli(argv, context);
+  return out;
+}
+
 describe("readAccounts", () => {
   it("gives two config dirs on one login a single row naming both dirs", () => {
     arrangeFleet();
@@ -85,5 +94,50 @@ describe("readAccounts", () => {
     const [row] = readAccounts({ home, env: {}, now: NOW, uid });
 
     expect(row).toMatchObject({ source: "status-line", age_seconds: 35 * 3600, stale: true });
+  });
+});
+
+describe("status --json schema 2", () => {
+  it("prints one row per login in the schema 2 golden shape", async () => {
+    arrangeFleet();
+
+    const printed = JSON.parse((await cli(["status", "--json"])).join(""));
+
+    const row = (account: string, dirs: string[], identity: string | undefined, rest: object) => ({
+      account,
+      // Printed dirs pass through redaction, which a long random temp-dir segment can trip.
+      config_dirs: dirs.map((label) => redactSecrets(dir(label))),
+      ...(identity === undefined ? {} : { identity }),
+      auth_fail: false,
+      stale: false,
+      ...rest,
+    });
+    const weekly = (used: number) => ({ seven_day: { used_pct: used, resets_at: WEEK_RESET } });
+    expect(printed).toEqual({
+      schema: 2,
+      accounts: [
+        row("personal", ["default", "personal"], "user-a/org-1", { source: "oauth-usage", windows: weekly(40), age_seconds: 60 }),
+        row("agents", ["agents"], "user-b/org-1", { source: "status-line", windows: weekly(12), age_seconds: 30 }),
+        row("workout", ["workout"], undefined, { source: "oauth-usage", windows: weekly(7), age_seconds: 90 }),
+      ],
+    });
+  });
+});
+
+describe("status --statusline over readAccounts", () => {
+  it("renders default and personal as one cell under the personal label", async () => {
+    arrangeFleet();
+
+    const lines = await cli(["status", "--statusline"], { CLAUDE_CONFIG_DIR: dir("agents") });
+
+    expect(lines).toEqual([`|12||${WEEK_RESET}|||||30`, "other|personal||40|60|", "other|workout||7|90|"]);
+  });
+
+  it("shows no other cell for the login the current default dir shares", async () => {
+    arrangeFleet();
+
+    const lines = await cli(["status", "--statusline"]);
+
+    expect(lines).toEqual([`|40||${WEEK_RESET}|||||60`, "other|agents||12|30|", "other|workout||7|90|"]);
   });
 });

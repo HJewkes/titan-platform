@@ -4,26 +4,26 @@
     {
       "name": "the status line requires five_hour again",
       "file": "packages/anthropic-account/src/cli/statusline.ts",
-      "find": "windows: [\"seven_day\"]",
-      "replace": "windows: [\"five_hour\", \"seven_day\"]",
+      "find": "weekly === undefined ||",
+      "replace": "weekly === undefined || row.windows.five_hour === undefined ||",
       "kills": [
         "prefers a fresh seven_day-only poller file over a 2-day-old session file with both windows"
       ]
     },
     {
       "name": "the poller age limit is ignored",
-      "file": "packages/anthropic-account/src/node/usage-file.ts",
-      "find": "nowSeconds - reading.written_at <= options.pollerFirstSeconds",
-      "replace": "true",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "isPoller(a.reading) && a.age <= POLLER_RECORD_SECONDS",
+      "replace": "isPoller(a.reading)",
       "kills": [
         "falls back to a newer session file once the poller file is older than 360 seconds"
       ]
     },
     {
       "name": "a reading whose week has reset is kept",
-      "file": "packages/anthropic-account/src/node/usage-file.ts",
-      "find": "options.dropReset === true && ",
-      "replace": "false && ",
+      "file": "packages/anthropic-account/src/cli/statusline.ts",
+      "find": "(window?.rolled ? undefined : window)",
+      "replace": "window",
       "kills": [
         "prints unknown when every reading's seven_day window has already reset"
       ]

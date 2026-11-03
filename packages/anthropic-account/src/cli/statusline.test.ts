@@ -67,8 +67,6 @@ describe("status --statusline without five_hour", () => {
 
   it("prints unknown when every reading's seven_day window has already reset", async () => {
     writeSession("agents", "usage-poll.json", 60, weekly(19, -10));
-    writeSession("agents", "session-a.json", 2 * DAY, both(50, 85));
-    fs.rmSync(path.join(sessionsDir(dir("agents")), "session-a.json"));
     writeSession("agents", "session-b.json", 2 * DAY, { ...both(50, 85), seven_day: { used_percentage: 85, resets_at: SECONDS - DAY } });
 
     expect(await statusline("agents")).toEqual([UNKNOWN_LINE]);
