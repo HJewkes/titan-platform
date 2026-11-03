@@ -67,6 +67,8 @@ function run(
     fetch,
     now: () => NOW,
     uid,
+    // Pinned so a run on a Mac never reaches the real Keychain.
+    platform: "linux",
     out: (line) => stdout.push(line),
     err: (line) => stderr.push(line),
     ...overrides,
@@ -288,6 +290,54 @@ describe("poll --write --refresh", () => {
 
     expect(stderr).toEqual(["anthropic-account: default: token refresh failed: http-500"]);
     expect(fs.existsSync(usageFilePath(configDir("default")))).toBe(true);
+  });
+});
+
+describe("darwin reads logins from the Keychain", () => {
+  const keychain =
+    (credentials: unknown): CliContext["keychainExec"] =>
+    () => ({ status: 0, stdout: Buffer.from(JSON.stringify(credentials)), stderr: Buffer.alloc(0) });
+  const onDarwin = (credentials: unknown) => ({ platform: "darwin" as const, keychainExec: keychain(credentials) });
+
+  function filesUnderHome(): string {
+    const names = fs.readdirSync(home, { recursive: true, encoding: "utf8" });
+    return names
+      .map((name) => path.join(home, name))
+      .filter((file) => fs.statSync(file).isFile())
+      .map((file) => fs.readFileSync(file, "utf8"))
+      .join("\n");
+  }
+
+  it("darwin never refreshes, even an expired token with a credentials file beside it", async () => {
+    const expired = fakeCredentials({ expiresAt: NOW - HOUR });
+    login("default", expired);
+
+    const code = await run(["poll", "--write", "--refresh"], fakeFetch(usageOk), {}, onDarwin(expired));
+
+    expect(code).toBe(2);
+    expect(calls).toEqual([]);
+    expect(stderr).toEqual(["anthropic-account: default: login expired"]);
+    const stored = JSON.parse(fs.readFileSync(path.join(configDir("default"), CREDENTIALS_FILE), "utf8"));
+    expect(stored).toEqual(expired);
+  });
+
+  it("status --json and a written poll carry no Keychain token", async () => {
+    emptyProfile("default");
+
+    expect(await run(["poll", "--write"], fakeFetch(usageOk), {}, onDarwin(fakeCredentials()))).toBe(0);
+    expect(await run(["status", "--json"], fakeFetch(usageOk), {}, onDarwin(fakeCredentials()))).toBe(0);
+
+    expect(JSON.parse(stdout[1] ?? "").accounts[0]).toMatchObject({ source: "oauth-usage", auth_fail: false });
+    expect(filesUnderHome()).not.toContain(CANARY);
+  });
+
+  it("status --json fails auth for an expired, unrefreshable Keychain login", async () => {
+    emptyProfile("default");
+    const lapsed = fakeCredentials({ expiresAt: NOW - HOUR, refreshToken: undefined });
+
+    expect(await run(["status", "--json"], fakeFetch(usageOk), {}, onDarwin(lapsed))).toBe(2);
+
+    expect(JSON.parse(stdout[0] ?? "").accounts[0].auth_fail).toBe(true);
   });
 });
 
