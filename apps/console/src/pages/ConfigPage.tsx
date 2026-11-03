@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, EmptyState, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, EmptyState, Section, SectionContent, SectionHeader, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, HStack, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, HStack, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";

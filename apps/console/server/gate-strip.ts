@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { readCommand } from "./owner-guard.js";
 import { mergesAt, mergesNeededFor, recordedVerdicts, type RecordedVerdict } from "./g10-hold.js";
+import { cachedRead, cachedReads, type CacheTimes } from "./read-cache.js";
 import type { CheckRunsPage, ShepherdSource } from "./shepherd.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -183,33 +184,44 @@ async function settle<T>(read: () => Promise<T>): Promise<StripRead<T>> {
   }
 }
 
-/** Plan risk: at most one read per PR head per window, so a polled inbox or a round with many PRs costs little quota. */
-const STRIP_TTL_MS = 30_000;
+/**
+ * Plan risk: at most one read per PR head per window, so a polled inbox or a round with many PRs costs little quota. Past
+ * the window a kept read is served while one refresh runs behind it (TP-4754: live, a strip read takes about 2 s per PR).
+ */
+const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000 };
+const STRIP_MAX_KEYS = 256;
 
 export interface GateStripReader {
   /** One strip per pinned row, keyed by run id; `shepherd.waiting` is read once for all of them. */
   readMany(rows: readonly WatchRow[]): Promise<Map<string, GateStrip>>;
 }
 
-/** A strip with an unknown row is never kept, so the next read retries the source that failed. */
-export function gateStripReader(shepherd: ShepherdSource, now: () => number = Date.now, ttlMs: number = STRIP_TTL_MS): GateStripReader {
-  const kept = new Map<string, { at: number; strip: GateStrip }>();
-  const fresh = (key: string): GateStrip | undefined => {
-    const hit = kept.get(key);
-    return hit !== undefined && now() - hit.at < ttlMs ? hit.strip : undefined;
-  };
-  async function readOne(row: PinnedRow, waiting: StripRead<Waiting>): Promise<GateStrip> {
-    const [timeline, checkRuns] = await Promise.all([settle(async () => (await shepherd.timeline(row.repo, row.pr)).entries), settle(() => shepherd.checkRuns(row.repo, row.headSha))]);
-    const strip = gateStrip({ row, timeline, waiting, checkRuns });
-    if (strip.unmet.every((gate) => !gate.key.startsWith("unknown:"))) kept.set(`${row.repo}#${row.pr}@${row.headSha}`, { at: now(), strip });
-    return strip;
+type PrReads = Pick<StripInputs, "timeline" | "checkRuns">;
+
+/** A PR read with an unknown source is a failed read, so it is never kept and the next strip retries that source. */
+class UnkeptReads extends Error {
+  constructor(readonly reads: PrReads) {
+    super("a gate strip source is unknown");
   }
+}
+
+const headKey = (row: PinnedRow): string => `${row.repo}#${row.pr}@${row.headSha}`;
+
+/** The reads are kept, not the strip, so a strip is always built from the live row: a hold placed since shows at once. */
+export function gateStripReader(shepherd: ShepherdSource, now: () => number = Date.now, times: CacheTimes = STRIP_TIMES): GateStripReader {
+  const loadPr = async (row: PinnedRow): Promise<PrReads> => {
+    const [timeline, checkRuns] = await Promise.all([settle(async () => (await shepherd.timeline(row.repo, row.pr)).entries), settle(() => shepherd.checkRuns(row.repo, row.headSha))]);
+    if (!timeline.ok || !checkRuns.ok) throw new UnkeptReads({ timeline, checkRuns });
+    return { timeline, checkRuns };
+  };
+  const prReads = cachedReads(loadPr, times, { keyOf: headKey, maxKeys: STRIP_MAX_KEYS, now });
+  const waiting = cachedRead(() => shepherd.waiting(), times, now);
+  const readPr = (row: PinnedRow): Promise<PrReads> => prReads.read(row).catch((error: unknown) => (error instanceof UnkeptReads ? error.reads : Promise.reject(error)));
   async function readMany(rows: readonly WatchRow[]): Promise<Map<string, GateStrip>> {
     const pinned = rows.filter(isPinned);
-    const stale = pinned.filter((row) => fresh(`${row.repo}#${row.pr}@${row.headSha}`) === undefined);
-    const waiting = stale.length === 0 ? { ok: true as const, value: NO_WAITING } : await settle(() => shepherd.waiting());
-    const strips = await Promise.all(pinned.map(async (row) => [row.runId, fresh(`${row.repo}#${row.pr}@${row.headSha}`) ?? (await readOne(row, waiting))] as const));
-    return new Map(strips);
+    if (pinned.length === 0) return new Map();
+    const [shared, reads] = await Promise.all([settle(() => waiting.read()), Promise.all(pinned.map(readPr))]);
+    return new Map(pinned.map((row, index) => [row.runId, gateStrip({ row, waiting: shared, ...reads[index]! })]));
   }
   return { readMany };
 }

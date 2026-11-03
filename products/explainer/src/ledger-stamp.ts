@@ -20,6 +20,9 @@ const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\
 // A handle such as "PR 2344" must not match inside "PR 23445" or "TP-4047-b".
 const names = (spoken: string, handle: string): boolean => new RegExp(`(?<![\\w-])${escaped(handle)}(?![\\w-])`, "i").test(spoken);
 
+// A daily says no id aloud (TP-4697), so a handle such as "PR 2344" is named on screen as often as in the line.
+const shownOrSaid = (beat: ScriptBeat): string[] => [beat.spoken, beat.visual.assertion, ...beat.visual.labels, ...beat.visual.chips.map((chip) => chip.text)];
+
 const declares = (beat: ScriptBeat, handle: string): boolean => beat.new_terms.some((term) => term.trim().toLowerCase() === handle.toLowerCase());
 
 const definesIn = (row: SpineLedgerRow, beat: ScriptBeat): boolean => row.definedIn === beat.chapter || row.definedIn === beat.id;
@@ -35,16 +38,16 @@ const withTerm = (script: ScriptV1, beatId: string, term: string): ScriptV1 => (
 
 const candidates = (script: ScriptV1, spine: SpineV1): LedgerStamp[] =>
   spine.ledger.flatMap((row) => {
-    const first = script.beats.find((beat) => names(beat.spoken, row.item));
+    const first = script.beats.find((beat) => shownOrSaid(beat).some((text) => names(text, row.item)));
     if (!first || !definesIn(row, first)) return [];
     const declared = script.beats.some((beat) => beat.chapter === first.chapter && declares(beat, row.item));
     return declared ? [] : [{ beat: first.id, term: row.item }];
   });
 
 /**
- * Stamps `new_terms` on the first beat that speaks each ledger handle, when the ledger defines the item in that beat's
+ * Stamps `new_terms` on the first beat that speaks or shows each ledger handle, when the ledger defines the item in that beat's
  * chapter and the model declared it nowhere in that chapter. The model does not fill `new_terms` for ledger handles,
- * and Q-E19 reads it. An item first spoken before its defining chapter is left alone: that is a real Q-E17 failure,
+ * and Q-E19 reads it. An item first named before its defining chapter is left alone: that is a real Q-E17 failure,
  * not a missing label. Many error rules read `new_terms` (Q-E4, Q-F8, Q-W2, the pace counts), so rather than mirror
  * each, a stamp is kept only when `lint` fails no error row, on any beat, that the script did not already fail.
  */

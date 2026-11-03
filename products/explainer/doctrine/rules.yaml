@@ -119,6 +119,13 @@ rules:
     owner_support: none
     note: "TP-4327 (PL-32, PL-21, XT-13, XT-15). The token patterns live in src/lint-spoken-tokens.ts; a [word](=reading) declaration names a reading, not an alias, so it does not count."
     l0: { severity: error, status: implemented, checks: ["Q-V14"], scope: chapter }
+  - id: Q-V15
+    rule: "Spoken lines say no pull request, task or script id (PR 1234, TP-1234, F7, M0-M10), in digits or in words; a line names the change by what it did and the id stays on screen"
+    fields: [beats.spoken]
+    related: [Q-V2, Q-V12]
+    owner_support: for
+    note: "Owner decision 2026-11-03 (TP-4697, TP-3864): a spoken id is a number the listener has to hold, and it crowds numbers-per-beat. The detector lives in src/spoken-ids.ts: an id lead (PR, pull request, ticket, TP, #) before a number, a task id in digits, a script id token, and any spelling of a numbered item the beat cites."
+    l0: { severity: error, status: implemented, checks: ["Q-V15"], scope: chapter }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'

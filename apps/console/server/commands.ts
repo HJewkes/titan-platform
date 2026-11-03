@@ -116,19 +116,21 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
  * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps, and
- * approvals.flow shares the kept factory read; the taps themselves read the factory fresh.
+ * approvals.flow and the taps share the kept factory read (TP-4754). A factory frame only marks it stale: frames come every
+ * few seconds live, so dropping it on each one left every inbox read waiting on a cold needs.list.
  */
 function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
   const cache = inboxReadCache(sources);
-  invalidation?.on("factory", cache.invalidate);
+  invalidation?.on("factory", cache.stale);
+  const cached = { ...sources, factory: cache.factory };
   const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
   return {
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),
     ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir, cache.invalidate)),
-    ...approvalsCommands({ ...sources, factory: cache.factory }),
+    ...approvalsCommands(cached),
     ...inboxViewCommands(sources, cache),
-    ...inboxActionCommands(sources, actions, cache.invalidate),
+    ...inboxActionCommands(cached, actions, cache.invalidate),
     ...retireTapCommands({ agents, shepherd }, actions, cache.invalidate),
   };
 }

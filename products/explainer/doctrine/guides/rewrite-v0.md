@@ -9,6 +9,8 @@ and only their spoken line.
   own sentence, or say how many there are and let the screen name them.
 - Keep every cue word exactly, in the same order, and say each one as often as the original does.
 - Keep every `[word](...)` span exactly as written, and every name and term the beat lists.
+- Say no pull request, task or script id: not "PR 1234", "TP-1234" or "F7", in digits or in words. Name the change by
+  what it did ("the guard fix"); the screen shows the id. A beat whose directive lists ids: cut each one that way.
 - Keep each number you leave on the spoken line exactly as the original writes it.
 - When a number leaves the spoken line, do not put a vague word in its place; keep the number as the original says
   it, or cut the clause that holds it.

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, HStack, Heading, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, HStack, Heading, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RowBadges, isRecord, stageOf, type WatchRow } from "./ShepherdPage.js";

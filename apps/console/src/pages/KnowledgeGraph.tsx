@@ -1,18 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  Caption,
-  EmptyState,
-  NetworkGraph,
-  Spinner,
-  VStack,
-  egoLayout,
-  refGraphKinds,
-  useMeasuredWidth,
-  type GraphEdgeKind,
-  type GraphItemRef,
-  type GraphKind,
-} from "@titan-design/react-ui";
+import { Alert, Caption, EmptyState, NetworkGraph, VStack, egoLayout, refGraphKinds, useMeasuredWidth, type GraphEdgeKind, type GraphItemRef, type GraphKind } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { followRef } from "./homeLinks.js";

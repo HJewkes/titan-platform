@@ -1,27 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  Collapse,
-  CollapseButton,
-  CollapseContent,
-  DateTime,
-  EmptyState,
-  HStack,
-  Link,
-  Pill,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Collapse, CollapseButton, CollapseContent, DateTime, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";

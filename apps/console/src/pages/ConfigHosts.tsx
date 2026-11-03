@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, Card, CardContent, EmptyState, HStack, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Card, CardContent, EmptyState, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 
 type Hosts = ServedCommands["config.hosts"]["result"];

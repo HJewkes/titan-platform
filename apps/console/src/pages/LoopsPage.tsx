@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { Alert, Badge, BadgeText, HStack, Select, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, HStack, Select, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { BoardLoop, LoopBoard, LoopStatus } from "../../server/loop-board.js";
 import { useInvalidate, useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";

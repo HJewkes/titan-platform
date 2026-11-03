@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, Card, CardContent, DataRow, Drawer, DrawerBody, Link, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, Card, CardContent, DataRow, Drawer, DrawerBody, Link, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArLadder, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { href, open } from "../router.js";

@@ -11,6 +11,7 @@ import { Page } from "./pages/PageShell.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { BELOW_MD } from "./pages/TasksPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
+import { useWaitView } from "./shell/Loading.js";
 import { PhoneNav } from "./shell/PhoneNav.js";
 import { NAV_ITEMS, viewFor } from "./views.js";
 
@@ -20,6 +21,7 @@ const BRAND = "agents";
 export function App(): ReactNode {
   const route = useRoute();
   useRoutePerf(route);
+  useWaitView(route.view);
   useRelayInvalidation();
   useReturnInvalidation();
   const isPhone = useMediaQuery(BELOW_MD);
