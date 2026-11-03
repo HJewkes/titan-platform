@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone names the neighbours in its step links",
+      "file": "apps/console/src/pages/RoundSetNav.tsx",
+      "find": "{stepText(step, named ? round.id : null)}",
+      "replace": "{stepText(step, round.id)}",
+      "kills": [
+        "RoundSetLinks leaves the neighbours' ids off on a phone, so Prev, the set and Next share a row"
+      ]
+    }
+  ]
+}
