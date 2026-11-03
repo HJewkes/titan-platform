@@ -14,7 +14,7 @@
     {
       "name": "rounds run only while a target row fails",
       "file": "products/explainer/src/rewrite-pass.ts",
-      "find": "(failingTargets(current.rows) > 0 || idBeats(current.rows) > 0)",
+      "find": "(failingTargets(current.rows) > 0 || spokenIdBeats(current.rows) > 0)",
       "replace": "failingTargets(current.rows) > 0",
       "kills": [
         "is rewritten without the id, though every target row already passed"
@@ -23,8 +23,8 @@
     {
       "name": "a chapter must come closer to band to be kept",
       "file": "products/explainer/src/rewrite-pass.ts",
-      "find": "bandDistance(after) < bandDistance(before) || (idBeats(after) < idBeats(before) && bandDistance(after) <= bandDistance(before))",
-      "replace": "bandDistance(after) < bandDistance(before)",
+      "find": "bandDistance(before) && !idsCut)",
+      "replace": "bandDistance(before))",
       "kills": [
         "keeps a chapter that only cuts ids, though the distance to band holds",
         "is rewritten without the id, though every target row already passed"
@@ -33,8 +33,8 @@
     {
       "name": "a chapter that cuts an id is kept even when it moves away from band",
       "file": "products/explainer/src/rewrite-pass.ts",
-      "find": "(idBeats(after) < idBeats(before) && bandDistance(after) <= bandDistance(before))",
-      "replace": "idBeats(after) < idBeats(before)",
+      "find": "const idsCut = bandDistance(after) === bandDistance(before) && ",
+      "replace": "const idsCut = ",
       "kills": [
         "refuses a chapter that cuts an id but moves away from band"
       ]
