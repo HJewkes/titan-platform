@@ -456,6 +456,22 @@ describe("agentChatReviewerDispatch spawn", () => {
       await expect(spawned).resolves.toBeUndefined();
     });
 
+    it("lets a lineage read the broker answers after 36 s finish, though the roster read would time out", async () => {
+      vi.useFakeTimers();
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        setTimeout(() => (36_000 > timeout ? done(Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }), "", "") : done(null, "[]", "")), Math.min(36_000, timeout));
+        return { stdin: { on: () => undefined, end: () => undefined } };
+      };
+      const dispatch = dispatchOver();
+
+      const lineage = dispatch.lineage();
+      const roster = failure(dispatch.roster());
+      await vi.advanceTimersByTimeAsync(36_000);
+
+      await expect(lineage).resolves.toMatchObject({ rows: [] });
+      expect(await roster).toBeInstanceOf(ReviewerAskTimedOut);
+    });
+
     it("maps a broker that hangs past 90 s to a timed-out ask", async () => {
       vi.useFakeTimers();
       brokerAnsweringAfter(10 * 60_000);
