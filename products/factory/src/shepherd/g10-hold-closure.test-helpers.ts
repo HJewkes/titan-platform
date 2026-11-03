@@ -44,7 +44,7 @@ function importsOf(tree: ShepherdTree, name: string): ModuleImports {
   return result;
 }
 
-export interface HoldClosure {
+interface HoldClosure {
   reached: string[];
   unresolved: string[];
 }
