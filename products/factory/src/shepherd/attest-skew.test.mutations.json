@@ -36,6 +36,15 @@
       "kills": [
         "deploy skew for the attest read (TP-4752) reads no skew for another repo's PR, whose attestations this build's registry does not lay out"
       ]
+    },
+    {
+      "name": "an attestation row file counts as skew",
+      "file": "products/factory/src/shepherd/attest-skew.ts",
+      "find": " && !isRowFile(path)",
+      "replace": "",
+      "kills": [
+        "deploy skew for the attest read (TP-4752) judges at once when main's only registry changes ahead of the build are attestation row files"
+      ]
     }
   ]
 }

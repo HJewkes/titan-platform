@@ -17,9 +17,23 @@ const skewOf = (exec: GhExec, sha = BUILD) => deploySkew({ sha, repo: REPO, exec
 
 describe("deploy skew for the attest read (TP-4752)", () => {
   it("waits while main holds a commit the build lacks that changes a registry path", async () => {
-    const { exec } = compared(2, ["docs/a.md", "products/factory/src/registry/attestations/7.json"]);
+    const { exec } = compared(2, ["docs/a.md", "products/factory/src/registry/attest.ts"]);
 
-    expect(await skewOf(exec)(REPO)).toMatch(/^deploy skew: main is 2 commit\(s\) ahead of build b+, changing 1 registry path\(s\) such as products\/factory\/src\/registry\/attestations\/7\.json/);
+    expect(await skewOf(exec)(REPO)).toMatch(/^deploy skew: main is 2 commit\(s\) ahead of build b+, changing 1 registry path\(s\) such as products\/factory\/src\/registry\/attest\.ts/);
+  });
+
+  it("judges at once when main's only registry changes ahead of the build are attestation row files", async () => {
+    const { exec } = compared(2, ["products/factory/src/registry/attestations/7.json", "products/factory/src/registry/attestations/8.json", "docs/a.md"]);
+
+    expect(await skewOf(exec)(REPO)).toBeUndefined();
+  });
+
+  it("waits when a commit beside the row files changes the reader or the legacy layout", async () => {
+    const rows = "products/factory/src/registry/attestations/7.json";
+
+    expect(await skewOf(compared(1, [rows, "products/factory/src/shepherd/attest-read.ts"]).exec)(REPO)).toMatch(/such as products\/factory\/src\/shepherd\/attest-read\.ts/);
+    expect(await skewOf(compared(1, [rows, "products/factory/src/registry/attestations.json"]).exec)(REPO)).toMatch(/registry\/attestations\.json/);
+    expect(await skewOf(compared(1, [rows, "products/factory/src/registry/attestations/nested/7.json"]).exec)(REPO)).toMatch(/attestations\/nested\/7\.json/);
   });
 
   it("waits on a closure.lock.json change outside the registry directory", async () => {

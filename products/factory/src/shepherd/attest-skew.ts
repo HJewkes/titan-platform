@@ -1,9 +1,12 @@
 import { execGh, type GhExec } from "@titan-design/github";
 import { BEHIND_MAIN_TIMEOUT_MS, compareWithMain } from "../behind-main.js";
 import { DIRTY_SUFFIX, FACTORY_REPO, UNKNOWN_BUILD_SHA, buildSha } from "../build-info.js";
+import { ATTESTATIONS_DIR } from "./attest-read.js";
 
-/** The attestation reader, the judge and the closure lock all live here, so a main commit under it may change what the running build reads. */
+/** The judge, the layout and the closure lock live here, so a main commit under it may change what the running build reads. */
 const REGISTRY_DIR = "products/factory/src/registry/";
+/** The reader itself, which sits beside Shepherd rather than in the registry. */
+const READER = "products/factory/src/shepherd/attest-read.ts";
 const CLOSURE_LOCK = "closure.lock.json";
 
 /** Why the attest read waits for a deploy, or undefined once the running build holds every registry commit on main (TP-4752). */
@@ -18,7 +21,19 @@ interface DeploySkewOptions {
   timeoutMs?: number;
 }
 
-const touchesRegistry = (path: string): boolean => path.startsWith(REGISTRY_DIR) || path === CLOSURE_LOCK || path.endsWith(`/${CLOSURE_LOCK}`);
+/** A `<pr>.json` directly in the attestations directory: data rows the running per-PR reader already reads, not layout. */
+function isRowFile(path: string): boolean {
+  const prefix = `${ATTESTATIONS_DIR}/`;
+  if (!path.startsWith(prefix)) return false;
+  const name = path.slice(prefix.length);
+  return !name.includes("/") && name.endsWith(".json");
+}
+
+/** A path that can change how the running build parses attestations: the reader, registry code or layout, or a closure lock. */
+function touchesRegistry(path: string): boolean {
+  if (path === CLOSURE_LOCK || path.endsWith(`/${CLOSURE_LOCK}`)) return true;
+  return path === READER || (path.startsWith(REGISTRY_DIR) && !isRowFile(path));
+}
 
 /**
  * Main's commits the running build lacks, read through the same compare `/health` reports as behind-main. A failed read, a
