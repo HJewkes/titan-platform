@@ -36,7 +36,16 @@ export function behindMain(options: BehindMainOptions): BehindMain {
 /** The commit count, the file count (-1 when absent), then every path, old and new, since the deployer's `--no-renames` diff sees both ends of a move. */
 const COMPARE_JQ = '.ahead_by, (.files | if type == "array" then length else -1 end), (.files[]? | .filename, (.previous_filename // empty))';
 
-async function probe(exec: GhExec, repo: string, sha: string, timeoutMs: number, closure: () => readonly string[] | undefined): Promise<number | string> {
+/** Main against a build sha: the commits ahead, every path they change, and whether that list is whole. */
+export interface MainCompare {
+  ahead: number;
+  files: string[];
+  /** GitHub listed every changed file: a missing, empty or capped list may hide one. */
+  complete: boolean;
+}
+
+/** One `gh compare <sha>...main`; a failed call or an answer with no commit count is the redacted reason. */
+export async function compareWithMain(exec: GhExec, repo: string, sha: string, timeoutMs: number): Promise<MainCompare | string> {
   const args = ["api", `repos/${repo}/compare/${sha}...main`, "--jq", COMPARE_JQ];
   try {
     const { code, stdout, stderr } = await exec(args, undefined, { timeoutMs });
@@ -44,15 +53,18 @@ async function probe(exec: GhExec, repo: string, sha: string, timeoutMs: number,
     const [first = "", count, ...files] = stdout.trim().split("\n");
     const ahead = Number(first);
     if (!Number.isInteger(ahead) || ahead < 0) return "gh compare returned no commit count";
-    return ahead > 0 && skippable(count, files, closure()) ? 0 : ahead;
+    const listed = Number(count);
+    const complete = Number.isInteger(listed) && listed > 0 && listed < COMPARE_FILE_CAP && files.length >= listed;
+    return { ahead, files, complete };
   } catch (err) {
     return redactForEvidence(`gh compare failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-/** Only a complete file list can clear the commits; a missing, empty or capped one counts them. */
-function skippable(count: string | undefined, files: string[], closure: readonly string[] | undefined): boolean {
-  const listed = Number(count);
-  const complete = Number.isInteger(listed) && listed > 0 && listed < COMPARE_FILE_CAP && files.length >= listed;
-  return complete && !reachesFactoryBuild(files, closure);
+/** Only a complete file list can clear the commits. */
+async function probe(exec: GhExec, repo: string, sha: string, timeoutMs: number, closure: () => readonly string[] | undefined): Promise<number | string> {
+  const compared = await compareWithMain(exec, repo, sha, timeoutMs);
+  if (typeof compared === "string") return compared;
+  const { ahead, files, complete } = compared;
+  return ahead > 0 && complete && !reachesFactoryBuild(files, closure()) ? 0 : ahead;
 }

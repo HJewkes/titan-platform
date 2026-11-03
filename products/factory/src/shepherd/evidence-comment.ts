@@ -65,6 +65,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "ci-policy-weakened": "the reviewer says the change weakens CI policy",
   "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
   "attest-unmet": "no independent reviewer attested a claimed attestation row",
+  "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",
 };
 
 const LONG_PATH_LIST = 5;

@@ -127,7 +127,7 @@ export interface DecidableEvidence extends GrantWithheldField {
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed", "attest-unmet"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
 function guardRule(rowId: MergeGuardRow): PolicyRule {
@@ -135,6 +135,12 @@ function guardRule(rowId: MergeGuardRow): PolicyRule {
 }
 
 const UNSETTLED_ROW: MergeGuardRow = "merge-state-unsettled";
+const DEPLOY_SKEW_ROW: MergeGuardRow = "attest-deploy-skew";
+
+/** The attest read waits for a deploy (TP-4752); land waits at the head and re-reads it each round instead of asking the owner. */
+export function isDeploySkewGate(decision: GateDecision): boolean {
+  return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === DEPLOY_SKEW_ROW;
+}
 
 /** The one gate a later read at the same head may clear: GitHub had not computed mergeability on any read. */
 export function isUnsettledGate(decision: GateDecision): boolean {
@@ -178,6 +184,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour);
   if (policyGate) return policyGate;
+  if (evidence.attest !== undefined && "deploySkew" in evidence.attest) return { outcome: "gate", rule: guardRule(DEPLOY_SKEW_ROW), reason: `attestation waits: ${evidence.attest.deploySkew}` };
   const unmet = attestUnmetReason(evidence.attest);
   if (unmet !== undefined) return { outcome: "gate", rule: guardRule("attest-unmet"), reason: unmet };
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
