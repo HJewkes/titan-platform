@@ -19,12 +19,16 @@ const SUMMARY_15M = {
   rpcs: [stats("work.tasks", 100, 900, { bytesMax: 3000 * 1024 }), stats("work.portfolio", 10, 300, { bytesMax: 512 }), stats("rounds.get", 20, 60, { bytesMax: 512 })],
   upstreams: [stats("factory:needs.list", 300, 1200, { timeouts: 1 })],
 };
+const waitStats = (command: string, ownerMs: number, p95: number, budgetMs: number) => ({ command, waits: 4, ownerMs, p50: p95 / 2, p95, max: p95, cold: 1, mutation: 0, budgetMs, overBudget: p95 > budgetMs ? 1 : 0 });
+const WAITS_15M = { window: "15m", waits: [waitStats("work.tasks", 42_000, 12_000, 9700), waitStats("inbox.list", 6000, 1500, 4200)] };
 const SUMMARY_24H = { ...SUMMARY_15M, window: "24h", rpcs: [stats("rounds.get", 20, 60, { bytesMax: 512 })], routes: [], upstreams: [] };
 
 function renderPerf(): void {
   const calls = {
     [snapshotKey("perf.summary", { window: "15m" })]: successEnvelope(SUMMARY_15M),
     [snapshotKey("perf.summary", { window: "24h" })]: successEnvelope(SUMMARY_24H),
+    [snapshotKey("perf.waits", { window: "15m" })]: successEnvelope(WAITS_15M),
+    [snapshotKey("perf.waits", { window: "24h" })]: successEnvelope({ window: "24h", waits: [] }),
   };
   const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
@@ -61,6 +65,16 @@ describe("the perf tab", () => {
     expect(screen.getAllByTestId(/^perf-rpc-/).map((row) => row.getAttribute("data-testid"))).toEqual(["perf-rpc-work.tasks", "perf-rpc-work.portfolio", "perf-rpc-rounds.get"]);
   });
 
+  it("ranks waits by owner seconds as the server sent them and badges a p95 past its command's budget", async () => {
+    renderPerf();
+
+    const slowest = await screen.findByTestId("perf-wait-work.tasks");
+    expect(within(slowest).getByText("42")).toBeTruthy();
+    expect(within(slowest).getByTestId("perf-over-budget")).toBeTruthy();
+    expect(within(screen.getByTestId("perf-wait-inbox.list")).queryByTestId("perf-over-budget")).toBeNull();
+    expect(screen.getAllByTestId(/^perf-wait-/).map((row) => row.getAttribute("data-testid"))).toEqual(["perf-wait-work.tasks", "perf-wait-inbox.list"]);
+  });
+
   it("the 24 h toggle shows that window's rows", async () => {
     renderPerf();
     await screen.findByTestId("perf-rpc-work.tasks");
@@ -68,6 +82,7 @@ describe("the perf tab", () => {
     fireEvent.click(screen.getByRole("tab", { name: "24 h" }));
 
     expect(await screen.findByText("No route timed yet")).toBeTruthy();
+    expect(await screen.findByText("No wait recorded")).toBeTruthy();
     expect(screen.queryByTestId("perf-rpc-work.tasks")).toBeNull();
   });
 

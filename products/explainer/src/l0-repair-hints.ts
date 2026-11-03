@@ -5,6 +5,7 @@ import { boundaryLinks, connectiveShare, firstIdentifier, MAX_CONNECTIVE_SHARE, 
 import { ASSERTION_MAX_WORDS, assertionDefects, HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { spokenDigitsHint, spokenTokenHint } from "./lint-spoken-tokens.js";
+import { spokenIdsHint } from "./spoken-ids.js";
 import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
@@ -105,6 +106,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-V12": spokenDigitsHint,
   "Q-V13": headlineHint,
   "Q-V14": spokenTokenHint,
+  "Q-V15": spokenIdsHint,
   "Q-D7": assertionHint,
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,

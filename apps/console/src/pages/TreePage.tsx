@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Alert, EmptyState, NetworkGraph, Spinner, Tab, TabList, Tabs, Typography, VStack, useMeasuredWidth, type GraphItemRef } from "@titan-design/react-ui";
+import { Alert, EmptyState, NetworkGraph, Tab, TabList, Tabs, Typography, VStack, useMeasuredWidth, type GraphItemRef } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { LoopBoard } from "../../server/loop-board.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";

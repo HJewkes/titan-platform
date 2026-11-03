@@ -1,32 +1,6 @@
 import { useState, type ReactNode } from "react";
-import {
-  Alert,
-  BreadcrumbItem,
-  Breadcrumbs,
-  Card,
-  CardContent,
-  DateTime,
-  HStack,
-  InitiativeBrief,
-  InitiativeHeader,
-  OpenLoops,
-  Pill,
-  SessionList,
-  Spinner,
-  Tab,
-  TabList,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Tabs,
-  TaskTable,
-  Typography,
-  VStack,
-  sessionLinkers,
-} from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, HStack, InitiativeBrief, InitiativeHeader, OpenLoops, Pill, SessionList, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, TaskTable, Typography, VStack, sessionLinkers } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";

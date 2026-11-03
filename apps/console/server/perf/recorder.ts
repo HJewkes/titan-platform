@@ -11,7 +11,10 @@ const upstreamRow = z.object({ t: z.number(), kind: z.literal("upstream"), name:
 type UpstreamRow = z.infer<typeof upstreamRow>;
 const routeRow = z.object({ t: z.number(), kind: z.literal("route"), view: z.string(), detail: z.boolean(), ms: z.number(), queries: z.number() });
 type RouteRow = z.infer<typeof routeRow>;
-const logRow = z.discriminatedUnion("kind", [rpcRow, upstreamRow, routeRow]);
+/** A loader the owner looked at: view key, command names and numbers only. */
+const waitRow = z.object({ t: z.number(), kind: z.literal("wait"), view: z.string(), commands: z.array(z.string()), ms: z.number(), phase: z.enum(["cold", "refetch"]), mutation: z.boolean() });
+export type WaitLogRow = z.infer<typeof waitRow>;
+const logRow = z.discriminatedUnion("kind", [rpcRow, upstreamRow, routeRow, waitRow]);
 
 /** One call to an upstream daemon. `name` is `<upstream>:<command>`, taken from the RPC path. */
 export type UpstreamSample = Omit<UpstreamRow, "t" | "kind">;
@@ -20,6 +23,8 @@ export type UpstreamSample = Omit<UpstreamRow, "t" | "kind">;
 export type ClientRow =
   | { kind: "route"; view: string; detail: boolean; ms: number; queries: number }
   | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean }
+  | Omit<WaitLogRow, "t">
+  | { kind: "action"; command: string; ms: number; ok: boolean }
   | { kind: "dropped"; count: number };
 type LogRow = z.infer<typeof logRow> | (ClientRow & { t: number });
 
@@ -54,7 +59,7 @@ export interface RouteStats {
 
 type UpstreamStats = RpcStats & { timeouts: number };
 
-type SummaryWindow = "15m" | "24h";
+export type SummaryWindow = "15m" | "24h" | "7d";
 
 export interface PerfRecorder {
   record(sample: RpcSample): void;
@@ -65,13 +70,15 @@ export interface PerfRecorder {
   /** Time to first data per view; a detail route is its own row, so a list and its detail page are not averaged. */
   routes(window: SummaryWindow): Promise<RouteStats[]>;
   upstreams(window: SummaryWindow): Promise<(RpcStats & { timeouts: number })[]>;
+  /** The loaders the owner looked at, unranked. */
+  waits(window: SummaryWindow): Promise<WaitLogRow[]>;
   /** Writes what is buffered; resolves when it is on disk. */
   flush(): Promise<void>;
   close(): Promise<void>;
 }
 
 const DAY_MS = 86_400_000;
-const WINDOW_MS: Record<SummaryWindow, number> = { "15m": 15 * 60_000, "24h": DAY_MS };
+export const WINDOW_MS: Record<SummaryWindow, number> = { "15m": 15 * 60_000, "24h": DAY_MS, "7d": 7 * DAY_MS };
 const LOG_FILE = /^rpc-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
 /** Nearest rank: the 19th smallest of 20 samples is the p95. */
@@ -128,17 +135,22 @@ function ofKind<K extends LogRow["kind"]>(rows: readonly LogRow[], kind: K): Ext
   return rows.filter((row): row is Extract<LogRow, { kind: K }> => row.kind === kind);
 }
 
+/** Holds the newest `ringSize` rows for the 15 minute window and logs each one. */
+function ringKeeper(ring: LogRow[], ringSize: number, log: (row: LogRow) => void): (row: LogRow) => void {
+  return (row) => {
+    ring.push(row);
+    if (ring.length > ringSize) ring.shift();
+    log(row);
+  };
+}
+
 export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   const { dir, now = Date.now, ringSize = 2000, flushMs = 5000, flushRows = 200, retentionDays = 7 } = options;
   const ring: LogRow[] = [];
   const log = createBatchWriter(dir, flushMs, flushRows);
   const pruned = pruneOldLogs(dir, now(), retentionDays).catch(() => {});
 
-  function keep(row: LogRow): void {
-    ring.push(row);
-    if (ring.length > ringSize) ring.shift();
-    log.add(row);
-  }
+  const keep = ringKeeper(ring, ringSize, log.add);
   const rowsIn = (window: SummaryWindow) => windowRows(window, now() - WINDOW_MS[window], ring, log.flush, dir);
 
   return {
@@ -149,11 +161,12 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
       keep({ t: now(), kind: "upstream", name: sample.name, ms: sample.ms, bytes: sample.bytes, outcome: sample.outcome });
     },
     recordClient(rows) {
-      for (const row of rows) (row.kind === "route" ? keep : log.add)({ ...row, t: now() });
+      for (const row of rows) (row.kind === "route" || row.kind === "wait" ? keep : log.add)({ ...row, t: now() });
     },
     summary: async (window) => statsOf(ofKind(await rowsIn(window), "rpc")),
     routes: async (window) => routeStatsOf(ofKind(await rowsIn(window), "route")),
     upstreams: async (window) => upstreamStatsOf(ofKind(await rowsIn(window), "upstream")),
+    waits: async (window) => ofKind(await rowsIn(window), "wait"),
     flush: log.flush,
     async close() {
       await Promise.all([pruned, log.stop()]);
@@ -207,6 +220,11 @@ async function logFiles(dir: string): Promise<{ file: string; day: string }[]> {
     const day = LOG_FILE.exec(file)?.[1];
     return day === undefined ? [] : [{ file, day }];
   });
+}
+
+/** The day files written since `since`, for a reader with no running daemon, such as the CLI. */
+export async function readWaitRows(dir: string, since: number): Promise<WaitLogRow[]> {
+  return ofKind(await readLogs(dir, since), "wait").filter((row) => row.t >= since);
 }
 
 async function readLogs(dir: string, since: number): Promise<LogRow[]> {

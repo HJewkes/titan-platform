@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { termsToKeep } from "./rewrite-guard.js";
 import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
 import { cuedWordsIn } from "./rewrite-spans.js";
+import { spokenIds } from "./spoken-ids.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
 
 export interface RewritePromptDeps {
@@ -30,7 +31,7 @@ function shapeLine(lengths: readonly number[]): string {
 const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
   Object.entries({
     empty: "the line came back empty; say the beat in full",
-    entity: "a name from the original went missing; keep every name and id in the line",
+    entity: "a name from the original went missing; keep every name in the line",
     markup: "a linked word was dropped or changed; keep each one exactly as written",
     terms: "too many of the original's own words went missing; keep its wording and change less",
     length: "the line grew or shrank too far; keep it close to the original's length",
@@ -44,8 +45,9 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",
     "cue-order": "the cue words came in a different order; keep the original order",
-    "new-term": "a term or id this beat names was no longer spoken; keep saying it in full",
-    "fact-id": "a citation id was pasted into the line; say the name the way the original says it",
+    "new-term": "a term this beat names was no longer spoken; keep saying it in full",
+    "fact-id": "a citation id was pasted into the line; say no id, and name the change by what it did",
+    "id-changed": "an id came back cut short or changed; say no id, and name the change by what it did",
     "sentence-cap": "a sentence was too long to say in one breath; split it",
     missing: "the reply left this beat out; return an entry for it",
   } satisfies Record<RefusalRule, string>),
@@ -91,6 +93,13 @@ function cueWords(beat: PromptBeat): string[] {
   return [...new Set(ordered.map((cue) => cue.split("#")[0]!))];
 }
 
+/** A daily says no id aloud (TP-4697): each id the line says is one to cut, with what the change did said instead. */
+function idLines(beat: PromptBeat): string[] {
+  const ids = [...new Set(spokenIds(beat).map((id) => id.text))];
+  if (ids.length === 0) return [];
+  return [`- Ids: this beat says ${quoted(ids)}. Cut each one and name the change by what it did; the screen shows the id, so put none in labels_added.`];
+}
+
 function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string {
   return [
     `## ${beat.id}`,
@@ -99,6 +108,7 @@ function renderBeat(beat: PromptBeat, directive: BeatDirective, round: RegisterE
     `Terms to keep: ${termsToKeep(beat).join(", ") || "(none)"}`,
     "Directive:",
     ...directiveLines(beat, directive, round),
+    ...idLines(beat),
   ].join("\n");
 }
 
