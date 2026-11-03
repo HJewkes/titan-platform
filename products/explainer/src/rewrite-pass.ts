@@ -5,13 +5,12 @@ import { wordsOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { spokenText } from "./lint-register.js";
 import { guardBeat, rewrittenBeat, splitOverlong, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
-import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
+import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, spokenIdBeats, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
 import { draftFillRefusals, TEMPLATE_FILL_ID } from "./script-fill.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
-import { spokenIdBeats } from "./spoken-ids.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { declareReadings } from "./heteronym-readings.js";
 import { humanSignalRowsAt } from "./writing-statuses.js";
@@ -140,14 +139,10 @@ const turnedRed = (before: readonly L0Result[], after: readonly L0Result[], ids:
   return after.filter((row) => !row.pass && passedBefore.has(row.check_id)).map((row) => row.check_id);
 };
 
-/**
- * Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. A chapter that
- * only cuts spoken ids holds its distance to band, so fewer beats saying an id counts as progress at the same distance.
- */
+/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. Fewer beats saying an id at the same distance counts as progress. */
 export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[], protectedIds: ReadonlySet<string>): ChapterRefusal | undefined {
   if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
-  const idsCut = bandDistance(after) === bandDistance(before) && spokenIdBeats(after) < spokenIdBeats(before);
-  if (bandDistance(after) >= bandDistance(before) && !idsCut) return { why: "the distance to band did not fall" };
+  if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && spokenIdBeats(after) >= spokenIdBeats(before))) return { why: "the distance to band did not fall" };
   if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
   const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id));
   return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;

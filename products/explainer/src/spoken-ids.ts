@@ -98,9 +98,6 @@ export const isIdTerm = (term: string): boolean =>
 /** Q-V15: no spoken line says a PR, task or script id. */
 export const spokenIdsCheck: L0Check = ({ script }) => [countRow("Q-V15", script.beats.filter((beat) => spokenIds(beat).length > 0).map((beat) => beat.id))];
 
-/** How many beats Q-V15 finds saying an id; the rewrite cuts them whether or not the register bands are met. */
-export const spokenIdBeats = (rows: readonly L0Result[]): number => rows.find((row) => row.check_id === "Q-V15")?.value ?? 0;
-
 /** The Q-V15 repair: each id a line says, and where the id goes instead. */
 export function spokenIdsHint(script: ScriptV1, row: L0Result): string {
   const named = namedBeats(script, row).map((beat) => `${beat.id} ${spokenIds(beat).map((id) => `"${id.text}"`).join(", ")}`);
