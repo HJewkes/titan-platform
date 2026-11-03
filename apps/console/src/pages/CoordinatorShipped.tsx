@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, HStack, Link, Section, SectionContent, SectionHeader, Skeleton, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, HStack, Link, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Skeleton } from "../shell/Loading.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 import { openExternal } from "./homeLinks.js";
 import { PHONE_TAP_LINK } from "./phone.js";

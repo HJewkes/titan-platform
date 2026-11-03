@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, EmptyState, HStack, Input, Select, Spinner, Tab, TabList, Tabs, VStack, type SelectOption } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Select, Tab, TabList, Tabs, VStack, type SelectOption } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";

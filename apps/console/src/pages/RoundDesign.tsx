@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
-import { Alert, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, HStack, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";

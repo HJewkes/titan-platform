@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Badge, BadgeText, Card, CardContent, HStack, Link, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Badge, BadgeText, Card, CardContent, HStack, Link, Pill, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArLadder, ArRunView } from "../../server/autoresearch-view.js";
 import { href, open, useRoute } from "../router.js";
 import { AutoresearchIdeaDrawer, ImplementerLink } from "./AutoresearchIdeaDrawer.js";

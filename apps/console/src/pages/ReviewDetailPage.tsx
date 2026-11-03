@@ -1,19 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  BreadcrumbItem,
-  Breadcrumbs,
-  Collapse,
-  CollapseButton,
-  CollapseContent,
-  HStack,
-  Heading,
-  MarkdownProse,
-  Pill,
-  Spinner,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Collapse, CollapseButton, CollapseContent, HStack, Heading, MarkdownProse, Pill, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { getReview } from "../../server/reviews.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";

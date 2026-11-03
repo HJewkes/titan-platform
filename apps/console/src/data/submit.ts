@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import type { DataSource } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../../server/commands.js";
+import { useWait } from "../shell/Loading.js";
 import { useLiveViewed } from "./live-viewed.js";
 import { useInvalidate } from "./rpc.js";
 
@@ -21,6 +22,7 @@ export function useSubmit(): { available: boolean; state: SubmitState; submit: (
   const invalidate = useInvalidate();
   const liveViewed = useLiveViewed();
   const [state, setState] = useState<SubmitState>({ status: "idle" });
+  useWait(state.status === "sending", true);
   const submit = useCallback(
     async (args: SubmitArgs) => {
       if (source === null) return;
