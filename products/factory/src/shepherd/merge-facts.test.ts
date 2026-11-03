@@ -964,8 +964,8 @@ describe("the attestation guard", () => {
   const closure = (seed: string) => fakeSha(`closure-${seed}`) + fakeSha(`closure-${seed}-tail`).slice(0, 24);
   const CI_WAIT = { step: "ci-wait", closure: closure("ci-wait"), pr: 1 };
   const TOKEN = `ci-wait@${CI_WAIT.closure.slice(0, 12)}`;
-  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: name === "human" ? null : "human", predecessor: null });
-  const roster = ["human", "impl-a", "rev-1", "adv-1"].map(agent);
+  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: "human", predecessor: null });
+  const roster = ["impl-a", "rev-1", "adv-1"].map(agent);
   const as = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
   const byReviewer = (name: string, attests: string[] = [TOKEN], extra: Partial<MergeEvidenceInput> = {}): Partial<MergeEvidenceInput> => ({ resolver: as(name), dispatchedReviewer: as(name), attest: { attests }, ...extra });
 
