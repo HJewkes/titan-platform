@@ -11,8 +11,8 @@ Tier product of the titan-platform DAG. It imports no other package.
 Two halves, so the mod stays thin and everything else is plain, tested Node:
 
 - **`titan-fleet-feed`** (`src/bin.ts`) reads agent-chat and prints one JSON snapshot per
-  line. It reads `agent-chat agent ls --json` (roster), `agent-chat agent budget --accounts
-  --json` (account usage), the broker's `/health` (slots), each session's status-cache file
+  line. It reads `agent-chat agent ls --json` (roster), the profiles' usage readings through
+  `readAccounts` from `@titan-design/anthropic-account` (account usage), the broker's `/health` (slots), each session's status-cache file
   (context fill and $) and follows `/events` (Status reports, spawn tasks). A pushed event
   starts a reconcile within a second; a poll reconciles every 15 s regardless.
 - **The mod** (`src/mod/register.tsx`, built to `plugin/hooks/register.js`) adds `/fleet`,

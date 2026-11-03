@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Feed, ReconcileSchedule, type FeedSources } from "./feed.js";
-import { ACCOUNTS_JSON, NOW_MS, ROSTER_JSON, STATUS_LINES, fixtureBook } from "./fixture.js";
-import { parseAccounts, parseRoster, parseStatusLine } from "./inputs.js";
+import { FIXTURE_ACCOUNTS, NOW_MS, ROSTER_JSON, STATUS_LINES, fixtureBook } from "./fixture.js";
+import { parseRoster, parseStatusLine } from "./inputs.js";
 import type { Snapshot } from "./snapshot.js";
 
 function sources(overrides: Partial<FeedSources> = {}): FeedSources {
   return {
     roster: async () => parseRoster(ROSTER_JSON),
-    accounts: async () => parseAccounts(ACCOUNTS_JSON),
+    accounts: async () => FIXTURE_ACCOUNTS,
     slots: async () => ({ held: 3, cap: 12 }),
     statusLine: async (entry) => {
       const text = STATUS_LINES[entry.sessionId];

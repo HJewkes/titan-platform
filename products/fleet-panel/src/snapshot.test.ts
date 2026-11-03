@@ -1,6 +1,9 @@
+import { readAccounts } from "@titan-design/anthropic-account/node";
 import { describe, expect, it } from "vitest";
-import { NOW_MS, fixtureSnapshot } from "./fixture.js";
-import { accountChip } from "./snapshot.js";
+import { removeAccountHome, writeAccountHome } from "./account-home.js";
+import { NOW_MS, ROSTER_JSON, fixtureSnapshot } from "./fixture.js";
+import { accountUsageOf, parseRoster } from "./inputs.js";
+import { accountChip, buildSnapshot } from "./snapshot.js";
 
 describe("accountChip", () => {
   it("names an account by its config dir's last segment, without the leading dot", () => {
@@ -51,5 +54,17 @@ describe("buildSnapshot", () => {
     expect(accounts[0]?.readAtMs).toBe(NOW_MS - 40_000);
     expect(accounts[1]?.stale).toBe(true);
     expect(accounts[2]?.readAtMs).toBeNull();
+  });
+
+  it("draws the same account strips from a temp home's readAccounts as from the fixture rows", () => {
+    const home = writeAccountHome();
+    try {
+      const rows = readAccounts({ home, env: {}, now: NOW_MS, platform: "linux", uid: process.getuid?.() ?? 0 });
+      const snapshot = buildSnapshot({ nowMs: NOW_MS, roster: parseRoster(ROSTER_JSON), accounts: rows.map(accountUsageOf), statusLines: new Map(), reportOf: () => null, taskOf: () => null, slots: null, errors: [] });
+
+      expect(snapshot.accounts).toEqual(fixtureSnapshot().accounts);
+    } finally {
+      removeAccountHome(home);
+    }
   });
 });

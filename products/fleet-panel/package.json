@@ -38,6 +38,7 @@
   },
   "private": true,
   "dependencies": {
+    "@titan-design/anthropic-account": "workspace:^",
     "@titan-design/rpc-protocol": "workspace:^"
   }
 }
