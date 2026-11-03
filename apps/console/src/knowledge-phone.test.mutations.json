@@ -7,7 +7,7 @@
       "find": "return useMediaQuery(BELOW_MD) ? <KnowledgeCards records={records} /> : <KnowledgeColumns records={records} />;",
       "replace": "return <KnowledgeColumns records={records} />;",
       "kills": [
-        "the knowledge list on a phone stacks each note into a card with its title, kind, initiative and file instead of the table"
+        "the knowledge list on a phone stacks each note into a two-line card of its title, then kind, initiative and date, instead of the table"
       ]
     },
     {
@@ -35,6 +35,15 @@
       "replace": "<div className=\"min-w-0 break-all\">",
       "kills": [
         "a knowledge record on a phone lets its long ref break inside the breadcrumb instead of widening the page"
+      ]
+    },
+    {
+      "name": "a phone card puts its meta on separate lines again",
+      "file": "apps/console/src/pages/KnowledgeTable.tsx",
+      "find": "        <DateTime value={record.changed} format=\"date\" variant=\"caption\" color=\"secondary\" fallback=\"unknown\" className=\"shrink-0\" />\n      </HStack>",
+      "replace": "      </HStack>\n      <DateTime value={record.changed} format=\"date\" variant=\"caption\" color=\"secondary\" fallback=\"unknown\" />",
+      "kills": [
+        "the knowledge list on a phone stacks each note into a two-line card of its title, then kind, initiative and date, instead of the table"
       ]
     }
   ]
