@@ -107,9 +107,8 @@ describe("mergeLocks", () => {
 
   it("drops a step the other side removed and keeps one both sides added alike", () => {
     const base = { a: lockRow("a0"), gone: lockRow("g0") };
-    const { gone: _gone, ...theirs } = base;
 
-    const merged = mergeLocks(base, { ...base, added: lockRow("n") }, { ...theirs, added: lockRow("n") });
+    const merged = mergeLocks(base, { ...base, added: lockRow("n") }, { a: lockRow("a0"), added: lockRow("n") });
 
     expect(merged).toEqual({ lock: { a: lockRow("a0"), added: lockRow("n") }, diverged: [] });
   });

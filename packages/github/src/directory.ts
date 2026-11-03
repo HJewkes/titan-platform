@@ -2,7 +2,7 @@ import type { RepoEntry } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
 /** GitHub's contents API lists at most this many entries of one directory and says nothing when it stops there. */
-export const DIRECTORY_LIST_CAP = 1000;
+const DIRECTORY_LIST_CAP = 1000;
 
 interface ContentsEntry {
   type: string;
