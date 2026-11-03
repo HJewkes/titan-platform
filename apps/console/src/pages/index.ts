@@ -10,6 +10,7 @@ import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
+import { LoopsPage } from "./LoopsPage.js";
 import { Page, PageHeader, type PageMaxWidth } from "./PageShell.js";
 import { ReviewDetailPage } from "./ReviewDetailPage.js";
 import { ReviewsPage } from "./ReviewsPage.js";
@@ -22,6 +23,7 @@ import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 import { TheaterPage } from "./TheaterPage.js";
 import { TheaterPlayer } from "./TheaterPlayer.js";
+import { TreePage } from "./TreePage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
@@ -57,6 +59,8 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   inbox: { list: WIDE, render: InboxPage },
   initiatives: { list: { maxWidth: "wide", hasOwnTitle: true }, detail: WIDE, render: WorkPage },
   tasks: { list: { maxWidth: "full" }, detail: WIDE, render: TasksView },
+  loops: { list: { maxWidth: "full" }, render: LoopsPage },
+  tree: { list: { maxWidth: "full" }, render: TreePage },
   sessions: { list: WIDE, detail: WIDE, render: SessionsRoute },
   knowledge: { list: WIDE, detail: NARROW, render: KnowledgePage },
   agents: { list: WIDE, detail: WIDE, render: AgentsRoute },

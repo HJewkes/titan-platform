@@ -63,6 +63,7 @@ const RECORDED: readonly Pick<TwinCall, "command" | "args">[] = [
   recorded("work.notes", {}),
   recorded("work.search", { q: "backoff" }),
   recorded("work.record", { ref: "note:orbit-relay/2031-03-03-backoff-ceiling.md" }),
+  recorded("work.loops", {}),
   recorded("rounds.list", {}),
   recorded("rounds.get", { id: "ship-tile-r1" }),
   recorded("rounds.get", { id: "kiln-schedule-r2" }),
