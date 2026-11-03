@@ -47,6 +47,12 @@ declare const observedReadingSchema: z.ZodObject<{
     rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
         used_percentage: z.ZodNumber;
         resets_at: z.ZodOptional<z.ZodNumber>;
+        severity: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    scoped: z.ZodOptional<z.ZodObject<{
+        model: z.ZodString;
+        used_pct: z.ZodNumber;
+        severity: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     source: z.ZodOptional<z.ZodString>;
     account: z.ZodOptional<z.ZodString>;
