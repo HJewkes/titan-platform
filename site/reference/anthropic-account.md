@@ -76,6 +76,9 @@ epoch seconds and percentages run from 0 to 100.
 
 `rate_limits` is an open map, so a new window name parses without a release.
 `parseUsageReading(input)` returns the reading or `null`, and drops keys it does not know.
+`parseObservedReading(input)` does the same but also keeps a status line's
+`prompt_cache: { ttl?, expires_at? }` stamp, which dates its figures by the last API response.
+A malformed stamp is dropped and the reading kept. `readReadings` parses with it.
 
 `usageFromOAuthResponse(body, { writtenAt, account? })` takes the parsed response body. Each
 top-level key whose value is `{ utilization: number, resets_at: string | null }` becomes a
@@ -384,6 +387,16 @@ Like `pollUsage`, it never logs, and never throws for anything the file, the loc
 server does. An error body is cancelled unread, a fetch rejection or filesystem error is
 dropped with its message, and only a bad `now`, `marginMs` or `timeoutMs` throws a
 `RangeError` with a fixed message.
+
+`readAccounts({ home?, env?, now?, identify?, uid?, platform? })` returns one `AccountUsage`
+per Anthropic login over `discoverProfiles`. `accountIdentity(configDir, home?, read?)`
+names a dir's login as `accountUuid/organizationUuid` from its `.claude.json`. The default
+dir reads `<home>/.claude.json` first. Dirs on one login form one row, in discovery order,
+through the pure `groupByIdentity`. A dir whose login cannot be read is a row of its own.
+The row's `account` is its first member not labelled `default`. Each row merges every
+member's readings (`readReadings(configDir)`) with `mergeAccountReadings`. `auth_fail` is
+set when any member's login is refused, expired with no refresh token, or missing off
+macOS.
 
 ## The `anthropic-account` bin
 
