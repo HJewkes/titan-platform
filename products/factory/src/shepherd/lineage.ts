@@ -1,3 +1,4 @@
+import { HUMAN } from "@titan-design/agent-dispatch/roster";
 import type { ReviewerAgent } from "@titan-design/review-panel";
 import type { Author } from "./author-types.js";
 
@@ -7,11 +8,13 @@ const descent: Parents = (agent) => [agent.spawnedBy, agent.predecessor];
 
 /**
  * `name` and every name above it; undefined when a link is absent from the roster, has no stored lineage, or loops back
- * through another name. A row whose parent is its own name is a teleport generation of the same seat, not a loop.
+ * through another name. A row whose parent is its own name is a teleport generation of the same seat, not a loop. The
+ * broker principal has no roster row, since nothing spawned it, so absent it is a root; any other absent name proves nothing.
  */
 function ancestry(name: string, roster: readonly ReviewerAgent[], parents: Parents, path: readonly string[] = []): ReadonlySet<string> | undefined {
   if (path.includes(name)) return undefined;
   const rows = roster.filter((agent) => agent.name === name);
+  if (rows.length === 0 && name === HUMAN) return new Set([name]);
   if (rows.length === 0 || rows.some((agent) => agent.predecessor === undefined)) return undefined;
   const found = new Set([name]);
   for (const parent of rows.flatMap(parents)) {
