@@ -14,6 +14,7 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "tasks", hash: "#/tasks" },
   { name: "tasks-initiative", hash: "#/tasks?initiative=orbit-relay" },
   { name: "task-detail", hash: "#/tasks/OR-12" },
+  { name: "loops", hash: "#/loops" },
   { name: "sessions", hash: "#/sessions" },
   { name: "session-detail", hash: "#/sessions/relay-retry" },
   { name: "agents", hash: "#/agents" },

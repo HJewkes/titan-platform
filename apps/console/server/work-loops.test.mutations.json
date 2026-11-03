@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "work.loop-tier is registered as a read",
+      "file": "apps/console/server/commands.ts",
+      "find": "\"work.loop-tier\": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),",
+      "replace": "\"work.loop-tier\": readCommand(loopTierCommand(activeWork)),",
+      "kills": [
+        "work.loop-tier refuses on loopback because it is an owner write"
+      ]
+    },
+    {
+      "name": "an old daemon reads as an empty board",
+      "file": "apps/console/server/work-loops.ts",
+      "find": "if (isUnknownCommand(error)) return { fetchedAt, board: null, unavailable: OLD_DAEMON };",
+      "replace": "if (isUnknownCommand(error)) return { fetchedAt, board: { ledger: null, loops: [], tree: null, warnings: [] }, unavailable: null };",
+      "kills": [
+        "work.loops reports an old active-work daemon as unavailable, not as an empty board"
+      ]
+    },
+    {
+      "name": "the tier answer drops the ledger's rank",
+      "file": "apps/console/server/loop-board.ts",
+      "find": "({ id, tier: moved, tierRank: tier_rank })",
+      "replace": "({ id, tier: moved, tierRank: null })",
+      "kills": [
+        "work.loop-tier passes the owner's move to active-work's loop.tier and answers the new tier and rank, read from the ledger's tier_rank"
+      ]
+    },
+    {
+      "name": "the active-work cache drops the write",
+      "file": "apps/console/server/active-work-cache.ts",
+      "find": "  return through;\n}",
+      "replace": "  return { read };\n}",
+      "kills": [
+        "work.loop-tier reaches loop.tier through the cached active-work source the host builds"
+      ]
+    }
+  ]
+}
