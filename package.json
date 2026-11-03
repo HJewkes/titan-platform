@@ -49,7 +49,7 @@
     "smoke:codex": "node scripts/smoke-codex.mjs",
     "smoke:reviewer": "node scripts/smoke-reviewer.mjs",
     "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" --filter \"@titan-design/session-miner...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
-    "prepare": "pnpm --silent --filter @titan-design/egress-scan... run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
+    "prepare": "node scripts/closure-lock-merge.mjs --install; pnpm --silent --filter @titan-design/egress-scan... run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",

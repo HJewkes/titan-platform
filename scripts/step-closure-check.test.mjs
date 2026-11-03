@@ -1,8 +1,25 @@
 import { expect, it } from "vitest";
-import { ATTESTATIONS_PATH, LOCK_PATH, readPrNumber, resolveBase, runCheck } from "./step-closure-check.mjs";
+import { ATTESTATIONS_DIR, LEGACY_ATTESTATIONS_PATH, LOCK_PATH, readBaseAttestations, readPrNumber, resolveBase, runCheck } from "./step-closure-check.mjs";
 
 const lock = (closure) => JSON.stringify({ "ci-wait": { closure, schemaHash: "schema-1", bump: 0 } });
 const passing = () => ({ failures: [], notices: [] });
+/** A working tree of `files`: `listDir` names a directory's direct entries, `readFile` throws for a path not there. */
+function tree(files) {
+  const readFile = (path) => {
+    if (!(path in files)) throw new Error(`ENOENT: ${path}`);
+    return files[path];
+  };
+  const listDir = (dir) => [...new Set(Object.keys(files).filter((path) => path.startsWith(`${dir}/`)).map((path) => path.slice(dir.length + 1).split("/")[0]))];
+  return { readFile, listDir };
+}
+
+/** The tree's attestation files, one per PR, from rows grouped by their own `pr`. */
+function fileRows(rows) {
+  const files = {};
+  for (const row of rows) files[`${ATTESTATIONS_DIR}/${row.pr}.json`] = JSON.stringify([...JSON.parse(files[`${ATTESTATIONS_DIR}/${row.pr}.json`] ?? "[]"), row]);
+  return files;
+}
+
 const capture = () => {
   const seen = {};
   return { seen, check: (received) => Object.assign(seen, received) && passing() };
@@ -14,11 +31,9 @@ it("the check reads the base lock from origin/main, not the working tree", () =>
     gitCalls.push(args.join(" "));
     return args[0] === "show" ? lock("base-closure") : "";
   };
-  const files = { [LOCK_PATH]: lock("head-closure"), [ATTESTATIONS_PATH]: "[]" };
-
   const { seen: input, check } = capture();
 
-  runCheck({ git, readFile: (path) => files[path], check, base: "origin/main" });
+  runCheck({ git, ...tree({ [LOCK_PATH]: lock("head-closure") }), check, base: "origin/main" });
 
   expect(gitCalls).toContain(`show origin/main:${LOCK_PATH}`);
   expect(input.base["ci-wait"].closure).toBe("base-closure");
@@ -33,7 +48,7 @@ it("a base with no lock yet hands the check no base", () => {
 
   const { seen: input, check } = capture();
 
-  runCheck({ git, readFile: (path) => (path === LOCK_PATH ? lock("head-closure") : "[]"), check, base: "origin/main" });
+  runCheck({ git, ...tree({ [LOCK_PATH]: lock("head-closure") }), check, base: "origin/main" });
 
   expect(input.base).toBeUndefined();
 });
@@ -42,10 +57,22 @@ const row = (step, closure, pr) => ({ step, closure, pr });
 const CLOSURE_A = "aaaaaaaaaaaa0000000000000000";
 const CLOSURE_B = "bbbbbbbbbbbb1111111111111111";
 
-function checkRows({ baseRows, headRows, prNumber }) {
-  const git = (args) => (args[0] === "show" && args[1].endsWith(ATTESTATIONS_PATH) ? JSON.stringify(baseRows) : lock("closure-1"));
-  const files = { [LOCK_PATH]: lock("closure-1"), [ATTESTATIONS_PATH]: JSON.stringify(headRows) };
-  return runCheck({ git, readFile: (path) => files[path], check: passing, base: "origin/main", prNumber });
+/** A git whose refs each hold their own attestation files, keyed `ref` to repo path to content. */
+function gitWithRefs(filesByRef) {
+  return (args) => {
+    if (args[0] === "ls-tree") return Object.keys(filesByRef[args[2]] ?? {}).filter((path) => path.startsWith(args[3])).join("\n");
+    if (args[0] !== "show") return "";
+    const [ref, path] = args[1].split(":");
+    if (path === LOCK_PATH) return lock("closure-1");
+    const content = filesByRef[ref]?.[path];
+    if (content === undefined) throw new Error(`path ${path} does not exist in ${ref}`);
+    return content;
+  };
+}
+
+function checkRows({ baseRows, headRows, prNumber, headFiles = fileRows(headRows) }) {
+  const git = gitWithRefs({ "origin/main": fileRows(baseRows) });
+  return runCheck({ git, ...tree({ [LOCK_PATH]: lock("closure-1"), ...headFiles }), check: passing, base: "origin/main", prNumber });
 }
 
 it("an added attestation row naming another PR fails", () => {
@@ -91,18 +118,10 @@ it("the PR number comes from the pull_request event payload", () => {
 const PARENT_PR = 7;
 const CHILD_PR = 8;
 
-function gitWithRefs(attestationsByRef) {
-  return (args) => {
-    if (args[0] !== "show") return "";
-    const ref = args[1].split(":")[0];
-    return args[1].endsWith(ATTESTATIONS_PATH) ? JSON.stringify(attestationsByRef[ref]) : lock("closure-1");
-  };
-}
-
 function checkAgainstResolvedBase({ env, attestationsByRef, headRows }) {
-  const files = { [LOCK_PATH]: lock("closure-1"), [ATTESTATIONS_PATH]: JSON.stringify(headRows) };
+  const byRef = Object.fromEntries(Object.entries(attestationsByRef).map(([ref, rows]) => [ref, fileRows(rows)]));
   const base = resolveBase([], env);
-  return runCheck({ git: gitWithRefs(attestationsByRef), readFile: (path) => files[path], check: passing, base, prNumber: CHILD_PR });
+  return runCheck({ git: gitWithRefs(byRef), ...tree({ [LOCK_PATH]: lock("closure-1"), ...fileRows(headRows) }), check: passing, base, prNumber: CHILD_PR });
 }
 
 it("a PR stacked on a parent that added a row passes when judged against its own base", () => {
@@ -134,4 +153,31 @@ it("the base is argv, then CLOSURE_BASE, then the PR base, then origin/main", ()
   expect(resolveBase([], env)).toBe("origin/env");
   expect(resolveBase([], { GITHUB_BASE_REF: "pr-base" })).toBe("origin/pr-base");
   expect(resolveBase([], {})).toBe("origin/main");
+});
+
+it("a row in a file named for another PR fails, so each PR writes only its own file", () => {
+  const result = checkRows({ baseRows: [], headRows: [], prNumber: 8, headFiles: { [`${ATTESTATIONS_DIR}/9.json`]: JSON.stringify([row("ci-wait", CLOSURE_A, 8)]) } });
+
+  expect(result.failures).toEqual([`${ATTESTATIONS_DIR}/9.json: a row names PR 8; it belongs in 8.json`]);
+});
+
+it("a file in the attestations directory that no PR could have written fails", () => {
+  const result = checkRows({ baseRows: [], headRows: [], prNumber: 8, headFiles: { [`${ATTESTATIONS_DIR}/notes.json`]: "[]" } });
+
+  expect(result.failures).toEqual([`${ATTESTATIONS_DIR}/notes.json: not a <pr>.json attestations file`]);
+});
+
+it("the retired single attestations file left in the tree fails", () => {
+  const result = checkRows({ baseRows: [], headRows: [], prNumber: 8, headFiles: { [LEGACY_ATTESTATIONS_PATH]: "[]" } });
+
+  expect(result.failures).toEqual([`${LEGACY_ATTESTATIONS_PATH} is retired; move its rows to ${ATTESTATIONS_DIR}/<pr>.json`]);
+});
+
+it("a base from before the per-PR files is read from its single file, so migrated rows are not added", () => {
+  const old = [row("ci-wait", CLOSURE_A, 3), row("merge", CLOSURE_B, 4)];
+  const git = gitWithRefs({ "origin/main": { [LEGACY_ATTESTATIONS_PATH]: JSON.stringify(old) } });
+
+  expect(readBaseAttestations(git, "origin/main")).toEqual(old);
+  const result = runCheck({ git, ...tree({ [LOCK_PATH]: lock("closure-1"), ...fileRows(old) }), check: passing, base: "origin/main", prNumber: 8 });
+  expect(result).toEqual({ failures: [], notices: [] });
 });

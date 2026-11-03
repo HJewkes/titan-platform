@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { fakeLocator } from "../test-support/fakes.js";
 import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
-import { ATTESTATIONS_PATH, briefClaimsAt, readClaims } from "./attest-read.js";
+import { ATTESTATIONS_DIR, LEGACY_ATTESTATIONS_PATH, attestationsFileOf, briefClaimsAt, readClaims } from "./attest-read.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 
@@ -19,13 +19,25 @@ const agent = (name: string, spawnedBy: string | null): ReviewerAgent => ({ name
 const roster = [agent("impl-a", "human"), agent("rev-1", "human"), agent("adv-1", "human"), agent("fix-1", "impl-a"), agent("rev-2", "ghost")];
 const identity = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
 
+type Files = Record<number, unknown>;
+
+/** Sets each PR's `<pr>.json` at `ref`, as JSON unless it is already a string. */
+function setFiles(fake: FakeGitHub, ref: string, files: Files): void {
+  for (const [pr, rows] of Object.entries(files)) {
+    const content = typeof rows === "string" ? rows : JSON.stringify(rows);
+    fake.files.set(`${ref}:${attestationsFileOf(Number(pr))}`, { content, blobSha: fakeSha(`${pr}:${content}`) });
+  }
+}
+
+/** The base and head as PR files: an array is PR 1's own file, an object names each file by its PR. */
 function world(base: unknown, head: unknown): FakeGitHub {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("attest-test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1)]);
-  fake.prFiles.set(1, [{ path: ATTESTATIONS_PATH, status: "modified" }]);
-  if (base !== undefined) fake.files.set(`main:${ATTESTATIONS_PATH}`, { content: JSON.stringify(base), blobSha: "b-base" });
-  fake.files.set(`${HEAD}:${ATTESTATIONS_PATH}`, { content: typeof head === "string" ? head : JSON.stringify(head), blobSha: "b-head" });
+  fake.prFiles.set(1, [{ path: attestationsFileOf(1), status: "added" }]);
+  const asFiles = (side: unknown): Files => (Array.isArray(side) || typeof side === "string" ? { 1: side } : (side as Files));
+  if (base !== undefined) setFiles(fake, "main", asFiles(base));
+  setFiles(fake, HEAD, asFiles(head));
   return fake;
 }
 
@@ -64,10 +76,61 @@ describe("readClaims", () => {
     expect(read).toEqual({ claimed: [changed, { step: "land", closure: closure("land"), pr: 1 }] });
   });
 
+  it("the rows are the union of every PR's file, so a row another PR's file carries at the base is not claimed", async () => {
+    const other = { step: "ci-wait", closure: closure("other"), pr: 2 };
+    const fake = world({ 2: [other] }, { 1: [MERGE_STEP], 2: [other] });
+
+    const read = await readClaims(githubPort(fake.wire), { repo: REPO, base: "main", head: HEAD });
+
+    expect(read).toEqual({ claimed: [MERGE_STEP] });
+  });
+
+  it("a head file with the base file's blob is not read again", async () => {
+    const other = [{ step: "ci-wait", closure: closure("other"), pr: 2 }];
+    const fake = world({ 2: other }, { 1: [MERGE_STEP], 2: other });
+
+    await readClaims(githubPort(fake.wire), { repo: REPO, base: "main", head: HEAD });
+
+    expect(fake.calls.filter((call) => call === "getContent")).toHaveLength(2);
+  });
+
+  it("a base from before the directory reads its legacy file, so a migration claims nothing it moved", async () => {
+    const fake = world(undefined, { 1: [CI_WAIT], 2: [{ ...MERGE_STEP, pr: 2 }] });
+    fake.files.set(`main:${LEGACY_ATTESTATIONS_PATH}`, { content: JSON.stringify([CI_WAIT, { ...MERGE_STEP, pr: 2 }]), blobSha: "legacy" });
+
+    const read = await readClaims(githubPort(fake.wire), { repo: REPO, base: "main", head: HEAD });
+
+    expect(read).toEqual({ claimed: [] });
+  });
+
   it("a malformed head file reads unread, never as claiming nothing", async () => {
     const read = await readClaims(githubPort(world(undefined, "[{").wire), { repo: REPO, base: "main", head: HEAD });
 
-    expect(read).toEqual({ unread: `${ATTESTATIONS_PATH} is unreadable: malformed` });
+    expect(read).toEqual({ unread: `${ATTESTATIONS_DIR} is unreadable: malformed` });
+  });
+
+  it("a malformed file of another PR reads unread, though this PR's own file parses", async () => {
+    const read = await readClaims(githubPort(world([], { 1: [CI_WAIT], 2: [{ step: "ci-wait" }] }).wire), { repo: REPO, base: "main", head: HEAD });
+
+    expect(read).toEqual({ unread: `${ATTESTATIONS_DIR} is unreadable: malformed` });
+  });
+
+  it("a file in the directory no PR could have written reads unread", async () => {
+    const fake = world([], [CI_WAIT]);
+    fake.files.set(`${HEAD}:${ATTESTATIONS_DIR}/notes.json`, { content: "[]", blobSha: "stray" });
+
+    const read = await readClaims(githubPort(fake.wire), { repo: REPO, base: "main", head: HEAD });
+
+    expect(read).toEqual({ unread: `${ATTESTATIONS_DIR} is unreadable: malformed` });
+  });
+
+  it("a directory listing that cannot be read reads unread with its HTTP status", async () => {
+    const port = githubPort(world([], [CI_WAIT]).wire);
+    const failing = { ...port, listFiles: async () => Promise.reject(Object.assign(new Error("server error"), { status: 502 })) };
+
+    const read = await readClaims(failing, { repo: REPO, base: "main", head: HEAD });
+
+    expect(read).toEqual({ unread: `${ATTESTATIONS_DIR} is unreadable: HTTP 502` });
   });
 });
 
