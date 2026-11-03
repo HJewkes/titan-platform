@@ -23,7 +23,7 @@ export const REWRITE_TARGET_ROWS = [
 export const REWRITE_AIMED_ROWS: readonly string[] = [...REWRITE_TARGET_ROWS, "register:phrases"];
 
 /** How many beats Q-V15 finds saying an id: the pass cuts them whether or not the register bands are met (TP-4697). */
-export const spokenIdBeats = (rows: readonly L0Result[]): number => rows.find((row) => row.check_id === "Q-V15")?.value ?? 0;
+export const idBeats = (rows: readonly L0Result[]): number => rows.find((row) => row.check_id === "Q-V15")?.value ?? 0;
 
 /** Round 1 reshapes the script; round 2 fixes the numbers and triads round 1 left or made, and reshapes beats still under the mean floor (TP-3817 S0, S13). */
 export const MAX_REWRITE_ROUNDS = 2;

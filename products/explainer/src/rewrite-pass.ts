@@ -5,7 +5,7 @@ import { wordsOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { spokenText } from "./lint-register.js";
 import { guardBeat, rewrittenBeat, splitOverlong, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
-import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, spokenIdBeats, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
+import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, idBeats, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
@@ -142,7 +142,7 @@ const turnedRed = (before: readonly L0Result[], after: readonly L0Result[], ids:
 /** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. Fewer beats saying an id at the same distance counts as progress. */
 export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[], protectedIds: ReadonlySet<string>): ChapterRefusal | undefined {
   if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
-  if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && spokenIdBeats(after) >= spokenIdBeats(before))) return { why: "the distance to band did not fall" };
+  if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && idBeats(after) >= idBeats(before))) return { why: "the distance to band did not fall" };
   if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
   const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id));
   return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;
@@ -371,7 +371,7 @@ export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promis
   let current: RoundInput = { script: spelledInput, rows: before, refused: new Map() };
   const reports: RoundReport[] = [];
   const calls: RewriteCall[] = [];
-  for (let round = 1; round <= rounds && (failingTargets(current.rows) > 0 || spokenIdBeats(current.rows) > 0); round++) {
+  for (let round = 1; round <= rounds && (failingTargets(current.rows) > 0 || idBeats(current.rows) > 0); round++) {
     const outcome = await runRound(current, round, deps, checks);
     calls.push(...outcome.calls);
     if (outcome.report) reports.push(outcome.report);
