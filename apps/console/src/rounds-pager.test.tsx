@@ -56,6 +56,17 @@ const pick = (questionId: string, label: string): void => {
 const isDisabled = (button: HTMLElement): boolean => button.getAttribute("aria-disabled") === "true";
 
 describe("a round of several sections", () => {
+  it("keeps Back and Next on one row and the section list on one sideways-scrolling row on a phone", async () => {
+    await load(`#/rounds/${PAGED}`);
+
+    expect(screen.getByTestId("section-steps").className).toContain("max-md:flex-nowrap");
+    expect(screen.getByTestId("section-pager-end").className).toContain("max-md:flex-nowrap");
+    expect(screen.getByTestId("section-position").className).toContain("max-md:flex-1");
+    const sections = screen.getByTestId("section-jump-ramp").parentElement!;
+    expect(sections.className).toContain("max-md:flex-nowrap");
+    expect(sections.className).toContain("max-md:overflow-x-auto");
+  });
+
   it("shows one section at a time, and Next and Back step between them", async () => {
     await load(`#/rounds/${PAGED}`);
 
