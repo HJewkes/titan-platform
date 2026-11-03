@@ -1,6 +1,7 @@
 // Synthetic broker output for tests and screenshots: invented agents, accounts and paths only.
 import { EventBook, SseParser } from "./events.js";
-import { parseAccounts, parseRoster, parseSlots, parseStatusLine, type StatusLineReading } from "./inputs.js";
+import type { AccountUsage as AccountRow } from "@titan-design/anthropic-account";
+import { accountUsageOf, parseRoster, parseSlots, parseStatusLine, type StatusLineReading } from "./inputs.js";
 import { buildSnapshot, type Snapshot } from "./snapshot.js";
 
 export const NOW_MS = Date.parse("2026-01-15T12:00:00Z");
@@ -61,41 +62,43 @@ export const ROSTER_JSON = JSON.stringify([
   },
 ]);
 
-export const ACCOUNTS_JSON = JSON.stringify([
+const nowS = NOW_MS / 1000;
+
+/** One row per login as `readAccounts` reports it; `writeAccountHome` lays the same state on disk. */
+const ACCOUNT_ROWS: AccountRow[] = [
   {
-    account: "acct-a-login",
-    config_dir: "/home/you/.claude-profiles/acct-a",
+    account: "acct-a",
     config_dirs: ["/home/you/.claude-profiles/acct-a"],
-    source: "usage-poller",
-    five_hour: { used_pct: 62, resets_at: (NOW_MS + 80 * 60_000) / 1000 },
-    seven_day: { used_pct: 21, resets_at: (NOW_MS + 3 * 86_400_000) / 1000 },
+    source: "oauth-usage",
+    windows: {
+      five_hour: { used_pct: 62, resets_at: nowS + 80 * 60 },
+      seven_day: { used_pct: 21, resets_at: nowS + 3 * 86_400 },
+    },
     age_seconds: 40,
     stale: false,
     auth_fail: false,
   },
   {
-    account: "acct-b-login",
-    config_dir: "/home/you/.claude-profiles/acct-b",
+    account: "acct-b",
     config_dirs: ["/home/you/.claude-profiles/acct-b"],
     source: "status-line",
-    five_hour: { used_pct: 91 },
-    seven_day: { used_pct: 40 },
+    windows: { five_hour: { used_pct: 91 }, seven_day: { used_pct: 40 } },
     age_seconds: 1_100,
     stale: true,
     auth_fail: false,
   },
   {
-    account: "default-login",
-    config_dir: "/home/you/.claude",
+    account: "default",
     config_dirs: ["/home/you/.claude"],
     source: null,
-    five_hour: null,
-    seven_day: null,
+    windows: {},
     age_seconds: null,
     stale: false,
     auth_fail: false,
   },
-]);
+];
+
+export const FIXTURE_ACCOUNTS = ACCOUNT_ROWS.map(accountUsageOf);
 
 export const STATUS_LINES: Record<string, string> = {
   "s-builder-a": JSON.stringify({ written_at: (NOW_MS - 20_000) / 1000, context: { used_pct: 44 }, cost: { total_cost_usd: 4.1 } }),
@@ -145,7 +148,7 @@ export function fixtureSnapshot(errors: string[] = []): Snapshot {
   return buildSnapshot({
     nowMs: NOW_MS,
     roster: parseRoster(ROSTER_JSON),
-    accounts: parseAccounts(ACCOUNTS_JSON),
+    accounts: FIXTURE_ACCOUNTS,
     statusLines,
     reportOf: (name) => book.reportOf(name),
     taskOf: (name) => book.taskOf(name),

@@ -16,6 +16,7 @@ export const UNKNOWN_LINE = "unknown|unknown|||||||";
 interface Figures {
   five: AccountWindow | undefined;
   weekly: AccountWindow;
+  scoped: AccountUsage["scoped"];
   age: number;
 }
 
@@ -26,7 +27,7 @@ const open = (window: AccountWindow | undefined): AccountWindow | undefined => (
 function figuresOf(row: AccountUsage | undefined): Figures | null {
   const weekly = open(row?.windows.seven_day);
   if (row === undefined || weekly === undefined || row.age_seconds === null) return null;
-  return { five: open(row.windows.five_hour), weekly, age: row.age_seconds };
+  return { five: open(row.windows.five_hour), weekly, scoped: row.scoped, age: row.age_seconds };
 }
 
 const whole = (window: AccountWindow | undefined): string => (window === undefined ? "" : String(Math.floor(window.used_pct)));
@@ -34,8 +35,9 @@ const reset = (window: AccountWindow | undefined): string => (window?.resets_at 
 
 function currentLine(figures: Figures | null): string {
   if (figures === null) return UNKNOWN_LINE;
-  const { five, weekly, age } = figures;
-  return `${whole(five)}|${whole(weekly)}|${reset(five)}|${reset(weekly)}|||||${age}`;
+  const { five, weekly, scoped, age } = figures;
+  const scopedFields = [scoped === undefined ? "" : Math.floor(scoped.used_pct), scoped?.model ?? "", weekly.severity ?? "", scoped?.severity ?? ""];
+  return [whole(five), whole(weekly), reset(five), reset(weekly), ...scopedFields, age].join("|");
 }
 
 function realOrResolved(dir: string): string {

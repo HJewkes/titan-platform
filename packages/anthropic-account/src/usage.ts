@@ -2,15 +2,28 @@ import { z } from "zod";
 
 // The status-line document Claude Code's session-budget writer stores per session: epoch
 // seconds throughout, and a percentage per rate-limit window.
+// Strict shapes for the two strings copied out of a response body, so nothing else in it can
+// reach a reading.
+const SEVERITY = /^[a-z0-9_]{1,20}$/;
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
+
 const windowSchema = z.object({
   used_percentage: z.number().nonnegative(),
   resets_at: z.number().positive().optional(),
+  severity: z.string().regex(SEVERITY).optional(),
+});
+
+const scopedSchema = z.object({
+  model: z.string().regex(MODEL_NAME),
+  used_pct: z.number().nonnegative(),
+  severity: z.string().regex(SEVERITY).optional(),
 });
 
 const usageReadingSchema = z.object({
   session_id: z.string().min(1),
   written_at: z.number().int().positive(),
   rate_limits: z.record(z.string(), windowSchema),
+  scoped: scopedSchema.optional(),
   source: z.string().min(1).optional(),
   account: z.string().min(1).optional(),
 });
@@ -28,6 +41,7 @@ const observedReadingSchema = usageReadingSchema.extend({
 });
 
 export type UsageWindow = z.infer<typeof windowSchema>;
+export type ScopedUsage = z.infer<typeof scopedSchema>;
 export type UsageReading = z.infer<typeof usageReadingSchema>;
 /** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
 export type ObservedReading = z.infer<typeof observedReadingSchema>;
@@ -89,14 +103,62 @@ function safeWindowsFromOAuth(body: unknown): Record<string, UsageWindow> {
   }
 }
 
+const limitSchema = z.object({
+  kind: z.string(),
+  percent: z.number().nonnegative().optional(),
+  severity: z.string().optional(),
+  scope: z.object({ model: z.object({ display_name: z.string() }) }).optional(),
+});
+
+function limitsOf(body: unknown): z.infer<typeof limitSchema>[] {
+  const list = typeof body === "object" && body !== null ? (body as { limits?: unknown }).limits : undefined;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((entry) => {
+    const parsed = limitSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+interface LimitFigures {
+  weeklySeverity: string | undefined;
+  scoped: ScopedUsage | undefined;
+}
+
+// Kinds other than weekly_all and weekly_scoped are ignored, so a new kind cannot break a poll.
+function limitFigures(body: unknown): LimitFigures {
+  let limits: z.infer<typeof limitSchema>[];
+  try {
+    limits = limitsOf(body);
+  } catch {
+    limits = [];
+  }
+  const weeklySeverity = limits.find((limit) => limit.kind === "weekly_all")?.severity;
+  const scopedLimit = limits.find((limit) => limit.kind === "weekly_scoped");
+  const candidate = scopedLimit && {
+    model: scopedLimit.scope?.model.display_name,
+    used_pct: scopedLimit.percent,
+    severity: scopedLimit.severity,
+  };
+  const scoped = scopedSchema.safeParse(candidate);
+  return { weeklySeverity, scoped: scoped.success ? scoped.data : undefined };
+}
+
+function withWeeklySeverity(rateLimits: Record<string, UsageWindow>, severity: string | undefined): void {
+  const weekly = rateLimits.seven_day;
+  if (weekly && severity !== undefined && SEVERITY.test(severity)) weekly.severity = severity;
+}
+
 // A body whose getter throws gives null, because the exception could carry a token.
 export function usageFromOAuthResponse(body: unknown, options: OAuthUsageOptions): UsageReading | null {
   const rateLimits = safeWindowsFromOAuth(body);
   if (Object.keys(rateLimits).length === 0) return null;
+  const { weeklySeverity, scoped } = limitFigures(body);
+  withWeeklySeverity(rateLimits, weeklySeverity);
   return parseUsageReading({
     session_id: POLL_SESSION_ID,
     written_at: options.writtenAt,
     rate_limits: rateLimits,
+    ...(scoped && { scoped }),
     source: POLL_SOURCE,
     account: options.account,
   });

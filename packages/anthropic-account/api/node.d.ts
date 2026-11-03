@@ -161,6 +161,7 @@ import { z } from 'zod';
 declare const windowSchema: z.ZodObject<{
     used_percentage: z.ZodNumber;
     resets_at: z.ZodOptional<z.ZodNumber>;
+    severity: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 declare const usageReadingSchema: z.ZodObject<{
     session_id: z.ZodString;
@@ -168,6 +169,12 @@ declare const usageReadingSchema: z.ZodObject<{
     rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
         used_percentage: z.ZodNumber;
         resets_at: z.ZodOptional<z.ZodNumber>;
+        severity: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    scoped: z.ZodOptional<z.ZodObject<{
+        model: z.ZodString;
+        used_pct: z.ZodNumber;
+        severity: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     source: z.ZodOptional<z.ZodString>;
     account: z.ZodOptional<z.ZodString>;
@@ -178,6 +185,12 @@ declare const observedReadingSchema: z.ZodObject<{
     rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
         used_percentage: z.ZodNumber;
         resets_at: z.ZodOptional<z.ZodNumber>;
+        severity: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    scoped: z.ZodOptional<z.ZodObject<{
+        model: z.ZodString;
+        used_pct: z.ZodNumber;
+        severity: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     source: z.ZodOptional<z.ZodString>;
     account: z.ZodOptional<z.ZodString>;

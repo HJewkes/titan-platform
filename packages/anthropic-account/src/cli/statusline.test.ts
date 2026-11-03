@@ -24,9 +24,9 @@ const dir = (label: string): string => path.join(home, ".claude-profiles", label
 
 type Windows = Record<string, { used_percentage: number; resets_at?: number }>;
 
-function writeSession(label: string, file: string, ageSeconds: number, rateLimits: Windows): void {
+function writeSession(label: string, file: string, ageSeconds: number, rateLimits: Windows, extra: object = {}): void {
   fs.mkdirSync(sessionsDir(dir(label)), { recursive: true });
-  const reading = { session_id: file.replace(/\.json$/, ""), written_at: SECONDS - ageSeconds, rate_limits: rateLimits };
+  const reading = { session_id: file.replace(/\.json$/, ""), written_at: SECONDS - ageSeconds, rate_limits: rateLimits, ...extra };
   fs.writeFileSync(path.join(sessionsDir(dir(label)), file), JSON.stringify(reading));
 }
 
@@ -83,5 +83,15 @@ describe("status --statusline without five_hour", () => {
     writeSession("agents", "usage-poll.json", 30, both(23.9, 41.5));
 
     expect(await statusline("agents")).toEqual([`23|41|${SECONDS + 3600}|${SECONDS + 3 * DAY}|||||30`]);
+  });
+});
+
+describe("status --statusline scoped cap and severity", () => {
+  it("fills fields 5-8 from the scoped cap and the severities", async () => {
+    const rateLimits = { seven_day: { used_percentage: 41.5, resets_at: SECONDS + 3 * DAY, severity: "warning" } };
+    const scoped = { model: "Example Model", used_pct: 87.6, severity: "critical" };
+    writeSession("agents", "usage-poll.json", 30, rateLimits, { scoped });
+
+    expect(await statusline("agents")).toEqual([`|41||${SECONDS + 3 * DAY}|87|Example Model|warning|critical|30`]);
   });
 });

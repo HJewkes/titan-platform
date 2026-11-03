@@ -1686,7 +1686,7 @@ reports over past sessions use `session-analytics`.
 
 Key exports:
 
-- `inputs`: `parseAccounts`, `parseRoster`, `parseSlots`, `parseStatusLine`
+- `inputs`: `accountUsageOf`, `parseRoster`, `parseSlots`, `parseStatusLine`
 - `events`: `EventBook`, `SseParser`, `statusReportOf`
 - `snapshot`: `accountChip`, `buildSnapshot`
 - `view-model`: `fleetView`
