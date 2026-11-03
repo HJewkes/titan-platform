@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every read goes to the source",
+      "file": "products/factory/src/needs/kept-source.ts",
+      "find": "    if (kept === undefined) return refresh(state, read, now);\n",
+      "replace": "    if (kept === undefined || kept !== undefined) return refresh(state, read, now);\n",
+      "kills": [
+        "a kept slow source serves the kept read inside the fresh window without reading again",
+        "a kept slow source serves the kept read past the fresh window while one refresh runs behind"
+      ]
+    },
+    {
+      "name": "a stale read is served forever",
+      "file": "products/factory/src/needs/kept-source.ts",
+      "find": "    if (age >= staleMs) return refresh(state, read, now);\n",
+      "replace": "",
+      "kills": [
+        "a kept slow source waits on a live read once the kept read is past the stale limit"
+      ]
+    },
+    {
+      "name": "no refresh runs behind a stale-but-served read",
+      "file": "products/factory/src/needs/kept-source.ts",
+      "find": "    if (age >= freshMs) refresh(state, read, now).catch(() => undefined);\n",
+      "replace": "",
+      "kills": [
+        "a kept slow source serves the kept read past the fresh window while one refresh runs behind"
+      ]
+    },
+    {
+      "name": "an accepted write keeps the read",
+      "file": "products/factory/src/needs/kept-source.ts",
+      "find": "    state.generation += 1;\n    state.kept = undefined;\n",
+      "replace": "    state.kept = undefined;\n",
+      "kills": [
+        "a kept slow source drops the kept read on an accepted write, including a read that began before it"
+      ]
+    },
+    {
+      "name": "refreshes are not shared",
+      "file": "products/factory/src/needs/kept-source.ts",
+      "find": "  if (state.inflight !== undefined) return state.inflight;\n",
+      "replace": "",
+      "kills": [
+        "a kept slow source serves the kept read past the fresh window while one refresh runs behind"
+      ]
+    }
+  ]
+}

@@ -81,6 +81,20 @@ describe("needs.list over the daemon", () => {
     for (const item of scoped.items) expect(item.initiative).toBe(initiative);
   });
 
+  it("with fyi count, sends every ask whole and only the number of fyi items", async () => {
+    const sources = await sources10_05();
+    const server = await serve(() => sources);
+
+    const full = await rpc<{ items: OwnerItem[] }>(server, "needs.list");
+    const slim = await rpc<{ items: OwnerItem[]; gaps: string[]; fyiCount: number }>(server, "needs.list", { fyi: "count" });
+
+    const fyi = full.items.filter((item) => item.lens === "fyi" && item.status === "open");
+    expect(fyi.length).toBeGreaterThan(0);
+    expect(slim.items).toEqual(full.items.filter((item) => !fyi.includes(item)));
+    expect(slim.fyiCount).toBe(fyi.length);
+    expect(slim.gaps).toEqual([]);
+  });
+
   it("leaves personal items out unless they are asked for", async () => {
     const personal = decisionTaskItem({ ...decisionTask(1), slug: "diary" }, true);
     const asked: boolean[] = [];
