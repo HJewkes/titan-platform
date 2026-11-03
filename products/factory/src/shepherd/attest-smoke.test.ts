@@ -9,7 +9,7 @@ import { factoryMigrations } from "../host.js";
 import { fakeLocator } from "../test-support/fakes.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { attestJudge } from "./attest-evidence.js";
-import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { attestationsFileOf } from "./attest-read.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { mergeOrderGuard } from "./merge-order-guard.js";
@@ -49,9 +49,9 @@ function claimingWorld(): FakeGitHub {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("smoke-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
-  fake.prFiles.set(1, [{ path: ATTESTATIONS_PATH, status: "modified" }]);
-  fake.files.set(`main:${ATTESTATIONS_PATH}`, { content: JSON.stringify([OLD_ROW]), blobSha: "b-base" });
-  fake.files.set(`${HEAD}:${ATTESTATIONS_PATH}`, { content: JSON.stringify([OLD_ROW, CI_WAIT]), blobSha: "b-head" });
+  fake.prFiles.set(1, [{ path: attestationsFileOf(1), status: "added" }]);
+  for (const ref of ["main", HEAD]) fake.files.set(`${ref}:${attestationsFileOf(2)}`, { content: JSON.stringify([OLD_ROW]), blobSha: "b-old" });
+  fake.files.set(`${HEAD}:${attestationsFileOf(1)}`, { content: JSON.stringify([CI_WAIT]), blobSha: "b-head" });
   return fake;
 }
 
@@ -176,7 +176,7 @@ describe("attest smoke: a stacked PR's merge-order reservation", () => {
     fake.addPr({ number: STACKED, headSha: fakeSha("stacked") });
     fake.addPr({ number: MAIN_BASED, headSha: fakeSha("main-based") });
     fake.pr(STACKED).baseRef = "topic-parent";
-    fake.prFiles.set(MAIN_BASED, [{ path: SHARED, status: "modified" }, { path: ATTESTATIONS_PATH, status: "modified" }]);
+    fake.prFiles.set(MAIN_BASED, [{ path: SHARED, status: "modified" }, { path: attestationsFileOf(MAIN_BASED), status: "added" }]);
     const shepherd = new ShepherdStore(db);
     const runs = new WorkflowRunStore(db);
     shepherd.register({ repo: REPO, pr: MAIN_BASED, runId: "run-main", task: "demo/A", implementer: "impl-a", policy: POLICY });

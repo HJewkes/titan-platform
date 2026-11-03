@@ -1,0 +1,2 @@
+# Merged per step by scripts/closure-lock-merge.mjs once `pnpm install` has registered it (TP-4745); unregistered, git merges it as text.
+products/factory/src/registry/closure.lock.json merge=closure-lock

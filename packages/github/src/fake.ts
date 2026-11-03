@@ -8,6 +8,7 @@ import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullReque
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 import { fakeContentBytes } from "./fake-bytes.js";
+import { fakeListDirectory } from "./fake-directory.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
 
@@ -131,6 +132,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
     getContentBytes: async (_repo, path, ref, maxBytes) => record("getContentBytes", fakeContentBytes(fake, path, ref, maxBytes)),
+    listDirectory: async (_repo, path, ref) => record("listDirectory", fakeListDirectory(fake, path, ref)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),

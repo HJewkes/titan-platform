@@ -106,10 +106,10 @@ const CASES: { name: string; change: () => void; recorded: PrFile[]; reason: str
     reason: "g10-adversary: policy touch",
   },
   {
-    name: "a deleted store migration",
+    name: "a deleted store migration, which the hold closure holds as policy",
     change: () => unlinkSync(join(origin, MIGRATION_FILE)),
     recorded: [{ path: MIGRATION_FILE, status: "removed", additions: 0, deletions: 20 }],
-    reason: undefined,
+    reason: "g10-adversary: policy touch",
   },
   { name: "a diff adding a policy file", change: growPolicy, recorded: GROWN, reason: "g10-adversary: policy touch" },
 ];

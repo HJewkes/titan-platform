@@ -1,6 +1,6 @@
 import type { ReviewerAgent } from "@titan-design/review-panel";
 
-/** One row of `attestations.json`, the shape of the closure check's own: the PR claims `step`'s behaviour is unchanged at import closure `closure`. */
+/** One row of an `attestations/<pr>.json` file, the shape of the closure check's own: the PR claims `step`'s behaviour is unchanged at import closure `closure`. */
 export interface Attestation {
   step: string;
   closure: string;
