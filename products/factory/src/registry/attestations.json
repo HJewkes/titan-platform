@@ -9,6 +9,8 @@
   { "step": "ci-wait", "closure": "778f1ffc078bdaded1e21c28b9ca04ea758ae10b5fd297cc2b049aadda2f5ed0", "pr": 3170 },
   { "step": "ci-wait", "closure": "ebcccc6f737c6a84eb502b4e452a7a891f43c8881886b96bd5a9bd4691cb9af8", "pr": 3173 },
   { "step": "ci-wait", "closure": "4a6da5186ca9f4c23948f0deec426e6475b3b760a841c694e1838bc3bb071c04", "pr": 3177 },
+  { "step": "ci-wait", "closure": "8ab511b630001332488c2be23615a9e081adcfa675774cea30f1141f32de15d0", "pr": 3192 },
+  { "step": "sh-await-verdict", "closure": "bc54ffa6dd012ae6c08844093d1ac4cc84253518a9d266d61590a88587e24a8f", "pr": 3192 },
   { "step": "ci-wait", "closure": "6107006f166c11c3432f2031aeb6360e2087bc060d5a6d7681dff0bb246f1a85", "pr": 3197 },
   { "step": "ci-wait", "closure": "2e335ffe93ef20190a9c8a2100b73e7e2827186553d56765d8559ab36b69ff19", "pr": 3203 },
   { "step": "ci-wait", "closure": "75c135586494b89a815a31e78719303825e09faa0cd851c8d0bc373ef1e2705d", "pr": 3189 },

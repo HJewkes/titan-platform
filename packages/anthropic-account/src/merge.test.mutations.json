@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the poller stays the reading of record at any age",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "  const poller = aged.find((a) => isPoller(a.reading) && a.age <= POLLER_RECORD_SECONDS);",
+      "replace": "  const poller = aged.find((a) => isPoller(a.reading));",
+      "kills": ["a stale lender cannot raise a window", "a poller past 360 s is no longer the reading of record"]
+    },
+    {
+      "name": "a status line raises the poller's window from outside it",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "  return window.resets_at !== undefined && Math.abs(window.resets_at - anchor.resets_at) <= SAME_WINDOW_SECONDS;",
+      "replace": "  return true;",
+      "kills": ["the fresh poller stays the reading of record, raised by a higher status line in its window only"]
+    },
+    {
+      "name": "a window whose every reset has passed keeps its old figure",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "  if (first === undefined) return { window: { used_pct: 0, rolled: true }, age: Math.min(...candidates.map((c) => c.age)) };",
+      "replace": "  if (first === undefined) return candidates[0] ?? { window: { used_pct: 0 }, age: 0 };",
+      "kills": ["a window whose every reset has passed reads as rolled to 0"]
+    },
+    {
+      "name": "a reading is aged by its redraw, not by when its rate_limits were observed",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "  return Math.min(reading.written_at, expiresAt - ttlSeconds(reading.prompt_cache?.ttl));",
+      "replace": "  return reading.written_at;",
+      "kills": ["a session redrawing 35 h old rate_limits reads as 35 h old", "a 5m ttl is honoured"]
+    },
+    {
+      "name": "a lender lends a window whose reset has passed",
+      "file": "packages/anthropic-account/src/merge.ts",
+      "find": "  if (held === undefined) return !isPassed(window, nowS);",
+      "replace": "  if (held === undefined) return true;",
+      "kills": ["borrows no window whose reset has passed"]
+    }
+  ]
+}
