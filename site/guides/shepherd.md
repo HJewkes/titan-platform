@@ -1507,6 +1507,27 @@ TP-4068 and TP-4069 (the actor matrix) are the planned behavioural check.
   presence and evidence rules. Those are kept by hand, and `registration-hold.test.ts` pins each
   one with a row.
 
+Policy paths also cover Shepherd's sign-off, fix-proof, proof-waiver and merge-standing code
+(TP-4746). `SIGNOFF_POLICY_FILES` in `g10-class-rules.ts` lists them by role: `signoffs.ts`,
+`merge-standing.ts`, `reviewer-lineage.ts`, `auto-pass.ts`, `fix-proof.ts`, `take-verdict.ts`, the
+hold store (`store.ts`, `events.ts`), `registration-of.ts`, the proof waivers, `seat-recheck.ts`,
+the merge-up carries and `no-reviewer-hold.ts`, plus `packages/fix-proof/src/**` and
+`packages/review-panel/src/**`. A held module reads its imports, so an edit to one of them can
+change what the hold decides. The rest of the held set is therefore the import closure of the
+listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
+listed table holds and follows each relative import the compiler's scanner reports (value,
+type-only, re-export and dynamic) to a fixpoint. It fails when a module it reaches is not held,
+when a relative import does not resolve, or when `g10-hold-closure.json` differs from the walk.
+The class rules load that JSON, so a module newly imported by a held one becomes held when the
+list is regenerated (`vitest -u` on the test), with no edit to the listed table. The check itself,
+its sidecar, its walk and the JSON are policy, test files or not. Today the closure holds most of
+the Shepherd directory, because the command, release and carry modules import much of it. Store
+migrations in `store.ts` and its neighbours therefore take `g10-adversary`, not `g10-review`.
+
+**Accepted residual.** The hold-closure walk stays in the Shepherd directory: relative imports
+that leave it, package imports and the data flow through store rows are not followed. TP-3901
+covers the out-of-directory modules and TP-4747 the write sites.
+
 **Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
 answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value
 as `ResolverClass`, which admits only the owner classes, so a widened enum fails typecheck; and
