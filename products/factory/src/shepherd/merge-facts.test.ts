@@ -24,7 +24,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { fakeLocator } from "../test-support/fakes.js";
 import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
 import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
-import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { ATTESTATIONS_DIR, attestationsFileOf } from "./attest-read.js";
 import { ReviewerAskTimedOut } from "./review-wait.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -971,7 +971,7 @@ describe("the attestation guard", () => {
 
   function claiming(head: unknown = [CI_WAIT]): FakeGitHub {
     const fake = world();
-    fake.files.set(`${HEAD}:${ATTESTATIONS_PATH}`, { content: typeof head === "string" ? head : JSON.stringify(head), blobSha: "attest-head" });
+    fake.files.set(`${HEAD}:${attestationsFileOf(1)}`, { content: typeof head === "string" ? head : JSON.stringify(head), blobSha: "attest-head" });
     return fake;
   }
 
@@ -1025,10 +1025,10 @@ describe("the attestation guard", () => {
     expect(attested.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
   });
 
-  it("an unreadable attestations.json gates and names it unread", async () => {
+  it("an unreadable attestation file gates and names it unread", async () => {
     const evidence = await judged(claiming("not json"), byReviewer("rev-1"));
 
-    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: `attestation unmet: unread: ${ATTESTATIONS_PATH} is unreadable: malformed` });
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: `attestation unmet: unread: ${ATTESTATIONS_DIR} is unreadable: malformed` });
   });
 
   it("a roster read that fails for a reason other than the broker still gates as unread", async () => {

@@ -16,10 +16,12 @@ import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
+import { checkPutFile, putFile } from "./put-file.js";
+export { GitHubConflictError } from "./put-file.js";
 export type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
-export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -115,6 +117,7 @@ export interface GitHubWire {
   getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
   getContentBytes(repo: RepoSlug, path: string, ref: string, maxBytes?: number): Promise<Uint8Array | null>;
+  listDirectory(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
@@ -187,6 +190,8 @@ export interface GitHubPort {
   getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
   /** `getFile` for binary content such as a PNG, through `git/blobs` past 1 MB; over `maxBytes` by reported size throws `BlobTooLargeError` before that read. */
   fileBytes(repo: RepoSlug, path: string, ref: string, opts?: { maxBytes?: number }): Promise<Uint8Array | null>;
+  /** The files directly under directory `path` at `ref`, null when nothing is there; a file at `path`, or a listing at GitHub's 1,000-entry cap, throws. */
+  listFiles(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
   putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>>;
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
@@ -265,14 +270,6 @@ export interface GitHubPort {
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
 
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-export class GitHubConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GitHubConflictError";
-  }
-}
-
 export interface GitHubPortOptions {
   /**
    * The login `upsertComment` owns comments as, for example `my-app[bot]`. Set it under a GitHub App installation
@@ -295,6 +292,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     deleteRef: async (repo, head) => deleteRef(wire, repoOf(repo), { branch: checkRef("branch", head.branch), repo: head.repo }),
     getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
     fileBytes: async (repo, path, ref, opts = {}) => wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref), checkMaxBytes(opts.maxBytes)),
+    listFiles: async (repo, path, ref) => wire.listDirectory(repoOf(repo), checkPath(path), checkRef("ref", ref)),
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
@@ -338,28 +336,10 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
   };
 }
 
-function checkPutFile(request: PutFileRequest): PutFileRequest {
-  checkPath(request.path);
-  checkRef("branch", request.branch);
-  if (request.expectedBlobSha !== null) checkSha("expectedBlobSha", request.expectedBlobSha);
-  return request;
-}
-
 function tail(log: string, lines: number): string {
   const all = log.split(/\r?\n/);
   if (all.at(-1) === "") all.pop();
   return all.slice(-lines).join("\n");
-}
-
-async function putFile(wire: GitHubWire, repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>> {
-  const current = await wire.getContent(repo, request.path, request.branch);
-  if (current && current.content === request.content) return { blobSha: current.blobSha, done: false, skipped: "unchanged" };
-  const currentSha = current?.blobSha ?? null;
-  if (currentSha !== request.expectedBlobSha) {
-    throw new GitHubConflictError(`${request.path} on ${request.branch} is blob ${currentSha ?? "absent"}, expected ${request.expectedBlobSha ?? "absent"}`);
-  }
-  const written = await wire.putContent(repo, request);
-  return { blobSha: written.blobSha, done: true };
 }
 
 async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {

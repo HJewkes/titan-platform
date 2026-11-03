@@ -10,7 +10,7 @@ import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel"
 import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
-import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { attestationsFileOf } from "./attest-read.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { fakeLocator } from "../test-support/fakes.js";
@@ -557,12 +557,12 @@ describe("carrying a MERGE across a clean merge-up to a head that claims attesta
   function attestWorld(atHead: unknown): FakeGitHub {
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
-    github.files.set(`main:${ATTESTATIONS_PATH}`, { content: "[]", blobSha: "attest-base" });
-    github.files.set(`${NEW_HEAD}:${ATTESTATIONS_PATH}`, { content: typeof atHead === "string" ? atHead : JSON.stringify(atHead), blobSha: "attest-head" });
+    github.files.set(`main:${attestationsFileOf(2)}`, { content: "[]", blobSha: "attest-base" });
+    github.files.set(`${NEW_HEAD}:${attestationsFileOf(1)}`, { content: typeof atHead === "string" ? atHead : JSON.stringify(atHead), blobSha: "attest-head" });
     return github;
   }
 
-  /** Answers the claims step from the real route, reading the world's attestations.json at the base and the head. */
+  /** Answers the claims step from the real route, reading the world's attestation files at the base and the head. */
   function claimsFrom(github: FakeGitHub): ClaimsAnswer {
     const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
     return async (input) => {
@@ -586,7 +586,7 @@ describe("carrying a MERGE across a clean merge-up to a head that claims attesta
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry-claims:"))!.input).toEqual({ ...TARGET, baseRef: "main", head: NEW_HEAD });
   });
 
-  it("a head whose attestations.json matches the base carries the MERGE as before", async () => {
+  it("a head whose attestation rows match the base carries the MERGE as before", async () => {
     const r = claimsRig([]);
 
     const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
@@ -595,7 +595,7 @@ describe("carrying a MERGE across a clean merge-up to a head that claims attesta
     expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: MERGE_UP, rule: "tree-equal" });
   });
 
-  it("an unreadable attestations.json at the head does not carry", async () => {
+  it("an unreadable attestation file at the head does not carry", async () => {
     const r = claimsRig("{not json");
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
