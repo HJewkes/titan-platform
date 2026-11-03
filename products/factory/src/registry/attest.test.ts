@@ -13,15 +13,15 @@ const agent = (name: string, spawnedBy: string | null, generation = 0): Reviewer
   predecessor: null,
 });
 
-// Shepherd's CLI spawns are recorded as the human, and each such spawn is a fresh conversation.
-const human = agent("human", null);
+// Shepherd's CLI spawns are recorded as the human, and each such spawn is a fresh conversation. As in production, the
+// roster holds no row for the human itself.
 const implementer = agent("impl-a", "human");
 const fixerWhoPushed = agent("fix-2", "human");
 const fixerSpawnedByImplementer = agent("fix-1", "impl-a");
 const reviewer = agent("rev-1", "human");
 const adversary = agent("adv-1", "human");
 const reviewerAgain = agent("rev-1", "human", 1);
-const rows = [human, implementer, fixerWhoPushed, fixerSpawnedByImplementer, reviewer, adversary, reviewerAgain];
+const rows = [implementer, fixerWhoPushed, fixerSpawnedByImplementer, reviewer, adversary, reviewerAgain];
 const authors = [implementer, fixerWhoPushed];
 
 const CLOSURE = `a1b2c3d4e5f6${"0".repeat(52)}`;
