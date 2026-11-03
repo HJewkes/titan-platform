@@ -28,9 +28,23 @@ const usageReadingSchema = z.object({
   account: z.string().min(1).optional(),
 });
 
+// A status line stamps its last API response's prompt cache beside rate_limits; that stamp is
+// what dates its figures, since written_at changes on every redraw. A malformed stamp is dropped
+// rather than costing the reading.
+const promptCacheSchema = z.object({
+  ttl: z.string().regex(/^\d{1,7}[smh]$/).optional(),
+  expires_at: z.number().positive().optional(),
+});
+
+const observedReadingSchema = usageReadingSchema.extend({
+  prompt_cache: promptCacheSchema.optional().catch(undefined),
+});
+
 export type UsageWindow = z.infer<typeof windowSchema>;
 export type ScopedUsage = z.infer<typeof scopedSchema>;
 export type UsageReading = z.infer<typeof usageReadingSchema>;
+/** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
+export type ObservedReading = z.infer<typeof observedReadingSchema>;
 
 export const POLL_SESSION_ID = "usage-poll";
 export const POLL_SOURCE = "oauth-usage";
@@ -38,6 +52,13 @@ export const POLL_SOURCE = "oauth-usage";
 export function parseUsageReading(input: unknown): UsageReading | null {
   const parsed = usageReadingSchema.safeParse(input);
   return parsed.success ? parsed.data : null;
+}
+
+export function parseObservedReading(input: unknown): ObservedReading | null {
+  const parsed = observedReadingSchema.safeParse(input);
+  if (!parsed.success) return null;
+  const { prompt_cache, ...reading } = parsed.data;
+  return prompt_cache === undefined ? reading : { ...reading, prompt_cache };
 }
 
 // Only short snake_case keys become window names, so nothing else in a response body,
