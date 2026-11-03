@@ -22,7 +22,7 @@
     {
       "name": "the deploy-skew gate reads as attest-unmet",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "rule: guardRule(DEPLOY_SKEW_ROW)",
+      "find": "rule: guardRule(\"attest-deploy-skew\")",
       "replace": "rule: guardRule(\"attest-unmet\")",
       "kills": [
         "attest smoke: main holds a registry commit the running build lacks TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate"

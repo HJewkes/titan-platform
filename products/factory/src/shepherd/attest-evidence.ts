@@ -79,10 +79,14 @@ interface RosterPatience {
 const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () =>
   whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
 
-interface JudgeWiring {
+export interface AttestSkewWiring {
+  /** Main's registry commits the running build lacks; absent reads no skew, so the attest step judges at once (TP-4752). */
+  deploySkew?: DeploySkew;
+}
+
+interface JudgeWiring extends AttestSkewWiring {
   dispatch?: { roster(): Promise<readonly ReviewerAgent[]> };
   lineage?: () => Promise<Lineage>;
-  deploySkew?: DeploySkew;
 }
 
 /** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage, each read with `patience`. */
