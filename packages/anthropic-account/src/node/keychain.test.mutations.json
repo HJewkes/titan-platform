@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failing security run echoes its stderr",
+      "file": "packages/anthropic-account/src/node/keychain.ts",
+      "find": "  if (result.status === 0) return { status: \"too-large\" };\n  throw new Error(KEYCHAIN_FAILED);",
+      "replace": "  if (result.status === 0) return { status: \"too-large\" };\n  throw new Error(`${KEYCHAIN_FAILED}: ${result.stderr.toString(\"utf8\")}`);",
+      "kills": ["readLoginState on darwin a failing security run throws a fixed message that echoes neither stream"]
+    },
+    {
+      "name": "a throwing exec's error is passed on unredacted",
+      "file": "packages/anthropic-account/src/node/keychain.ts",
+      "find": "  } catch {\n    throw new Error(KEYCHAIN_FAILED);\n  }",
+      "replace": "  } catch (error) {\n    throw error;\n  }",
+      "kills": ["readLoginState on darwin an exec that throws a canary is reported with the fixed message"]
+    },
+    {
+      "name": "the service suffix takes the wrong number of hex",
+      "file": "packages/anthropic-account/src/node/keychain.ts",
+      "find": "digest(\"hex\").slice(0, 8)",
+      "replace": "digest(\"hex\").slice(0, 12)",
+      "kills": ["keychainService a named config dir appends the first eight hex of its path's sha256"]
+    },
+    {
+      "name": "the default dir gets a suffix too",
+      "file": "packages/anthropic-account/src/node/keychain.ts",
+      "find": "  if (dir === path.resolve(home, \".claude\")) return KEYCHAIN_SERVICE;\n",
+      "replace": "",
+      "kills": ["keychainService the default config dir reads the bare Claude Code-credentials service"]
+    },
+    {
+      "name": "a missing Keychain item reads as an error",
+      "file": "packages/anthropic-account/src/node/keychain.ts",
+      "find": "  if (result.status === ITEM_NOT_FOUND) return { status: \"missing\" };\n",
+      "replace": "",
+      "kills": ["readLoginState on darwin a missing Keychain item reports missing"]
+    }
+  ]
+}

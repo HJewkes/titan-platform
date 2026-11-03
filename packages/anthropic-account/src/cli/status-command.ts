@@ -3,7 +3,7 @@ import type { AccountProfile } from "../profile.js";
 import { redactSecrets } from "../redact.js";
 import { readLoginState } from "../node/login.js";
 import { readUsage, type UsageFileRead } from "../node/usage-file.js";
-import { profilesOf, type CliContext } from "./context.js";
+import { keychainOf, profilesOf, type CliContext } from "./context.js";
 import {
   EXIT_FAILED,
   EXIT_LOGIN,
@@ -35,8 +35,8 @@ function orNull<T>(read: () => T): T | null {
   }
 }
 
-function statusOf(profile: AccountProfile, now: number, uid: number | undefined): ProfileStatus {
-  const login = orNull(() => readLoginState(profile.configDir, { now, uid }));
+function statusOf(profile: AccountProfile, now: number, context: CliContext): ProfileStatus {
+  const login = orNull(() => readLoginState(profile.configDir, { ...keychainOf(context), now, uid: context.uid }));
   return { profile, login, usage: orNull(() => readUsage(profile.configDir, { now })) };
 }
 
@@ -87,7 +87,7 @@ export function runStatus(format: StatusFormat, context: CliContext): number {
     return EXIT_OK;
   }
   const profiles = profilesOf(context);
-  const statuses = profiles.map((profile) => statusOf(profile, now, context.uid));
+  const statuses = profiles.map((profile) => statusOf(profile, now, context));
   if (format === "json") context.out(JSON.stringify({ profiles: statuses.map(jsonOf) }));
   else statuses.forEach((status) => context.out(textLine(status)));
   return exitFor(statuses.map((status) => reportLogin(status, context)));

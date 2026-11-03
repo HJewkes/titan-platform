@@ -1,12 +1,13 @@
 import path from "node:path";
 import { loginStateFromCredentials, type LoginState, type RefusedReason } from "../login.js";
 import { readGatedFile } from "./gated-read.js";
+import { readKeychainItem, type KeychainOptions } from "./keychain.js";
 import { redactedError } from "./redact-error.js";
 
 export const CREDENTIALS_FILE = ".credentials.json";
 export const MAX_CREDENTIALS_BYTES = 64 * 1024;
 
-export interface ReadLoginOptions {
+export interface ReadLoginOptions extends KeychainOptions {
   now?: number;
   // The uid that must own the file. Defaults to this process's; tests pass another.
   uid?: number;
@@ -43,17 +44,26 @@ export function readCredentialsFile(configDir: string, uid: number): Credentials
   return { status: "refused", reason: read.reason === "too-large" ? "malformed" : read.reason };
 }
 
-function readCredentials(configDir: string, uid: number, now: number): LoginState {
-  const read = readCredentialsFile(configDir, uid);
+// On darwin Claude Code keeps the login in the Keychain, so the file is not read there.
+export function readCredentialsFor(configDir: string, uid: number, options: KeychainOptions): CredentialsRead {
+  if ((options.platform ?? process.platform) !== "darwin") return readCredentialsFile(configDir, uid);
+  const read = readKeychainItem(configDir, MAX_CREDENTIALS_BYTES, options);
+  if (read.status === "read") return parseBytes(read.bytes);
+  return read.status === "missing" ? read : { status: "refused", reason: "malformed" };
+}
+
+function readCredentials(configDir: string, now: number, options: ReadLoginOptions): LoginState {
+  const read = readCredentialsFor(configDir, options.uid ?? currentUid(), options);
   return read.status === "parsed" ? loginStateFromCredentials(read.credentials, now) : read;
 }
 
-// Reads `<configDir>/.credentials.json` read-only. A symlink, a non-regular file, a mode
-// wider than 0600, another owner or a second hard link is refused before a byte is read.
-// No token is returned, and a thrown error is redacted and carries no cause.
+// Reads `<configDir>/.credentials.json` read-only, or on darwin the config dir's Keychain
+// item. A symlink, a non-regular file, a mode wider than 0600, another owner or a second
+// hard link is refused before a byte is read. No token is returned, and a thrown error is
+// redacted and carries no cause.
 export function readLoginState(configDir: string, options: ReadLoginOptions = {}): LoginState {
   try {
-    return readCredentials(configDir, options.uid ?? currentUid(), options.now ?? Date.now());
+    return readCredentials(configDir, options.now ?? Date.now(), options);
   } catch (error) {
     throw redactedError(error, "reading the credentials file failed");
   }

@@ -193,6 +193,31 @@ after parsing, and also when a read fails partway through. Invalid JSON is
 the process's uid; on a platform without one every file is refused as `foreign-owner`. An
 unexpected filesystem error is thrown through `redactSecrets`, with no `cause`.
 
+### Logins on darwin
+
+On a Mac, Claude Code keeps each config dir's OAuth login in the macOS Keychain, not in
+`.credentials.json`. On darwin, `readLoginState` and `pollUsage` therefore read the
+Keychain item instead of the file. Both take `{ platform?, keychainExec?, home? }`, which
+default to `process.platform`, a runner for `/usr/bin/security`, and `os.homedir()`.
+
+- They run `security find-generic-password -s <service> -w`. It only reads the item, and the
+  package never writes, adds or deletes a Keychain item.
+- `keychainService(configDir, home)` gives the service name. It is `Claude Code-credentials`
+  for `<home>/.claude`. Any other dir gets `Claude Code-credentials-` plus the first eight
+  hex digits of the SHA-256 of its resolved absolute path. This matches the naming the
+  darwin `rate-limits.sh` status-line reader uses. It is an assumption about Claude Code, so
+  it lives in one tested function. The path is resolved but symlinks are not followed, so
+  pass the dir Claude Code was given.
+- Exit 44 (no such item) gives `missing`. Any other non-zero exit, a spawn failure or a
+  timeout makes `readLoginState` throw `reading the Keychain item failed`, and makes
+  `pollUsage` fail with `io`. stderr is never piped, and the child's output is never quoted.
+  stdout is capped at 64 KiB and zeroed after parsing, as the file's bytes are.
+- Nothing refreshes on darwin. A token that has expired, or expires within the poll margin,
+  is reported as expired. `anthropic-account poll --refresh` skips the refresh step there, so
+  Claude Code stays the only writer of the Keychain item.
+
+Every other platform reads `.credentials.json` as described above.
+
 `writeReading(configDir, reading)` writes `<configDir>/status-cache/sessions/usage-poll.json`
 and returns its path. It throws a `TypeError` with a fixed message, and writes nothing,
 unless the reading passes `parseUsageReading` with `session_id` `usage-poll` and its JSON

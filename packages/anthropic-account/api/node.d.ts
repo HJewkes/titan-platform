@@ -29,9 +29,23 @@ type ReadText = (file: string) => string | undefined;
  */
 declare function accountIdentity(configDir: string, home?: string, read?: ReadText): string | undefined;
 
+declare const KEYCHAIN_SERVICE = "Claude Code-credentials";
+interface KeychainExecResult {
+    status: number | null;
+    stdout: Buffer;
+    stderr: Buffer;
+}
+type KeychainExec = (file: string, args: readonly string[]) => KeychainExecResult;
+interface KeychainOptions {
+    platform?: NodeJS.Platform;
+    keychainExec?: KeychainExec;
+    home?: string;
+}
+declare function keychainService(configDir: string, home: string): string;
+
 declare const CREDENTIALS_FILE = ".credentials.json";
 declare const MAX_CREDENTIALS_BYTES: number;
-interface ReadLoginOptions {
+interface ReadLoginOptions extends KeychainOptions {
     now?: number;
     uid?: number;
 }
@@ -56,7 +70,7 @@ type PollResult = {
     ok: true;
     reading: UsageReading;
 } | PollFailure;
-interface PollOptions {
+interface PollOptions extends KeychainOptions {
     fetch?: FetchLike;
     now?: number;
     uid?: number;
@@ -142,7 +156,7 @@ declare function readUsage(configDir: string, options?: ReadUsageOptions): Usage
 declare function readReadings(configDir: string): ObservedReading[];
 declare function writeReading(configDir: string, reading: UsageReading): string;
 
-export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, pollAll, pollUsage, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
+export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, KEYCHAIN_SERVICE, type KeychainExec, type KeychainExecResult, type KeychainOptions, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, keychainService, pollAll, pollUsage, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
 
 // ./dist/merge.d.ts
 import { z } from 'zod';
