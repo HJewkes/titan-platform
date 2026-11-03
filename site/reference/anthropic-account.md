@@ -424,15 +424,18 @@ Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
   no `onFailure`, so no owner-queue deposit is filed: this package is tier 0 and
   owner-queue is tier 2. A tier-2 or product caller wires `writeDeposit`.
 - `status` reads local files only, with no request. It prints each profile's login state
-  and newest reading with its age. `--json` prints `{ profiles: [{ label, configDir, login,
-  usage }] }`, where `login` is the token-free `LoginState` (or `{ status: "unreadable" }`)
-  and `usage` is `{ written_at, age_seconds, rate_limits }` or `null`.
-- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints: first
-  `5h|weekly|5h_reset|weekly_reset|||||age_s` for the account in `CLAUDE_CONFIG_DIR` (or
-  `~/.claude`), or `unknown|unknown|||||||`, then `other|<label>|5h|weekly|age_s|` for each
-  other profile whose reading has both windows. Like `rate-limits.sh`, each line uses the
-  newest reading that has both `five_hour` and `seven_day`, falling back past a newer one
-  that lacks either. Percentages are floored. It always exits 0 and writes no stderr.
+  and newest reading with its age. `--json` prints `{ schema: 2, accounts: [...] }`, one
+  `AccountUsage` row per login from `readAccounts`. Each row has `account`, `config_dirs`,
+  `identity` when the login could be read, `source`, `windows` (`{ used_pct, resets_at?,
+  rolled? }` each), `age_seconds`, `stale` and `auth_fail`. Schema 1's `{ profiles }`
+  document is gone.
+- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints, from the
+  same `readAccounts` rows: first `5h|weekly|5h_reset|weekly_reset|||||age_s` for the login
+  holding `CLAUDE_CONFIG_DIR` (or `~/.claude`), or `unknown|unknown|||||||`, then
+  `other|<account>|5h|weekly|age_s|` for each other login with a `seven_day` window. A
+  login shared by `~/.claude` and a named profile is one cell, under the named profile's
+  label. A rolled window counts as absent, and an absent `five_hour` leaves its fields
+  empty. Percentages are floored. It always exits 0 and writes no stderr.
 
 | exit | when |
 |---|---|

@@ -56,8 +56,11 @@ function observedAt(reading: ObservedReading): number {
 const isPoller = (reading: ObservedReading): boolean => reading.session_id === POLL_SESSION_ID;
 const isPassed = (window: AccountWindow, nowS: number): boolean =>
   window.resets_at !== undefined && window.resets_at <= nowS;
-const toWindow = (w: UsageWindow): AccountWindow =>
-  w.resets_at === undefined ? { used_pct: w.used_percentage } : { used_pct: w.used_percentage, resets_at: w.resets_at };
+const toWindow = (w: UsageWindow): AccountWindow => ({
+  used_pct: w.used_percentage,
+  ...(w.resets_at !== undefined && { resets_at: w.resets_at }),
+  ...(w.severity !== undefined && { severity: w.severity }),
+});
 const youngest = (aged: readonly Aged[]): Aged => aged.reduce((a, b) => (b.age < a.age ? b : a));
 
 /** The reading of record first, then the readings that may lend to it, newest written first. */
@@ -128,5 +131,6 @@ export function mergeAccountReadings(input: AccountReadings, now: number): Accou
   const poller = isPoller(record.reading);
   const staleAfter = poller ? POLLER_RECORD_SECONDS : STATUS_LINE_STALE_SECONDS;
   const source = poller ? "oauth-usage" : "status-line";
-  return { ...base, ...identity, source, windows, age_seconds: age, stale: age > staleAfter };
+  const scoped = record.reading.scoped === undefined ? {} : { scoped: record.reading.scoped };
+  return { ...base, ...identity, source, windows, ...scoped, age_seconds: age, stale: age > staleAfter };
 }

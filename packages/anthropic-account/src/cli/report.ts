@@ -37,7 +37,7 @@ function percent(window: UsageWindow): string {
 
 // Another writer's reading file may carry any key, so only a short snake-case name that
 // redaction leaves alone is printed.
-export function windowNames(rateLimits: Readonly<Record<string, UsageWindow>>): string[] {
+export function windowNames(rateLimits: Readonly<Record<string, unknown>>): string[] {
   return Object.keys(rateLimits)
     .filter((name) => WINDOW_NAME.test(name) && redactSecrets(name) === name)
     .sort();

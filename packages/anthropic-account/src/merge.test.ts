@@ -7,7 +7,7 @@ const HOUR_S = 3600;
 const FIVE_HOUR_RESET = NOW_S + HOUR_S;
 const SEVEN_DAY_RESET = NOW_S + 3 * 86_400;
 
-type Windows = Record<string, { used_percentage: number; resets_at?: number }>;
+type Windows = Record<string, { used_percentage: number; resets_at?: number; severity?: string }>;
 
 const status = (id: string, ageSeconds: number, rate_limits: Windows, extra = {}): ObservedReading => ({
   session_id: id,
@@ -158,5 +158,12 @@ describe("the merge policy (usage-reader S3)", () => {
     const got = mergeAccountReadings({ account: "acct-a", config_dirs: ["dir-d"], identity: "id-1", auth_fail: true, readings: [] }, NOW_MS);
 
     expect(got).toEqual({ account: "acct-a", config_dirs: ["dir-d"], identity: "id-1", auth_fail: true, source: null, windows: {}, age_seconds: null, stale: false });
+  });
+
+  it("keeps the record's scoped cap and the weekly severity", () => {
+    const scoped = { model: "Example Model", used_pct: 87.6, severity: "critical" };
+    const got = merge(status("usage-poll", 30, { seven_day: { ...sevenDay(41), severity: "warning" } }, { scoped }));
+
+    expect(got).toMatchObject({ scoped, windows: { seven_day: { used_pct: 41, severity: "warning" } } });
   });
 });

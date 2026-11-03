@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AccountProfile } from "../profile.js";
-import type { ScopedUsage, UsageWindow } from "../usage.js";
-import { readUsage, type UsageFileRead } from "../node/usage-file.js";
+import type { AccountUsage, AccountWindow } from "../merge.js";
+import { accountLabel } from "../profile.js";
+import { readAccountGroup, type ReadAccountsOptions } from "../node/accounts.js";
 import type { CliContext } from "./context.js";
 import { printableLabel } from "./report.js";
 
@@ -14,30 +14,24 @@ import { printableLabel } from "./report.js";
 export const UNKNOWN_LINE = "unknown|unknown|||||||";
 
 interface Figures {
-  five: UsageWindow | undefined;
-  weekly: UsageWindow;
-  scoped: ScopedUsage | undefined;
+  five: AccountWindow | undefined;
+  weekly: AccountWindow;
+  scoped: AccountUsage["scoped"];
   age: number;
 }
 
-// Since 2026-10-31 the usage response carries no five_hour window, so only seven_day is
-// required; the poller's own file wins while it is fresh, and a reading from a week that
-// has already reset is not shown.
-const POLLER_FRESH_SECONDS = 360;
+// A rolled window has read nothing since its reset, so the line shows it as absent; only
+// seven_day is required, since the usage response stopped carrying five_hour on 2026-10-31.
+const open = (window: AccountWindow | undefined): AccountWindow | undefined => (window?.rolled ? undefined : window);
 
-function figuresOf(configDir: string, now: number): Figures | null {
-  let read: UsageFileRead | null;
-  try {
-    read = readUsage(configDir, { now, windows: ["seven_day"], pollerFirstSeconds: POLLER_FRESH_SECONDS, dropReset: true });
-  } catch {
-    return null;
-  }
-  const weekly = read?.reading.rate_limits.seven_day;
-  return read && weekly ? { five: read.reading.rate_limits.five_hour, weekly, scoped: read.reading.scoped, age: read.ageSeconds } : null;
+function figuresOf(row: AccountUsage | undefined): Figures | null {
+  const weekly = open(row?.windows.seven_day);
+  if (row === undefined || weekly === undefined || row.age_seconds === null) return null;
+  return { five: open(row.windows.five_hour), weekly, scoped: row.scoped, age: row.age_seconds };
 }
 
-const whole = (window: UsageWindow | undefined): string => (window === undefined ? "" : String(Math.floor(window.used_percentage)));
-const reset = (window: UsageWindow | undefined): string => (window?.resets_at === undefined ? "" : String(window.resets_at));
+const whole = (window: AccountWindow | undefined): string => (window === undefined ? "" : String(Math.floor(window.used_pct)));
+const reset = (window: AccountWindow | undefined): string => (window?.resets_at === undefined ? "" : String(window.resets_at));
 
 function currentLine(figures: Figures | null): string {
   if (figures === null) return UNKNOWN_LINE;
@@ -58,15 +52,18 @@ function currentDir(context: CliContext): string {
   return context.env.CLAUDE_CONFIG_DIR || path.join(context.home ?? os.homedir(), ".claude");
 }
 
-function otherLine(profile: AccountProfile, now: number): string | null {
-  const figures = figuresOf(profile.configDir, now);
+function otherLine(row: AccountUsage): string | null {
+  const figures = figuresOf(row);
   if (figures === null) return null;
-  return `other|${printableLabel(profile.label)}|${whole(figures.five)}|${whole(figures.weekly)}|${figures.age}|`;
+  return `other|${printableLabel(row.account)}|${whole(figures.five)}|${whole(figures.weekly)}|${figures.age}|`;
 }
 
-export function statuslineLines(profiles: readonly AccountProfile[], now: number, context: CliContext): string[] {
-  const current = currentDir(context);
-  const others = profiles.filter((profile) => realOrResolved(profile.configDir) !== realOrResolved(current));
-  const lines = others.map((profile) => otherLine(profile, now)).filter((line) => line !== null);
-  return [currentLine(figuresOf(current, now)), ...lines];
+// The current dir may lie outside the scan, so it is read as a login of its own then.
+export function statuslineLines(rows: readonly AccountUsage[], options: ReadAccountsOptions, context: CliContext): string[] {
+  const current = realOrResolved(currentDir(context));
+  const holds = (row: AccountUsage): boolean => row.config_dirs.some((dir) => realOrResolved(dir) === current);
+  const mine =
+    rows.find(holds) ?? readAccountGroup({ members: [{ label: accountLabel(current), configDir: current }] }, options);
+  const lines = rows.filter((row) => !holds(row)).map(otherLine).filter((line) => line !== null);
+  return [currentLine(figuresOf(mine)), ...lines];
 }
