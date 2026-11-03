@@ -1,0 +1,5 @@
+---
+"@titan-design/anthropic-account": minor
+---
+
+On darwin, `readLoginState`, `pollUsage` and the `anthropic-account` bin now read each config dir's OAuth login from the macOS Keychain with `security find-generic-password -s <service> -w`, read-only. The service is `Claude Code-credentials` for `~/.claude`, and that name plus `-` and the first eight hex digits of the SHA-256 of the dir's symlink-resolved path for any other dir, matching the darwin `rate-limits.sh`. A missing item reads as `missing`. Any other failure gives a fixed message, or `io` from a poll, and never quotes the output of `security`. Darwin never refreshes: an expired token reports expired, and `poll --refresh` skips the refresh step. `readAccounts` takes the same `platform`, `keychainExec` and `home` options and judges `auth_fail` from the Keychain login on darwin. New exports from `./node`: `keychainService`, `KEYCHAIN_SERVICE`, `KeychainExec`, `KeychainExecResult` and `KeychainOptions`. Other platforms still read `.credentials.json` as before.

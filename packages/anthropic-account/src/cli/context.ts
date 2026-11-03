@@ -1,4 +1,5 @@
 import type { AccountProfile } from "../profile.js";
+import type { KeychainExec, KeychainOptions } from "../node/keychain.js";
 import type { FetchLike } from "../node/poll.js";
 import { discoverProfiles } from "../node/profiles.js";
 
@@ -11,8 +12,10 @@ export interface CliContext {
   now: () => number;
   // The uid that must own each credentials file. Defaults to this process's.
   uid?: number;
-  // install and uninstall only. Default process.platform.
+  // Default process.platform. On darwin logins are read from the Keychain and never refreshed.
   platform?: NodeJS.Platform;
+  // Runs `security` on darwin. Tests pass a stub, so the real Keychain is never read.
+  keychainExec?: KeychainExec;
   // Runs systemctl or launchctl; rejects on a non-zero exit. Tests pass a recorder.
   exec?: (file: string, args: readonly string[]) => Promise<void>;
   // Directory holding the shipped systemd units. Defaults to the package's own.
@@ -27,4 +30,8 @@ export function profilesOf(context: CliContext): AccountProfile[] {
 
 export function fetchOf(context: CliContext): FetchLike {
   return context.fetch ?? globalThis.fetch;
+}
+
+export function keychainOf(context: CliContext): KeychainOptions {
+  return { platform: context.platform, keychainExec: context.keychainExec, home: context.home };
 }

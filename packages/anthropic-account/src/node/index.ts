@@ -6,6 +6,8 @@ export { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles } from "./profiles.
 export type { DiscoverOptions } from "./profiles.js";
 export { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES, readLoginState } from "./login.js";
 export type { ReadLoginOptions } from "./login.js";
+export { KEYCHAIN_SERVICE, keychainService } from "./keychain.js";
+export type { KeychainExec, KeychainExecResult, KeychainOptions } from "./keychain.js";
 export {
   DEFAULT_TIMEOUT_MS,
   EXPIRY_MARGIN_MS,

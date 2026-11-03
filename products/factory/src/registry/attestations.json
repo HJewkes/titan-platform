@@ -20,6 +20,8 @@
   { "step": "sh-await-verdict", "closure": "c9c531ff510ef9811dd2a496c51fe136d8eb2edf8c583fe32dcecca0e4f74cbe", "pr": 3194 },
   { "step": "ci-wait", "closure": "a848d27cf9cd6f176d0e20f0e698fcf52fa835b289ff84c627ca38c9f050a32b", "pr": 3195 },
   { "step": "sh-await-verdict", "closure": "a4cace32dafa609e63c6952371431d5c872e168a4789096b1a6354e64d54cd23", "pr": 3195 },
-  { "step": "ci-wait", "closure": "7ee0e55a4510b4ae6cf1b5f4f6ccda2e319f48e3327bd4e0f931fad38803b0d2", "pr": 3193 },
-  { "step": "sh-await-verdict", "closure": "f644f98b285afc58eebe01dda3977567ab479c435c5d082dd6665d14d7468b51", "pr": 3193 }
+  { "step": "ci-wait", "closure": "0f92d8d4c080e2c61c3fdc7d0e2445c83cfd28c1b066561bdd3d072163edb5d1", "pr": 3207 },
+  { "step": "sh-await-verdict", "closure": "f705cf10a762a4db2692d517950986d2e38c3e8e996232c7db12113e61502c35", "pr": 3207 },
+  { "step": "ci-wait", "closure": "abef63381f75019c7adc7baedc2804919c050fd0c1dbac2815e901e05406d5a5", "pr": 3193 },
+  { "step": "sh-await-verdict", "closure": "af02fd0552a441c34b2aea4b6c7f108acb828b825750fbe2879a1fc94920e30b", "pr": 3193 }
 ]
