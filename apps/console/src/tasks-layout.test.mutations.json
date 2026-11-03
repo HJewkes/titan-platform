@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the desktop table repeats a Stage column",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "          <TableHeaderCell width={100}>Severity</TableHeaderCell>\n        </TableRow>",
+      "replace": "          <TableHeaderCell width={100}>Severity</TableHeaderCell>\n          <TableHeaderCell width={120}>Stage</TableHeaderCell>\n        </TableRow>",
+      "kills": [
+        "the tasks layout shows every stage in one table under a single header, with a group row per stage and no stage badge"
+      ]
+    },
+    {
+      "name": "a desktop wraps the filters onto stacked rows",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "<HStack gap={3} align=\"center\" wrap={phone} testID=\"task-filters\">",
+      "replace": "<HStack gap={3} align=\"center\" wrap testID=\"task-filters\">",
+      "kills": [
+        "the tasks layout lays the filters out in one row on a desktop, the text filter taking the rest"
+      ]
+    },
+    {
+      "name": "a phone gets the desktop's one-row filters",
+      "file": "apps/console/src/pages/TasksPage.tsx",
+      "find": "<HStack gap={3} align=\"center\" wrap={phone} testID=\"task-filters\">",
+      "replace": "<HStack gap={3} align=\"center\" testID=\"task-filters\">",
+      "kills": [
+        "the tasks layout stacks the filters full width on a phone"
+      ]
+    }
+  ]
+}

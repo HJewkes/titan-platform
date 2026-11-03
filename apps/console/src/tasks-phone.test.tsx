@@ -40,7 +40,9 @@ describe("the tasks list on a phone", () => {
     const card = await screen.findByTestId("task-card-OR-1");
     expect(screen.queryAllByTestId(/^task-row-/)).toEqual([]);
     expect(screen.getAllByTestId(/^task-card-/)).toHaveLength(ROWS.length);
-    for (const text of ["OR-1", "Retry a dropped handshake", "In review", "orbit-relay · critical"]) expect(within(card).getByText(text)).toBeTruthy();
+    for (const text of ["OR-1", "Retry a dropped handshake", "orbit-relay · critical"]) expect(within(card).getByText(text)).toBeTruthy();
+    expect(within(screen.getByTestId("stage-group-review")).getByText("In review (1)")).toBeTruthy();
+    expect(within(card).queryByText("In review")).toBeNull();
     expect(within(screen.getByTestId("task-card-LD-3")).getByText("lantern-docs · no severity")).toBeTruthy();
   });
 

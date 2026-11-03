@@ -8,6 +8,7 @@ D-M0-07's CI check reads it. The task stays open while any listed root has a fil
 | Repo | Root |
 |---|---|
 | titan-platform | `products/factory/src/shepherd` |
+| titan-platform | `products/factory/src/markers/shadow-diff` (the SHD-2 comparator and log, `delete` D-M8-09 at M8) |
 | agent-chat | `src/agents/burndown` (the burndown code) |
 | agent-chat | `scripts/seat` |
 
