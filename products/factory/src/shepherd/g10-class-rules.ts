@@ -1,5 +1,9 @@
 import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_CLASS_RULES, pathTouches, type ChangedFile, type ClassRules } from "@titan-design/review-panel";
+import { z } from "zod";
+import holdClosureJson from "./g10-hold-closure.json" with { type: "json" };
+
+const inShepherd = (name: string): string => `products/factory/src/shepherd/${name}`;
 
 /** Shepherd's merge-policy files. These tables sit apart from registration-hold.ts so risk-tier.ts can read them without an import cycle through policy.ts. */
 export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts"].map((name) => `**/${name}`);
@@ -76,23 +80,60 @@ export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-res
   (name) => `products/factory/src/shepherd/${name}`,
 );
 
-const matchesGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
-/** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
-const inGateResolveCheck = (path: string): boolean => matchesGateResolveCheck(path.toLowerCase());
+/**
+ * Code that decides sign-offs, fix-proof verdicts, proof waivers and merge standing, or writes the hold rows they read
+ * (TP-3764, TP-4746). Emptying any of these lifts a G10 hold as surely as editing this table. These seed the closure.
+ */
+export const SIGNOFF_POLICY_FILES = [
+  ...["signoffs.ts", "merge-standing.ts", "reviewer-lineage.ts", "auto-pass.ts", "fix-proof.ts", "take-verdict.ts", "store.ts", "events.ts"].map(inShepherd),
+  ...["registration-of.ts", "proof-waiver.ts", "proof-waiver-table.ts", "seat-recheck.ts", "carry-merge.ts", "merge-up-carry.ts", "approved-set-carry.ts", "no-reviewer-hold.ts"].map(inShepherd),
+  "packages/fix-proof/src/**",
+  "packages/review-panel/src/**",
+];
 
-/** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
-export const SHEPHERD_CLASS_RULES: ClassRules = {
+/** The hold-closure check as one unit: the test, its sidecar, its walk and the list it keeps. Test file or not, it is policy. */
+export const HOLD_CLOSURE_CHECK_FILES = ["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"].map(inShepherd);
+
+const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOSURE_CHECK_FILES]);
+/** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
+const inHeldCheck = (path: string): boolean => matchesHeldCheck(path.toLowerCase());
+
+/** The listed table, before the import closure: the seeds `g10-hold-closure.test.ts` walks from. */
+export const SHEPHERD_LISTED_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES, ...OWNER_SKILL_GUARD_FILES, ...GATE_RESOLVE_CHECK_FILES],
+  policy: [
+    ...DEFAULT_CLASS_RULES.policy,
+    ...MERGE_POLICY_FILES,
+    ...HOLD_COMMAND_FILES,
+    ...OWNER_ACTION_FILES,
+    ...GATE_RESOLVE_ACTOR_FILES,
+    ...OWNER_SKILL_GUARD_FILES,
+    ...GATE_RESOLVE_CHECK_FILES,
+    ...SIGNOFF_POLICY_FILES,
+    ...HOLD_CLOSURE_CHECK_FILES,
+  ],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
 
 /**
- * The panel's path touches under Shepherd's rules, a rename's old path included, with the gate-resolve check counted as
- * policy despite the panel's test exemption.
+ * Every Shepherd module a listed one imports, value or type-only, to a fixpoint, less those already listed. A held
+ * module reads its imports, so editing one can change what the hold decides. `g10-hold-closure.test.ts` recomputes the
+ * closure and fails until this list matches it (`vitest -u` rewrites it).
+ */
+const HOLD_CLOSURE = z.array(z.string()).parse(holdClosureJson);
+
+/** The listed table with a closure of Shepherd module names held as policy too. */
+export const withHoldClosure = (names: readonly string[]): ClassRules => ({ ...SHEPHERD_LISTED_RULES, policy: [...SHEPHERD_LISTED_RULES.policy, ...names.map(inShepherd)] });
+
+/** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
+export const SHEPHERD_CLASS_RULES: ClassRules = withHoldClosure(HOLD_CLOSURE);
+
+/**
+ * The panel's path touches under Shepherd's rules, a rename's old path included, with the gate-resolve and hold-closure
+ * checks counted as policy despite the panel's test exemption.
  */
 export function shepherdPathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[]): string[] {
   const touches: string[] = pathTouches(files, SHEPHERD_CLASS_RULES);
-  const inCheck = files.some(({ path, previousPath }) => inGateResolveCheck(path) || (previousPath !== undefined && inGateResolveCheck(previousPath)));
+  const inCheck = files.some(({ path, previousPath }) => inHeldCheck(path) || (previousPath !== undefined && inHeldCheck(previousPath)));
   return inCheck && !touches.includes("policy") ? [...touches, "policy"] : touches;
 }
