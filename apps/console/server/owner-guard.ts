@@ -146,16 +146,21 @@ export function ownerWriteCommand<Args, Result>(command: OwnerWriteHandler<Args,
   };
 }
 
+/** The first rule an owner-write from this caller would break, or null when it would run; a read uses it to show its owner controls as read-only. */
+export function ownerWriteRefusal(ctx: ConsoleContext): string | null {
+  if (ctx.surface !== "http") return REFUSALS.notHttp;
+  const { auth } = ctx;
+  if (auth === null) return REFUSALS.noCredential;
+  if (auth.credential !== "session" || auth.issuedAt === null) return REFUSALS.bearer;
+  if (!ctx.ownerWrites) return REFUSALS.disabled;
+  if (auth.peerLocal) return REFUSALS.peerLocal;
+  return null;
+}
+
 /** Returns the presence proof, or throws naming the first rule the request breaks. */
 function admitOwner(ctx: ConsoleContext): OwnerPresence {
-  const refuse = (reason: string): never => {
-    throw new CommandRefusedError("owner-write", reason);
-  };
-  if (ctx.surface !== "http") refuse(REFUSALS.notHttp);
-  const { auth } = ctx;
-  if (auth === null) return refuse(REFUSALS.noCredential);
-  if (auth.credential !== "session" || auth.issuedAt === null) return refuse(REFUSALS.bearer);
-  if (!ctx.ownerWrites) refuse(REFUSALS.disabled);
-  if (auth.peerLocal) refuse(REFUSALS.peerLocal);
-  return { issuedAt: auth.issuedAt };
+  const reason = ownerWriteRefusal(ctx);
+  const issuedAt = ctx.auth?.issuedAt;
+  if (reason !== null || issuedAt === undefined || issuedAt === null) throw new CommandRefusedError("owner-write", reason ?? REFUSALS.bearer);
+  return { issuedAt };
 }

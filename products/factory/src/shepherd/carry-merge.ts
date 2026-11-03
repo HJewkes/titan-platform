@@ -21,14 +21,17 @@ import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeRe
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 import { SET_CARRY_STEP, setCarryRoute } from "./approved-set-carry.js";
 import { CARRYING_KINDS } from "./carry-kinds.js";
+import { readClaims } from "./attest-read.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
+const CARRY_CLAIMS_STEP = "sh-carry-claims";
 /** Records an approve-merge answer that followed a head to its remerge-clean update or tree-equal merge-up, so the ledger shows why no gate opened. */
 export const APPROVAL_CARRY_STEP = "sh-approval-carry";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
+  { id: CARRY_CLAIMS_STEP, kind: "dispatch" },
   { id: REMERGE_STEP, kind: "dispatch" },
   { id: FIX_CARRY_STEP, kind: "dispatch" },
   { id: REVIEW_SCOPE_STEP, kind: "dispatch" },
@@ -95,6 +98,31 @@ function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): St
     g10Held: everG10Held(deps.store.get(), input.runId),
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
+}
+
+interface ClaimsInput extends CarryTarget {
+  baseRef: string;
+  head: string;
+}
+
+/** How many attestation rows the head claims against the base, or why the file could not be read. */
+const ClaimsResult = z.looseObject({ claimed: z.number().int().nonnegative().optional(), unread: z.string().optional() });
+
+/** The claims read the merge guard's attestation judge makes, so the carry and the judge agree on which heads claim rows. */
+function carryClaimsRoute(deps: Pick<ShepherdDeps, "port" | "now">): StepRoute {
+  return codeRoute(CARRY_CLAIMS_STEP, deps.now, async (input: ClaimsInput) => {
+    const read = await readClaims(deps.port, { repo: input.repo, base: input.baseRef, head: input.head });
+    return "unread" in read ? read : { claimed: read.claimed.length };
+  });
+}
+
+/**
+ * A carried verdict meets no attestation (registry/attest.ts), so a head that claims rows takes a fresh review whose brief
+ * asks about them rather than a carry that gates the owner (TP-4740). An unread file or an unknown answer does not carry.
+ */
+async function claimsNoRows(ctx: WorkflowContext, input: ClaimsInput, read: string): Promise<boolean> {
+  const claims = await step(ctx, `${CARRY_CLAIMS_STEP}:${input.head}:${read}`, input, ClaimsResult);
+  return claims.claimed === 0;
 }
 
 const SeatResult = z.looseObject({ clear: z.boolean() });
@@ -247,7 +275,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   if (!source) return undefined;
   const fromHead = source.merge.verdict.head;
   const scope = await carryingScope(ctx, target, String(scopeRead), vouchedHeads(reviews, fromHead, headSha));
-  if (scope === undefined) return undefined;
+  if (scope === undefined || !(await claimsNoRows(ctx, { ...target, baseRef: scope.baseRef, head: headSha }, String(scopeRead)))) return undefined;
   const carry = await carryRule(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha }, reviews, scope.patchCarries);
   if (!carry) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
@@ -276,6 +304,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
   return [
     carryScopeRoute(deps),
     carrySeatRoute(deps, wiring),
+    carryClaimsRoute(deps),
     remergeRoute(deps.now, wiring?.carry),
     fixCarryRoute(deps.now, wiring?.carry),
     reviewScopeRoute(deps.now, wiring?.carry),

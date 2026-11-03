@@ -36,6 +36,7 @@ export const shepherdSteps = [
   step("sh-review-shadow", "dispatch", "software", effect("item", `${RECORD}: what review-workflow would have decided at a round, read once with the installed profiles`)),
   step("sh-carry-scope", "dispatch", "software", effect("item", `${RECORD}: the scope an approval carried over`)),
   step("sh-carry-seat", "dispatch", "software", effect("item", `${RECORD}: the seat an approval carried under`)),
+  step("sh-carry-claims", "dispatch", "software", effect("item", `${RECORD}: the attestation rows a carried-to head claims`)),
   step("sh-remerge", "dispatch", "software", effect("item", `${RECORD}: a MERGE carried across a clean remerge`)),
   step("sh-approval-carry:fix", "dispatch", "software", effect("item", `${RECORD}: an approval carried across a small fix`)),
   step("sh-review-scope", "dispatch", "software", effect("item", `${RECORD}: the fix diff a fix-round re-review may read as scoped`)),
