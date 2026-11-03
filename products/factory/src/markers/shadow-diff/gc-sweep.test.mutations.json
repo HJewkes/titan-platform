@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the marker GC counts a terminal run's item as open",
+      "file": "products/factory/src/markers/shadow-diff/gc-sweep.ts",
+      "find": "  FROM workflow_run WHERE status NOT IN ('completed', 'failed', 'cancelled')`;",
+      "replace": "  FROM workflow_run`;",
+      "kills": [
+        "the marker GC sweep an item with a running workflow is open; a landed item is not",
+        "the marker GC sweep the sweep collects an unreferenced blob of a closed item and keeps an open item's"
+      ]
+    },
+    {
+      "name": "the marker GC keeps a landed item open while a run on it lives",
+      "file": "products/factory/src/markers/shadow-diff/gc-sweep.ts",
+      "find": "if (key !== undefined && !landed.has(key)) open.add(key);",
+      "replace": "if (key !== undefined) open.add(key);",
+      "kills": ["the marker GC sweep an item with a running workflow is open; a landed item is not"]
+    }
+  ]
+}

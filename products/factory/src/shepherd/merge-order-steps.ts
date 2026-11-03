@@ -6,7 +6,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { OrderRun, PrTarget } from "./run-state.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
-import { stillOpen } from "./merge-order-guard.js";
+import { stillOrders } from "./merge-order-guard.js";
 import { blockers, ORDER_WAIT_STEP, orderDriving, orderWaiting, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { pathUnit } from "./train-shadow-disjoint.js";
@@ -69,7 +69,7 @@ async function heldByOrder(deps: MergeOrderStepDeps, repo: RepoSlug, runId: stri
   if (live({ repo, runId, paths: [], unread: true }).length === 0) return false;
   const theirs = await read();
   for (const blocker of live({ repo, runId, paths: theirs.paths, unread: theirs.unread !== undefined })) {
-    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;
+    if (await stillOrders(deps.port, repo, blocker.reservation.pr)) return true;
   }
   return false;
 }
@@ -164,7 +164,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()), orderWaiting(order));
   const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
-  for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOpen(deps.port, input.repo, pr)) open.push(pr);
+  for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOrders(deps.port, input.repo, pr)) open.push(pr);
   return open;
 }
 
