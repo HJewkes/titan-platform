@@ -84,3 +84,24 @@ describe("provablyIndependent", () => {
     expect(provablyIndependent(reviewer, "impl-a", whole(roster))).toBe(false);
   });
 });
+
+describe("provablyIndependent under a production roster, which has no row for the broker principal", () => {
+  const shepherdRoster = [agent("impl-a", "human"), agent("rev-1", "human"), agent("fix-1", "impl-a"), agent("rev-2", "ghost")];
+  const judge = (name: string) => provablyIndependent(shepherdRoster.find((row) => row.name === name)!, "impl-a", whole(shepherdRoster));
+
+  it("clears a reviewer Shepherd spawned as the human", () => {
+    expect(judge("rev-1")).toBe(true);
+  });
+
+  it("refuses the implementer reviewing itself", () => {
+    expect(judge("impl-a")).toBe(false);
+  });
+
+  it("refuses a fixer the implementer spawned", () => {
+    expect(judge("fix-1")).toBe(false);
+  });
+
+  it("refuses a reviewer whose spawner is some other name absent from the roster", () => {
+    expect(judge("rev-2")).toBe(false);
+  });
+});

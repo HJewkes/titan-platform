@@ -4,8 +4,8 @@
     {
       "name": "a phone gets the table instead of cards",
       "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;",
-      "replace": "return <StageTable rows={rows} />;",
+      "find": "return useMediaQuery(BELOW_MD) ? <StageSections groups={groups} counts={counts} /> : <StageTable groups={groups} counts={counts} />;",
+      "replace": "return <StageTable groups={groups} counts={counts} />;",
       "kills": [
         "the tasks list on a phone stacks each task into a card with its id, title, initiative and stage instead of the table"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "a desktop gets cards instead of the table",
       "file": "apps/console/src/pages/TasksPage.tsx",
-      "find": "return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;",
-      "replace": "return <StageCards rows={rows} />;",
+      "find": "return useMediaQuery(BELOW_MD) ? <StageSections groups={groups} counts={counts} /> : <StageTable groups={groups} counts={counts} />;",
+      "replace": "return <StageSections groups={groups} counts={counts} />;",
       "kills": [
         "the tasks list on a phone keeps the table on a desktop"
       ]

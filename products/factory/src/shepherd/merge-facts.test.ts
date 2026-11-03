@@ -25,6 +25,7 @@ import { fakeLocator } from "../test-support/fakes.js";
 import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
 import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
 import { ATTESTATIONS_PATH } from "./attest-read.js";
+import { ReviewerAskTimedOut } from "./review-wait.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -477,17 +478,23 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A workflow that takes the MERGE review through the sh-merge-evidence step, then lands with the Shepherd options. */
-function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined): FactoryHost {
+interface HostSetup {
+  store?: ShepherdStoreRef;
+  wiring?: ReviewWiring;
+  request?: MergeEvidenceInput;
+}
+
+function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined, setup: HostSetup = {}): FactoryHost {
   const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
-  const deps: ShepherdDeps = { port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
-    const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, input)]]);
+    const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, setup.request ?? input)]]);
     beforeLand();
     await land(ctx, { repo: REPO, pr: 1 }, shepherdLandOptions(() => AUTO, (headSha) => reviews.get(headSha)));
   };
   const workflow = defineWorkflow({ name: "shepherd-merge", steps: [...LAND_STEPS, ...REVIEW_STEPS], run });
-  const routes = [...landRoutes({ port, now: deps.now, sleep: deps.sleep }), ...reviewRoutes(deps)];
+  const routes = [...landRoutes({ port, now: deps.now, sleep: deps.sleep }), ...reviewRoutes(deps, setup.wiring)];
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);
   return host;
@@ -957,8 +964,8 @@ describe("the attestation guard", () => {
   const closure = (seed: string) => fakeSha(`closure-${seed}`) + fakeSha(`closure-${seed}-tail`).slice(0, 24);
   const CI_WAIT = { step: "ci-wait", closure: closure("ci-wait"), pr: 1 };
   const TOKEN = `ci-wait@${CI_WAIT.closure.slice(0, 12)}`;
-  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: name === "human" ? null : "human", predecessor: null });
-  const roster = ["human", "impl-a", "rev-1", "adv-1"].map(agent);
+  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: "human", predecessor: null });
+  const roster = ["impl-a", "rev-1", "adv-1"].map(agent);
   const as = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
   const byReviewer = (name: string, attests: string[] = [TOKEN], extra: Partial<MergeEvidenceInput> = {}): Partial<MergeEvidenceInput> => ({ resolver: as(name), dispatchedReviewer: as(name), attest: { attests }, ...extra });
 
@@ -1022,6 +1029,70 @@ describe("the attestation guard", () => {
     const evidence = await judged(claiming("not json"), byReviewer("rev-1"));
 
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: `attestation unmet: unread: ${ATTESTATIONS_PATH} is unreadable: malformed` });
+  });
+
+  it("a roster read that fails for a reason other than the broker still gates as unread", async () => {
+    const port = githubPort(claiming().wire);
+    const failing: AttestReaders = { ...readers(), roster: async () => Promise.reject(new TypeError("roster row has no agentId")) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...byReviewer("rev-1") }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest: (request, baseRef) => attestAtHead(port, failing, request, baseRef) });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: unread: the meeters' facts are unreadable: TypeError" });
+  });
+
+  describe("when the broker is slow to answer the roster or lineage read", () => {
+    const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason: null, held: false, kind: "correctness", policy: AUTO });
+    const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => registration, authorsOf: () => [] }) });
+    const request = { ...input, ...byReviewer("rev-1") };
+
+    /** A read that times out `timeouts` times, then answers `value`. */
+    function slow<T>(timeouts: number, value: T): () => Promise<T> {
+      let reads = 0;
+      return async () => (++reads <= timeouts ? Promise.reject(new ReviewerAskTimedOut("read timed out")) : value);
+    }
+
+    function slowBroker(fake: FakeGitHub, timeouts: number, slowLineage = false): FactoryHost {
+      fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+      const readers = slowLineage ? { roster: async () => roster, lineage: slow(timeouts, { rows: roster, complete: true }) } : { roster: slow(timeouts, roster) };
+      const wiring = partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: readers.roster }), ...(readers.lineage && { lineage: readers.lineage }), sessionStartTimeoutMs: 60_000 });
+      return shepherdHost(fake, undefined, { store, wiring, request });
+    }
+
+    it("a lineage read that times out once and then answers merges with no gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, 1, true);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("completed");
+      expect(fake.effects.merge).toBe(1);
+      expect(host.gates.listPending()).toEqual([]);
+    });
+
+    it("a read that times out once and then answers judges the attestation and merges with no gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, 1);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("completed");
+      expect(fake.effects.merge).toBe(1);
+      expect(host.gates.listPending()).toEqual([]);
+      const evidence = Object.values(run.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${HEAD}`);
+      expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
+    });
+
+    it("a read still timed out past the budget fails the run as infrastructure and opens no owner gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, Number.POSITIVE_INFINITY);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("failed");
+      expect(fake.effects.merge).toBe(0);
+      expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: ReviewerAskTimedOut \\(roster unread after 1 min\\)`));
+      expect(host.gates.listPending()).toEqual([]);
+    });
   });
 
   it("a head that claims nothing decides exactly as before", async () => {
