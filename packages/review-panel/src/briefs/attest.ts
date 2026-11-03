@@ -7,7 +7,13 @@ export const ATTESTS_HEADING = "Attests:";
 export interface AttestClaim {
   step: string;
   closure: string;
+  /** The step's closure files this PR changed, so the reviewer knows what to read before attesting. */
+  changedFiles?: readonly string[];
 }
+
+/** The most closure files named per claim; the rest are counted. */
+export const MAX_CLAIM_FILES = 30;
+const CLAIM_PATH = /^[A-Za-z0-9._@+/-]+$/;
 
 const ATTEST_TOKEN = /^[a-z0-9-]+@[0-9a-f]{12}$/;
 const CLAIM_STEP = /^[a-z0-9-]+$/;
@@ -36,6 +42,15 @@ const stepOf = (token: string): string => token.slice(0, token.indexOf("@"));
 const validClaims = (claims: readonly AttestClaim[]): AttestClaim[] =>
   claims.filter(({ step, closure }) => CLAIM_STEP.test(step) && CLAIM_CLOSURE.test(closure)).slice(0, MAX_ATTEST_CLAIMS);
 
+/** The claim's changed closure files, capped, with the count of the rest; a path outside the plain grammar is dropped, since the file names come from the PR. */
+function filesLine({ step, changedFiles }: AttestClaim): string[] {
+  const paths = (changedFiles ?? []).filter((path) => CLAIM_PATH.test(path));
+  if (paths.length === 0) return [];
+  const rest = paths.length - MAX_CLAIM_FILES;
+  const shown = paths.slice(0, MAX_CLAIM_FILES).map((path) => `\`${path}\``).join(", ");
+  return [`Files of ${step}'s closure this PR changed: ${shown}${rest > 0 ? `, +${rest} more` : ""}.`];
+}
+
 /** Empty when no claim is valid; a MERGE without the line still counts for the code, it just attests nothing. */
 export function attestRule(claims: readonly AttestClaim[]): string[] {
   const valid = validClaims(claims);
@@ -43,6 +58,7 @@ export function attestRule(claims: readonly AttestClaim[]): string[] {
   const named = valid.map(({ step, closure }) => `${step} (closure ${closure.slice(0, 12)})`).join(", ");
   const tokens = valid.map(({ step, closure }) => `${step}@${closure.slice(0, 12)}`).join(", ");
   return [
+    ...valid.flatMap(filesLine),
     `This PR claims no semantic change for ${named}. If you have verified that a step's behaviour is unchanged, add above the Verdict line the line \`${ATTESTS_HEADING} ${tokens}\`, keeping only the steps you verified. Omit it otherwise; your MERGE still counts for the code.`,
   ];
 }

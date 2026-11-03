@@ -39,6 +39,7 @@ import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
+import { keptNeedsSources } from "./needs/command.js";
 import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
@@ -268,9 +269,10 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
+  const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
+    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,

@@ -231,6 +231,15 @@ describe("approvals.flow", () => {
     expect(ids(result.flow.order)).toEqual(["real-ask"]);
   });
 
+  it("adds the fyi notices the factory only counted to the ones it listed", async () => {
+    factory = await startFakeDaemon({ ok: true }, () => ({ items: [item("notice-1", { kind: "know", lens: "fyi" }), item("real-ask")], gaps: [], fyiCount: 40 }));
+
+    const result = await readFlow(sources(factoryNeeds(factory.port)));
+
+    expect(result.fyiCount).toBe(41);
+    expect(ids(result.flow.order)).toEqual(["real-ask"]);
+  });
+
   it("lists a deposit once, from the console spool, when the factory also carries it", async () => {
     await writeDeposit(path.join(root, "deposits"), deposit("twice"));
     const id = depositItemId(ASKER, "twice");
