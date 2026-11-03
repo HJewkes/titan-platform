@@ -346,13 +346,15 @@ interface QueueReads {
   lineage?: boolean;
 }
 
-/** Strips and lineage cost a GitHub read per PR head, so only the items the read will send get them. */
+/** Strips and lineage cost a GitHub read per PR head, so only the items the read will send get them, read side by side. */
 async function withReads(items: InboxItem[], live: readonly WatchRow[], lineageOf: LineageReader | undefined, { strips, planning = false, lineage = true }: QueueReads): Promise<InboxItem[]> {
   const shown = planning ? items : items.filter((item) => item.section !== "planning");
   const byRun = byRunId(live);
-  const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(shown, byRun));
-  const stripped = withStrips(shown, byRun, gates);
-  const read = lineage ? await withLineage(stripped, lineageOf) : stripped;
+  const [gates, lined] = await Promise.all([
+    strips === undefined ? new Map<string, GateStrip>() : strips.readMany(joinedRows(shown, byRun)),
+    lineage ? withLineage(shown, lineageOf) : shown,
+  ]);
+  const read = withStrips(lined, byRun, gates);
   const at = new Map(shown.map((item, index) => [item, read[index]!]));
   return items.map((item) => at.get(item) ?? item);
 }
