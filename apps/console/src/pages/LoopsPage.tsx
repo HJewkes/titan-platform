@@ -4,7 +4,7 @@ import type { BoardLoop, LoopBoard, LoopStatus } from "../../server/loop-board.j
 import { useInvalidate, useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { LoopCard } from "./LoopCard.js";
-import { applyMove, filterLoops, groupByTier, TIER_ROWS, type LoopFilters, type Move, type TierRow } from "./loop-tiers.js";
+import { applyMove, filterLoops, groupByTier, TIER_ROWS, type LoopFilters, type Move, type TierKey, type TierRow } from "./loop-tiers.js";
 
 const STATUS_OPTIONS = (["LOST", "STALLED", "MISSING", "ACTIVE", "DONE"] satisfies LoopStatus[]).map((status) => ({ value: status, label: status }));
 const DRAG_TYPE = "text/plain";
@@ -91,8 +91,12 @@ function BoardFilters({ loops, filters, onChange }: { loops: readonly BoardLoop[
   );
 }
 
-/** The card a drop lands on is the one the moved card goes ahead of; a drop on open space goes to the end. */
-function droppedBefore(event: DragEvent<HTMLElement>, id: string): string | undefined {
+/**
+ * The card a drop lands on is the one the moved card goes ahead of; a drop on open space goes to the end. The Unsorted tray
+ * has no order, and active-work refuses `--before` with `unsorted`.
+ */
+function droppedBefore(event: DragEvent<HTMLElement>, id: string, to: TierKey): string | undefined {
+  if (to === "unsorted") return undefined;
   const target = event.target instanceof Element ? event.target.closest("[data-loop-id]")?.getAttribute("data-loop-id") : null;
   return target && target !== id ? target : undefined;
 }
@@ -109,7 +113,7 @@ function TierSection({ row, loops, onMove }: TierSectionProps): ReactNode {
     event.preventDefault();
     setIsOver(false);
     const id = event.dataTransfer.getData(DRAG_TYPE);
-    if (id && onMove) onMove({ id, to: row.key, before: droppedBefore(event, id) });
+    if (id && onMove) onMove({ id, to: row.key, before: droppedBefore(event, id, row.key) });
   };
   const dropProps = onMove
     ? { onDragOver: (event: DragEvent<HTMLElement>) => (event.preventDefault(), setIsOver(true)), onDragLeave: () => setIsOver(false), onDrop }

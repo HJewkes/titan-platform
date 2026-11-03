@@ -119,6 +119,22 @@ describe("the active-work reads createSources builds", () => {
       await daemon.close();
     }
   });
+
+  it("refresh behind a write, since the write moved the tree", async () => {
+    const asked: string[] = [];
+    const daemon = await startFakeDaemon({ ok: true }, (command) => (asked.push(command), command === "loop.tier" ? { id: "loop-c", tier: "S", tier_rank: 1 } : { sections: [], parse_errors: [] }));
+    try {
+      const sources = createSources({ ...resolveConfig({}, dir), activeWorkPort: daemon.port });
+
+      await sources.activeWork.read("list");
+      await sources.activeWork.write?.("loop.tier", { id: "loop-c", tier: "S" });
+      await sources.activeWork.read("list");
+
+      await vi.waitFor(() => expect(asked).toEqual(["list", "loop.tier", "list"]));
+    } finally {
+      await daemon.close();
+    }
+  });
 });
 
 describe("the decision log's human-only reader", () => {

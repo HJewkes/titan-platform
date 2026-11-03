@@ -108,7 +108,7 @@ const READS = {
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
   "deliverable.list": z.array(deliverable),
-  /** The platform-wide open-loops board; a daemon older than active-work 0.23 has no such command. */
+  /** The platform-wide open-loops board; a daemon older than active-work 0.25 has no such command. */
   "loop.board": loopBoard,
 };
 
