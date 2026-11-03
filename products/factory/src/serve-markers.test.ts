@@ -64,7 +64,7 @@ function routesFor(config: object, head: string): FactoryRoutes {
   return Object.assign(routes, { config: configRef(file) });
 }
 
-async function serveAndDrive(config: object, head: string): Promise<{ db: Db; run: WorkflowRun }> {
+async function serve(config: object, head: string): Promise<FactoryServer> {
   const server = await startFactoryServer({
     dbPath: path.join(root, "factory.sqlite3"),
     workflows: [ciFixture],
@@ -76,6 +76,11 @@ async function serveAndDrive(config: object, head: string): Promise<{ db: Db; ru
     build: { sha: "0".repeat(40), behindMain: { status: () => 0, refresh: async () => undefined } },
   });
   servers.push(server);
+  return server;
+}
+
+async function serveAndDrive(config: object, head: string): Promise<{ db: Db; run: WorkflowRun }> {
+  const server = await serve(config, head);
   advanceEpoch(server.host.db, { ...ITEM, expectedEpoch: 0, head, by: "bootstrap", at: NOW });
   void fakeOwnerHelper(undefined);
   const id = server.host.runtime.start("ci-fixture", { repo: ITEM.repo, pr: String(ITEM.pr) });
@@ -127,6 +132,19 @@ describe("serve wires the marker shadow from markers.shadow", () => {
     expect(fs.existsSync(path.join(root, "marker-git", "owner__name.git", "HEAD"))).toBe(true);
     const probe = await markerShadowOptions(parseConfig("config.json", JSON.stringify(config)).markers, noDb, root, () => seat.dir)!.carryProbe!(ITEM, seat.head, seat.head);
     expect(probe).toMatchObject({ reviewed: { kind: "exact", full: marker!.pin }, current: { kind: "exact", full: marker!.pin }, headIsMerge: false });
+  });
+
+  it("serve with the shadow off starts no GC sweep", async () => {
+    const orphan = path.join(root, "marker-blobs", "f".repeat(64));
+    fs.mkdirSync(path.dirname(orphan));
+    fs.writeFileSync(orphan, "synthetic orphan blob");
+
+    await (await serve({}, "d".repeat(40))).close();
+    const keptWithShadowOff = fs.existsSync(orphan);
+    await (await serve(ENABLED, "d".repeat(40))).close();
+
+    expect(keptWithShadowOff).toBe(true);
+    expect(fs.existsSync(orphan)).toBe(false);
   });
 
   it("an unknown key under markers fails the config load", () => {
