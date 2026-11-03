@@ -36,6 +36,15 @@
       "kills": [
         "the perf tab on a phone only the name and the p95 column stay visible"
       ]
+    },
+    {
+      "name": "a wait is judged on its p50 instead of its p95",
+      "file": "apps/console/src/pages/ConfigPerf.tsx",
+      "find": "over={row.p95 > row.budgetMs}",
+      "replace": "over={row.p50 > row.budgetMs}",
+      "kills": [
+        "the perf tab ranks waits by owner seconds as the server sent them and badges a p95 past its command's budget"
+      ]
     }
   ]
 }
