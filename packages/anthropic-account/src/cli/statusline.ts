@@ -14,29 +14,29 @@ import { printableLabel } from "./report.js";
 export const UNKNOWN_LINE = "unknown|unknown|||||||";
 
 interface Figures {
-  five: UsageWindow;
+  five: UsageWindow | undefined;
   weekly: UsageWindow;
   age: number;
 }
 
-// Like rate-limits.sh, the newest reading with both windows, not merely the newest: a
-// session that has seen only five_hour must not blank the weekly figure.
-const NEEDED_WINDOWS = ["five_hour", "seven_day"];
+// Since 2026-10-31 the usage response carries no five_hour window, so only seven_day is
+// required; the poller's own file wins while it is fresh, and a reading from a week that
+// has already reset is not shown.
+const POLLER_FRESH_SECONDS = 360;
 
 function figuresOf(configDir: string, now: number): Figures | null {
   let read: UsageFileRead | null;
   try {
-    read = readUsage(configDir, { now, windows: NEEDED_WINDOWS });
+    read = readUsage(configDir, { now, windows: ["seven_day"], pollerFirstSeconds: POLLER_FRESH_SECONDS, dropReset: true });
   } catch {
     return null;
   }
-  const five = read?.reading.rate_limits.five_hour;
   const weekly = read?.reading.rate_limits.seven_day;
-  return read && five && weekly ? { five, weekly, age: read.ageSeconds } : null;
+  return read && weekly ? { five: read.reading.rate_limits.five_hour, weekly, age: read.ageSeconds } : null;
 }
 
-const whole = (window: UsageWindow): number => Math.floor(window.used_percentage);
-const reset = (window: UsageWindow): string => (window.resets_at === undefined ? "" : String(window.resets_at));
+const whole = (window: UsageWindow | undefined): string => (window === undefined ? "" : String(Math.floor(window.used_percentage)));
+const reset = (window: UsageWindow | undefined): string => (window?.resets_at === undefined ? "" : String(window.resets_at));
 
 function currentLine(figures: Figures | null): string {
   if (figures === null) return UNKNOWN_LINE;

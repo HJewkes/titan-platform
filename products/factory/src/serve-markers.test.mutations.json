@@ -21,6 +21,13 @@
       "find": "      // A sink that throws must not reach the run either.\n    }\n    return undefined;",
       "replace": "      // A sink that throws must not reach the run either.\n    }\n    throw error;",
       "kills": ["serve wires the marker shadow from markers.shadow serve with markers.shadow.enabled writes a verdict row and a marker beside step_results for a ci-wait run"]
+    },
+    {
+      "name": "serve starts the marker GC sweep with the shadow off",
+      "file": "products/factory/src/serve-markers.ts",
+      "find": "  if (config?.shadow.enabled !== true) return undefined;\n  return startMarkerGcSweep(",
+      "replace": "  return startMarkerGcSweep(",
+      "kills": ["serve wires the marker shadow from markers.shadow serve with the shadow off starts no GC sweep"]
     }
   ]
 }
