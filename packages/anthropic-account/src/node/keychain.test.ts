@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -57,6 +58,19 @@ describe("keychainService", () => {
     const service = keychainService("/home/user/.claude-profiles/work", "/home/user");
 
     expect(service).toBe("Claude Code-credentials-2de813ec");
+  });
+
+  it("a symlinked config dir hashes its resolved path, as rate-limits.sh's pwd -P does", () => {
+    const real = path.join(home, "real-work");
+    const link = path.join(home, "link-work");
+    fs.mkdirSync(real);
+    fs.symlinkSync(real, link);
+    fs.mkdirSync(path.join(home, "real-default"));
+    fs.symlinkSync(path.join(home, "real-default"), path.join(home, ".claude"));
+    const sha8 = createHash("sha256").update(fs.realpathSync(real)).digest("hex").slice(0, 8);
+
+    expect(keychainService(link, home)).toBe(`Claude Code-credentials-${sha8}`);
+    expect(keychainService(path.join(home, "real-default"), home)).toBe("Claude Code-credentials");
   });
 });
 

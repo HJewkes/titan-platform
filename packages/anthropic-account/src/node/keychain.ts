@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,12 +33,22 @@ export interface KeychainOptions {
 
 export type KeychainRead = { status: "missing" } | { status: "too-large" } | { status: "read"; bytes: Buffer };
 
+// rate-limits.sh resolves both dirs with `pwd -P`, so symlinks are followed here too. A dir
+// that does not exist cannot be resolved and is hashed as its absolute path.
+function canonical(dir: string): string {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
 // Claude Code's naming, as the darwin rate-limits.sh reads it: the default `~/.claude` uses
 // the bare name and every other config dir appends the first eight hex of the SHA-256 of
-// its absolute path.
+// its symlink-resolved absolute path.
 export function keychainService(configDir: string, home: string): string {
-  const dir = path.resolve(configDir);
-  if (dir === path.resolve(home, ".claude")) return KEYCHAIN_SERVICE;
+  const dir = canonical(configDir);
+  if (dir === canonical(path.join(home, ".claude"))) return KEYCHAIN_SERVICE;
   return `${KEYCHAIN_SERVICE}-${createHash("sha256").update(dir).digest("hex").slice(0, 8)}`;
 }
 

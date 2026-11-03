@@ -23,11 +23,11 @@
       "kills": ["keychainService a named config dir appends the first eight hex of its path's sha256"]
     },
     {
-      "name": "the default dir gets a suffix too",
+      "name": "the service name hashes the unresolved path",
       "file": "packages/anthropic-account/src/node/keychain.ts",
-      "find": "  if (dir === path.resolve(home, \".claude\")) return KEYCHAIN_SERVICE;\n",
-      "replace": "",
-      "kills": ["keychainService the default config dir reads the bare Claude Code-credentials service"]
+      "find": "    return fs.realpathSync(dir);",
+      "replace": "    return path.resolve(dir);",
+      "kills": ["keychainService a symlinked config dir hashes its resolved path, as rate-limits.sh's pwd -P does"]
     },
     {
       "name": "a missing Keychain item reads as an error",

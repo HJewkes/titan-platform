@@ -204,10 +204,10 @@ default to `process.platform`, a runner for `/usr/bin/security`, and `os.homedir
   package never writes, adds or deletes a Keychain item.
 - `keychainService(configDir, home)` gives the service name. It is `Claude Code-credentials`
   for `<home>/.claude`. Any other dir gets `Claude Code-credentials-` plus the first eight
-  hex digits of the SHA-256 of its resolved absolute path. This matches the naming the
-  darwin `rate-limits.sh` status-line reader uses. It is an assumption about Claude Code, so
-  it lives in one tested function. The path is resolved but symlinks are not followed, so
-  pass the dir Claude Code was given.
+  hex digits of the SHA-256 of its absolute path. Both dirs are resolved with
+  `fs.realpathSync` first, as the darwin `rate-limits.sh` status-line reader resolves them
+  with `pwd -P`, so a symlinked dir names the same item as its target. A dir that does not
+  exist is hashed as its absolute path.
 - Exit 44 (no such item) gives `missing`. Any other non-zero exit, a spawn failure or a
   timeout makes `readLoginState` throw `reading the Keychain item failed`, and makes
   `pollUsage` fail with `io`. stderr is never piped, and the child's output is never quoted.
