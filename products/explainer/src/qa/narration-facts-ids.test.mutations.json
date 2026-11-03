@@ -29,6 +29,16 @@
         "a bare id number the screen shows must be said when the beat cites no id with that number",
         "a real number beside a cited id must still be said"
       ]
+    },
+    {
+      "name": "a cited id gives its spelling, not its number",
+      "file": "products/explainer/src/spoken-ids.ts",
+      "find": "termSpellings(term).slice(0, 1)",
+      "replace": "termSpellings(term).slice(1, 2)",
+      "kills": [
+        "a bare id number the screen shows need not be said when it is the number of a pull request the beat cites",
+        "a bare id number the screen shows need not be said when it is the number of a task the beat cites"
+      ]
     }
   ]
 }
