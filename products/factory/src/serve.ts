@@ -31,7 +31,7 @@ import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import { startServeReconciler, type ReconcilerHealth } from "./serve-reconciler.js";
 import { recordStartOrWarn, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
-import { markerShadowOptions } from "./serve-markers.js";
+import { markerGcSweep, markerShadowOptions } from "./serve-markers.js";
 import { seatCheckout } from "./shepherd/seat-checkout.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
@@ -198,6 +198,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
   sweeps.push(digestSweep, ciTimingSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconciler.sweep);
+  sweeps.push(markerGcSweep(options.routes.config?.get().markers, host.db, options.dbPath, log, options.now));
   if (bot.usage) sweeps.push(...startUsageLog(bot.usage, "bot", log));
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };

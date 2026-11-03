@@ -3299,6 +3299,27 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/gc-sweep.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/gc-sweep.test.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/markers/shadow-diff/gc-sweep.ts",
+   "fate": "delete",
+   "task": "D-M8-09",
+   "milestone": "M8"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/markers/shadow-diff/git-sources.test.mutations.json",
    "fate": "delete",
    "task": "D-M8-09",
