@@ -15,7 +15,8 @@ const CI_WAIT = { step: "ci-wait", closure: closure("ci-wait"), pr: 1 };
 const MERGE_STEP = { step: "merge", closure: closure("merge"), pr: 1 };
 
 const agent = (name: string, spawnedBy: string | null): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy, predecessor: null });
-const roster = [agent("human", null), agent("impl-a", "human"), agent("rev-1", "human"), agent("adv-1", "human")];
+/** Shaped like the broker's `agent ls --include-retired`: Shepherd spawns as "human", which has no row of its own. */
+const roster = [agent("impl-a", "human"), agent("rev-1", "human"), agent("adv-1", "human"), agent("fix-1", "impl-a"), agent("rev-2", "ghost")];
 const identity = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
 
 function world(base: unknown, head: unknown): FakeGitHub {
@@ -88,6 +89,18 @@ describe("the evidence record's attestations", () => {
 
   it("records the implementer's own Attests line as unmet: meeter-is-author", async () => {
     const result = await evidence(world([], [CI_WAIT]), input("impl-a", [token(CI_WAIT)]));
+
+    expect(result.record).toMatchObject({ attested: [], attestUnmet: [{ step: "ci-wait", why: "meeter-is-author" }] });
+  });
+
+  it("records a fixer the implementer spawned as unmet: meeter-is-author", async () => {
+    const result = await evidence(world([], [CI_WAIT]), input("fix-1", [token(CI_WAIT)]));
+
+    expect(result.record).toMatchObject({ attested: [], attestUnmet: [{ step: "ci-wait", why: "meeter-is-author" }] });
+  });
+
+  it("records a reviewer whose spawner is absent from the roster as unmet: meeter-is-author", async () => {
+    const result = await evidence(world([], [CI_WAIT]), input("rev-2", [token(CI_WAIT)]));
 
     expect(result.record).toMatchObject({ attested: [], attestUnmet: [{ step: "ci-wait", why: "meeter-is-author" }] });
   });
