@@ -4,10 +4,12 @@ import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
+import { MarkersConfigSchema } from "./markers/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
+import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -118,28 +120,6 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
-const MI = 1024 * 1024;
-
-/**
- * One repo's visual-diff threshold (TP-4320). Absent, or `off`, records nothing; `shadow` records the delta on the merge
- * evidence, and nothing decides on it; `on` also decides the merge on it. `maxChangedShare` defaults to 0.01 of the content box and `pixelTolerance` to 0.1.
- * The caps bound the measuring work per evidence step, so each has a ceiling config cannot raise: `maxSnapshots` pairs,
- * `maxBytes` per blob, `maxPixels` per decoded image and `maxTotalPixels` decoded over the step.
- */
-const VisualThresholdSchema = z.strictObject({
-  mode: z.enum(["off", "shadow", "on"]),
-  maxChangedShare: z.number().min(0).max(1).optional(),
-  pixelTolerance: z.number().min(0).max(1).optional(),
-  snapshotPaths: z.array(z.string().min(1)),
-  apiPaths: z.array(z.string().min(1)),
-  tokenPaths: z.array(z.string().min(1)),
-  harnessPaths: z.array(z.string().min(1)),
-  maxSnapshots: z.number().int().positive().max(200).optional(),
-  maxBytes: z.number().int().positive().max(20 * MI).optional(),
-  maxPixels: z.number().int().positive().max(32 * MI).optional(),
-  maxTotalPixels: z.number().int().positive().max(256 * MI).optional(),
-});
-
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
 export const SpawnGateConfigSchema = z.strictObject({
   load5: z.number().positive().optional(),
@@ -230,6 +210,7 @@ export const FactoryConfigSchema = z.object({
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
   autoresearch: ArConfigSchema.optional(),
+  markers: MarkersConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),

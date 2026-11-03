@@ -1,4 +1,4 @@
-import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub, type ForcePush } from "@titan-design/github";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel"
 import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
+import { ATTESTATIONS_PATH } from "./attest-read.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { fakeLocator } from "../test-support/fakes.js";
@@ -35,10 +36,14 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
+type ClaimsAnswer = (input: Record<string, unknown>) => Promise<object>;
+const NO_CLAIMS: ClaimsAnswer = async () => ({ claimed: 0 });
+
+function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string, claims: ClaimsAnswer = NO_CLAIMS): Rig {
   const asked: Rig["asked"] = [];
-  const answer = (stepId: string, input: Record<string, unknown>): object => {
+  const answer = async (stepId: string, input: Record<string, unknown>): Promise<object> => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
+    if (stepId.startsWith("sh-carry-claims:")) return claims(input);
     if (stepId.startsWith("sh-carry:")) return probe;
     if (stepId.startsWith("sh-carry-seat:")) return seats;
     if (stepId.startsWith("sh-remerge:")) return remerge;
@@ -49,7 +54,7 @@ function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: s
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
     const input = z.record(z.string(), z.unknown()).parse(JSON.parse(Object.values(options.vars)[0]!));
     asked.push({ stepId, input });
-    return { data: { result: answer(stepId, input) } };
+    return { data: { result: await answer(stepId, input) } };
   };
   return {
     ctx: Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => undefined }),
@@ -541,6 +546,61 @@ describe("carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725
     const r = rig(UNHELD, { ...SAME_DIFF, mergeTree: "tree-b" });
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+  });
+});
+
+describe("carrying a MERGE across a clean merge-up to a head that claims attestation rows (TP-4740)", () => {
+  const MERGE_UP: CarryResult = { ...EQUAL, firstParent: REVIEWED };
+  const SCOPE = { kind: "correctness", baseRef: "main" };
+  const CI_WAIT_ROW = { step: "ci-wait", closure: fakeSha("ci-wait-closure"), pr: 1 };
+
+  function attestWorld(atHead: unknown): FakeGitHub {
+    const github = fakeGitHub();
+    github.addPr({ headSha: NEW_HEAD });
+    github.files.set(`main:${ATTESTATIONS_PATH}`, { content: "[]", blobSha: "attest-base" });
+    github.files.set(`${NEW_HEAD}:${ATTESTATIONS_PATH}`, { content: typeof atHead === "string" ? atHead : JSON.stringify(atHead), blobSha: "attest-head" });
+    return github;
+  }
+
+  /** Answers the claims step from the real route, reading the world's attestations.json at the base and the head. */
+  function claimsFrom(github: FakeGitHub): ClaimsAnswer {
+    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    return async (input) => {
+      const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+      if (!outcome.ok) throw new Error(outcome.error);
+      return z.object({ result: z.record(z.string(), z.unknown()) }).parse(JSON.parse(outcome.output)).result;
+    };
+  }
+
+  const claimsRig = (atHead: unknown) => rig(SCOPE, MERGE_UP, { clear: true }, NOT_REMERGED, undefined, claimsFrom(attestWorld(atHead)));
+  it("a claimed ci-wait row refuses the carry, so the run asks a fresh review at the new head and takes no carried evidence", async () => {
+    const r = claimsRig([CI_WAIT_ROW]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toBeUndefined();
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.some((id) => id.startsWith("sh-merge-evidence"))).toBe(false);
+    expect(ids.some((id) => id.startsWith("sh-publish-review"))).toBe(false);
+    expect(ids).not.toContain(`sh-carry:${NEW_HEAD}`);
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-carry-claims:"))!.input).toEqual({ ...TARGET, baseRef: "main", head: NEW_HEAD });
+  });
+
+  it("a head whose attestations.json matches the base carries the MERGE as before", async () => {
+    const r = claimsRig([]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD, mergeUpFrom: REVIEWED });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: MERGE_UP, rule: "tree-equal" });
+  });
+
+  it("an unreadable attestations.json at the head does not carry", async () => {
+    const r = claimsRig("{not json");
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-evidence"))).toBe(false);
   });
 });
 
