@@ -24,6 +24,7 @@
   "ci-unread.ts",
   "cleanup-ports.ts",
   "cleanup.ts",
+  "closure-members.ts",
   "codewatch-questions.ts",
   "correct-verdict.ts",
   "deploy-pacer.ts",

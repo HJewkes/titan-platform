@@ -1,6 +1,7 @@
 import type { GitHubPort, RepoEntry, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { statusOf } from "../required-checks.js";
+import { registryClosureMembers, type ClosureMembers } from "./closure-members.js";
 import { claimedRows, type Attestation } from "../registry/attest.js";
 
 /** One file per PR, `<pr>.json`, so two PRs that each add rows never touch the same file (TP-4745). */
@@ -69,13 +70,32 @@ export async function readClaims(port: GitHubPort, refs: ClaimRefs): Promise<Cla
   }
 }
 
-/** The claims the reviewer's brief asks about; an unreadable PR or file asks nothing, and the merge guard reads it again. */
-export async function briefClaimsAt(port: GitHubPort, target: { repo: RepoSlug; pr: number; head: string }): Promise<{ attestClaims?: { step: string; closure: string }[] }> {
+/** The closure files the PR changed; a step the registry does not know, or a closure that cannot be read, lists none. */
+function changedMembers(members: ClosureMembers, step: string, changed: ReadonlySet<string>): string[] {
+  try {
+    return (members(step) ?? []).filter((path) => changed.has(path));
+  } catch {
+    return [];
+  }
+}
+
+/** The claims the reviewer's brief asks about, each with the closure files this PR changed; an unreadable PR or file asks nothing, and the merge guard reads it again. */
+export async function briefClaimsAt(
+  port: GitHubPort,
+  target: { repo: RepoSlug; pr: number; head: string },
+  members: ClosureMembers = registryClosureMembers,
+): Promise<{ attestClaims?: { step: string; closure: string; changedFiles?: string[] }[] }> {
   try {
     const { baseRef } = await port.getPr(target.repo, target.pr);
     const read = await readClaims(port, { repo: target.repo, base: baseRef, head: target.head });
     if ("unread" in read || read.claimed.length === 0) return {};
-    return { attestClaims: read.claimed.map(({ step, closure }) => ({ step, closure })) };
+    const changed = new Set((await port.listPrFiles(target.repo, target.pr).catch(() => [])).map(({ path }) => path));
+    return {
+      attestClaims: read.claimed.map(({ step, closure }) => {
+        const changedFiles = changedMembers(members, step, changed);
+        return { step, closure, ...(changedFiles.length > 0 && { changedFiles }) };
+      }),
+    };
   } catch {
     return {};
   }

@@ -60,14 +60,6 @@ describe("an id the screen shows", () => {
 
     expect(rules).toEqual([]);
   });
-
-  it("is held when the screen shows it as a bare number, which qa's narration-facts gate would fail unspoken", () => {
-    const before = spelledBeat("Rule on 7001 first, since the dock server can wait forever on a run.", { visual: { assertion: "Card 7001 holds the dock queue", job: "map" } });
-
-    const rules = rulesFor(before, "Rule on the stalled guard first, since the dock server can wait forever on a run.");
-
-    expect(rules).toContain("number-lost");
-  });
 });
 
 describe("a rewrite that cuts what is not an id", () => {

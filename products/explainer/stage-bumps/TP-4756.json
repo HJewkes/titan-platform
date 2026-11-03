@@ -1,0 +1,1 @@
+{ "stages": ["script", "rewrite", "eval", "qa"], "why": "A bare on-screen number equal to a PR or task id the beat cites is a citation: narration-facts, Q-D14 and the rewrite guard no longer need it spoken" }
