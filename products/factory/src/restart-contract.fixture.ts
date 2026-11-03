@@ -47,6 +47,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-no-verdict-diagnosis": `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`,
   "sh-carry-scope": `${RECORD}: the scope an approval carried over`,
   "sh-carry-seat": `${RECORD}: the seat an approval carried under`,
+  "sh-carry-claims": `${RECORD}: the attestation rows a carried-to head claims`,
   "sh-review-scope": `${RECORD}: the fix diff a fix-round re-review may read as scoped`,
   "sh-scope-check": `${RECORD}: a scoped fix round's out-of-range and repeated FIX_FIRST items`,
   "sh-review-shadow": `${RECORD}: what review-workflow would have decided at a round, read once with the installed profiles`,
