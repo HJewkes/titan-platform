@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the attest step judges through a deploy skew",
+      "file": "products/factory/src/shepherd/attest-evidence.ts",
+      "find": "  if (skew !== undefined) return { deploySkew: skew };\n",
+      "replace": "",
+      "kills": [
+        "attest smoke: main holds a registry commit the running build lacks TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate"
+      ]
+    },
+    {
+      "name": "land asks the owner at a deploy-skew gate",
+      "file": "products/factory/src/shepherd/freeze-wait.ts",
+      "find": "  if (isDeploySkewGate(decision)) return \"thaw\";\n",
+      "replace": "",
+      "kills": [
+        "attest smoke: main holds a registry commit the running build lacks TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate"
+      ]
+    },
+    {
+      "name": "the deploy-skew gate reads as attest-unmet",
+      "file": "products/factory/src/shepherd/attest-read.ts",
+      "find": "return { row: \"attest-deploy-skew\"",
+      "replace": "return { row: \"attest-unmet\"",
+      "kills": [
+        "attest smoke: main holds a registry commit the running build lacks TP-4752: case 5, the attest step waits under a named reason, re-read each round, and raises no closure-mismatch gate"
+      ]
+    }
+  ]
+}

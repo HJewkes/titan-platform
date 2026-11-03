@@ -81,21 +81,29 @@ export async function briefClaimsAt(port: GitHubPort, target: { repo: RepoSlug; 
   }
 }
 
-/** What the attestation judge came to at a head, as the merge guard reads it; absent means the head claims no row. */
-export type AttestDecided = { unmet: readonly { step: string; why: string }[] } | { unread: string };
+/** What the attestation judge came to at a head, as the merge guard reads it; absent means the head claims no row, and `deploySkew` that it waits for a deploy. */
+export type AttestDecided = { unmet: readonly { step: string; why: string }[] } | { unread: string } | { deploySkew: string };
+
+/** The merge-guard row an attest judgment gates on, and why. */
+interface AttestGate {
+  row: "attest-unmet" | "attest-deploy-skew";
+  reason: string;
+}
 
 /**
  * A head that adds or changes an attestation row merges only when an independent reviewer's MERGE at that head attests
- * each row, and the adversary's too where the class has one; claims that cannot be read gate as unmet.
+ * each row, and the adversary's too where the class has one; claims that cannot be read gate as unmet. A read that waits
+ * for a deploy gates on its own row, which land waits out at the head (TP-4752).
  */
-export function attestUnmetReason(attest: AttestDecided | undefined): string | undefined {
+export function attestGate(attest: AttestDecided | undefined): AttestGate | undefined {
   if (attest === undefined) return undefined;
-  if ("unread" in attest) return `attestation unmet: unread: ${attest.unread}`;
-  return attest.unmet.length === 0 ? undefined : `attestation unmet: ${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}`;
+  if ("deploySkew" in attest) return { row: "attest-deploy-skew", reason: `attestation waits: ${attest.deploySkew}` };
+  if ("unread" in attest) return { row: "attest-unmet", reason: `attestation unmet: unread: ${attest.unread}` };
+  return attest.unmet.length === 0 ? undefined : { row: "attest-unmet", reason: `attestation unmet: ${attest.unmet.map(({ step, why }) => `${step}: ${why}`).join("; ")}` };
 }
 
-/** The steps the `shepherd/review` check names as unmet; an unread file names itself. */
+/** The steps the `shepherd/review` check names as unmet; an unread file names itself, and a wait for a deploy names none. */
 export function attestUnmetSteps(attest: AttestDecided | undefined): string[] {
-  if (attest === undefined) return [];
+  if (attest === undefined || "deploySkew" in attest) return [];
   return "unread" in attest ? ["attestations unread"] : attest.unmet.map(({ step }) => step);
 }

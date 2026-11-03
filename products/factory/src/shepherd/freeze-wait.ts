@@ -1,6 +1,6 @@
 import type { GateDecision } from "../gate-policy.js";
 import type { SettleKind, UnsettledMerge } from "../workflows/land-settle.js";
-import { MERGE_BY_REVIEWER_RULE, isUnsettledGate } from "./merge-facts.js";
+import { MERGE_BY_REVIEWER_RULE, isUnsettledGate, type MergeGuardRow } from "./merge-facts.js";
 
 /** Each wait that replaces an approve-merge gate (TP-3734 r3b, gate-context F2); false asks the owner as before. */
 interface WaitDemotions {
@@ -24,13 +24,21 @@ export function isNoFactsGate(decision: GateDecision): boolean {
   return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === "no-facts";
 }
 
+/** The attest read waits for a deploy (TP-4752); land waits at the head and re-reads it each round instead of asking the owner. */
+function isDeploySkewGate(decision: GateDecision): boolean {
+  const row: MergeGuardRow = "attest-deploy-skew";
+  return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === row;
+}
+
+/** A wait for a deploy has no bound and tells no one, as a freeze does: only the deploy ends it, and the deploy pacer owns that. */
 function settleKind(decision: GateDecision): SettleKind {
+  if (isDeploySkewGate(decision)) return "thaw";
   if (WAIT_DEMOTIONS.frozenOnly && isFrozenOnlyGate(decision)) return "thaw";
   if (WAIT_DEMOTIONS.noFacts && isNoFactsGate(decision)) return "once";
   return "settle";
 }
 
-/** The gates land waits on at their head instead of asking the owner: unsettled mergeability, a freeze alone, and missing facts. */
+/** The gates land waits on at their head instead of asking the owner: unsettled mergeability, a freeze alone, missing facts, and an attest read awaiting a deploy. */
 export function headWaits(refresh: UnsettledMerge["refresh"]): UnsettledMerge {
   const transient = (decision: GateDecision) => isUnsettledGate(decision) || settleKind(decision) !== "settle";
   return { transient, kind: settleKind, refresh };

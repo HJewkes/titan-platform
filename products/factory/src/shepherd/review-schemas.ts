@@ -111,6 +111,10 @@ const EvidenceRecordSchema = z.looseObject({
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
+const AttestUnmetSchema = z.looseObject({ unmet: z.array(z.looseObject({ step: z.string(), why: z.string() })) });
+/** `deploySkew` is the wait for a deploy (TP-4752): the read was not judged, so it names no unmet row. */
+const AttestDecidedSchema = z.union([z.looseObject({ unread: z.string() }), z.looseObject({ deploySkew: z.string() }), AttestUnmetSchema]);
+
 export const MergeEvidenceSchema = z.looseObject({
   head: z.string(),
   merge: MergeFactsSchema,
@@ -120,7 +124,7 @@ export const MergeEvidenceSchema = z.looseObject({
   changedFilesUnread: z.string().optional(),
   ciPolicy: CiPolicySchema,
   visualDelta: VisualDeltaSchema.optional(),
-  attest: z.union([z.looseObject({ unread: z.string() }), z.looseObject({ unmet: z.array(z.looseObject({ step: z.string(), why: z.string() })) })]).optional(),
+  attest: AttestDecidedSchema.optional(),
   attestVerdicts: z
     .looseObject({
       attests: z.array(z.string()),
