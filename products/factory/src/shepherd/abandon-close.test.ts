@@ -40,7 +40,7 @@ async function pausedAtH1(advisory = false): Promise<World> {
   const [commands, reopened, notes]: [string[][], string[], string[]] = [[], [], []];
   const tasks = { reopen: async (initiative: string, id: string) => void reopened.push(`${initiative}/${id}`), appendNote: async (_: string, __: string, line: string) => void notes.push(line) };
   const abandon = abandonCloseRoute(() => 0, { port: githubPort(fake.wire), agentChatBin: "agent-chat", run: ghWriteOn(fake, commands), task: () => TASK, tasks, advisory: () => advisory });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes: deadEndRoutes(undefined, abandon), gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes: deadEndRoutes(undefined, { abandon }), gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd: deadEndParam([H1, H2]) });
   await gateOpened(host, gateId(runId, "sh-dead-end"));

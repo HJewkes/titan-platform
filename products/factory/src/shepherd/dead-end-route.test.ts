@@ -26,7 +26,7 @@ describe("a fixer's exit with no push, with the dead-end seat route on (TP-4759)
 
     expect(world.host.gates.get(id)?.prompt).toContain(`Seat ${REGISTRANT} answers`);
     expect(world.host.gates.get(id)?.rule?.ruleId).toBe("dead-end/exited-without-push");
-    expect(options(world.host, id)).toEqual(kind === "fix-proof" ? ["respawn", "abandon", "waive-proof"] : ["respawn", "abandon"]);
+    expect(options(world.host, id)).toEqual(kind === "fix-proof" ? ["respawn", "replan", "abandon", "waive-proof"] : ["respawn", "replan", "abandon"]);
     expect(world.sends).toEqual([REGISTRANT]);
     expect(pendingSteps(world.host, runId)).toEqual(["sh-dead-end"]);
   });
@@ -60,7 +60,7 @@ describe("a route escalation, with the dead-end seat route on (TP-4759)", () => 
 
     expect(host.gates.get(id)?.rule?.ruleId).toBe(`dead-end/${escalation}`);
     expect(host.gates.get(id)?.prompt).toContain(`at head ${H1}`);
-    expect(options(host, id)).toEqual(["respawn", "abandon", "owner-merge"]);
+    expect(options(host, id)).toEqual(["respawn", "replan", "abandon", "owner-merge"]);
     expect(pendingSteps(host, runId)).toEqual(["sh-dead-end"]);
   });
 

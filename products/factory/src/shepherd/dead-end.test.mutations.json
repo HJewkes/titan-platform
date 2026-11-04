@@ -7,7 +7,7 @@
       "find": "new Set([\"respawn\", \"replan\", \"abandon\"]);",
       "replace": "new Set([\"respawn\", \"replan\", \"abandon\", \"waive-proof\"]);",
       "kills": [
-        "a dead-end seat gate a coordinator's waive-proof or owner-merge is refused even where the schema offers it"
+        "a dead-end seat gate a coordinator's waive-proof or owner-merge is refused even where the schema offers it (exited-without-push)"
       ]
     },
     {
