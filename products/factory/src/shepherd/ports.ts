@@ -28,6 +28,8 @@ export interface CleanupTasks {
   state(initiative: string, id: string): Promise<TaskState>;
   slicing(initiative: string, id: string): Promise<TaskSlicing>;
   done(initiative: string, id: string): Promise<void>;
+  /** Sets a done task back to open; an open task is left as it is, so a repeated reopen writes nothing. */
+  reopen(initiative: string, id: string): Promise<void>;
   /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
   appendNote(initiative: string, id: string, line: string): Promise<void>;
 }

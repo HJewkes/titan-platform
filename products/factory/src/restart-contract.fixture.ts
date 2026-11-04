@@ -70,6 +70,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-spawn-fixer": `${WRITE}: spawns the fixer agent`,
   "sh-thaw": `${WRITE}: releases the freeze for the owner`,
   "sh-cleanup": `${WRITE}: deletes the head ref and closes the task`,
+  "sh-abandon": `${WRITE}: closes the PR through gh-write at the gate head, keeping its branch, and reopens its task; a closed PR is not closed again`,
   "sh-landed": `${RECORD}: the run's landed outcome`,
   "sh-stopped": `${RECORD}: the run's stopped outcome`,
   "sh-override": `${RECORD}: the owner's override and when it was taken`,
