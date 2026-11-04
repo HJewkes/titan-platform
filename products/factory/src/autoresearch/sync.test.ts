@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort } from "@titan-design/github";
+import { gitIn } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { execDatedGit } from "./integrate.js";
 import { syncRatchet } from "./sync.js";
@@ -29,7 +30,8 @@ async function commitOn(work: string, from: string, files: Record<string, string
   return git(work, "rev-parse", "HEAD");
 }
 
-const pushTo = (work: string, sha: string, ref: string) => git(work, "push", "--quiet", "origin", `${sha}:${ref}`);
+/** Fixture pushes run under `fixtureEnv`, so a session's injected push hook cannot refuse the scratch origin's main. */
+const pushTo = (work: string, sha: string, ref: string) => gitIn(work)("push", "--quiet", "origin", `${sha}:${ref}`);
 
 /**
  * The ratchet holds one kept idea; its snapshot PR has merged, as a squash of the idea plus the log, and main may
@@ -48,10 +50,10 @@ async function fixture(onMain: Record<string, string> = { "other.txt": "unrelate
   await git(root, "clone", "--quiet", "--bare", work, bare);
   await git(work, "remote", "add", "origin", bare);
   const kept = await commitOn(work, pin, { "src.txt": "kept\n" });
-  await pushTo(work, kept, RATCHET);
+  pushTo(work, kept, RATCHET);
   const squash = await commitOn(work, pin, { "src.txt": "kept\n", "ar-log/run-1/m1.md": "kept: i-a1\n" });
   const main = Object.keys(onMain).length === 0 ? squash : await commitOn(work, squash, onMain);
-  await pushTo(work, main, `refs/heads/${DEFAULT}`);
+  pushTo(work, main, `refs/heads/${DEFAULT}`);
   const fake = fakeGitHub({ repo: REPO });
   const pr = fake.addPr({ state: "closed", merged: true, headRef: `${PREFIX}-snap/run-1/m1`, headSha: main });
   const input = { repo: REPO, pr: pr.number, tree: work, head: kept, ratchetRef: RATCHET, ratchetPrefix: PREFIX, defaultBranch: DEFAULT, frozen: ["eval/**"], logDir: "ar-log", at: AT };
