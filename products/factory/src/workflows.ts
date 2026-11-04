@@ -113,7 +113,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
   spawnGate?: SpawnGate;
   /** The one ledger of machine stops the spawn gate and the broker's refusals feed, read when a reviewer ends with no verdict. */
   machineStop?: MachineStopWatch;
-  /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
+  /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every registration is refused. */
   seats?: () => SeatBook;
   /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
   review?: Omit<ReviewWiring, "isFrozen">;
