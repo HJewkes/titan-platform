@@ -16,6 +16,8 @@ interface RunOptions {
   graceMs?: number;
   /** Extra time before the work-started marker, on top of `timeoutMs`, so a runner held on load is not killed for waiting. */
   waitAllowanceMs?: number;
+  /** How long output may still arrive after the script exits before its pipes are cut, so a descendant holding them cannot hang the run. */
+  drainMs?: number;
 }
 
 /** A runner prints this line on stderr when it stops waiting on host load and starts real work; the rung's timeout counts from it. */
@@ -23,6 +25,7 @@ const WORK_STARTED = "ar-work-started";
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 const DEFAULT_GRACE_MS = 5_000;
+const DEFAULT_DRAIN_MS = 2_000;
 
 function killGroup(pid: number, signal: NodeJS.Signals): void {
   try {
@@ -96,15 +99,40 @@ function guardOf(child: ChildProcess, { timeoutMs, graceMs }: { timeoutMs?: numb
   return { stop, arm, clear, reason: () => reason };
 }
 
+/** Buffers both streams up to {@link MAX_BUFFER}; `onWorkStarted` runs once, at the first {@link WORK_STARTED} line. */
+function collect(child: ChildProcess, out: { stdout: string; stderr: string; waitedMs?: number }, onWorkStarted: () => void): void {
+  child.stdout?.on("data", (chunk) => void (out.stdout.length < MAX_BUFFER && (out.stdout += chunk)));
+  child.stderr?.on("data", (chunk) => {
+    if (out.stderr.length < MAX_BUFFER) out.stderr += chunk;
+    if (out.waitedMs === undefined && String(chunk).split("\n").some((line) => line.trim() === WORK_STARTED)) onWorkStarted();
+  });
+}
+
+/**
+ * Once the script exits, the group is left `drainMs` to flush output, then killed and its pipes cut: a descendant that
+ * holds stdout, even one that left the group, would otherwise keep `close` from ever firing.
+ */
+function drainAfterExit(child: ChildProcess, drainMs: number): void {
+  let cut: NodeJS.Timeout | undefined;
+  child.once("exit", () => {
+    cut = setTimeout(() => {
+      if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }, drainMs);
+  });
+  child.once("close", () => clearTimeout(cut));
+}
+
 /**
  * Runs one argv without a shell, in its own process group so a timeout or abort takes down every descendant, not just
- * the script: SIGTERM first, SIGKILL after the grace period. A non-zero exit is an answer, not a throw, so a suite
- * failure becomes an L0 row.
+ * the script: SIGTERM first, SIGKILL after the grace period. A non-zero exit, or a kill from outside such as the
+ * kernel's OOM killer, is an answer, not a throw, so a suite failure becomes an L0 row and a killed eval a failed step.
  */
 export function runCommand(argv: readonly string[], options: RunOptions): Promise<CommandRun> {
   const [file, ...args] = argv;
   if (!file) return Promise.reject(new Error("[command] empty argv"));
-  const { cwd, signal, graceMs = DEFAULT_GRACE_MS, waitAllowanceMs = 0 } = options;
+  const { cwd, signal, graceMs = DEFAULT_GRACE_MS, waitAllowanceMs = 0, drainMs = DEFAULT_DRAIN_MS } = options;
   return new Promise((resolve) => {
     const child = spawn(file, args, { cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const guard = guardOf(child, { timeoutMs: options.timeoutMs, graceMs });
@@ -113,28 +141,30 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
     guard.arm(waitAllowanceMs);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
-    child.stdout.on("data", (chunk) => void (out.stdout.length < MAX_BUFFER && (out.stdout += chunk)));
-    child.stderr.on("data", (chunk) => {
-      if (out.stderr.length < MAX_BUFFER) out.stderr += chunk;
-      if (out.waitedMs === undefined && String(chunk).split("\n").some((line) => line.trim() === WORK_STARTED)) {
-        out.waitedMs = Date.now() - started;
-        guard.arm(0);
-      }
+    collect(child, out, () => {
+      out.waitedMs = Date.now() - started;
+      guard.arm(0);
     });
     child.on("error", (error) => (out.spawnError = error.message));
-    child.on("close", (code) => {
+    drainAfterExit(child, drainMs);
+    child.on("close", (code, killed) => {
       guard.clear();
       signal?.removeEventListener("abort", onAbort);
       // A descendant that outlived the script is still in the group; reap it on the normal path too.
       if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
-      resolve(finish(out, guard.reason() ?? out.spawnError, code));
+      resolve(finish(out, guard.reason() ?? out.spawnError ?? killedBy(killed), code));
     });
   });
 }
 
+const killedBy = (signal: NodeJS.Signals | null) => (signal === null ? undefined : `killed by ${signal}`);
+
+/** The cause is the last stderr line, so `lastLine`'s error names a timeout or an outside kill even after the script logged. */
 function finish(out: { stdout: string; stderr: string; waitedMs?: number }, failure: string | undefined, code: number | null): CommandRun {
   const ok = failure === undefined && code === 0;
-  return { ok, stdout: out.stdout, stderr: !ok && !out.stderr ? (failure ?? `exit ${code}`) : out.stderr, ...(out.waitedMs === undefined ? {} : { waitedMs: out.waitedMs }) };
+  const cause = failure ?? (out.stderr ? undefined : `exit ${code}`);
+  const stderr = ok || cause === undefined ? out.stderr : [out.stderr.trimEnd(), cause].filter(Boolean).join("\n");
+  return { ok, stdout: out.stdout, stderr, ...(out.waitedMs === undefined ? {} : { waitedMs: out.waitedMs }) };
 }
 
 /** A target prints its one JSON result as the last non-empty stdout line; anything before it is the runner's own log. */

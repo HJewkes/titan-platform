@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { FORKS_SLEEPER, PROCESS_TEST_MS, alive, dead, exited, forkDriver, readPids, recordedPids, scratch } from "./eval-driver.test-helpers.js";
 import { runCommand, stopEvals } from "./run-command.js";
 
@@ -51,6 +51,27 @@ describe("runCommand", () => {
 
     expect(run.ok).toBe(false);
   });
+
+  it("answers a script killed from outside with a failure that names the signal, after what it logged", async () => {
+    const run = await runCommand(["sh", "-c", 'echo "runner log" >&2; kill -KILL $$'], { cwd: scratch(), signal: never });
+
+    expect(run.ok).toBe(false);
+    expect(run.stderr.trim().split("\n")).toEqual(["runner log", "killed by SIGKILL"]);
+  });
+
+  it("settles once the drain bound passes when a descendant outside the group keeps stdout open after the script dies", async () => {
+    const dir = scratch();
+    const holder = [
+      `const held = require("node:child_process").spawn("sleep", ["600"], { detached: true, stdio: ["ignore", "inherit", "ignore"] });`,
+      `require("node:fs").appendFileSync(process.argv[1] + "/children", held.pid + "\\n");`,
+      "held.unref();",
+    ].join(" ");
+    const script = `"$1" -e '${holder}' "$0"; echo partial; kill -KILL $$`;
+    onTestFinished(() => readPids(dir).forEach((pid) => alive(pid) && process.kill(pid, "SIGKILL")));
+    const run = await runCommand(["sh", "-c", script, dir, process.execPath], { cwd: dir, signal: never, drainMs: 50 });
+
+    expect(run).toMatchObject({ ok: false, stdout: "partial\n", stderr: "killed by SIGKILL" });
+  }, PROCESS_TEST_MS);
 
   it("stopping evals kills an in-flight eval's forked child and resolves once it is down, without sitting out the grace", async () => {
     const dir = scratch();
