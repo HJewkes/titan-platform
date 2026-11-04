@@ -52,7 +52,8 @@ function entriesChange(before: readonly Entry[], after: readonly Entry[]): Budge
 /** The same keys, the same non-number values, and a number wherever the base had one. */
 function sameBudget(base: Entry, head: Entry): boolean {
   const keys = Object.keys(base);
-  if (!isDeepStrictEqual(keys.toSorted(), Object.keys(head).toSorted())) return false;
+  const sorted = (names: string[]): string[] => names.sort((a, b) => a.localeCompare(b));
+  if (!isDeepStrictEqual(sorted([...keys]), sorted(Object.keys(head)))) return false;
   return keys.every((key) => (typeof base[key] === "number" ? typeof head[key] === "number" : isDeepStrictEqual(base[key], head[key])));
 }
 
