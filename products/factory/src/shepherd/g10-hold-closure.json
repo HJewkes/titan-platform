@@ -23,6 +23,7 @@
   "ci-norun.ts",
   "ci-timeout-entry.ts",
   "ci-unread.ts",
+  "ci-workflow-yaml.ts",
   "cleanup-ports.ts",
   "cleanup.ts",
   "closure-members.ts",
