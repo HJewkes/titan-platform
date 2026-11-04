@@ -194,6 +194,8 @@
   "visual-gate.ts",
   "visual-threshold-gate.ts",
   "visual-threshold.ts",
+  "visual-week-command.ts",
+  "visual-week.ts",
   "visuals-manifest.ts",
   "waiting-schema.ts",
   "waiting.ts",

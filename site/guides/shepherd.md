@@ -1283,6 +1283,23 @@ posts no comment and stores no record. Like `shepherd status`, it asks `titan-fa
 serve` when one answers and otherwise runs here, in an agent shell too. A repo with no key
 exits 66.
 
+**Weekly Ship batch.** Gates the visual-path row holds stay pending until the owner ships
+them. `shepherd visual-week` builds one round spec from them:
+
+```sh
+titan-factory shepherd visual-week --repo owner/design > round.json
+```
+
+It prints JSON: a `unit` named `td-ship-week-<ISO week>`, `round` 1, one pick-one question
+per pending `approve-merge` gate that the visual-path row holds at a head the run last
+decided and that no hold covers, and `skipped`, the repo's other gates with why each is out. Each question binds the
+gate's own head and lists `Ship` as its only ship option. Import the round into the console;
+a Ship resolves its gate through the same round sweep as any console Ship, at the exact head
+and within 24 hours. A PR whose head moves before the Ship stays pending and appears in the
+next week's batch. The command is read-only: it resolves no gate and writes no file, so
+redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
+runs here.
+
 ### Feature base {#feature-base}
 
 A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's
