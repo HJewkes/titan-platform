@@ -21,7 +21,7 @@ import { retireTapCommands } from "./retire-tap.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import type { Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
-import { readCommand } from "./owner-guard.js";
+import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext } from "./owner-guard.js";
 import { roundFrameDeltaCommands } from "./round-frame-delta.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
@@ -41,6 +41,7 @@ import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
+import { loopBoardResult, loopTierCommand, readLoopBoard } from "./work-loops.js";
 
 const upstreamHealth = z.object({
   id: z.enum(UPSTREAM_IDS),
@@ -115,19 +116,21 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
  * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps, and
- * approvals.flow shares the kept factory read; the taps themselves read the factory fresh.
+ * approvals.flow and the taps share the kept factory read (TP-4754). A factory frame only marks it stale: frames come every
+ * few seconds live, so dropping it on each one left every inbox read waiting on a cold needs.list.
  */
 function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
   const cache = inboxReadCache(sources);
-  invalidation?.on("factory", cache.invalidate);
+  invalidation?.on("factory", cache.stale);
+  const cached = { ...sources, factory: cache.factory };
   const actions = { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) };
   return {
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),
     ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir, cache.invalidate)),
-    ...approvalsCommands({ ...sources, factory: cache.factory }),
+    ...approvalsCommands(cached),
     ...inboxViewCommands(sources, cache),
-    ...inboxActionCommands(sources, actions, cache.invalidate),
+    ...inboxActionCommands(cached, actions, cache.invalidate),
     ...retireTapCommands({ agents, shepherd }, actions, cache.invalidate),
   };
 }
@@ -148,6 +151,14 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
       result: initiativeResult,
       run: ({ slug }) => readInitiative(activeWork, slug, work),
     }),
+    "work.loops": readCommand({
+      name: "work.loops",
+      description: "The platform's open-loops board from active-work's loop.board: each loop's advisory tier, status, seat and motion, and the tech tree; unavailable on a daemon older than active-work 0.25",
+      args: z.object({}),
+      result: loopBoardResult,
+      run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),
+    }),
+    "work.loop-tier": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),
   };
 }
 

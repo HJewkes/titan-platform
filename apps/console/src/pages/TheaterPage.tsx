@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, EmptyState, Spinner, VStack } from "@titan-design/react-ui";
+import { Alert, EmptyState, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { useQuery } from "../data/rpc.js";
 import { DayFeedSection, FeedFooter, NoMatches, PurposeChips, SearchField } from "./TheaterFeed.js";
 import { feedStateOf, groupByDay, purposeCounts, searchedRows, shownRows, type FeedState, type VideoRow } from "./theater-feed.js";

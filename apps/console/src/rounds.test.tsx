@@ -56,13 +56,30 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(9);
+    expect(rows).toHaveLength(7);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
 
+  it("folds invalid rounds into their own group, closed until pressed, each reason cut to one line", async () => {
+    await renderConsole("#/rounds");
+    const toggle = await screen.findByText("Invalid rounds (2)");
+    expect(screen.queryByTestId("round-row-legacy-r1")).toBeNull();
+    fireEvent.click(toggle);
+    const legacy = await within(screen.getByTestId("rounds-invalid")).findByTestId("round-row-legacy-r1");
+    expect(within(legacy).getByTestId("round-reason-legacy-r1").className).toContain("truncate");
+  });
+
+  it("shows an empty group as one muted line, not an empty-state heading", async () => {
+    await renderConsole("#/rounds");
+    const empty = await within(await screen.findByTestId("rounds-withdrawn")).findByText("No withdrawn rounds");
+    expect(empty.className).toContain("text-text-secondary");
+    expect(empty.className).not.toContain("text-lg");
+  });
+
   it("lists an invalid round with the schema's reason", async () => {
     await renderConsole("#/rounds");
+    fireEvent.click(await screen.findByText("Invalid rounds (2)"));
     const legacy = await screen.findByTestId("round-row-legacy-r1");
     expect(within(legacy).getByText("invalid")).toBeTruthy();
     expect(within(legacy).getByText(/titan-review\/round@1 predates the review contract/)).toBeTruthy();
@@ -77,7 +94,8 @@ describe("the rounds list", () => {
     expect(within(card).getByText("questions")).toBeTruthy();
     expect(within(card).getByText("4 questions")).toBeTruthy();
     expect(within(screen.getByTestId("round-card-lantern-cards-r1")).getByText("1 question")).toBeTruthy();
-    expect(within(screen.getByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
+    fireEvent.click(screen.getByText("Invalid rounds (2)"));
+    expect(within(await screen.findByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
     expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
   });
 

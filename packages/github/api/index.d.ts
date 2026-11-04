@@ -54,7 +54,11 @@ declare class GhError extends Error {
     readonly args: readonly string[];
     readonly result: GhResult;
     private readonly httpStatus?;
-    constructor(args: readonly string[], result: GhResult, httpStatus?: number | undefined);
+    /** A `rateLimitMarker`, put first so a caller that bounds the text it keeps still has it. */
+    readonly rateLimit: string;
+    constructor(args: readonly string[], result: GhResult, httpStatus?: number | undefined,
+    /** A `rateLimitMarker`, put first so a caller that bounds the text it keeps still has it. */
+    rateLimit?: string);
     get status(): number | undefined;
 }
 /** Uses the caller's existing `gh` login; this module never sees a token. */
@@ -207,6 +211,16 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
+/** A file in a directory listing: its repo path and blob sha, with no content read. */
+interface RepoEntry {
+    path: string;
+    blobSha: string;
+}
+/** A file in a directory listing: its repo path and blob sha, with no content read. */
+interface RepoEntry {
+    path: string;
+    blobSha: string;
+}
 interface RepoFile {
     path: string;
     blobSha: string;
@@ -279,6 +293,11 @@ interface MergeIntoBranchRequest {
     head: string;
     /** The merge commit's message; absent, GitHub writes its default. */
     message?: string;
+}
+
+/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
+declare class GitHubConflictError extends Error {
+    constructor(message: string);
 }
 
 /** `owner/name`. */
@@ -372,6 +391,7 @@ interface GitHubWire {
     getDefaultBranch(repo: RepoSlug): Promise<string>;
     getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
     getContentBytes(repo: RepoSlug, path: string, ref: string, maxBytes?: number): Promise<Uint8Array | null>;
+    listDirectory(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
     putContent(repo: RepoSlug, request: PutFileRequest): Promise<{
         blobSha: string;
     }>;
@@ -461,6 +481,8 @@ interface GitHubPort {
     fileBytes(repo: RepoSlug, path: string, ref: string, opts?: {
         maxBytes?: number;
     }): Promise<Uint8Array | null>;
+    /** The files directly under directory `path` at `ref`, null when nothing is there; a file at `path`, or a listing at GitHub's 1,000-entry cap, throws. */
+    listFiles(repo: RepoSlug, path: string, ref: string): Promise<RepoEntry[] | null>;
     putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{
         blobSha: string;
     }>>;
@@ -549,10 +571,6 @@ interface GitHubPort {
     listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
     /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
     listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
-}
-/** A write whose precondition no longer holds, such as a blob that changed under an edit. */
-declare class GitHubConflictError extends Error {
-    constructor(message: string);
 }
 interface GitHubPortOptions {
     /**
@@ -865,6 +883,95 @@ declare function headCheckFindings({ headSha, contexts, runs, requiredApps }: He
  * newest status only says when it was posted, not when the work it reports began.
  */
 declare function statusCheckRuns(statuses: readonly CommitStatus[], headSha: string, contexts: readonly string[]): CheckRun[];
+
+/**
+ * I2's diff pin (v9.1 §2.3, Q13). `full` hashes the whole serialisation and is the identity; `core` hashes only each
+ * file's path, mode lines and added and removed lines (or a binary's new blob id), and is read only by exclusion 2.
+ * An ambiguous or missing merge base gives a pin that matches nothing, itself included.
+ */
+type DiffPin = ExactDiffPin | AmbiguousDiffPin;
+interface ExactDiffPin {
+    readonly kind: "exact";
+    readonly head: string;
+    /** The single `merge-base --all` of the head and `main`. */
+    readonly base: string;
+    /** The fresh `main` tip the base was taken from. */
+    readonly main: string;
+    readonly full: string;
+    readonly core: string;
+}
+interface AmbiguousDiffPin {
+    readonly kind: "ambiguous";
+    readonly head: string;
+    readonly main: string;
+    /** Every merge base git reported: none, or more than one. */
+    readonly bases: readonly string[];
+}
+interface DiffSerialisation {
+    readonly full: string;
+    readonly core: string;
+}
+/** The §2.3 serialisation of `git diff` output made by the §2.3 command. */
+declare function serialiseDiff(raw: string): DiffSerialisation;
+declare function diffHashes(raw: string): DiffSerialisation;
+/** Exclusion 2's proof: a conflict-free merge of main reproduces `current.head`'s tree from the reviewed head. */
+type MergeUpProof = {
+    readonly ok: true;
+    readonly mainParent: string;
+} | {
+    readonly ok: false;
+    readonly reason: string;
+};
+/** Checks that `current.head` is a merge of main into `reviewedHead`, verified by `merge-tree --write-tree`. */
+type MergeUpCheck = (reviewedHead: string, current: ExactDiffPin) => Promise<MergeUpProof>;
+type DiffCarry = {
+    readonly carries: true;
+    readonly by: "equal-full";
+} | {
+    readonly carries: true;
+    readonly by: "merge-up";
+    readonly mainParent: string;
+} | {
+    readonly carries: false;
+    readonly reason: string;
+};
+/**
+ * Whether a diff-pinned fact made at `reviewed` holds at `current`: only Q13's two exclusions carry it. Exclusion 2
+ * runs the merge-up check only once core is equal, so a head move that changed the PR's own lines never pays for git.
+ */
+declare function diffCarry(reviewed: DiffPin, current: DiffPin, mergeUp: MergeUpCheck): Promise<DiffCarry>;
+
+/**
+ * No global or system config, and none a parent `git -c` or `GIT_CONFIG_COUNT` injected, so a hostile gitconfig cannot
+ * change the diff, the merge base or the merge. The clone's own config is the factory's, and the §2.3 command pins every
+ * diff option that config could set.
+ */
+declare const HARDENED_GIT_ENV: Readonly<Record<string, string>>;
+/** v9.1 §2.3's command, after `git -C <clone>` and before `<merge-base> <head>`. */
+declare const DIFF_HASH_ARGS: readonly string[];
+interface DiffPinOptions {
+    /** Defaults to `origin`. */
+    remote?: string;
+    /** Defaults to `main`. */
+    branch?: string;
+    /** The fetch's credential (as for `lsRemotePullHead`); it rides over `HARDENED_GIT_ENV` for the fetch alone. */
+    fetchEnv?: Readonly<Record<string, string>>;
+    /** Per git call; defaults to 60 s. */
+    timeoutMs?: number;
+}
+declare class DiffHashError extends Error {
+    constructor(message: string);
+}
+/**
+ * Fetches `main` fresh, takes `merge-base --all` of it and `head`, and hashes the §2.3 diff between them. More than one
+ * base, or none, gives an ambiguous pin. `head` must be a full sha, so no local branch or tag can shadow it.
+ */
+declare function gitDiffPin(exec: GitExec, clone: string, head: string, options?: DiffPinOptions): Promise<DiffPin>;
+/**
+ * Exclusion 2's check in a clone: `current.head` has exactly two parents, the reviewed head and one already in the main
+ * tip the pin was taken from, and a clean `merge-tree --write-tree` of the two reproduces its tree.
+ */
+declare function gitMergeUpCheck(exec: GitExec, clone: string, timeoutMs?: number): MergeUpCheck;
 
 type RateLane = "rest" | "graphql";
 /** GitHub's own count for one lane, as its last answer's `x-ratelimit-*` headers put it. */
@@ -1226,6 +1333,20 @@ declare const RATE_LIMIT_PHRASES: readonly RegExp[];
 declare function nextResetAt(now: number, streak: number): number;
 declare function classifyGitHubFailure(input: GitHubFailureInput): GitHubFailure;
 
+/** What a marker hands a caller who sees only an error's text: enough to classify the failure again on its own clock. */
+interface RateLimitFacts {
+    status: number;
+    method: string;
+    headers: Readonly<Record<string, string>>;
+}
+/**
+ * A failed call's answer as a `[gh-rate-limit …]` text marker, or "" when `classifyGitHubFailure` does not call it a
+ * limit. Step errors reach their runner as strings, so the marker is what lets a caller tell a limit from a refusal.
+ */
+declare function rateLimitMarker(status: number | undefined, method: string, headers: ReadonlyMap<string, string>, message: string): string;
+/** The facts of the first marker in `text`, or undefined when it carries none. */
+declare function parseRateLimitMarker(text: string): RateLimitFacts | undefined;
+
 /**
  * Parse the text of a GitHub personal access token file: a classic `ghp_` token or a
  * fine-grained `github_pat_` token, with one optional trailing newline. Returns the token.
@@ -1323,4 +1444,4 @@ declare function memoryPoolStateStore(): PoolStateStore;
 declare function isPoolUnavailable(value: unknown): value is PoolUnavailable;
 declare function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A>;
 
-export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, probeVerdict, probedBucket, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };
+export { type AmbiguousDiffPin, type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, BlobTooLargeError, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DIFF_HASH_ARGS, DONE_OVERLAP_MS, type DiffCarry, DiffHashError, type DiffPin, type DiffPinOptions, type DiffSerialisation, type ExactDiffPin, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, HARDENED_GIT_ENV, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type MergeUpCheck, type MergeUpProof, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitFacts, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoEntry, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, diffCarry, diffHashes, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, gitDiffPin, gitMergeUpCheck, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isConcluded, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, parseRateLimitMarker, probeVerdict, probedBucket, rateBudget, rateLimitMarker, readBackstopSnapshot, serialiseDiff, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, statusCheckRuns, successRun, withoutSupersededCancels };

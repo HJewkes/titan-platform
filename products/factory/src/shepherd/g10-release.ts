@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
-import type { TakeRecheck } from "./hold.js";
+import type { TakeRecheck } from "./hold-timing.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./signoffs.js";
@@ -22,7 +22,7 @@ export const G10_RELEASE_STEPS: readonly StepDeclaration[] = [{ id: G10_RELEASE_
  * other class waits for a seat.
  */
 const G10_REVIEW_CLASS = "g10-review";
-const G10_ADVERSARY_CLASS = "g10-adversary";
+export const G10_ADVERSARY_CLASS = "g10-adversary";
 
 /**
  * Decision 422(1)'s stopgap, superseded at M5: D-M5-03 (TP-3153) deletes it with the hold slots, and its merge-up carry goes at M3

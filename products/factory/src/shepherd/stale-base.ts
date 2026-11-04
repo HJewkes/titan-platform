@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps } from "./phases.js";
-import type { RetargetRun } from "./retarget-conflict.js";
+import type { RetargetRun } from "./run-state.js";
 
 const STALE_BASE_STEP = "sh-stale-base";
 export const STALE_BASE_STEPS: readonly StepDeclaration[] = [{ id: STALE_BASE_STEP, kind: "dispatch" }];

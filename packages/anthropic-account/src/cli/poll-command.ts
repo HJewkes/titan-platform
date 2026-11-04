@@ -1,7 +1,7 @@
 import type { AccountProfile } from "../profile.js";
 import { pollAll, pollUsage, type PollAllEntry, type PollFailure, type PollOptions } from "../node/poll.js";
 import { refreshIfNeeded, type RefreshResult } from "../node/refresh.js";
-import { fetchOf, profilesOf, type CliContext } from "./context.js";
+import { fetchOf, keychainOf, profilesOf, type CliContext } from "./context.js";
 import { EXIT_FAILED, EXIT_LOGIN, EXIT_OK, exitFor, failureLine, printableLabel, windowsText } from "./report.js";
 
 // The timer runs every 150 s, so a token due within 10 minutes gets several tries before
@@ -69,12 +69,14 @@ async function pollEntries(profiles: AccountProfile[], write: boolean, options: 
   return results;
 }
 
-// Refreshes first, when asked, so a token renewed this run is the one polled.
+// Refreshes first, when asked, so a token renewed this run is the one polled. On darwin the
+// login lives in the Keychain, which this never writes: renewal is left to Claude Code.
 export async function runPoll(flags: PollFlags, context: CliContext): Promise<number> {
   const profiles = profilesOf(context);
   const now = context.now();
-  const refreshCodes = flags.refresh ? await refreshAll(profiles, now, context) : [];
-  const options: PollOptions = { fetch: fetchOf(context), now, uid: context.uid };
+  const refresh = flags.refresh && (context.platform ?? process.platform) !== "darwin";
+  const refreshCodes = refresh ? await refreshAll(profiles, now, context) : [];
+  const options: PollOptions = { ...keychainOf(context), fetch: fetchOf(context), now, uid: context.uid };
   const entries = await pollEntries(profiles, flags.write, options);
   return exitFor([...refreshCodes, ...entries.map((entry) => reportEntry(entry, context))]);
 }

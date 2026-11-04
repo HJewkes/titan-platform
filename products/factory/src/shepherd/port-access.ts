@@ -25,9 +25,11 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.merge": "write",
   "shepherd.review": "write",
   "shepherd.resync": "write",
+  "shepherd.readdress-dead-ends": "write",
   "shepherd.prs": "read",
   "shepherd.watch": "read",
   "shepherd.visual-delta": "read",
+  "shepherd.visual-week": "read",
   "shepherd.brief": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;
 

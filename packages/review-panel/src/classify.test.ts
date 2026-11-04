@@ -30,6 +30,17 @@ describe("classifyPr", () => {
     expect(result).toEqual({ class: "g10", touches: ["authority"] });
   });
 
+  it("A17: a canonicaliser change is a rule-file change, so it takes the adversarial class", () => {
+    for (const path of ["packages/github/src/diff-hash.ts", "packages/github/src/git-diff-hash.ts", "packages/github/src/git-merge-tree.ts"]) {
+      expect(classifyPr(facts([path, "packages/github/src/diff-hash.test.ts"]))).toMatchObject({ class: "g10", touches: expect.arrayContaining(["authority"]) });
+    }
+  });
+
+  it("A17: a pin-class change is a rule-file change, so it takes the adversarial class", () => {
+    const result = classifyPr(facts(["products/factory/src/registry/pin-classes.ts", "products/factory/src/registry/pin-classes.test.ts"]));
+    expect(result).toMatchObject({ class: "g10", touches: expect.arrayContaining(["authority"]) });
+  });
+
   it("classifies tp#747's required-checks policy files as authority and policy", () => {
     const result = classifyPr(facts(["products/factory/src/required-checks-policy.ts", "products/factory/src/required-checks-policy.test.ts"]));
     expect(result).toEqual({ class: "g10", touches: ["authority", "policy"] });

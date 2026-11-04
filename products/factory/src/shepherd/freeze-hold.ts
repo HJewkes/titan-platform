@@ -11,7 +11,7 @@ import { FREEZE_RECHECK_MS, actionsRunsAt, greenHead, isFixersPr, type FreezeSto
 import { fixPrStallRoute } from "./fix-pr-stall.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import { countMainFixedMergeUp, mainFixedSince, mainFixedSpent } from "./main-fixed.js";
-import type { GateRun, PrTarget } from "./gates.js";
+import type { GateRun, PrTarget } from "./run-state.js";
 import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
 import type { CauseTrail } from "./review-cause.js";

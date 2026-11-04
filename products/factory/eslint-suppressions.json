@@ -206,7 +206,7 @@
   },
   "products/factory/src/shepherd/policy.ts": {
     "titan/max-line-length": {
-      "count": 4
+      "count": 3
     }
   },
   "products/factory/src/shepherd/post-merge.ts": {
@@ -306,11 +306,6 @@
   },
   "products/factory/src/shepherd/spawn-profile.test.ts": {
     "titan/no-internal-module-mock": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/stale-gates.ts": {
-    "titan/max-line-length": {
       "count": 1
     }
   },

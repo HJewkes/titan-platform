@@ -111,6 +111,10 @@ const EvidenceRecordSchema = z.looseObject({
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
+const AttestUnmetSchema = z.looseObject({ unmet: z.array(z.looseObject({ step: z.string(), why: z.string() })) });
+/** `deploySkew` is the wait for a deploy (TP-4752): the read was not judged, so it names no unmet row. */
+const AttestDecidedSchema = z.union([z.looseObject({ unread: z.string() }), z.looseObject({ deploySkew: z.string() }), AttestUnmetSchema]);
+
 export const MergeEvidenceSchema = z.looseObject({
   head: z.string(),
   merge: MergeFactsSchema,
@@ -120,6 +124,14 @@ export const MergeEvidenceSchema = z.looseObject({
   changedFilesUnread: z.string().optional(),
   ciPolicy: CiPolicySchema,
   visualDelta: VisualDeltaSchema.optional(),
+  attest: AttestDecidedSchema.optional(),
+  attestVerdicts: z
+    .looseObject({
+      attests: z.array(z.string()),
+      adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()) }).optional(),
+      adversaryPlanned: z.literal(true).optional(),
+    })
+    .optional(),
 });
 
 const PanelMemberRead = z.looseObject({ shape: z.string(), profile: z.string(), blocking: z.boolean() });
@@ -139,7 +151,7 @@ const Dispatched = z.discriminatedUnion("kind", [
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema, attests: z.array(z.string()).optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */

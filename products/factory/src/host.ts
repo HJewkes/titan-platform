@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
@@ -11,14 +11,24 @@ import { GateAskStore, gateAskMigration } from "./gate-ask-store.js";
 import { githubApiPoolMigration } from "./github-api/pool-state.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { botIntentMigration } from "./bot-intent.js";
+import { markerTableMigration } from "./markers/marker-table.js";
+import { shadowLogMigration } from "./markers/shadow-diff/log.js";
+import type { PinSources } from "./markers/pins.js";
+import type { EntryBudget } from "./markers/budget.js";
+import { beginEntry } from "./markers/entry.js";
+import type { CarryProbe } from "./markers/shadow-diff/carry-rows.js";
+import type { ShadowSink } from "./markers/shadow.js";
 import { mergeLogMigration } from "./merge-log.js";
+import { runnerContext } from "./runner/not-after.js";
 import { reconcilerCursorMigration } from "./reconciler/cursor.js";
 import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
+  CapabilityVault,
   routedRunner,
   type StepRoute,
   type WorkflowCapability,
+  type WorkflowContext,
   type WorkflowEvent,
   workflowMigration,
   workflowNameIndexMigration,
@@ -31,7 +41,8 @@ import type { ArConfig } from "./autoresearch/config.js";
 import { composeRoutes } from "./compose-routes.js";
 import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
-import { assertDistinctStepIds, dispatchStepIds, guardedContext, orphanSafe, type WorkflowDefinition } from "./definition.js";
+import { abandonsOrphan, factoryRegistry } from "./registry/steps/index.js";
+import { assertDistinctStepIds, assertNotAfter, assertRegistered, dispatchStepIds, guardedContext, type RegisteredSteps, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -59,6 +70,8 @@ export type FactoryRoutes = readonly StepRoute[] & {
 export interface FactoryHostOptions {
   dbPath: string;
   workflows: readonly WorkflowDefinition[];
+  /** When set, every workflow in `workflows` may declare and call only steps it has an entry for. Routes' own workflows are outside it. */
+  registry?: RegisteredSteps;
   routes: FactoryRoutes;
   now?: () => number;
   leaseMs?: number;
@@ -67,6 +80,8 @@ export interface FactoryHostOptions {
   onEvent?: (event: WorkflowEvent) => void;
   /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
   capabilities?: Record<string, WorkflowCapability>;
+  /** Computes marker verdicts and appends markers beside `step_results` (M1b). Absent by default; serve sets it only under `markers.shadow.enabled`. */
+  markerShadow?: { sink: ShadowSink; diffPin?: PinSources["diffPin"]; treeOf?: PinSources["treeOf"]; carryProbe?: CarryProbe; entryBudget?: EntryBudget };
 }
 
 export interface PendingGate {
@@ -112,10 +127,10 @@ const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "faile
 
 /** The migrations every factory database runs; the harness opens its own database from this so it cannot drift from serve. */
 export function factoryMigrations(): Migration[] {
-  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35), reconcilerCursorMigration(36), botIntentMigration(37), workflowNameIndexMigration(47)];
+  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35), reconcilerCursorMigration(36), botIntentMigration(37), workflowNameIndexMigration(47), markerTableMigration(49), shadowLogMigration(50)];
 }
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, 35 the github-api pool state, 36 the reconciler cursor, 37 the bot intent rows, and 47 the run table's workflow-and-status index (31-33 are the Shepherd tenant's). */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, 35 the github-api pool state, 36 the reconciler cursor, 37 the bot intent rows, 47 the run table's workflow-and-status index, 49 the marker table, after the tenant's 48, and 50 the shadow disagreement log (31-33 are the Shepherd tenant's). */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
@@ -158,12 +173,41 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     onEvent: composeRoutes({ onEvent: options.onEvent }, options.routes).onEvent,
     capabilities: options.capabilities,
   });
+  const registered = new Set(options.workflows);
+  const drive = shadowDriver(db, options, runtime);
   for (const definition of [...options.workflows, ...(options.routes.workflows ?? [])]) {
     assertDistinctStepIds(definition);
+    const registry = registered.has(definition) ? options.registry : undefined;
+    if (registry) assertRegistered(definition, registry);
+    assertNotAfter(definition, registry);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
-    runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan: orphanSafe(definition), strictReplay: true });
+    runtime.register(definition.name, (ctx) => drive(definition, guardedContext(ctx, definition, registry)), { abandonsOrphan, strictReplay: true });
   }
   return runtime;
+}
+
+type Drive = (definition: WorkflowDefinition, ctx: WorkflowContext) => Promise<void>;
+
+/**
+ * The shadow wraps the guard, so the guard still refuses every undeclared or unregistered call and the shadow answers none.
+ * Each drive is one entry: the orphan trap runs when it settles, however it settles, and changes nothing the run records.
+ */
+function shadowDriver(db: Db, options: FactoryHostOptions, runtime: WorkflowRuntime): Drive {
+  const shadow = options.markerShadow;
+  if (!shadow) return (definition, ctx) => definition.run(runnerContext(ctx, definition));
+  const blobs = { blobDir: join(dirname(options.dbPath), "marker-blobs"), capabilities: new CapabilityVault(options.capabilities ?? {}) };
+  const now = (): string => new Date((options.now ?? Date.now)()).toISOString();
+  const resultsOf = (runId: string): Record<string, unknown> => runtime.status(runId)?.stepResults ?? {};
+  const recordedOf = (runId: string): string[] => Object.keys(resultsOf(runId));
+  const deps = { ...shadow, db, blobs, registry: factoryRegistry, now, clock: options.now ?? Date.now, recordedOf, resultsOf, closedRuns: new Set<string>(), sentOrphans: new Set<string>() };
+  return async (definition, ctx) => {
+    const entry = beginEntry(ctx, definition, deps);
+    try {
+      await definition.run(runnerContext(entry.ctx, definition, entry.notAfter));
+    } finally {
+      await entry.end();
+    }
+  };
 }
 
 async function resume(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], pollMs: number, now: () => number): Promise<ResumeReport> {

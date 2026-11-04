@@ -188,14 +188,16 @@ Tier 0, `@titan-design/anthropic-account@0.3.0`. Anthropic account state: usage 
 
 **Use this when:**
 
-You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`, and `pollUsage` and `pollAll` fetch a fresh reading from the OAuth usage endpoint through an injected `fetch`, never refreshing a token. `refreshIfNeeded` is the one writer of credentials: it renews a due access token under Claude Code's refresh lock, replaces `.credentials.json` atomically without overwriting another writer, and hands each failure to an `onFailure` callback as an owner-queue deposit. The `anthropic-account` bin runs `poll [--write [--refresh]]` from a systemd user timer (templates in `systemd/`, installed by hand) and `status [--json|--statusline]` for the status line and the pace pass; an expired or refused login exits 2, and `poll` skips a profile with no login or one backing off after a 429. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
+You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller (on darwin it and `pollUsage` read the config dir's macOS Keychain item read-only through an injected `security` runner, and never refresh), `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`, and `pollUsage` and `pollAll` fetch a fresh reading from the OAuth usage endpoint through an injected `fetch`, never refreshing a token. `refreshIfNeeded` is the one writer of credentials: it renews a due access token under Claude Code's refresh lock, replaces `.credentials.json` atomically without overwriting another writer, and hands each failure to an `onFailure` callback as an owner-queue deposit. The `anthropic-account` bin runs `poll [--write [--refresh]]` from a systemd user timer (templates in `systemd/`, installed by hand) and `status [--json|--statusline]` for the status line and the pace pass; an expired or refused login exits 2, and `poll` skips a profile with no login or one backing off after a 429. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
 
 Key exports:
 
-- `usage`: `POLL_SESSION_ID`, `POLL_SOURCE`, `parseUsageReading`, `usageFromOAuthResponse`, `OAuthUsageOptions`, `UsageReading`
+- `usage`: `POLL_SESSION_ID`, `POLL_SOURCE`, `parseObservedReading`, `parseUsageReading`, `usageFromOAuthResponse`
 - `login`: `loginStateFromCredentials`, `needsRefresh`
 - `profile`: `DEFAULT_LABEL`, `accountLabel`
-- `redact`: `REDACTED`, `redactSecrets`
+- `redact`: `redactSecrets`
+- `identity`: `groupByIdentity`
+- `merge`: `mergeAccountReadings`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
 
 <a id="cap-app-paths"></a>
@@ -323,9 +325,11 @@ Key exports:
 - `no-commented-code`: `noCommentedCode`
 - `no-internal-module-mock`: `noInternalModuleMock`
 - `no-test-clock-budget`: `noTestClockBudget`
-- `no-wall-clock-motion`: `DEFAULT_MOTION_PATHS`, `noWallClockMotion`
+- `no-wall-clock-motion`: `noWallClockMotion`
+- `recipe-step-in-loop`: `recipeStepInLoop`
 - `todo-needs-issue`: `todoNeedsIssue`
 - `index`: `recommended`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/eslint-plugin)
 
 <a id="cap-evidence"></a>
 
@@ -678,7 +682,7 @@ Tier 1, `@titan-design/github@0.11.0`. GitHub REST port over the gh CLI: validat
 
 **Use this when:**
 
-Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`.
+Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. A long-running service uses `octokitWire()` on `sharedOctokit()`: the same port, with one throttled, GET-only-retry budget per process. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. `ciVerdict` and `ciWait` (and `titan-gh ci-wait`) judge or wait on a sha's CI over the base branch's required contexts. A shell or agent reading one PR uses `titan-gh pr-status` and `titan-gh pr-context` instead of `gh pr view --json` piped to `jq`. `gitDiffPin` and `diffCarry` are I2's diff hash and its two carry exclusions.
 
 Key exports:
 
@@ -1682,7 +1686,7 @@ reports over past sessions use `session-analytics`.
 
 Key exports:
 
-- `inputs`: `parseAccounts`, `parseRoster`, `parseSlots`, `parseStatusLine`
+- `inputs`: `accountUsageOf`, `parseRoster`, `parseSlots`, `parseStatusLine`
 - `events`: `EventBook`, `SseParser`, `statusReportOf`
 - `snapshot`: `accountChip`, `buildSnapshot`
 - `view-model`: `fleetView`

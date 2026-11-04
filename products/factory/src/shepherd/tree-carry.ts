@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { resolveDbPath } from "../config.js";
+import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { errorClass } from "./error-class.js";
@@ -108,13 +109,32 @@ export async function isAncestor(git: Git, dir: string, ancestor: string, descen
   return result.code === 0;
 }
 
-export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
-  if (existsSync(join(dir, "HEAD"))) return;
-  mkdirSync(dirname(dir), { recursive: true });
-  await must(git, dir, ["init", "--bare", "--quiet"], signal);
+export const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
+
+/**
+ * A bare clone reads no `.gitattributes` unless `attr.tree` names a tree, so the base branch's own attributes are read, and a
+ * missing ref reads none, as before. With them, the merge drivers they name must be registered, or merge-tree merges as text.
+ */
+const MERGE_CONFIG: readonly GitConfigEntry[] = [{ key: "attr.tree", value: remoteBase("main") }, ...CLOSURE_LOCK_DRIVER];
+
+/**
+ * Registers the merge drivers here rather than trusting `pnpm prepare`, which never runs in the cache (TP-4752). Only a value
+ * that differs is written, so a cache already set never takes a config lock; a write git refuses leaves the lock merged as text.
+ */
+async function registerMergeDrivers(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
+  for (const { key, value } of MERGE_CONFIG) {
+    const current = await git(dir, ["config", "--get", key], signal);
+    if (current.code !== 0 || current.stdout.trim() !== value) await git(dir, ["config", key, value], signal);
+  }
 }
 
-export const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
+export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
+  if (!existsSync(join(dir, "HEAD"))) {
+    mkdirSync(dirname(dir), { recursive: true });
+    await must(git, dir, ["init", "--bare", "--quiet"], signal);
+  }
+  await registerMergeDrivers(git, dir, signal);
+}
 
 export function fetchArgs(url: string, input: CarryInput): string[] {
   return ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.fromHead, input.head, `+refs/heads/${input.baseRef}:${remoteBase(input.baseRef)}`];

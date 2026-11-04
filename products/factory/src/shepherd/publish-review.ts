@@ -25,6 +25,7 @@ const PublishInputSchema = z.strictObject({
   carriedFrom: z.string().min(1).optional(),
   carryRule: z.enum(["tree-equal", "remerge-empty", "remerge-generated-only"]).optional(),
   releaseBlockers: z.number().int().min(0).optional(),
+  attestUnmet: z.array(z.string().min(1)).optional(),
 });
 
 type PublishInput = z.infer<typeof PublishInputSchema>;
@@ -42,11 +43,11 @@ type PrTarget = { repo: RepoSlug; pr: number };
  * Posts at `check.head`, so a moved head is published at the new head; the step never fails the run. A replay whose record
  * went on without this publish skips it: the record is older than the step, and the run has since left that review.
  */
-export async function publishReview(ctx: WorkflowContext, target: PrTarget, check: Omit<ReviewCheckInput, "autoMergeArmed">): Promise<void> {
+export async function publishReview(ctx: WorkflowContext, target: PrTarget, check: Omit<ReviewCheckInput, "autoMergeArmed">, suffix = ""): Promise<void> {
   const next = ctx.historyNext();
   if (next !== undefined && !next.startsWith(`${PUBLISH_REVIEW_STEP}:`)) return;
   const input = { repo: target.repo, pr: target.pr, runId: ctx.runId, ...check };
-  await step(ctx, `${PUBLISH_REVIEW_STEP}:${check.head}`, input, PublishedResult);
+  await step(ctx, `${PUBLISH_REVIEW_STEP}:${check.head}${suffix}`, input, PublishedResult);
 }
 
 /**

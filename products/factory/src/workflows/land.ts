@@ -11,7 +11,7 @@ import type { CiSnapshot, FailingCheck } from "./land-ci.js";
 import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, waitsAgain, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
-import { mergesBaseFirst, type MergeBaseFirst } from "./land-merge-base.js";
+import { mergesBaseFirst, type MergeBaseFirst, type RecheckMovedBase } from "./land-merge-base.js";
 import { rerunOrphaned } from "./land-orphan.js";
 import { CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
@@ -27,12 +27,12 @@ export const MAX_CI_CYCLES = 20;
 
 /** Every step the land core calls; a workflow that uses `land` spreads these into its own declaration. */
 export const LAND_STEPS: readonly StepDeclaration[] = [
-  { id: "land-rules", kind: "dispatch", orphanSafe: true },
-  { id: "ci-wait", kind: "dispatch", orphanSafe: true },
+  { id: "land-rules", kind: "dispatch" },
+  { id: "ci-wait", kind: "dispatch" },
   { id: "ci-orphan-rerun", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
-  { id: "base-check", kind: "dispatch", orphanSafe: true },
+  { id: "base-check", kind: "dispatch" },
   { id: "base-wait", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
@@ -87,6 +87,8 @@ export interface LandOptions extends ApproveMergeFacts {
   readOn?: (ctx: WorkflowContext, headSha: string, base: string) => Promise<void>;
   /** TP-4691: true merges the base into an untrusted green head before its decision or its gate's ask. */
   mergeBaseFirst?: MergeBaseFirst;
+  /** TP-4711: true keeps a green head whose base moved from landing as it stands. Absent, every such head lands. */
+  recheckMovedBase?: RecheckMovedBase;
 }
 
 export type LandOutcome =
@@ -150,7 +152,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
     }
     if (await rebased(ctx, input, ci, state)) continue;
     if (ci.verdict !== "behind" && retryLanded(state.bound)) restartUpdates(state.bound);
-    const settled = landsAsIs(ci) ? { ...ci, verdict: "green" as const } : ci;
+    const settled = (await landsAsIs(ctx, ci, state, options)) ? { ...ci, verdict: "green" as const } : ci;
     const next = settled.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, settled, state, options);
     if (next) return next;
   }
@@ -175,13 +177,15 @@ function roundId(name: string, round: number, n?: number): string {
 /**
  * A repo that does not require up-to-date heads merges a stale green as it stands, as GitHub would. A refresh before
  * the merge restarted CI, and a base that moved during that CI again sent the next round's head back for another
- * (tp#2054 chased main through three green heads). What the merge brings together is judged by main's own CI after it.
+ * (tp#2054 chased main through three green heads). What the merge brings together is judged by main's own CI after it,
+ * unless `recheckMovedBase` says the moved base could break this head: two greens on one tip reddened main (tp#3130, tp#3131).
  */
-function landsAsIs(ci: CiSnapshot): boolean {
-  return ci.baseMoved === true;
+async function landsAsIs(ctx: WorkflowContext, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<boolean> {
+  if (ci.baseMoved !== true) return false;
+  return !(await options.recheckMovedBase?.(ctx, { headSha: ci.headSha, base: ci.baseRef ?? state.rules.base }));
 }
 
-/** Only a strict repo reads a head behind here, so every update spends the bound shared by every round. */
+/** A strict repo's behind head, or a moved base the caller re-checks, so every update spends the bound shared by every round. */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
   if (input.update === false) return stopped("behind", ci.headSha, `the base moved past head ${ci.headSha}; it needs a merge-up, and this run may not update the branch`);
   const spent = budgetSpent(state.bound, ci.readAt);

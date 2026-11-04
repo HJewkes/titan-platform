@@ -34,6 +34,8 @@ interface Leg {
   answered: OwnerItem[];
   withdrawn?: WithdrawnItem[];
   gaps: string[];
+  /** fyi items a leg's source counted instead of sending. */
+  fyiCount?: number;
 }
 
 const ANSWERED: ReadonlySet<OwnerItem["status"]> = new Set(["answered", "decided"]);
@@ -52,12 +54,13 @@ async function guarded(prefix: string, read: () => Promise<Leg>): Promise<Leg> {
 /** The console reads deposits from its own spool, so the factory's copies are dropped rather than listed twice (R2). */
 async function factoryLeg(factory: FactoryNeeds | undefined): Promise<Leg> {
   if (factory === undefined) return { open: [], answered: [], gaps: ["upstream not configured"] };
-  const { items, gaps } = await factory.list();
+  const { items, gaps, fyiCount } = await factory.list();
   const kept = items.filter((item) => item.sources[0]?.system !== "deposit");
   return {
     open: kept.filter((item) => item.status === "open"),
     answered: kept.filter((item) => ANSWERED.has(item.status) && item.answer !== undefined),
     gaps,
+    fyiCount,
   };
 }
 
@@ -93,6 +96,8 @@ function stripHiddenPicks(flow: Flow): Flow {
   };
 }
 
+const countedFyi = (legs: readonly Leg[]): number => legs.reduce((sum, leg) => sum + (leg.fyiCount ?? 0), 0);
+
 export async function readFlow({ factory, rounds, inbox }: ApprovalsSources): Promise<ApprovalsFlow> {
   const legs = await Promise.all([
     guarded("factory", () => factoryLeg(factory)),
@@ -103,7 +108,7 @@ export async function readFlow({ factory, rounds, inbox }: ApprovalsSources): Pr
   const asks = open.filter((item) => item.lens !== "fyi");
   const consolidated = consolidate(asks, { answered: legs.flatMap((leg) => leg.answered) });
   const flow = { ...consolidated, withdrawn: [...consolidated.withdrawn, ...legs.flatMap((leg) => leg.withdrawn ?? [])] };
-  return { flow: stripHiddenPicks(flow), gaps: legs.flatMap((leg) => leg.gaps), fyiCount: open.length - asks.length, readAt: new Date().toISOString() };
+  return { flow: stripHiddenPicks(flow), gaps: legs.flatMap((leg) => leg.gaps), fyiCount: open.length - asks.length + countedFyi(legs), readAt: new Date().toISOString() };
 }
 
 export function approvalsCommands(sources: ApprovalsSources) {

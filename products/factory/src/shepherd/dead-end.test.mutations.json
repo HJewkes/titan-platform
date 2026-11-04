@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a coordinator may give the owner's waive-proof on dead-end evidence",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "new Set([\"respawn\", \"replan\", \"abandon\"]);",
+      "replace": "new Set([\"respawn\", \"replan\", \"abandon\", \"waive-proof\"]);",
+      "kills": [
+        "a dead-end seat gate a coordinator's waive-proof or owner-merge is refused even where the schema offers it (exited-without-push)"
+      ]
+    },
+    {
+      "name": "respawn is offered however many times the run respawned",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "(respawns.get(run.ctx) ?? 0) < RESPAWN_CAP ? [\"respawn\"] : [];",
+      "replace": "[\"respawn\"];",
+      "kills": [
+        "a dead-end seat gate respawn waits for a new head and opens no second gate at that head; a third respawn is not offered"
+      ]
+    }
+  ]
+}

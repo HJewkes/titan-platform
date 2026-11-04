@@ -5,7 +5,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { visualAcceptDecision } from "../gate-brief.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { unhandledSendBack } from "./gate-route.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import { OWNER_SEND_BACK_KIND, ownerSendBackOf, type OwnerSendBackPayload } from "./owner-send-back.js";
 import type { VisualSetCarry } from "./phases.js";
 import { askAtHead } from "./stale-gates.js";
@@ -13,7 +13,7 @@ import { askAtHead } from "./stale-gates.js";
 const OFFER_STEP = "sh-visual-accept-offer";
 export const VISUAL_ACCEPT_GATE = "sh-visual-accept";
 export const VISUAL_ACCEPT_STEPS: readonly StepDeclaration[] = [
-  { id: OFFER_STEP, kind: "dispatch", orphanSafe: true },
+  { id: OFFER_STEP, kind: "dispatch" },
   { id: VISUAL_ACCEPT_GATE, kind: "assisted" },
 ];
 

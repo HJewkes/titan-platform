@@ -3,6 +3,7 @@ import { Alert, Badge, BadgeText, Button, ButtonText, Card, CardContent, HStack,
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
+import { useWait } from "../shell/Loading.js";
 import { open } from "../router.js";
 import { PHONE_TAP, PHONE_TAP_ID_LINK } from "./phone.js";
 import { useConfirmOnPhone } from "./PhoneConfirm.js";
@@ -66,6 +67,7 @@ function RecTap({ nudge }: { nudge: RoundNudge }): ReactNode {
   const source = useAnswerSource();
   const invalidate = useInvalidate();
   const [state, setState] = useState<TapState>({ status: "idle" });
+  useWait(state.status === "sending", true);
   const tap = async (): Promise<void> => {
     if (source === null) return;
     setState({ status: "sending" });

@@ -19,7 +19,7 @@ import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
-import { withLineage } from "./inbox-lineage.js";
+import { withShownReads, type ShownReads } from "./inbox-shown-reads.js";
 import type { ShipLineage } from "./ship-lineage.js";
 import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
@@ -303,12 +303,6 @@ export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[
   return markAged(oneRowPerRound(onePerPr(foldCoveredGates(order.map((item) => inboxItem(item, joins))))), now).sort(byInboxOrder);
 }
 
-/** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
-function joinedRows(order: readonly OwnerItem[], rows: readonly WatchRow[]): WatchRow[] {
-  const byRun = byRunId(rows);
-  return [...new Set(order.flatMap((item) => rowOfItem(item, byRun) ?? []))];
-}
-
 interface Read<T> {
   value: T;
   gaps: string[];
@@ -331,21 +325,21 @@ interface OwnerQueueRead {
 }
 
 /** The roster names the live askers a deposit or chat item waits on; unread, every such item reads as non-blocking. */
-async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, strips?: GateStripReader): Promise<OwnerQueueRead> {
+async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, reads: ShownReads = {}): Promise<OwnerQueueRead> {
   const [approvals, live, roster] = await Promise.all([
     readFlow(sources),
     readOrGap("shepherd", () => shepherd.list("active"), []),
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
-  const order = approvals.flow.order;
-  const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const items = await withLineage(inboxItems(order, live.value, { strips: gates, liveAgents, now: now() }), sources.rounds.lineage);
+  const placed = inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() });
+  const byRun = byRunId(live.value);
+  const items = await withShownReads(placed, (item) => rowOfItem(item, byRun), sources.rounds.lineage, reads);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 
-export async function readInbox(sources: InboxSources): Promise<InboxList> {
-  return (await readOwnerQueue(sources)).list;
+export async function readInbox(sources: InboxSources, reads: Omit<ShownReads, "strips"> = {}): Promise<InboxList> {
+  return (await readOwnerQueue(sources, reads)).list;
 }
 
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
@@ -369,7 +363,9 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
 /** The finished runs are read beside the queue rather than after it, since each read waits seconds on its upstream. */
 async function readInboxView(sources: InboxSources, strips: GateStripReader, cache: InboxReadCache, args: { planning?: boolean }): Promise<InboxView> {
   const finished = readOrGap("shepherd finished", () => cache.finished.read(), []);
-  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue({ ...sources, factory: cache.factory }, strips), readNudges(sources)]);
+  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
+  const cached = { ...sources, factory: cache.factory, rounds };
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cached, { strips, planning: args.planning === true }), readNudges(sources)]);
   const derived = await readDerived(sources, reads, finished);
   const { items, ...rest } = list;
   return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };

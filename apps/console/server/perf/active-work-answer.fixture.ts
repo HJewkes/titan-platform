@@ -102,15 +102,33 @@ function contextGraph(state: ActiveWorkState, args: Args) {
   return { references };
 }
 
+/** One ledger loop per initiative, joined to its first open tasks, so `work.loops` budgets a board as wide as the workspace. */
+function loopBoard(state: ActiveWorkState) {
+  const loops = state.initiatives.map((initiative, index) => {
+    const ids = state.tasks.filter((task) => task.slug === initiative.slug && task.status === "open").slice(0, 3).map((task) => task.id);
+    return {
+      ...{ id: `loop-${index}`, title: `Close out ${initiative.title}`, initiative: initiative.slug, status: "ACTIVE", source: "ledger", sessionRef: null },
+      ...{ tier: null, tierRank: null, tierSetBy: null, ownerSeat: null, doneWhen: null, emphasis: null, treeNode: null },
+      lastMotion: { date: initiative.updated, ref: ids[0] ?? initiative.slug },
+      daysSinceMotion: index % 30,
+      tasks: { ids, open: ids.length, done: 0 },
+      prsOpen: [],
+      blockers: { ownerGated: [], other: [] },
+    };
+  });
+  return { ledger: { path: "ledger.yml", mtime: null }, loops, tree: null, warnings: [] };
+}
+
 /** Answers from memory, the whole-workspace reads built once, so a budget measures the console's own cost and never active-work's. */
 export function activeWorkAnswer(state: ActiveWorkState): RpcAnswer {
-  const whole = { list: list(state), inventory: inventory(state) };
+  const whole = { list: list(state), inventory: inventory(state), loopBoard: loopBoard(state) };
   const answers: Record<string, (args: Args) => unknown> = {
     list: () => whole.list,
     inventory: () => whole.inventory,
     "task.list": (args) => taskList(state, args),
     "session.list": sessionList,
     loops: (args) => loops(state, args),
+    "loop.board": () => whole.loopBoard,
     "note.list": (args) => ({ notes: forSlug(state.notes, args).map(noteRow), errors: [] }),
     "note.read": (args) => noteRead(state, args),
     "source.list": (args) => ({ sources: forSlug(state.sources, args).filter((source) => args.nested || !source.nested).map(sourceRow), drift: [] }),

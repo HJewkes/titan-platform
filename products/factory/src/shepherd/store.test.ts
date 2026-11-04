@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { accountLimitMigration } from "./account-store.js";
 import { holdSlotsMigration, parkSettledMigration, registrationFactsMigration } from "./store-migrations.js";
 import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 

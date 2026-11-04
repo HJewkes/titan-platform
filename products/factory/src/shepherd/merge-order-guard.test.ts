@@ -8,7 +8,8 @@ import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { mergeOrderGuard } from "./merge-order-guard.js";
 import { MergeOrder, fileRules, type MergeOrderRule, type MergeOrderRules, type OrderWaits } from "./merge-order.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { ShepherdStore, shepherdStoreRef } from "./store.js";
 import { mergeTrainRef, type MergeTrainRef } from "./train.js";
@@ -89,6 +90,27 @@ describe("the merge-order guard", () => {
     r.store.release("run-x");
 
     expect(whileHeld).toBeUndefined();
+    expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
+  });
+
+  it("lets a main-based PR through without an order-wait while the reserving PR is stacked (TP-4741)", async () => {
+    const r = rig();
+    r.fake.pr(2301).baseRef = "topic-2300";
+
+    const reason = await reasonFor(r);
+
+    expect(reason).toBeUndefined();
+    expect(r.store.eventsOf("run-y").filter((event) => event.kind === "order-wait")).toEqual([]);
+  });
+
+  it("orders behind the reserving PR again once it is retargeted from its stack to main (TP-4741)", async () => {
+    const r = rig();
+    r.fake.pr(2301).baseRef = "topic-2300";
+    const whileStacked = await reasonFor(r);
+
+    r.fake.pr(2301).baseRef = "main";
+
+    expect(whileStacked).toBeUndefined();
     expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
   });
 

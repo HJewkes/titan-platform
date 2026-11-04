@@ -6,7 +6,8 @@ import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../context.js";
-import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { runPolicyCeiling, shepherdGatePolicy } from "./policy.js";
+import { RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy-schema.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { refuseUnknownGates } from "./lan-gates.js";
@@ -17,12 +18,14 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { briefCommand } from "./brief-command.js";
 import { prsCommand } from "./prs-command.js";
-import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
+import { kindMove, testOnlyHint } from "./register-kind.js";
+import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { readdressCommand } from "./readdress-command.js";
 import { orderCommand, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { mergeBaseCommand } from "./merge-base-command.js";
@@ -37,6 +40,7 @@ import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
+import { visualWeekCommand } from "./visual-week-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
@@ -372,9 +376,11 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
+  "shepherd.readdress-dead-ends": readdressCommand,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,
+  "shepherd.visual-week": visualWeekCommand,
   "shepherd.brief": briefCommand,
 };
 

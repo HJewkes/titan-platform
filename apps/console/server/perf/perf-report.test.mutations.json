@@ -4,8 +4,8 @@
     {
       "name": "the view enum check is dropped",
       "file": "apps/console/server/perf/commands.ts",
-      "find": "view: z.enum(VIEW_KEYS)",
-      "replace": "view: z.string()",
+      "find": "z.literal(\"route\"), view: z.enum(VIEW_KEYS)",
+      "replace": "z.literal(\"route\"), view: z.string()",
       "kills": ["perf.report refuses an unknown view or command name"]
     },
     {

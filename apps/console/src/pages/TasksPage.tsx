@@ -1,33 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
-import {
-  Alert,
-  Button,
-  ButtonText,
-  EmptyState,
-  HStack,
-  Input,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Section, SectionContent, SectionHeader, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Skeleton } from "../shell/Loading.js";
 import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { useMediaQuery } from "./FramePins.js";
 import { BELOW_MD } from "./phone.js";
-import { GuessedCaption, STAGE_ORDER, TaskStageBadge, stageLabel } from "./TaskParts.js";
+import { GuessedCaption, STAGE_ORDER, stageLabel } from "./TaskParts.js";
 
 type TasksResult = ConsoleCommands["work.tasks"]["result"];
 type TasksArgs = ConsoleCommands["work.tasks"]["args"];
@@ -149,30 +129,52 @@ const optionsOf = (values: readonly string[]) => values.map((value) => ({ value,
 
 const STAGE_OPTIONS = STAGE_ORDER.map((stage) => ({ value: stage, label: stageLabel(stage) }));
 
+/** A desktop keeps the filters on one row, the text filter taking what the selects leave; a phone stacks them full width. */
 function FilterBar({ filters, initiatives }: { filters: Filters; initiatives: readonly string[] }): ReactNode {
   const change = (key: keyof Filters) => (value: string | null) => setFilters({ ...filters, [key]: value ?? undefined });
+  const phone = useMediaQuery(BELOW_MD);
+  const select = phone ? undefined : "w-48 shrink-0";
   return (
-    <HStack gap={3} align="center" wrap>
-      <Select<string> placeholder="Any stage" value={filters.stage ?? null} onChange={change("stage")} options={STAGE_OPTIONS} />
-      <Select placeholder="Any initiative" value={filters.initiative ?? null} onChange={change("initiative")} options={optionsOf(initiatives)} />
-      <Select placeholder="Any severity" value={filters.severity ?? null} onChange={change("severity")} options={optionsOf(SEVERITIES)} />
-      <Input placeholder="Filter by id or title" accessibilityLabel="Filter by id or title" value={filters.q ?? ""} onChangeText={(text) => change("q")(text || null)} />
+    <HStack gap={3} align="center" wrap={phone} testID="task-filters">
+      <Select<string> placeholder="Any stage" value={filters.stage ?? null} onChange={change("stage")} options={STAGE_OPTIONS} className={select} />
+      <Select placeholder="Any initiative" value={filters.initiative ?? null} onChange={change("initiative")} options={optionsOf(initiatives)} className={select} />
+      <Select placeholder="Any severity" value={filters.severity ?? null} onChange={change("severity")} options={optionsOf(SEVERITIES)} className={select} />
+      <div className={phone ? "w-full" : "min-w-0 flex-1"}>
+        <Input placeholder="Filter by id or title" accessibilityLabel="Filter by id or title" value={filters.q ?? ""} onChangeText={(text) => change("q")(text || null)} />
+      </div>
     </HStack>
   );
 }
 
-function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResult["counts"] }): ReactNode {
+interface StageGroup {
+  stage: Stage;
+  rows: readonly Row[];
+}
+
+type Counts = TasksResult["counts"];
+
+/** One tree, not a CSS swap of two, so a 50-row page renders its rows once: cards under a heading per stage on a phone, one table with a row per stage above it. */
+function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: Counts }): ReactNode {
   const groups = STAGE_ORDER.map((stage) => ({ stage, rows: rows.filter((row) => row.stage === stage) })).filter((group) => group.rows.length > 0);
+  return useMediaQuery(BELOW_MD) ? <StageSections groups={groups} counts={counts} /> : <StageTable groups={groups} counts={counts} />;
+}
+
+const groupTitle = (group: StageGroup, counts: Counts): string => `${stageLabel(group.stage)} (${counts[group.stage]})`;
+
+function CappedCaption({ group, counts }: { group: StageGroup; counts: Counts }): ReactNode {
+  if (group.rows.length >= counts[group.stage]) return null;
+  return <Typography variant="caption" color="secondary">{`Showing ${group.rows.length} of ${counts[group.stage]} by priority; load more or filter to see the rest.`}</Typography>;
+}
+
+function StageSections({ groups, counts }: { groups: readonly StageGroup[]; counts: Counts }): ReactNode {
   return (
     <VStack gap={6}>
       {groups.map((group) => (
         <Section key={group.stage} testID={`stage-group-${group.stage}`}>
-          <SectionHeader title={`${stageLabel(group.stage)} (${counts[group.stage]})`} />
+          <SectionHeader title={groupTitle(group, counts)} />
           <SectionContent>
-            {group.rows.length < counts[group.stage] ? (
-              <Typography variant="caption" color="secondary">{`Showing ${group.rows.length} of ${counts[group.stage]} by priority; load more or filter to see the rest.`}</Typography>
-            ) : null}
-            <StageRows rows={group.rows} />
+            <CappedCaption group={group} counts={counts} />
+            <StageCards rows={group.rows} />
           </SectionContent>
         </Section>
       ))}
@@ -182,11 +184,6 @@ function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResu
 
 // The shell and its tests import the breakpoint from here; it lives in phone.ts beside the other phone sizes.
 export { BELOW_MD };
-
-/** One tree, not a CSS swap of two, so a 50-row page renders its rows once. */
-function StageRows({ rows }: { rows: readonly Row[] }): ReactNode {
-  return useMediaQuery(BELOW_MD) ? <StageCards rows={rows} /> : <StageTable rows={rows} />;
-}
 
 function StageCards({ rows }: { rows: readonly Row[] }): ReactNode {
   return (
@@ -201,15 +198,13 @@ function StageCards({ rows }: { rows: readonly Row[] }): ReactNode {
 /** A phone tap needs a 44px target, more than the id's line of text gives it. */
 const TAP_TARGET = "inline-flex min-h-11 min-w-11 items-center";
 
+/** The group heading names the stage, so the card does not repeat it. */
 function StageCard({ row }: { row: Row }): ReactNode {
   return (
     <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`task-card-${row.id}`}>
-      <HStack gap={2} align="center" justify="between">
-        <Link color="primary" className={TAP_TARGET} onPress={() => open({ view: "tasks", id: row.id })}>
-          {row.id}
-        </Link>
-        <TaskStageBadge stage={row.stage} />
-      </HStack>
+      <Link color="primary" className={TAP_TARGET} onPress={() => open({ view: "tasks", id: row.id })}>
+        {row.id}
+      </Link>
       <Typography variant="body1" className="break-words">
         {row.title}
       </Typography>
@@ -219,8 +214,8 @@ function StageCard({ row }: { row: Row }): ReactNode {
   );
 }
 
-/** Stands in for react-ui's `TaskTable` with stage rows, which only the unreleased react-ui 0.22.0 exports. */
-function StageTable({ rows }: { rows: readonly Row[] }): ReactNode {
+/** One header for every stage, and a group row per stage in place of a Stage column; stands in for react-ui's `TaskTable`, which has no stage groups. */
+function StageTable({ groups, counts }: { groups: readonly StageGroup[]; counts: Counts }): ReactNode {
   return (
     <Table density="dense">
       <TableHeader>
@@ -229,15 +224,32 @@ function StageTable({ rows }: { rows: readonly Row[] }): ReactNode {
           <TableHeaderCell>Title and stage reason</TableHeaderCell>
           <TableHeaderCell width={160}>Initiative</TableHeaderCell>
           <TableHeaderCell width={100}>Severity</TableHeaderCell>
-          <TableHeaderCell width={120}>Stage</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
-          <StageRow key={row.id} row={row} />
+        {groups.map((group) => (
+          <VStack key={group.stage} testID={`stage-group-${group.stage}`}>
+            <GroupRow group={group} counts={counts} />
+            {group.rows.map((row) => (
+              <StageRow key={row.id} row={row} />
+            ))}
+          </VStack>
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+function GroupRow({ group, counts }: { group: StageGroup; counts: Counts }): ReactNode {
+  return (
+    <TableRow isHoverable={false} testID={`stage-row-${group.stage}`}>
+      <TableCell>
+        <VStack gap={1} className="pt-inset-sm">
+          <Typography variant="subtitle2">{groupTitle(group, counts)}</Typography>
+          <CappedCaption group={group} counts={counts} />
+        </VStack>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -257,9 +269,6 @@ function StageRow({ row }: { row: Row }): ReactNode {
       </TableCell>
       <TableCell width={160}>{row.slug}</TableCell>
       <TableCell width={100}>{row.severity ?? "–"}</TableCell>
-      <TableCell width={120}>
-        <TaskStageBadge stage={row.stage} />
-      </TableCell>
     </TableRow>
   );
 }

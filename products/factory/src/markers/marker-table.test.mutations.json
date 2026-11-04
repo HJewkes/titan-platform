@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a marker row accepts UPDATE",
+      "file": "products/factory/src/markers/marker-table.ts",
+      "find": "CREATE TRIGGER factory_marker_no_update BEFORE UPDATE ON factory_marker BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+      "replace": "",
+      "kills": ["marker identity and supersession a marker row refuses UPDATE and DELETE"]
+    },
+    {
+      "name": "a marker row accepts DELETE",
+      "file": "products/factory/src/markers/marker-table.ts",
+      "find": "CREATE TRIGGER factory_marker_no_delete BEFORE DELETE ON factory_marker BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+      "replace": "",
+      "kills": ["marker identity and supersession a marker row refuses UPDATE and DELETE"]
+    },
+    {
+      "name": "a marker row accepts INSERT OR REPLACE over its id",
+      "file": "products/factory/src/markers/marker-table.ts",
+      "find": "WHERE id = NEW.id)",
+      "replace": "WHERE 0)",
+      "kills": ["marker identity and supersession a marker row refuses INSERT OR REPLACE over its id"]
+    },
+    {
+      "name": "a reverted item takes further markers",
+      "file": "products/factory/src/markers/marker-table.ts",
+      "find": "WHERE item = NEW.item AND reverted = 1)",
+      "replace": "WHERE 0)",
+      "kills": ["reverted is terminal an item with a reverted landed marker refuses any further marker, on any fact"]
+    },
+    {
+      "name": "reverted is accepted on any fact",
+      "file": "products/factory/src/markers/marker-table.ts",
+      "find": "CHECK (reverted = 0 OR (fact = 'landed' AND pin_class = 'landed')),",
+      "replace": "",
+      "kills": ["reverted is terminal reverted is refused on a fact other than landed"]
+    }
+  ]
+}

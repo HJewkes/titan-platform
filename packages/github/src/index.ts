@@ -1,4 +1,4 @@
-export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeIntoBranchRequest, MergeIntoBranchResult, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
+export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeIntoBranchRequest, MergeIntoBranchResult, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoEntry, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export { BlobTooLargeError } from "./file-bytes.js";
@@ -20,6 +20,10 @@ export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./read
 export { statusCheckRuns } from "./status-runs.js";
 export type { ApprovedHeadWalk, ApprovedHeadWalkInput, CleanMergeTree } from "./approved-head-walk.js";
 export { MAX_BASE_MERGES, approvedHeadWalk } from "./approved-head-walk.js";
+export type { AmbiguousDiffPin, DiffCarry, DiffPin, DiffSerialisation, ExactDiffPin, MergeUpCheck, MergeUpProof } from "./diff-hash.js";
+export { diffCarry, diffHashes, serialiseDiff } from "./diff-hash.js";
+export type { DiffPinOptions } from "./git-diff-hash.js";
+export { DIFF_HASH_ARGS, DiffHashError, HARDENED_GIT_ENV, gitDiffPin, gitMergeUpCheck } from "./git-diff-hash.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
 export type { AppCredentials, InstallationToken } from "./app-token.js";
@@ -45,6 +49,8 @@ export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.
 export { defangCiSkip, formatSquashMessage } from "./squash-message.js";
 export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
 export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";
+export type { RateLimitFacts } from "./rate-limit-marker.js";
+export { parseRateLimitMarker, rateLimitMarker } from "./rate-limit-marker.js";
 export { parseGitHubToken } from "./github-token.js";
 export type {
   GithubApiPool,

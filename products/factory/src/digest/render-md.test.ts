@@ -118,3 +118,14 @@ describe("Decided for you", () => {
     expect(markdown).not.toContain("more:");
   });
 });
+
+describe("Attestations", () => {
+  it("the attestations line names step, closure, PR and meeters in one line", () => {
+    const meeters = [{ name: "rev-a", shape: "correctness" as const }, { name: "adv-b", shape: "adversary" as const }];
+
+    const markdown = renderMarkdown(rankDigest(emptyModel({ attested: [{ ref: "acme/widgets#3201", step: "ci-wait", closure: "4e0d912b0000", meeters }] })));
+
+    expect(markdown).toContain("Attestations (7 d): ci-wait@4e0d912b (#3201; reviewer rev-a, adversary adv-b)");
+    expect(renderMarkdown(rankDigest(emptyModel()))).not.toContain("Attestations");
+  });
+});

@@ -5,6 +5,7 @@ import { countRow } from "./lint-text.js";
 import { unspokenFacts, type ScreenText } from "./qa/narration-facts.js";
 import { sharedRun } from "./qa/timing-gates.js";
 import { plainWords, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
+import { citedIdNumbers } from "./spoken-ids.js";
 
 /**
  * Script-time preflight for qa's content rows (TP-4470). Each rule reads the beat's texts from the drawn-text model,
@@ -34,7 +35,7 @@ function screenTexts(script: ScriptV1, beat: ScriptBeat): ScreenText[] {
 type UnspokenNumber = { fact: string; shown: string };
 
 const unspokenIn = (beat: ScriptBeat, texts: readonly ScreenText[]): UnspokenNumber[] =>
-  unspokenFacts(beat.id, texts, spokenOf(beat)).filter((fact) => fact.kind === "number").map(({ fact, shown }) => ({ fact, shown }));
+  unspokenFacts(beat.id, texts, spokenOf(beat), citedIdNumbers([...beat.fact_ids, ...beat.new_terms])).filter((fact) => fact.kind === "number").map(({ fact, shown }) => ({ fact, shown }));
 
 /** The numbers the beat shows that its spoken text never says, each with the text that shows it. */
 export const unspokenNumbers = (script: ScriptV1, beat: ScriptBeat): UnspokenNumber[] => unspokenIn(beat, screenTexts(script, beat));

@@ -107,7 +107,7 @@ function lintTypesCommand(changed, workspace) {
   const scope = lintTypesScope(changed, workspace);
   if (scope.mode === "none") return null;
   const only = scope.mode === "scoped" ? [`--only=${scope.dirs.join(",")}`] : [];
-  return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
+  return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only], scope: scope.mode === "scoped" ? scope.dirs.join(",") : "all" };
 }
 
 // `vitest related` on a root config file reruns everything, which cannot fit the local cap; CI owns that run.
@@ -189,6 +189,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm docs:build", disposition: "local", label: "docs:build" },
   { job: "validate", run: "pnpm changeset status", disposition: "local", label: "changeset status" },
   { job: "validate", run: "pnpm index-version:check", disposition: "local", label: "index-version:check" },
+  { job: "validate", run: "pnpm registry:closure", disposition: "local", label: "registry:closure" },
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm dag:check:graph /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
   { job: "dag-check", run: /^pnpm dead:check /, disposition: "local-scoped", label: "dead:check", reason: "indexes only the touched packages, and defers past a 600-file budget to CI" },
@@ -219,9 +220,15 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     pnpmRun("docs:build"),
     { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
     { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
+    { ...pnpmRun("registry:closure"), env: { CLOSURE_BASE: base } },
     deadCheckCommand(changed, workspace, base, indexedFiles),
     lintTypesCommand(changed, workspace),
   ].filter(Boolean);
+}
+
+/** What main prints last and exits with, given the failed steps' messages. */
+export function runVerdict(failures) {
+  return failures.length > 0 ? { summary: failureSummary(failures), exitCode: 1 } : { summary: null, exitCode: 0 };
 }
 
 const gitLines = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
@@ -267,12 +274,20 @@ async function locPasses(changed) {
 }
 
 /** How a finished step is reported: a kill by the vitest cap is a timeout, never a test failure. */
-export function describeOutcome(step, status) {
+export function describeOutcome(step, status, signal = null) {
   if (status === 0) return { ok: true };
   if (status === TIMEOUT_EXIT_STATUS && step.cmd === "timeout") {
     return { ok: false, message: `${step.label} timed out after ${VITEST_TIMEOUT_SECONDS} s (no test failed; CI is the authority)` };
   }
-  return { ok: false, message: `${step.label} failed` };
+  // A signal-killed child has a null status, so the signal is the only thing that says why it stopped.
+  const how = signal ? `killed by ${signal}` : `exit status ${status}`;
+  const scope = step.scope ? `, scope ${step.scope}` : "";
+  return { ok: false, message: `${step.label} failed (${how}${scope})` };
+}
+
+/** The last line of a failing run: later steps' output buries earlier failures, so name them all again. */
+export function failureSummary(messages) {
+  return `verify:changed: ${messages.length} step${messages.length === 1 ? "" : "s"} failed: ${messages.join("; ")}`;
 }
 
 // Output is captured so the guard can see an unhandled-errors banner, then echoed so the run still reads as usual.
@@ -298,8 +313,8 @@ async function runStep(step, changed) {
   if (step.flake) return runFlakeStep(step);
   if (step.inProcess) return { ok: await locPasses(changed), message: `${step.label} failed` };
   const { cmd, args, env } = step;
-  const { status } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
-  return describeOutcome(step, status);
+  const { status, signal } = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
+  return describeOutcome(step, status, signal);
 }
 
 async function main() {
@@ -307,15 +322,17 @@ async function main() {
   const changed = changedFiles(base);
   const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool(), flakeClasses: loadFlakeClasses(FLAKE_CLASSES_PATH), indexedFiles });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
-  let failed = false;
+  const failures = [];
   for (const step of plan) {
     console.log(`verify:changed: ${step.label}`);
     const outcome = await runStep(step, changed);
     if (outcome.ok) continue;
     console.error(`verify:changed: ${outcome.message}`);
-    failed = true;
+    failures.push(outcome.message);
   }
-  process.exitCode = failed ? 1 : 0;
+  const verdict = runVerdict(failures);
+  if (verdict.summary) console.error(verdict.summary);
+  process.exitCode = verdict.exitCode;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

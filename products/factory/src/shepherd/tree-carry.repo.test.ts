@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
 import { REVIEW_STEPS } from "./review.js";
 import { CARRY_STEP, carry, carryCacheDir, localMergeTree, type CarryResult } from "./tree-carry.js";
 
@@ -233,5 +234,42 @@ describe("localMergeTree", { timeout: 30_000 }, () => {
   it("answers unread for a head that is not a sha without touching git", async () => {
     expect(await mergeTree("--upload-pack=x")).toMatch(/^unread: invalid input/);
     expect(existsSync(join(stateDir, "git-cache"))).toBe(false);
+  });
+});
+
+describe("the git cache's closure-lock merge driver (TP-4752)", { timeout: 30_000 }, () => {
+  const LOCK = "products/factory/src/registry/closure.lock.json";
+  const lock = (a: string, b: string): string => `${JSON.stringify({ "step-a": a, "step-b": b }, null, 2)}\n`;
+  const driverOf = (entries: readonly GitConfigEntry[]) => entries.find(({ key }) => key === "merge.closure-lock.driver")?.value ?? "";
+
+  /** main and the reviewed head each move a different step's row on adjacent lines, which a text merge conflicts on. */
+  function lockedHeads(): { h1: string; h2: string } {
+    const [, h1 = ""] = withHistory(origin, [
+      { files: { ".gitattributes": `${LOCK} merge=closure-lock\n`, [LOCK]: lock("a0", "b0") }, message: "add lock" },
+      { branch: "feature", from: ":1", files: { [LOCK]: lock("a1", "b0") }, message: "move step-a" },
+      { branch: "main", from: ":1", files: { [LOCK]: lock("a0", "b1") }, message: "move step-b" },
+    ]);
+    git("config", "merge.closure-lock.driver", driverOf(CLOSURE_LOCK_DRIVER));
+    branchAt("feature", "feature");
+    return { h1, h2: mergeMain() };
+  }
+
+  it("sets merge.closure-lock.driver in the cache clone before it merges, without pnpm prepare", async () => {
+    reviewedHead();
+
+    await probe(git("rev-parse", "feature"), git("rev-parse", "feature"));
+
+    const cache = gitIn(carryCacheDir(stateDir, REPO));
+    expect(cache("config", "--get", "merge.closure-lock.driver")).toBe(driverOf(CLOSURE_LOCK_DRIVER));
+    expect(cache("config", "--get", "attr.tree")).toBe("refs/remotes/origin/main");
+    expect(driverOf(CLOSURE_LOCK_DRIVER)).toMatch(/closure-lock-merge\.mjs' %O %A %B$/);
+  });
+
+  it("carries a MERGE across a merge-main whose closure.lock.json both sides moved, as the driver merged it", async () => {
+    const { h1, h2 } = lockedHeads();
+
+    const result = await probe(h1, h2);
+
+    expect(result).toMatchObject({ equal: true, mergeTree: git("rev-parse", `${h2}^{tree}`) });
   });
 });

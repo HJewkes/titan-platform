@@ -51,8 +51,8 @@ To run it by that short name, put it on `PATH`:
 pnpm factory:install
 ```
 
-That installs, builds the factory with its workspace dependencies, and links
-`~/.local/bin/titan-factory` to the built bin. The link survives a rebuild and needs no
+That installs, builds the factory and the session miner with their workspace dependencies, and links
+`~/.local/bin/titan-factory` and `~/.local/bin/titan-miner` to their built bins. The link survives a rebuild and needs no
 sudo. It leaves a link that points at another checkout alone unless you add `--force`, and
 `--bin-dir <dir>` picks another directory.
 
@@ -70,7 +70,7 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 registrations. Nothing else is written.
 
 A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
-`[ci-timeout]`, `[gh-api-5xx]`, `[land-rules]`, `[update-branch]` or `[other]`.
+`[ci-timeout]`, `[gh-api-5xx]`, `[gh-rate-limit]`, `[land-rules]`, `[update-branch]` or `[other]`.
 `titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
 classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
 
@@ -153,9 +153,10 @@ stays out of the repo.
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
 - `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
-  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. The
-  reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
-  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. For a
+  repo a seat lists, the reviewer starts in that seat's own path and `path` is never read. `path` applies only to a repo no
+  seat lists, which only a run registered before registration required a seat can still be. Registering needs a seat
+  that lists the repo, so with no `seatsDir` `shepherd register` refuses every PR. The map is re-read on every
   spawn, as the seat book is.
 - `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
   update the branch, push to it or delete its head ref. The run waits held at its merge
@@ -307,6 +308,35 @@ Each tick writes one serve-log line per outcome:
 | `reconciler.disagree class=unconfirmed` | the head guard was pending or unknown; the next tick reads again |
 | `reconciler.skipped` / `reconciler.starved` | the pool refused the repo's claim |
 | `reconciler.unit-failed` | the read or a step threw; the repo's cursor stays where it was |
+
+### Head guard {#head-guard}
+
+Before the reconciler appends a PR-head row or moves past a main tip, it runs the read through
+the head guard (`products/factory/src/head-guard/`, wired in by
+`reconciler/guard-verdicts.ts`). A replica can show a head or tip GitHub has already moved past,
+so a read is trusted only once it is confirmed.
+
+- **Stale classes** (`classify.ts`). A read is `same` as the stored head, `confirmed`, `suspect`,
+  `stale` or `unavailable`. It is stale when it is an ancestor of the stored head, equals a head
+  confirmed earlier, GitHub's compare cannot find it, or `ls-remote` still shows the stored head.
+- **Confirmation rules.** Only a `confirmed` read moves the per-PR epoch
+  (`epoch-store.ts`, a compare-and-set). A read is confirmed by being ahead of the stored head
+  (`fast-forward`), diverged from it and not seen before (`non-ancestor`), or agreed by
+  `ls-remote` when the compare is no help (`ls-remote`). A PR with no stored head is confirmed
+  the same way (`bootstrap`). A lost compare-and-set is re-classified once against the row that
+  won.
+- **The unknown outcome** (`guard.ts`). A stale read is re-read at 8, 16, 24, 32 and 40 seconds
+  (`RETRY_DELAYS_MS`). If replica lag outlasts them, the answer is `unknown`: nothing moves.
+  The reconciler's snapshot makes one try per tick on the head it already read, so a stale head
+  there logs `class=stale-read` and the next tick is the retry; a head it could not confirm logs
+  `class=unconfirmed`.
+- **When the pool refuses a read.** The compare goes through the bot's `github-api` pool as a
+  claim. A claim the pool answers as unavailable comes back from the guard as `Unavailable`, with
+  its `resetAt`, unchanged. It counts no try and moves no epoch, and the head is left
+  unconfirmed this tick. A 401 puts the pool in its auth state, which raises one alarm for the
+  whole identity (not one per PR) and holds every later claim until the token changes; the
+  failed read moves no epoch and is not retried per PR.
+  `reconciler/guard-pool.test.ts` pins both.
 
 ## A17 invariant tests: both event-source modes
 
@@ -707,6 +737,16 @@ The steps, in order (`products/factory/src/workflows/land.ts` and `land-pr.ts`):
    approves every merge.
 6. `merge` squashes the exact approved head. A head anyone else pushed asks again.
 7. `post-merge` runs the configured chore, if any, and records its exit code and output tail.
+
+## Steps
+
+The steps of `land-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
 
 ## `gate resolve` {#gate-resolve}
 

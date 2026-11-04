@@ -7,7 +7,21 @@ import type { ViewKey } from "../view-keys.js";
 /** What the browser measures. Names, view keys and numbers only: a route's id and query never appear. */
 export type PerfRow =
   | { kind: "route"; view: ViewKey; detail: boolean; ms: number; queries: number }
-  | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean };
+  | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean }
+  | WaitRow
+  | { kind: "action"; command: string; ms: number; ok: boolean };
+
+/** How long the owner looked at a spinner, skeleton or busy button, and the commands in flight meanwhile. */
+export interface WaitRow {
+  kind: "wait";
+  view: ViewKey;
+  commands: string[];
+  ms: number;
+  /** Cold: a command the wait was on had not answered before in this tab. */
+  phase: "cold" | "refetch";
+  /** The wait was on a button's write, not a page's read. */
+  mutation: boolean;
+}
 
 const MAX_ROWS_PER_POST = 100;
 const REPORT_EVERY_MS = 10_000;

@@ -1,6 +1,6 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
-import type { HeldCheck } from "./hold.js";
+import type { HeldCheck } from "./hold-timing.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { inStepOrder, payloadOf, stepName } from "./stats.js";
 import { TRAIN_WORKFLOW } from "./train.js";

@@ -33,6 +33,18 @@ export interface LoggedCommit {
   message: string;
 }
 
+/** A file in a directory listing: its repo path and blob sha, with no content read. */
+export interface RepoEntry {
+  path: string;
+  blobSha: string;
+}
+
+/** A file in a directory listing: its repo path and blob sha, with no content read. */
+export interface RepoEntry {
+  path: string;
+  blobSha: string;
+}
+
 export interface RepoFile {
   path: string;
   blobSha: string;

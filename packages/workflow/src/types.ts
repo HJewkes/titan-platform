@@ -161,7 +161,7 @@ export interface WorkflowContext {
   readonly runId: string;
   readonly workflowName: string;
   param(key: string): string | undefined;
-  /** The runtime's handle for `name`, for use inside a step body; throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
+  /** The runtime's handle for `name`, usable only inside a step body (a seed's function); throws `CapabilityOutsideStepError` outside one, and throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
   capability(name: string): unknown;
   /** Render the template, run it through the step runner, parse signals. Retried once on a retryable failure. */
   dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;

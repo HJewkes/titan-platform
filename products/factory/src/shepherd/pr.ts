@@ -17,7 +17,7 @@ import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { ciPolicyAt, ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
-import { checkedBaseTap, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { checkedBaseTap, shepherdLandOptions } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
@@ -34,7 +34,8 @@ import { LeaveLand, untilLeft } from "./leave-land.js";
 import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
-import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { expireStaleGates } from "./stale-gates.js";
+import { shepherdSuperseding } from "./superseding.js";
 import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
@@ -42,12 +43,13 @@ import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
 import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
 import { wakeRoutes } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
-import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
+import { awaitedPast, liveEscalation, type WakeRun } from "./gates.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
 import { conflictRound, isConflict, noteRetarget } from "./retarget-conflict.js";
 import { staleBaseOf, staleBaseRoute, type StaleBaseRun } from "./stale-base.js";
 import { mergeMainFirst, mergeMainRoute } from "./merge-main.js";
+import { staleGreenCheck, staleGreenRoute } from "./stale-green.js";
 import { endOrderRound, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -62,6 +64,7 @@ import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAc
 import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
+import { deadEndRoutes } from "./dead-end.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 import { sendBack } from "./send-back.js";
 
@@ -70,14 +73,13 @@ export { SHEPHERD_STEPS };
 interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, StaleBaseRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
-  target: PrTarget;
   state: LandPrState;
   /** The review taken at each green head this run saw; a head is reviewed once. */
   reviews: Map<string, Verdict>;
   /** Every MERGE the run took, by head; clearing `reviews` for a re-ask never clears it, so a MERGE head is never reviewed again. */
   merged: Map<string, Verdict>;
   /** The run param narrowed by every registration read so far; it only ever tightens. */
-  policy: EffectivePolicy;
+  policy: ShepherdPrParams["policy"];
   policyReads: number;
   carryScopeReads: number;
   release: boolean;
@@ -140,7 +142,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run), stalled: fixPrStall(run) };
-  const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
+  const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha), recheckMovedBase: staleGreenCheck(run) };
   const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };
   return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer(), mergeBaseFirst: mergeMainFirst(run.target.repo) };
 }
@@ -196,9 +198,6 @@ const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: ru
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
   const reviewedMerge = (headSha: string): boolean => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha);
-  const supersede = (rereview: string | undefined, gated: string | undefined, stepId: string): LeaveLand => (
-    clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
-  );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
   return {
     runId: ctx.runId,
@@ -213,7 +212,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
+      packetTriggering(packetRunOf(run), shepherdSuperseding(run)), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),
@@ -348,7 +347,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps),
+    conflictCheckRoute(deps), conflictBaseRoute(deps), staleBaseRoute(deps), mergeMainRoute(deps), staleGreenRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
@@ -356,9 +355,8 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
     sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),
-    headOriginRoute(deps),
-    reviewRefusedRoute(deps.now),
-    autoPassRoute(deps.port, deps.now),
+    headOriginRoute(deps), reviewRefusedRoute(deps.now),
+    autoPassRoute(deps.port, deps.now), ...deadEndRoutes(deps),
     ...diagnosisRoutes(deps),
   ];
 }

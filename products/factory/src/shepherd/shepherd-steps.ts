@@ -13,6 +13,7 @@ import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { CONFLICT_BASE_STEPS } from "./conflict-base.js";
 import { STALE_BASE_STEPS } from "./stale-base.js";
 import { MERGE_MAIN_STEPS } from "./merge-main.js";
+import { STALE_GREEN_STEPS } from "./stale-green.js";
 import { MERGE_ORDER_STEPS } from "./merge-order-steps.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
 import { FIX_PR_STALL_STEPS } from "./fix-pr-stall.js";
@@ -27,6 +28,7 @@ import { OWNER_SEND_BACK_STEPS } from "./owner-send-back.js";
 import { VISUAL_ACCEPT_STEPS } from "./visual-accept.js";
 import { AUTO_PASS_STEPS } from "./auto-pass.js";
 import { DIAGNOSIS_STEPS } from "./no-verdict-diagnosis.js";
+import { DEAD_END_STEPS } from "./dead-end.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -50,6 +52,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...CONFLICT_BASE_STEPS,
   ...STALE_BASE_STEPS,
   ...MERGE_MAIN_STEPS,
+  ...STALE_GREEN_STEPS,
   ...MERGE_ORDER_STEPS,
   ...FREEZE_HOLD_STEPS,
   ...FIX_PR_STALL_STEPS,
@@ -64,4 +67,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...VISUAL_ACCEPT_STEPS,
   ...AUTO_PASS_STEPS,
   ...DIAGNOSIS_STEPS,
+  ...DEAD_END_STEPS,
 ];

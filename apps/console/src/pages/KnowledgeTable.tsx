@@ -26,22 +26,20 @@ function KnowledgeCards({ records }: { records: readonly KnowledgeRow[] }): Reac
 /** A phone tap needs a 44px target, more than a line of link text gives it. */
 const TAP_TARGET = "inline-flex min-h-11 items-center";
 
+/** Two lines: the title, then one meta line; the file name stays on the record page. */
 function KnowledgeCard({ record }: { record: KnowledgeRow }): ReactNode {
   return (
-    <VStack gap={1} className="min-w-0 border-b border-divider py-inset-sm" testID={`knowledge-card-${record.ref}`}>
+    <VStack className="min-w-0 border-b border-divider py-inset-sm" testID={`knowledge-card-${record.ref}`}>
       <Link color="primary" className={`${TAP_TARGET} break-words`} onPress={() => openRef(record.ref)}>
         {record.title}
       </Link>
-      <HStack gap={2} align="center" wrap>
+      <HStack gap={2} align="center" className="min-w-0 overflow-hidden" testID={`knowledge-card-meta-${record.ref}`}>
         <KindPills record={record} />
-        <Link className={TAP_TARGET} onPress={() => open({ view: "initiatives", id: record.slug })}>
+        <Link className={`${TAP_TARGET} min-w-0 truncate`} onPress={() => open({ view: "initiatives", id: record.slug })}>
           {record.slug}
         </Link>
+        <DateTime value={record.changed} format="date" variant="caption" color="secondary" fallback="unknown" className="shrink-0" />
       </HStack>
-      <div className="min-w-0 break-all">
-        <FilePathLabel path={record.file} size="sm" />
-      </div>
-      <DateTime value={record.changed} format="datetime" variant="caption" color="secondary" fallback="unknown" />
     </VStack>
   );
 }

@@ -44,6 +44,15 @@ describe("suiteRules", () => {
     expect(fixer).not.toContain("Mac");
   });
 
+  it("on basement tells the fixer to run the suite as a background task and report after it finishes", () => {
+    const { fixer } = suiteRules(true);
+
+    expect(fixer).toContain("start it as a background task (run_in_background) and wait for its completion notice");
+    expect(fixer).toContain("never run it in the foreground and never poll with sleep");
+    expect(fixer).toContain("Send your chat_send report after the suite finishes.");
+    expect(fixer).toContain('report "suite: pending" with the run id');
+  });
+
   it("on basement still lets a fixer run its affected tests in its own worktree", () => {
     const { fixer } = suiteRules(true);
 

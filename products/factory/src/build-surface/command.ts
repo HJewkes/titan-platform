@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Command } from "commander";
 import { isRepo } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
-import type { CliIo, Verbs } from "../cli.js";
+import type { CliIo, Verbs } from "../cli-types.js";
 import { refusedInProcess } from "../cli-agent-env.js";
 import { formatGate } from "../cli-host-verbs.js";
 import { callerOf, parsePort } from "../cli-options.js";

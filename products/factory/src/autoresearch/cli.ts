@@ -3,7 +3,7 @@ import { AUTORESEARCH_WORKFLOW, type ArRunSummary, type ArRunView } from "@titan
 import { EXIT as RPC_EXIT, inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError, type Command } from "commander";
 import { z } from "zod";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { formatResume, routesOf } from "../cli-host-verbs.js";
 import { parsePort } from "../cli-options.js";
 import { postRpc, unansweredMessage } from "../cli-shepherd-rpc.js";
@@ -13,6 +13,7 @@ import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
 import { targetPorts } from "./configured.js";
+import { shuttingDownOnSignal } from "./eval-signals.js";
 import { planDryRun } from "./plan-dry-run.js";
 
 const RUNGS = ["none", "L0", "L1", "L2", "L3"] as const;
@@ -43,11 +44,13 @@ type After = (data: unknown, host: FactoryHost) => Promise<void>;
 
 async function inProcess(verbs: Verbs, name: string, args: object, after?: After): Promise<JsonEnvelope<unknown>> {
   let envelope: JsonEnvelope<unknown> = { ok: false, error: `${name} did not run`, code: RPC_EXIT.SOFTWARE };
-  await verbs.withHost(async (host, routes) => {
-    envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
-    if (envelope.ok && after) await after(envelope.data, host);
-    return EXIT.OK;
-  });
+  await verbs.withHost((host, routes) =>
+    shuttingDownOnSignal(host.runtime, async () => {
+      envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
+      if (envelope.ok && after) await after(envelope.data, host);
+      return EXIT.OK;
+    }),
+  );
   return envelope;
 }
 
@@ -129,11 +132,13 @@ function registerResume(group: Command, verbs: Verbs): void {
     .command("resume <runId>")
     .description("drive an unfinished autoresearch run in this process until it ends or waits on a human")
     .action((runId: string) =>
-      verbs.withHost(async (host) => {
-        if (host.runtime.status(runId)?.workflowName !== AUTORESEARCH_WORKFLOW) return (verbs.io.stderr(`error: [not_found] no autoresearch run ${runId}\n`), EXIT.FAILURE);
-        verbs.io.stdout(formatResume(await host.resume()));
-        return EXIT.OK;
-      }),
+      verbs.withHost((host) =>
+        shuttingDownOnSignal(host.runtime, async () => {
+          if (host.runtime.status(runId)?.workflowName !== AUTORESEARCH_WORKFLOW) return (verbs.io.stderr(`error: [not_found] no autoresearch run ${runId}\n`), EXIT.FAILURE);
+          verbs.io.stdout(formatResume(await host.resume()));
+          return EXIT.OK;
+        }),
+      ),
     );
 }
 

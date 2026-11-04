@@ -5,7 +5,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { registrantSeat, storedLineage } from "./registrant.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { toPresence } from "./presence.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
@@ -156,7 +156,7 @@ export const exitNoticeRoute = (now: () => number, ports: ExitNoticePorts | unde
 /** Heads a seat was told about, per run; a replay of the run's notice steps rebuilds the set. */
 const noticedHeads = new WeakMap<object, Set<string>>();
 
-/** Only the send-backs a fixer owns are the seat's to follow up; a conflict or fix-proof exit keeps the owner gate. */
+/** Only the send-backs a fixer owns are the seat's to follow up; a conflict or fix-proof exit takes the gate, the seat's dead-end gate where one is addressed. */
 const SEAT_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "ci-red"]);
 
 type NoticeRun = GateRun & { state: { round: number } };

@@ -287,11 +287,12 @@ describe("the checked-in manifest", () => {
     expect(undeleted.filter((c) => !/^no v9\.1 task deletes it: .*v9\.1-amendments-421\.md.*v9\.1-decomposition-draft-r2\.md/.test(c.reason))).toEqual([]);
   });
 
-  it("carries the root defaults, with burndown on its D-M8-08 rung and agent-chat src on its fold tasks", () => {
+  it("carries the root defaults, with shadow-diff on D-M8-09, burndown on its D-M8-08 rung and agent-chat src on its fold tasks", () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 
     expect(manifest.defaults.map(({ repo, path, fate, task }) => [repo, path, fate, task])).toEqual([
       ["titan-platform", "products/factory/src/shepherd", "kept", undefined],
+      ["titan-platform", "products/factory/src/markers/shadow-diff", "delete", "D-M8-09"],
       ["agent-chat", "src/agents/burndown", "delete", "D-M8-08"],
       ["agent-chat", "scripts/seat", "kept", undefined],
       ["agent-chat", "src", "delete", "TP-626"],

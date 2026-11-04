@@ -30,7 +30,7 @@ function shapeLine(lengths: readonly number[]): string {
 const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
   Object.entries({
     empty: "the line came back empty; say the beat in full",
-    entity: "a name from the original went missing; keep every name and id in the line",
+    entity: "a name from the original went missing; keep every name in the line",
     markup: "a linked word was dropped or changed; keep each one exactly as written",
     terms: "too many of the original's own words went missing; keep its wording and change less",
     length: "the line grew or shrank too far; keep it close to the original's length",
@@ -44,8 +44,9 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "list-emptied": "keep one item of the list in the line",
     "cue-lost": "a cue word was no longer spoken; say every cue word",
     "cue-order": "the cue words came in a different order; keep the original order",
-    "new-term": "a term or id this beat names was no longer spoken; keep saying it in full",
-    "fact-id": "a citation id was pasted into the line; say the name the way the original says it",
+    "new-term": "a term this beat names was no longer spoken; keep saying it in full",
+    "fact-id": "a citation id was pasted into the line; say no id, and name the change by what it did",
+    "id-changed": "an id came back cut short or changed; say no id, and name the change by what it did",
     "sentence-cap": "a sentence was too long to say in one breath; split it",
     missing: "the reply left this beat out; return an entry for it",
   } satisfies Record<RefusalRule, string>),
@@ -65,8 +66,15 @@ function cuedItemLines(triads: readonly string[], beat: PromptBeat): string[] {
   return [`- The screen cues on ${quoted(cued)}: the list item that holds each one is the item you keep in the line.`];
 }
 
+/**
+ * A daily says no id aloud (TP-4697). A cut id that leaves nothing in its place took beats under their fill floor, so
+ * the line asks for the words that say what the change did.
+ */
+const idLine = (ids: readonly string[]): string =>
+  `- Ids: this beat says ${quoted(ids)}. Cut each one and say in its place, in a few words, what that change or task did, so the line stays about as long; the screen shows the id, so put none in labels_added and add no number.`;
+
 function directiveLines(beat: PromptBeat, directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, phrases, shape, refused } = directive;
+  const { numbers, triads, phrases, ids, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
@@ -80,6 +88,7 @@ function directiveLines(beat: PromptBeat, directive: BeatDirective, round: Regis
         ]
       : []),
     ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
+    ...(ids ? [idLine(ids)] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }

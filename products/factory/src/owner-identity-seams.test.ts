@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { CliDeps } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import type { FactoryServerOptions } from "./serve.js";
 import { sourceProgram } from "./shepherd/gate-resolve-closure.test-helpers.js";
 
@@ -29,9 +29,9 @@ describe("owner-identity seams", () => {
   it("no production deps type carries an owner-identity check", () => {
     expectTypeOf<CliDeps>().not.toHaveProperty("presence");
     expectTypeOf<FactoryServerOptions>().not.toHaveProperty("ownerKeys");
-    const program = sourceProgram([join(SRC, "cli.ts"), join(SRC, "serve.ts")]);
+    const program = sourceProgram([join(SRC, "cli-types.ts"), join(SRC, "serve.ts")]);
 
-    const seams = [...seamsOf(program, "cli.ts", "CliDeps"), ...seamsOf(program, "serve.ts", "FactoryServerOptions")];
+    const seams = [...seamsOf(program, "cli-types.ts", "CliDeps"), ...seamsOf(program, "serve.ts", "FactoryServerOptions")];
 
     expect(seams).toEqual([]);
   });

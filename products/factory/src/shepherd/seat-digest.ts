@@ -1,4 +1,4 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
@@ -38,6 +38,16 @@ export interface SeatDigestPorts {
   pacing?: DigestPacing;
 }
 
+/** How long an unacknowledged digest waits before its one retry; the broker usually delivered it, so the retry is a courtesy. */
+const UNACKED_RETRY_MS = 5 * 60_000;
+
+interface Unacked { text: string; at: number }
+
+/** Digests whose send the broker never acknowledged, per memory: one retry per seat, then the state is recorded as told. */
+const unacked = new WeakMap<SeatDigestMemory, Map<string, Unacked>>();
+
+const unackedFor = (memory: SeatDigestMemory): Map<string, Unacked> => unacked.get(memory) ?? unacked.set(memory, new Map()).get(memory)!;
+
 /** The seat a run's digest lines go to. */
 type SeatOf = (run: { repo: string; runId: string }) => string | undefined;
 
@@ -74,7 +84,7 @@ interface SeatView {
   ended: { runId: string; key: string | undefined }[];
 }
 
-const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
+const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "dead-end"]);
 const SeatNoticeRecord = z.looseObject({ result: z.looseObject({ sent: z.literal(true), gate: z.string(), headSha: z.string() }) });
 
 const pr = (row: WatchRow): string => `${row.repo}#${row.pr ?? row.branch}`;
@@ -228,6 +238,19 @@ function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, n
 
 type DigestOutcome = { sent: string[]; failed: { seat: string; cause: string }[] };
 
+/** A first unacknowledged send waits for its one retry; a second stops the resending by recording the state as told. */
+function giveUpOrWait(waiting: Map<string, Unacked>, memory: SeatDigestMemory, seat: string, sent: Unacked, earlier: Unacked | undefined, state: SeatState): void {
+  if (earlier?.text !== sent.text) return void waiting.set(seat, sent);
+  waiting.delete(seat);
+  memory.set(seat, state);
+}
+
+function recordTold(memory: SeatDigestMemory, routes: Partial<DigestRoutes>, seat: string, state: SeatState, last: SeatState | undefined, ends: string[]): void {
+  unackedFor(memory).delete(seat);
+  if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
+  routes.watches?.drop(ends);
+}
+
 /** Whether `pacer` holds a seat's change for a later sweep; a seat with nothing to say has nothing pending. */
 function held(pacer: DigestPacer | undefined, seat: string, text: string | undefined, pending: () => PendingItems, now: Date): boolean {
   if (pacer === undefined) return false;
@@ -237,8 +260,9 @@ function held(pacer: DigestPacer | undefined, seat: string, text: string | undef
 }
 
 /**
- * One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again, and so
- * does a seat `unsendable` names, whose reason is its failure's cause. A `pacer` the change is not yet due under holds it
+ * One message per seat whose state changed. A refused send leaves its memory alone, so the next sweep tries again, and so
+ * does a seat `unsendable` names, whose reason is its failure's cause. A send the broker never acknowledged (it usually
+ * arrived) is retried once after `UNACKED_RETRY_MS`, then taken as told. A `pacer` the change is not yet due under holds it
  * the same way, so the send that comes due carries every unsent item.
  */
 export async function sendSeatDigests(
@@ -258,13 +282,15 @@ export async function sendSeatDigests(
       continue;
     }
     const state = stateOf(view, last, text === undefined ? undefined : now.toISOString());
+    const earlier = unackedFor(memory).get(seat);
+    if (text !== undefined && earlier?.text === text && now.getTime() - earlier.at < UNACKED_RETRY_MS) continue;
     try {
       if (text !== undefined) await ports.send(seat, text);
-      if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
-      routes.watches?.drop(toldEnds(view, fresh, last));
+      recordTold(memory, routes, seat, state, last, toldEnds(view, fresh, last));
       if (text !== undefined) sent.push(seat);
     } catch (error) {
       failed.push({ seat, cause: error instanceof Error ? error.message : String(error) });
+      if (error instanceof DispatchTimeoutError && text !== undefined) giveUpOrWait(unackedFor(memory), memory, seat, { text, at: now.getTime() }, earlier, state);
     }
   }
   return { sent, failed };

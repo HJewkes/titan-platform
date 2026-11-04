@@ -498,6 +498,10 @@ required contexts, the gate stays open. A coordinator may acknowledge the same g
 read before the sweep reaches it (owner decision 551, TP-4285). A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
+An `sh-dead-end` gate (TP-4759, owner decision 552) is asked of the seat that registered the pull
+request, not the owner: only that seat's coordinator may answer `respawn` or `abandon`, and only while
+the pull request is open at the gate's head. The owner may still answer it, and it stays out of the
+owner inbox. No run opens one until `GATE_DEMOTIONS.deadEndSeat` is turned on.
 The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
@@ -759,6 +763,34 @@ non-merge commit, another first parent, a second parent off the base, a hand-res
 tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
 rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
 
+## Steps
+
+The steps of `shepherd-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
+| `sh-sent-back` | OWNER |
+| `sh-dead-end` | OWNER |
+| `sh-review` | AGENT |
+| `sh-await-verdict` | AGENT |
+| `sh-late-verdict` | AGENT |
+| `sh-correct-verdict` | AGENT |
+| `sh-merge-evidence-gate` | OWNER |
+| `sh-review-panel` | AGENT |
+| `sh-spawn-fixer` | AGENT |
+| `main-red` | OWNER |
+| `main-ci-timeout` | OWNER |
+| `main-red-again` | OWNER |
+| `main-frozen` | OWNER |
+| `after-stages` | OWNER |
+| `sh-visual-packet` | AGENT |
+| `sh-visual-accept` | OWNER |
+| `sh-no-verdict-diagnosis` | AGENT |
+| `sh-replan` | AGENT |
+
 ## Watch
 
 ```sh
@@ -921,10 +953,19 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
-  error's `[<class>] ` prefix; an older error without one is classified from its text. A
-  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
+  class as the error's `[<class>] ` prefix; an older error without one is classified from its
+  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
+  secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
+
+  Neither class fails a run on its first answer. A step that may run again after a restart
+  (its route's `onRestart` is `repeat`) is retried on a `gh-api-5xx` after 5 s, 20 s and 60 s.
+  On a `gh-rate-limit` it is retried only when the refused call was a `GET` or `HEAD`, so a
+  write is never sent twice. It then waits until `retry-after`, or `x-ratelimit-reset` plus
+  5 s, or 60 s when GitHub names neither, and at most 61 min a wait. After two waits the next
+  limit fails the run. The waits are recorded as `ghRetries` on the step's result.
 
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
@@ -1014,7 +1055,13 @@ Every registration resolves a policy before anything starts
 | `owner-gate` | every merge waits on the `approve-merge` gate |
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
-The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
+A repo's seat lookup has three outcomes. A repo a seat lists as an owned `remote:` has that seat. A repo on a deny list or
+a charter hard stop is refused with `registration refused:`. Any other repo has no seat, and a repo a seat lists only as
+`read_only` is in this group.
+
+The ceiling comes from seat files. A repo that no seat lists cannot register: `shepherd register` exits non-zero with
+`no seat lists <owner/repo>; add it to a seat file under claude-channels/sources/autonomy/seats`,
+and a repo a seat lists only as `read_only` counts as unlisted. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
@@ -1241,6 +1288,79 @@ longer at reads as unread and measures nothing. The command is read-only: it run
 posts no comment and stores no record. Like `shepherd status`, it asks `titan-factory
 serve` when one answers and otherwise runs here, in an agent shell too. A repo with no key
 exits 66.
+
+**Weekly Ship batch.** Gates the visual-path row holds stay pending until the owner ships
+them. `shepherd visual-week` builds one round spec from them:
+
+```sh
+titan-factory shepherd visual-week --repo owner/design > round.json
+```
+
+It prints JSON: a `unit` named `td-ship-week-<ISO week>`, `round` 1, one pick-one question
+per pending `approve-merge` gate that the visual-path row holds at a head the run last
+decided and that no hold covers, and `skipped`, the repo's other gates with why each is out. Each question binds the
+gate's own head and lists `Ship` as its only ship option. Import the round into the console;
+a Ship resolves its gate through the same round sweep as any console Ship, at the exact head
+and within 24 hours. A PR whose head moves before the Ship stays pending and appears in the
+next week's batch. The command is read-only: it resolves no gate and writes no file, so
+redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
+runs here.
+
+### Visual tiers {#visual-tiers}
+
+`shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
+into two tiers. A tier-1 head merges on Shepherd's own MRG-AU-RV. A tier-2 head keeps the
+`visual-path` gate, so the weekly Ship batch above still answers it.
+
+```json
+"visualTier": {
+  "owner/design": {
+    "mode": "shadow",
+    "harnessPaths": ["**/playwright*.config.*", "packages/ui/scripts/**"],
+    "renderingPaths": ["packages/ui/src/tokens/**", "**/*.css"],
+    "storyPaths": ["packages/ui/src/**/*.stories.tsx"],
+    "logicPaths": ["packages/ui/src/**"],
+    "testArtifactPaths": ["packages/ui/contrast-baseline.json"],
+    "storyDiff": { "check": "visual", "paths": ["**/*-snapshots/**"], "allowedApps": [15368] }
+  }
+}
+```
+
+The config schema keeps each entry raw. The evidence step reads the entry afresh at each head
+and passes it whole to the tier classifier, together with every changed path (both sides of
+a rename, never only the paths the visual globs matched). The classifier then parses the
+entry. Any entry that does not parse, including one with a blank or uncompilable list,
+makes every head tier 2.
+
+A head is tier 1 (`non-rendering`) only when every changed path is outside the visual globs,
+cannot render (tests, markdown, type declarations), is a test artifact, is a story, or is
+logic (`.ts`/`.js` under `logicPaths`). If any path is logic, the head also needs
+`storyDiff.check` to conclude `success` at the head from an `allowedApps` app; `skipped`
+does not count. Any harness, rendering or snapshot path makes the head tier 2, wherever
+that path sits and whatever it is named. Any other path counts as rendered. A rendered path
+needs a pixel proof from the pr-visual artifact, and Shepherd does not read that artifact
+yet, so a rendered path is always tier 2 for now.
+
+Modes:
+
+- `off`, or no entry: nothing is read or recorded.
+- `shadow`, or an entry whose `mode` is unreadable: the tier is recorded on the merge
+  evidence as `visualTier` and shown on a **Visual tier** line of the evidence comment, and
+  the decision does not change.
+- `on`: tier 1 clears the visual-path row, and the allow says `visual files … tier 1
+  (non-rendering)`. Tier 2 gates on `visual-path` as before, with `; tier 2: <why>` added to
+  the reason.
+
+These rules still run after a tier-1 clear: the skill, `.github/`, CI-policy, attest,
+authority and visual-threshold rules, and a seat's [Visual baselines](#visual-baselines). A
+stored `visualTier` that does not parse is read as tier 2 under `on`. Shepherd records a
+tier only for a head whose changed files match the seat's visual globs, and it stores the
+paths those globs matched with the tier. If a later registration widens the globs, the
+decision can match a visual path the tier never judged. That path keeps the visual-path
+gate, with `; tier 2: the tier did not judge <path> as visual`.
+
+Run a repo in `shadow` first, and read a few tier lines in its evidence comments before you
+set it to `on`.
 
 ### Feature base {#feature-base}
 
@@ -1471,6 +1591,27 @@ TP-4068 and TP-4069 (the actor matrix) are the planned behavioural check.
 - The checks and proofs in the list that build no resolver, such as the skill-diff guard and the
   presence and evidence rules. Those are kept by hand, and `registration-hold.test.ts` pins each
   one with a row.
+
+Policy paths also cover Shepherd's sign-off, fix-proof, proof-waiver and merge-standing code
+(TP-4746). `SIGNOFF_POLICY_FILES` in `g10-class-rules.ts` lists them by role: `signoffs.ts`,
+`merge-standing.ts`, `reviewer-lineage.ts`, `auto-pass.ts`, `fix-proof.ts`, `take-verdict.ts`, the
+hold store (`store.ts`, `events.ts`), `registration-of.ts`, the proof waivers, `seat-recheck.ts`,
+the merge-up carries and `no-reviewer-hold.ts`, plus `packages/fix-proof/src/**` and
+`packages/review-panel/src/**`. A held module reads its imports, so an edit to one of them can
+change what the hold decides. The rest of the held set is therefore the import closure of the
+listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
+listed table holds and follows each relative import the compiler's scanner reports (value,
+type-only, re-export and dynamic) to a fixpoint. It fails when a module it reaches is not held,
+when a relative import does not resolve, or when `g10-hold-closure.json` differs from the walk.
+The class rules load that JSON, so a module newly imported by a held one becomes held when the
+list is regenerated (`vitest -u` on the test), with no edit to the listed table. The check itself,
+its sidecar, its walk and the JSON are policy, test files or not. Today the closure holds most of
+the Shepherd directory, because the command, release and carry modules import much of it. Store
+migrations in `store.ts` and its neighbours therefore take `g10-adversary`, not `g10-review`.
+
+**Accepted residual.** The hold-closure walk stays in the Shepherd directory: relative imports
+that leave it, package imports and the data flow through store rows are not followed. TP-3901
+covers the out-of-directory modules and TP-4747 the write sites.
 
 **Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
 answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value
@@ -1974,6 +2115,17 @@ guard rows honour them. Each row clears only when one approval of its gate cover
   a weakened line the evidence step reads each changed path's blob at head into the record's
   `headBlobs`, up to 20 paths. A failed read or more paths leaves the field out, and a record
   without it never clears. A pinned path the PR does not change is ignored.
+
+**`old-path-untagged` (D-M1b-08, TP-3182).** The evidence step judges the head's changed files
+against A1's frozen roots (Shepherd, burndown and `scripts/seat`) and the registered task's tags.
+A head that changes a frozen root needs a `superseded-at:<M>` or `survives:<area>` tag on its
+task. Pure deletions and moves out of a root are exempt, and a `superseded-at` naming an exited
+milestone is stale. Before `milestones.json` records M1b as exited the row is advisory: the
+verdict is stored in the evidence record's `oldPath` field and the evidence comment shows an
+`Old path:` line marked "advisory until M1b exit", and the decision is unchanged. From M1b exit
+an untagged, stale-tagged, task-less or task-unreadable head gates at this row (class
+`deliberate`). A head whose files are unread gates only as `files-unread`. Tagging the task does
+not clear a gate at the same head: the owner decides it, or a new head re-judges.
 
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in

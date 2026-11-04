@@ -1,21 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  DateTime,
-  EmptyState,
-  HStack,
-  Link,
-  Pill,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, DateTime, EmptyState, HStack, Link, Pill, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ReviewSummary } from "../../server/reviews.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";

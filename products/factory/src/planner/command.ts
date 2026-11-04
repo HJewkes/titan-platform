@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import type { Command } from "commander";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { factoryStateDir } from "../config.js";
 import { ownerInboxDir } from "../deploy-watch-ports.js";
 import { PLANNER_ALARM_ASKER, PLANNER_ALARM_KEYS } from "./alarm.js";

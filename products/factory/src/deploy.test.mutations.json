@@ -19,6 +19,33 @@
       "kills": [
         "service deploy rollback pause leaves the deploy alarms open when the restarted build rolls back"
       ]
+    },
+    {
+      "name": "an unknown merge result counts as terminal",
+      "file": "products/factory/src/registry/intent-readers.ts",
+      "find": "r.outcome IN ('merged', 'failed')",
+      "replace": "r.outcome IN ('merged', 'failed', 'unknown')",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unknown result keeps the intent open"
+      ]
+    },
+    {
+      "name": "only the bump is compared, not the schema hash",
+      "file": "products/factory/src/deploy-intents.ts",
+      "find": "(old.schemaHash === next.schemaHash && old.bump === next.bump)",
+      "replace": "old.bump === next.bump",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unknown result keeps the intent open"
+      ]
+    },
+    {
+      "name": "an unreadable factory db skips the check",
+      "file": "products/factory/src/deploy-intents.ts",
+      "find": "return `${moved.map(({ change }) => change).join(\"; \")} and its open intents cannot be read (${why}); fix the factory db and redeploy`;",
+      "replace": "return undefined;",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unreadable factory db refuses a deploy that moves an irreversible step's version"
+      ]
     }
   ]
 }

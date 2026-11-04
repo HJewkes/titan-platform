@@ -31,6 +31,7 @@
     "areas": "node scripts/areas.mjs",
     "metrics:check": "node scripts/metrics-check.mjs",
     "index-version:check": "node scripts/index-version-guard.mjs && node scripts/stage-version-guard.mjs",
+    "registry:closure": "node scripts/step-closure-check.mjs",
     "stage-version:check": "node scripts/stage-version-guard.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
@@ -47,8 +48,8 @@
     "release": "pnpm -r run build && changeset publish",
     "smoke:codex": "node scripts/smoke-codex.mjs",
     "smoke:reviewer": "node scripts/smoke-reviewer.mjs",
-    "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
-    "prepare": "pnpm --silent --filter @titan-design/egress-scan... run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
+    "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" --filter \"@titan-design/session-miner...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
+    "prepare": "node scripts/closure-lock-merge.mjs --install; pnpm --silent --filter @titan-design/egress-scan... run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",

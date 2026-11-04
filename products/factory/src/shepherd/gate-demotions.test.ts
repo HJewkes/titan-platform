@@ -5,7 +5,7 @@ import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { withDemotionOff } from "../test-support/gate-demotions.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -14,7 +14,8 @@ import { demoteFailedRounds, noteReviewerAccount, onEscalated, type FailedRounds
 import { LeaveLand } from "./leave-land.js";
 import { freshNoVerdictState, noteReviewerStep } from "./no-verdict-round.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
-import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdMainCi } from "./post-merge.js";
 import { SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, type Escalated } from "./route-table.js";
 import type { ObservedPr } from "./observe.js";
@@ -247,6 +248,8 @@ describe("D7 residual: a failed fallback reviewer goes to ops (TP-3734)", () => 
   });
 
   it("asks the owner only when the notice could not go out, naming why", async () => {
+    // TP-4759's seat gate is pinned off: this is the owner fallback it replaces where a seat resolves.
+    demotionOffForTest("deadEndSeat");
     const run = { ...d7Run({ fallbackReviewed: true }), ...noticeCtx(false) };
 
     expect(await onEscalated(run, HEAD, INFRA)).toBe(true);
@@ -394,8 +397,8 @@ describe("D13: a red main with no freeze store", () => {
 });
 
 describe("the demotion config", () => {
-  it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, and diagnoses never-verdict rounds", () => {
-    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true });
+  it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, diagnoses never-verdict rounds, and sends dead ends to the registering seat", () => {
+    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true, deadEndSeat: true });
   });
 });
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "ours wins every step",
+      "file": "scripts/closure-lock-merge.mjs",
+      "find": "const row = same(mine, before) ? other : mine;",
+      "replace": "const row = mine;",
+      "kills": [
+        "mergeLocks takes each step from the side that moved it and keeps a step both moved from ours, naming it diverged"
+      ]
+    },
+    {
+      "name": "a step both sides moved is not named",
+      "file": "scripts/closure-lock-merge.mjs",
+      "find": "if (!same(mine, before) && !same(other, before) && !same(mine, other)) diverged.push(step);",
+      "replace": "",
+      "kills": [
+        "mergeLocks takes each step from the side that moved it and keeps a step both moved from ours, naming it diverged"
+      ]
+    }
+  ]
+}

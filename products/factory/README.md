@@ -248,6 +248,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
   Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
   `active-work task edit <slug> <id> status open`.
+- A slice list says nothing of a task's other `done_when` clauses, so two structural checks keep such a task open
+  (TP-4714). Under `keep`, a `--slice` PR closes its task only when it completes the list: once every slice had landed
+  before the PR, only `--last-slice` closes it. A task tag `hold:<reason>` holds against every merge in either mode,
+  `--last-slice` included. Either way the task's notes gain `task left open:` and what holds it.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -599,11 +603,11 @@ loopback on its default port.
 ## Install as a LaunchAgent
 
 ```sh
-pnpm factory:install                  # pnpm install, build factory and its workspace deps, link the bin
+pnpm factory:install                  # pnpm install, build factory and session-miner with their workspace deps, link both bins
 titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
 
-`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` in
+`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` and `~/.local/bin/titan-miner` to `products/session-miner/dist/bin.js` in
 this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild needs no
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
@@ -873,6 +877,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
 | `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+| `src/markers/marker-table.ts` | The v9.1 marker table (migration 49), shadow-only: no live writer or reader yet, and `workflow_run.step_results` stays authoritative. One row per (item, fact, pin class, pin); version and digests are columns, and the highest id at an identity is current. Triggers refuse UPDATE, DELETE and REPLACE, and refuse any marker for an item that has a reverted `landed` marker. Read values and outputs live in `factory_marker_blob` (inline up to 256 KB, a file path above); `factory_marker_root` holds the eval rows that GC keeps as roots |
+| `src/markers/marker-store.ts`, `src/markers/blob-store.ts` | The marker table's store, still with no caller. `writeMarker` appends a row and puts every read value and the output through `putBlob` by content address: up to 256 KB inline, larger as a file `<db dir>/marker-blobs/<hex digest>` written by temp file and rename, the same content stored once. Each write passes the capability guard first, and a store with no guard refuses. `readMarkerValues` names the blobs that are gone instead of throwing |
 
 ## GitHub event sources config
 
@@ -1231,6 +1237,22 @@ Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one t
 - A MERGE carried from another head says so (`carriedFrom`); the summary never claims the reviewer saw the head asked about.
 
 Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBrief`.
+
+## Step registry: `src/registry/`
+
+`factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
+
+A fact entry's `body` module is hashed with everything it imports, workspace sources included, into `src/registry/closure.lock.json`. CI's `pnpm registry:closure` fails when that lock is stale, or when a step's closure changed against `origin/main` with neither a new schema hash, a new `version.bump`, nor an attestation row naming the new closure. After a change, run `pnpm build`, then `pnpm registry:closure --write`.
+
+Attestation rows live one file per PR, `src/registry/attestations/<pr>.json`, an array of `{ step, closure, pr }` whose `pr` is the file's own number, so two PRs that each add rows never touch the same file. Shepherd's `readClaims` and the closure check read the directory as the union at the base and at the head; a ref from before the directory falls back to the retired single `attestations.json`, which the check refuses in a working tree. `closure.lock.json` merges through the `closure-lock` git driver (`.gitattributes`, registered by `pnpm install`): rows that only one side moved merge cleanly, and a step both sides moved keeps ours, which the stale-lock failure then sends to `pnpm registry:closure --write`. GitHub's own merge runs no custom driver, so a PR that moves the same step as a newer main still shows a conflict there; that PR's merged closure is new and needs a fresh attestation anyway.
+
+### Marker shadow (M1b): `src/markers/shadow.ts`
+
+`FactoryHostOptions.markerShadow` wraps each workflow's guarded context in `shadowContext`. Before each call to a step that has a fact entry, the shadow sends the fact's marker verdict to the option's `sink`: either the call would fast-forward or it would run. The step then runs live, unchanged. Afterwards the shadow appends a marker joined to the run id and memo key, unless the current row already records the same digests. The option is off by default and serve does not set it, so `step_results` stays authoritative. A shadow error goes to the sink and never reaches the run.
+
+### Inserting a step (C28): `src/runner/not-after.ts`
+
+A step inserted before a live call site would park every in-flight run whose record continues past that point, since strict replay refuses a call the record does not hold. Declare the step with `notAfter: "<fact>"` and call it through `unlessPast(ctx, stepId, () => …)`. When the run's record continues past this point without the step, the run took that path before the step existed, so `unlessPast` skips the call and returns `{ skipped: true }`; otherwise the step runs or replays as usual. The host refuses a `notAfter` naming a fact no registered step meets, and one on a recipe's first declaration (no call has been answered yet, so the rule cannot tell). `unlessPast` throws for an undeclared step and inside concurrent children (`all`). With the marker shadow on, a skip counts as a visit for the orphan trap and sends a `not-after-skip` line, and a live run whose `notAfter` fact already has a valid marker sends an `advisory` line.
 
 ## Land core: `src/workflows/land.ts`
 

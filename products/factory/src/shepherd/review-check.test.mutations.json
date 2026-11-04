@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reviewCheck ignores an unmet attestation",
+      "file": "products/factory/src/shepherd/review-check.ts",
+      "find": "const unmet = input.attestUnmet ?? [];",
+      "replace": "const unmet: string[] = [];",
+      "kills": ["reviewCheck a MERGE with an unmet attestation publishes action_required, not success"]
+    }
+  ]
+}

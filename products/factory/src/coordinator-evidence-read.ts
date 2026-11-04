@@ -4,10 +4,12 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
   AWAIT_NEW_HEAD,
+  DEAD_END_GATE,
   MAIN_CI_TIMEOUT,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
+  SEAT_DEAD_END_ANSWERS,
   SENT_BACK_GATE,
   coordinatorEvidencePolicy,
   gatePr,
@@ -28,7 +30,10 @@ import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { addressedSeat } from "./shepherd/dead-end.js";
+import { headGateAsks } from "./shepherd/stale-gates.js";
+import { runPolicyCeiling } from "./shepherd/policy.js";
+import { stricterPolicy, type EffectivePolicy } from "./shepherd/policy-schema.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -61,6 +66,7 @@ function readFor(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, p
   const step = stepOf(gate.id);
   if (step === MERGE_GATE && payload.decision === "merge") return readMerge(sources, gate, run, payload);
   if (Object.hasOwn(MAIN_GATES, step)) return readMainGreen(sources, gate);
+  if (step === DEAD_END_GATE && SEAT_DEAD_END_ANSWERS.has(String(payload.decision))) return readSeatDeadEnd(sources, gate, run, payload);
   if (PR_GATES.has(step) && payload.decision === "abandon") return readPrGone(sources, gate, run);
   if (step === SENT_BACK_GATE && payload.decision === AWAIT_NEW_HEAD) return readPrAtHead(sources, gate, run);
   return undefined;
@@ -173,6 +179,18 @@ async function readPrAtHead(sources: EvidenceSources, gate: GateRecord, run: Wor
   const pull = await sources.port.getPr(target.repo, target.pr);
   const state = pull.merged ? "merged" : pull.state === "open" ? "open" : "closed";
   return { kind: "pr-at-head", gateId: gate.id, ...target, state, headSha: pull.headSha, readAt: readAt(sources) };
+}
+
+/** A gone PR's abandon reads as pr-gone; otherwise the seat the run recorded for this head, and the PR as read now. */
+async function readSeatDeadEnd(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, payload: Payload): Promise<CoordinatorEvidence | undefined> {
+  const target = runsPr(sources, gate, run);
+  const head = headGateAsks(gate);
+  const seat = head && addressedSeat(run, head);
+  if (!target || !seat) return undefined;
+  const pull = await sources.port.getPr(target.repo, target.pr);
+  const state = pull.merged ? "merged" : pull.state === "open" ? "open" : "closed";
+  if (state !== "open" && payload.decision === "abandon") return { kind: "pr-gone", gateId: gate.id, ...target, state, readAt: readAt(sources) };
+  return { kind: "seat-dead-end", gateId: gate.id, ...target, headSha: head, seat, pull: { state, headSha: pull.headSha }, readAt: readAt(sources) };
 }
 
 function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {

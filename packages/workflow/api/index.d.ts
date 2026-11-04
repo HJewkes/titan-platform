@@ -153,7 +153,7 @@ interface WorkflowContext {
     readonly runId: string;
     readonly workflowName: string;
     param(key: string): string | undefined;
-    /** The runtime's handle for `name`, for use inside a step body; throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
+    /** The runtime's handle for `name`, usable only inside a step body (a seed's function); throws `CapabilityOutsideStepError` outside one, and throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
     capability(name: string): unknown;
     /** Render the template, run it through the step runner, parse signals. Retried once on a retryable failure. */
     dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;
@@ -639,6 +639,22 @@ declare class CapabilityLeakError extends Error {
     readonly where: string;
     constructor(where: string);
 }
+/** Names the capability only, so the refusal cannot carry its handle or a secret. */
+declare class CapabilityOutsideStepError extends Error {
+    readonly capability: string;
+    constructor(capability: string);
+}
+/** Holds the capabilities of one runtime and checks every value bound for the record against their secrets. */
+declare class CapabilityVault {
+    private readonly entries;
+    private readonly needles;
+    constructor(capabilities: Readonly<Record<string, WorkflowCapability>>);
+    get(name: string): unknown;
+    /** Throws `CapabilityLeakError` when a string anywhere in `value`, or a key, holds a secret. */
+    refuse(value: unknown, where: string): void;
+    private holds;
+    redact(text: string): string;
+}
 
 interface WorkflowAuthorityOptions {
     /** Defaults to the authority package's `DEFAULT_TABLE`. */
@@ -767,6 +783,8 @@ interface DurableHarnessRunnerOptions<H extends Harness> {
 declare function durableHarnessRunner<H extends Harness>(dispatcher: DurableHarnessDispatcher<H>, options: DurableHarnessRunnerOptions<H>): RecoverableStepRunner;
 
 declare function gateIdFor(runId: string, stepId: string): string;
+/** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
+declare function memoKey(operation: StepOperation, stepId: string, index: number): string;
 
 /** What a projection reads besides the run; structural, so workflow takes no runtime dependency on the ledger package. */
 interface RunTraceSources {
@@ -783,4 +801,4 @@ interface RunTraceSources {
  */
 declare function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[];
 
-export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, CodeStepFailure, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowNameIndexMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };
+export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, CapabilityOutsideStepError, CapabilityVault, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, CodeStepFailure, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, memoKey, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowNameIndexMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };

@@ -4,7 +4,7 @@
     {
       "name": "Shepherd reports no weakened CI policy",
       "file": "products/factory/src/shepherd/policy.ts",
-      "find": "  if (evidence.ciPolicy?.kind === \"weakened\") rows.push(\"ci-policy-weakened\");\n",
+      "find": "  if (evidence.ciPolicy?.kind === \"weakened\" && budgetAt(evidence, headSha) === undefined) rows.push(\"ci-policy-weakened\");\n",
       "replace": "",
       "kills": [
         "the approve-merge gate land opens from Shepherd's options marks a CI policy the reviewer judged weakened, under a seat or a visual-path rule"

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { refusedInProcess } from "./cli-agent-env.js";
 import { formatGate } from "./cli-host-verbs.js";
 import { parsePort } from "./cli-options.js";

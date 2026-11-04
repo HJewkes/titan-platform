@@ -14,10 +14,18 @@ const needsFilterSchema = z.object({
 
 type NeedsFilter = z.infer<typeof needsFilterSchema>;
 
+const needsListSchema = needsFilterSchema.extend({
+  fyi: z.enum(["include", "count"]).optional().describe("count leaves open `lens: fyi` items out and returns only how many there were; include, the default, lists them"),
+});
+
+type NeedsListArgs = z.infer<typeof needsListSchema>;
+
 interface NeedsListResult {
   items: OwnerItem[];
   /** One line per source that could not be read, so an outage is never an empty queue. */
   gaps: string[];
+  /** Set only under `fyi: "count"`: the fyi items left out, which outnumber the asks by far and which the console only counts. */
+  fyiCount?: number;
 }
 
 interface NeedsCountResult {
@@ -47,12 +55,22 @@ function countBy(items: readonly OwnerItem[], field: "kind" | "lens"): Record<st
   return counts;
 }
 
-const list = defineCommand<NeedsFilter, NeedsListResult, FactoryContext>({
+/** Matches what the console counts: an answered fyi item still travels, since consolidate reads answers. */
+const isOpenFyi = (item: OwnerItem): boolean => item.lens === "fyi" && item.status === "open";
+
+async function listNeeds({ fyi, ...filter }: NeedsListArgs, ctx: FactoryContext): Promise<NeedsListResult> {
+  const read = await readNeeds(filter, ctx);
+  if (fyi !== "count") return read;
+  const sent = read.items.filter((item) => !isOpenFyi(item));
+  return { items: sent, gaps: read.gaps, fyiCount: read.items.length - sent.length };
+}
+
+const list = defineCommand<NeedsListArgs, NeedsListResult, FactoryContext>({
   name: "needs.list",
-  description: "Everything waiting on the owner as merged OwnerItem[], the set `titan-factory needs --json` prints, filtered by kind, lens or initiative; personal initiatives only when asked",
-  args: needsFilterSchema,
+  description: "Everything waiting on the owner as merged OwnerItem[], the set `titan-factory needs --json` prints, filtered by kind, lens or initiative; personal initiatives only when asked; `fyi: count` leaves fyi items out and counts them",
+  args: needsListSchema,
   result: z.custom<NeedsListResult>(),
-  run: readNeeds,
+  run: listNeeds,
 });
 
 const count = defineCommand<NeedsFilter, NeedsCountResult, FactoryContext>({

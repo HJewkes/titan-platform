@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the console asks for every fyi item",
+      "file": "apps/console/server/factory.ts",
+      "find": "source.call(\"needs.list\", { fyi: \"count\" })",
+      "replace": "source.call(\"needs.list\", {})",
+      "kills": [
+        "factory needs client asks the factory to count fyi items rather than send them, and passes the count on"
+      ]
+    },
+    {
+      "name": "the factory's count is dropped",
+      "file": "apps/console/server/factory.ts",
+      "find": "...(fyiCount !== undefined && { fyiCount })",
+      "replace": "",
+      "kills": [
+        "factory needs client asks the factory to count fyi items rather than send them, and passes the count on"
+      ]
+    }
+  ]
+}

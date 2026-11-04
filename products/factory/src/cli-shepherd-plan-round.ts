@@ -3,7 +3,7 @@ import { text } from "node:stream/consumers";
 import { EXIT } from "@titan-design/registry";
 import type { Command } from "commander";
 import { parsePositiveInt } from "./cli-options.js";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { configPath, loadConfig } from "./config.js";
 import { runCommand, type CommandResult } from "./run-command.js";
 import { parseNameStatus, verifyPlan } from "./shepherd/plan-round-verify.js";

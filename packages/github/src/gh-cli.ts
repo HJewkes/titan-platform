@@ -11,6 +11,7 @@ import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 import { readContentBytes } from "./file-bytes.js";
+import { listDirectory } from "./directory.js";
 import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { compareFiles, readAncestry } from "./compare.js";
@@ -54,6 +55,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     getDefaultBranch: async (repo) => (await api.get<{ default_branch: string }>(`repos/${repo}`)).default_branch,
     getContent: (repo, path, ref) => getContent(api, repo, path, ref),
     getContentBytes: (repo, path, ref, maxBytes) => readContentBytes(api, repo, path, ref, maxBytes),
+    listDirectory: (repo, path, ref) => listDirectory(api, repo, path, ref),
     putContent: async (repo, request) => {
       const body = { message: request.message, content: Buffer.from(request.content, "utf8").toString("base64"), branch: request.branch, ...(request.expectedBlobSha ? { sha: request.expectedBlobSha } : {}) };
       const written = await api.send<{ content: { sha: string } }>("PUT", `repos/${repo}/contents/${request.path}`, {}, JSON.stringify(body));
@@ -127,7 +129,7 @@ export function redactedError(error: unknown, secrets: readonly string[]): Error
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
     const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
-    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }

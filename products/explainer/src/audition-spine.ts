@@ -7,11 +7,11 @@ const cell = (text: string): string => text.replace(/\s+/g, " ").trim().replace(
 const table = (header: readonly string[], rows: readonly (readonly string[])[]): string =>
   [`| ${header.join(" | ")} |`, `|${header.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)].join("\n");
 
-// The handle a script speaks for a fact: a task fact (`task/<id>/<change>`) by its task id, a pull-request fact
-// (`pr/<repo>#<n>/<change>`) as "PR <n>". Any other fact is named by its id.
+// The handle the screen shows for a fact (a daily never says it aloud, TP-4697): a task fact (`task/<id>/<change>`)
+// by its task id, a pull-request fact (`pr/<repo>#<n>/<change>`) as "PR <n>". Any other fact is named by its id.
 const TASK_FACT = /^task\/([^/]+)\/[^/]+$/;
 const PR_FACT = /^pr\/.+#(\d+)\/[^/]+$/;
-export function spokenHandle(factId: string): string {
+export function itemHandle(factId: string): string {
   const task = TASK_FACT.exec(factId)?.[1];
   if (task) return task;
   const pr = PR_FACT.exec(factId)?.[1];
@@ -27,10 +27,10 @@ interface Cited {
 function citations(spine: SpineCandidate): Map<string, Cited> {
   const cited = new Map<string, Cited>();
   const cite = (fact: string, chapter: string) => {
-    const seen = cited.get(spokenHandle(fact)) ?? { facts: [], chapters: [] };
+    const seen = cited.get(itemHandle(fact)) ?? { facts: [], chapters: [] };
     if (!seen.facts.includes(fact)) seen.facts.push(fact);
     if (!seen.chapters.includes(chapter)) seen.chapters.push(chapter);
-    cited.set(spokenHandle(fact), seen);
+    cited.set(itemHandle(fact), seen);
   };
   cite(spine.hook.fact, spine.blocks[0]!.id);
   spine.blocks.forEach((block) => block.facts.forEach((fact) => cite(fact, block.id)));
@@ -47,7 +47,7 @@ const citeRows = (cited: Map<string, Cited>): string[][] => [...cited].map(([han
  * block n is journey step n and chapter n, its question the step and the chapter question, its first fact the why.
  * A chapter takes its block's id, so a later step can find a block's chapter (the daily's reflection) by name.
  * Each block stands as its own part and names its lead beat in §8. The ledger lists every cited fact by the handle a
- * script speaks for it, at the chapter that first cites it; the unnumbered Cites table keeps the fact ids to cite.
+ * script shows for it, at the chapter that first cites it; the unnumbered Cites table keeps the fact ids to cite.
  */
 export function pickSpine(id: string, spine: SpineCandidate, facts: readonly MaterialFact[]): string {
   const text = new Map(facts.map((fact) => [fact.id, fact.text]));

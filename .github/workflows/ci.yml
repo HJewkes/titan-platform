@@ -190,6 +190,9 @@ jobs:
           BASE_REF: origin/${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm index-version:check
+      # A factory fact step whose import closure moved since main must bump its version or carry an attestation (TP-3106).
+      - name: Require a version bump or attestation for a changed step closure
+        run: pnpm registry:closure
 
   # Main's full suite as three parallel shards beside validate, so main's wall time is the slowest of them (TP-4401).
   # Pull requests keep the scoped single-job run in validate. Branch protection requires validate, which a pull request

@@ -1,7 +1,8 @@
 import { GATE_DEMOTIONS, autoPassStepId, recordAutoPass, type GateDemotions } from "./auto-pass.js";
 import { hasReviewerFixFirst, trailSummary, type FixFirstTrail } from "./fix-first-trail.js";
 import { noticeHeldSeat } from "./gate-route.js";
-import { awaitNewHead, type GateRun } from "./gates.js";
+import { awaitNewHead } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import { LeaveLand } from "./leave-land.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
@@ -19,8 +20,8 @@ const CONVERGENCE_RULE = "D8/convergence-review";
 /**
  * D8 (TP-3734): a runaway or no-progress head gets one fresh convergence review instead of approve-merge. Its MERGE takes
  * the normal land path at the PR's tier; its FIX_FIRST tells the seat to route the task to the planner, and the run waits
- * for a new head. False reviews the head again. Undefined leaves the escalation to the owner gate: the flag is off, or no
- * seat could be told, which is the seat-notice fallback every other seat route keeps.
+ * for a new head. False reviews the head again. Undefined leaves the escalation to D7's route, whose gate is the seat's
+ * dead-end gate for a runaway (TP-4759), else the owner's: the flag is off, or no seat could be told.
  */
 export async function onFixFirstEscalated(run: FixFirstDemotionRun, headSha: string, escalated: Escalated, demotions: GateDemotions = GATE_DEMOTIONS): Promise<false | undefined> {
   if (!demotions.fixFirstRunaway || !RUNAWAYS.has(escalated.escalation)) return undefined;

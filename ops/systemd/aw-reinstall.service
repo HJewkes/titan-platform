@@ -1,0 +1,13 @@
+# Rebuilds products/active-work at origin/main in a staging dir, re-points ~/.local/bin/active-work and aw at it,
+# restarts active-work.service and logs the before/after wall times of `active-work open titan-platform` (TP-4764).
+# Start it with `systemctl --user start aw-reinstall`, so the restart runs outside the caller's process tree.
+# Install steps: scripts/aw-reinstall-install.sh.
+[Unit]
+Description=active-work reinstall: build origin/main, re-point the bins, restart the daemon
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/bin/bash %h/projects/titan-platform/scripts/aw-reinstall.sh
+TimeoutStartSec=30min
+Nice=10

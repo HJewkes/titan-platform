@@ -25,6 +25,13 @@ describe("failureClassOf", () => {
     expect(failureClassOf("step update-branch:1 (iteration 0) failed: update-branch: head still abc123 after 300000 ms")).toBe("update-branch");
   });
 
+  it("files a transport-marked rate limit as gh-rate-limit, on a land-rules read too, and limit text without the marker as other", () => {
+    const marked = "[gh-rate-limit status=403 method=GET x-ratelimit-remaining=0 x-ratelimit-reset=1760295660] gh api -i repos/acme/widgets/pulls/1 failed (1): gh: API rate limit exceeded for user ID 1. (HTTP 403)";
+    expect(failureClassOf(`step sh-observe:abc (iteration 0) failed: ${marked}`)).toBe("gh-rate-limit");
+    expect(failureClassOf(`step land-rules (iteration 0) failed: ${marked}`)).toBe("gh-rate-limit");
+    expect(failureClassOf("step sh-observe:abc (iteration 0) failed: gh api -i -X GET failed (1): API rate limit exceeded")).toBe("other");
+  });
+
   it("files anything else as other", () => {
     expect(failureClassOf("step merge:0 (iteration 0) failed: gh api -i -X PUT failed (1): gh: Base branch was modified. (HTTP 405)")).toBe("other");
     expect(failureClassOf("workflow returned while step ci-wait:r3:17 still required reconciliation")).toBe("other");

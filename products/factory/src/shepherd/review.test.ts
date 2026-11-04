@@ -18,7 +18,8 @@ import { codeRoute } from "../workflows/land.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { reviewCauseStats, type ReviewCause } from "./review-cause.js";
 import { CI_UNREAD_REASON } from "./ci-unread.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import {
   FIX_FIRST_TRUNCATED,
   MAX_FIX_FIRST_TEXT_CHARS,

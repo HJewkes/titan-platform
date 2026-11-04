@@ -7,6 +7,7 @@ import type { RepairStopResult } from "./repair-stop-command.js";
 import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
+import type { ReaddressReport, ReaddressedGate } from "./readdress.js";
 import type { ThawResult } from "./thaw-command.js";
 import type { WatchResult } from "./watch-command.js";
 import type { FixPrResult } from "./fix-pr-command.js";
@@ -46,10 +47,12 @@ const FORMATTERS: Formatters = {
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
+  "shepherd.readdress-dead-ends": formatReaddress,
   "shepherd.prs": formatPrs,
   "shepherd.watch": formatWatches,
   // A calibration read feeds a threshold recommendation, so it prints JSON with or without --json.
   "shepherd.visual-delta": (report) => `${JSON.stringify(report, null, 2)}\n`,
+  "shepherd.visual-week": (batch) => `${JSON.stringify(batch, null, 2)}\n`,
   "shepherd.brief": (output) => (output.format === "md" ? output.markdown : `${JSON.stringify({ section: output.section, question: output.question }, null, 2)}\n`),
 };
 
@@ -224,6 +227,19 @@ function clip(line: string, width: number | undefined): string {
 
 function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation): string {
   return `run ${runId} ${phase}: policy says ${decision.outcome} (${decision.reason}); ${held ? `held: ${held.reason}; ` : ""}${waiting}\n`;
+}
+
+function readdressLine(applied: boolean, gate: ReaddressedGate): string {
+  const target = `${gate.repo}#${gate.pr} ${gate.headSha.slice(0, 7)} ${gate.kind}`;
+  if (gate.seat === null) return `${gate.gateId}  ${target}  no seat: stays the owner's`;
+  const verb = !applied ? "would go to" : gate.cancelled ? "readdressed to" : "already settled, not readdressed to";
+  return `${gate.gateId}  ${target}  ${verb} ${gate.seat}`;
+}
+
+function formatReaddress({ applied, gates }: ReaddressReport): string {
+  const moved = gates.filter((gate) => (applied ? gate.cancelled : gate.seat !== null)).length;
+  const summary = `${applied ? "readdressed" : "dry run: would readdress"} ${moved} of ${gates.length} dead-end owner gate(s)${applied ? "" : "; --apply cancels them"}`;
+  return `${[...gates.map((gate) => readdressLine(applied, gate)), summary].join("\n")}\n`;
 }
 
 function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [], reverted = [] }: ResyncReport): string {

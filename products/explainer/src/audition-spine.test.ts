@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpineCandidate } from "./audition-sample.js";
-import { pickSpine, spokenHandle } from "./audition-spine.js";
+import { pickSpine, itemHandle } from "./audition-spine.js";
 import { parseSpine } from "./spine-schema.js";
 
 const PICK: SpineCandidate = {
@@ -72,6 +72,6 @@ describe("an audition pick read as a story spine", () => {
 
 describe("the spoken handle of a fact", () => {
   it("is the task id, PR and its number, or else the fact id itself", () => {
-    expect(["task/DM-7/closed", "pr/acme/parcel-desk#412/opened", "session/s-1", "F2"].map(spokenHandle)).toEqual(["DM-7", "PR 412", "session/s-1", "F2"]);
+    expect(["task/DM-7/closed", "pr/acme/parcel-desk#412/opened", "session/s-1", "F2"].map(itemHandle)).toEqual(["DM-7", "PR 412", "session/s-1", "F2"]);
   });
 });

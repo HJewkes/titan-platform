@@ -4,7 +4,7 @@ import { WorkflowRunStore, type StepRoute, type WorkflowContext, type WorkflowSt
 import { z } from "zod";
 import { redactForEvidence } from "../redact.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { HOLD_POLL_MS, type HeldCheck, type HoldTiming } from "./hold.js";
+import { HOLD_POLL_MS, type HeldCheck, type HoldTiming } from "./hold-timing.js";
 
 /** Only shepherd-pr runs ride the train; they are the runs that leave it again after every land round. */
 export const TRAIN_WORKFLOW = "shepherd-pr";

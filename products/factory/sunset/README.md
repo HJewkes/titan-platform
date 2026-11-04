@@ -8,6 +8,7 @@ D-M0-07's CI check reads it. The task stays open while any listed root has a fil
 | Repo | Root |
 |---|---|
 | titan-platform | `products/factory/src/shepherd` |
+| titan-platform | `products/factory/src/markers/shadow-diff` (the SHD-2 comparator and log, `delete` D-M8-09 at M8) |
 | agent-chat | `src/agents/burndown` (the burndown code) |
 | agent-chat | `scripts/seat` |
 
@@ -39,6 +40,17 @@ Chosen over exempting PRs whose merge-base predates the manifest (option B) beca
 (CI checkouts can be shallow), keeps the rule for every branch, and fits the schema as one optional array.
 
 Test files take the fate of the file they test.
+
+## Old-path freeze (D-M1b-08)
+
+`milestones.json`'s M1b entry also switches the old-path freeze on. Until it reads `exited`, Shepherd's
+`old-path-untagged` merge-guard row is advisory: the verdict is recorded in the evidence record and
+shown in the evidence comment, and the merge decision is unchanged. Once M1b is exited, a pull request
+that changes a frozen root (`products/factory/src/shepherd`, and in agent-chat `src/agents/burndown`
+and `scripts/seat`) gates unless its task carries `superseded-at:<M>` or `survives:<area>`. Deletions
+and moves out of the root are exempt, and a `superseded-at` naming an exited milestone no longer
+counts. The deployed factory must ship this directory: an unreadable `milestones.json` reads as
+exited, so the freeze is on.
 
 ## Compensators
 

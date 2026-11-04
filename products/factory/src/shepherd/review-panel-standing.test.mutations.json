@@ -4,8 +4,8 @@
     {
       "name": "the panel hands verdictOf an empty standing instead of the round's",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "taken.awaited, standing);",
-      "replace": "taken.awaited, {});",
+      "find": "taken.awaited, standing, adversaryAttest(",
+      "replace": "taken.awaited, {}, adversaryAttest(",
       "kills": [
         "the proof standing of a unanimous panel MERGE records an unverified standing on the MERGE's evidence"
       ]

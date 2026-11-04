@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { stableNodePath } from "@titan-design/daemon/service";
 import type { Command } from "commander";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { deployService, type DeployPorts } from "./deploy.js";
@@ -137,7 +137,7 @@ export const ownCheckout = (): string => fileURLToPath(new URL("../../../", impo
 
 function deployPortsFor({ io, deps }: Verbs): { checkout: string; ports: DeployPorts } {
   const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
-  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout), incident: configuredDeployIncident(io.env), resolveAlarms: configuredDeployResolve(io.env) } };
+  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout, io.env), incident: configuredDeployIncident(io.env), resolveAlarms: configuredDeployResolve(io.env) } };
 }
 
 function registerServiceDeploy(service: Command, verbs: Verbs): void {

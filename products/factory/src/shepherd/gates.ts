@@ -1,29 +1,12 @@
-import type { WorkflowContext } from "@titan-design/workflow";
-import type { RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { WAIVE_PROOF, conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
 import { waiveProof } from "./proof-waiver.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import { askAtHead } from "./stale-gates.js";
+import { askAtHead, askReaddressable } from "./stale-gates.js";
 import { mainFixedSpent } from "./main-fixed.js";
-
-export interface PrTarget {
-  repo: RepoSlug;
-  pr: number;
-}
-
-/** What the run's owner gates read: its context, its pull request, and the wait counter the await-new-head steps number from. */
-export interface GateRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
-  state: { waits: number };
-  /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
-  carried?: Escalated;
-  /** The verdict taken at each head; a waived fix-proof drops its head's NO_REPRO, so the next round reviews that head. */
-  reviews?: Map<string, unknown>;
-}
+import type { GateRun } from "./run-state.js";
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
 type CiRead = Pick<CiSnapshot, "headSha" | "mergeableState">;
@@ -118,14 +101,19 @@ export async function conflictGate(run: GateRun, headSha: string, unsent = ""): 
   return awaitNewHead(run, headSha);
 }
 
+/** The seat's dead-end gate a readdressed sent-back asks instead. */
+type SeatGate = () => Promise<LandOutcome | undefined>;
+
 /**
  * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO, or a fixer's exit from a fix-proof wake) send-back
  * the owner may instead waive this head's fix-proof, and the next round reviews it. Undefined lands the next round.
+ * A gate `readdress-dead-ends` cancelled goes to `readdress`, the seat's dead-end gate at the same head (TP-4759).
  */
-export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false): Promise<LandOutcome | undefined> {
+export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false, readdress?: SeatGate): Promise<LandOutcome | undefined> {
   const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation, waivable });
-  const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema, brief });
-  const answer = answered ? schema.parse(answered.data) : { decision: "await-new-head" };
+  const answered = await askReaddressable(run.ctx, "sh-sent-back", prompt, { schema, brief });
+  if (answered === "readdressed" && readdress) return readdress();
+  const answer = answered && answered !== "readdressed" ? schema.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: abandoned };
   if (answer.decision !== WAIVE_PROOF) return awaitNewHead(run, headSha);
   await waiveProof(run.ctx, headSha);

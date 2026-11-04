@@ -34,7 +34,7 @@
     {
       "name": "a run held behind a live reservation counts as merging",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",
+      "find": "    if (await stillOrders(deps.port, repo, blocker.reservation.pr)) return true;\n",
       "replace": "",
       "kills": [
         "TP-4098 slice C: the #2301 loop never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring",

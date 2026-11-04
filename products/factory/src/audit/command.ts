@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { parse } from "yaml";
-import type { Verbs } from "../cli.js";
+import type { Verbs } from "../cli-types.js";
 import { EXIT } from "../exit-codes.js";
 import { untilSettledOrGated, type FactoryHost } from "../host.js";
 import { resolveCommand } from "../resolve-command.js";
