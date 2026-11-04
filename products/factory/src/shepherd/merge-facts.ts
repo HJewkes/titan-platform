@@ -263,8 +263,11 @@ const BUDGET_ROW: MergeGuardRow = "ci-policy-budget";
  * nowhere; owner decision 552 (2) lets a coordinator resolve that gate, so any doubt reads as a weakening.
  */
 export function budgetAt(evidence: Pick<DecidableEvidence, "head" | "merge" | "ciPolicy" | "ciPolicyClass">, headSha: string): string | undefined {
-  const fresh = evidence.head === headSha && evidence.merge.verdict.value === "MERGE" && evidence.merge.verdict.head === headSha && evidence.merge.carry === undefined;
-  return fresh && evidence.ciPolicy?.kind === "weakened" ? budgetMeasurement(evidence.ciPolicyClass) : undefined;
+  const measurement = evidence.ciPolicy?.kind === "weakened" ? budgetMeasurement(evidence.ciPolicyClass) : undefined;
+  // Stored evidence is not parsed on read (policy.ts), so its verdict may be missing.
+  const verdict: Partial<MergeFacts["verdict"]> | undefined = evidence.merge.verdict;
+  const fresh = evidence.head === headSha && verdict?.value === "MERGE" && verdict.head === headSha && evidence.merge.carry === undefined;
+  return fresh ? measurement : undefined;
 }
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
