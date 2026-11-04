@@ -27,7 +27,7 @@ export function agentChatCleanupAgents(
   };
 }
 
-export type ActiveWorkCommands = {
+type ActiveWorkCommands = {
   "task.list": { args: { slug: string; status: "all"; tag?: string }; result: { tasks: { id: string; status: string; done_when?: string; notes?: string; tags?: string[] }[] } };
   "source.list": { args: { slug: string }; result: { sources: { filename: string }[] } };
   "source.read": { args: { slug: string; path: string }; result: { content: string } };

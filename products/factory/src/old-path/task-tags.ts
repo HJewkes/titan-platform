@@ -1,7 +1,6 @@
 import type { PrFile } from "@titan-design/github";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import { errorMessage } from "../narrow.js";
-import type { ActiveWorkCommands } from "../shepherd/cleanup-ports.js";
 import { frozenTouches, oldPathVerdict, readExited, type OldPathVerdict, type TaskRead } from "./freeze-rule.js";
 
 const DEFAULT_TIMEOUT_MS = 3000;
@@ -11,6 +10,11 @@ const INITIATIVE_BY_PREFIX = new Map([ ["TP", "titan-platform"],
   ["TD", "titan-design"],
 ]);
 const BARE_ID = /^(TP|CC|TD)-\d+$/;
+
+/** The slice of active-work's command table this reader calls; importing cleanup-ports' table would pull this file into Shepherd's import cycle. */
+type TaskTagsCommands = {
+  "task.list": { args: { slug: string; status: "all" }; result: { tasks: { id: string; tags?: string[] }[] } };
+};
 
 export interface TaskTagsPort {
   /** The task's tags, or `undefined` when the initiative has no such task. A failed read throws. */
@@ -29,7 +33,7 @@ export function taskRef(task: string): { initiative: string; id: string } | unde
 
 /** One task's tags over the active-work loopback rpc; it has no `task.show`, so the initiative's list is filtered by id. */
 export function activeWorkTaskTags(options: { origin: string; fetch?: typeof fetch; timeoutMs?: number }): TaskTagsPort {
-  const client = createRpcClient<ActiveWorkCommands>(liveSource(options));
+  const client = createRpcClient<TaskTagsCommands>(liveSource(options));
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return {
     tags: async (initiative, id) => {
