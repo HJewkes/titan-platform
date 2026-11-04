@@ -8,7 +8,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { WAIVE_PROOF, deadEndDecision, type DeadEndAnswer } from "../gate-brief.js";
 import { readPath } from "../narrow.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
-import { ABANDON_STEPS, abandonAtHead } from "./abandon-close.js";
+import { ABANDON_STEPS, abandonAtHead, abandonRoute } from "./abandon-close.js";
 import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -82,7 +82,11 @@ export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | und
     return { seat: seat ?? null, kind: input.kind, headSha: input.headSha };
   });
 
-export const deadEndRoute = (deps: Pick<ShepherdDeps, "now" | "store" | "roster" | "exitNotice">): StepRoute => deadEndAddressRoute(deps.now, deadEndPorts(deps));
+/** Every code route a dead-end gate dispatches to: its address and its abandon. */
+export const deadEndRoutes = (deps: Pick<ShepherdDeps, "now" | "port" | "store" | "roster" | "exitNotice" | "agentChatBin" | "cleanup">): StepRoute[] => [
+  deadEndAddressRoute(deps.now, deadEndPorts(deps)),
+  abandonRoute(deps),
+];
 
 /** The seat the run addressed its dead-end gate at `headSha` to, from its own record; the evidence reader's source. */
 export function addressedSeat(run: WorkflowRun, headSha: string): string | undefined {
