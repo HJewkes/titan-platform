@@ -1306,6 +1306,62 @@ next week's batch. The command is read-only: it resolves no gate and writes no f
 redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
 runs here.
 
+### Visual tiers {#visual-tiers}
+
+`shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
+into two tiers. A tier-1 head merges on Shepherd's own MRG-AU-RV. A tier-2 head keeps the
+`visual-path` gate, so the weekly Ship batch above still answers it.
+
+```json
+"visualTier": {
+  "owner/design": {
+    "mode": "shadow",
+    "harnessPaths": ["**/playwright*.config.*", "packages/ui/scripts/**"],
+    "renderingPaths": ["packages/ui/src/tokens/**", "**/*.css"],
+    "storyPaths": ["packages/ui/src/**/*.stories.tsx"],
+    "logicPaths": ["packages/ui/src/**"],
+    "testArtifactPaths": ["packages/ui/contrast-baseline.json"],
+    "storyDiff": { "check": "visual", "paths": ["**/*-snapshots/**"], "allowedApps": [15368] }
+  }
+}
+```
+
+The config schema keeps each entry raw. The evidence step reads the entry afresh at each head
+and passes it whole to the tier classifier, together with every changed path (both sides of
+a rename, never only the paths the visual globs matched). The classifier then parses the
+entry. Any entry that does not parse, including one with a blank or uncompilable list,
+makes every head tier 2.
+
+A head is tier 1 (`non-rendering`) only when every changed path is outside the visual globs,
+cannot render (tests, markdown, type declarations), is a test artifact, is a story, or is
+logic (`.ts`/`.js` under `logicPaths`). If any path is logic, the head also needs
+`storyDiff.check` to conclude `success` at the head from an `allowedApps` app; `skipped`
+does not count. Any harness, rendering or snapshot path makes the head tier 2, wherever
+that path sits and whatever it is named. Any other path counts as rendered. A rendered path
+needs a pixel proof from the pr-visual artifact, and Shepherd does not read that artifact
+yet, so a rendered path is always tier 2 for now.
+
+Modes:
+
+- `off`, or no entry: nothing is read or recorded.
+- `shadow`, or an entry whose `mode` is unreadable: the tier is recorded on the merge
+  evidence as `visualTier` and shown on a **Visual tier** line of the evidence comment, and
+  the decision does not change.
+- `on`: tier 1 clears the visual-path row, and the allow says `visual files … tier 1
+  (non-rendering)`. Tier 2 gates on `visual-path` as before, with `; tier 2: <why>` added to
+  the reason.
+
+These rules still run after a tier-1 clear: the skill, `.github/`, CI-policy, attest,
+authority and visual-threshold rules, and a seat's [Visual baselines](#visual-baselines). A
+stored `visualTier` that does not parse is read as tier 2 under `on`. Shepherd records a
+tier only for a head whose changed files match the seat's visual globs, and it stores the
+paths those globs matched with the tier. If a later registration widens the globs, the
+decision can match a visual path the tier never judged. That path keeps the visual-path
+gate, with `; tier 2: the tier did not judge <path> as visual`.
+
+Run a repo in `shadow` first, and read a few tier lines in its evidence comments before you
+set it to `on`.
+
 ### Feature base {#feature-base}
 
 A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's

@@ -201,6 +201,8 @@
   "visual-gate.ts",
   "visual-threshold-gate.ts",
   "visual-threshold.ts",
+  "visual-tier-guard.ts",
+  "visual-tier.ts",
   "visual-week-command.ts",
   "visual-week.ts",
   "visuals-manifest.ts",

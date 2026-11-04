@@ -6,6 +6,7 @@ import type { EvidenceRecord } from "./merge-facts.js";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import { percent, wouldDecide } from "./visual-threshold-gate.js";
+import { tierLine } from "./visual-tier-guard.js";
 import { readPath } from "../narrow.js";
 import { oldPathLine } from "../old-path/freeze-gate.js";
 
@@ -162,6 +163,10 @@ function visualDiffSection(delta: VisualDelta | undefined): string[] {
   return ["", head, "", ...snapshotTable(delta), "", ...sensitiveLines(delta), ...shadow];
 }
 
+function visualSections(record: EvidenceRecord): string[] {
+  return [...visualDiffSection(record.visualDelta), ...tierLine(record.visualTier)];
+}
+
 function carriedLine({ carry }: EvidenceRecord): string[] {
   if (!carry) return [];
   return ["", `Carried the MERGE reviewed at \`${carry.fromHead}\` by ${carry.rule ?? "tree-equal"} (merge-tree \`${carry.mergeTree}\`) to a head whose tree is \`${carry.headTree}\`.`];
@@ -192,7 +197,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     ...carriedLine(record),
     "",
     ...checksTable(record),
-    ...visualDiffSection(record.visualDelta),
+    ...visualSections(record),
     ...rule,
     ...notes,
     ...pathsSection(decision),

@@ -118,5 +118,14 @@ export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef
 
 /** Read through the live config at each evidence step, so a threshold edit applies at the next head without a restart; repo keys match in any case. */
 export function visualThresholdOf(config: ConfigRef): (repo: string) => VisualThreshold | undefined {
-  return (repo) => Object.entries(config.get().shepherd?.visualThreshold ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
+  return (repo) => repoEntry(config.get().shepherd?.visualThreshold, repo);
+}
+
+function repoEntry<T>(byRepo: Record<string, T> | undefined, repo: string): T | undefined {
+  return Object.entries(byRepo ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
+}
+
+/** The raw `shepherd.visualTier` entry, read live like the threshold and never parsed here; repo keys match in any case. */
+export function visualTierOf(config: ConfigRef): (repo: string) => unknown {
+  return (repo) => repoEntry(config.get().shepherd?.visualTier, repo);
 }

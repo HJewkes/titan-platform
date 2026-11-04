@@ -6,6 +6,7 @@ import type { AttestJudgment } from "./attest-evidence.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import type { RiskTier } from "./risk-tier.js";
 import type { VisualDelta } from "./visual-delta-read.js";
+import type { VisualTierRecord } from "./visual-tier-guard.js";
 import type { OldPathRecord } from "../old-path/freeze-gate.js";
 
 interface EvidenceCheckRun {
@@ -42,6 +43,8 @@ export interface EvidenceRecord {
   riskTier?: RiskTier;
   /** The measured visual delta under `shepherd.visualThreshold` (TP-4320); absent when that is off for the repo. */
   visualDelta?: VisualDelta;
+  /** The visual tier under `shepherd.visualTier` (TP-4761); absent when that is off for the repo or no visual path changed. */
+  visualTier?: VisualTierRecord;
   /** Each claimed attestation row met at this head, with the roster rows that met it (TP-3110). */
   attested?: { step: string; closure: string; meeters: { name: string; agentId: string; shape: "correctness" | "adversary" }[] }[];
   /** Each claimed row left unmet, and why. */
@@ -65,7 +68,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "visualTier" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
@@ -90,7 +93,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta, attest, oldPath }: RecordExtras,
+  { ciPolicy, riskTier, visualDelta, visualTier, attest, oldPath }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -111,6 +114,7 @@ export function evidenceRecord(
     ...proofFields(input),
     riskTier,
     ...(visualDelta && { visualDelta }),
+    ...(visualTier && { visualTier }),
     ...attestFields(attest, input.resolver),
     ...(oldPath && { oldPath }),
   };
