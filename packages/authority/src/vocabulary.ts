@@ -1,4 +1,8 @@
-export const ACTOR_CLASSES = ["owner-terminal", "owner-remote", "coordinator", "worker", "headless", "automation", "decider"] as const;
+/**
+ * `owner-ask` records a gate a seat resolved after the owner approved the exact command at a Claude Code ask prompt.
+ * The approval cannot be verified (same OS user), so it is never an owner class, and the table denies it every action.
+ */
+export const ACTOR_CLASSES = ["owner-terminal", "owner-remote", "coordinator", "worker", "headless", "automation", "decider", "owner-ask"] as const;
 
 /** The only classes that may resolve a gate: the owner, at a terminal or through a verified remote channel. */
 export const RESOLVER_CLASSES = ["owner-terminal", "owner-remote"] as const;

@@ -23,6 +23,8 @@ const DENY_RULE_IDS = [
   "MRG-DC", "REL-DC", "SEC-DC", "UNT-DC", "PUB-DC", "EXT-DC", "HW-DC", "HWS-DC",
   "DSR-DC", "DSL-DC", "RET-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
   "ANS-OT", "ANS-OR", "ANS-CO", "ANS-WK", "ANS-HD", "ANS-AU", "ANS-DC",
+  "MRG-OA", "REL-OA", "SEC-OA", "UNT-OA", "PUB-OA", "EXT-OA", "HW-OA", "HWS-OA", "DSR-OA",
+  "DSL-OA", "RET-OA", "DSX-OA", "SPN-OA", "SPD-OA", "CFG-OA", "HV-OA", "ANS-OA",
 ];
 
 const ACTION_CODES: Record<string, ActionClass> = {
@@ -31,7 +33,7 @@ const ACTION_CODES: Record<string, ActionClass> = {
   SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb", ANS: "answer-question",
 };
 const ACTOR_CODES: Record<string, ActorClass> = {
-  OT: "owner-terminal", OR: "owner-remote", CO: "coordinator", WK: "worker", HD: "headless", AU: "automation", DC: "decider",
+  OT: "owner-terminal", OR: "owner-remote", CO: "coordinator", WK: "worker", HD: "headless", AU: "automation", DC: "decider", OA: "owner-ask",
 };
 
 function request(action: ActionClass, actor: ActorClass, tainted = false): AuthorityRequest {
@@ -47,9 +49,9 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 51 allow, 6 gate and 67 deny rows", () => {
+  it("holds 51 allow, 6 gate and 84 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 51, gate: 6, deny: 67 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 51, gate: 6, deny: 84 });
   });
 
   // Kills: retire-agent riding destructive-local's DSL-OR deny, or RET-OR flipped to gate or deny.
@@ -76,8 +78,8 @@ describe("the approved table", () => {
     expect(evaluate(DEFAULT_TABLE, requestFor(ruleId))).toMatchObject({ verdict: "deny", ruleId });
   });
 
-  it("lets every actor but the decider stop hardware and lets no rule stop a run for spend", () => {
-    for (const actor of ACTOR_CLASSES.filter((candidate) => candidate !== "decider")) expect(evaluate(DEFAULT_TABLE, request("hardware-stop", actor)).verdict).toBe("allow");
+  it("lets every actor but the decider and owner-ask stop hardware and lets no rule stop a run for spend", () => {
+    for (const actor of ACTOR_CLASSES.filter((candidate) => candidate !== "decider" && candidate !== "owner-ask")) expect(evaluate(DEFAULT_TABLE, request("hardware-stop", actor)).verdict).toBe("allow");
     for (const actor of ["coordinator", "worker", "headless", "automation"] as const) {
       expect(evaluate(DEFAULT_TABLE, request("spend-over-cap", actor)).verdict).toBe("allow");
     }

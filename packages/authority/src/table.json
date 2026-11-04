@@ -171,6 +171,15 @@
       ]
     },
     {
+      "id": "MRG-OA",
+      "action": "merge",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "REL-OT",
       "action": "release",
       "actor": "owner-terminal",
@@ -241,6 +250,15 @@
       ]
     },
     {
+      "id": "REL-OA",
+      "action": "release",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "SEC-OT",
       "action": "secret-read",
       "actor": "owner-terminal",
@@ -298,6 +316,15 @@
       "id": "SEC-DC",
       "action": "secret-read",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SEC-OA",
+      "action": "secret-read",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -373,6 +400,15 @@
       ]
     },
     {
+      "id": "UNT-OA",
+      "action": "untrusted-ingest",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "PUB-OT",
       "action": "private-to-public",
       "actor": "owner-terminal",
@@ -429,6 +465,15 @@
       "id": "PUB-DC",
       "action": "private-to-public",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-OA",
+      "action": "private-to-public",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -496,6 +541,15 @@
       "id": "EXT-DC",
       "action": "private-egress",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "EXT-OA",
+      "action": "private-egress",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -571,6 +625,15 @@
       ]
     },
     {
+      "id": "HW-OA",
+      "action": "hardware-actuate",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "HWS-OT",
       "action": "hardware-stop",
       "actor": "owner-terminal",
@@ -628,6 +691,15 @@
       "id": "HWS-DC",
       "action": "hardware-stop",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HWS-OA",
+      "action": "hardware-stop",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -698,6 +770,15 @@
       ]
     },
     {
+      "id": "DSR-OA",
+      "action": "destructive-remote",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "DSL-OT",
       "action": "destructive-local",
       "actor": "owner-terminal",
@@ -751,6 +832,15 @@
       "id": "DSL-DC",
       "action": "destructive-local",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSL-OA",
+      "action": "destructive-local",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -817,6 +907,15 @@
       ]
     },
     {
+      "id": "RET-OA",
+      "action": "agent-retire",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "DSX-OT",
       "action": "destructive-foreign",
       "actor": "owner-terminal",
@@ -875,6 +974,15 @@
       "id": "DSX-DC",
       "action": "destructive-foreign",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-OA",
+      "action": "destructive-foreign",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -950,6 +1058,15 @@
       ]
     },
     {
+      "id": "SPN-OA",
+      "action": "spawn",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "SPD-OT",
       "action": "spend-over-cap",
       "actor": "owner-terminal",
@@ -1018,6 +1135,15 @@
       ]
     },
     {
+      "id": "SPD-OA",
+      "action": "spend-over-cap",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "CFG-OT",
       "action": "authority-config",
       "actor": "owner-terminal",
@@ -1074,6 +1200,15 @@
       "id": "CFG-DC",
       "action": "authority-config",
       "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-OA",
+      "action": "authority-config",
+      "actor": "owner-ask",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -1149,6 +1284,15 @@
       ]
     },
     {
+      "id": "HV-OA",
+      "action": "human-verb",
+      "actor": "owner-ask",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "ANS-OT",
       "action": "answer-question",
       "actor": "owner-terminal",
@@ -1210,6 +1354,15 @@
       "actor": "decider",
       "verdict": "deny",
       "condition": "Refused unless ANS-DC-QA applies.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-OA",
+      "action": "answer-question",
+      "actor": "owner-ask",
+      "verdict": "deny",
       "evidence": [
         "E-ref"
       ]

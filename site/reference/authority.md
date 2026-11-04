@@ -51,10 +51,13 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "owner-remote", tainted: false }); 
 Actor classes, classified by the process that performs the action, never by what a model
 claims: `owner-terminal` (OT), `owner-remote` (OR, a verified phone, voice or Matrix
 channel), `coordinator` (CO), `worker` (WK), `headless` (HD, a daemon-dispatched run),
-`automation` (AU, CI and other non-agent processes) and `decider` (DC, the session that
-answers routed questions on the owner's behalf).
+`automation` (AU, CI and other non-agent processes), `decider` (DC, the session that
+answers routed questions on the owner's behalf) and `owner-ask` (OA, a seat that ran a gate
+resolve the owner approved at a Claude Code ask prompt). The factory cannot verify that
+approval, so `owner-ask` is denied every action here and is never an owner class; only a
+store that admits it on its own terms lets it answer a gate.
 
-`RESOLVER_CLASSES` lists the owner classes that may resolve a gate; `decider` is never one. `DELEGATE_RESOLVER_CLASSES`
+`RESOLVER_CLASSES` lists the owner classes that may resolve a gate; `decider` and `owner-ask` are never one. `DELEGATE_RESOLVER_CLASSES`
 (`coordinator` only) lists the classes a gate's rule may name as a delegate resolver. A hitl
 store admits a delegate only when it has `authorize` and `authorize` allows it.
 
@@ -72,30 +75,30 @@ safe label of 1 to 200 characters such as a host or an item id, never fetched co
 
 ## The table (version 1.0.0)
 
-51 allow, 6 gate and 67 deny rows: one unconditional row per pair, plus the five conditional
+51 allow, 6 gate and 84 deny rows: one unconditional row per pair, plus the five conditional
 allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
-| Action | OT | OR | CO | WK | HD | AU | DC |
-|---|---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC, MRG-AU-RM or MRG-AU-RS | deny |
-| `release` | allow | deny | gate (OT) | deny | deny | allow | deny |
-| `secret-read` | allow | deny | deny | deny | deny | allow | deny |
-| `untrusted-ingest` | allow | allow | allow | allow | allow | allow | deny |
-| `private-to-public` | allow | deny | deny | deny | deny | deny | deny |
-| `private-egress` | allow | allow | deny T | deny | deny | allow | deny |
-| `hardware-actuate` | allow | deny | gate (OT) | deny | deny | deny | deny |
-| `hardware-stop` | allow | allow | allow | allow | allow | allow | deny |
-| `destructive-remote` | allow | deny | deny | deny | deny | deny | deny |
-| `destructive-local` | allow | deny | allow | allow | allow | allow | deny |
-| `agent-retire` | allow | allow | allow | allow | allow | allow | deny |
-| `destructive-foreign` | allow | deny | deny | deny | deny | deny | deny |
-| `spawn` | allow | allow | allow T | deny | deny | allow | deny |
-| `spend-over-cap` | allow | deny | allow | allow | allow | allow | deny |
-| `authority-config` | allow | deny | deny | deny | deny | deny | deny |
-| `human-verb` | allow | gate (OR) | deny | deny | deny | deny | deny |
-| `answer-question` | deny | deny | deny | deny | deny | deny | deny; allow by ANS-DC-QA |
+| Action | OT | OR | CO | WK | HD | AU | DC | OA |
+|---|---|---|---|---|---|---|---|---|
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC, MRG-AU-RM or MRG-AU-RS | deny | deny |
+| `release` | allow | deny | gate (OT) | deny | deny | allow | deny | deny |
+| `secret-read` | allow | deny | deny | deny | deny | allow | deny | deny |
+| `untrusted-ingest` | allow | allow | allow | allow | allow | allow | deny | deny |
+| `private-to-public` | allow | deny | deny | deny | deny | deny | deny | deny |
+| `private-egress` | allow | allow | deny T | deny | deny | allow | deny | deny |
+| `hardware-actuate` | allow | deny | gate (OT) | deny | deny | deny | deny | deny |
+| `hardware-stop` | allow | allow | allow | allow | allow | allow | deny | deny |
+| `destructive-remote` | allow | deny | deny | deny | deny | deny | deny | deny |
+| `destructive-local` | allow | deny | allow | allow | allow | allow | deny | deny |
+| `agent-retire` | allow | allow | allow | allow | allow | allow | deny | deny |
+| `destructive-foreign` | allow | deny | deny | deny | deny | deny | deny | deny |
+| `spawn` | allow | allow | allow T | deny | deny | allow | deny | deny |
+| `spend-over-cap` | allow | deny | allow | allow | allow | allow | deny | deny |
+| `authority-config` | allow | deny | deny | deny | deny | deny | deny | deny |
+| `human-verb` | allow | gate (OR) | deny | deny | deny | deny | deny | deny |
+| `answer-question` | deny | deny | deny | deny | deny | deny | deny; allow by ANS-DC-QA | deny |
 
 ### Conditional rows
 

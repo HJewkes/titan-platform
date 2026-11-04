@@ -3,7 +3,7 @@
 The owner-approved authority decision table as data, with its zod schema and a pure
 evaluator. For every action class (merge, release, secret read, spawn, hardware actuation
 and more) and every actor class (owner at a terminal, owner remote, coordinator, worker,
-headless run, automation, decider) the table names exactly one verdict: `allow`, `gate` or `deny`.
+headless run, automation, decider, owner-ask) the table names exactly one verdict: `allow`, `gate` or `deny`.
 
 Tier 0 of the titan-platform DAG. No titan dependencies, no Node built-ins; `zod` is a peer
 dependency.
@@ -20,12 +20,15 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 124 rules: 51 allow, 6 gate and 67 deny.
+- The table holds 141 rules: 51 allow, 6 gate and 84 deny.
 - The `decider` actor class may only `answer-question`, and only through ANS-DC-QA: the
   gate's rule kind is exactly `question` and its category's mode is exactly `auto`
   (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a
   tainted request is refused by ANS-DC. Every other action by `decider`, and `answer-question`
   by every other actor, is denied. `decider` is never in `RESOLVER_CLASSES`.
+- The `owner-ask` class records a gate a seat resolved after the owner approved the command
+  at a Claude Code ask prompt. Nothing can verify that approval, so the table denies
+  `owner-ask` every action and it is never in `RESOLVER_CLASSES`.
 - A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.

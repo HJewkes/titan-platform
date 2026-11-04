@@ -10,6 +10,7 @@ import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { mintPresenceRecord } from "./gate-resolve-presence.js";
+import { ownerAskEvidence, ownerAskResolver } from "./owner-ask.js";
 import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
 
 interface ResolveIo {
@@ -45,6 +46,32 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   applyResolution(host, runId, stepId, gateId, payload, resolution);
   const { resolver, evidence } = resolution;
   io.stdout(`resolved ${runId}/${stepId}${evidence ? ` as coordinator ${resolver.id} on ${evidence.kind} evidence` : ""}\n`);
+  return EXIT.OK;
+}
+
+/**
+ * `titan-factory gate resolve --owner-ask`: the seat named by AGENT_CHAT_NAME answers the pending gate as `owner-ask`.
+ * The store admits it only through `withOwnerAsk` and `ownerAskAuthorize`, so a refusal throws to the CLI, which exits 1.
+ */
+export function resolveGateByOwnerAsk(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string): number {
+  const payload = parsePayload(json);
+  const seat = io.env.AGENT_CHAT_NAME || io.env.AGENT_CHAT_AGENT_ID;
+  if (!payload || !seat) {
+    io.stderr(payload ? "error: --owner-ask records the seat that ran it, and AGENT_CHAT_NAME is not set\n" : "error: --json must be a JSON object\n");
+    return EXIT.USAGE;
+  }
+  const repeated = repeatedResolution(host, runId, stepId, payload);
+  if (repeated !== undefined) {
+    io.stdout(`already resolved ${repeated} with this answer\n`);
+    return EXIT.OK;
+  }
+  const gateId = pendingGateId(host, runId, stepId);
+  if (gateId === undefined) {
+    io.stderr(`error: no gate is pending at ${runId}/${stepId}\n`);
+    return EXIT.USAGE;
+  }
+  host.gates.resolve(gateId, payload, ownerAskResolver(seat), ownerAskEvidence(gateId, seat));
+  io.stdout(`resolved ${gateId} as owner-ask by ${seat}\n`);
   return EXIT.OK;
 }
 

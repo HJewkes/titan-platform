@@ -5,7 +5,7 @@ import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { EXIT } from "./exit-codes.js";
-import { resolveGate } from "./gate-resolve.js";
+import { resolveGate, resolveGateByOwnerAsk } from "./gate-resolve.js";
 import type { FactoryRoutes, PendingGate, ResumeReport } from "./host.js";
 import { resolveCommand } from "./resolve-command.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
@@ -32,8 +32,11 @@ export function registerGate(program: Command, verbs: Verbs): void {
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .action((runId: string, stepId: string, opts: { json: string }) =>
-      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd))),
+    .option("--owner-ask", "record the seat as owner-ask: the owner approved this command at a Claude Code ask prompt (approve-merge gates only)")
+    .action((runId: string, stepId: string, opts: { json: string; ownerAsk?: boolean }) =>
+      withHost((host, routes) =>
+        opts.ownerAsk ? resolveGateByOwnerAsk(host, io, runId, stepId, opts.json) : resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd)),
+      ),
     );
 }
 

@@ -4,6 +4,7 @@ import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
 import { deviceGateAuthorize } from "./device-gates.js";
+import { ownerAskAuthorize, withOwnerAsk } from "./owner-ask.js";
 import { presenceAuthorize } from "./gate-resolve-presence.js";
 import { eventLogMigration } from "./event-log/event-log.js";
 import { headEpochMigration } from "./head-guard/epoch-store.js";
@@ -137,8 +138,8 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const tenant = options.routes.database;
   runMigrations(db, [...factoryMigrations(), ...(tenant?.extraMigrations ?? [])]);
   const batches = new GateBatchStore(db, options.now);
-  const authorize = presenceAuthorize(batches, deviceGateAuthorize, options.now);
-  const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: coordinatorEvidencePolicy, authorize });
+  const authorize = presenceAuthorize(batches, ownerAskAuthorize(deviceGateAuthorize), options.now);
+  const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: withOwnerAsk(coordinatorEvidencePolicy), authorize });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
