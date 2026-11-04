@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the dry run cancels each gate it lists",
+      "file": "products/factory/src/shepherd/readdress.ts",
+      "find": "const cancelled = apply && seat !== null && cancelUnlessSettled(",
+      "replace": "const cancelled = seat !== null && cancelUnlessSettled(",
+      "kills": [
+        "shepherd readdress-dead-ends (TP-4759) without --apply lists the eleven gate shapes with each addressee and cancels nothing"
+      ]
+    },
+    {
+      "name": "the matcher takes any shepherd-route row",
+      "file": "products/factory/src/shepherd/readdress.ts",
+      "find": "const ROUTE_PROMPT = / Policy shepherd-route\\/(fix-first-runaway|failed-rounds): /;",
+      "replace": "const ROUTE_PROMPT = / Policy shepherd-route\\/([a-z-]+): /;",
+      "kills": [
+        "shepherd readdress-dead-ends (TP-4759) never readdresses an approve-merge under authority, shepherd-merge-guard, another route row or a rule, nor another send-back"
+      ]
+    },
+    {
+      "name": "a readdressed sent-back falls through to await-new-head",
+      "file": "products/factory/src/shepherd/gates.ts",
+      "find": "  if (answered === \"readdressed\" && readdress) return readdress();\n",
+      "replace": "",
+      "kills": [
+        "shepherd readdress-dead-ends (TP-4759) after --apply a run resumed on a pre-TP-4759 exit sent-back re-opens sh-dead-end at the same head for the seat"
+      ]
+    },
+    {
+      "name": "a readdressed route approve-merge leaves land as a moved head would",
+      "file": "products/factory/src/shepherd/stale-gates.ts",
+      "find": "    if (readdress && approve && gated && answer.superseded.startsWith(READDRESSED)) return readdress(gated, () => assisted(stepId, prompt, options));\n",
+      "replace": "",
+      "kills": [
+        "shepherd readdress-dead-ends (TP-4759) after --apply a run paused on a fix-first-runaway approve-merge re-opens sh-dead-end at the same head for the seat",
+        "shepherd readdress-dead-ends (TP-4759) after --apply a run paused on a failed-rounds approve-merge re-opens sh-dead-end at the same head for the seat"
+      ]
+    }
+  ]
+}

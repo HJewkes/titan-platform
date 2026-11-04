@@ -23,7 +23,7 @@ import { noticeHeldSeat } from "./gate-route.js";
  * `GATE_DEMOTIONS.deadEndSeat` routes them here.
  */
 export const DEAD_END_KINDS = ["exited-without-push", "fix-first-runaway", "failed-rounds"] as const;
-type DeadEndKind = (typeof DEAD_END_KINDS)[number];
+export type DeadEndKind = (typeof DEAD_END_KINDS)[number];
 
 export const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
@@ -54,7 +54,7 @@ function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[] |
 }
 
 /** What the address step reads; a lineage that cannot be read throws, and the run then takes the owner gate. */
-interface DeadEndPorts {
+export interface DeadEndPorts {
   lineage(target: { repo: string; pr: number }): Lineage | undefined;
   roster(): Promise<readonly AgentRow[]>;
   repoSeat(repo: string): string | undefined;
@@ -63,7 +63,8 @@ interface DeadEndPorts {
 const AddressInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), kind: z.enum(DEAD_END_KINDS), headSha: z.string().min(1) });
 const AddressResult = z.looseObject({ seat: z.string().nullable(), kind: z.enum(DEAD_END_KINDS), headSha: z.string() });
 
-async function address(ports: DeadEndPorts | undefined, target: { repo: string; pr: number }): Promise<string | undefined> {
+/** The seat a dead end of the run on `target` is addressed to now; `readdress-dead-ends` previews it with the same read. */
+export async function deadEndAddress(ports: DeadEndPorts | undefined, target: { repo: string; pr: number }): Promise<string | undefined> {
   if (ports === undefined) return undefined;
   const lineage = ports.lineage(target);
   return deadEndSeat(lineage, lineage?.registrant ? await ports.roster() : undefined, ports.repoSeat(target.repo));
@@ -78,7 +79,7 @@ function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" 
 export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | undefined): StepRoute =>
   codeRoute(ADDRESS_STEP, now, async (raw: unknown) => {
     const input = AddressInput.parse(raw);
-    const seat = await address(ports, input).catch(() => undefined);
+    const seat = await deadEndAddress(ports, input).catch(() => undefined);
     return { seat: seat ?? null, kind: input.kind, headSha: input.headSha };
   });
 

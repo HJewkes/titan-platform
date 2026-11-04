@@ -136,6 +136,9 @@ function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+  verb("readdress-dead-ends", "list each pending dead-end owner gate (exit with no push, fix-first-runaway, failed-rounds) and the seat it would go to (TP-4759); writes nothing without --apply")
+    .option("--apply", "cancel each listed gate that has a seat, so its run asks that seat at the same head")
+    .action((opts: ShepherdOpts & { apply?: boolean }) => runShepherd(verbs, "shepherd.readdress-dead-ends", () => ({ apply: opts.apply === true }), opts));
 }
 
 /** A repair stop is the seat's stop on fixers short of an owner hold; it is not a hold, so these verbs never touch the release path. */
