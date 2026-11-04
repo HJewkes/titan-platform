@@ -1,4 +1,4 @@
-import { arStepId, BoundsSchema, TargetSchema, type ArPorts } from "@titan-design/autoresearch";
+import { ArResultSchema, arStepId, BoundsSchema, TargetSchema, type ArPorts } from "@titan-design/autoresearch";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { openFactoryHost } from "../host.js";
 import { FORKS_SLEEPER, PROCESS_TEST_MS, dead, exited, forkDriver, readPids, recordedPids, scratch } from "./eval-driver.test-helpers.js";
@@ -53,7 +53,7 @@ function baselinePorts(dir: string): ArPorts {
   const bounds = BoundsSchema.parse({ schema: "ar-bounds/v1", classes: {} });
   const evalCase: ArPorts["evalCase"] = async (input, signal) => {
     const argv = ["sh", "-c", input.key.endsWith("-b1") ? IGNORES_TERM : FORKS_SLEEPER, dir];
-    return lastLine(await runCommand(argv, { cwd: dir, signal, graceMs: 1_000 }), argv) as never;
+    return ArResultSchema.parse(lastLine(await runCommand(argv, { cwd: dir, signal, graceMs: 1_000 }), argv));
   };
   return {
     pin: async ({ pin }) => ({ pin, ratchetRef: "refs/heads/autoresearch/fixture/run", ratchetHead: pin, integrationTree: dir, target, bounds }),
