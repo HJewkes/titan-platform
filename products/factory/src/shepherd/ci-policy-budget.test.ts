@@ -31,7 +31,7 @@ const DAG_CHECK = "  dag-check:\n    runs-on: ubuntu-latest\n    steps:\n      -
 const CI_BEFORE = ciYml(VALIDATE + DAG_CHECK);
 
 const classOf = (files: CiPolicyFile[], overrides: Partial<CiPolicyClassInput> = {}) =>
-  ciPolicyClass({ keys: ["other"], files, unread: false, required: REQUIRED, repo: REPO, prBody: BODY, freshMerge: true, ...overrides });
+  ciPolicyClass({ keys: ["other"], files, changedPaths: files.map((file) => file.path), unread: false, required: REQUIRED, repo: REPO, prBody: BODY, freshMerge: true, ...overrides });
 
 describe("sorting a weakened CI-policy diff into budget or weakening", () => {
   it("reads a #3117-shaped p90 600 -> 900 change with a measurement link as budget", () => {
@@ -76,6 +76,8 @@ describe("sorting a weakened CI-policy diff into budget or weakening", () => {
   it.each<[string, Partial<CiPolicyClassInput>, string]>([
     ["no measurement link", { prBody: "Measured in run 123456." }, "the PR body links no measurement run"],
     ["a measurement run of another repo", { prBody: "https://github.com/other/repo/actions/runs/1" }, "the PR body links no measurement run"],
+    ["a measurement run inside another URL", { prBody: `https://evil.example/?u=${RUN_URL}` }, "the PR body links no measurement run"],
+    ["a vitest.config.ts change beside it", { changedPaths: [BUDGET, "vitest.config.ts"] }, "the PR changes vitest.config.ts, which is not a classified .github/ file"],
     ["a MERGE carried from another head", { freshMerge: false }, "no reviewer MERGE was given at this head"],
     ["a required-check key", { keys: ["other", "required-check"] }, "the reviewer named required-check"],
     ["an unread file", { unread: true }, "a changed file was not read"],
@@ -84,9 +86,27 @@ describe("sorting a weakened CI-policy diff into budget or weakening", () => {
   });
 
   it("reads a diff that changes no budget number as weakening", () => {
-    const file = { path: BUDGET, before: budgetJson(600), after: budgetJson(600).replace('"ci.yml"', '"ci-2.yml"') };
+    const file = { path: CI_YML, before: CI_BEFORE, after: CI_BEFORE.replace("name: CI\n", "name: CI\n# a note\n") };
 
     expect(classOf([file])).toEqual({ kind: "weakening", why: "no timeout, p90 or budget number changed" });
+  });
+
+  it.each<[string, string, string]>([
+    ["the workflow it caps", budgetJson(900).replace('"ci.yml"', '"ci-2.yml"'), `it changes workflow in ${BUDGET}`],
+    ["the run samples", budgetJson(900).replace('"workflow": "ci.yml",', '"workflow": "ci.yml",\n  "runs": { "pull_request": 1 },'), `it changes runs in ${BUDGET}`],
+    ["a removed entry", budgetJson(600).replace(/\n.*"validate".*\n/, "\n").replace('"p90": 600 }\n', '"p90": 900 }\n'), `it removes or reshapes the budget entry {"event":"pull_request","job":"validate"} in ${BUDGET}`],
+    ["a cap moved to another job", budgetJson(900).replace('"job": "dag-check"', '"job": "lint"'), `it removes or reshapes the budget entry {"event":"pull_request","job":"dag-check"} in ${BUDGET}`],
+    ["a number turned to text", budgetJson(600).replace('"p90": 600 }\n', '"p90": "off" }\n'), `it removes or reshapes the budget entry {"event":"pull_request","job":"dag-check"} in ${BUDGET}`],
+    ["a file that is not JSON", "{", `${BUDGET} is not a budget object at base and head`],
+  ])("reads a p90 bump in ci-budget.json that also changes %s as weakening, with no required check to lose", (_case, after, why) => {
+    expect(classOf([{ path: BUDGET, before: budgetJson(600), after }], { required: [] })).toEqual({ kind: "weakening", why });
+  });
+
+  it("reads every line of a workflow named for budgets by the line rule", () => {
+    const path = ".github/workflows/budget-report.yml";
+    const after = ciYml("  report:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n").replace("on: pull_request", "on: pull_request_target");
+
+    expect(classOf([{ path, before: "", after }])).toEqual({ kind: "weakening", why: `${path} changes more than a timeout or budget number` });
   });
 });
 
@@ -98,13 +118,13 @@ const input: MergeEvidenceInput = {
   ...{ resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: ["merge-on-green-approve"], ciPolicy: OTHER },
 };
 
-/** A reviewed MERGE at HEAD with green required checks, whose one changed file is `file` read at main and at HEAD. */
-async function evidenceFor(file: CiPolicyFile, body = BODY, overrides: Partial<MergeEvidenceInput> = {}) {
+/** A reviewed MERGE at HEAD with green required checks, whose changed files are `file` read at main and at HEAD, and `others`. */
+async function evidenceFor(file: CiPolicyFile, body = BODY, overrides: Partial<MergeEvidenceInput> = {}, others: string[] = []) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge"), body });
   fake.classicRules = { contexts: REQUIRED, strict: false };
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
-  fake.prFiles.set(1, [{ path: file.path, status: "modified" } satisfies PrFile]);
+  fake.prFiles.set(1, [file.path, ...others].map((path): PrFile => ({ path, status: "modified" })));
   fake.files.set(`main:${file.path}`, { content: file.before, blobSha: fakeSha(`main:${file.path}`) });
   fake.files.set(`${HEAD}:${file.path}`, { content: file.after, blobSha: fakeSha(`head:${file.path}`) });
   return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" });
@@ -130,6 +150,13 @@ describe("the merge guard on a weakened CI-policy line", () => {
 
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: guard("ci-policy-weakened") });
     expect(await markedRows(removal)).toEqual(["ci-policy-weakened"]);
+  });
+
+  it("keeps a #3117-shaped diff beside a package.json change on ci-policy-weakened, marked for the owner", async () => {
+    const evidence = await evidenceFor(PR_3117, BODY, {}, ["package.json"]);
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: guard("ci-policy-weakened") });
+    expect(ownerAtHeadAt(HEAD, () => ({ kind: "MERGE", headSha: HEAD, evidence }))).toEqual(["ci-policy-weakened"]);
   });
 
   it("keeps a #3117-shaped diff with no measurement link on ci-policy-weakened", async () => {
