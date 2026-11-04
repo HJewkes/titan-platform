@@ -94,6 +94,9 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
   registerBriefVerb(verb, verbs);
+  verb("visual-week", "print as JSON the weekly Ship batch round spec for --repo: one merge-bound question per pending visual-path approve-merge gate at a current, unheld head; read-only, resolves no gate")
+    .requiredOption("--repo <owner/repo>", "the repo whose pending visual-path gates to batch")
+    .action((opts: ShepherdOpts & { repo: string }) => runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo }), opts));
 }
 
 /** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
