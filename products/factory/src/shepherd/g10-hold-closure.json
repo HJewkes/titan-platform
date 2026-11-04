@@ -29,6 +29,8 @@
   "closure-members.ts",
   "codewatch-questions.ts",
   "correct-verdict.ts",
+  "dead-end-route.ts",
+  "dead-end.ts",
   "deploy-pacer.ts",
   "error-class.ts",
   "evidence-comment.ts",
