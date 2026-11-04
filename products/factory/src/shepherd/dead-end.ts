@@ -52,10 +52,11 @@ export function deadEndRule(kind: DeadEndKind): GateRule {
 
 type Lineage = Parameters<typeof registrantSeat>[0];
 
-/** The registrant (or its fixer lineage's live seat), else the live seat that spawned it, else the repo's one seat or the hub seat, whichever holds a live session. */
+/** The registrant (or its fixer lineage's live seat), else the live seat that spawned it, else the repo's one seat or the hub seat, whichever holds a live session. A repo with no seat names none, never the hub. */
 function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[], repoSeat: string | undefined, hubSeat: string | undefined): string | undefined {
   const lineageSeat = lineage && (registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster));
-  return lineageSeat ?? [repoSeat, hubSeat].find((seat) => seat !== undefined && holdsLiveSession(seat, roster));
+  if (lineageSeat !== undefined || repoSeat === undefined) return lineageSeat;
+  return [repoSeat, hubSeat].find((seat) => seat !== undefined && holdsLiveSession(seat, roster));
 }
 
 /** What the address step reads; a lineage that cannot be read throws, and the run then takes the owner gate. */
