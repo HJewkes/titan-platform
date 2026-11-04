@@ -28,6 +28,7 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.prs": "read",
   "shepherd.watch": "read",
   "shepherd.visual-delta": "read",
+  "shepherd.visual-week": "read",
   "shepherd.brief": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;
 

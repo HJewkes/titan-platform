@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the authority allow is reached before the old-path gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "const judged = attestGate(evidence.attest) ?? oldPathGate(evidence.oldPath);",
+      "replace": "const judged = attestGate(evidence.attest);",
+      "kills": ["the old-path merge guard under an exited M1b an untagged old-path head gates as old-path-untagged and names the files and the task"]
+    },
+    {
+      "name": "an advisory verdict gates",
+      "file": "products/factory/src/old-path/freeze-gate.ts",
+      "find": "judged.status === \"carved\" || !judged.active) return undefined;",
+      "replace": "judged.status === \"carved\") return undefined;",
+      "kills": ["the old-path merge guard before M1b exit an untagged old-path head is recorded as advisory and decides as before"]
+    },
+    {
+      "name": "the record drops the old-path verdict",
+      "file": "products/factory/src/shepherd/evidence-record.ts",
+      "find": "    ...(oldPath && { oldPath }),\n",
+      "replace": "",
+      "kills": ["the old-path merge guard a head whose task carries superseded-at:M3 decides as before, and the record names its tag"]
+    },
+    {
+      "name": "the judge is called on unread files",
+      "file": "products/factory/src/old-path/freeze-gate.ts",
+      "find": "if (judge === undefined || typeof files === \"string\") return {};",
+      "replace": "if (judge === undefined) return {};",
+      "kills": ["the old-path merge guard a head whose files are unread gates only as files-unread, and the old-path read is not called"]
+    },
+    {
+      "name": "the registered task is not read",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "...(registration && { task: registration.task }), ",
+      "replace": "",
+      "kills": ["the old-path merge guard the evidence route judges the task and kind the run was registered with"]
+    }
+  ]
+}

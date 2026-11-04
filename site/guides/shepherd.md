@@ -1055,7 +1055,13 @@ Every registration resolves a policy before anything starts
 | `owner-gate` | every merge waits on the `approve-merge` gate |
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
-The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
+A repo's seat lookup has three outcomes. A repo a seat lists as an owned `remote:` has that seat. A repo on a deny list or
+a charter hard stop is refused with `registration refused:`. Any other repo has no seat, and a repo a seat lists only as
+`read_only` is in this group.
+
+The ceiling comes from seat files. A repo that no seat lists cannot register: `shepherd register` exits non-zero with
+`no seat lists <owner/repo>; add it to a seat file under claude-channels/sources/autonomy/seats`,
+and a repo a seat lists only as `read_only` counts as unlisted. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
@@ -1282,6 +1288,23 @@ longer at reads as unread and measures nothing. The command is read-only: it run
 posts no comment and stores no record. Like `shepherd status`, it asks `titan-factory
 serve` when one answers and otherwise runs here, in an agent shell too. A repo with no key
 exits 66.
+
+**Weekly Ship batch.** Gates the visual-path row holds stay pending until the owner ships
+them. `shepherd visual-week` builds one round spec from them:
+
+```sh
+titan-factory shepherd visual-week --repo owner/design > round.json
+```
+
+It prints JSON: a `unit` named `td-ship-week-<ISO week>`, `round` 1, one pick-one question
+per pending `approve-merge` gate that the visual-path row holds at a head the run last
+decided and that no hold covers, and `skipped`, the repo's other gates with why each is out. Each question binds the
+gate's own head and lists `Ship` as its only ship option. Import the round into the console;
+a Ship resolves its gate through the same round sweep as any console Ship, at the exact head
+and within 24 hours. A PR whose head moves before the Ship stays pending and appears in the
+next week's batch. The command is read-only: it resolves no gate and writes no file, so
+redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
+runs here.
 
 ### Feature base {#feature-base}
 
@@ -2036,6 +2059,17 @@ guard rows honour them. Each row clears only when one approval of its gate cover
   a weakened line the evidence step reads each changed path's blob at head into the record's
   `headBlobs`, up to 20 paths. A failed read or more paths leaves the field out, and a record
   without it never clears. A pinned path the PR does not change is ignored.
+
+**`old-path-untagged` (D-M1b-08, TP-3182).** The evidence step judges the head's changed files
+against A1's frozen roots (Shepherd, burndown and `scripts/seat`) and the registered task's tags.
+A head that changes a frozen root needs a `superseded-at:<M>` or `survives:<area>` tag on its
+task. Pure deletions and moves out of a root are exempt, and a `superseded-at` naming an exited
+milestone is stale. Before `milestones.json` records M1b as exited the row is advisory: the
+verdict is stored in the evidence record's `oldPath` field and the evidence comment shows an
+`Old path:` line marked "advisory until M1b exit", and the decision is unchanged. From M1b exit
+an untagged, stale-tagged, task-less or task-unreadable head gates at this row (class
+`deliberate`). A head whose files are unread gates only as `files-unread`. Tagging the task does
+not clear a gate at the same head: the owner decides it, or a new head re-judges.
 
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in

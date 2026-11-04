@@ -9,12 +9,13 @@ type ProbedTexts = Pick<ProbedMoment, "t" | "texts">;
 /**
  * qa's narration rules on one layer, against the words its beat speaks: a number or headline name the settled frame
  * shows that the narration never says, read at the last moment so a count-up is judged on the value it lands on, and
- * any text that repeats 5 or more narration words in a row.
+ * any text that repeats 5 or more narration words in a row. A bare number that is a cited PR or task id counts as a
+ * citation, as in qa, so the narration need not say it.
  */
-export function narrationRows(beat: string, spoken: string, probed: readonly ProbedTexts[]): LayerTextRow[] {
+export function narrationRows(beat: string, spoken: string, probed: readonly ProbedTexts[], citedIds: ReadonlySet<number> = new Set()): LayerTextRow[] {
   const heard = plainText(spoken);
   const settled = [...probed].sort((a, b) => a.t - b.t).at(-1);
-  const facts = settled === undefined ? [] : unspokenFacts(beat, settled.texts, heard).map((fact): LayerTextRow => {
+  const facts = settled === undefined ? [] : unspokenFacts(beat, settled.texts, heard, citedIds).map((fact): LayerTextRow => {
     const shown = settled.texts.find(({ text }) => text === fact.shown)!;
     return { beat, element: shown.element, rule: "unspoken-fact", text: shown.text, atS: settled.t, fact: fact.fact };
   });

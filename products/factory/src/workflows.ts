@@ -52,6 +52,7 @@ import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeplo
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { deploySkew } from "./shepherd/attest-skew.js";
+import { activeWorkTaskTags, judgeOldPath } from "./old-path/task-tags.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster } from "./shepherd/roster.js";
@@ -113,7 +114,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
   spawnGate?: SpawnGate;
   /** The one ledger of machine stops the spawn gate and the broker's refusals feed, read when a reviewer ends with no verdict. */
   machineStop?: MachineStopWatch;
-  /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
+  /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every registration is refused. */
   seats?: () => SeatBook;
   /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
   review?: Omit<ReviewWiring, "isFrozen">;
@@ -262,13 +263,13 @@ function seatAlert(agentChatBin: string, seats: () => SeatBook, roster: RosterRe
 }
 
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
-function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef, seats: () => SeatBook, repos: UnseatedRepos, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean, machineStop: MachineStopWatch): FactoryRouteDeps["review"] {
+function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef, seats: () => SeatBook, repos: UnseatedRepos, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean, machineStop: MachineStopWatch, env: NodeJS.ProcessEnv): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
   const under = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, fallbackConfigDirs, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), deploySkew: deploySkew(), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
+  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow) };
   return withHoldAdversary(wiring, holdAdversary(review, config, under, wiring.profileInstalled));
 }
 
@@ -328,7 +329,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast, liveHead: openHeadOnPort(port) });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
-  const review = configuredReview(shepherd, config, seats, repos, roster, gate, fixerReview(freeze, store), machineStop);
+  const review = configuredReview(shepherd, config, seats, repos, roster, gate, fixerReview(freeze, store), machineStop, env);
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), { hubSeat: shepherd.hubSeat, redSeat: shepherd.redSeat }, store) : undefined;
