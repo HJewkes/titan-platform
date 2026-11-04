@@ -32,6 +32,44 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
+/** Process groups of evals still running, so the process owner can take them down: a detached group never gets the terminal's SIGINT. */
+const liveGroups = new Map<number, number>();
+const stopping = { done: undefined as Promise<void> | undefined, drained: () => {}, hardKill: undefined as NodeJS.Timeout | undefined };
+
+function killLive(signal: NodeJS.Signals): void {
+  for (const pid of liveGroups.keys()) killGroup(pid, signal);
+}
+
+/**
+ * SIGTERM every live eval group, SIGKILL after the longest grace, and SIGKILL any group spawned before the last one is
+ * down; resolves once none is left. A call while stopping skips the rest of the grace. It never exits or signals the
+ * process: that belongs to whoever owns the process, the CLI or serve.
+ */
+export function stopEvals(): Promise<void> {
+  if (stopping.done) return (killLive("SIGKILL"), stopping.done);
+  killLive("SIGTERM");
+  stopping.hardKill = setTimeout(() => killLive("SIGKILL"), Math.max(0, ...liveGroups.values()));
+  stopping.done = new Promise((done) => (stopping.drained = done));
+  if (liveGroups.size === 0) drain();
+  return stopping.done;
+}
+
+function drain(): void {
+  clearTimeout(stopping.hardKill);
+  stopping.done = undefined;
+  stopping.drained();
+}
+
+function track(pid: number | undefined, graceMs: number): () => void {
+  if (pid === undefined) return () => {};
+  liveGroups.set(pid, graceMs);
+  if (stopping.done) killGroup(pid, "SIGKILL");
+  return () => {
+    liveGroups.delete(pid);
+    if (liveGroups.size === 0 && stopping.done) drain();
+  };
+}
+
 interface Guard {
   stop(reason: string): void;
   arm(allowanceMs: number): void;
@@ -53,7 +91,8 @@ function guardOf(child: ChildProcess, { timeoutMs, graceMs }: { timeoutMs?: numb
     clearTimeout(deadline);
     deadline = setTimeout(() => stop(`timed out after ${timeoutMs + allowanceMs} ms`), timeoutMs + allowanceMs);
   };
-  const clear = () => (clearTimeout(deadline), clearTimeout(hardKill));
+  const untrack = track(child.pid, graceMs);
+  const clear = () => (clearTimeout(deadline), clearTimeout(hardKill), untrack());
   return { stop, arm, clear, reason: () => reason };
 }
 
@@ -72,8 +111,8 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
     const [started, out] = [Date.now(), { stdout: "", stderr: "", waitedMs: undefined as number | undefined, spawnError: undefined as string | undefined }];
     const onAbort = () => guard.stop("aborted");
     guard.arm(waitAllowanceMs);
-    if (signal?.aborted) onAbort();
     signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     child.stdout.on("data", (chunk) => void (out.stdout.length < MAX_BUFFER && (out.stdout += chunk)));
     child.stderr.on("data", (chunk) => {
       if (out.stderr.length < MAX_BUFFER) out.stderr += chunk;

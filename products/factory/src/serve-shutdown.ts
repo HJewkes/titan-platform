@@ -1,4 +1,5 @@
 import type { Logger } from "@titan-design/daemon";
+import { shutdownOwner } from "./owner-shutdown.js";
 import type { Sweep } from "./sweep.js";
 
 /** How long close waits, in total, for sweep ticks already running; a tick can sit on a 30 s agent-chat or gh timeout, and systemd shows `deactivating` all that time. */
@@ -20,9 +21,8 @@ interface ClosingParts {
 export async function closeServer(parts: ClosingParts, log: Logger, graceMs: number): Promise<void> {
   const started = Date.now();
   const live = parts.sweeps.filter((sweep): sweep is Sweep => sweep !== undefined);
-  for (const sweep of live) sweep.halt();
-  parts.host.runtime.shutdown();
-  const abandoned = await awaitTicks(live, graceMs);
+  const stopped = shutdownOwner({ stopAdmission: () => live.forEach((sweep) => sweep.halt()), runtime: parts.host.runtime });
+  const [abandoned] = await Promise.all([awaitTicks(live, graceMs), stopped]);
   for (const sweep of abandoned) sweep.abort();
   for (const watch of parts.watches) watch.stop();
   parts.mainWatch?.close();
