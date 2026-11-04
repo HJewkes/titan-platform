@@ -1,7 +1,7 @@
-import { ArConfigSchema, type ArConfig } from "../autoresearch/config.js";
+import { ArConfigSchema, type ArConfig, type SnapshotConfig } from "../autoresearch/config.js";
 
 /** A synthetic `autoresearch` config section under `root`; every target is a placeholder unless a test gives it a clone. */
-export function arConfigFixture(root: string, targets: Record<string, { clone: string; validatorCasesFile?: string }> = {}): ArConfig {
+export function arConfigFixture(root: string, targets: Record<string, { clone: string; validatorCasesFile?: string; snapshot?: SnapshotConfig }> = {}): ArConfig {
   return ArConfigSchema.parse({
     agentChatBin: `${root}/bin/agent-chat`,
     configDir: `${root}/agents-config`,

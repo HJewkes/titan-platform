@@ -106,12 +106,31 @@ describe("snapshot refs are create-only", () => {
     expect(await git(bare, "rev-parse", BRANCH)).toBe(first.logSha);
   });
 
+  it("converges a retry under a later first start onto the pushed cut, pushing nothing", async () => {
+    const { bare, cut } = await fixture();
+    const first = await cutSnapshot(execDatedGit, cut);
+    const before = await remoteRefs(bare);
+
+    const retried = await cutSnapshot(execDatedGit, { ...cut, at: "2026-10-21T01:00:00Z" });
+
+    expect(retried).toEqual(first);
+    expect(await remoteRefs(bare)).toBe(before);
+  });
+
+  it("refuses a retry when the remote branch's first parent is not the tagged sha", async () => {
+    const { bare, work, pin, kept, cut } = await fixture();
+    await git(work, "push", "--quiet", "--atomic", "origin", `${kept}:${TAG}`, `${pin}:${BRANCH}`);
+
+    await expect(cutSnapshot(execDatedGit, { ...cut, at: "2026-10-21T01:00:00Z" })).rejects.toThrow(`[snapshot-exists] ${BRANCH}`);
+    expect(await git(bare, "rev-parse", BRANCH)).toBe(pin);
+  });
+
   it("refuses a second snapshot at the same m<k> and never retargets its tag", async () => {
     const { bare, work, kept, cut } = await fixture();
     const first = await cutSnapshot(execDatedGit, cut);
     const later = await advance(work, "later\n");
 
-    await expect(cutSnapshot(execDatedGit, { ...cut, sha: later })).rejects.toThrow("[snapshot-exists]");
+    await expect(cutSnapshot(execDatedGit, { ...cut, sha: later })).rejects.toThrow(`[snapshot-exists] ${TAG}`);
     expect(await git(bare, "rev-parse", TAG)).toBe(kept);
     expect(await git(bare, "rev-parse", BRANCH)).toBe(first.logSha);
   });

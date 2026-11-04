@@ -22,11 +22,13 @@ interface SyncInput {
   at: string;
   /** A gate's answer: a commit the owner or seat built that holds both the ratchet head and main's tip. */
   resolved?: string;
+  /** With `resolved`: the frozen paths the held gate showed, the only frozen paths the resolved commit may change. */
+  allowedFrozen?: readonly string[];
 }
 
 type SyncResult =
   | { state: "open" | "closed" }
-  | { state: "merged"; merged: { from: string; to: string; main: string }; treeChanged: boolean }
+  | { state: "merged"; merged: { from: string; to: string; main: string }; treeChanged: boolean; allowedFrozen?: string[] }
   | { state: "merged"; conflict: string[] }
   | { state: "merged"; frozen: string[] };
 
@@ -37,12 +39,19 @@ async function fetchMain(git: DatedGit, { tree, defaultBranch }: SyncInput): Pro
   return git(["rev-parse", `refs/remotes/origin/${defaultBranch}`], tree);
 }
 
-/** A gate's answer is taken only when it already contains both sides, so it can only add to the ratchet's history. */
-async function acceptResolved(git: DatedGit, input: SyncInput, resolved: string, main: string): Promise<void> {
+/**
+ * A gate's answer is taken only when it already contains both sides, so it can only add to the ratchet's history, and
+ * changes no frozen path beyond those the held gate showed, so the answer cannot carry an unreviewed scorer edit.
+ */
+async function acceptResolved(git: DatedGit, input: SyncInput, resolved: string, main: string): Promise<string[]> {
   if (!/^[0-9a-f]{40}$/.test(resolved)) throw new Error(`[sync-resolved] ${resolved} is not a full commit sha`);
   for (const side of [input.head, main]) {
     if (!(await isAncestor(git, input.tree, side, resolved))) throw new Error(`[sync-resolved] ${resolved} does not contain ${side}`);
   }
+  const allowed = [...(input.allowedFrozen ?? [])];
+  const unshown = (await frozenChanges(git, input, resolved)).filter((path) => !allowed.includes(path));
+  if (unshown.length > 0) throw new Error(`[sync-frozen] ${resolved} changes frozen paths the gate did not show: ${unshown.join(", ")}`);
+  return allowed;
 }
 
 async function frozenChanges(git: DatedGit, { tree, head, frozen }: SyncInput, merged: string): Promise<string[]> {
@@ -72,7 +81,8 @@ export async function syncRatchet(git: DatedGit, port: Pick<GitHubPort, "getPr">
   if (!pr.merged) return { state: pr.state };
   const main = await fetchMain(git, input);
   let to = input.resolved;
-  if (to !== undefined) await acceptResolved(git, input, to, main);
+  let allowedFrozen: string[] | undefined;
+  if (to !== undefined) allowedFrozen = await acceptResolved(git, input, to, main);
   else {
     const result = await mergeOnto(git, { tree: input.tree, base: input.head, head: main, message: `ar: merge ${input.defaultBranch} into ${input.ratchetRef}`, at: input.at });
     if ("conflict" in result) return { state: "merged", conflict: result.conflict };
@@ -83,5 +93,5 @@ export async function syncRatchet(git: DatedGit, port: Pick<GitHubPort, "getPr">
   }
   const changed = await treeChanged(git, input, to);
   const { head } = await ratchetFastForward(git, { tree: input.tree, ratchetRef: input.ratchetRef, ratchetPrefix: input.ratchetPrefix, defaultBranch: input.defaultBranch, from: input.head, to });
-  return { state: "merged", merged: { from: input.head, to: head, main }, treeChanged: changed };
+  return { state: "merged", merged: { from: input.head, to: head, main }, treeChanged: changed, ...(allowedFrozen && { allowedFrozen }) };
 }
