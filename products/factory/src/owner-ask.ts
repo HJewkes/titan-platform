@@ -6,7 +6,7 @@ import { landGate, MERGE_GATE, ownerAtHeadRow, stepOf } from "./coordinator-evid
  * Claude Code permissions.ask prompt. Nothing here can verify the approval, because the seat and the owner are the same
  * OS user, so the row says `owner-ask`, never `owner-terminal`, and only judgement gates take it.
  */
-export const OWNER_ASK = "owner-ask";
+const OWNER_ASK = "owner-ask";
 
 const CLI_CHANNEL = "factory-cli";
 const DEVICE_RULE = "HW-CO";
@@ -21,7 +21,7 @@ export const ownerAskEvidence = (gateId: string, seat: string) => ({ kind: OWNER
  * Why `owner-ask` may not answer this gate, naming the rule that keeps it with the owner; undefined for an approve-merge
  * land gate whose policy rule is not publish, device or owner-presence.
  */
-export function ownerAskRefusal(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
+function ownerAskRefusal(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
   const step = stepOf(gate.id);
   if (step.startsWith("device-")) return `device gate ${gate.id} keeps rule ${DEVICE_RULE}: only owner-terminal confirms a device step`;
   if (step !== MERGE_GATE) return `owner-ask answers only approve-merge gates; ${gate.id} is ${step}`;
