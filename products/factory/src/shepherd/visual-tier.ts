@@ -1,6 +1,6 @@
 import type { MergeFacts } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
-import { baselineCheckGreen, caseFoldedMatcher, shownPaths } from "./visual-gate.js";
+import { baselineCheckGreen, caseFoldedMatcher, changedBaselines, shownPaths } from "./visual-gate.js";
 
 export type VisualMerge = Pick<MergeFacts, "checkRuns" | "head">;
 
@@ -30,7 +30,7 @@ type VisualTierVerdict = { tier: 1; basis: VisualTierBasis } | { tier: 2; reason
 
 type PathClass = "harness" | "rendering" | "test" | "story" | "logic" | "rendered";
 
-/** A bad list matches nothing for a class that clears a path, so a bad policy gates instead of allowing. */
+/** Only for a list whose match clears a path: a bad list matches nothing, so the path gates. A list whose match gates uses `caseFoldedMatcher` or `changedBaselines`. */
 function clearingMatcher(globs: readonly string[]): (path: string) => boolean {
   try {
     const matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));
@@ -67,16 +67,17 @@ const tier2 = (reason: string): VisualTierVerdict => ({ tier: 2, reason });
 function pixelVerdict(pixel: PixelRead | undefined, head: string, mergeBase: string | undefined): VisualTierVerdict {
   if (pixel === undefined) return tier2("no pr-visual artifact read at the head");
   if (pixel.head !== head) return tier2("pr-visual artifact is at another head");
-  if (mergeBase === undefined || pixel.baseSha !== mergeBase) return tier2("pr-visual artifact base is not the merge base");
-  if (!pixel.rendered) return tier2("pr-visual says nothing rendered but a rendered path changed");
+  if (mergeBase === undefined || mergeBase === "" || pixel.baseSha !== mergeBase) return tier2("pr-visual artifact base is not the merge base");
+  if (pixel.rendered !== true) return tier2("pr-visual says nothing rendered but a rendered path changed");
   if (pixel.shots.length === 0) return tier2("pr-visual artifact holds no shots");
-  if (pixel.shots.some((shot) => !shot.paired)) return tier2("pr-visual artifact has a shot with no pair");
+  if (pixel.shots.some((shot) => shot.paired !== true)) return tier2("pr-visual artifact has a shot with no pair");
   const changed = pixel.shots.filter((shot) => shot.changedPixels !== 0).length;
   return changed > 0 ? tier2(`pr-visual shows changed pixels on ${changed} shot(s)`) : { tier: 1, basis: "no-pixel-diff" };
 }
 
 function logicVerdict(changedPaths: readonly string[], merge: VisualMerge, { storyDiff }: VisualTierConfig): VisualTierVerdict {
-  const snapshots = changedPaths.filter(clearingMatcher(storyDiff.paths));
+  const snapshots = changedBaselines(changedPaths, { check: storyDiff.check, paths: [...storyDiff.paths] });
+  if (snapshots === undefined) return tier2("logic with no readable story diff list or check");
   if (snapshots.length > 0) return tier2(`logic with a story diff: ${shownPaths(snapshots)}`);
   if (!baselineCheckGreen(merge, storyDiff.check, storyDiff.allowedApps)) return tier2(`logic with ${storyDiff.check} not green at the head`);
   return { tier: 1, basis: "non-rendering" };

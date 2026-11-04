@@ -29,21 +29,21 @@
       ]
     },
     {
-      "name": "the harness check is dropped",
-      "file": "products/factory/src/shepherd/visual-tier.ts",
-      "find": "if (config.harnessPaths.length > 0 && is.harness(path)) return \"harness\";",
-      "replace": "",
-      "kills": [
-        "a changed capture script is tier 2 whatever the artifact says"
-      ]
-    },
-    {
       "name": "the story diff paths are ignored",
       "file": "products/factory/src/shepherd/visual-tier.ts",
       "find": "if (snapshots.length > 0) return",
       "replace": "if (snapshots.length > 0 && false) return",
       "kills": [
         "logic head that changes a snapshot is tier 2"
+      ]
+    },
+    {
+      "name": "the story diff list reads through the clearing matcher",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "changedBaselines(changedPaths, { check: storyDiff.check, paths: [...storyDiff.paths] })",
+      "replace": "changedPaths.filter(clearingMatcher(storyDiff.paths))",
+      "kills": [
+        "a logic head with an uncompilable, empty or blank story diff list is tier 2 though the check is green"
       ]
     }
   ]

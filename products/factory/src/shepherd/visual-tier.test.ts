@@ -67,6 +67,23 @@ describe("visual tier verdict (TP-4761 S1)", () => {
     expect(verdict(["src/button/button.tsx"], { pixel: clean([JSON.parse('{"paired":true,"changedPixels":null}')]) }).tier).toBe(2);
   });
 
+  it("a logic head with an uncompilable, empty or blank story diff list is tier 2 though the check is green", () => {
+    const changed = ["src/hooks/use-id.ts", "src/button/__snapshots__/button.png"];
+    const withPaths = (paths: string[]) =>
+      visualTier({ visual: ["src/hooks/use-id.ts"], changedPaths: changed, merge: mergeWith("success"), config: { ...config, storyDiff: { ...config.storyDiff, paths } } }).tier;
+
+    expect(withPaths(["**/__snapshots__/**", `**/${"a".repeat(1100)}.png`])).toBe(2);
+    expect(withPaths([])).toBe(2);
+    expect(withPaths([""])).toBe(2);
+  });
+
+  it("a pixel read with non-boolean flags or an empty merge base is tier 2", () => {
+    const flags = JSON.parse('{"head":"' + HEAD + '","baseSha":"' + BASE + '","rendered":"false","shots":[{"paired":1,"changedPixels":0}]}');
+
+    expect(verdict(["src/button/button.tsx"], { pixel: flags }).tier).toBe(2);
+    expect(visualTier({ visual: ["src/button/button.tsx"], changedPaths: [], merge: mergeWith("success"), config, pixel: clean(undefined, { baseSha: "" }), mergeBase: "" }).tier).toBe(2);
+  });
+
   it("a rendered path is tier 2 when the artifact is stale, unpaired, changed or unrendered", () => {
     const tier2 = (pixel: PixelRead) => verdict(["src/button/button.tsx"], { pixel }).tier;
 
