@@ -34,7 +34,7 @@ const gateShapeWorkflow = defineWorkflow({
   },
 });
 
-export interface GateShape {
+interface GateShape {
   step: "sh-sent-back" | "approve-merge";
   prompt: string;
   /** Who registered the PR; none records no registrant, as before registrants were recorded. */
@@ -69,7 +69,7 @@ const exitPrompt = (kind: string, pr: number, head: string, unsent = ""): string
   `The ${kind} wake of PR #${pr} in ${REPO} at head ${head} ended: impl-${pr} exited without pushing a new head past ${head}${unsent}. Await a new head or abandon?`;
 
 /** Land's approve-merge prompt under a policy row. */
-export const approvePrompt = (pr: number, head: string, row: string): string => `Merge PR #${pr} in ${REPO} at head ${head}? CI is green. Policy ${row}: a synthetic reason`;
+const approvePrompt = (pr: number, head: string, row: string): string => `Merge PR #${pr} in ${REPO} at head ${head}? CI is green. Policy ${row}: a synthetic reason`;
 
 /** The eleven pending dead-end owner gates TP-4759 found, as synthetic shapes: five fix-proof exits, three ci-red exits where no single seat owns the repo, two runaways registered before registrants were, and one failed-rounds. */
 export function elevenShapes(): GateShape[] {

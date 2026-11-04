@@ -33,7 +33,7 @@ export interface ReaddressReport {
 }
 
 /** The dead end a pending owner gate asks about: a rule-less exit sent-back or route approve-merge; any other gate is none. */
-export function deadEndAsked({ stepId, gate }: Pick<PendingGate, "stepId" | "gate">): DeadEndAsk | undefined {
+function deadEndAsked({ stepId, gate }: Pick<PendingGate, "stepId" | "gate">): DeadEndAsk | undefined {
   if (gate.rule !== undefined) return undefined;
   if (stepIdMatches("sh-sent-back", stepId)) {
     const headSha = EXIT_PROMPT.exec(gate.prompt)?.[1];

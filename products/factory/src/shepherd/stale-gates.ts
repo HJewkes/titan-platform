@@ -32,7 +32,7 @@ export const REREVIEW = `${SUPERSEDED}review again: `;
  * How `readdress-dead-ends` cancels an owner gate that is a dead end (TP-4759): the head stays, and the run asks the
  * gate's question again at that head, of the seat. A gate whose caller cannot readdress reads it as any other supersede.
  */
-export const READDRESSED = `${SUPERSEDED}readdressed: `;
+const READDRESSED = `${SUPERSEDED}readdressed: `;
 
 /** The cancel reason that hands a dead-end owner gate to `seat`. */
 export const readdressedReason = (seat: string): string => `${READDRESSED}${seat} (TP-4759)`;
@@ -61,16 +61,18 @@ export async function askReaddressable(ctx: WorkflowContext, stepId: string, pro
 }
 
 /** Asks a route approve-merge gate's question again at `gated`, of its seat; `reask` opens the owner's gate again. */
-export type Readdress = (gated: string, reask: () => Promise<StepResult>) => Promise<StepResult>;
+type Readdress = (gated: string, reask: () => Promise<StepResult>) => Promise<StepResult>;
 
 /** Land's own gates the head sweep may cancel; a cancelled one leaves land, so the run reads the head again. */
 const LAND_HEAD_GATES = ["approve-merge", "stuck-behind"];
+
+type Leave = (rereview: string | undefined, gated: string | undefined, stepId: string) => Error;
 
 /**
  * An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. `answered` runs when the owner answers an approve-merge gate.
  * A readdressed approve-merge goes to `readdress` at the head it asked about, with no re-read (TP-4759).
  */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error, answered: () => void = () => undefined, readdress?: Readdress): WorkflowContext["assisted"] {
+export function supersedingGates(ctx: WorkflowContext, leave: Leave, answered: () => void = () => undefined, readdress?: Readdress): WorkflowContext["assisted"] {
   const assisted: WorkflowContext["assisted"] = async (stepId, prompt, options = {}) => {
     if (!LAND_HEAD_GATES.some((gate) => stepIdMatches(gate, stepId))) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
