@@ -60,6 +60,13 @@ those paths is a valid home for new logic only as a carve-out tagged
 `superseded-at:<M>` (the milestone that replaces it) or `survives:<area>` (the area
 that keeps it).
 
+Enforced from M1b exit by Shepherd's `old-path-untagged` merge-guard row (D-M1b-08): a pull
+request that changes a frozen root needs its task tagged with a carve-out. Deletions and moves
+out of the root are exempt, and a `superseded-at` naming an exited milestone no longer counts.
+Before M1b exits the verdict is recorded and shown in the evidence comment as advisory. The
+planner warns earlier: a titan-platform slice that owns the Shepherd root with no `carveOut`
+gets a warning, and nothing is refused.
+
 agent-chat `src/**` is old path too, until the fold (TP-626) moves it into packages. The
 areas that survive as product are the exceptions: `src/broker`, `src/leak-guard`,
 `src/agents/seats` and `src/agents/teleport*`. An addition anywhere else in agent-chat

@@ -41,6 +41,17 @@ Chosen over exempting PRs whose merge-base predates the manifest (option B) beca
 
 Test files take the fate of the file they test.
 
+## Old-path freeze (D-M1b-08)
+
+`milestones.json`'s M1b entry also switches the old-path freeze on. Until it reads `exited`, Shepherd's
+`old-path-untagged` merge-guard row is advisory: the verdict is recorded in the evidence record and
+shown in the evidence comment, and the merge decision is unchanged. Once M1b is exited, a pull request
+that changes a frozen root (`products/factory/src/shepherd`, and in agent-chat `src/agents/burndown`
+and `scripts/seat`) gates unless its task carries `superseded-at:<M>` or `survives:<area>`. Deletions
+and moves out of the root are exempt, and a `superseded-at` naming an exited milestone no longer
+counts. The deployed factory must ship this directory: an unreadable `milestones.json` reads as
+exited, so the freeze is on.
+
 ## Compensators
 
 `compensators` lists every A.2 compensator (C1 to C36, X1 to X7, the six temporary ones) with `builtBy` and `deletedBy`.

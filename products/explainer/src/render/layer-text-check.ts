@@ -10,6 +10,7 @@ import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js
 import { heldAtSamples, layerSamplings } from "../qa/layer-contrast.js";
 import { contentFillRows, frameWordRows } from "../qa/layer-frame.js";
 import { narrationRows } from "../qa/layer-narration.js";
+import { citedIdNumbers } from "../spoken-ids.js";
 import { LAYER_DIFF_FPS, layerDiffTimes, layerTimingRows, shareAfterPrevious } from "../qa/layer-timing.js";
 import { qaSampleMoments, timelineFromArtifact, type QaTimeline } from "../qa/qa-timeline.js";
 import { timingProfile } from "../qa/timing-gates.js";
@@ -122,7 +123,7 @@ async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], voiced: V
   const grey = await greyFrames(frames, scratch);
   const still = stillCueRows(beat, moments.cues, (t) => grey.get(t)!);
   const timing = timingRows(packet, voiced, moments, swept, grey);
-  return distinctRows([...rows, ...sampled, ...frame, ...still, ...timing, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
+  return distinctRows([...rows, ...sampled, ...frame, ...still, ...timing, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed, citedIdNumbers(packet.fact_ids ?? []))]);
 }
 
 /**

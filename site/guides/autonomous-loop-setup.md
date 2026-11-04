@@ -121,7 +121,7 @@ are two working modes:
 
 - **Merge on green.** The seat grants `merge-on-green-approve`. After CI is green and a
   reviewer says `MERGE`, Shepherd merges with no human step.
-- **Owner gate.** The default for any repository no seat lists. Shepherd stops at a gate and
+- **Owner gate.** The default for a seated repository that grants nothing. A repository no seat lists is refused at registration. Shepherd stops at a gate and
   waits.
 
 A gate is a recorded question that only the owner can answer, such as `approve-merge`. The
