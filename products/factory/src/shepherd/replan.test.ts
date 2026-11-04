@@ -72,4 +72,23 @@ describe("a dead-end gate's replan answer", () => {
     expect(host.gates.get(reasked)?.questions?.[0]?.options.map((option) => option.id)).toEqual(["replan", "abandon", "owner-merge"]);
     expect(recommended(host, reasked)).toEqual([]);
   });
+
+  it("a second replan at the same head after a refused spawn spawns the planner once and waits for a new head", async () => {
+    const spawned: SpawnRequest[] = [];
+    const spawn = vi.fn<(request: SpawnRequest) => Promise<void>>().mockRejectedValueOnce(new Error("profile is not installed"));
+    spawn.mockImplementation(async (request) => void spawned.push(request));
+    const { host, runId } = started(replanPorts(spawn));
+    await gateOpened(host, gateId(runId, "sh-dead-end"));
+    host.gates.resolve(gateId(runId, "sh-dead-end"), { decision: "replan", headSha: H1 }, OWNER);
+
+    const reasked = gateId(runId, "sh-dead-end", 1);
+    await gateOpened(host, reasked);
+    host.gates.resolve(reasked, { decision: "replan", headSha: H1 }, OWNER);
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
+
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(spawned).toHaveLength(1);
+    expect(stepIds(host, runId).filter((stepId) => stepId.startsWith("await-new-head"))).toHaveLength(1);
+    expect(host.gates.get(gateId(runId, "sh-dead-end", 2))).toBeUndefined();
+  });
 });
