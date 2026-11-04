@@ -8,7 +8,7 @@ import type { FactoryContext } from "../context.js";
 import { SHEPHERD_COMMAND_MAP } from "../shepherd/commands.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import { arAgentPorts } from "./agents.js";
-import type { ArConfig } from "./config.js";
+import type { ArConfig, SnapshotConfig } from "./config.js";
 import type { ValidatorCase } from "./evaluator.js";
 import type { SnapshotWiring } from "./snapshot-ports.js";
 import { ownerIdeasPort } from "./inbox.js";
@@ -49,11 +49,18 @@ export function snapshotHost(services: ShepherdServices, hostOf: () => FactoryHo
   return { port: services.port, register };
 }
 
+const registersExternally = (snapshot: SnapshotConfig) => snapshot.register === "external";
+
 function snapshotWiring(config: ArConfig, name: string, host: SnapshotHost | undefined): SnapshotWiring | undefined {
   const snapshot = config.targets[name]?.snapshot;
   if (!snapshot) return undefined;
+  const { register: mode, ...settings } = snapshot;
+  if (mode === "external") {
+    if (!host) throw new Error(`[no-snapshot-port] target ${name} configures snapshots, but this host has no GitHub port to open their PRs`);
+    return { ...settings, target: name, port: host.port };
+  }
   if (!host) throw new Error(`[no-shepherd] target ${name} configures snapshots, but this host has no Shepherd services to open and register their PRs`);
-  return { ...snapshot, target: name, ...host };
+  return { ...settings, target: name, ...host };
 }
 
 /** Every port one configured target's runs use; built once per target, on its first step. */
@@ -114,8 +121,12 @@ function autoresearchWiring(config: ArConfig, shepherd: ShepherdServices | undef
 
 /** Refused when the host starts, not at a run's first cut, so a snapshot target never runs without a way to open its PRs. */
 function refuseSnapshotsWithoutShepherd(config: ArConfig, shepherd: ShepherdServices | undefined): void {
-  const wanting = Object.entries(config.targets).filter(([, target]) => target.snapshot !== undefined).map(([name]) => name);
-  if (wanting.length > 0 && !shepherd) throw new Error(`[no-shepherd] targets ${wanting.join(", ")} configure snapshots, but this host has no Shepherd services`);
+  if (shepherd) return;
+  const names = (external: boolean) =>
+    Object.entries(config.targets).flatMap(([name, { snapshot }]) => (snapshot && registersExternally(snapshot) === external ? [name] : []));
+  const [registering, external] = [names(false), names(true)];
+  if (registering.length > 0) throw new Error(`[no-shepherd] targets ${registering.join(", ")} configure snapshots, but this host has no Shepherd services`);
+  if (external.length > 0) throw new Error(`[no-snapshot-port] targets ${external.join(", ")} configure snapshots, but this host has no GitHub port to open their PRs`);
 }
 
 /** A copy of `routes` that also hosts autoresearch when it is configured; unconfigured, `routes` itself. */

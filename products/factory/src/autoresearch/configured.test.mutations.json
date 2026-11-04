@@ -9,6 +9,16 @@
       "kills": [
         "a configured factory binds a host and hears an event through both the routes' own hooks and autoresearch's"
       ]
+    },
+    {
+      "name": "an external snapshot target is wired with the in-process register",
+      "file": "products/factory/src/autoresearch/configured.ts",
+      "find": "if (mode === \"external\") {",
+      "replace": "if (mode === \"never\") {",
+      "kills": [
+        "a snapshot target registering externally, opens the PR, starts no Shepherd run and announces the slice to register",
+        "a snapshot target registering externally, needs no Shepherd services but still refuses a host with no GitHub port"
+      ]
     }
   ]
 }

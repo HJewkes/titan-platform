@@ -5,13 +5,18 @@ import { execDatedGit } from "./integrate.js";
 import { cutSnapshot, openSnapshotPr, registerSnapshot } from "./snapshot.js";
 import { syncRatchet } from "./sync.js";
 
-/** A target's snapshot config plus what the host supplies: the GitHub port and the in-process Shepherd register. */
-export interface SnapshotWiring extends SnapshotConfig {
+/** A target's snapshot config plus what the host supplies: the GitHub port and, unless registering externally, the in-process Shepherd register. */
+export interface SnapshotWiring extends Omit<SnapshotConfig, "register"> {
   /** The configured target's name: the tag's `ar/<target>/` segment and the PR title's. */
   target: string;
   port: Pick<GitHubPort, "openPr" | "getPr">;
-  register: Parameters<typeof registerSnapshot>[0];
+  /** Absent, the PR is left for an operator to register with the Shepherd that should review it. */
+  register?: Parameters<typeof registerSnapshot>[0];
+  /** Where an external registration is announced; the driver's stderr by default. */
+  note?: (line: string) => void;
 }
+
+const stderrNote = (line: string) => void process.stderr.write(`${line}\n`);
 
 type SessionOf = (input: RunPin) => Promise<{ target: Pick<Target, "frozen" | "ratchetPrefix">; defaultBranch: string }>;
 
@@ -39,7 +44,11 @@ function requireAt(at: string | undefined, code: string): string {
  * the sync port reads that PR and merges main back into the ratchet. Both judge refs by the pinned target.
  */
 export function snapshotPorts(wiring: SnapshotWiring, sessionOf: SessionOf, treeOf: (runId: string) => string): Required<Pick<ArPorts, "snapshot" | "sync">> {
-  const { repo, task, implementer, reviewer, logDir, target: name, port, register } = wiring;
+  const { repo, task, implementer, reviewer, logDir, target: name, port, register, note = stderrNote } = wiring;
+  const registered = async (pr: number, phase: string, k: number): Promise<{ shepherdRunId?: string }> => {
+    if (!register) return (note(`[register-external] ${repo}#${pr} slice ${phase}-m${k}`), {});
+    return registerSnapshot(register, { repo, pr, task, implementer, ...(reviewer !== undefined && { reviewer }), phase, k });
+  };
   return {
     snapshot: async (input) => {
       const { target, defaultBranch } = await sessionOf(input);
@@ -49,8 +58,8 @@ export function snapshotPorts(wiring: SnapshotWiring, sessionOf: SessionOf, tree
       const refs = { ratchetPrefix: target.ratchetPrefix, ratchetRef: ratchetOf(target.ratchetPrefix, runId), defaultBranch, target: name, runId, k };
       const cut = await cutSnapshot(execDatedGit, { ...refs, tree: treeOf(runId), sha: input.sha, logDir, log: body, frozen: target.frozen, at });
       const { pr } = await openSnapshotPr(port, { repo, branch: cut.branch, base: defaultBranch, target: name, phase: log.phase, k, body });
-      const { shepherdRunId } = await registerSnapshot(register, { repo, pr, task, implementer, ...(reviewer !== undefined && { reviewer }), phase: log.phase, k });
-      return { k, tag: cut.tag, sha: cut.sha, branch: cut.branch, pr, shepherdRunId, logSha: cut.logSha };
+      const { shepherdRunId } = await registered(pr, log.phase, k);
+      return { k, tag: cut.tag, sha: cut.sha, branch: cut.branch, pr, ...(shepherdRunId !== undefined && { shepherdRunId }), logSha: cut.logSha };
     },
     sync: async (input) => {
       const { target, defaultBranch } = await sessionOf(input);

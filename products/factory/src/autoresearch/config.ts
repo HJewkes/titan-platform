@@ -20,6 +20,11 @@ const SnapshotConfigSchema = z.strictObject({
   reviewer: z.string().min(1).optional(),
   /** Repo-relative directory each snapshot's log commit writes into. */
   logDir: repoPath,
+  /**
+   * `external` opens the PR and books no Shepherd run here, for a host whose database no serve Shepherd reads (an
+   * in-process run on its own DB): registering there would start a second Shepherd on the PR. Absent means `in-process`.
+   */
+  register: z.enum(["in-process", "external"]).optional(),
 });
 export type SnapshotConfig = z.infer<typeof SnapshotConfigSchema>;
 
