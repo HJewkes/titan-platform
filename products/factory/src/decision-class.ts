@@ -56,6 +56,9 @@ const STEP_CLASS: Record<string, DClass> = {
   "sh-visual-accept": "D16",
 };
 
+/** TP-4759: a dead-end seat gate keeps the D-row of the owner gate it replaced. */
+const DEAD_END_CLASS: Record<string, DClass> = { "dead-end/exited-without-push": "D16", "dead-end/fix-first-runaway": "D8", "dead-end/failed-rounds": "D7" };
+
 /** The seat policy's prompt names its owner-gate reason in parentheses; a gate with none is the plain owner gate, D1. */
 function seatPolicyClass(prompt: string): DClass {
   const reason = OWNER_GATE_REASONS.find((candidate) => prompt.includes(`(${candidate})`));
@@ -67,6 +70,7 @@ function tableClass(table: string, rowId: string, prompt: string): DClass | unde
   if (table === "shepherd-merge-guard") return MERGE_GUARD_CLASS[rowId];
   if (table === "authority") return "D4";
   if (table === "shepherd-release") return "D11";
+  if (table === "shepherd-seat") return DEAD_END_CLASS[rowId];
   if (table !== "shepherd-route") return undefined;
   return rowId === "policy-denial" ? seatPolicyClass(prompt) : ROUTE_CLASS[rowId];
 }

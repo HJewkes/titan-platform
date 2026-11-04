@@ -4,6 +4,7 @@ export const gateSteps = [
   step("approve-merge", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),
   step("stuck-behind", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),
   step("ci-failed", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),
+  step("sh-dead-end", "assisted", "OWNER", effect("item", "a seat gate the owner may also answer: the answer is recorded once and a replay reads it back")),
   step("sh-sent-back", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),
   step("sh-merge-evidence-gate", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),
   step("main-red", "assisted", "OWNER", effect("item", "an owner gate: the answer is recorded once and a replay reads it back")),

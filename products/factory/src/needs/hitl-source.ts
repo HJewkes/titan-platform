@@ -80,9 +80,12 @@ function resolve(gates: GateReader, ref: string): Promise<ResolveResult> {
   return Promise.resolve({ ok: false, reason: "rejected", detail: "answer a factory gate with titan-factory gate resolve, which checks owner presence" });
 }
 
-/** The factory's own pending hitl gates. */
+/** A seat gate (TP-4759) waits on the seat it was addressed to; the owner may still answer it, but it is not the owner's item. */
+const ownersGate = (gate: GateRecord): boolean => gate.status === "pending" && gate.rule?.table !== "shepherd-seat";
+
+/** The factory's own pending hitl gates, but for the seats'. */
 export function hitlGateSource({ gates, pollMs }: HitlSourceOptions): QueueSource {
-  const open = (): Promise<OwnerItem[]> => Promise.resolve(gates.listPending().filter((gate) => gate.status === "pending").map(gateToOwnerItem));
+  const open = (): Promise<OwnerItem[]> => Promise.resolve(gates.listPending().filter(ownersGate).map(gateToOwnerItem));
   const closedAs = (ref: string): ClosedStatus => CLOSED_AS[gates.get(ref)?.status ?? "pending"];
   return { system: "hitl", open, tail: pollTail({ open, closedAs, intervalMs: pollMs }), resolve: (ref) => resolve(gates, ref) };
 }
