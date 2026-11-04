@@ -134,6 +134,11 @@ The rule matches a prefix, so the command refuses `--owner-ask` anywhere but str
 Run it only in a turn with the owner present and batched, never on a heartbeat tick or in a headless
 worker.
 
+Known gap: nothing at resolve time proves the prompt fired. Another spelling (`npx titan-factory`, an
+absolute path, `node dist/bin.js`, an `env` or `VAR=1` prefix) passes the flag check but not the ask
+rule's prefix, and a seat without the rule gets no prompt at all; either still records `owner-ask`.
+The record names the seat and never claims `owner-terminal`, but it does not prove the owner saw it.
+
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
 to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
