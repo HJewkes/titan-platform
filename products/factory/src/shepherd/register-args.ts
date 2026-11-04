@@ -40,9 +40,11 @@ export type RegisterArgs = z.infer<typeof RegisterArgs>;
 /** A deny or unreadable seat book throws here, before anything is looked up or started. */
 export function policyFor(seats: () => SeatBook, args: RegisterArgs): EffectivePolicy {
   try {
-    return resolveEffectivePolicy(lookupSeat(seats(), args.repo), args.policy ?? {});
+    const found = lookupSeat(seats(), args.repo);
+    if (found.kind === "none") throw new RegistrationRefused(`no seat lists ${args.repo}; add it to a seat file under claude-channels/sources/autonomy/seats`);
+    return resolveEffectivePolicy(found, args.policy ?? {});
   } catch (error) {
-    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
+    if (error instanceof RegistrationRefused) throw coded(error.message.startsWith("no seat lists ") ? error.message : `registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
   }
 }

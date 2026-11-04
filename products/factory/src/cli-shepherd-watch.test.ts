@@ -11,8 +11,14 @@ import { H1, REPO } from "./test-support/land.js";
 import type { SeatBook } from "./shepherd/seats.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 
-/** One seat in the book, owning another repo, so it can be named by --seat without changing #1's own seat or policy. */
-const OPS_BOOK: SeatBook = { seats: [{ name: "ops-seat", remotes: ["acme/ops"], paths: {}, grants: [] }], denied: [] };
+/** One seat in the book, owning another repo, so it can be named by --seat; a second seat lists #1 so it can register. */
+const OPS_BOOK: SeatBook = {
+  seats: [
+    { name: "ops-seat", remotes: ["acme/ops"], paths: {}, grants: [] },
+    { name: "demo-seat", remotes: [REPO], paths: {}, grants: [] },
+  ],
+  denied: [],
+};
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -90,7 +96,7 @@ describe("shepherd watch", () => {
     const listed = await cli(["--db", dbPath, "shepherd", "watch", "--list", "--port", port], deps);
 
     expect(refused.code).toBe(EXIT.FAILURE);
-    expect(refused.err).toBe("error: --seat ops-saet is not in the seat book (seats: ops-seat), so nothing was watched\n");
+    expect(refused.err).toBe("error: --seat ops-saet is not in the seat book (seats: ops-seat, demo-seat), so nothing was watched\n");
     expect(listed.out).toBe("no watches\n");
   });
 
