@@ -60,6 +60,7 @@ const GATE_RESOLVE_ACTOR_FILES = [
   "products/factory/src/**/coordinator-evidence*.ts",
   "products/factory/src/**/coordinator-allowances*.ts",
   "products/factory/src/device-gates.ts",
+  "products/factory/src/owner-ask.ts",
   "products/factory/src/shepherd/stale-gates.ts",
 ];
 
