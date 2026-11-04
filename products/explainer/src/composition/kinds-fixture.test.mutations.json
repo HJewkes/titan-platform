@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a kind is registered under a key no fixture beat draws",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "outro: defineBeat(BEAT_SLOTS.outro",
+      "replace": "\"outro-card\": defineBeat(BEAT_SLOTS.outro",
+      "kills": [
+        "it holds a beat of every registered kind, so the sheet shows each one"
+      ]
+    },
+    {
+      "name": "compare is registered under a key no fixture beat draws",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "compare: defineBeat(BEAT_SLOTS.compare",
+      "replace": "\"compare-card\": defineBeat(BEAT_SLOTS.compare",
+      "kills": [
+        "it holds a beat of every registered kind, so the sheet shows each one"
+      ]
+    }
+  ]
+}

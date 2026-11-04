@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as childProcess from "node:child_process";
 import { runTool } from "./tool-runner.js";
@@ -13,8 +13,11 @@ function throwingSpawn(code: string): never {
 }
 
 function fakeFailingChild(code: string): childProcess.ChildProcess {
-  const child = new EventEmitter() as childProcess.ChildProcess;
-  Object.assign(child, { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: vi.fn() });
+  const child = Object.assign(new childProcess.ChildProcess(), {
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill: vi.fn(),
+  });
   setImmediate(() => child.emit("error", Object.assign(new Error(`spawn ${code}`), { code })));
   return child;
 }

@@ -35,6 +35,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
     "playwright-core": "1.63.0"
   },
   "peerDependencies": {

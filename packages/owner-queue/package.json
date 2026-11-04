@@ -13,6 +13,10 @@
     "./spool": {
       "types": "./dist/spool.d.ts",
       "import": "./dist/spool.js"
+    },
+    "./withdraw": {
+      "types": "./dist/withdraw.d.ts",
+      "import": "./dist/withdraw.js"
     }
   },
   "files": [
@@ -46,6 +50,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   }
 }

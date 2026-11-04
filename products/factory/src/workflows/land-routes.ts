@@ -10,6 +10,7 @@ import type { CiInput } from "./land-ci.js";
 import { afterWrite, waitForCi } from "./land-ci-wait.js";
 import type { FirstReads } from "./land-budget.js";
 import { flakyState, type FlakyChecks } from "./land-flaky.js";
+import { rerunOrphans, type OrphanRerunInput } from "./land-orphan.js";
 import { settleRun, type MergeTreeProbe, type SettleInput } from "./land-settle.js";
 import { updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
@@ -45,6 +46,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
       const ciTiming = { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000, startedAt: clock.firstStartedAtMs };
       return waitForCi(deps, input, ciTiming, signal, flaky, firstReads);
     }),
+    codeRoute("ci-orphan-rerun", now, (input: OrphanRerunInput) => afterWrite(deps, input, rerunOrphans(deps.port, input))),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("base-check", now, (input: BaseCheckInput) => checkBase(deps.port, input)),

@@ -6,12 +6,127 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 |---|---|---|
 | `rules.yaml` | The Q-rule registry (`rules/v1`): script-quality rules, `Q-` ids, each with an L0 and/or judge check | `loadRuleRegistry` |
 | `craft/<source>.yaml` | The craft doctrine (`doctrine-craft/v1`): every rule id the video-types study (VT §4) lists, one file per source doctrine | `loadDoctrine` |
-| `vocabulary.yaml` | The allowed beats, video types and audiences a craft rule may scope to | `loadDoctrine` |
+| `vocabulary.yaml` | The allowed beats, video types, audiences and structures a craft rule may scope to, and the material signals fit predicates read | `loadDoctrine` |
 | `evidence.tsv` | A verbatim copy of the narrative evidence ledger (`E##` ids and grades) | `loadDoctrine` |
 | `visual-router.json` | A pinned copy of titan-design's visual router; rewrite it with `scripts/pin-visual-router.mjs`, never by hand | `loadVisualRouter` |
+| `types/<type>.yaml` | One `type-profile/v1` per video type | `loadProfiles` |
+| `audiences/<id>.yaml` | The audience packs a profile allows (`audience-pack/v1`) | `loadProfiles` |
+| `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
+| `beat-systems/<id>.yaml` | One `beat-system/v1` per beat system: an ordered beat pattern a profile plays inside a structure's blocks | `loadBeatSystems` |
+| `lexicon.json` | How a word is said aloud (speech-vet `lexicon.v1`); each entry's `phonemes.misaki` reaches the Kokoro voice ahead of misaki's own lexicon | `kokoroEngine` |
+| `voice-phrases.json` | The phrases our scripts say far more often than human explainers (TP-4305), derived outside git from the script-tells corpus; only the list is kept here | `registerCheck` |
+| `speech-bands.yaml` | Each speech band's voiced words a minute and density cap (DIRECTION C5 and C15, decision 317a): the tts stage's per-beat rate and the word budget's caps | `loadSpeechBands` |
+| `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
+| `sims/<id>.yaml` | One `sim-model/v1` per sim model: its params and bounds, the statistics a claim may name with each tolerance and its `why`, and `fittedFrom`; the code model is in `SIM_MODELS` | `loadSims` |
+| `qa/gate-profile.yaml` | The qa stage's gate profile (`explainer.qa-gate-profile/v1`): the render-qa finding kinds that fail the stage and the inspector thresholds, by default and per video type | `loadQaGate` |
+| `style-packs/<id>.yaml` | One `style-pack/v1` per style pack: existing titan-design token names by slot | `loadStylePacks` |
+| `style-tokens.json` | The token names of react-ui's `tokens.css`, the file the explainer template imports; rewrite it with `scripts/pin-style-tokens.mjs`, never by hand | `loadStylePacks` |
+| `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
+
+`checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` and
+`checkStructures(loadStructures(), loadDoctrine().vocabulary)` and
+`checkBeatSpecs(loadBeatSpecs(), loadDoctrine().vocabulary)` and `checkSims(SIM_MODELS, loadSims())` must also
+return no issues.
+
+## Adding a type profile
+
+Name the file after its `type`, which must be in `vocabulary.yaml`. Each block's beats come from
+the vocabulary; a beat a profile needs that is missing there is added as a beat spec first, in a
+change of its own. The planner guide indexes every beat the blocks allow from its spec. List in `series.mustVary` every `SERIES_BASE`
+field, plus `structure` when the order is `heuristic`. A fixed order lists neither `structure`
+nor `chapter-labels` there. Then run `explainer guide types` and commit the regenerated guides.
 
 `checkDoctrine(loadDoctrine(), loadRuleRegistry())` returns every issue in the craft registry; it
 must return none.
+
+## Adding a narrative structure
+
+Add the id to `structures` in `vocabulary.yaml` and name the file after it. The fit predicate
+reads only names in the vocabulary's `signals`; a new signal is a vocabulary change of its own,
+and the material map must compute it: a rule in `src/material-signals.ts`, or a listed gap there. `fit.ask` is the story-structure §4 question the
+predicate encodes. Block shares sum to 1. The spine sections are the template the planner fills
+for a video that picks the structure. `design-journey`'s spine is the `spine/v1` template, so a
+change to its section numbers is a `spine/v1` change. A heuristic profile names the structure as
+a macro; its row's `ask` words the question for that type, and the registry's predicate decides.
+A rule that applies only to one structure is a `T` rule naming it in `structures`. Then run
+`explainer guide types` and commit the regenerated guides.
+
+## Adding a beat system
+
+A beat system is the beat order inside a structure's blocks, never a second structure: the
+structure owns the blocks, shares, fit and spine; the system owns which beats play, in what order.
+Add the id to `beatSystems` in `vocabulary.yaml` and name the file after it. Every step's beats
+come from the vocabulary; `loadBeatSystems` refuses any other name. A step a structure may drop is
+`optional: true`. Then bind it in each profile that plays it, under `structure.systems`:
+
+```yaml
+systems:
+  - { system: cl-order, macro: before-after }
+  - { system: journey-of-attempts, macro: bluf, blocks: [segments] }
+```
+
+`blocks` scopes a system to part of a macro, as a segment nests inside a larger order. Each
+required step must land, in order, in a block that allows one of its beats (`beat-system-order`).
+A pattern known only from an abstract, such as Xu's openings or Wei's climaxes, is not a system
+until someone reads the paper. Then run `explainer guide types` and commit the regenerated guides.
+
+## Adding a beat spec
+
+Add the name to `beats` in `vocabulary.yaml` and name the file after it. Every vocabulary beat has a
+spec, and a builder asking for a beat with none is refused (`beatSpecFor`).
+
+```yaml
+schema: beat-spec/v1
+type: proof
+summary: "The checks that show it holds: failing at base, passing at head."
+role: evidence
+component: { name: ChecklistBeat, maturity: spike }
+slots: proof
+speech: { band: code }
+durationS: [6, 12, 22]
+preset: false
+emphasis: { targets: [checks], treatments: [highlight, scale] }
+recipe: "Show one to six checks with their result at base and at head. Show proof, do not assert it."
+```
+
+- **Slots:** a key of `BEAT_SLOTS` in `src/beat-slots.ts`, the zod schema the builder fills. Two
+  specs may share one, as `arch-map` and `zoom` share `map`. `parseBeatSlots` rejects an unknown beat
+  and any slot the schema rejects.
+- **Component:** the name and maturity from the video components catalogue (`shipped`, `spike`,
+  `doc`); `gap` names none.
+- **Emphasis:** the mapping contract. `targets` are slot lists whose items carry an `id`; a script
+  cue names one of those ids, and an id used twice in one list is rejected. `treatments` are what
+  the template may do to the named element. There is no default treatment: the template picks per
+  cue, so emphasis does not look the same everywhere.
+- **Recipe:** the packet text, 200 words or fewer. `preset: true` marks a template fill that needs
+  no model. Beat rules stay in `craft/` as `B` rules naming the beat; the spec does not list them.
+
+Then run `explainer guide types` and commit the regenerated guides.
+
+## Adding a style pack
+
+A pack picks among titan-design tokens the template already loads; it never adds a token or a
+value. Name the file after its `id`, and fill every slot with a name from `style-tokens.json`
+(without the leading `--`). Each slot takes one family (`SLOT_FAMILIES` in
+`src/style-pack-schema.ts`): a colour for `ground`, an ease for `ease`. `grain` is optional.
+
+```yaml
+schema: style-pack/v1
+id: night-drafting
+theme: dark
+feel: "The near-black frame ground with strong hairline rules and one cool teal accent."
+tokens: { ground: color-background-frame, surface: color-surface-base, text: color-text-primary, ... }
+```
+
+- **Our own look.** A pack copies no channel's look; `loadStylePacks` rejects an id or feel that
+  names one in `IMITATED_CHANNELS`.
+- **Judged on pilots.** There is no stills round (owner Q7 B): packs are variant parameters, kept,
+  cut or tweaked after the owner sees rendered pilots.
+- **A token the packs need that tokens.css lacks** is a titan-design change, not a pack field.
+
+Then allow it in each profile that may render in it, under `styles.allow`. A profile whose series
+must vary `style-pack` allows at least two. `voice` is the profile's band: a Kokoro voice id and
+rate that no other profile shares at the same rate.
 
 ## Adding a craft rule
 
@@ -36,12 +151,13 @@ rules:
 - **Id:** `<src>-<ref>[.<n>]`, where `<src>` is `dir`, `story`, `creator`, `talks`, `vid`, `motion`,
   `taste` or `owner`, and `<ref>` is the VT §4 id (`dir-P1`, `story-19`, `motion-G4`, `motion-preset-15`);
   an `owner-feedback` rule uses the owner's rule number instead (`owner-FB3`, `owner-FB2.1`), and a
-  `script-register` rule uses `register-` and the study's slice id (`register-N6`).
+  `script-register` rule uses `register-` and the study's slice id (`register-N6`); a `talks-and-slides` rule taken from the content-standards matrix uses its matrix id (`talks-ST11`).
   `.<n>` only splits one source row into several rules that share `source.ref`. Never `Q-`: that
   prefix belongs to `rules.yaml`. The id never carries the layer.
 - **Text:** 40 words or fewer, the rule's do and don't condensed. Never change a number.
-- **Scope:** the VT §4 layer exactly. `B` names `beats`; `T` names `types` or `audiences`; `U*`
-  names the profile `param` that supplies its value; `U` and `U*` name neither beats nor types.
+- **Scope:** the VT §4 layer exactly. `B` names `beats`; `T` names `types`, `audiences` or
+  `structures`; `U*` names the profile `param` that supplies its value; `U` and `U*` name no
+  beats, types or structures.
   Every name must be in `vocabulary.yaml`.
 - **Evidence and grade:** only the `[E##]` citations the source states, with the grade it states.
   A rule that cites evidence states a grade, and that grade must be one of the cited rows' grades.
@@ -90,6 +206,16 @@ are not live yet keeps its prompt enforcement as the fallback until the code lan
 **Flip `live` only when the check's code merges.** For a `qrule` check, `checkDoctrine` reports
 `qrule-live-mismatch` when a Q-rule's L0 status moves; the pull request that implements the Q-rule
 also flips the craft rule's `live`.
+
+## Register rows (Q-V11)
+
+Each `register:*` row's band lives in `src/lint-register.ts`. A new row needs a measured gap
+against human explainers and must be independent of the rows already there. Noun density
+(TP-4321) failed that test. Our scripts run at about 1.5x the human rate, but on the
+script-tells corpus a 430-per-1k cap flags 19 of our 20 scripts, and the contractions or
+second-person floors already flag 18 of those. Across the corpus its rank correlation is -0.65
+with contractions and -0.52 with "you". It is the same "involved register" gap seen from the
+noun side, so the contractions and "you" rows carry it, and it has no row of its own.
 
 ## Stages
 

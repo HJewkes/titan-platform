@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render-qa probe paint fixture</title>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0d1117; }
+      .swatch { position: absolute; left: 100px; width: 100px; height: 40px; }
+      .rgb-opaque { top: 0; background-color: rgb(10, 20, 30); }
+      .rgb-half { top: 60px; background-color: rgba(10, 20, 30, 0.5); }
+      .rgb-clear { top: 120px; background-color: rgba(10, 20, 30, 0); }
+      .p3-opaque { top: 180px; background-color: color(display-p3 0.2 0.4 0.6); }
+      .p3-half { top: 240px; background-color: color(display-p3 0.2 0.4 0.6 / 0.5); }
+      .p3-clear { top: 300px; background-color: color(display-p3 0.2 0.4 0.6 / 0); }
+      .oklch-half { top: 360px; background-color: oklch(60% 0.15 250 / 0.5); }
+      .oklch-clear { top: 420px; background-color: oklch(60% 0.15 250 / 0); }
+    </style>
+  </head>
+  <body>
+    <div class="swatch rgb-opaque"></div>
+    <div class="swatch rgb-half"></div>
+    <div class="swatch rgb-clear"></div>
+    <div class="swatch p3-opaque"></div>
+    <div class="swatch p3-half"></div>
+    <div class="swatch p3-clear"></div>
+    <div class="swatch oklch-half"></div>
+    <div class="swatch oklch-clear"></div>
+    <script>
+      window.__titanMotion = { seek: () => {}, ready: () => document.fonts.ready.then(() => undefined), duration: 1 }
+    </script>
+  </body>
+</html>

@@ -2,27 +2,30 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { OBSERVE_STEP } from "./observe.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import { readPath } from "../narrow.js";
+import { z } from "zod";
+import { fakeLocator } from "../test-support/fakes.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("unsettled-head2");
 const MINUTE = 60_000;
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1" });
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -127,12 +130,12 @@ function start(host: FactoryHost, w: World): string {
 
 /** The run goes on to read main CI after the merge, which this fake never reports, so the merge is what a test waits on. */
 async function merged(w: World): Promise<void> {
-  await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 10_000 });
+  await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 }
 
 function settleRecords(host: FactoryHost, runId: string): { headSha: string; since: number; at: number; spent: boolean }[] {
   const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("merge-settle"));
-  return results.map((result) => (result.data as { result: { headSha: string; since: number; at: number; spent: boolean } }).result);
+  return results.map((result) => z.object({ headSha: z.string(), since: z.number(), at: z.number(), spent: z.boolean() }).parse(readPath(result.data, "result")));
 }
 
 describe("a MERGE whose evidence reads mergeable_state unknown on every read", () => {
@@ -154,7 +157,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     const prompt = host.gates.get(gateId(runId, "approve-merge"))!.prompt;
     expect(prompt).toContain("shepherd-merge-guard/merge-state-unsettled");
@@ -175,7 +178,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const runId = start(host, w);
 
     const pendingApproval = () => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"));
-    await vi.waitFor(() => expect(pendingApproval()).toBeDefined(), { timeout: 10_000 });
+    await vi.waitFor(() => expect(pendingApproval()).toBeDefined());
     const { gate } = pendingApproval()!;
 
     expect(gate.prompt).toMatch(/unsettled for 2\d min/);
@@ -191,7 +194,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     expect(settleRecords(host, runId)).toEqual([]);
     expect(w.collections.get(H1)).toBe(1);
@@ -219,14 +222,14 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const w = world(() => "unknown");
     const first = open(w, dbPath);
     const runId = start(first, w);
-    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3), { timeout: 10_000 });
+    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3));
     first.close();
     hosts.splice(hosts.indexOf(first), 1);
     const second = open(w, dbPath);
     const since = settleRecords(second, runId)[0]!.since;
 
     await second.adopt();
-    await gateOpened(second, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(second, gateId(runId, "approve-merge"));
 
     expect(new Set(settleRecords(second, runId).map((settle) => settle.since))).toEqual(new Set([since]));
     expect(second.gates.get(gateId(runId, "approve-merge"))!.prompt).toMatch(/unsettled for 2\d min/);
@@ -251,7 +254,7 @@ describe("a MERGE whose mergeability stays unsettled past the bound, with a seat
     const host = open(w);
     const runId = start(host, w);
 
-    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(45 * MINUTE), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(45 * MINUTE));
 
     expect(w.notices).toHaveLength(1);
     expect(w.notices[0]!.seat).toBe("trusted-seat");
@@ -283,7 +286,7 @@ describe("a MERGE whose mergeability stays unsettled past the bound, with a seat
     const host = open(w);
     const runId = start(host, w);
 
-    await vi.waitFor(() => expect(w.notices).toHaveLength(2), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.notices).toHaveLength(2));
 
     expect(w.notices.map((notice) => notice.text.includes(`at head ${H2}`))).toEqual([false, true]);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();

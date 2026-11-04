@@ -1,0 +1,62 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-render",
+    "version": "1.0.0"
+  },
+  "id": "explainer-render-checks",
+  "version": "1.0.0",
+  "cases": [
+    "00d6766cc2c860b35de99968749ce9f94e7a22656567eb5ef780da05e8a53355",
+    "0621bdb2a83df99cb02f4c9774b04695e92121fce320e02237bb15ababf75133",
+    "4a47438af8ac0ce8b7618abebc00aeb17ff520969cbb4ec46457a818c8dc42ce",
+    "5f84fc4050bf878f1130af8bbcced06502954ab7e30b78a9cf0dbe5c9842468a",
+    "60f0d3ec43fe6424b179e0ac2e31397f53d5481cfd981a2228c806796b3504d2",
+    "868298cec01241e8a01e39eff5e2de75384ba2f5c23e1b3d59541da1a73eab12",
+    "d1d88ad8aef0ed189976dd97fd6883ca1b7b3dfdd935cca1900d8ed8b7c2d891",
+    "f1ff33866630c2fd9224b0bb5cd62bfa17b12409a68b90c8abc4b71543ea70fd"
+  ],
+  "checks": [
+    {
+      "id": "render-gate",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "render/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "render",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=render-gate]",
+        "gate": true
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "render/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "render/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "render/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

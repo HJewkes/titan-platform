@@ -49,8 +49,28 @@ const STRUCTURE = [
   /^ {0,3}</,
 ];
 
+// GitHub skips every push workflow on these tokens and the Checks API on the trailer, so main CI and Release would not run.
+const CI_SKIP = /\[(\s*(?:skip\s*ci|ci\s*skip|no\s*ci|skip\s*actions|actions\s*skip)\s*)\]/gi;
+const SKIP_CHECKS = /\b(skip-checks)(\s*):(?=\s*true\b)/gi;
+
+/** Rewrites CI skip tokens and `skip-checks: true` to a form GitHub ignores; code is included, since GitHub reads raw text. */
+export function defangCiSkip(text: string): string {
+  return text.replace(CI_SKIP, "($1)").replace(SKIP_CHECKS, "$1$2=");
+}
+
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 export function formatSquashMessage(input: SquashInput): SquashMessage {
+  const { subject, body } = assemble(defangInput(input));
+  return { subject: defangCiSkip(subject), body: defangCiSkip(body) };
+}
+
+/** Defanging the input too keeps the Changes tail of a re-format equal to the one already in its body. */
+function defangInput(input: SquashInput): SquashInput {
+  const commits = input.commits.map((commit) => ({ subject: defangCiSkip(commit.subject), body: defangCiSkip(commit.body) }));
+  return { ...input, title: defangCiSkip(input.title), body: defangCiSkip(input.body), commits };
+}
+
+function assemble(input: SquashInput): SquashMessage {
   const taskIds = uniqueIds(input.taskIds);
   const refs = `Refs: ${[...taskIds, `#${input.prNumber}`].join(", ")}`;
   const bullets = input.commits.flatMap((commit) => changeBullet(commit) ?? []);

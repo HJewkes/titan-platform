@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./linear-regexp": {
+      "types": "./dist/linear-regexp.d.ts",
+      "import": "./dist/linear-regexp.js"
     }
   },
   "files": [
@@ -36,5 +40,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
   }
 }

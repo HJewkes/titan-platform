@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lanes file content left out of the gather key",
+      "file": "products/explainer/src/workflow/run-gather.ts",
+      "find": "lanes, lanesSha: shaOf(lanes), ...decisions };",
+      "replace": "lanes, ...decisions };",
+      "kills": [
+        "explainer run --from gather gathers again when the --lanes file changes, and hits the cache when it does not"
+      ]
+    }
+  ]
+}

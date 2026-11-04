@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a long section id is cut without a hash",
+      "file": "products/explainer/src/calibration-round.ts",
+      "find": "return `${slug.slice(0, CONSOLE_ID_MAX - HASH_LENGTH - 1)}-${hash}`;",
+      "replace": "return slug.slice(0, CONSOLE_ID_MAX);",
+      "kills": [
+        "gives two long slugs sharing a 32-character prefix different ids"
+      ]
+    },
+    {
+      "name": "a long section id is left whole",
+      "file": "products/explainer/src/calibration-round.ts",
+      "find": "if (slug.length <= CONSOLE_ID_MAX) return slug;",
+      "replace": "return slug;",
+      "kills": [
+        "fits the console id rule for a 41-character slug, the same on every call"
+      ]
+    },
+    {
+      "name": "the round-1 key must carry a run",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "run: z.string().optional(),",
+      "replace": "run: z.string(),",
+      "kills": [
+        "parse without configId or run, and agreement runs on them"
+      ]
+    }
+  ]
+}

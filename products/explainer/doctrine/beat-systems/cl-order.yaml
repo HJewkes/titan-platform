@@ -1,0 +1,14 @@
+schema: beat-system/v1
+id: cl-order
+version: 0.1.0
+source: "video-profiles plan §B.1 (the CL / CodeRabbit order) [W43, W44]"
+summary: "A change described the way a good change description reads: summary, why, grouped changes, shortcomings, proof, then the ask."
+steps:
+  - { beats: [verdict-card], does: "An imperative one-line summary that stands alone, with the verdict." }
+  - { beats: [claim-card], does: "The problem, and why this approach.", optional: true }
+  - { beats: [change-group], does: "The changes grouped into two to four rows of related files, each pinned on the diff map." }
+  - { beats: [sequence], does: "A sequence diagram, only if interactions changed.", optional: true }
+  - { beats: [finding-card], does: "Shortcomings, said aloud.", optional: true }
+  - { beats: [proof], does: "The tests or the benchmark that show it holds." }
+  - { beats: [metrics-panel], does: "Risk or effort.", optional: true }
+  - { beats: [button], does: "The ask." }

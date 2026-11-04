@@ -1,0 +1,6 @@
+# The owner and titan agents (VT §2.1, decision 326.3): expert in code, new to this subject.
+schema: audience-pack/v1
+id: owner-internal
+viewer: "The owner and titan agents: expert in code, new to this subject. Titan-relative verdicts are on screen."
+verdicts: titan-relative
+publishable: false

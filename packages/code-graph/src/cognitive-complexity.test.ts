@@ -15,7 +15,9 @@ async function parsePy(code: string, filePath = "f.py"): Promise<ParsedFile> {
 }
 
 function score(metrics: ReturnType<typeof computeSourceMetrics>): number {
-  return metrics.find((m) => m.name === "cognitive_max")!.value as number;
+  const { value } = metrics.find((m) => m.name === "cognitive_max")!;
+  if (value === null) throw new Error("cognitive_max has no value");
+  return value;
 }
 
 describe("cognitive complexity — TypeScript", () => {

@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the plan directs no beat for its spoken ids",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "...phrasesFor(beat, aimed), ...idsFor(beat) };",
+      "replace": "...phrasesFor(beat, aimed) };",
+      "kills": [
+        "is directed to cut the id though no register row fails",
+        "is rewritten without the id, though every target row already passed"
+      ]
+    },
+    {
+      "name": "rounds run only while a target row fails",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "(failingTargets(current.rows) > 0 || idBeats(current.rows) > 0)",
+      "replace": "failingTargets(current.rows) > 0",
+      "kills": [
+        "is rewritten without the id, though every target row already passed"
+      ]
+    },
+    {
+      "name": "a chapter must come closer to band to be kept",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "(bandDistance(after) === bandDistance(before) && idBeats(after) >= idBeats(before))",
+      "replace": "bandDistance(after) === bandDistance(before)",
+      "kills": [
+        "keeps a chapter that only cuts ids, though the distance to band holds",
+        "is rewritten without the id, though every target row already passed"
+      ]
+    },
+    {
+      "name": "a chapter that cuts an id is kept even when it moves away from band",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "if (bandDistance(after) > bandDistance(before) || (",
+      "replace": "if ((",
+      "kills": [
+        "refuses a chapter that cuts an id but moves away from band"
+      ]
+    },
+    {
+      "name": "the prompt drops the ids line",
+      "file": "products/explainer/src/rewrite-prompt.ts",
+      "find": "    ...(ids ? [idLine(ids)] : []),\n",
+      "replace": "",
+      "kills": [
+        "is rewritten without the id, though every target row already passed"
+      ]
+    }
+  ]
+}

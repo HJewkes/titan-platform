@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: rule-diff
+summary: "The change to one of our rules a finding implies."
+role: close
+component: { name: CodeViewer, maturity: doc }
+slots: rule-diff
+speech: { band: concept }
+durationS: [6, 10, 18]
+preset: false
+emphasis: { targets: [changes], treatments: [highlight] }
+recipe: "Name the rule, then one to four changes to it, each added, removed or changed, and the reason."

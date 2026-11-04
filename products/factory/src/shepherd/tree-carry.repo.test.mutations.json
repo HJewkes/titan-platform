@@ -37,6 +37,16 @@
         "carry reads the PR diff as unchanged across a merge-up over an unreviewed merge-up (TP-3725)",
         "carry reads the PR diff as unchanged when main moved the lines above the PR's hunk"
       ]
+    },
+    {
+      "name": "the cache registers no merge driver",
+      "file": "products/factory/src/shepherd/tree-carry.ts",
+      "find": "  await registerMergeDrivers(git, dir, signal);\n",
+      "replace": "",
+      "kills": [
+        "the git cache's closure-lock merge driver (TP-4752) sets merge.closure-lock.driver in the cache clone before it merges, without pnpm prepare",
+        "the git cache's closure-lock merge driver (TP-4752) carries a MERGE across a merge-main whose closure.lock.json both sides moved, as the driver merged it"
+      ]
     }
   ]
 }

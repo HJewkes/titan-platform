@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
@@ -9,7 +10,10 @@ import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
 const HEAD = "c".repeat(40);
 const DISPATCHED_AT = 1_000_000;
 const input: AwaitVerdictInput = { repo: "octo/demo", pr: 7, head: HEAD, reviewerAgentId: "reviewer-1", reviewerSessionId: "session-1", dispatchedAt: DISPATCHED_AT };
-const locator = { source: { conversation: { nativeId: "session-1" } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>({
+  source: partialFake<SourceTextLocator["source"]>({ conversation: partialFake<SourceTextLocator["source"]["conversation"]>({ nativeId: "session-1" }) }),
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+});
 const verdictMessage = (writtenAt: number): ReviewerMessage => ({
   agentId: "reviewer-1",
   sessionId: "session-1",
@@ -72,8 +76,8 @@ describe("acceptVerdict malformed record", () => {
     expect(acceptVerdict(input, [said(review)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
   });
 
-  it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "probes_missing"]);
+  it("covers every refusal the schema lists, the two Shepherd's scope check sends included", () => {
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "ci_policy_prose", "probes_missing", "scope_untagged", "repeated_finding"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
   });
@@ -109,6 +113,15 @@ describe("acceptVerdict malformed record", () => {
     const foreign = said("no verdict here", { sessionId: "session-2", agentId: "reviewer-2" });
 
     expect(acceptVerdict(input, [foreign])).toEqual({ kind: "none" });
+  });
+
+  it("records nothing for a message whose locator is missing or malformed, rather than throwing", () => {
+    const locators: unknown[] = [undefined, null, "x", {}, { source: null }, { source: { conversation: null } }];
+    for (const locator of locators) {
+      const malformed = Object.assign(said("no verdict here"), { locator });
+
+      expect(acceptVerdict(input, [malformed])).toEqual({ kind: "none" });
+    }
   });
 
   it("records nothing for a message written before dispatch", () => {
@@ -218,8 +231,14 @@ describe("acceptVerdict CI-policy line", () => {
   it("refuses a MERGE whose CI-policy line is prose, so the reviewer gets a correction", () => {
     const result = acceptVerdict(input, [said(merge(RV_1340_LINE))]);
 
-    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1, quotes: [RV_1340_LINE] } });
-    expect(readMalformed(result)?.refusal).toBe("ci_policy_malformed");
+    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_prose", writtenAt: DISPATCHED_AT + 1, quotes: [RV_1340_LINE] } });
+    expect(readMalformed(result)?.refusal).toBe("ci_policy_prose");
+  });
+
+  it("still refuses a second labelled line that is not prose as malformed", () => {
+    const result = acceptVerdict(input, [said(merge("CI-policy: unchanged\nCI policy: unchanged"))]);
+
+    expect(readMalformed(result)).toEqual({ refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1, quotes: ["CI policy: unchanged"] });
   });
 
   it("keeps a weakening that a malformed line sits beside, so no weakening is corrected away", () => {
@@ -252,18 +271,112 @@ describe("acceptVerdict CI-policy line", () => {
   });
 });
 
+describe("acceptVerdict Attests line", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}\n`;
+  const CI_WAIT = `ci-wait@${"a".repeat(12)}`;
+  const MERGE_STEP = `merge@${"b".repeat(12)}`;
+
+  it("a MERGE carries the steps its Attests line names", () => {
+    const text = `Checked.\nAttests: ci-wait@${"0".repeat(12)}\nAttests: ${CI_WAIT}, ${MERGE_STEP}, ci-wait@${"c".repeat(12)}\n\n${block("MERGE")}CI-policy: unchanged`;
+
+    const result = acceptVerdict(input, [said(text)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "unchanged" }, attests: [CI_WAIT, MERGE_STEP] });
+  });
+
+  it("a FIX_FIRST drops an Attests line", () => {
+    const merge = acceptVerdict(input, [said(`Checked.\nAttests: ${CI_WAIT}\n\n${block("MERGE")}`)]);
+    const result = acceptVerdict(input, [said(`1. Broken.\nAttests: ${CI_WAIT}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(merge).toMatchObject({ verdict: "MERGE", attests: [CI_WAIT] });
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+    expect(result).not.toHaveProperty("attests");
+  });
+
+  it("a malformed Attests token is dropped and the MERGE still counts", () => {
+    const text = `Checked.\nAttests: ci-wait@${"a".repeat(11)}, Merge@${"b".repeat(12)}, ${CI_WAIT}x, ${MERGE_STEP}\n\n${block("MERGE")}`;
+
+    const result = acceptVerdict(input, [said(text)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", attests: [MERGE_STEP] });
+  });
+
+  it("an Attests line inside a fence is not read", () => {
+    const fenced = acceptVerdict(input, [said(`Checked.\nAttests: ${MERGE_STEP}\n\`\`\`\nAttests: ${CI_WAIT}\n\`\`\`\n\n${block("MERGE")}`)]);
+    const below = acceptVerdict(input, [said(`Checked.\n\n${block("MERGE")}Attests: ${CI_WAIT}`)]);
+
+    expect(fenced).toMatchObject({ kind: "verdict", verdict: "MERGE", attests: [MERGE_STEP] });
+    expect(below).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(below).not.toHaveProperty("attests");
+  });
+});
+
+describe("acceptVerdict CI-policy prose beside a correct block", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = `Verdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}`;
+  const reply = (prose: string, ciPolicy = "CI-policy: unchanged") => `Looked.\n\n${prose}\n\n${block}\n${ciPolicy}`;
+
+  it.each([
+    ["a bold heading", "**CI policy.** No files under .github/ changed."],
+    ["a bold heading in a list", "- **CI policy:** no `.github/` files change."],
+    ["a list item", "* CI policy: unchanged"],
+    ["a sentence", "CI policy: nothing under .github/ changed."],
+  ])("takes the canonical unchanged line over %s", (_shape, prose) => {
+    expect(acceptVerdict(input, [said(reply(prose))])).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "unchanged" } });
+  });
+
+  it.each([
+    ["says weakened", "**CI policy:** no CI rules are weakened."],
+    ["says weakening in another form", "- CI policy: this weakens nothing"],
+    ["names a key", "**CI policy.** Nothing touches secrets or the ruleset."],
+    ["loosens branch protection without naming a key", "**CI policy:** loosens branch protection on main."],
+    ["renames a required check without naming a key", "**CI policy:** renames the validate check."],
+    ["negates unchanged", "CI policy: not unchanged; the job token now gets write access."],
+    ["hides weakened behind a homoglyph", "**CI policy:** w\u0435akened, see below."],
+    ["hides unchanged behind a homoglyph", "**CI policy:** unch\u0430nged"],
+    ["says something harmless but off the allowlist", "* CI policy: the diff is docs only"],
+  ])("refuses as prose when the heading %s", (_shape, prose) => {
+    expect(readMalformed(acceptVerdict(input, [said(reply(prose))]))).toEqual({ refusal: "ci_policy_prose", writtenAt: DISPATCHED_AT + 1, quotes: [prose] });
+  });
+
+  it("refuses as prose when the canonical line is missing", () => {
+    const prose = "**CI policy.** No files under .github/ changed.";
+
+    expect(readMalformed(acceptVerdict(input, [said(`Looked.\n\n${prose}\n\n${block}`)]))?.refusal).toBe("ci_policy_prose");
+  });
+
+  it("refuses as malformed when the exact line is not at Head+1, since it is then no prose", () => {
+    const prose = "**CI policy.** No files under .github/ changed.";
+
+    expect(readMalformed(acceptVerdict(input, [said(reply(prose, "\nCI-policy: unchanged"))]))?.refusal).toBe("ci_policy_malformed");
+  });
+
+  it("refuses as malformed when one other labelled line is not prose", () => {
+    const text = reply("**CI policy.** No files under .github/ changed.\nCI policy: unchanged");
+
+    expect(readMalformed(acceptVerdict(input, [said(text)]))?.refusal).toBe("ci_policy_malformed");
+  });
+
+  it("keeps a weakening written as prose with a key, over the canonical line", () => {
+    const result = acceptVerdict(input, [said(reply("**CI policy:** weakened permissions"))]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "weakened", keys: ["permissions"] } });
+  });
+});
+
 describe("acceptVerdict correction quotes", () => {
   const WRITTEN_AT = DISPATCHED_AT + 5_000;
   const trailer = `Verdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: unchanged`;
   const said = (text: string): ReviewerMessage => ({ ...verdictMessage(WRITTEN_AT), text });
 
   it("quotes the prose CI policy heading; the same reply without it is a MERGE", () => {
-    const heading = "**CI policy:** nothing under `.github/` changed.";
+    const heading = "**CI policy:** no workflow permissions changed.";
 
     const refused = acceptVerdict(input, [said(`Looked.\n\n${heading}\n\n${trailer}`)]);
     const fixed = acceptVerdict(input, [said(`Looked.\n\n${trailer}`)]);
 
-    expect(readMalformed(refused)).toEqual({ refusal: "ci_policy_malformed", writtenAt: WRITTEN_AT, quotes: [heading] });
+    expect(readMalformed(refused)).toEqual({ refusal: "ci_policy_prose", writtenAt: WRITTEN_AT, quotes: [heading] });
     expect(fixed).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 

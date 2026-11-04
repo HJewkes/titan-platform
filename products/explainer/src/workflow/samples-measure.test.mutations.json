@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cap stops a run that lands exactly on it",
+      "file": "products/explainer/src/workflow/samples-measure.ts",
+      "find": "if (request.maxUsd !== undefined && sumUsd(counted) + next > request.maxUsd)",
+      "replace": "if (request.maxUsd !== undefined && sumUsd(counted) + next >= request.maxUsd)",
+      "kills": [
+        "runSamples runs on to exactly the cap"
+      ]
+    },
+    {
+      "name": "earlier runs do not count toward the cap",
+      "file": "products/explainer/src/workflow/samples-measure.ts",
+      "find": "const counted = [...(request.prior ?? []), ...runs];",
+      "replace": "const counted = runs;",
+      "kills": [
+        "runSamples counts an earlier pass's runs toward the cap and the next-run estimate"
+      ]
+    },
+    {
+      "name": "a gate-failed sample is dropped",
+      "file": "products/explainer/src/workflow/samples-measure.ts",
+      "find": "if (error instanceof ChildStageFailure && error.record) return",
+      "replace": "if (false) return",
+      "kills": [
+        "runSamples counts a sample whose stage failed a gate but made its draft, and its spend"
+      ]
+    },
+    {
+      "name": "rewrite has no before",
+      "file": "products/explainer/src/workflow/samples-measure.ts",
+      "find": "rewrite: { output: \"script\", before: \"draft\" }",
+      "replace": "rewrite: { output: \"script\" }",
+      "kills": [
+        "runSamples scores rewrite's input draft as the before",
+        "runSamples refuses a rewrite case with no draft input before any run"
+      ]
+    }
+  ]
+}

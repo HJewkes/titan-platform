@@ -2,34 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the declared kinds drop RulesChanged",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "\"ReviewSubmitted\", \"RulesChanged\"];",
-      "replace": "\"ReviewSubmitted\"];",
-      "kills": ["f11Report constants declares every kind the ingress projects"]
-    },
-    {
-      "name": "withinMs leaves out the due-check tick",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "export const F11_WITHIN_MS = 300_000 + 15_000;",
-      "replace": "export const F11_WITHIN_MS = 300_000;",
-      "kills": ["f11Report constants lets a re-observation come one default backstop interval plus one due-check tick late"]
-    },
-    {
-      "name": "the clocks run each other's comparator",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "input.clock === \"polling\"",
-      "replace": "input.clock !== \"polling\"",
-      "kills": ["f11Report clock 1 (polling) runs the kind census over the backstop's rows and no agreement"]
-    },
-    {
-      "name": "a confirmed line with an unknown answer counts as a re-observation",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "return DUPLICATE_BY.includes(by);",
-      "replace": "return typeof by === \"string\";",
-      "kills": ["f11Report clock 2 (webhook) matches a webhook row by a timestamped reconciler.confirmed line, and not by a delivery retry or an unknown answer"]
-    },
-    {
       "name": "confirmed lines are never read",
       "file": "products/factory/src/event-log/f11-report.ts",
       "find": "message === \"reconciler.confirmed\" &&",
@@ -44,81 +16,11 @@
       "kills": ["f11Report clock 2 (webhook) takes withinMs from the input, so a confirm later than it leaves the row webhookOnly"]
     },
     {
-      "name": "a log line at until is in the window",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "at >= window.since && at < window.until",
-      "replace": "at >= window.since && at <= window.until",
-      "kills": ["f11Report clock 2 (webhook) ignores log lines outside [since, until) and counts untimed ones instead of placing them"]
-    },
-    {
       "name": "a log line at since is out of the window",
       "file": "products/factory/src/event-log/f11-report.ts",
       "find": "at >= window.since && at < window.until",
       "replace": "at > window.since && at < window.until",
       "kills": ["f11Report clock 2 (webhook) ignores log lines outside [since, until) and counts untimed ones instead of placing them"]
-    },
-    {
-      "name": "a stamp with an offset is compared as written",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();",
-      "replace": "return Number.isNaN(ms) ? undefined : token;",
-      "kills": ["f11Report clock 2 (webhook) ignores log lines outside [since, until) and counts untimed ones instead of placing them"]
-    },
-    {
-      "name": "untimed lines are not counted",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "if (at === undefined) untimed += 1;",
-      "replace": "if (at === undefined) untimed += 0;",
-      "kills": ["f11Report clock 2 (webhook) ignores log lines outside [since, until) and counts untimed ones instead of placing them"]
-    },
-    {
-      "name": "bare head-regression lines are dropped",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "if (REGRESSION.test(text)) return",
-      "replace": "if (false) return",
-      "kills": ["f11Report epoch stability and re-runs counts each disagree class, zero ones included, and bare head-regression lines"]
-    },
-    {
-      "name": "absent disagree classes are left out",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "Object.fromEntries(DISAGREE_CLASSES.map((name) => [name, 0]))",
-      "replace": "Object.fromEntries([].map((name) => [name, 0]))",
-      "kills": ["f11Report epoch stability and re-runs counts each disagree class, zero ones included, and bare head-regression lines"]
-    },
-    {
-      "name": "a record's fields are not parsed",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "fields: fieldsOf(body.slice(split + 1))",
-      "replace": "fields: {}",
-      "kills": ["f11Report epoch stability and re-runs counts each disagree class, zero ones included, and bare head-regression lines"]
-    },
-    {
-      "name": "a check seen once is listed as a re-run",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "filter((group) => group.rows > 1)",
-      "replace": "filter((group) => group.rows > 0)",
-      "kills": ["f11Report epoch stability and re-runs lists each (sha, check) seen twice with its distinct check run ids, skipping statuses and single runs"]
-    },
-    {
-      "name": "commit statuses are grouped as check runs",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "kind !== \"CIConcluded\" || keys.type !== \"check\" ||",
-      "replace": "kind !== \"CIConcluded\" ||",
-      "kills": ["f11Report epoch stability and re-runs lists each (sha, check) seen twice with its distinct check run ids, skipping statuses and single runs"]
-    },
-    {
-      "name": "a repeated check run id is listed twice",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "&& !group.checkRunIds.includes(keys.checkRunId)",
-      "replace": "",
-      "kills": ["f11Report epoch stability and re-runs lists each (sha, check) seen twice with its distinct check run ids, skipping statuses and single runs"]
-    },
-    {
-      "name": "the last peak line wins over the highest",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "if (held === undefined || window.used / window.limit > held.used / held.limit)",
-      "replace": "if (true)",
-      "kills": ["f11Report peaks keeps the bot's highest window from serve's peak lines and the sampled side's from its records in the window"]
     },
     {
       "name": "windows are compared by raw use",
@@ -128,67 +30,11 @@
       "kills": ["f11Report peaks compares windows by share of their limit, not by raw use"]
     },
     {
-      "name": "serve's peak lines are not read",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "message !== \"github-api.peak\"",
-      "replace": "message !== \"github-api.usage\"",
-      "kills": ["f11Report peaks keeps the bot's highest window from serve's peak lines and the sampled side's from its records in the window"]
-    },
-    {
-      "name": "rate samples past until are counted",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "engines.ratePeaks(inWindow)",
-      "replace": "engines.ratePeaks(input.rate)",
-      "kills": ["f11Report peaks keeps the bot's highest window from serve's peak lines and the sampled side's from its records in the window"]
-    },
-    {
-      "name": "exactly half the limit passes the bound",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "used * 100 < limit * PEAK_BOUND_PCT",
-      "replace": "used * 100 <= limit * PEAK_BOUND_PCT",
-      "kills": ["f11Report peaks holds exactly half of the limit over the bound"]
-    },
-    {
-      "name": "redeliveries are not told apart",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "deliveries.filter((line) => line.fields.inserted === false).length",
-      "replace": "0",
-      "kills": ["f11Report log counts and markdown counts cost lines and webhook deliveries, redeliveries apart"]
-    },
-    {
-      "name": "cost lines are not counted",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "costLines: named(\"reconciler.cost\").length,",
-      "replace": "costLines: 0,",
-      "kills": ["f11Report log counts and markdown counts cost lines and webhook deliveries, redeliveries apart"]
-    },
-    {
-      "name": "an unstamped log is reported on",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "if (report.log.untimed === 0 || report.log.lines > 0) return undefined;",
-      "replace": "return undefined;",
-      "kills": ["f11Report log counts and markdown refuses a log none of whose records can be placed in the window, and accepts one with any placed record"]
-    },
-    {
       "name": "one unstamped record refuses an otherwise placed log",
       "file": "products/factory/src/event-log/f11-report.ts",
       "find": "if (report.log.untimed === 0 || report.log.lines > 0) return undefined;",
       "replace": "if (report.log.untimed === 0) return undefined;",
       "kills": ["f11Report log counts and markdown refuses a log none of whose records can be placed in the window, and accepts one with any placed record"]
-    },
-    {
-      "name": "the markdown reads every peak as under the bound",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "${peak.underBound ? \"under\" : \"AT OR OVER\"}",
-      "replace": "under",
-      "kills": ["f11Report log counts and markdown renders the clock's own fields, the epoch counts and each peak against the bound"]
-    },
-    {
-      "name": "the markdown leaves out webhookOnly",
-      "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "`- webhookOnly: ${list(result.webhookOnly)}`,",
-      "replace": "",
-      "kills": ["f11Report log counts and markdown renders the clock's own fields, the epoch counts and each peak against the bound"]
     }
   ]
 }

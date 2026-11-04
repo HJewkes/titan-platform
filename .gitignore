@@ -10,8 +10,13 @@ coverage/
 .worktrees/
 site/.vitepress/cache/
 site/.vitepress/dist/
+# written by docs:build (gen-capabilities.mjs --site); CAPABILITIES.md is the committed copy
+site/guides/capabilities.md
 .turbo/
 .eslintcache
 # corpus-query CLI scratch output from local hits/ask runs
 /refs.txt
 /spec.json
+
+# Temporary fixture written by products/factory/src/test-support/a17/report.test.ts; a run killed before cleanup leaves it.
+scripts/a17-smoke-*/

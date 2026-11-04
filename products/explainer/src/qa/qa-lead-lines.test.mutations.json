@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an in-process run reads no fill hints",
+      "file": "products/explainer/src/qa/qa-lead-lines.ts",
+      "find": "return resolved === undefined ? new Set() : fromFill(input);",
+      "replace": "return new Set();",
+      "kills": [
+        "qa lead-line beats takes an in-process verdict card's lead line from the fill's hints, under its storyboard id"
+      ]
+    }
+  ]
+}

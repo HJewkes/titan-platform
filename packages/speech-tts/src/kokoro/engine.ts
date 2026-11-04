@@ -48,12 +48,12 @@ interface KokoroRuntime {
   Tensor: TensorCtor;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => (typeof v === "object" || typeof v === "function") && v !== null;
-const hasPretrained = (v: unknown): boolean => isRecord(v) && typeof v.from_pretrained === "function";
+const isObjectOrFunction = (v: unknown): v is Record<string, unknown> => (typeof v === "object" || typeof v === "function") && v !== null;
+const hasPretrained = (v: unknown): boolean => isObjectOrFunction(v) && typeof v.from_pretrained === "function";
 
 // Only the shape is checked here; the opt-in smoke test proves the real classes behave.
 function isKokoroRuntime(mod: unknown): mod is KokoroRuntime {
-  return isRecord(mod) && hasPretrained(mod.StyleTextToSpeech2Model) && hasPretrained(mod.AutoTokenizer) && typeof mod.Tensor === "function";
+  return isObjectOrFunction(mod) && hasPretrained(mod.StyleTextToSpeech2Model) && hasPretrained(mod.AutoTokenizer) && typeof mod.Tensor === "function";
 }
 
 /** With TITAN_SPEECH_OFFLINE set, a model not fully cached is refused before the peer can reach the network. */

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a spine's beat outside its block's listed kinds stands",
+      "file": "products/explainer/src/audition-sample.ts",
+      "find": "allowed.length > 0 && !allowed.includes(block.beat)",
+      "replace": "allowed.length > 0 && allowed.includes(block.beat)",
+      "kills": [
+        "audition sampling reply refuses a daily spine that leads its stats block with metrics-panel, naming the kinds that derive"
+      ]
+    }
+  ]
+}

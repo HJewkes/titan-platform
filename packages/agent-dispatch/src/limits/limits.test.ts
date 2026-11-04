@@ -5,7 +5,9 @@ import {
   checkLimits,
   limitsSchema,
   parseLimits,
+  resolveCapacity,
   resolveLimits,
+  resolveShepherd,
   type ResolveInput,
   type ResolvedLimits,
 } from "./index.js";
@@ -249,5 +251,110 @@ describe("checkLimits", () => {
   it("reports a band fallback to a profile not in the known list", () => {
     const findings = checkLimits(parseLimits(today), { now: BEFORE_EXPIRY, knownProfiles: ["bd-reviewer"] });
     expect(findings.map((f) => f.kind)).toContain("unknown_profile");
+  });
+
+  it("reports one deprecated_key per per_day_points and per_run_points in the old fixture, and still resolves them", () => {
+    const parsed = parseLimits(today);
+    const messages = checkLimits(parsed, { now: BEFORE_EXPIRY })
+      .filter((f) => f.kind === "deprecated_key")
+      .map((f) => f.message);
+
+    expect(messages).toHaveLength(6);
+    for (const path of ["pools.owner.per_day_points", "pools.agents.per_day_points", "pools.spare.per_day_points", "pools.server.per_day_points", "seats.coord-a.per_run_points", "seats.coord-a.per_day_points"]) {
+      expect(messages.some((m) => m.startsWith(`${path} `))).toBe(true);
+    }
+    expect(open(today, { pool: "owner", now: BEFORE_EXPIRY }).per_day_points).toBe(30);
+  });
+
+  it("reports deprecated keys on defaults, profiles, profile pools, seats and a null override", () => {
+    const raw = minimal({
+      defaults: { per_day_points: 5 },
+      profiles: { p: { per_day_points: 6, pools: { main: { per_day_points: 7 } } } },
+      seats: { s: { per_run_points: 8 } },
+      overrides: [{ per_day_points: null, until: "2026-10-10T18:00:00Z", decision: "lift" }],
+    });
+    const paths = checkLimits(parseLimits(raw), { now: BEFORE_EXPIRY })
+      .filter((f) => f.kind === "deprecated_key")
+      .map((f) => f.message.split(" ")[0] === "override" ? `override ${f.message.split(" ")[1]}` : f.message.split(" ")[0]);
+
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "defaults.per_day_points",
+        "profiles.p.per_day_points",
+        "profiles.p.pools.main.per_day_points",
+        "seats.s.per_run_points",
+        "override lift.per_day_points",
+      ]),
+    );
+    expect(paths).toHaveLength(5);
+  });
+
+  it("reports no deprecated key on a block without per_* fields", () => {
+    const findings = checkLimits(parseLimits(minimal()), { now: BEFORE_EXPIRY });
+    expect(findings.filter((f) => f.kind === "deprecated_key")).toEqual([]);
+  });
+});
+
+describe("capacity, shepherd and seat slot keys", () => {
+  const slotted = (extra: Record<string, unknown> = {}) =>
+    minimal({
+      capacity: { max_agents: 30, reserve_slots: 2 },
+      shepherd: { spawn_gate: { load5: 16, build_load5: 12 }, review: { max_concurrent: 5 } },
+      seats: { "coord-a": { hand_reserve: 2, brief_gate: "shadow" } },
+      ...extra,
+    });
+
+  it("parse as part of a version 1 block", () => {
+    expect(limitsSchema.safeParse(slotted()).success).toBe(true);
+    expect(parseLimits(slotted()).limits.capacity?.max_agents).toBe(30);
+  });
+
+  it("resolve capacity and the seat's hand reserve with their source", () => {
+    const capacity = resolveCapacity(parseLimits(slotted()), "coord-a");
+
+    expect(capacity.max_agents).toEqual({ value: 30, source: "capacity" });
+    expect(capacity.hand_reserve).toEqual({ value: 2, source: "seat" });
+    expect(capacity.brief_gate).toEqual({ value: "shadow", source: "seat" });
+    expect(capacity.max_worktrees_per_repo).toEqual({ value: null, source: "unset" });
+  });
+
+  it("leave every field unset when the block has no such sections", () => {
+    const capacity = resolveCapacity(parseLimits(minimal()), "coord-a");
+    const shepherd = resolveShepherd(parseLimits(minimal()));
+
+    expect(Object.values(capacity).every((s) => s.source === "unset")).toBe(true);
+    expect(shepherd.review.max_concurrent).toEqual({ value: null, source: "unset" });
+  });
+
+  it("resolve Shepherd's review cap and spawn gate", () => {
+    const shepherd = resolveShepherd(parseLimits(slotted()));
+
+    expect(shepherd.review.max_concurrent).toEqual({ value: 5, source: "shepherd" });
+    expect(shepherd.spawn_gate.load5).toEqual({ value: 16, source: "shepherd" });
+    expect(shepherd.spawn_gate.build_load5.value).toBe(12);
+  });
+
+  it("drop a malformed capacity section with a finding and keep every pool open", () => {
+    const raw = { ...today, capacity: { max_agents: -1 } };
+    const parsed = parseLimits(raw);
+
+    expect(resolveCapacity(parsed).max_agents).toEqual({ value: null, source: "unset" });
+    for (const pool of Object.keys(today.pools)) {
+      expect(resolveLimits(parsed, { pool, now: BEFORE_EXPIRY }).open).toBe(true);
+    }
+    expect(checkLimits(parsed, { now: BEFORE_EXPIRY }).map((f) => f.kind)).toContain("ignored_section");
+  });
+
+  it("drop a malformed shepherd section without touching a valid capacity section", () => {
+    const parsed = parseLimits(slotted({ shepherd: { review: { max_concurrent: "five" } } }));
+
+    expect(parsed.ignoredSections.shepherd).toBeDefined();
+    expect(resolveShepherd(parsed).review.max_concurrent.source).toBe("unset");
+    expect(resolveCapacity(parsed).max_agents.value).toBe(30);
+  });
+
+  it("close a seat whose brief gate is not a known mode", () => {
+    const parsed = parseLimits(slotted({ seats: { "coord-a": { brief_gate: "always" } } }));
+    expect(resolveLimits(parsed, { pool: "p", seat: "coord-a", now: BEFORE_EXPIRY }).open).toBe(false);
   });
 });

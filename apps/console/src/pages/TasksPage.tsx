@@ -1,32 +1,18 @@
-import type { ReactNode } from "react";
-import {
-  Alert,
-  Button,
-  ButtonText,
-  EmptyState,
-  HStack,
-  Input,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Select,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { useRef, useState, type ReactNode } from "react";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Section, SectionContent, SectionHeader, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Skeleton } from "../shell/Loading.js";
+import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
-import { GuessedCaption, STAGE_ORDER, TaskStageBadge, stageLabel } from "./TaskParts.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD } from "./phone.js";
+import { GuessedCaption, STAGE_ORDER, stageLabel } from "./TaskParts.js";
 
-type Row = ConsoleCommands["work.tasks"]["result"]["tasks"][number];
+type TasksResult = ConsoleCommands["work.tasks"]["result"];
+type TasksArgs = ConsoleCommands["work.tasks"]["args"];
+type Row = TasksResult["tasks"][number];
+type Stage = Row["stage"];
 
 const FILTER_KEYS = ["stage", "initiative", "severity", "q"] as const;
 type Filters = Partial<Record<(typeof FILTER_KEYS)[number], string>>;
@@ -52,30 +38,76 @@ function setFilters(filters: Filters): void {
   open({ view: "tasks", ...(query ? { query } : {}) });
 }
 
-function matches(row: Row, filters: Filters): boolean {
-  const text = filters.q?.toLowerCase();
+const isStage = (value: string | undefined): value is Stage => STAGE_ORDER.some((stage) => stage === value);
+
+/** The server filters, so the per-stage cap never hides a row a filter would show; an unknown stage in the link is dropped. */
+function argsOf({ stage, initiative, severity, q }: Filters): TasksArgs {
+  return { ...(isStage(stage) ? { stage } : {}), ...(initiative ? { initiative } : {}), ...(severity ? { severity } : {}), ...(q ? { q } : {}) };
+}
+
+/** Open tasks of the selected initiative, or every one, grouped by derived stage a page at a time; the filters live in the query string so a view is a link. */
+export function TasksPage({ query }: { query?: string }): ReactNode {
+  const filters = filtersOf(query);
+  const tasks = useQuery("work.tasks", argsOf(filters));
+  // Each filter is a new read, so the bar keeps the last initiatives it saw instead of unmounting while one loads.
+  const initiatives = useRef<readonly string[]>([]);
+  if (tasks.data !== undefined) initiatives.current = tasks.data.initiatives;
+  if (tasks.data?.initiatives.length === 0) return <EmptyState title="No open tasks" description="No initiative has an open task." />;
   return (
-    (!filters.stage || row.stage === filters.stage) &&
-    (!filters.initiative || row.slug === filters.initiative) &&
-    (!filters.severity || row.severity === filters.severity) &&
-    (!text || `${row.id} ${row.title}`.toLowerCase().includes(text))
+    <VStack gap={4}>
+      {tasks.data && tasks.data.evidence.degraded.length > 0 ? <Alert status="warning" message={`Some stages lack evidence: ${tasks.data.evidence.degraded.join("; ")}`} /> : null}
+      <FilterBar filters={filters} initiatives={initiatives.current} />
+      <TasksBody key={queryOf(filters)} args={argsOf(filters)} tasks={tasks} />
+    </VStack>
   );
 }
 
-/** Open tasks across initiatives, grouped by derived stage; the filters live in the query string so a view is a link. */
-export function TasksPage({ query }: { query?: string }): ReactNode {
-  const tasks = useQuery("work.tasks");
-  if (tasks.status === "loading") return <Spinner size="sm" label="Loading tasks" />;
+function TasksBody({ args, tasks }: { args: TasksArgs; tasks: QueryResult<TasksResult> }): ReactNode {
+  if (tasks.status === "loading") return <TasksSkeleton />;
   if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
-  const { tasks: rows, evidence } = tasks.data;
-  if (rows.length === 0) return <EmptyState title="No open tasks" description="No initiative has an open task." />;
-  const filters = filtersOf(query);
-  const shown = rows.filter((row) => matches(row, filters));
+  return tasks.data.tasks.length === 0 ? <NoMatches /> : <TaskPages args={args} shown={[]} page={tasks.data} />;
+}
+
+/** Rows stand in for the board while the first page loads, so a slow phone shows the page's shape at once. */
+function TasksSkeleton(): ReactNode {
+  return (
+    <VStack gap={2}>
+      <Skeleton variant="text" width="40%" height={24} accessibilityLabel="Loading tasks" />
+      {Array.from({ length: 8 }, (_, index) => (
+        <Skeleton key={index} variant="rounded" width="100%" height={44} />
+      ))}
+    </VStack>
+  );
+}
+
+/** The rows shown so far plus one more page; "Load more" hands them all to the reader of the page after it. */
+function TaskPages({ args, shown, page }: { args: TasksArgs; shown: readonly Row[]; page: TasksResult }): ReactNode {
+  const [more, setMore] = useState(false);
+  const rows = [...shown, ...page.tasks];
+  const next = page.nextCursor;
+  if (more && next !== null) return <NextPage args={args} cursor={next} shown={rows} counts={page.counts} />;
+  const total = Object.values(page.counts).reduce((sum, count) => sum + count, 0);
   return (
     <VStack gap={4}>
-      {evidence.degraded.length > 0 ? <Alert status="warning" message={`Some stages lack evidence: ${evidence.degraded.join("; ")}`} /> : null}
-      <FilterBar filters={filters} initiatives={[...new Set(rows.map((row) => row.slug))].sort()} />
-      {shown.length === 0 ? <NoMatches /> : <StageGroups rows={shown} />}
+      <StageGroups rows={rows} counts={page.counts} />
+      {next === null ? null : (
+        <HStack>
+          <Button variant="outline" size="sm" onPress={() => setMore(true)}>
+            <ButtonText>{`Load more (${rows.length} of ${total} shown)`}</ButtonText>
+          </Button>
+        </HStack>
+      )}
+    </VStack>
+  );
+}
+
+function NextPage({ args, cursor, shown, counts }: { args: TasksArgs; cursor: string; shown: readonly Row[]; counts: TasksResult["counts"] }): ReactNode {
+  const page = useQuery("work.tasks", { ...args, cursor });
+  if (page.data !== undefined) return <TaskPages args={args} shown={shown} page={page.data} />;
+  return (
+    <VStack gap={4}>
+      <StageGroups rows={shown} counts={counts} />
+      {page.status === "loading" ? <Skeleton variant="rounded" width="100%" height={44} accessibilityLabel="Loading more tasks" /> : <Alert status="error" message={`Could not load more tasks: ${page.error.message}`} />}
     </VStack>
   );
 }
@@ -97,27 +129,52 @@ const optionsOf = (values: readonly string[]) => values.map((value) => ({ value,
 
 const STAGE_OPTIONS = STAGE_ORDER.map((stage) => ({ value: stage, label: stageLabel(stage) }));
 
+/** A desktop keeps the filters on one row, the text filter taking what the selects leave; a phone stacks them full width. */
 function FilterBar({ filters, initiatives }: { filters: Filters; initiatives: readonly string[] }): ReactNode {
   const change = (key: keyof Filters) => (value: string | null) => setFilters({ ...filters, [key]: value ?? undefined });
+  const phone = useMediaQuery(BELOW_MD);
+  const select = phone ? undefined : "w-48 shrink-0";
   return (
-    <HStack gap={3} align="center" wrap>
-      <Select<string> placeholder="Any stage" value={filters.stage ?? null} onChange={change("stage")} options={STAGE_OPTIONS} />
-      <Select placeholder="Any initiative" value={filters.initiative ?? null} onChange={change("initiative")} options={optionsOf(initiatives)} />
-      <Select placeholder="Any severity" value={filters.severity ?? null} onChange={change("severity")} options={optionsOf(SEVERITIES)} />
-      <Input placeholder="Filter by id or title" accessibilityLabel="Filter by id or title" value={filters.q ?? ""} onChangeText={(text) => change("q")(text || null)} />
+    <HStack gap={3} align="center" wrap={phone} testID="task-filters">
+      <Select<string> placeholder="Any stage" value={filters.stage ?? null} onChange={change("stage")} options={STAGE_OPTIONS} className={select} />
+      <Select placeholder="Any initiative" value={filters.initiative ?? null} onChange={change("initiative")} options={optionsOf(initiatives)} className={select} />
+      <Select placeholder="Any severity" value={filters.severity ?? null} onChange={change("severity")} options={optionsOf(SEVERITIES)} className={select} />
+      <div className={phone ? "w-full" : "min-w-0 flex-1"}>
+        <Input placeholder="Filter by id or title" accessibilityLabel="Filter by id or title" value={filters.q ?? ""} onChangeText={(text) => change("q")(text || null)} />
+      </div>
     </HStack>
   );
 }
 
-function StageGroups({ rows }: { rows: readonly Row[] }): ReactNode {
+interface StageGroup {
+  stage: Stage;
+  rows: readonly Row[];
+}
+
+type Counts = TasksResult["counts"];
+
+/** One tree, not a CSS swap of two, so a 50-row page renders its rows once: cards under a heading per stage on a phone, one table with a row per stage above it. */
+function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: Counts }): ReactNode {
   const groups = STAGE_ORDER.map((stage) => ({ stage, rows: rows.filter((row) => row.stage === stage) })).filter((group) => group.rows.length > 0);
+  return useMediaQuery(BELOW_MD) ? <StageSections groups={groups} counts={counts} /> : <StageTable groups={groups} counts={counts} />;
+}
+
+const groupTitle = (group: StageGroup, counts: Counts): string => `${stageLabel(group.stage)} (${counts[group.stage]})`;
+
+function CappedCaption({ group, counts }: { group: StageGroup; counts: Counts }): ReactNode {
+  if (group.rows.length >= counts[group.stage]) return null;
+  return <Typography variant="caption" color="secondary">{`Showing ${group.rows.length} of ${counts[group.stage]} by priority; load more or filter to see the rest.`}</Typography>;
+}
+
+function StageSections({ groups, counts }: { groups: readonly StageGroup[]; counts: Counts }): ReactNode {
   return (
     <VStack gap={6}>
       {groups.map((group) => (
         <Section key={group.stage} testID={`stage-group-${group.stage}`}>
-          <SectionHeader title={`${stageLabel(group.stage)} (${group.rows.length})`} />
+          <SectionHeader title={groupTitle(group, counts)} />
           <SectionContent>
-            <StageTable rows={group.rows} />
+            <CappedCaption group={group} counts={counts} />
+            <StageCards rows={group.rows} />
           </SectionContent>
         </Section>
       ))}
@@ -125,8 +182,40 @@ function StageGroups({ rows }: { rows: readonly Row[] }): ReactNode {
   );
 }
 
-/** Stands in for react-ui's `TaskTable` with stage rows, which only the unreleased react-ui 0.22.0 exports. */
-function StageTable({ rows }: { rows: readonly Row[] }): ReactNode {
+// The shell and its tests import the breakpoint from here; it lives in phone.ts beside the other phone sizes.
+export { BELOW_MD };
+
+function StageCards({ rows }: { rows: readonly Row[] }): ReactNode {
+  return (
+    <VStack>
+      {rows.map((row) => (
+        <StageCard key={row.id} row={row} />
+      ))}
+    </VStack>
+  );
+}
+
+/** A phone tap needs a 44px target, more than the id's line of text gives it. */
+const TAP_TARGET = "inline-flex min-h-11 min-w-11 items-center";
+
+/** The group heading names the stage, so the card does not repeat it. */
+function StageCard({ row }: { row: Row }): ReactNode {
+  return (
+    <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`task-card-${row.id}`}>
+      <Link color="primary" className={TAP_TARGET} onPress={() => open({ view: "tasks", id: row.id })}>
+        {row.id}
+      </Link>
+      <Typography variant="body1" className="break-words">
+        {row.title}
+      </Typography>
+      {row.stageGuessed ? <GuessedCaption /> : <Typography variant="caption" color="secondary" className="break-words">{row.stageReason}</Typography>}
+      <Typography variant="caption" color="secondary" className="break-words">{`${row.slug} · ${row.severity ?? "no severity"}`}</Typography>
+    </VStack>
+  );
+}
+
+/** One header for every stage, and a group row per stage in place of a Stage column; stands in for react-ui's `TaskTable`, which has no stage groups. */
+function StageTable({ groups, counts }: { groups: readonly StageGroup[]; counts: Counts }): ReactNode {
   return (
     <Table density="dense">
       <TableHeader>
@@ -135,15 +224,32 @@ function StageTable({ rows }: { rows: readonly Row[] }): ReactNode {
           <TableHeaderCell>Title and stage reason</TableHeaderCell>
           <TableHeaderCell width={160}>Initiative</TableHeaderCell>
           <TableHeaderCell width={100}>Severity</TableHeaderCell>
-          <TableHeaderCell width={120}>Stage</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
-          <StageRow key={row.id} row={row} />
+        {groups.map((group) => (
+          <VStack key={group.stage} testID={`stage-group-${group.stage}`}>
+            <GroupRow group={group} counts={counts} />
+            {group.rows.map((row) => (
+              <StageRow key={row.id} row={row} />
+            ))}
+          </VStack>
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+function GroupRow({ group, counts }: { group: StageGroup; counts: Counts }): ReactNode {
+  return (
+    <TableRow isHoverable={false} testID={`stage-row-${group.stage}`}>
+      <TableCell>
+        <VStack gap={1} className="pt-inset-sm">
+          <Typography variant="subtitle2">{groupTitle(group, counts)}</Typography>
+          <CappedCaption group={group} counts={counts} />
+        </VStack>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -163,9 +269,6 @@ function StageRow({ row }: { row: Row }): ReactNode {
       </TableCell>
       <TableCell width={160}>{row.slug}</TableCell>
       <TableCell width={100}>{row.severity ?? "–"}</TableCell>
-      <TableCell width={120}>
-        <TaskStageBadge stage={row.stage} />
-      </TableCell>
     </TableRow>
   );
 }

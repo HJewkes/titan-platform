@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the check runs on a round whose brief was not scoped",
+      "file": "products/factory/src/shepherd/scope-check-round.ts",
+      "find": "if (mode === undefined || rereview?.mode !== \"on\" || !rereview.scoped) return undefined;",
+      "replace": "if (mode === undefined || rereview === undefined || !rereview.scoped) return undefined;",
+      "kills": [
+        "the scope check on a scoped fix round's FIX_FIRST a round whose brief was not scoped is never checked, whatever scopeCheck says"
+      ]
+    },
+    {
+      "name": "the retry cap is removed",
+      "file": "products/factory/src/shepherd/scope-check-round.ts",
+      "find": "checked.untagged + checked.repeated === 0 || turn >= MAX_SCOPE_CORRECTIONS) return awaited;",
+      "replace": "checked.untagged + checked.repeated === 0) return awaited;",
+      "kills": [
+        "the scope check on a scoped fix round's FIX_FIRST on: a reply that misses again is kept as written and recorded kept, with no second correction"
+      ]
+    }
+  ]
+}

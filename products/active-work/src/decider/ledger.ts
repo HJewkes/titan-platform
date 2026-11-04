@@ -50,14 +50,19 @@ export interface V1Rows {
   malformed: number;
 }
 
+/** The row is kept as written, unknown keys included; the schema only vouches for it. */
+function isLedgerRowWire(value: unknown): value is LedgerRowWire {
+  return LedgerRowSchema.safeParse(value).success;
+}
+
 function parseV1(text: string): V1Rows {
   const out: V1Rows = { rows: [], malformed: 0 };
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
     try {
-      const wire = JSON.parse(line) as LedgerRowWire;
-      LedgerRowSchema.parse(wire);
-      out.rows.push(wire);
+      const wire: unknown = JSON.parse(line);
+      if (isLedgerRowWire(wire)) out.rows.push(wire);
+      else out.malformed += 1;
     } catch {
       out.malformed += 1;
     }

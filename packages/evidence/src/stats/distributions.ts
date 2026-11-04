@@ -50,8 +50,8 @@ const LANCZOS = [
 function logGamma(x: number): number {
   if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - logGamma(1 - x);
   const shifted = x - 1;
-  let sum = LANCZOS[0] as number;
-  for (let i = 1; i < LANCZOS.length; i++) sum += (LANCZOS[i] as number) / (shifted + i);
+  let sum = LANCZOS[0] ?? Number.NaN;
+  for (let i = 1; i < LANCZOS.length; i++) sum += (LANCZOS[i] ?? Number.NaN) / (shifted + i);
   const t = shifted + 7.5;
   return 0.5 * Math.log(2 * Math.PI) + (shifted + 0.5) * Math.log(t) - t + Math.log(sum);
 }

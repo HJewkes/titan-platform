@@ -18,7 +18,8 @@ export const MUTANT_OUTCOMES = ["killed", "overkill", "survived", "unbuilt", "lo
 export type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
 
 /**
- * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff,
+ * except a carried test that loads only carried files;
  * `error` when the specs or the report could not be read at all.
  */
 export const MUTANT_VERDICTS = ["killed", "not-killed", "error"] as const;
@@ -36,7 +37,7 @@ export interface MutantsResult {
   verdict: MutantVerdict;
   results: MutantResult[];
   /**
-   * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+   * Changed test files no spec in the diff sits beside, less carried tests that load only carried files. A killed spec proves only its own test file, so each of these is
    * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
    */
   uncovered?: string[];
@@ -71,11 +72,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function fileOf(report: unknown, testFile: string): FileRun | undefined {
+/** The selected files of a vitest report whose paths are repo-relative, as the sides write it; empty when it does not read. */
+export function filesOfReport(report: unknown, selected: ReadonlySet<string>): Map<string, FileRun> {
   const files = isRecord(report) && Array.isArray(report.testResults) ? report.testResults : [];
   const rooted = files.map((file) => (isRecord(file) && typeof file.name === "string" ? { ...file, name: REPORT_ROOT + file.name } : file));
-  const read = readVitestReport({ testResults: rooted }, REPORT_ROOT, new Set([testFile]));
-  return read.ok ? read.files.get(testFile) : undefined;
+  const read = readVitestReport({ testResults: rooted }, REPORT_ROOT, selected);
+  return read.ok ? read.files : new Map();
+}
+
+function fileOf(report: unknown, testFile: string): FileRun | undefined {
+  return filesOfReport(report, new Set([testFile])).get(testFile);
 }
 
 function passesOnceInBaseline(baseline: FileRun | undefined, kill: string): boolean {
@@ -87,11 +93,11 @@ function passesOnceInBaseline(baseline: FileRun | undefined, kill: string): bool
 // expect matchers and node:assert both throw AssertionError; a timeout, a crash or any other throw is not evidence of a kill.
 const ASSERTION_FAILURE = /^\s*AssertionError(?: \[ERR_ASSERTION\])?:/;
 
-function failedOnAssertion(test: TestRun): boolean {
+export function failedOnAssertion(test: TestRun): boolean {
   return test.failures.length > 0 && test.failures.every((message) => ASSERTION_FAILURE.test(message));
 }
 
-function failedUnder(run: FileRun): TestRun[] {
+export function failedUnder(run: FileRun): TestRun[] {
   return [...run.tests.values()].filter((test) => test.status === "failed");
 }
 
@@ -133,11 +139,18 @@ function verdictOf(results: MutantResult[]): MutantVerdict {
 /**
  * Adds the changed test files no spec covers, and demotes a `killed` verdict when there are any. Specs come only from the
  * diff, so a spec beside an unchanged test covers nothing the PR changed and cannot be borrowed for a file it did.
+ * `needsNoSpec` names the changed tests no spec could ever cover: carried tests that load only carried files (see
+ * `loadsOnlyCarried`), since no mutation may target a carried file.
  */
-export function withCoverage(result: MutantsResult, specs: readonly SpecUnderTest[], changedTests: readonly string[]): MutantsResult {
+export function withCoverage(
+  result: MutantsResult,
+  specs: readonly SpecUnderTest[],
+  changedTests: readonly string[],
+  needsNoSpec: ReadonlySet<string>,
+): MutantsResult {
   if (result.verdict === "error") return result;
   const covered = new Set(specs.map((spec) => spec.testFile));
-  const uncovered = changedTests.filter((test) => !covered.has(test)).sort();
+  const uncovered = changedTests.filter((test) => !covered.has(test) && !needsNoSpec.has(test)).sort();
   return { ...result, verdict: uncovered.length > 0 ? "not-killed" : result.verdict, uncovered };
 }
 
@@ -160,6 +173,11 @@ function unmatchedKills(spec: SpecUnderTest, baseline: FileRun | undefined): str
   );
 }
 
+/** Every kill in `specs` naming no test in `report`, a vitest report with repo-relative paths, as one message each. */
+export function unmatchedKillsIn(specs: readonly SpecUnderTest[], report: unknown): string[] {
+  return specs.flatMap((spec) => unmatchedKills(spec, fileOf(report, spec.testFile)));
+}
+
 /**
  * Classifies every declared mutation against the mutants side's decoded report, whose test file paths are repo-relative.
  * Runs the specs do not declare are ignored, so a report cannot add evidence the specs did not ask for.
@@ -168,9 +186,9 @@ export function classifyMutants(specs: readonly SpecUnderTest[], decoded: Decode
   if (!decoded.ok) return mutantsError(decoded.reported ? decoded.error : `mutants: ${decoded.error}`);
   if (decoded.skipped !== undefined) return mutantsError(`mutants side skipped: ${decoded.skipped}`);
   const runs = new Map(decoded.runs.map((run) => [JSON.stringify([run.spec, run.name]), run]));
-  const baselines = specs.map((spec) => ({ spec, baseline: fileOf(decoded.baseline, spec.testFile) }));
-  const unmatched = baselines.flatMap(({ spec, baseline }) => unmatchedKills(spec, baseline));
+  const unmatched = unmatchedKillsIn(specs, decoded.baseline);
   if (unmatched.length > 0) return mutantsError(unmatched.join("; "));
+  const baselines = specs.map((spec) => ({ spec, baseline: fileOf(decoded.baseline, spec.testFile) }));
   const results = baselines.flatMap(({ spec, baseline }) =>
     spec.mutations.map((mutation) => classifyMutant({ spec, mutation, baseline, run: runs.get(JSON.stringify([spec.path, mutation.name])) })),
   );

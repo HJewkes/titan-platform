@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { DataRow, HStack, Pill, Typography, VStack } from "@titan-design/react-ui";
 import type { ArL0Check, ArLadder, ArRunView } from "../../server/autoresearch-view.js";
-import { shortSha } from "./autoresearch-format.js";
+import { reasonText, shortSha } from "./autoresearch-format.js";
 import { noiseText } from "./autoresearch-progress.js";
 import { formatCost } from "./SessionFormat.js";
 
@@ -20,6 +20,7 @@ export function AutoresearchIdeaRecord({ run, ladder }: { run: ArRunView; ladder
       <DataRow label="Judged against" value={againstText(run, ladder)} testID="autoresearch-drawer-against" />
       <DataRow label="L0 checks" value={<L0Checks ladder={ladder} />} testID="autoresearch-drawer-l0" />
       <DataRow label="Spend" value={outcome?.usage === undefined ? NOT_RECORDED : usageText(outcome.usage)} testID="autoresearch-drawer-usage" />
+      {outcome?.reeval === undefined ? null : <DataRow label="Re-evaluated" value={reevalText(outcome.reeval)} testID="autoresearch-drawer-reeval" />}
     </VStack>
   );
 }
@@ -68,5 +69,9 @@ function L0Checks({ ladder }: { ladder: ArLadder }): ReactNode {
 
 const checkText = ({ name, ok, code, ms }: ArL0Check): string => `${ok ? "✓" : "✗"} ${name}${code === undefined ? "" : ` · ${code}`}${ms === undefined ? "" : ` · ${(ms / 1000).toFixed(1)}s`}`;
 
-const usageText = ({ implementUsd, evalUsd, microUsd }: NonNullable<NonNullable<ArLadder["outcome"]>["usage"]>): string =>
+/** C-256 S5a: only a later winner of its round is measured again, so the row is absent for every other idea. */
+const reevalText = ({ vs, decision, reason }: NonNullable<NonNullable<ArLadder["outcome"]>["reeval"]>): string =>
+  `${decision} on ${shortSha(vs)} · ${reasonText(reason)}`;
+
+const usageText =({ implementUsd, evalUsd, microUsd }: NonNullable<NonNullable<ArLadder["outcome"]>["usage"]>): string =>
   `implement ${formatCost(implementUsd)} · eval ${formatCost(evalUsd)} · micro ${formatCost(microUsd)}`;

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a text table becomes a figure",
+      "file": "products/explainer/src/presets/article/figures.ts",
+      "find": "if (ys.some((row) => row.some(Number.isNaN))) return undefined;",
+      "replace": "",
+      "kills": [
+        "gatherArticle facts notes a figure held only as an image and a table of text, and makes neither a figure"
+      ]
+    },
+    {
+      "name": "a category table is read as a line",
+      "file": "products/explainer/src/presets/article/figures.ts",
+      "find": "return numericX ? { kind: \"line\", ...base }",
+      "replace": "return true ? { kind: \"line\", ...base }",
+      "kills": [
+        "gatherArticle facts extracts a numeric-x table as a line figure and a category table as a bar figure, ready to re-plot"
+      ]
+    },
+    {
+      "name": "the table separator row is kept as data",
+      "file": "products/explainer/src/presets/article/figures.ts",
+      "find": "rows.filter((row) => !isSeparator(row))",
+      "replace": "rows",
+      "kills": [
+        "gatherArticle facts extracts a numeric-x table as a line figure and a category table as a bar figure, ready to re-plot"
+      ]
+    },
+    {
+      "name": "a figure held only as an image is not noted",
+      "file": "products/explainer/src/presets/article/figures.ts",
+      "find": "    else notes.push({ code: \"W-FIGURE-NO-DATA\"",
+      "replace": "    else if (false) notes.push({ code: \"W-FIGURE-NO-DATA\"",
+      "kills": [
+        "gatherArticle facts notes a figure held only as an image and a table of text, and makes neither a figure"
+      ]
+    }
+  ]
+}

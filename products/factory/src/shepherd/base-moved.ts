@@ -2,7 +2,8 @@ import type { PendingGate, FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded, readValue } from "./bounded.js";
 import { approveMergeRun, type SupersededGate } from "./head-moved.js";
 import { keptForOwner } from "./owner-kept.js";
-import { runPolicyCeiling, stricterPolicy } from "./policy.js";
+import { runPolicyCeiling } from "./policy.js";
+import { stricterPolicy } from "./policy-schema.js";
 import type { ShepherdServices } from "./services.js";
 import { SUPERSEDED, cancelUnlessSettled } from "./stale-gates.js";
 

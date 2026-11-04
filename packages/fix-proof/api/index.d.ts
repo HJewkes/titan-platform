@@ -1,3 +1,5 @@
+export { LinearRegExp, linearRegExpSteps } from './linear-regexp.js';
+
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */
 declare const CONFIG_PATH = ".github/fix-proof.json";
 declare const DEFAULT_TEST_GLOBS: readonly string[];
@@ -39,7 +41,7 @@ declare function parseFixProofConfig(text: string | null | undefined): ConfigRes
 
 /** Every alternative of a brace glob, innermost group first; throws past 256 alternatives, 32 brace groups or 1024 characters. */
 declare function expandBraces(glob: string): string[];
-/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`. */
+/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`, in time linear in the path. */
 declare function compileGlobs(globs: readonly string[]): (path: string) => boolean;
 
 interface PlanInput {
@@ -49,6 +51,11 @@ interface PlanInput {
     baseConfig?: string | null;
     /** The same file at head, used only to tell the reviewer the PR edited it. */
     headConfig?: string | null;
+    /**
+     * Paths at head beside the diff's mutation specs. A spec whose one sibling test is listed here plans that test, so a
+     * spec-only diff still runs the file its mutants are judged on; absent, no sibling is planned.
+     */
+    headFiles?: readonly string[];
 }
 interface FixProofPlan {
     /** Head paths of added or changed tests, to check out over the merge base and run. */
@@ -97,7 +104,7 @@ type TestOnlyReading = {
 };
 /**
  * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
- * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ * out of the tests counts), or it plans no test at all (a changeset- or fixture-only diff, or a spec with no sibling).
  */
 declare function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading;
 /** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */
@@ -117,6 +124,8 @@ interface Mutation {
     replace: string;
     kills: string[];
 }
+/** A generated edit: a Mutation with no declared kills, since it proves nothing about a named test. */
+type HeadMutation = Omit<Mutation, "kills">;
 interface MutationSpec {
     v: 1;
     mutations: Mutation[];
@@ -138,9 +147,13 @@ type MutationCheck = {
 declare function parseMutationSpec(text: string): MutationSpecResult;
 /**
  * Whether one mutation can run against the merge base: its file must be code under test, not a test, carried file, spec or
- * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once.
+ * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once. `at` names
+ * the commit `baseText` came from in the error, for a caller that checks against another one.
  */
-declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig): MutationCheck;
+declare function checkMutation(mutation: HeadMutation, baseText: string | null, config: FixProofConfig, at?: string): MutationCheck;
+
+/** `skipped` is a test the file chose not to run (`skip`, `skipIf`, `todo`) in a file that did not fail; anything else unrun is `other`. */
+type TestStatus = "passed" | "failed" | "skipped" | "other";
 
 /** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
 declare const MAX_ENCODED_BYTES = 900000;
@@ -214,7 +227,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
 /**
- * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff,
+ * except a carried test that loads only carried files;
  * `error` when the specs or the report could not be read at all.
  */
 declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
@@ -230,7 +244,7 @@ interface MutantsResult {
     verdict: MutantVerdict;
     results: MutantResult[];
     /**
-     * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+     * Changed test files no spec in the diff sits beside, less carried tests that load only carried files. A killed spec proves only its own test file, so each of these is
      * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
      */
     uncovered?: string[];
@@ -256,7 +270,8 @@ declare function classifyMutants(specs: readonly SpecUnderTest[], decoded: Decod
 
 declare const TEST_CLASSES: readonly ["reproduces", "passes-on-base", "new-api", "fails-on-head", "not-run"];
 type TestClass = (typeof TEST_CLASSES)[number];
-declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error"];
+/** `refused` is never classified: fix-proof-run.sh prints it for a base that is not the default branch, and it ran nothing. */
+declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error", "refused"];
 type Verdict = (typeof VERDICTS)[number];
 type FileState = "ran" | "load-error" | "hook-error" | "not-collected";
 interface ReportRun {
@@ -306,8 +321,15 @@ interface FixProofResult {
     /** True when format dropped entries to fit the 4 KB line. */
     truncated: boolean;
     error?: string;
-    /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+    /**
+     * The mutation check, present for a diff of test material alone that adds or changes a mutation spec, and as an error
+     * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
+     */
     mutants?: MutantsResult;
+    /** The base branch the line judged, as fix-proof-run.sh shows a ref; a judge that predates it prints none. */
+    base?: string;
+    /** Only on a `refused` line: the default branch fix-proof runs against, which `base` is not. */
+    defaultBranch?: string;
 }
 type ParsedResultLine = {
     ok: true;
@@ -334,6 +356,62 @@ declare function toResult(args: {
 declare function formatResultLine(result: FixProofResult): string;
 /** Decodes a result line, refusing anything over 4 KB, of another version, with unknown fields or with duplicate or reordered keys. */
 declare function parseResultLine(line: string): ParsedResultLine;
+
+/** Why a read proves nothing about its head; a head can force each of these, so none may pass on its own. */
+type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
+/**
+ * A fix-proof read as its readers hold it: a judged `line` (trusted, or `untrusted`), CI's own proof of a workflow-only diff,
+ * a read that failed, or one that never ran. `nonSourceProceed` and `testOnlyProceed` mark a NO_REPRO the caller lets through.
+ */
+type ProofReadInput = ({
+    kind: "result";
+    line: string;
+    testOnlyProceed?: true;
+} | {
+    kind: "untrusted";
+    line: string;
+    reason: string;
+} | {
+    kind: "workflow-ci";
+    proved: boolean;
+    head: string;
+} | {
+    kind: "error";
+    reason: string;
+} | {
+    kind: "skipped" | "missing";
+    reason?: string;
+}) & {
+    nonSourceProceed?: true;
+};
+type WorkflowCiProofRead = Extract<ProofReadInput, {
+    kind: "workflow-ci";
+}>;
+/** The one reading of a fix-proof read at a head. `unproven` is its own standing: it neither ends the review nor proves the head. */
+type ProofStanding = {
+    kind: "proved";
+} | {
+    kind: "no-repro";
+    proceeds?: "test-only" | "non-source";
+    result: FixProofResult | WorkflowCiProofRead;
+} | {
+    kind: "unverified";
+    why: FixProofUnverified;
+    detail?: string;
+} | {
+    kind: "unproven";
+} | {
+    kind: "none";
+};
+/**
+ * Where a fix-proof read leaves `head`. Every reader derives its answer from this, so a line cannot read as proved to one gate
+ * and as NO_REPRO to another. A skipped or missing read expected no proof, so it is `none`.
+ */
+declare function proofStanding(read: ProofReadInput, head: string): ProofStanding;
+/** A NO_REPRO nothing lets through: the review ends before any reviewer starts unless the owner waived the proof. */
+declare const endsReview: (standing: ProofStanding) => boolean;
+/** Anything short of a proof at the head makes the tests seat blocking; `unproven` does, though it does not end the review. */
+declare const needsTestsSeat: (standing: ProofStanding) => boolean;
 
 interface ExecOptions {
     cwd: string;
@@ -367,6 +445,8 @@ declare const DEFAULT_BUDGET_MS: number;
 type Side = "base" | "head";
 /** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
 declare const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>>;
+/** The report names a side writes: the base's pair, or `head`, `head-2`, ... for each of the head's runs. */
+declare function reportNames(side: Side, headRuns?: number): readonly string[];
 interface ExecSideOptions {
     /** The git checkout holding both commits. */
     repo: string;
@@ -380,10 +460,13 @@ interface ExecSideOptions {
     budgetMs?: number;
     exec?: Exec;
     /**
-     * Runs each base-side vitest call as this user in a fresh PID namespace through `sudo -n`, so nothing the head's test
-     * or carried files start outlives the run or can write the runner's files. The head side ignores it.
+     * Runs every command the head controls as this user in a fresh PID namespace through `sudo -n`, so nothing it starts
+     * outlives the run or can write the runner's files: the head side's install, build and vitest, and the base side's
+     * vitest. A sandbox that cannot be set up is an error marker, never an unsandboxed run.
      */
     sandboxUser?: string;
+    /** How many times the head side runs vitest after one install and build, an integer from 1 to 5; default 1. The base side ignores it. */
+    headRuns?: number;
 }
 /** Builds and tests one side of the proof and writes its encoded reports to out; a failure writes error markers, never throws. */
 declare function execSide(options: ExecSideOptions): Promise<void>;
@@ -397,6 +480,8 @@ interface RunOptions {
     head: string;
     budgetMs?: number;
     exec?: Exec;
+    /** Runs each side's head-controlled commands as this user, as `execSide` does, so head code cannot open the judge's snapshot. */
+    sandboxUser?: string;
 }
 /**
  * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
@@ -421,9 +506,83 @@ type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 /**
  * Runs every declared mutation of a test-only diff against the merge base with the head's tests overlaid and writes one
  * `mutants.report`: a skipped marker with no spec or with source in the diff, an error marker on any failure, never a throw.
- * With a sandbox user, every build and vitest call after the overlay runs inside the sandbox, since head code ran there.
+ * A spec that does not read, pair or check, source diff or not, also writes its reason to `mutants.refused`, which fails
+ * the mutants job. With a sandbox user, every build and vitest call after the overlay runs inside the sandbox.
  */
 declare function execMutants(options: ExecMutantsOptions): Promise<void>;
+
+/**
+ * - `survived`: built and loaded, and no baseline-passing test failed; the only outcome that can make a function pseudo-tested.
+ * - `caught`: at least one baseline-passing test failed on an AssertionError.
+ * - `caught-error`: baseline-passing tests failed and none on an AssertionError; noticed, but never kill credit.
+ * - `load-error`: a suite file with a baseline-passing test failed to load or ran no test, or a failure reads as a new API.
+ * - `timeout`: some baseline-passing test failed on vitest's test timeout; never a kill and never a survival.
+ */
+declare const HEAD_OUTCOMES: readonly ["survived", "caught", "caught-error", "load-error", "timeout"];
+type HeadOutcome = (typeof HEAD_OUTCOMES)[number];
+interface HeadTest {
+    test: string;
+    file: string;
+}
+interface HeadFailure extends HeadTest {
+    assertion: boolean;
+}
+/** One mutant's vitest report reduced to what classifies it, before any cap on the failures listed. */
+interface ReducedHeadRun {
+    loadError: boolean;
+    timeout: boolean;
+    failed: HeadFailure[];
+}
+/** Classifies one built mutant's reduced run; anything that broke or hung is excluded rather than read as survival. */
+declare function classifyHeadRun(run: ReducedHeadRun): HeadOutcome;
+
+/** Keeps a caught mutant's evidence small; the outcome is read from every failure before the list is cut. */
+declare const MAX_HEAD_FAILURES = 50;
+interface ExecHeadMutantsOptions {
+    repo: string;
+    /** A sha or ref; the worktree is detached at it. */
+    head: string;
+    mutations: readonly HeadMutation[];
+    budgetMs?: number;
+    sandboxUser?: string;
+    exec?: Exec;
+}
+interface HeadMutantRun {
+    name: string;
+    file: string;
+    /** The owning package; null means the whole-repo build and test globs. */
+    package: string | null;
+    built: boolean;
+    /** Absent when the mutant did not build or did not apply. */
+    outcome?: HeadOutcome;
+    /** Baseline-passing tests that failed, at most MAX_HEAD_FAILURES. */
+    failed?: HeadFailure[];
+    /** Why the mutation never applied: a refused target, a find not exactly once at head, or a package with no tests. */
+    error?: string;
+}
+interface HeadMutantsReport {
+    /** The resolved sha, or the ref as given when it did not resolve. */
+    head: string;
+    /** Test files run, by package; "." stands for a null package. */
+    suites: Record<string, string[]>;
+    baseline: Array<{
+        test: string;
+        file: string;
+        status: TestStatus;
+    }>;
+    runs: HeadMutantRun[];
+    /** Mutation names never run because the budget ran out or the run failed first; never classified. */
+    unrun: string[];
+    wallMs: number;
+    builds: number;
+    error?: string;
+}
+/**
+ * Runs generated mutations against head in a throwaway detached worktree, each against its owning package's tests, and
+ * reports each outcome. The caller's checkout is never written. Never throws: a failure is `error`, and every mutation
+ * not run by then, the budget's overrun included, is listed in `unrun` and never classified.
+ */
+declare function execHeadMutants(options: ExecHeadMutantsOptions): Promise<HeadMutantsReport>;
 
 /** Git calls only, so a short budget; the judge's CI job allows 8 minutes. */
 declare const DEFAULT_JUDGE_BUDGET_MS: number;
@@ -441,13 +600,16 @@ interface JudgeOptions {
     base: string;
     head: string;
     reports: JudgeReports;
+    /** The PR's base branch, as fix-proof-run.sh shows a ref; the line names it so a reader binds it to the base it judged. */
+    baseRef?: string;
     budgetMs?: number;
     exec?: Exec;
 }
+declare function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classification;
 /**
  * Classifies the exec sides' encoded reports against a plan it derives from git itself and returns the one fix-proof/v1 line.
  * It runs no code from either commit: every command it spawns is git, so a PR head cannot reach the verdict it prints.
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, provedByMutants, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecHeadMutantsOptions, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type FixProofUnverified, HEAD_OUTCOMES, type HeadFailure, type HeadMutantRun, type HeadMutantsReport, type HeadMutation, type HeadOutcome, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_HEAD_FAILURES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, type ProofReadInput, type ProofStanding, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReducedHeadRun, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyDecoded, classifyHeadRun, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, endsReview, errorLine, execHeadMutants, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, needsTestsSeat, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, proofStanding, provedByMutants, reportNames, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };

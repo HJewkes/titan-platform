@@ -1,3 +1,5 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
+
 /**
  * The owns-glob dialect burndown matches files and claims with: `*` within one segment, `**` across segments, a
  * trailing `/` as a directory prefix, anything else literal. Ported from agent-chat's `isolation/file-ownership.ts`
@@ -7,7 +9,7 @@
 export function matchPattern(filePath: string, pattern: string): boolean {
   if (pattern.endsWith("/")) return filePath.startsWith(pattern) || filePath === pattern.slice(0, -1);
   if (!pattern.includes("*")) return filePath === pattern;
-  return new RegExp(`^${globToRegex(pattern)}$`).test(filePath);
+  return new LinearRegExp(`^${globToRegex(pattern)}$`).test(filePath);
 }
 
 /** Token by token so that `**` can span separators while `*` cannot; a trailing `src/**` matches the whole subtree. */

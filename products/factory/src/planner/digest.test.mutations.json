@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the prompt line is never added",
+      "file": "products/factory/src/planner/digest.ts",
+      "find": "input.prompt !== undefined && text.trim() !== \"\"",
+      "replace": "false",
+      "kills": [
+        "planner alarm input the planner review input includes owner-gate-alarm.md and its cause-fix prompt line"
+      ]
+    },
+    {
+      "name": "an empty optional input still gets a section",
+      "file": "products/factory/src/planner/digest.ts",
+      "find": "input.digest && !(input.optional && text.trim() === \"\")",
+      "replace": "input.digest",
+      "kills": [
+        "planner alarm input an absent optional alarm file adds neither a digest section nor the prompt line"
+      ]
+    }
+  ]
+}

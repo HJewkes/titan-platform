@@ -1,0 +1,11 @@
+# Runs titan-console-shipped.service at 07:10 local, ten minutes after the coordinator day starts at 07:00 (TP-1717).
+[Unit]
+Description=titan-console shipped digest build daily at 07:10
+
+[Timer]
+OnCalendar=*-*-* 07:10:00
+Persistent=true
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

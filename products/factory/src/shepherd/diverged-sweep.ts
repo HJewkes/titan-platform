@@ -1,7 +1,7 @@
 import type { Logger } from "@titan-design/daemon";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { stepOf } from "../coordinator-evidence.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { classifyRegistered, restartRegistered, type Registered } from "./commands.js";

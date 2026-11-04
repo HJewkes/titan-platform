@@ -10,15 +10,9 @@ import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-opt
 import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
+import { completedTiming } from "./step-timing.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
-import {
-  WorkflowCancelledError,
-  WorkflowNotOwnedError,
-  WorkflowRecoveryRequiredError,
-  type ActiveStep,
-  type WorkflowFn,
-  type WorkflowRun,
-} from "./types.js";
+import { WorkflowCancelledError, WorkflowNotOwnedError, WorkflowRecoveryRequiredError, type ActiveStep, type WorkflowFn, type WorkflowRun } from "./types.js";
 
 interface Live {
   ctx: RunContext;
@@ -51,7 +45,7 @@ export class WorkflowRuntime {
       runner: options.runner,
       render: options.render ?? mustacheRenderer,
       parseSignal: options.parseSignal ?? defaultParseSignal,
-      emit: (event) => options.onEvent?.(event),
+      emit: (event) => options.onEvent?.({ ...event, at: this.isoNow() }),
       maxRetries: options.maxRetries ?? 1,
       gatePollMs: options.gatePollMs ?? 250,
       maxStepDataBytes: options.maxStepDataBytes ?? DEFAULT_MAX_STEP_DATA_BYTES,
@@ -234,6 +228,10 @@ export class WorkflowRuntime {
   list(statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
     return this.store.listByStatus(statuses);
   }
+  /** One workflow's runs, read by name so no other workflow's step results are loaded. */
+  listByWorkflow(workflowName: string, statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
+    return this.store.listByWorkflow(workflowName, statuses);
+  }
 
   async wait(runId: string): Promise<WorkflowRun> {
     await this.live.get(runId)?.done;
@@ -283,7 +281,7 @@ export class WorkflowRuntime {
       const step = run.activeSteps[stepId];
       if (!step) return false;
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
-      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), output };
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output };
       delete run.activeSteps[stepId];
       this.save(run);
       return true;
@@ -306,7 +304,7 @@ export class WorkflowRuntime {
         controller.abort(error);
       }
     }, Math.max(1, Math.floor(this.leaseMs / 3)));
-    timer.unref?.();
+    timer.unref();
     return timer;
   }
 

@@ -1,6 +1,5 @@
 import { DIRTY_SUFFIX, UNKNOWN_BUILD_SHA } from "./build-info.js";
-import type { CommandResult } from "./service-control.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand, type CommandResult } from "./run-command.js";
 
 /** Whether the running build holds a target: yes, no, or why git could not tell. */
 type Holds = boolean | { unknown: string };

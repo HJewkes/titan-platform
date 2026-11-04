@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { runCli, type CliIo } from "../cli.js";
+import { runCli } from "../cli.js";
+import type { CliIo } from "../cli-types.js";
 import { openFactoryHost } from "../host.js";
 import { factoryRoutes, factoryWorkflows } from "../workflows.js";
 

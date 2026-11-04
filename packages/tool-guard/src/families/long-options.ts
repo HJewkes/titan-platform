@@ -1,4 +1,4 @@
-/** Stands for a long option that abbreviates several real ones; curl and wget refuse it, so a reader treats it as hidden. */
+/** Stands for a long option that abbreviates several real ones; curl, wget and git refuse it, so a reader treats it as hidden. */
 export const AMBIGUOUS_LONG = "--(ambiguous)";
 
 export type LongResolver = (flag: string) => string;
@@ -88,8 +88,20 @@ export const WGET_LONG = table(`
   warc-dedup= warc-digests warc-file= warc-header= warc-keep-log warc-max-size= warc-tempdir= xattr`);
 
 /**
- * Maps a `--flag` to the table entry it names: an exact match wins, then a unique prefix, as getopt_long and older
- * curl both read one. Several prefix matches give AMBIGUOUS_LONG; none leaves the flag as given.
+ * Every long option `git push` accepts in git 2.53, as `git push --git-completion-helper-all` lists them; `=` marks one
+ * git answered with "requires a value". Listing the `--no-` forms gives git's own reading of `--no-<prefix>`, and of
+ * `--n` or `--no` as ambiguous.
+ */
+export const GIT_PUSH_LONG = table(`
+  verbose quiet repo= all branches mirror delete tags dry-run porcelain force force-with-lease force-if-includes recurse-submodules= thin
+  receive-pack= exec= set-upstream progress prune no-verify follow-tags signed atomic push-option= ipv4 ipv6 verify no-verbose no-quiet
+  no-repo no-all no-branches no-mirror no-delete no-tags no-dry-run no-porcelain no-force no-force-with-lease no-force-if-includes
+  no-recurse-submodules no-thin no-receive-pack no-exec no-set-upstream no-progress no-prune no-follow-tags no-signed no-atomic
+  no-push-option`);
+
+/**
+ * Maps a `--flag` to the table entry it names: an exact match wins, then a unique prefix, as getopt_long, git's
+ * parse-options and older curl all read one. Several prefix matches give AMBIGUOUS_LONG; none leaves the flag as given.
  */
 export function resolveLong({ names }: LongTable, caseless: boolean): LongResolver {
   const fold = (s: string): string => (caseless ? s.toLowerCase() : s);

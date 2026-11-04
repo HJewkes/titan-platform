@@ -9,7 +9,6 @@ import {
   parseCmdline,
   parseSsListeners,
   parseStatStartTime,
-  runCommand,
   SERVICE_CHECK_HEALTH_TIMEOUT_MS,
   systemPortOwner,
   systemServicePorts,
@@ -54,22 +53,6 @@ describe("findOnPath", () => {
     expect(findOnPath("claude", pathVar)).toBeUndefined();
     expect(findOnPath("agent-chat", pathVar)).toBeUndefined();
     expect(findOnPath("gh", undefined)).toBeUndefined();
-  });
-});
-
-describe("runCommand", () => {
-  it("resolves with the output of a command that exits 0", async () => {
-    expect(await runCommand(process.execPath, ["-e", "process.stdout.write('loaded')"])).toEqual({ code: 0, stdout: "loaded", stderr: "" });
-  });
-
-  it("resolves with the exit code and stderr of a command that fails, instead of rejecting", async () => {
-    const result = await runCommand(process.execPath, ["-e", "process.stderr.write('Bootstrap failed'); process.exit(5)"]);
-
-    expect(result).toEqual({ code: 5, stdout: "", stderr: "Bootstrap failed" });
-  });
-
-  it("resolves undefined when the binary is not on PATH", async () => {
-    expect(await runCommand("tp-574-no-such-binary", ["mcp", "add"])).toBeUndefined();
   });
 });
 
@@ -138,11 +121,13 @@ describe("systemServicePorts health", () => {
 
   it("gives up on a /health that never answers within the bounded timeout", async () => {
     const port = await healthServer(undefined);
-    const started = Date.now();
+    let answer: unknown = "pending";
 
-    expect(await systemServicePorts().health(port)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(SERVICE_CHECK_HEALTH_TIMEOUT_MS + 2_000);
-  }, 15_000);
+    void systemServicePorts().health(port).then((health) => (answer = health));
+
+    // The wait budget sits above the health timeout and below the test's, so an unbounded probe fails here by name.
+    await vi.waitFor(() => expect(answer).toBeNull(), { timeout: SERVICE_CHECK_HEALTH_TIMEOUT_MS + 4_000 });
+  }, 20_000);
 });
 
 describe("port owner readers", () => {

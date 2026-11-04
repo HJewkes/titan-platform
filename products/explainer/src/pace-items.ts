@@ -42,6 +42,7 @@ export interface PaceBeat {
 // orphan is an attribute: it marks nodes already on screen as unreached, naming nothing new.
 // wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
 // edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
+// step-markers is an attribute: it marks the memo state of recipe steps already on screen, like stamp on a row.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -72,6 +73,7 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   stamp: "attribute",
   line: "attribute",
   orphan: "attribute",
+  "step-markers": "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -90,6 +92,16 @@ export function cueKindRole(kind: string): PaceRole {
   return role;
 }
 
+/** The kind half of a `kind:label` cue target; a target with no colon is its own kind. */
+export const cueTargetKind = (target: string): string => {
+  const colon = target.indexOf(":");
+  return colon < 0 ? target : target.slice(0, colon);
+};
+
+/** The kinds of a beat's cue targets that CUE_KIND_ROLES lacks; a beat spec's cues name element ids, so they have none. */
+export const unknownCueKinds = (beat: Pick<ScriptBeat, "visual">): string[] =>
+  beat.visual.beat !== undefined ? [] : beat.visual.cues.map((cue) => cueTargetKind(cue.target)).filter((kind) => !Object.hasOwn(CUE_KIND_ROLES, kind));
+
 interface Cued {
   label: string;
   atCue?: string;
@@ -105,6 +117,8 @@ export interface PaceSourceBeat {
   origin?: string;
   render?: string;
   mapBeside: boolean;
+  /** The beat names a beat spec, so each cue target is one of the spec's emphasis element ids, not `kind:label`. */
+  emphasisCues?: boolean;
   cues: { target: string; atCue?: string }[];
   titles: string[];
   reveals: (Cued & { id: string })[];
@@ -122,11 +136,17 @@ const COUNT_KINDS = new Set(["card", "fan"]);
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
   beat.render === "HookBeat" && COUNT_KINDS.has(kind) && /^\d/.test(label);
 
+// An emphasis cue lights an element the beat spec already put on screen, so it qualifies a shown item (an
+// attribute) whatever id the author gave the element.
+function emphasisItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  return beat.cues.map(({ target, atCue }) => ({ label: target, kind: "emphasis", role: "attribute", atS: atS(atCue), source: "cue", ...cueWord(atCue) }));
+}
+
 function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  if (beat.emphasisCues) return emphasisItems(beat, atS);
   return beat.cues.flatMap(({ target, atCue }) => {
-    const colon = target.indexOf(":");
-    const kind = colon < 0 ? target : target.slice(0, colon);
-    const label = colon < 0 ? target : target.slice(colon + 1);
+    const kind = cueTargetKind(target);
+    const label = target.includes(":") ? target.slice(kind.length + 1) : target;
     const role = cueKindRole(kind);
     return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
@@ -201,6 +221,7 @@ function v1SourceBeat(beat: ScriptBeat): PaceSourceBeat {
     plannedS: beat.plannedS,
     ...(beat.kind === undefined ? {} : { render: beat.kind }),
     mapBeside: state !== undefined,
+    ...(beat.visual.beat === undefined ? {} : { emphasisCues: true }),
     cues: beat.visual.cues,
     titles: [],
     reveals: (state?.reveal ?? []).map((r) => ({ id: r.id, label: r.id, atCue: r.atCue })),

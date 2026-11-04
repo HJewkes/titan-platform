@@ -66,7 +66,9 @@ function row(source: ContextSource, blockIndex: number, toolUseId: string | null
   return { source, blockIndex, toolUseId, attachmentType: null };
 }
 
+/** The one gate for the policy, so the user, assistant and attachment paths cannot drift apart. */
 function emitRow(reader: LineReader, ctx: LineContext, block: BlockRow): void {
+  if (!reader.policy.contextBlocks) return;
   reader.emit({ ...reader.base(ctx), kind: "context_block", ...block });
 }
 

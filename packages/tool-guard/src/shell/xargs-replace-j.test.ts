@@ -17,6 +17,8 @@ function spellings(command: string): string[] {
 }
 
 const PUSH = ["bash.merge.git-push-protected"];
+/** The main reading runs a literal `%` as gh's first word, which gh may run as an alias, so it reads as every gh action. */
+const GH_UNKNOWN = ["bash.merge.gh-pr-merge", "bash.release.gh-release", "bash.egress.gh-gist"];
 
 describe("BSD xargs -J puts every input item of a run at the insert argument", () => {
   it.each([
@@ -76,7 +78,7 @@ describe("BSD xargs -J puts every input item of a run at the insert argument", (
   });
 
   it("denies a merge spliced in at the insert argument", () => {
-    expect(spellings("echo pr merge 1 | xargs -J % gh %")).toEqual(["bash.merge.gh-pr-merge"]);
+    expect(spellings("echo pr merge 1 | xargs -J % gh %")).toEqual([...GH_UNKNOWN, "bash.merge.gh-pr-merge"]);
   });
 
   it("reads a secret in a -0 record spliced in as a shell's script", () => {
@@ -94,7 +96,7 @@ describe("BSD xargs -J puts every input item of a run at the insert argument", (
   });
 
   it("fails closed on a merge behind a stdin file", () => {
-    expect(spellings("xargs -J % gh % < cmds.txt")).toEqual(["bash.merge.gh-pr-merge"]);
+    expect(spellings("xargs -J % gh % < cmds.txt")).toEqual([...GH_UNKNOWN, "bash.merge.gh-pr-merge"]);
   });
 
   it.each([

@@ -1,0 +1,5 @@
+{
+  "durationS": 1,
+  "provisional": true,
+  "beats": [{ "id": "only", "kind": "hook", "startS": 0, "durationS": 1, "slots": { "line": "A second timeline" } }]
+}

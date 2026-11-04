@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: attempt
+summary: "What was tried, what happened and why."
+role: explain
+component: { maturity: gap }
+slots: attempt
+speech: { band: story }
+durationS: [6, 12, 22]
+preset: false
+emphasis: { targets: [attempts], treatments: [highlight, pointer] }
+recipe: "One to four attempts in order, each with what was tried, the outcome and why. The journey ends on what held."

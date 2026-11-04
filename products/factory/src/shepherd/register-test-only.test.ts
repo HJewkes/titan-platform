@@ -102,6 +102,12 @@ describe("shepherd register hints at test-only", () => {
     expect(await registered(w, pr1)).toMatchObject({ registration: { kind: "correctness" }, kindHint: TEST_ONLY_HINT });
   });
 
+  it("steers a flaky-test fix to test-only with no mutation spec, which would keep it NO_REPRO", () => {
+    expect(TEST_ONLY_HINT).toBe(
+      "hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO",
+    );
+  });
+
   it("gives no hint on a PR with a source change", async () => {
     const w = world(WITH_SOURCE);
 

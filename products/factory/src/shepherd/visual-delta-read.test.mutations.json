@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a snapshot renamed in from outside the snapshot paths reads as changed",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "file.status === \"added\" || (file.previousPath !== undefined && from === undefined)",
+      "replace": "file.status === \"added\"",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow reads a snapshot renamed into the snapshot paths as added, and one renamed out of them as removed"]
+    },
+    {
+      "name": "the snapshot list is not capped before it is posted",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "[...lists.snapshots].sort(byWeight), VISUAL_DELTA_CAPS.snapshots)",
+      "replace": "[...lists.snapshots].sort(byWeight), Infinity)",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out"]
+    },
+    {
+      "name": "a measured pair records without its share",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "delta(pair.path, \"changed\", { share: pair.share })",
+      "replace": "delta(pair.path, \"changed\")",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow measures a changed snapshot's share from the merge base to the head",
+        "the merge evidence under shepherd.visualThreshold shadow leaves the decision as it is without the threshold, and keeps a record the evidence schema reads"
+      ]
+    },
+    {
+      "name": "the schema leaves the snapshot list unbounded",
+      "file": "products/factory/src/shepherd/review-schemas.ts",
+      "find": "snapshots: z.array(SnapshotDeltaSchema).max(VISUAL_DELTA_CAPS.snapshots),",
+      "replace": "snapshots: z.array(SnapshotDeltaSchema),",
+      "kills": ["VisualDeltaSchema refuses a delta with more than 40 snapshots or a string over 300 characters, so an unbounded writer fails at the parse"]
+    },
+    {
+      "name": "visualThreshold mode off still records the visual delta",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (threshold === undefined || threshold.mode === \"off\") return undefined;",
+      "replace": "if (threshold === undefined) return undefined;",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow records nothing when the repo's mode is off or the repo has no threshold"]
+    }
+  ]
+}

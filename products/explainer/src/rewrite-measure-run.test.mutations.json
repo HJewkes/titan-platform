@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the measure scorer never builds the speech vetter",
+      "file": "products/explainer/src/rewrite-measure-run.ts",
+      "find": "    if (!vetter || vettableSentences(script.beats).length === 0) return runL0(script);\n",
+      "replace": "    if (vetter || !vetter) return runL0(script);\n",
+      "kills": [
+        "explainer rewrite measure runs the real pass through the judge harness and builds the speech vetter once for every sample"
+      ]
+    }
+  ]
+}

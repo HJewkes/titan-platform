@@ -19,7 +19,7 @@ enforces the tier in CI.
 | `computeLayout(input, sizing?, options?)` | flat ELK layered layout with orthogonal routes |
 | `computeCompoundLayout(input, sizing, groupOf, options?)` | nested layout; `groupOf` names each node's ancestor groups, outermost first. Also returns `groups` (every group's box) and routes edges whose ends are group ids |
 | `computeCompoundLayoutStrict(input, spec)` | the nested layout without the grid fallback: rejects when ELK throws or places nothing. `spec.groupHeaders` reserves a header band per group (top padding and minimum width) |
-| `emitRepoMap(input, options?)` | one `repo-map/v1` map of a file-level snapshot: package boxes (level 1) hold directory boxes (level 2) hold file boxes (level 3), with routed edges at every level, a `+N more` box past `maxFilesPerBox` per directory, 44 px label sizing and a sha. Rejects instead of falling back to a grid |
+| `emitRepoMap(input, options?)` | one `repo-map/v1` map of a file-level snapshot: package boxes (level 1) hold directory boxes (level 2) hold file boxes (level 3), with routed edges at every level, labelled container protocol arrows from `protocolEdges`, a `+N more` box past `maxFilesPerBox` per directory, 44 px label sizing and a sha. Rejects instead of falling back to a grid |
 | `ELK_VERSION`, `MAP_LABEL_METRICS` | the pinned elkjs version that every map sha covers, and the default map label metrics |
 | `routeOf(edge)` | the typed route a layout attached to `edge.attrs.route`, or undefined |
 | `routeToPathD(route)` | an SVG path `d` (`M x y L x y …`) through a route's points |
@@ -79,6 +79,14 @@ A directory shows at most `maxFilesPerBox` boxes (default 6). Past that it keeps
 with the highest summed edge weight, ties broken by id, and folds the rest into one
 `more:<directory>` box labelled `+N more`, with `hidden: N`. Edges of pruned files are not
 drawn at level 3 but still count in the level 1 and 2 weights.
+
+Pass `protocolEdges` (from code-graph's `extractProtocolEdges`) to draw runtime arrows on the
+container level. Each ordered package pair gets one `edgeSource: "protocol"` arrow with id
+`protocol:<src>-><dst>`, its `kind` the protocols joined by `+` (`http+sse`) and a label
+such as `HTTP GET /api/boards +2 · SSE /api/events`. A call inside one package, or from a
+file not on the map, draws none. When the list yields no arrow, every container import arrow
+is labelled `imports only`. Leaving `protocolEdges` out draws neither, and leaves the sha as
+it was.
 
 Boxes are sized for 44 px labels in a face whose advance is 0.501 em (`MAP_LABEL_METRICS`).
 A group reserves a header band of its label's size. elkjs 0.10.2 reads a nested group's

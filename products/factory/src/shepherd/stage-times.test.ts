@@ -2,6 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { stageSpans, stageStats } from "./stage-times.js";
 import { watchRow } from "./view.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const MINUTE = 60_000;
 const T0 = Date.parse("2026-10-05T10:00:00Z");
@@ -108,7 +109,7 @@ describe("stageStats", () => {
 describe("the live stage in a watch row", () => {
   it("names the current stage, its age and the total, and calls a merge waiting on a hold a hold", () => {
     const run = { ...runOf("a", [["ci-wait", 5], ["sh-review", 20]]), status: "running" as const, currentStep: "merge:0" };
-    const registration = { repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Parameters<typeof watchRow>[0]["registration"];
+    const registration = partialFake<Parameters<typeof watchRow>[0]["registration"]>({ repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } });
     const now = new Date(T0 + 50 * MINUTE);
 
     const plain = watchRow({ registration, run, now });

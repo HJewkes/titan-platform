@@ -6,7 +6,8 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { supersedeRebasedGates } from "./base-moved.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { SUPERSEDED } from "./stale-gates.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
@@ -125,7 +126,7 @@ describe("supersedeRebasedGates", () => {
 
     await supersedeRebasedGates(w.host, w.services);
 
-    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toMatch(/^base-wait/), { timeout: 10_000, interval: 5 });
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toMatch(/^base-wait/), { interval: 5 });
     expect(w.host.pendingGates().filter((pending) => pending.runId === w.runId)).toEqual([]);
     expect(w.fake.effects.merge).toBe(0);
   });

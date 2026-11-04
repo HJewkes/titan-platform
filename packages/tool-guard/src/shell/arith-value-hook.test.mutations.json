@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each subscript scan of a source starts afresh",
+      "file": "packages/tool-guard/src/shell/subscript.ts",
+      "find": "  const known = SCANS.get(src);\n  if (known) return known;\n",
+      "replace": "",
+      "kills": [
+        "the hook verdict on a value that arithmetic reads (TP-1624) denies a push after a value that holds many substitutions read again and again",
+        "the hook verdict on a value that arithmetic reads (TP-1624) denies a push when a variable the value uses changes before every read"
+      ]
+    }
+  ]
+}

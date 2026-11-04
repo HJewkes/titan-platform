@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "caught-error reads as survived",
+      "file": "packages/fix-proof/src/head-classify.ts",
+      "find": "  if (run.failed.length === 0) return \"survived\";",
+      "replace": "  if (!run.failed.some((failure) => failure.assertion)) return \"survived\";",
+      "kills": ["classifyHeadRun a TypeError on the returned undefined is caught-error, never survived"]
+    }
+  ]
+}

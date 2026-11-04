@@ -1,13 +1,13 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { countCalls } from "@titan-design/test-kit";
+import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
-import { isolatedGitEnv } from "./history/test-repo.js";
 import { openCodeGraph } from "./store.js";
 
 // Each test indexes a real git repo through ts-morph; CI run 38183124631 saw up to 7 s.
@@ -36,9 +36,6 @@ let dir: string;
 let outside: string;
 let checkoutAtFirst: Snapshot;
 
-const git = (args: readonly string[]) =>
-  execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: isolatedGitEnv() }).trim();
-
 async function writeAll(files: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -47,8 +44,9 @@ async function writeAll(files: Record<string, string>): Promise<void> {
 }
 
 function commit(message: string): void {
-  git(["add", "-A"]);
-  git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "commit", "-q", "-m", message]);
+  const git = gitIn(dir);
+  git("add", "-A");
+  git("commit", "-q", "-m", message);
 }
 
 async function indexSnapshot(options: Partial<IndexOptions> = {}): Promise<Snapshot> {
@@ -94,17 +92,16 @@ async function withLinkRetargeted(rel: string, target: string, body: () => Promi
 beforeAll(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-links-"));
   outside = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-outside-"));
-  git(["init", "-q", "-b", "main"]);
-  git(["config", "commit.gpgsign", "false"]);
+  seedRepo(dir, {});
   await writeAll(FIRST);
   for (const [rel, target] of Object.entries(LINKS)) await fs.symlink(target, path.join(dir, rel));
   commit("first");
   await writeAll({ "packages/b/src/main.ts": 'import { alpha } from "../../a/src/index.js";\nexport const value = alpha() + 1;\n' });
   commit("second");
 
-  git(["checkout", "-q", "HEAD~1"]);
+  gitIn(dir)("checkout", "-q", "HEAD~1");
   checkoutAtFirst = await indexSnapshot();
-  git(["checkout", "-q", "main"]);
+  gitIn(dir)("checkout", "-q", "main");
 }, 60_000);
 
 afterAll(async () => {
@@ -197,6 +194,8 @@ describe("gitTreeSource where today's disk links over a tracked dir", () => {
 const CHAIN_LINKS = 45;
 // nest/k -> k+1/../k+1/../k+1: without a memo per link, resolving nest/1 takes 3^NEST_DEPTH steps.
 const NEST_DEPTH = 25;
+/** A link target is split once per follow: nest/1 took 106 with the memo, and 3^NEST_DEPTH would never end without it. */
+const NEST_SPLITS = 500;
 // The barrel splits t.ts's inbound weight three ways, so its utilization sums thirds in file order.
 const ORDERED: Record<string, string> = {
   "x.ts": "export const x = 1;\n",
@@ -213,7 +212,6 @@ const ORDERED: Record<string, string> = {
 describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
   let repo: string;
   const at = (rel: string) => path.join(repo, rel);
-  const repoGit = (args: readonly string[]) => execFileSync("git", [...args], { cwd: repo, env: isolatedGitEnv() });
 
   beforeAll(async () => {
     repo = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-chains-"));
@@ -230,9 +228,9 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
     await fs.writeFile(at("nest/d/x.txt"), "");
     for (let k = 1; k < NEST_DEPTH; k++) await fs.symlink(`${k + 1}/../${k + 1}/../${k + 1}`, at(`nest/${k}`));
     await fs.symlink("d", at(`nest/${NEST_DEPTH}`));
-    repoGit(["init", "-q", "-b", "main"]);
-    repoGit(["add", "-A"]);
-    repoGit(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "only"]);
+    seedRepo(repo, {});
+    gitIn(repo)("add", "-A");
+    gitIn(repo)("commit", "-q", "-m", "only");
     await fs.mkdir(at("loose"));
     await fs.symlink("../chain/target.ts", at("loose/1"));
     for (let n = 2; n <= CHAIN_LINKS; n++) await fs.symlink(String(n - 1), at(`loose/${n}`));
@@ -262,11 +260,10 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
 
   it("resolves each tracked link once per hop budget when nested targets name it repeatedly", () => {
     const host = gitTreeSource(repo, "HEAD").fileSystem;
-    const started = performance.now();
 
-    host.fileExistsSync(at("nest/1/x.txt"));
+    const splits = countCalls([[String.prototype, "split"]], () => host.fileExistsSync(at("nest/1/x.txt")), NEST_SPLITS);
 
-    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(splits).toBeLessThanOrEqual(NEST_SPLITS);
   });
 
   it("indexes files in the same order as a checkout, so float metrics match byte for byte", async () => {

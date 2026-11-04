@@ -23,6 +23,7 @@ export const CLAUDE_CODE_PASSTHROUGH_VARS = [
   "CLAUDE_CODE_USE_VERTEX",
   "CLAUDE_CODE_USE_FOUNDRY",
   "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+  "CLAUDE_CODE_REMOTE",
 ] as const;
 
 /** Proxy settings leak from the parent shell and silently re-route the child's API traffic. */
@@ -82,7 +83,7 @@ export function prepareEnv(
     for (const key of STRIPPED_AUTH_VARS) delete out[key];
   }
 
-  out.CLAUDE_CODE_MAX_RETRIES ??= DEFAULT_MAX_RETRIES;
+  if (!Object.hasOwn(out, "CLAUDE_CODE_MAX_RETRIES")) out.CLAUDE_CODE_MAX_RETRIES = DEFAULT_MAX_RETRIES;
   return out;
 }
 

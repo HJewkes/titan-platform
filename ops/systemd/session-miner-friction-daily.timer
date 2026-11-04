@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily friction audit over agent-chat worker reports
+
+[Timer]
+# Ready for the owner's morning, 08:05 Mountain daylight time.
+OnCalendar=*-*-* 14:05:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

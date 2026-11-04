@@ -2,22 +2,49 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a skip is never widened to origin/main",
+      "name": "an ask the checkout is already past exits 0 instead of being refused",
       "file": "products/factory/src/deploy.ts",
-      "find": "return prepareOnly ? plan : widenSkip(deploy, plan);",
-      "replace": "return plan;",
+      "find": "return refuse(`${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`);",
+      "replace": "return { kind: \"stop\", code: 0, message: past };",
       "kills": [
-        "titan-factory service deploy deploys origin/main when the asked sha reaches no factory path but a later main commit does"
+        "titan-factory service deploy refuses as superseded, building nothing, when a rollback left the checkout's main past the asked sha (TP-4279)",
+        "titan-factory service deploy after a deploy rolls back and the pause is cleared, an older asked sha is refused and the next asked sha deploys (TP-4083, TP-4279)"
       ]
     },
     {
-      "name": "origin/main is deployed even when nothing past the asked sha reaches the factory build",
+      "name": "a rolled-back deploy withdraws the deploy alarms",
       "file": "products/factory/src/deploy.ts",
-      "find": "if (wider.kind !== \"go\" || wider.go.touched.length === 0) return plan;",
-      "replace": "if (wider.kind !== \"go\") return plan;",
+      "find": "if (why !== undefined) return rollBackRestart(deploy, go, backup, why);",
+      "replace": "if (why !== undefined) return resolveAlarms(deploy.ports, deploy.io).then(() => rollBackRestart(deploy, go, backup, why));",
       "kills": [
-        "titan-factory service deploy fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build",
-        "titan-factory service deploy records a Version Packages merge as skipped without building or restarting"
+        "service deploy rollback pause leaves the deploy alarms open when the restarted build rolls back"
+      ]
+    },
+    {
+      "name": "an unknown merge result counts as terminal",
+      "file": "products/factory/src/registry/intent-readers.ts",
+      "find": "r.outcome IN ('merged', 'failed')",
+      "replace": "r.outcome IN ('merged', 'failed', 'unknown')",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unknown result keeps the intent open"
+      ]
+    },
+    {
+      "name": "only the bump is compared, not the schema hash",
+      "file": "products/factory/src/deploy-intents.ts",
+      "find": "(old.schemaHash === next.schemaHash && old.bump === next.bump)",
+      "replace": "old.bump === next.bump",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unknown result keeps the intent open"
+      ]
+    },
+    {
+      "name": "an unreadable factory db skips the check",
+      "file": "products/factory/src/deploy-intents.ts",
+      "find": "return `${moved.map(({ change }) => change).join(\"; \")} and its open intents cannot be read (${why}); fix the factory db and redeploy`;",
+      "replace": "return undefined;",
+      "kills": [
+        "service deploy irreversible step versions (TP-3110) an unreadable factory db refuses a deploy that moves an irreversible step's version"
       ]
     }
   ]

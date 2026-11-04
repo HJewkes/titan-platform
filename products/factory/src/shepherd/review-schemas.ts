@@ -30,6 +30,14 @@ export const CiPolicySchema = z
   .optional()
   .catch(() => CI_POLICY_MALFORMED);
 
+const CiPolicyLineSchema = z.strictObject({ side: z.enum(["-", "+"]), n: z.number().int().min(1), text: z.string() });
+
+/** The D21 card's lines as stored; any other shape, a pre-redesign record's included, reads as none, so the card falls back to the diff link and the gate stands. */
+export const CiPolicyChangesSchema = z
+  .array(z.strictObject({ path: z.string(), lines: z.array(CiPolicyLineSchema), omitted: z.number().int().min(0) }))
+  .optional()
+  .catch(undefined);
+
 const CheckRunFact = z.looseObject({ name: z.string(), appId: z.number(), headSha: z.string(), conclusion: z.string().nullable() });
 const CarryFact = z.looseObject({ fromHead: z.string(), head: z.string(), headTree: z.string(), mergeTree: z.string() });
 
@@ -56,6 +64,35 @@ const GateDecisionSchema = z.looseObject({
   reason: z.string(),
 });
 
+/**
+ * The visual delta is posted whole in the evidence comment, which GitHub caps at 65,536 characters, so the schema bounds
+ * every list and string: a writer that skips the reader's own caps fails at the parse, not at GitHub.
+ */
+export const VISUAL_DELTA_CAPS = { snapshots: 40, paths: 20, text: 300 } as const;
+
+const boundedText = z.string().max(VISUAL_DELTA_CAPS.text);
+const pathList = z.array(boundedText).max(VISUAL_DELTA_CAPS.paths);
+
+const SnapshotDeltaSchema = z.looseObject({
+  path: boundedText,
+  component: boundedText,
+  status: z.enum(["changed", "added", "removed", "unmeasured"]),
+  share: z.number().min(0).max(1).optional(),
+  reason: boundedText.optional(),
+});
+
+/** The evidence step's visual delta (TP-4320); a record whose delta is malformed fails the parse, so its merge gates. */
+export const VisualDeltaSchema = z.looseObject({
+  policy: z.looseObject({ mode: z.enum(["off", "shadow", "on"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
+  mergeBase: boundedText.nullable(),
+  snapshots: z.array(SnapshotDeltaSchema).max(VISUAL_DELTA_CAPS.snapshots),
+  api: pathList,
+  tokens: pathList,
+  harness: pathList,
+  unread: boundedText.optional(),
+  omitted: z.looseObject({ snapshots: z.number().optional(), api: z.number().optional(), tokens: z.number().optional(), harness: z.number().optional() }).optional(),
+});
+
 const EvidenceRecordSchema = z.looseObject({
   runId: z.string(),
   repo: z.string(),
@@ -69,9 +106,15 @@ const EvidenceRecordSchema = z.looseObject({
   decision: GateDecisionSchema,
   carry: CarryFact.optional(),
   ciPolicy: CiPolicySchema,
+  ciPolicyChanges: CiPolicyChangesSchema,
+  visualDelta: VisualDeltaSchema.optional(),
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
+const AttestUnmetSchema = z.looseObject({ unmet: z.array(z.looseObject({ step: z.string(), why: z.string() })) });
+/** `deploySkew` is the wait for a deploy (TP-4752): the read was not judged, so it names no unmet row. */
+const AttestDecidedSchema = z.union([z.looseObject({ unread: z.string() }), z.looseObject({ deploySkew: z.string() }), AttestUnmetSchema]);
+
 export const MergeEvidenceSchema = z.looseObject({
   head: z.string(),
   merge: MergeFactsSchema,
@@ -80,6 +123,15 @@ export const MergeEvidenceSchema = z.looseObject({
   unreadFacts: z.array(z.string()).optional(),
   changedFilesUnread: z.string().optional(),
   ciPolicy: CiPolicySchema,
+  visualDelta: VisualDeltaSchema.optional(),
+  attest: AttestDecidedSchema.optional(),
+  attestVerdicts: z
+    .looseObject({
+      attests: z.array(z.string()),
+      adversary: z.looseObject({ reviewer: Identity, head: z.string(), attests: z.array(z.string()) }).optional(),
+      adversaryPlanned: z.literal(true).optional(),
+    })
+    .optional(),
 });
 
 const PanelMemberRead = z.looseObject({ shape: z.string(), profile: z.string(), blocking: z.boolean() });
@@ -99,7 +151,7 @@ const Dispatched = z.discriminatedUnion("kind", [
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional(), ciPolicy: CiPolicySchema, attests: z.array(z.string()).optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */

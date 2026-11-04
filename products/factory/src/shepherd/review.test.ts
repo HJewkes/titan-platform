@@ -3,22 +3,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubPort, type PrFile } from "@titan-design/github";
-import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
+import { parseVerdictBlock } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute, WorkflowRun } from "@titan-design/workflow";
+import { partialFake } from "@titan-design/test-kit";
 import { crashAt } from "../test-support/crash.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { codeRoute } from "../workflows/land.js";
-import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { reviewCauseStats, type ReviewCause } from "./review-cause.js";
 import { CI_UNREAD_REASON } from "./ci-unread.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import {
   FIX_FIRST_TRUNCATED,
   MAX_FIX_FIRST_TEXT_CHARS,
@@ -38,7 +39,11 @@ import {
   type ReviewIntentResult,
   type ReviewWiring,
 } from "./review.js";
-import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued, reviewWait } from "./review-wait.js";
+import { SpawnDeferred, spawnGate } from "./spawn-gate.js";
+import { busyRuns } from "../restart-drain.js";
+import { gateQueuedRun } from "../serve-holds.js";
+import type { ShepherdServices } from "./services.js";
 import { CI_UNREAD_LINE, DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
@@ -47,6 +52,11 @@ import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigrat
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
 import { DEFAULT_ADVERSARY_PROFILE, type HoldMember, type PanelMode } from "./review-panel-plan.js";
+import { fakeLocator } from "../test-support/fakes.js";
+import { readPath } from "../narrow.js";
+import { z } from "zod";
+import { mergeEvidenceAt } from "./policy.js";
+import type { SpawnGate } from "./ports.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -59,7 +69,7 @@ const input: AwaitVerdictInput = {
   dispatchedAt: 1_000,
 };
 const locatorIn = (nativeId: string) =>
-  ({ source: { conversation: { nativeId } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } }) as unknown as SourceTextLocator;
+  fakeLocator({ source: { conversation: { nativeId } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } });
 const locator = locatorIn("session-1");
 
 const block = (overrides: { verdict?: string; pr?: string; head?: string } = {}) =>
@@ -110,10 +120,10 @@ describe("acceptVerdict", () => {
   it("cuts a FIX_FIRST message one character over the cap down to the cap, keeping its end behind the marker", () => {
     const text = fixFirstOf(MAX_FIX_FIRST_TEXT_CHARS + 1);
 
-    const result = acceptVerdict(input, [message({ text })]) as Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }>;
+    const accepted = String(readPath(acceptVerdict(input, [message({ text })]), "text"));
 
-    expect(result.text).toHaveLength(MAX_FIX_FIRST_TEXT_CHARS);
-    expect(result.text).toBe(FIX_FIRST_TRUNCATED + text.slice(text.length - (MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length)));
+    expect(accepted).toHaveLength(MAX_FIX_FIRST_TEXT_CHARS);
+    expect(accepted).toBe(FIX_FIRST_TRUNCATED + text.slice(text.length - (MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length)));
   });
 
   it("refuses a message from another agent id in the same session", () => {
@@ -133,7 +143,7 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a writtenAt that is a numeric string rather than a number", () => {
-    expect(acceptVerdict(input, [message({ writtenAt: "3000" as unknown as number })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [Object.assign(message(), { writtenAt: "3000" })])).toEqual({ kind: "none" });
   });
 
   it("refuses a message whose locator points into another session", () => {
@@ -141,11 +151,11 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a message whose locator names no session", () => {
-    expect(acceptVerdict(input, [message({ locator: { selector: locator.selector } as unknown as SourceTextLocator })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ locator: fakeLocator({ selector: locator.selector }) })])).toEqual({ kind: "none" });
   });
 
   it("refuses a message with no locator", () => {
-    expect(acceptVerdict(input, [message({ locator: undefined as unknown as SourceTextLocator })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [Object.assign(message(), { locator: undefined })])).toEqual({ kind: "none" });
   });
 
   it("refuses a message written at the dispatch instant", () => {
@@ -359,11 +369,11 @@ describe("parseAwaitVerdictInput", () => {
 });
 
 describe("reviewRoutes", () => {
-  const deps = { now: () => 5_000, sleep: async () => {}, pollMs: 10 } as unknown as ShepherdDeps;
+  const deps = partialFake<ShepherdDeps>({ now: () => 5_000, sleep: async () => {}, pollMs: 10 });
   const run = async (wiring?: ReviewWiring) => {
     const route = reviewRoutes(deps, wiring).find((candidate) => candidate.match === "sh-await-verdict")!;
     const step = { prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" };
-    return route.runner.run(step as never);
+    return route.runner.run(partialFake<RoutedStepInput>(step));
   };
 
   it("answers none without polling when no reader is wired", async () => {
@@ -380,10 +390,10 @@ describe("reviewRoutes", () => {
 
   describe("review checkout removal", () => {
     const removals: string[] = [];
-    const withFakeFs = { ...deps, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void removals.push(path) } } as unknown as ShepherdDeps;
+    const withFakeFs = partialFake<ShepherdDeps>({ ...deps, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void removals.push(path) } });
     const runWith = async (wiring: ReviewWiring) => {
       const route = reviewRoutes(withFakeFs, wiring).find((candidate) => candidate.match === "sh-await-verdict")!;
-      return route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+      return route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" }));
     };
     const runDir = `/data/reviews/review-7-${HEAD.slice(0, 12)}`;
 
@@ -409,10 +419,10 @@ describe("reviewRoutes", () => {
 
     it("keeps it when the on-time wait ends with no verdict, because the reviewer may still be writing one", async () => {
       let clock = 5_000;
-      const ticking = { ...withFakeFs, now: () => (clock += 1_000) } as unknown as ShepherdDeps;
+      const ticking = partialFake<ShepherdDeps>({ ...withFakeFs, now: () => (clock += 1_000) });
       const route = reviewRoutes(ticking, { reader: { read: async () => [] }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
-      const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+      const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" }));
 
       expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "none" });
       expect(removals).toEqual([]);
@@ -422,16 +432,16 @@ describe("reviewRoutes", () => {
       const abort = new AbortController();
       const route = reviewRoutes(withFakeFs, { reader: { read: async () => { abort.abort(); throw new Error("aborted"); } }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
-      await route.runner.run({ prompt: JSON.stringify(input), signal: abort.signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never).catch(() => undefined);
+      await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: abort.signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" })).catch(() => undefined);
 
       expect(removals).toEqual([]);
     });
 
     it("still returns the verdict when the removal itself fails", async () => {
-      const failing = { ...deps, reviewCheckouts: { root: "/data/reviews", remove: async () => Promise.reject(new Error("EBUSY")) } } as unknown as ShepherdDeps;
+      const failing = partialFake<ShepherdDeps>({ ...deps, reviewCheckouts: { root: "/data/reviews", remove: async () => Promise.reject(new Error("EBUSY")) } });
       const route = reviewRoutes(failing, { reader: { read: async () => [message()] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
-      const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+      const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" }));
 
       expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
     });
@@ -543,13 +553,13 @@ describe("sh-review", () => {
     };
     const store = boundStore(options.registered ?? registration);
     options.prepare?.(store.get());
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }), ...(options.port && { port: options.port }) } as unknown as ShepherdDeps;
+    const deps = partialFake<ShepherdDeps>({ now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }), ...(options.port && { port: options.port }) });
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
     const run = async <R>(match: string, input: object, attempt: number) => {
       const step = { prompt: JSON.stringify(input), signal: options.signal ?? new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
-      const outcome = await routes.find((candidate) => candidate.match === match)!.runner.run(step as never);
+      const outcome = await routes.find((candidate) => candidate.match === match)!.runner.run(partialFake<RoutedStepInput>(step));
       return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as R | undefined };
     };
     return {
@@ -583,7 +593,7 @@ describe("sh-review", () => {
     const spawnSized = async (files?: PrFile[], changedFiles?: number) => {
       const dispatch = fakeDispatch();
       const { result } = await reviewSteps(dispatch, { registered: correctness, ...(files && { files }), ...(changedFiles !== undefined && { changedFiles }), wiring: { roles } }).review(spawnIntent, 0, "run-1");
-      return { facts: dispatch.spawns[0]?.facts, profile: (result as { profile?: string } | undefined)?.profile };
+      return { facts: dispatch.spawns[0]?.facts, profile: readPath(result, "profile") };
     };
 
     it("gives a 450-line correctness PR the g10 profile", async () => {
@@ -727,6 +737,49 @@ describe("sh-review", () => {
     expect(dispatch.spawns).toHaveLength(1);
   });
 
+  describe("a review spawn the gate deferred when serve restarts (TP-4474)", () => {
+    /** Spawns pass `gateOf()` first, as the agent-chat port's do, so a deferral starts nobody; the roster outlives serve, as the broker does. */
+    function gatedDispatch(gateOf: () => SpawnGate): FakeDispatch {
+      const fake = fakeDispatch();
+      const spawn = fake.spawn;
+      fake.spawn = async (name, brief, target, facts) => {
+        try {
+          gateOf().admit(name, [], { fixer: false, target: { repo: target.repo, pr: target.pr } });
+        } catch (error) {
+          throw error instanceof SpawnDeferred ? new ReviewerSpawnQueued(`spawn gate: ${error.message}`) : error;
+        }
+        return spawn(name, brief, target, facts);
+      };
+      return fake;
+    }
+
+    const reviewing: WorkflowRun = { id: "run-1", workflowName: "shepherd-pr", params: {}, status: "running", currentStep: `sh-review:${HEAD}`, stepResults: {}, activeSteps: {}, revision: 1, ownerGeneration: 1, startedAt: "2026-01-01T00:00:00.000Z", completedAt: null, error: null };
+
+    it("is not waited on by the drain, and the repeated step after the restart admits and spawns its reviewer once", async () => {
+      const lines: string[] = [];
+      let gate = spawnGate({ read: () => ({ load5: 40 }), log: (line) => void lines.push(line) });
+      const dispatch = gatedDispatch(() => gate);
+      let store: ShepherdStore | undefined;
+      const queued = gateQueuedRun(partialFake<ShepherdServices>({ store: partialFake<ShepherdStoreRef>({ get: () => store! }) }));
+      const drainSaw: string[][] = [];
+      const serveStops = new AbortController();
+      const onSleep = () => {
+        drainSaw.push(busyRuns([reviewing], () => undefined, undefined, queued).map((busy) => busy.runId));
+        serveStops.abort();
+      };
+      await reviewSteps(dispatch, { signal: serveStops.signal, onSleep, prepare: (bound) => (store = bound) }).review(spawnIntent, 0, "run-1").catch(() => undefined);
+
+      gate = spawnGate({ read: () => ({ load5: 1 }), log: (line) => void lines.push(line) });
+      const { result } = await reviewSteps(dispatch, { prepare: (bound) => (store = bound) }).review(spawnIntent, 1, "run-1");
+
+      expect(drainSaw).toEqual([[]]);
+      expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+      expect(lines.map((line) => /spawn_gate (\w+) rv-octo-demo-7/.exec(line)?.[1])).toEqual(["deferred", "admitted"]);
+      expect(busyRuns([reviewing], () => undefined, undefined, queued)).toHaveLength(1);
+    });
+  });
+
   it("keeps the intent's time when the step repeats after the reviewer spoke, so those first words still count", async () => {
     const steps = reviewSteps(fakeDispatch());
     await steps.review(spawnIntent);
@@ -736,7 +789,7 @@ describe("sh-review", () => {
     const { result } = await steps.review(spawnIntent, 1);
 
     expect(result).toMatchObject({ kind: "dispatched", at: START });
-    expect((result as ReviewIntent).at).toBeLessThan(spokeAt);
+    expect(readPath(result, "at")).toBeLessThan(spokeAt);
   });
 
   it("spawns under the intent's name, not under the name the roster it reads would yield", async () => {
@@ -815,12 +868,12 @@ describe("sh-review", () => {
     return dispatch;
   }
 
-  it("sh-review-intent waits while the broker is down, then names the reviewer and stamps the time after the wait", async () => {
+  it("sh-review-intent waits while the broker is down, doubling each wait, then names the reviewer and stamps the time after the wait", async () => {
     const steps = reviewSteps(rosterDownFor(fakeDispatch(), 2));
 
     const { result } = await steps.intent();
 
-    expect(result).toEqual({ kind: "intent", ...spawnIntent, at: START + 20 });
+    expect(result).toEqual({ kind: "intent", ...spawnIntent, at: START + 10 + 20 });
     expect(steps.clock.sleeps).toBe(2);
   });
 
@@ -1226,7 +1279,7 @@ describe("sh-review", () => {
 
       expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
       expect(result).not.toHaveProperty("notStarted");
-      expect((result as { busyWaits: string[] }).busyWaits.every((wait) => wait.startsWith("held by the machine stop: ReviewerMachineHold;"))).toBe(true);
+      expect(z.array(z.string()).parse(readPath(result, "busyWaits")).every((wait) => wait.startsWith("held by the machine stop: ReviewerMachineHold;"))).toBe(true);
       expect(dispatch.spawns).toHaveLength(1);
     });
 
@@ -1790,7 +1843,7 @@ describe("reviewPhase", () => {
     dispatch.resume = async (...args) => (refusals-- > 0 ? ((dieInSleep = true), Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide"))) : resume(...args));
     const sleep = async (ms: number) => (dieInSleep ? ((dieInSleep = false), died(), new Promise<never>(() => undefined)) : void (clock += ms));
     const store = boundStore();
-    const deps = { store, now: () => clock, sleep, pollMs: 1_000 } as unknown as ShepherdDeps;
+    const deps = partialFake<ShepherdDeps>({ store, now: () => clock, sleep, pollMs: 1_000 });
     const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
     const routesUnder = (mode: PanelMode | undefined) => reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000, ...(mode && { panel: mode }) });
     const routes = routesUnder(panel);
@@ -1810,7 +1863,7 @@ describe("reviewPhase", () => {
     named.cause = causeOnReplay;
     const report = await crash.takeOver(routesUnder(panelOnReplay)).resume();
     crash.dispose();
-    const dispatched = (Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data as { result: ReviewDispatchResult }).result;
+    const dispatched = readPath(Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data, "result");
     return { verdicts, dispatch, dispatched, resumed: report.resumed[0]! };
   }
 
@@ -1884,7 +1937,7 @@ describe("reviewPhase", () => {
 
     const { verdicts, fake, status } = await review({ dispatch, policy: AUTO });
     const reviewer = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
-    const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
+    const evidence = mergeEvidenceAt(H1, () => verdicts[0])!;
 
     expect(status).toBe("completed");
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
@@ -1895,7 +1948,7 @@ describe("reviewPhase", () => {
 
   it("collects no seat grant when the run has no auto policy, so the evidence gates", async () => {
     const { verdicts } = await review({ dispatch: fakeDispatch() });
-    const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
+    const evidence = mergeEvidenceAt(H1, () => verdicts[0])!;
 
     expect(evidence.merge.seatGrants).toEqual([]);
     expect(evidence.record.decision.outcome).toBe("gate");
@@ -1906,7 +1959,7 @@ describe("reviewPhase", () => {
     const awaited: Scene["awaited"] = (input) => ({ kind: "verdict", verdict: "MERGE", head: input.head, locator: locatorIn(other.sessionId), reviewer: other });
 
     const { verdicts } = await review({ dispatch: fakeDispatch(), awaited, policy: AUTO });
-    const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
+    const evidence = mergeEvidenceAt(H1, () => verdicts[0])!;
 
     expect(evidence.merge).toMatchObject({ resolver: other, dispatchedReviewer: { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" } });
     expect(evidence.record.decision.outcome).toBe("gate");
@@ -2182,7 +2235,7 @@ describe("reviewPhase", () => {
 
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
         expect(stepIds).toContain(`sh-await-verdict:${H1}:corrected`);
-        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("its CI-policy line held more than the exact form") }]);
+        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("a prose line used the CI-policy label") }]);
         expect(verdicts).toMatchObject([decided({ outcome: "allow", rule: { table: "authority" } })]);
       });
 
@@ -2191,9 +2244,18 @@ describe("reviewPhase", () => {
 
         const { verdicts, stepIds } = await review({ dispatch, files: CI_FILES, read: correcting(verdictAt(H1) + PROSE, (head) => verdictAt(head) + PROSE), policy: AUTO });
 
-        expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" }]);
+        expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_prose)" }]);
         expect(dispatch.resumes).toHaveLength(1);
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+      });
+
+      it("quotes a prose CI policy heading above a canonical block in the resume brief (tp#2442)", async () => {
+        const dispatch = fakeDispatch();
+        const heading = "**CI policy:** no workflow permissions changed in this PR.";
+
+        await review({ dispatch, files: CI_FILES, read: correcting(`${heading}\n\n${verdictAt(H1)}CI-policy: unchanged`, (head) => `${verdictAt(head)}CI-policy: unchanged`), policy: AUTO });
+
+        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining(`\n> ${heading}\n`) }]);
       });
 
       it("never corrects a weakened line, which still gates ci-policy-weakened", async () => {
@@ -2255,7 +2317,7 @@ describe("reviewPhase", () => {
       let clock = 10_000;
       const dispatch = fakeDispatch();
       const read = correcting(MALFORMED, (head) => `Unbounded retry.\n\n${verdictAt(head, "FIX_FIRST")}`)!;
-      const deps = { store: boundStore(), now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 } as unknown as ShepherdDeps;
+      const deps = partialFake<ShepherdDeps>({ store: boundStore(), now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 });
       const routes = reviewRoutes(deps, { reader: { read: async (input) => read(input, dispatch, clock) }, dispatch, timeoutMs: 5_000 });
       const verdicts: Verdict[] = [];
       const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1 })) });

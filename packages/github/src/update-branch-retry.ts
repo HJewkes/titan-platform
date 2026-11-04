@@ -30,7 +30,7 @@ function isHeadMismatch(error: unknown): boolean {
   return httpStatusOf(error) === 422 && /expected head sha|head (branch )?(was )?(modified|moved)/i.test(error instanceof Error ? error.message : "");
 }
 
-function httpStatusOf(error: unknown): number | undefined {
-  const status = (error as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : undefined;
+export function httpStatusOf(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("status" in error)) return undefined;
+  return typeof error.status === "number" ? error.status : undefined;
 }

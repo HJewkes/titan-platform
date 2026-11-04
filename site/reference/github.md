@@ -103,6 +103,9 @@ const { subject, body } = formatSquashMessage({
 // body: "## Summary\n\nAdds the widget.\n\n## Changes\n\n- **Add the widget core.** Holds no I/O, so tests need no fakes.\n\nRefs: TP-1, #42"
 ```
 
+CI skip tokens such as `[skip ci]` and a `skip-checks: true` trailer are defanged everywhere in
+the output, code included, so a squash never skips main CI; `defangCiSkip` exposes the rewrite.
+
 Waiting on CI for a pushed sha is `ciWait`, or the `titan-gh ci-wait` bin. The verdict itself
 is pure, so a caller with its own loop can call `ciVerdict` directly:
 
@@ -113,6 +116,11 @@ const rules = await loadRequiredContexts(port, "o/r", "main"); // rulesets, else
 const [runs, statuses] = await Promise.all([port.checkRuns("o/r", sha), port.commitStatuses("o/r", sha)]);
 ciVerdict({ rules, runs, statuses }); // { verdict: "red", reasons: ["lint=failure"] }
 ```
+
+For a repo whose CI posts a commit status instead of running Actions, `statusCheckRuns(statuses,
+sha, contexts)` stands each named context in as a GitHub Actions check run, so `headCheckFindings`
+and every judge built on check runs counts it: `success` passes, `pending` is still running, any
+other state is red, and a context with no status is a queued run that holds the head.
 
 ```
 $ titan-gh ci-wait o/r 1a2b3c4 --timeout 600
@@ -198,6 +206,10 @@ and exit 2.
 - One head can carry several runs per check name, for example a success and a later
   superseded `cancelled` run. `mergeReadiness` wants every run from `checkRuns`, so a
   superseded red run still blocks the merge.
+- `checkRuns` lists runs as GitHub's default `filter=latest` does: a rerun of a job in the
+  same workflow run hides that job's earlier attempts. A reader of attempt order, such as
+  "which run came after my rerun", uses `checkRunAttempts`, which asks for `filter=all`.
+  The fake hides superseded attempts of one workflow run the same way.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws

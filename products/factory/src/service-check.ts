@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { parsePort } from "./cli-options.js";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
@@ -9,6 +10,7 @@ import { MANAGED_PLATFORMS, runServiceVerb, type ServiceIo, type ServicePorts } 
 import { SERVICE_CHECK_HEALTH_TIMEOUT_MS } from "./service-ports.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
+import { readPath } from "./narrow.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. `stale CLI` alone is advisory: it leaves the check ok. */
 type Cause = "unreadable" | "not loaded" | "socket down" | "restarting" | "stale pid" | "crash loop" | "unresponsive" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat" | "stale CLI";
@@ -122,7 +124,7 @@ async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean)
 }
 
 function runningSha(health: Record<string, unknown> | null): string | undefined {
-  const sha = typeof health?.build === "object" && health.build !== null ? (health.build as Record<string, unknown>).sha : undefined;
+  const sha = readPath(health, "build", "sha");
   return typeof sha === "string" ? sha : undefined;
 }
 
@@ -159,11 +161,38 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, jobName(job, ports), health);
   if (!answersFromJob) return unanswered(job, port, probes, healthPid);
+  return withDeployWait(await judgeAnswering(ports, job, health));
+}
+
+async function judgeAnswering(ports: CheckPorts, job: Job, health: Record<string, unknown>): Promise<CheckResult> {
   const running = await judgeRunning(ports, job, health);
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   const configured = judged.ok ? withHubSeat(judged, ports) : judged;
   return configured.ok ? withInstalledCli(configured, ports) : configured;
+}
+
+interface DeployWait {
+  sha: string;
+  why: string;
+  until: string | null;
+}
+
+function deployWaitOf(health: Record<string, unknown> | null): DeployWait | undefined {
+  const pending = health?.deployPending;
+  if (!isObjectLike(pending) || !isObjectLike(pending.waiting)) return undefined;
+  const { sha } = pending;
+  const { why, until } = pending.waiting;
+  if (typeof sha !== "string" || typeof why !== "string") return undefined;
+  return { sha, why, until: typeof until === "string" ? until : null };
+}
+
+/** Whatever the verdict, a deploy the pacer holds says why on the same line, so "main ahead" never reads as stuck (TP-2427). */
+function withDeployWait(result: CheckResult): CheckResult {
+  const wait = deployWaitOf(result.health);
+  if (wait === undefined) return result;
+  const message = `${result.message}; deploy ${wait.sha} waits: ${wait.why}${wait.until === null ? "" : ` until ${wait.until}`}`;
+  return { ...result, message, detail: { ...result.detail, deployWaitSha: wait.sha, deployWaitWhy: wait.why, deployWaitUntil: wait.until } };
 }
 
 function socketDown(job: Job): CheckResult {

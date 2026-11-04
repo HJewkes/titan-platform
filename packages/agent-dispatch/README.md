@@ -59,12 +59,23 @@ await dispatchToAgentChat(
   The timeout is required (`DEFAULT_PARK_TIMEOUT_MS` is 60 s). Shepherd passes
   `{ noFixRoundCheck: true }` for `--no-fix-round-check`, so agent-chat does not ask it back;
   any other caller leaves it out and gets the same argv as before.
-- `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
+- `messageAgent(bin, name, text, timeoutMs, options?)` runs `agent-chat debug send -- <name> <text>`:
   the broker delivers the text to a live agent as one channel message from the human seat,
   which starts a turn in an idle session. A name with no live session rejects with
-  `DispatchError` carrying the broker's reason. The text is in argv.
+  `DispatchError` carrying the broker's reason. The text is in argv. Pass
+  `{ source: "console" }` (or `"watchdog"`, `"shepherd"`) for `--source`, so the message
+  arrives labelled `wake_source=<source>` without human provenance; a caller that leaves it
+  out gets the same argv as before.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
+- `lastFencedJson(text)` parses the body of the last ```` ```json ```` block in an agent's
+  final message, the way an implementer ends its report; undefined when there is none, and
+  a `SyntaxError` when the block is not JSON, so a malformed report never reads as missing.
+- `dispatchToAgentChat` and `buildSpawnArgs` take an optional `role` (`implementer`,
+  `reviewer`, `fix-round-<n>` and the rest of agent-chat's `--role` values) and `task`, sent
+  as `--role` and `--task` so the agent's roster row records who it works for. A task id
+  outside `TASK_ID_PATTERN` throws `DispatchError` before anything runs; a caller that leaves
+  both out gets the same argv as before.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
   cannot reach the broker, the call rejects with `BrokerUnavailableError` (a
   `DispatchError`); every other refusal stays a plain `DispatchError`. Every verb that runs
@@ -97,6 +108,16 @@ await dispatchToAgentChat(
   is `agent <sub>` or the first argv word, so no peer name or briefing is ever reported.
   `outcome` is `ok`, `refused` (non-zero exit), `timeout` or `error`. An observer that
   throws is ignored, and nothing is timed while no observer is registered.
+- `bootPacket({ task, plan?, repo, touchPoints?, readers, options? })` builds an
+  implementer's first-turn packet: git state labelled with its capture time, the task card,
+  the plan slice's excerpt, ±15-line excerpts of up to 8 touch points (by default the
+  backticked paths in the slice) and readiness (install command, scripts, CAPABILITIES
+  rows). Each section has a token cap, and the packet a 6k-token budget; over budget,
+  whole sections drop from the end of `options.priority`. A source that cannot be read
+  leaves its section out and is listed in `omitted`, never thrown. Every read goes through
+  the injected `BootReaders`; `nodeBootReaders({ repoRoot, gitBin, readTask })` reads a
+  local checkout, and the caller maps its task store (for example `@titan-design/pm`) to a
+  `TaskCard`.
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.
@@ -115,6 +136,140 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
   It returns the source layer of every field. A seat cap only tightens.
 - `checkLimits(parsed, { now, knownConfigDirs?, knownProfiles? })` reports expired
   overrides, closed scopes, unknown pools, profiles and config dirs, and clamps.
+- An optional top-level `pace` block (`mode` off, shadow or on; `buffer_points` >= 0;
+  `finish_hours_before_reset` 0-168) configures the pace controller. `resolvePace(parsed)`
+  returns `{ present: false }` or the block filled from `PACE_DEFAULTS` (shadow, 3, 24). A
+  malformed `pace` is dropped into `ignoredSections`, reported as `invalid_pace`, and closes
+  no pool. Version stays 1, but a reader older than this release refuses a block that
+  carries `pace` and closes every pool, so upgrade readers before writing it.
+- `per_run_points` and `per_day_points` are deprecated in favour of the pace controller. They
+  still parse and resolve unchanged, and `checkLimits` reports one `deprecated_key` finding
+  per occurrence, naming its path.
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
+- `limitsReport(plan, ledger, clock)` projects a planner's dry-run result (a structural
+  `LimitsPlanInput`), the claim ledger and a Shepherd read onto the v1 `/limits` report;
+  `limitsReportSchema` validates it. It reads no config, so its counts match the tick's.
+
+## Isolation (`./isolation`)
+
+The isolation strategies a spawn picks from its profile, and the rules that keep a retire
+or a park from removing a tree another agent works in.
+
+- `createIsolationRegistry({ worktree })` gives `getStrategy(name)` and `resolve(names)`.
+  The host builds the worktree strategy, since it reads host budgets; `resolve` layers
+  several names through `composite`, which narrows tools, keeps the last moved cwd and
+  force-releases earlier members when a later allocation throws.
+- `noneStrategy`, `toolsetStrategy` and `fileOwnershipStrategy` are pure. A `check` line
+  carrying `WARNING_PREFIX` is advisory; `refusalsIn` keeps the refusals. `refusalOf(alloc)`
+  says why a `release` returned false.
+- `worktreeTenancy(holder, roster, force)`, `adopterBlocker` and `parkTenancyBlocker` are the
+  CC-141 rule for retire, bulk retire and park: any other identity that is not retired and
+  works at or under the tree blocks. `--force` turns the retire refusal into a warning.
+- `allocatedWorktree(rows, agentId)`, `parkBlocker`, `parkable` and `liveBlocker` are the
+  park rules over journal rows.
+- `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
+  `isReviewerTreeName` classify reviewers by name.
+- `createWorktreeStrategy({ budget, reviewerBudget, treeHolders })` is the worktree strategy
+  over `@titan-design/worktree`. Budgets are readers, called on every spawn; implementer and
+  reviewer trees draw on separate pools (`DEFAULT_REVIEWER_WORKTREE_BUDGET` is 8), and a
+  refusal says who holds them. `reattachWorktree` and `recreateWorktree` bring a removed tree back.
+- `unsavedWork(tree, action)` and `dispatchIgnoredFiles` are the one ignored-file policy for
+  release and park. `inspectForRelease` applies it over the package's commit checks, and it
+  lets go of everything the package does, plus a few more build outputs, an index-only
+  `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `workBlocker(target, git?)` reports uncommitted or unpushed work in a tree, or in its
+  branch when the tree is gone. `heldBranches` lists every branch whose open PR holds an
+  agent, and `reviewedAgentName` maps a reviewer's name to the agent it reviews.
+- `retireFinished(port, scope)` is the bulk `agent retire --finished`: it plans every agent
+  in scope (`spawner`, `prefix` or `stale`; `SCOPE_REQUIRED` refuses an empty scope), then
+  retires the planned ones one at a time through `port.retire`. Every skip rule errs towards
+  keeping. `FinishedRetirePort` supplies the roster, journal, liveness and retire; its
+  `FinishedHolds` supplies the Shepherd and open-PR reads. Each read spawns a process, so
+  the host caches them for a whole plan; the package does not.
+- `retireAtReport(port, agentId)` parks and retires an opted-in spawner's agent after a
+  final `Status:` or `Verdict:` report (`isFinishedReport`). `ReportRetirePort` supplies the
+  opt-in, the last report, the Shepherd hold, `park` and `retire`.
+- `parkImplementerAtExit` parks a non-reviewer's clean, pushed tree when it exits
+  (`ImplementerParkPort` adds the `autoPark.onExit` switch and the burndown `treeHold`).
+  `parkReviewerAtReport` parks a reviewer's tree after a final Verdict found in its last
+  report or final text (`ReviewerParkPort`). Neither retires the agent.
+- `retireMerged(port)` retires exited workers whose reported PR has merged, parking with the
+  PR head as backing. `MergedRetirePort` adds `readPr`, the holds, `park` and `retire`.
+  `passPrReads` caches answers so one PR costs one read per pass, at most
+  `PR_READS_PER_PASS`; `startMergedRetireSweep` runs a pass on an unref'd interval.
+- `prStateReader(deps)` reads a PR's state through `gh`. `PrStateDeps` is the host's budget:
+  `refusal` can turn a read away before it starts, `gh` runs it, and `after` logs every
+  call and starts a cooldown on a rate limit. `prTarget` and `reportPr` parse PR references.
+- `treeFingerprint` and `treeChange` detect a reviewer that wrote to the tree it reviewed;
+  `reviewerDirtyText` words the notice to its spawner.
+
+## Isolation (`./isolation`)
+
+The isolation strategies a spawn picks from its profile, and the rules that keep a retire
+or a park from removing a tree another agent works in.
+
+- `createIsolationRegistry({ worktree })` gives `getStrategy(name)` and `resolve(names)`.
+  The host builds the worktree strategy, since it reads host budgets; `resolve` layers
+  several names through `composite`, which narrows tools, keeps the last moved cwd and
+  force-releases earlier members when a later allocation throws.
+- `noneStrategy`, `toolsetStrategy` and `fileOwnershipStrategy` are pure. A `check` line
+  carrying `WARNING_PREFIX` is advisory; `refusalsIn` keeps the refusals. `refusalOf(alloc)`
+  says why a `release` returned false.
+- `worktreeTenancy(holder, roster, force)`, `adopterBlocker` and `parkTenancyBlocker` are the
+  CC-141 rule for retire, bulk retire and park: any other identity that is not retired and
+  works at or under the tree blocks. `--force` turns the retire refusal into a warning.
+- `allocatedWorktree(rows, agentId)`, `parkBlocker`, `parkable` and `liveBlocker` are the
+  park rules over journal rows.
+- `canonicalPath` and `isAtOrUnder` compare paths through symlinks; `isReviewerSpawn` and
+  `isReviewerTreeName` classify reviewers by name.
+- `createWorktreeStrategy({ budget, reviewerBudget, treeHolders })` is the worktree strategy
+  over `@titan-design/worktree`. Budgets are readers, called on every spawn; implementer and
+  reviewer trees draw on separate pools (`DEFAULT_REVIEWER_WORKTREE_BUDGET` is 8), and a
+  refusal says who holds them. `reattachWorktree` and `recreateWorktree` bring a removed tree back.
+- `unsavedWork(tree, action)` and `dispatchIgnoredFiles` are the one ignored-file policy for
+  release and park. `inspectForRelease` applies it over the package's commit checks, and it
+  lets go of everything the package does, plus a few more build outputs, an index-only
+  `.codewatch/graph.db` and paths a committed `.agent-chat/generated` lists. Any failed read refuses.
+- `parkWorktree(target, recheck, listCwds?, mergedPr?)` removes a tree and keeps its branch.
+  `lsofCwds` finds a process still in the tree; `readMergedPrs` backs a squash merge whose head
+  branch origin deleted. It runs `gh` under `minimalEnv`, so a host whose `gh` needs a token or
+  a shim builds its own with `mergedPrReader(gh)`.
+- `sweepWorktrees(roster, { store })` classifies every held tree, and `reclaim(entry, { store, strategy })`
+  re-checks the work before removing one. `HeldAllocationStore` is the host's record of allocations.
+- `rowState`, `repoHeadroom` and `repoSummary` turn a sweep into the state words a seat counts.
+
+## Routing (`./routing`, `./routing/node`)
+
+The workflow table (`shape-v1`) that maps a task's facts to a prior and an implementer
+profile, shipped as `workflow/shape-v1.yml`.
+
+- `parseWorkflowTable(text)` gives the table or one problem line per lint failure; every
+  value is a closed enum.
+- `classifyTask(table, facts)` gives the first matching prior and its reason;
+  `profileFor(table, prior, estimate)` gives the profile its class row dispatches.
+- A rule with `needsOwns: true` cannot match a task with no owns, so missing facts never
+  route down. The shipped table sets it on `small` and `standard`.
+- `priorRoute(router, facts, today, label)` keeps or changes a profile in `shadow` or `on`
+  mode; `planFacts(planText, slice?)` reads owns and points from a `burndown-slices` block.
+- `routeSpawn(input)` is the spawn-time decision. It applies to `auto` and the implementer
+  family (`implementer`, `implementer-lite`, `bd-implementer`, `bd-implementer-lite`). The
+  table picks the tier; the caller's family keeps its prefix. It never refuses a spawn: a
+  missing table, an override, a keep-role (default `fix-round`) or a pick outside the two
+  tiers keeps the requested profile and says why in `source`.
+- `routeMeta(decision)` writes the decision as the `ROUTE_META_KEYS` fields of a spawn row.
+  `summarizeRoutes(rows)` reads such rows back into agreement, would-lite, lite-without-owns,
+  fact coverage and candidate counts.
+- `./routing/node` has `DEFAULT_WORKFLOW_TABLE`, `readWorkflowTable(root)` and
+  `readPriorRouter(mode, root)`.
+- `readRouteTable(file)` from `./routing/node` gives the table with its
+  `shape-v1@<sha8>` id. It re-reads the file only when the file's mtime or size changes, so a
+  spawn path can call it on every spawn.
+- `readSpawnFacts(root, taskId, slice?, reqOwns?)` from `./routing/node` reads a spawn's
+  facts from an active-work root. Estimate, done_when and tags come from
+  `<initiative>/tasks/<taskId>.yml`; a top-level `kind:` becomes a `kind:<x>` tag. Owns come
+  from `<initiative>/sources/<taskId>-plan.md`: the named slice's owns and points, else the
+  union of owns, else `reqOwns`. The returned `note` says which facts were present and where
+  the owns came from. An id found in two initiatives reads the first by name and is marked
+  `ambiguous`.

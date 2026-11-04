@@ -9,19 +9,27 @@ and only their spoken line.
   own sentence, or say how many there are and let the screen name them.
 - Keep every cue word exactly, in the same order, and say each one as often as the original does.
 - Keep every `[word](...)` span exactly as written, and every name and term the beat lists.
+- Say no pull request, task or script id: not "PR 1234", "TP-1234" or "F7", in digits or in words. Name the change by
+  what it did ("the guard fix"); the screen shows the id. A beat whose directive lists ids: cut each one that way.
 - Keep each number you leave on the spoken line exactly as the original writes it.
 - When a number leaves the spoken line, do not put a vague word in its place; keep the number as the original says
-  it, or cut the clause and let the label carry it.
+  it, or cut the clause that holds it.
+- Keep every clause as concrete as the original: name the thing, the file, the person or the example it names. Never
+  trade a named thing for "things", "stuff", "various parts" or "a number of" anything.
+- Do not end a beat on a new short summing-up line, a moral or a button; end where the point is made.
 - Do not add facts, "imagine", recaps, colons or semicolons. Do not drop a fact: whatever the original says stays
-  on the spoken line or goes to the labels.
-- When a number leaves the spoken line, put it in `labels_added` with the noun it counts, as the original words it:
-  "12 parcels held", never "12" alone. When a named list leaves the spoken line, put each name in `labels_added`.
+  on the spoken line or goes to the labels, except a number the directive lets you cut.
+- Never put a number in `labels_added`. The screen may show only numbers the line says, so a number that leaves the
+  spoken line leaves the beat. A number the screen already shows stays on the spoken line. When a named list leaves
+  the spoken line, put each name in `labels_added`.
 - A list of three that leaves the spoken line: put every item in `labels_added`, one each, keep at most a single item in
   the line, and you may say how many there are. Keep what the sentence said about the list; "there are three of them"
   alone says nothing. Example: "We skip the oven timer, glaze notes and crate labels." becomes spoken "We skip three
   things the screen lists." with labels_added ["oven timer", "glaze notes", "crate labels"].
+- A beat whose directive lists stock phrases: these are words our scripts say far more often than people do. Say
+  what each one means in plain words of your own, and do not swap it for another stock phrase.
 - A beat whose directive starts "Your last version was not used" was rewritten before and refused. The line says
   why; fix that in this version, and do not hand back the version it describes.
 
 Return JSON: `{"beats":[{"id":"...","spoken":"...","labels_added":["..."]}]}`, one entry for every beat listed,
-with `labels_added` empty when nothing moved to the screen.
+with `labels_added` empty when no list moved to the screen.

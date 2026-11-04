@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { defaultGraphPath, openGraphReadOnly, SCHEMA_VERSION } from '../session-index/graph.js';
 import { staleEpisodeSessions } from '../session-index/episodes.js';
+import { workspaceBackfillStatus } from '../workspace-index/backfill.js';
 import { probeHealth, resolveDaemonPort } from '../server/lifecycle.js';
 import { transcriptRootHost } from '../sessions/transcript-roots.js';
 
@@ -59,6 +60,13 @@ const ResultSchema = z.object({
     orphanRows: z.number(),
     needsFullRebuild: z.boolean(),
   }),
+  /** The move of workspace spans into their own table (TP-4680); see `workspaceBackfillStatus`. */
+  workspaceBackfill: z.object({
+    state: z.enum(['pending', 'in_progress', 'complete']),
+    legacySpans: z.number(),
+    workspaceSpans: z.number(),
+    pendingFiles: z.number(),
+  }),
   daemon: z
     .object({
       indexing: z.boolean(),
@@ -83,7 +91,7 @@ type Result = z.infer<typeof ResultSchema>;
 const ORPHAN_WARN_RATIO = 0.2;
 
 const scalar = (db: Database.Database, sql: string): number =>
-  (db.prepare<[], { n: number }>(sql).get() as { n: number } | undefined)?.n ?? 0;
+  db.prepare<[], { n: number }>(sql).get()?.n ?? 0;
 
 function sizeOf(dbPath: string): number {
   try {
@@ -101,7 +109,11 @@ function ftsState(db: Database.Database): Result['fts'] {
        LEFT JOIN search_span s ON s.span_id = f.rowid
       WHERE s.span_id IS NULL`,
   );
-  return { rows, orphanRows, needsFullRebuild: rows > 0 && orphanRows / rows > ORPHAN_WARN_RATIO };
+  return {
+    rows,
+    orphanRows,
+    needsFullRebuild: rows > 0 && orphanRows / rows > ORPHAN_WARN_RATIO,
+  };
 }
 
 const UNKNOWN_ACCOUNT = 'unknown';
@@ -162,12 +174,20 @@ async function emptyStatus(dbPath: string): Promise<Result> {
     dbPath,
     schemaVersion: SCHEMA_VERSION,
     sizeBytes: 0,
-    counts: { transcripts: 0, sessions: 0, facts: 0, turns: 0, edges: 0, spans: 0 },
+    counts: {
+      transcripts: 0,
+      sessions: 0,
+      facts: 0,
+      turns: 0,
+      edges: 0,
+      spans: 0,
+    },
     transcripts: { ok: 0, quarantined: 0, missing: 0, byAccount: {} },
     facetBacklog: 0,
     episodeBacklog: 0,
     watermark: { lastIndexedAt: null, behindBytes: 0 },
     fts: { rows: 0, orphanRows: 0, needsFullRebuild: false },
+    workspaceBackfill: { state: 'complete', legacySpans: 0, workspaceSpans: 0, pendingFiles: 0 },
     daemon: await daemonState(),
   };
 }
@@ -185,12 +205,12 @@ export default defineCommand<Args, Result>({
       const statusCount = (status: string): number =>
         (
           db
-            .prepare<
-              [string],
-              { n: number }
-            >('SELECT COUNT(*) AS n FROM transcript WHERE status = ?')
+            .prepare<[string], { n: number }>(
+              'SELECT COUNT(*) AS n FROM transcript WHERE status = ?',
+            )
             .get(status) as { n: number }
         ).n;
+      const workspaceBackfill = workspaceBackfillStatus(db);
       return {
         dbPath,
         schemaVersion: SCHEMA_VERSION,
@@ -201,7 +221,8 @@ export default defineCommand<Args, Result>({
           facts: scalar(db, 'SELECT COUNT(*) AS n FROM fact'),
           turns: scalar(db, 'SELECT COUNT(*) AS n FROM turn'),
           edges: scalar(db, 'SELECT COUNT(*) AS n FROM edge'),
-          spans: scalar(db, 'SELECT COUNT(*) AS n FROM search_span'),
+          spans:
+            scalar(db, 'SELECT COUNT(*) AS n FROM search_span') + workspaceBackfill.workspaceSpans,
         },
         transcripts: {
           ok: statusCount('ok'),
@@ -214,10 +235,9 @@ export default defineCommand<Args, Result>({
         watermark: {
           lastIndexedAt:
             db
-              .prepare<
-                [],
-                { at: string | null }
-              >('SELECT MAX(last_indexed_at) AS at FROM transcript')
+              .prepare<[], { at: string | null }>(
+                'SELECT MAX(last_indexed_at) AS at FROM transcript',
+              )
               .get()?.at ?? null,
           behindBytes: scalar(
             db,
@@ -226,6 +246,7 @@ export default defineCommand<Args, Result>({
           ),
         },
         fts: ftsState(db),
+        workspaceBackfill,
         daemon: await daemonState(),
       };
     } finally {

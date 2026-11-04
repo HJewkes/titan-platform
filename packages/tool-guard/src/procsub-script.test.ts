@@ -8,6 +8,7 @@ import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import { extractCommands } from "./shell/commands.js";
+import { shellOracle } from "./test-support/shell-rows.js";
 
 const PUSH = "git push origin HEAD:main";
 const PUSHED = "bash.merge.git-push-protected";
@@ -384,37 +385,37 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-function pushes(shell: string, line: string): boolean {
-  const log = join(scratch, `log-${Math.random().toString(36).slice(2)}`);
-  const flags = shell === "zsh" ? ["-f", "-c", line] : ["-c", line];
-  // `D` is the `--` a run-time first word of `source` may expand to.
-  spawnSync(shell, flags, { cwd: scratch, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GIT_LOG: log, D: "--" }, timeout: 10_000 });
-  try {
-    return readFileSync(log, "utf8").includes("push");
-  } catch {
-    return false;
-  }
-}
+/** Whether `line` under `shell` ran the fake git's push; a describe adds its rows and runs them through one driver (TP-4453). */
+const pushesOracle = () =>
+  shellOracle("tool-guard-procsub-rows-", (_dir, shell: string, line: string) => {
+    const log = join(scratch, `log-${Math.random().toString(36).slice(2)}`);
+    const flags = shell === "zsh" ? ["-f", "-c", line] : ["-c", line];
+    return {
+      // `D` is the `--` a run-time first word of `source` may expand to.
+      run: { program: shell, args: flags, cwd: scratch, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GIT_LOG: log, D: "--" }, input: "" },
+      read: () => {
+        try {
+          return readFileSync(log, "utf8").includes("push");
+        } catch {
+          return false;
+        }
+      },
+    };
+  });
 
 const haveShell = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
 describe.each(["bash", "zsh"])("under real %s", (shell) => {
   const runs = haveShell(shell);
-
-  it.skipIf(!runs).each([
+  const pushLines = [
     `bash <(echo '${PUSH}')`,
     `zsh <(echo '${PUSH}')`,
     "bash <(cat ./x.sh)",
     `source <(echo ${PUSH})`,
     `. <(echo ${PUSH})`,
     `bash <(echo hi; echo ${PUSH})`,
-  ])("a push through %s does push", (line) => {
-    if (line.startsWith("zsh") && !haveShell("zsh")) return;
-
-    expect(pushes(shell, line)).toBe(true);
-  });
-
-  it.skipIf(!runs).each([
+  ];
+  const quietLines = [
     "bash <(echo 'echo hi')",
     `bash -s <(echo ${PUSH})`,
     `bash -c 'echo hi' <(echo ${PUSH})`,
@@ -423,15 +424,27 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
     ...BARE_PROGRAM_LINES,
     ...OVER_READ_LINES,
     ...HARMLESS_OPTION_LINES,
-  ])("%s does not push", (line) => {
-    expect(pushes(shell, line)).toBe(false);
+  ];
+  const pushes = pushesOracle();
+  if (runs) for (const line of [...pushLines.filter((l) => !l.startsWith("zsh") || haveShell("zsh")), ...quietLines]) pushes.add(shell, line);
+  pushes.beforeAll();
+
+  it.skipIf(!runs).each(pushLines)("a push through %s does push", (line) => {
+    if (line.startsWith("zsh") && !haveShell("zsh")) return;
+
+    expect(pushes.get(shell, line)).toBe(true);
+  });
+
+  it.skipIf(!runs).each(quietLines)("%s does not push", (line) => {
+    expect(pushes.get(shell, line)).toBe(false);
   });
 });
 
-const pushesSomewhere = (line: string): boolean => ["bash", "zsh"].some((shell) => haveShell(shell) && pushes(shell, line));
-
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([
+  const pushes = pushesOracle();
+  const shells = ["bash", "zsh"].filter(haveShell);
+  const pushesSomewhere = (line: string): boolean => shells.some((shell) => pushes.get(shell, line));
+  const lines = [
     ...STDIN_LINES,
     ...OPERAND_LINES,
     ...RELAY_LINES,
@@ -447,13 +460,18 @@ describe("the shell's own stdin and operands under a real shell", () => {
     ...SCRIPT_FILE_POSITIONAL_LINES,
     ...RCFILE_LINES,
     ...DYNAMIC_FIRST_SOURCE_LINES,
-  ])("%s pushes", (line) => {
+  ];
+  // bash before 5.3 refuses `-p` as an invalid option and sources nothing.
+  const sourcesWithPath = haveShell("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
+  for (const line of lines) for (const shell of shells) pushes.add(shell, line);
+  if (sourcesWithPath) for (const line of SOURCE_PATH_LINES) pushes.add("bash", line);
+  pushes.beforeAll();
+
+  it.each(lines)("%s pushes", (line) => {
     expect(pushesSomewhere(line)).toBe(true);
   });
 
-  // bash before 5.3 refuses `-p` as an invalid option and sources nothing.
-  const sourcesWithPath = haveShell("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
   it.skipIf(!sourcesWithPath).each(SOURCE_PATH_LINES)("%s pushes under bash 5.3", (line) => {
-    expect(pushes("bash", line)).toBe(true);
+    expect(pushes.get("bash", line)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { holdClassOf } from "./g10-release.js";
 import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
+import { LAN_GATES_CLASS, gateListRefusal } from "./lan-gates.js";
 
 /** The owner assigned the PR's review to a person: no Shepherd MERGE releases it, only that person's release (TP-3083). */
 const OWNER_REVIEW_CLASS = "owner-review";
@@ -10,7 +11,7 @@ const OWNER_REVIEW_CLASS = "owner-review";
  * holding under it are refused. The check runs at the `shepherd.hold` command only, so Shepherd's own holds never pass through it;
  * the G10 holds Shepherd places at registration (`registration-hold.ts`) still use the g10 classes, so its release reads them.
  */
-export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", OWNER_REVIEW_CLASS] as const;
+export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", OWNER_REVIEW_CLASS, LAN_GATES_CLASS] as const;
 type HoldClass = (typeof HOLD_CLASSES)[number];
 
 export { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
@@ -19,7 +20,7 @@ export { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
 export const ReleasableClassSchema = z.enum(HOLD_CLASSES).exclude([OWNER_HOLD_CLASS]);
 
 /** Gate classes, not factory defects: they cite no task. Every other class names the open task for its defect. */
-export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary", OWNER_HOLD_CLASS, OWNER_REVIEW_CLASS]);
+export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary", OWNER_HOLD_CLASS, OWNER_REVIEW_CLASS, LAN_GATES_CLASS]);
 
 /** Syntax only: whether the task is open is not checked here. */
 const TASK_ID = /\b[A-Z]{2,5}-\d+\b/;
@@ -38,6 +39,8 @@ export function checkHoldReason(reason: string): HoldReasonCheck {
   const holdClass = holdClassOf(reason);
   if (!isHoldClass(holdClass)) return { ok: false, refusal: `hold refused, nothing was held: "${holdClass ?? reason}" is not a hold class; ${SHAPE}` };
   if (!TASKLESS_CLASSES.has(holdClass) && !TASK_ID.test(reason)) return { ok: false, refusal: `hold refused, nothing was held: a ${holdClass} hold names no task ID; ${SHAPE}` };
+  const gateRefusal = holdClass === LAN_GATES_CLASS ? gateListRefusal(reason) : undefined;
+  if (gateRefusal !== undefined) return { ok: false, refusal: gateRefusal };
   return { ok: true, holdClass };
 }
 

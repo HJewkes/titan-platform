@@ -7,6 +7,8 @@ export interface StageRequest {
   stage: DoctrineStage;
   type?: string;
   audience?: string;
+  /** The narrative structure the video picked; only T rules naming it reach that video. */
+  structure?: string;
   /** The beats the stage works on; only B rules for these reach `prompt` or `packet`. */
   beats?: string[];
   /** The plan stage's routing source; defaults to the pinned router in this package's doctrine dir. */
@@ -43,8 +45,10 @@ const enforcedBy = (rule: DoctrineRule, ...kinds: DoctrineEnforcement[]): boolea
 
 const isUniversal = ({ scope }: DoctrineRule): boolean => scope.layer === "U" || scope.layer === "U*";
 
-const matchesTarget = ({ scope }: DoctrineRule, { type, audience }: StageRequest): boolean =>
-  scope.layer === "T" && ((type !== undefined && (scope.types ?? []).includes(type)) || (audience !== undefined && (scope.audiences ?? []).includes(audience)));
+const names = (list: string[] | undefined, name: string | undefined): boolean => name !== undefined && (list ?? []).includes(name);
+
+const matchesTarget = ({ scope }: DoctrineRule, { type, audience, structure }: StageRequest): boolean =>
+  scope.layer === "T" && (names(scope.types, type) || names(scope.audiences, audience) || names(scope.structures, structure));
 
 const matchesBeats = ({ scope }: DoctrineRule, { beats = [] }: StageRequest): boolean =>
   scope.layer === "B" && (scope.beats ?? []).some((beat) => beats.includes(beat));

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dynamic command word read as gh counts alias slots",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  if (isNameReading(cmd)) return hidden;\n",
+      "replace": "",
+      "kills": [
+        "a dynamic command word read as gh passes \"$EDITOR\" file, whose literal word gh would read as an alias",
+        "a dynamic command word read as gh passes \"$PM\" start 3000, whose literal words gh would read as an alias"
+      ]
+    }
+  ]
+}

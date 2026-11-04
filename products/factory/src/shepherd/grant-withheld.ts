@@ -20,6 +20,8 @@ export interface GrantStanding {
   reason?: string;
   /** The head whose NO_REPRO the owner waived; it withholds the grant, so the MERGE goes only to the owner gate. */
   waivedAt?: string;
+  /** The base branch the head's fix-proof line says it judged; absent for a line from a judge that predates the field. */
+  proofBase?: string;
 }
 
 const WITHHELD_PREFIX = "merge-on-green-approve withheld: ";
@@ -37,14 +39,14 @@ export function grantWithheldOf(merge: string, standing: GrantStanding = {}): Gr
 
 /** The head's unverified fix-proof standing and its read reason, as the merge evidence records it; undefined when the proof stands. */
 export function proofUnverifiedOf(standing: GrantStanding): string | undefined {
-  return standing.unverified === undefined ? undefined : `${standing.unverified}${standing.reason ? ` (${standing.reason})` : ""}`;
+  return standing.unverified === undefined ? undefined : `${standing.unverified}${standing.reason ? ` (${inert(standing.reason)})` : ""}`;
 }
 
 /**
  * Free text the fix-proof read recorded, made inert inside a gate reason: resync and why-asked split a reason on "; " and read
  * `MRG-AU-<row> unmet:` parts, so a read reason holding either would forge an unmet row.
  */
-function inert(text: string): string {
+export function inert(text: string): string {
   return text.replace(/[;\r\n]+/g, ",").replace(/MRG-AU-/gi, "MRG-AU ");
 }
 

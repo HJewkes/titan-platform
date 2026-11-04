@@ -17,6 +17,7 @@ import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
+import { errnoCode } from "./narrow.js";
 import { predatesQualifiedSymbols, qualifiedSymbolAliases } from "./symbol-aliases.js";
 import type { GraphMetric, IdAlias } from "./types.js";
 
@@ -27,7 +28,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  */
 export const INDEX_VERSION = "0.32.0";
 
-/** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
+/** The languages walked and extracted. `typescript` covers `.ts`, `.tsx`, `.mjs` and `.cjs`. */
 const LANGUAGES = ["typescript", "python"] as const;
 
 export interface IndexOptions {
@@ -80,7 +81,7 @@ function canonicalizePath(p: string): string {
   try {
     return realpathSync(p);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return p;
+    if (errnoCode(err) === "ENOENT") return p;
     throw err;
   }
 }
@@ -124,14 +125,15 @@ function needsRequalifyAliases(store: CodeGraphStore): boolean {
  * with a whole-repo one. Inside git, roots are canonicalized to match
  * `git rev-parse --show-toplevel`, which resolves symlinks (`/var` →
  * `/private/var` on macOS); outside git they are left as the caller wrote them.
- * A revision source roots ids at its own repo root instead.
+ * A revision source roots ids at its own repo root instead. `inGit` lets later
+ * steps skip git calls that would only fail again outside a checkout.
  */
-function resolveRoots(paths: readonly string[], source: IndexSource): { rootDirs: string[]; idRoot: string } {
+function resolveRoots(paths: readonly string[], source: IndexSource): { rootDirs: string[]; idRoot: string; inGit: boolean } {
   const raw = normalizePaths(paths);
-  if (source.revision) return rootsAtRevision(raw, source.revision);
+  if (source.revision) return { ...rootsAtRevision(raw, source.revision), inGit: true };
   const gitToplevel = detectGitToplevel(raw[0]!);
   const rootDirs = gitToplevel !== null ? raw.map(canonicalizePath) : raw;
-  return { rootDirs, idRoot: gitToplevel ?? rootDirs[0]! };
+  return { rootDirs, idRoot: gitToplevel ?? rootDirs[0]!, inGit: gitToplevel !== null };
 }
 
 /** A revision's history ends at its commit, so its windows end at the commit's time, not the wall clock. */
@@ -192,10 +194,11 @@ async function streamWithReuse(input: StreamInput): Promise<ReuseStream> {
  */
 export async function indexPaths(store: CodeGraphStore, options: IndexOptions): Promise<IndexResult> {
   const source = options.source ?? workingTreeSource();
-  const { rootDirs, idRoot } = resolveRoots(options.paths, source);
+  const { rootDirs, idRoot, inGit } = resolveRoots(options.paths, source);
   const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
-  const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
+  const current = new Map(readFiles.map((rf) => [fileId(idRoot, rf.filePath), rf.hash]));
+  const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION, current) : null;
   const requalify = needsRequalifyAliases(store);
   const { streamed, toParse, reusedFileIds } = await streamWithReuse({
     readFiles,
@@ -221,14 +224,14 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
             ? reusedFileIds.flatMap((id) => reuse.sourceMetricsByFile.get(id) ?? [])
             : [],
           idRoot,
-          history: options.computeChurn === false ? undefined : historyOptions(options, source),
+          history: options.computeChurn === false || !inGit ? undefined : historyOptions(options, source),
           entryPoints: loadEntryPoints([idRoot, ...rootDirs], source),
         });
 
   // A revision's indexed dirs may be gone from disk, so its git calls run at the repo root.
   const rootDir = source.revision ? idRoot : rootDirs[0]!;
   const ref = options.ref ?? "wd";
-  const commitHash = options.commitHash ?? source.revision?.commit ?? detectGitHead(rootDir) ?? undefined;
+  const commitHash = options.commitHash ?? source.revision?.commit ?? (inGit ? detectGitHead(rootDir) ?? undefined : undefined);
   const bridge = computeAliasBridge(store, { ...options, rootDir, idRoot, ref, commitHash, nodes: accumulator.nodes });
   const aliases = [
     ...bridge.aliases,

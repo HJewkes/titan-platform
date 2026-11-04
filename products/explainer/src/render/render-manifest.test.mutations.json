@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the host block accepts extra keys",
+      "file": "products/explainer/src/render/render-manifest.ts",
+      "find": "export const RenderHostSchema = z.strictObject({",
+      "replace": "export const RenderHostSchema = z.looseObject({",
+      "kills": [
+        "render manifest refuses a hostname added to the host block"
+      ]
+    },
+    {
+      "name": "a passed gate need not carry its qa record",
+      "file": "products/explainer/src/render/render-manifest.ts",
+      "find": "(m.qa !== undefined) === (m.qaGate === \"passed\")",
+      "replace": "m.qa === undefined || m.qaGate === \"passed\"",
+      "kills": [
+        "render manifest refuses a manifest that claims a QA gate passed with no qa record"
+      ]
+    }
+  ]
+}

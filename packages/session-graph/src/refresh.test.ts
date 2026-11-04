@@ -50,16 +50,16 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const count = (table: string) => (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
+const count = (table: string) => graph.db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM "${table}"`).get()?.n;
 // Wall-clock audit columns differ between passes by construction; everything else must match.
-const stripClock = (row: unknown) => {
-  const rest = { ...(row as Record<string, unknown>) };
+const stripClock = (row: Record<string, unknown>) => {
+  const rest = { ...row };
   delete rest.t_indexed;
   delete rest.t_created;
   return rest;
 };
 const dumpOf = (tables: readonly string[]) =>
-  tables.map((t) => `${t}:${JSON.stringify(graph.db.prepare(`SELECT * FROM "${t}" ORDER BY 1`).all().map(stripClock))}`);
+  tables.map((t) => `${t}:${JSON.stringify(graph.db.prepare<[], Record<string, unknown>>(`SELECT * FROM "${t}" ORDER BY 1`).all().map(stripClock))}`);
 const dump = () => dumpOf(["fact", "session", "session_model_usage", "turn", "permission_phase", "pr", "file", "edge"]);
 /** Only what `purgeTranscript` owns; `pr` and `file` are shared across transcripts and survive a rewind. */
 const dumpOwned = () => dumpOf(["fact", "session", "session_model_usage", "turn", "permission_phase", "edge"]);
@@ -200,6 +200,26 @@ describe("task resolver (TP-22)", () => {
     });
     expect(outcome.tasks).toEqual({ requested: 1, applied: 1, failed: false });
     expect(taskRows()).toEqual([{ task_ref: "task:AW-23", task_id: "AW-23", initiative: null, title: "Ship the seam", status: "done" }]);
+  });
+});
+
+describe("refreshCorpus emit policy (TP-880)", () => {
+  const toolSpanCount = () =>
+    graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM search_span WHERE field IN ('tool_input', 'tool_result')").get()?.n;
+
+  it("stores no tool span and no context_block row under the default options", async () => {
+    await refreshCorpus(graph, [transcript]);
+    expect(toolSpanCount()).toBe(0);
+    expect(count("context_block")).toBe(0);
+    expect(count("search_span")).toBeGreaterThan(0);
+  });
+
+  it("stores what extractTranscript emits when both options are on", async () => {
+    const extracted = await extractTranscript(transcript.absolutePath);
+    await refreshCorpus(graph, [transcript], { indexToolSpans: true, contextBlocks: true });
+    expect(toolSpanCount()).toBe(extracted.spans.filter((s) => s.field === "tool_input" || s.field === "tool_result").length);
+    expect(toolSpanCount()).toBeGreaterThan(0);
+    expect(count("context_block")).toBe(extracted.contextBlocks.length);
   });
 });
 
@@ -352,7 +372,7 @@ describe("chat review verdicts", () => {
     prompt("p1", "2026-07-01T00:00:02Z", "review it"),
     assistant("2026-07-01T00:00:04Z", [chatSend(id, "acme/widgets#88 and widgets #89. Verdict: CHANGES REQUESTED")]),
   ];
-  const reviews = () => graph.db.prepare("SELECT * FROM pr_review ORDER BY source_key").all();
+  const reviews = () => graph.db.prepare<[], { source_key: string }>("SELECT * FROM pr_review ORDER BY source_key").all();
 
   it("stores one row per parsed verdict with the parsed fields only", async () => {
     writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
@@ -390,8 +410,8 @@ describe("chat review verdicts", () => {
   });
 
   const withoutOrdinals = (delta: TranscriptDelta): TranscriptDelta =>
-    ({ ...delta, reviewVerdicts: delta.reviewVerdicts.map(({ ordinal: _, ...rest }) => rest as TranscriptDelta["reviewVerdicts"][number]) });
-  const keys = () => (reviews() as { source_key: string }[]).map((r) => r.source_key);
+    ({ ...delta, reviewVerdicts: delta.reviewVerdicts.map((verdict) => { const copy = { ...verdict }; Reflect.deleteProperty(copy, "ordinal"); return copy; }) });
+  const keys = () => reviews().map((r) => r.source_key);
 
   it("keeps every verdict of a tool use when the events carry no ordinal", async () => {
     writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
@@ -442,6 +462,6 @@ describe("chat review verdicts", () => {
 
     expect(await refreshCorpus(graph, [transcript])).toMatchObject({ rewound: 1 });
 
-    expect((reviews() as { source_key: string }[]).map((r) => r.source_key)).toEqual(["chat:tv2:0", "chat:tv2:1"]);
+    expect(reviews().map((r) => r.source_key)).toEqual(["chat:tv2:0", "chat:tv2:1"]);
   });
 });

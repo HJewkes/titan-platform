@@ -10,7 +10,6 @@ import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { TWIN_NOW } from "../server/twin/clock.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
-import { RUN_POLL_MS } from "./pages/autoresearch-live.js";
 
 let twin: Snapshot;
 
@@ -28,7 +27,7 @@ const RUN_ROUTE = "#/autoresearch/ar-7c1e";
 const IMPLEMENTING = "i-77aa2b4c6d8e";
 const EVALUATING = "i-c22d9e1f3a5b";
 
-/** Counts each read the page makes, so a test can see a poll refetch the run. */
+/** Counts each read the page makes, so a test can see whether the page refetches the run on its own. */
 function countingSource(snapshot: Snapshot): DataSource & { reads: string[] } {
   const inner = staticSource({ snapshot });
   const reads: string[] = [];
@@ -157,7 +156,7 @@ describe("the autoresearch lanes board", () => {
   });
 });
 
-describe("the lanes board's clock and poll", () => {
+describe("the lanes board's clock", () => {
   it("runs a restarted stage's timer from firstStartedAt and ticks it", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(TWIN_NOW);
@@ -170,24 +169,13 @@ describe("the lanes board's clock and poll", () => {
     expect(within(stages).getByText("L2 7m…")).toBeTruthy();
   });
 
-  it("refetches the run every 15 s while it runs", async () => {
+  it("never refetches a running run on a timer, leaving that to the factory's relayed frames", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const source = renderConsole(RUN_ROUTE);
     await screen.findByTestId("autoresearch-lanes");
     const before = source.reads.filter((name) => name === "autoresearch.run").length;
 
-    act(() => vi.advanceTimersByTime(RUN_POLL_MS));
-
-    await waitFor(() => expect(source.reads.filter((name) => name === "autoresearch.run").length).toBe(before + 1));
-  });
-
-  it("stops polling once the run is no longer running", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const source = renderConsole(RUN_ROUTE, withRun({ ...AR_RUN_FIXTURE, status: "completed", completedAt: AR_RUN_FIXTURE.startedAt }));
-    await screen.findByTestId("autoresearch-lanes");
-    const before = source.reads.filter((name) => name === "autoresearch.run").length;
-
-    act(() => vi.advanceTimersByTime(RUN_POLL_MS * 3));
+    act(() => vi.advanceTimersByTime(60_000));
 
     expect(source.reads.filter((name) => name === "autoresearch.run").length).toBe(before);
   });

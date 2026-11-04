@@ -230,7 +230,9 @@ describe("a live story frame", () => {
 
     expect(screen.getByText("390px · Live story unavailable: showing the captured frame")).toBeTruthy();
     expect(document.querySelectorAll("iframe")).toHaveLength(4);
+    expect(screen.queryByTitle("Card card-0, live at 390px")).toBeNull();
     expect(frameOf("card-4")).toBeTruthy();
+    expect(screen.getAllByText("390px live frame paused: too many live frames on screen")).toHaveLength(4);
   });
 
   it("counts the enlarged live view toward the cap, pausing the last fitted frame while it is open", async () => {

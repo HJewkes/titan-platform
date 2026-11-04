@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a paraphrased quote is accepted",
+      "file": "products/explainer/src/presets/article/gather-article.ts",
+      "find": "if (!isVerbatim(claim.quote, text)) return \"the quote is not verbatim in the article\";",
+      "replace": "",
+      "kills": [
+        "gatherArticle facts rejects a paraphrased quote, an over-long quote and a quote that does not state the number, each with its reason"
+      ]
+    },
+    {
+      "name": "a long quote is accepted",
+      "file": "products/explainer/src/presets/article/gather-article.ts",
+      "find": "if (!isShortQuote(claim.quote, maxWords)) return",
+      "replace": "if (false) return",
+      "kills": [
+        "gatherArticle facts rejects a paraphrased quote, an over-long quote and a quote that does not state the number, each with its reason",
+        "claim checks honours a tighter quote limit"
+      ]
+    },
+    {
+      "name": "a number claim need not state its number",
+      "file": "products/explainer/src/presets/article/gather-article.ts",
+      "find": "if (claim.kind === \"number\" && !quoteStates(claim.quote, claim.value!)) return",
+      "replace": "if (false) return",
+      "kills": [
+        "gatherArticle facts rejects a paraphrased quote, an over-long quote and a quote that does not state the number, each with its reason"
+      ]
+    },
+    {
+      "name": "a duplicate claim id is accepted",
+      "file": "products/explainer/src/presets/article/gather-article.ts",
+      "find": "const duplicate = accepted.some((kept) => kept.id === parsed.data.id);",
+      "replace": "const duplicate = false;",
+      "kills": [
+        "claim checks rejects a malformed claim and a second claim under an accepted id"
+      ]
+    },
+    {
+      "name": "facts are not sorted",
+      "file": "products/explainer/src/presets/article/gather-article.ts",
+      "find": "facts: facts.sort((a, b) => a.id.localeCompare(b.id))",
+      "replace": "facts",
+      "kills": [
+        "gatherArticle facts keeps claims and numbers whose quotes are verbatim, short and state the number, sorted by id"
+      ]
+    }
+  ]
+}

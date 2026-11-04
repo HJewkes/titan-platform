@@ -25,6 +25,13 @@ export interface FakeGitHub {
   /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
   gitExec: GitExec;
   effects: FakeEffects;
+  /**
+   * Workflow run id to the `status` `getWorkflowRunStatus` answers, and a rerun sets it `queued`. An unset run reads as
+   * the status of a job of it still open, else `completed`; set `completed` to model a job GitHub left open (tp#2215).
+   */
+  runStatuses: Map<number, string>;
+  /** Every job id a `rerunJob` post named, in order; the rerun leaves the job's check runs as they were. */
+  jobReruns: number[];
   /** Every wire call in order, as `method` names; lets a test prove what was never called. */
   calls: string[];
   /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
@@ -73,6 +80,8 @@ export interface FakeGitHub {
   /** Job id to its steps, for `getJobSteps`; a job with none seeded answers 404. */
   jobSteps: Map<number, JobStep[]>;
   files: Map<string, { content: string; blobSha: string }>;
+  /** `ref:path` to a binary file's bytes for `getContentBytes`; a key absent here falls back to `files`, UTF-8 encoded. */
+  bytes: Map<string, Uint8Array>;
   /** The login `createComment` posts as and `getAuthenticatedLogin` answers with. */
   actor: string;
   /** PR number to its changed files. `listPrFiles` returns at most 3,000 of them, like GitHub. */

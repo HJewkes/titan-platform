@@ -1,9 +1,10 @@
-import type { Db, Migration } from "@titan-design/store-sqlite";
+import { endsReview, proofStanding } from "@titan-design/fix-proof";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { fixProofRoute, noReproOf, unverifiedOf, type FixProofReadSchema } from "./fix-proof.js";
+import { proofBaseOf } from "./fix-proof-base.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
 
@@ -14,32 +15,6 @@ export const PROOF_WAIVER_STEPS: readonly StepDeclaration[] = [
   { id: WAIVE_PROOF_STEP, kind: "dispatch" },
   { id: PROOF_WAIVER_STEP, kind: "dispatch" },
 ];
-
-const PROOF_WAIVER_DDL = `
-  CREATE TABLE shepherd_proof_waiver (
-    run_id TEXT NOT NULL,
-    head   TEXT NOT NULL,
-    at     TEXT NOT NULL,
-    PRIMARY KEY (run_id, head)
-  );`;
-
-/** The owner's fix-proof waivers, one per run and head. */
-export function proofWaiverMigration(version = 32): Migration {
-  return { version, name: "factory:shepherd_proof_waiver", up: (db) => db.exec(PROOF_WAIVER_DDL) };
-}
-
-export interface ProofWaivers {
-  /** A repeat at the same run and head keeps the first row. */
-  waive(runId: string, head: string): void;
-  waivedAt(runId: string, head: string): boolean;
-}
-
-export function proofWaiverTable(db: Db, stamp: () => string): ProofWaivers {
-  return {
-    waive: (runId, head) => void db.prepare("INSERT OR IGNORE INTO shepherd_proof_waiver (run_id, head, at) VALUES (?, ?, ?)").run(runId, head, stamp()),
-    waivedAt: (runId, head) => db.prepare("SELECT 1 FROM shepherd_proof_waiver WHERE run_id = ? AND head = ?").get(runId, head) !== undefined,
-  };
-}
 
 const WaiverInput = z.object({ runId: z.string().min(1), head: z.string().min(1) });
 const Waived = z.looseObject({ waived: z.boolean() });
@@ -73,14 +48,17 @@ async function proofWaivedAt(ctx: WorkflowContext, head: string): Promise<boolea
 }
 
 /**
- * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A test-only head that proceeds can
+ * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A head that proceeds on its NO_REPRO can
  * still come back as the panel's NO_REPRO, so its waiver is read too.
  */
 export async function proofStandingAt(ctx: WorkflowContext, head: string, proof: z.infer<typeof FixProofReadSchema>): Promise<{ ended: Verdict } | { standing: ProofStanding }> {
-  const noRepro = fixProofVerdict(proof, head);
-  const unverified = fixProofStanding(proof, head);
-  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  const read = proofStanding(proof, head);
+  const noRepro = noReproOf(read, head);
+  const unverified = unverifiedOf(read);
+  const proceeds = noRepro !== undefined && !endsReview(read);
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
-  if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
-  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
+  if (noRepro && !proceeds && !waived) return { ended: noRepro };
+  const proofBase = proofBaseOf(proof, head);
+  const standing: ProofStanding = waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  return { standing: { ...standing, ...(proofBase !== undefined && { proofBase }) } };
 }

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a profile with no audience kind defaults to public",
+      "file": "products/explainer/src/profile-schema.ts",
+      "find": "kind: z.enum(AUDIENCE_KINDS).default(\"assigned\")",
+      "replace": "kind: z.enum(AUDIENCE_KINDS).default(\"public\")",
+      "kills": [
+        "a profile's runtime band by audience runs a profile that names no audience kind as assigned, in the 600 s band"
+      ]
+    },
+    {
+      "name": "the audience default band overrides a profile's own band",
+      "file": "products/explainer/src/profile-schema.ts",
+      "find": "runtime: profile.runtime ?? AUDIENCE_RUNTIME[profile.audience.kind]",
+      "replace": "runtime: AUDIENCE_RUNTIME[profile.audience.kind]",
+      "kills": [
+        "a profile's runtime band by audience keeps a public profile's own band over the audience default",
+        "a profile's runtime band by audience keeps the daily overview's own 180 s band, 120-240"
+      ]
+    },
+    {
+      "name": "the public default band runs past 360 s",
+      "file": "products/explainer/src/profile-schema.ts",
+      "find": "public: { targetS: 240, minS: 120, maxS: 360, splitAboveS: 360 },",
+      "replace": "public: { targetS: 240, minS: 120, maxS: 480, splitAboveS: 600 },",
+      "kills": [
+        "a profile's runtime band by audience caps a public profile with no band of its own at 360 s, splitting past it"
+      ]
+    }
+  ]
+}

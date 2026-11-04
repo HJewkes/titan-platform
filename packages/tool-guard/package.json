@@ -48,6 +48,10 @@
   },
   "dependencies": {
     "@titan-design/authority": "workspace:^",
+    "@titan-design/fix-proof": "workspace:^",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
   }
 }

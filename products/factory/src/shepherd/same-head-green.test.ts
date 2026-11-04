@@ -5,11 +5,11 @@ import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/la
 import { factoryRoutesFor } from "../workflows.js";
 import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];

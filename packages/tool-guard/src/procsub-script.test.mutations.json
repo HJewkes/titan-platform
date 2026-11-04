@@ -45,7 +45,7 @@
       ]
     },
     {
-      "name": "a shell no longer reads its rcfile or the files a -c or -s script may run by its positional",
+      "name": "a shell reads neither its rcfile nor files a -c or -s script runs by positional",
       "file": "packages/tool-guard/src/scripts.ts",
       "find": "if (name !== null && SHELLS.has(name)) return ",
       "replace": "if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);\n  if (name === \"\\0\") return ",

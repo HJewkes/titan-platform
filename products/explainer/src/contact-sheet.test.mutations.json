@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a build beat is cut at its middle, as the old mid + end - 1 s sheet did",
+      "file": "products/explainer/src/contact-sheet.ts",
+      "find": "if (rule === \"build\") return [settled];",
+      "replace": "if (rule === \"build\") return [{ tag: \"settled\", local: durationS / 2 }];",
+      "kills": [
+        "cutCells cuts a 3-row list once, at its settled last frame",
+        "cutCells puts no cell inside the beat's entrance or a cue's entrance",
+        "cutCells changes no cell when an early beat is lengthened by 2 s (hold)"
+      ]
+    },
+    {
+      "name": "page marks are ignored",
+      "file": "products/explainer/src/contact-sheet.ts",
+      "find": "const rule: SheetRule = marks.length > 0 ? \"marks\" : sheetRule(meta);",
+      "replace": "const rule: SheetRule = sheetRule(meta);",
+      "kills": [
+        "cutCells cuts a beat by its page marks when the page publishes them, and the rest by rule"
+      ]
+    },
+    {
+      "name": "a step is cut at its settle time even after the next cue starts",
+      "file": "products/explainer/src/contact-sheet.ts",
+      "find": "local: Math.min(at + SETTLE_S, next, last)",
+      "replace": "local: Math.min(at + SETTLE_S + 1, last)",
+      "kills": [
+        "cutCells cuts a code walk with 3 cues into the whole view and one cell per focus step"
+      ]
+    },
+    {
+      "name": "the swap shows its question even when it never settled",
+      "file": "products/explainer/src/contact-sheet.ts",
+      "find": "first - BEFORE_CUE_S >= SETTLE_S ?",
+      "replace": "first !== undefined ?",
+      "kills": [
+        "cutCells skips the before cell of a swap whose question never settles before the first row"
+      ]
+    }
+  ]
+}

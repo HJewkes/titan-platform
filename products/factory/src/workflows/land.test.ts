@@ -10,6 +10,7 @@ import { H1, approveUntilSettled, gateId, gateOpened, landScenario, swallowUpdat
 import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, landRoutes, readCi } from "./land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "../test-support/resolver.js";
+import { readPath } from "../narrow.js";
 
 const FOREIGN = fakeSha("foreign1");
 const hosts: FactoryHost[] = [];
@@ -170,7 +171,7 @@ describe("land core", () => {
     host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     const run = await host.runtime.wait(runId);
 
-    const waits = Object.entries(run.stepResults).filter(([id]) => id.startsWith("update-backoff")).map(([, result]) => (result.data as { result: { waitMs: number } }).result.waitMs);
+    const waits = Object.entries(run.stepResults).filter(([id]) => id.startsWith("update-backoff")).map(([, result]) => readPath(result.data, "result", "waitMs"));
     expect(waits).toEqual([2, 4, 8].map((min) => min * 60_000));
     expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
@@ -296,7 +297,7 @@ describe("land core", () => {
 
   it("returns ci-failed with the failing check and its Actions run, without asking to merge", async () => {
     const scenario = landScenario();
-    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, headSha: pr.headSha, appId: 15368, workflowRunId: 77, pullRequests: [], url: "u" }]);
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, completedAt: null, title: null, headSha: pr.headSha, appId: 15368, workflowRunId: 77, pullRequests: [], url: "u" }]);
     const host = hostFor(scenario);
 
     const run = await host.runtime.wait(host.runtime.start("land-test"));
@@ -544,7 +545,7 @@ function rewriteRecords(routes: StepRoute[], match: string, edit: (record: Recor
     if (route.match !== match) return route;
     const run: StepRoute["runner"]["run"] = async (input) => {
       const outcome = await route.runner.run(input);
-      return outcome.ok ? { ...outcome, output: JSON.stringify(edit(JSON.parse(outcome.output!))) } : outcome;
+      return outcome.ok ? { ...outcome, output: JSON.stringify(edit(JSON.parse(outcome.output))) } : outcome;
     };
     return { ...route, runner: { ...route.runner, run } };
   });

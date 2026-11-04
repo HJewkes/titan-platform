@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "../App.js";
-import { AnswerSourceProvider } from "../data/submit.js";
+import { renderPage } from "../render-page.test-helpers.js";
 
 const VIDEO_ID = "v_0123456789abcdef0123";
 const VIDEO = { id: VIDEO_ID, title: "lantern-explainer.mp4", group: "orbit/render", bytes: 5_500_000, modifiedAt: "2031-03-05T10:00:00.000Z", captions: false, renderNotes: false, noteCount: 0, verdict: null };
@@ -41,7 +40,7 @@ function present(mediaTime: number): void {
 }
 
 /** The player over recorded reads; `videos.note` answers as `tap` says, and every call is recorded. */
-function renderPlayer(tap: Tap = () => Promise.resolve(successEnvelope({}))): { name: string; args: unknown }[] {
+function renderPlayer(tap: Tap = () => Promise.resolve(successEnvelope({})), { inApp = false } = {}): { name: string; args: unknown }[] {
   const snapshot: Snapshot = {
     format: SNAPSHOT_FORMAT,
     createdAt: "2031-03-05T12:00:00.000Z",
@@ -56,14 +55,7 @@ function renderPlayer(tap: Tap = () => Promise.resolve(successEnvelope({}))): { 
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), name === "videos.note" ? tap(args) : inner.call(name, args, options)),
   };
-  window.location.hash = `#/theater/${VIDEO_ID}`;
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={source}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, `#/theater/${VIDEO_ID}`, { answers: source, inApp });
   return calls;
 }
 
@@ -71,7 +63,7 @@ const notesSent = (calls: { name: string; args: unknown }[]) => calls.filter((ca
 
 describe("pause to comment", () => {
   it("pauses, stamps the frame shown after the pause rather than the clock, and sends the comment", async () => {
-    const calls = renderPlayer();
+    const calls = renderPlayer(undefined, { inApp: true });
     const element = await screen.findByTestId<HTMLVideoElement>("theater-video");
     present(71.9);
     element.currentTime = 72.4;
@@ -80,7 +72,7 @@ describe("pause to comment", () => {
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
     fireEvent.change(await screen.findByLabelText("Comment text"), { target: { value: "tighten the outro" } });
     fireEvent.click(screen.getByTestId("theater-comment-send"));
-    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", atS: 72.125, text: "tighten the outro" }]));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "content", atS: 72.125, text: "tighten the outro" }]));
     await waitFor(() => expect(screen.queryByLabelText("Comment text")).toBeNull());
   });
 
@@ -92,7 +84,20 @@ describe("pause to comment", () => {
     fireEvent.click(await screen.findByTestId("theater-comment-start"));
     fireEvent.change(await screen.findByLabelText("Comment text"), { target: { value: "the title card runs long" } });
     fireEvent.click(screen.getByTestId("theater-comment-send"));
-    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", atS: 9.5, text: "the title card runs long" }]));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "content", atS: 9.5, text: "the title card runs long" }]));
+  });
+
+  it("sends a comment about the video when the toggle says so, then starts the next one about the content", async () => {
+    const calls = renderPlayer();
+    fireEvent.click(await screen.findByTestId("theater-comment-start"));
+    expect(screen.getByRole("radio", { name: "About the content" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "About the video" }));
+    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "the captions lag the voice" } });
+    fireEvent.click(screen.getByTestId("theater-comment-send"));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "video", atS: 0, text: "the captions lag the voice" }]));
+    await waitFor(() => expect(screen.queryByLabelText("Comment text")).toBeNull());
+    fireEvent.click(screen.getByTestId("theater-comment-start"));
+    expect(screen.getByRole("radio", { name: "About the content" }).getAttribute("aria-checked")).toBe("true");
   });
 
   it("labels the button with the playhead", async () => {

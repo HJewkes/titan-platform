@@ -166,7 +166,6 @@ function scoreNode(
   const own = structural + flat;
   const score = { total: own, markup: markup ? own : 0 };
   for (const child of node.namedChildren) {
-    if (!child) continue;
     const sub = scoreNode(child, childNesting, handler, markup);
     score.total += sub.total;
     score.markup += sub.markup;

@@ -5,9 +5,11 @@ import path from "node:path";
 import { EVENTS_TABLE_DDL, type LivenessReport } from "@titan-design/session-analytics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { startMiner } from "../serve.js";
+import { liveness } from "./questions.js";
 
 const WINDOW = ["--since", "2026-09-12T00:00:00Z", "--until", "2026-09-12T12:00:00Z"];
 
@@ -79,7 +81,7 @@ async function cli(args: string[], cliEnv = env): Promise<{ code: number; stdout
 async function ask(flags: string[], cliEnv = env): Promise<LivenessReport> {
   const { code, stdout } = await cli(["--json", "insights", "liveness", ...flags], cliEnv);
   expect(code).toBe(0);
-  return (JSON.parse(stdout) as { data: { answer: LivenessReport } }).data.answer;
+  return z.object({ data: z.object({ answer: liveness.schema }) }).parse(JSON.parse(stdout)).data.answer;
 }
 
 const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -165,7 +167,7 @@ describe("insights liveness", () => {
       const refused = await post({ brokerLog: brokerLog });
 
       expect(refused.status).toBe(400);
-      expect(((await refused.json()) as { error: string }).error).toMatch(/only on the CLI/);
+      expect(z.object({ error: z.string() }).parse(await refused.json()).error).toMatch(/only on the CLI/);
     } finally {
       await handle.close();
     }

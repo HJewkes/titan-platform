@@ -3,9 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "./cli.js";
-import { FIXED, makeRepo, parsed, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, makeRepo, parsed, REAL_RUNNER, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import type { RunOptions } from "./run.js";
 import { decodeReport, MAX_ENCODED_BYTES } from "./transport.js";
 
 const DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
@@ -26,7 +27,7 @@ const ADD_SUBTRACTS = { name: "add subtracts", file: "src/math.ts", find: "a + b
 const THROWING_TEST = 'import { add } from "./math";\ntest("adds", () => { if (add(1, 2) !== 3) throw new Error("sum not reached within 10 ms"); });\n';
 
 async function mutantsVerdict(test: string) {
-  const repo = makeRepo({}, os.tmpdir(), { "src/math.ts": FIXED });
+  const repo = makeRepo(REAL_RUNNER, os.tmpdir(), { "src/math.ts": FIXED });
   const head = repo.commit({ "src/math.test.ts": test, "src/math.test.mutations.json": JSON.stringify({ v: 1, mutations: [ADD_SUBTRACTS] }) });
   const out = outDir();
   const shas = ["--base", repo.base, "--head", head];
@@ -80,6 +81,32 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
     expect(decodeReport(fs.readFileSync(path.join(out, "base.report"), "utf-8"))).toMatchObject({ ok: false, reported: true });
   });
 
+  it.each(["root; rm", "Root", ""])("run --sandbox-user %j is a usage error line", async (user) => {
+    const runner = vi.fn(async (_options: RunOptions) => "line");
+
+    const result = parsed(await runCli(["run", "--base", "a", "--head", "b", "--sandbox-user", user], os.tmpdir(), runner));
+
+    expect(result).toMatchObject({ verdict: "error", error: expect.stringContaining("usage: fix-proof run [--sandbox-user <name>]") });
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it("run passes --sandbox-user on to run()", async () => {
+    const runner = vi.fn(async (_options: RunOptions) => "line");
+
+    const line = await runCli(["run", "--base", "a", "--head", "b", "--repo", "/repo", "--sandbox-user", "fix-proof-sandbox"], os.tmpdir(), runner);
+
+    expect(line).toBe("line");
+    expect(runner).toHaveBeenCalledWith({ repo: "/repo", base: "a", head: "b", sandboxUser: "fix-proof-sandbox" });
+  });
+
+  it("run without --sandbox-user passes no sandbox user", async () => {
+    const runner = vi.fn(async (_options: RunOptions) => "line");
+
+    await runCli(["run", "--base", "a", "--head", "b", "--repo", "/repo"], os.tmpdir(), runner);
+
+    expect(runner).toHaveBeenCalledWith({ repo: "/repo", base: "a", head: "b" });
+  });
+
   it("exec --side mutants and judge --mutants-report kill a mutation that fails its test on a real vitest assertion", async () => {
     const { exec, mutants } = await mutantsVerdict(REAL_TEST);
 
@@ -122,7 +149,7 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
   });
 
   it("exec base, exec head and judge as separate processes prove a reproducing test", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
     const shas = ["--base", repo.base, "--head", head];

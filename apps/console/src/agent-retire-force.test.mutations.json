@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the plain sheet offers force whatever the grace says",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "  if (forceStop !== null) {\n",
+      "replace": "  if (forceStop === \"never\") {\n",
+      "kills": [
+        "the agent page's forced retire says how long the grace still runs and offers no force inside it",
+        "the agent page's forced retire says the roster reports no exit time and offers no force"
+      ]
+    },
+    {
+      "name": "the force sheet prepares a plain retire",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "commands={retireTap(name, true)}",
+      "replace": "commands={retireTap(name, false)}",
+      "kills": [
+        "the agent page's forced retire reads the exit time back and offers force once the grace has passed, retiring with force on Retire and discard"
+      ]
+    },
+    {
+      "name": "the read-back hides the exit time",
+      "file": "apps/console/src/pages/AgentRetire.tsx",
+      "find": "{exitedLine(prepared.readBack.exitedAt ?? null)}",
+      "replace": "{exitedLine(null)}",
+      "kills": [
+        "the agent page's forced retire reads the exit time back and offers force once the grace has passed, retiring with force on Retire and discard"
+      ]
+    }
+  ]
+}

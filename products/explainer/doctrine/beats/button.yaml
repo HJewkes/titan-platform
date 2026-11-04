@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: button
+summary: "The one action to take next."
+role: close
+component: { name: OutroBeat, maturity: spike }
+slots: button
+speech: { band: takeaways }
+durationS: [3, 5, 8]
+preset: true
+recipe: "Template fill: one line and one action, with its link when there is one."

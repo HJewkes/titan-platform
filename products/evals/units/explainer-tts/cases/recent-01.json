@@ -1,0 +1,23 @@
+{
+  "schema": "titan.case/v1",
+  "id": "recent-01",
+  "unit": {
+    "id": "explainer-tts",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "script": "f38d45c291a7ae3dc97b21a7938e63870fa6934f71ce519de2902b7169b5dea8"
+    }
+  },
+  "split": "holdout",
+  "tags": [
+    "recent-render"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "explainer artifact store, by sha",
+    "labelVersion": 1
+  },
+  "visibility": "private"
+}

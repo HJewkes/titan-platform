@@ -3,12 +3,15 @@ import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-desi
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
-import { createFactoryRegistry, parsePrRef, type FactoryContext } from "./registry.js";
+import type { FactoryContext } from "./context.js";
+import { createFactoryRegistry, parsePrRef } from "./registry.js";
 import { TOOL_PREFIX } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { callCommand } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 import { OWNER } from "./test-support/resolver.js";
+import { readPath } from "./narrow.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -36,13 +39,15 @@ function landRuns(host: FactoryHost): string[] {
   return host.runtime.list(["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"]).filter((run) => run.workflowName === "land-pr").map((run) => run.id);
 }
 
+const runIdOf = (data: unknown): string => String(readPath(data, "runId"));
+
 describe("factory registry", () => {
   it("surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool", () => {
-    const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
+    const tools = listTools({ registry: createFactoryRegistry(), createContext: () => partialFake<FactoryContext>({ warnings: [], format: "json" }), toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    const shepherd = ["freeze", "ghBudget", "ghRead", "hold", "list", "merge", "prs", "register", "release", "repair-stop", "resync", "review", "status", "timeline", "waiting"].map((verb) => `shepherd__${verb}`);
+    const shepherd = ["brief", "fix-pr", "freeze", "ghBudget", "ghRead", "hold", "list", "merge", "merge-base", "order", "prs", "register", "release", "repair-stop", "resync", "review", "status", "thaw", "timeline", "visual-delta", "visual-week", "waiting", "watch"].map((verb) => `shepherd__${verb}`);
     const autoresearch = ["autoresearch__add-idea", "autoresearch__diff", "autoresearch__milestone", "autoresearch__run", "autoresearch__runs", "autoresearch__start"];
-    expect(tools.map((tool) => tool.name).sort()).toEqual([...autoresearch, "factory__gates", "factory__gates-review", "factory__land", "factory__status", "needs__count", "needs__list", "owner-op__preview", ...shepherd]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...autoresearch, "factory__build-surface__abandon", "factory__build-surface__start", "factory__gates", "factory__gates-review", "factory__land", "factory__status", "gate__ownerEvidence", "needs__count", "needs__list", "owner-op__preview", ...shepherd]);
   });
 
   it("a second land on the same PR returns the unfinished run instead of starting another", async () => {
@@ -52,21 +57,21 @@ describe("factory registry", () => {
     const second = await call(host, "factory.land", { repo: REPO, pr: 1 });
 
     expect(first).toMatchObject({ ok: true, data: { created: true } });
-    expect(second).toMatchObject({ ok: true, data: { created: false, runId: (first.data as { runId: string }).runId } });
+    expect(second).toMatchObject({ ok: true, data: { created: false, runId: runIdOf(first.data) } });
     expect(landRuns(host)).toHaveLength(1);
-    expect(host.runtime.status((first.data as { runId: string }).runId)?.params).toMatchObject({ repo: REPO, pr: "1", task: "demo/T-1" });
+    expect(host.runtime.status(runIdOf(first.data))?.params).toMatchObject({ repo: REPO, pr: "1", task: "demo/T-1" });
   });
 
   it("starts a fresh run once the earlier run for the PR has finished", async () => {
     const { host } = world();
-    const first = (await call(host, "factory.land", { repo: REPO, pr: 1 })).data as { runId: string };
-    await gateOpened(host, gateId(first.runId, "approve-merge"));
-    host.runtime.signal(first.runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
-    await host.runtime.wait(first.runId);
+    const first = runIdOf((await call(host, "factory.land", { repo: REPO, pr: 1 })).data);
+    await gateOpened(host, gateId(first, "approve-merge"));
+    host.runtime.signal(first, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await host.runtime.wait(first);
 
     const again = await call(host, "factory.land", { repo: REPO, pr: 1 });
 
-    expect(host.runtime.status(first.runId)?.status).toBe("completed");
+    expect(host.runtime.status(first)?.status).toBe("completed");
     expect(again).toMatchObject({ ok: true, data: { created: true } });
     expect(landRuns(host)).toHaveLength(2);
   });
@@ -82,7 +87,7 @@ describe("factory registry", () => {
 
   it("lists a pending gate with the local CLI command that resolves it, and reports the run", async () => {
     const { host } = world();
-    const { runId } = (await call(host, "factory.land", { repo: REPO, pr: 1 })).data as { runId: string };
+    const runId = runIdOf((await call(host, "factory.land", { repo: REPO, pr: 1 })).data);
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     const gates = await call(host, "factory.gates", {});

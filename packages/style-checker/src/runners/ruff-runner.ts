@@ -1,5 +1,6 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { tmpdir } from "node:os";
 import { runAndClassify, parseOrFail } from "./failures.js";
 import { isRuffSyntaxError, parseRuffJsonOutput } from "../formatters/unified.js";
@@ -59,11 +60,9 @@ function toToml(config: RuffConfig): string {
   return lines.join("\n") + "\n";
 }
 
-interface RuffJsonMessage {
-  code: string | null;
-  filename: string;
-  message: string;
-}
+const RuffJsonOutputSchema = z.array(
+  z.object({ code: z.string().nullable(), filename: z.string(), message: z.string() }),
+);
 
 function notChecked(file: string, message: string): ToolFailure {
   return { tool: "ruff", kind: "file-not-checked", file, message };
@@ -72,7 +71,7 @@ function notChecked(file: string, message: string): ToolFailure {
 // ruff emits one entry per syntax error; a file that fails to parse is reported once.
 function unparsedFiles(stdout: string): ToolFailure[] {
   const byFile = new Map<string, string[]>();
-  for (const e of JSON.parse(stdout) as RuffJsonMessage[]) {
+  for (const e of RuffJsonOutputSchema.parse(JSON.parse(stdout))) {
     if (!isRuffSyntaxError(e.code)) continue;
     byFile.set(e.filename, [...(byFile.get(e.filename) ?? []), e.message]);
   }

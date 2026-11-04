@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a term the original never said can still be lost",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": ".filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)",
+      "replace": ".filter((term) => saidForm(spoken, term) === undefined)",
+      "kills": [
+        "a term declared as a fact id does not hold a rewrite to a term the original never said"
+      ]
+    },
+    {
+      "name": "the guard lets a fact id pasted into the line through",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...factIdRejections(before, after.spoken),\n",
+      "replace": "",
+      "kills": [
+        "a term declared as a fact id rejects the fact id pasted into the line, even with its number still in it"
+      ]
+    },
+    {
+      "name": "a number kept in a new spelling counts as dropped terms",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "const line = cut(withoutIds, countSpans(withoutIds));",
+      "replace": "const line = withoutIds;",
+      "kills": [
+        "a number respelled by the rewrite does not count the old spelling's words as dropped content terms"
+      ]
+    }
+  ]
+}

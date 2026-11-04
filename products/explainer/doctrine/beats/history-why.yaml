@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: history-why
+summary: "A past decision and why, quoted from the record."
+role: explain
+component: { name: Timeline, maturity: shipped }
+slots: history-why
+speech: { band: story }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [alternatives], treatments: [highlight] }
+recipe: "Name the decision and its date, then quote the record verbatim with its source. Show the alternatives it beat when the record names them."

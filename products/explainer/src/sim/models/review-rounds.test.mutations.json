@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "sim-check ignores fittedFrom",
+      "file": "products/explainer/src/sim/sim-check.ts",
+      "find": "if (doctrine.fittedFrom.includes(claim.statistic)) return",
+      "replace": "if (doctrine.fittedFrom.includes(claim.statistic) && false) return",
+      "kills": ["the review-rounds doctrine refuses a claim on the 5+ tail that fitted q as E-SIM-CIRCULAR"]
+    }
+  ]
+}

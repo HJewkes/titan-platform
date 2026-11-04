@@ -1,8 +1,11 @@
 import type { L0Result } from "./eval-l0.js";
-import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, spokenText, triadSpans } from "./lint-register.js";
+import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, phraseSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
+import { collapsible, cuedWordsIn, numberUnits } from "./rewrite-spans.js";
 import type { ScriptBeat } from "./script-schema.js";
+import { spokenIds } from "./spoken-ids.js";
+import { humanSignalRowsAt } from "./writing-statuses.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
 export const REWRITE_TARGET_ROWS = [
@@ -12,6 +15,15 @@ export const REWRITE_TARGET_ROWS = [
   "register:sentence-mean",
   "register:sentence-cv",
 ] as const;
+
+/**
+ * The rows a chapter's distance to band sums: the targets, and phrases, which the plan directs on its own (TP-4695).
+ * A row the status table makes report-only or dropped always passes, so there it adds nothing.
+ */
+export const REWRITE_AIMED_ROWS: readonly string[] = [...REWRITE_TARGET_ROWS, "register:phrases"];
+
+/** How many beats Q-V15 finds saying an id: the pass cuts them whether or not the register bands are met (TP-4697). */
+export const idBeats = (rows: readonly L0Result[]): number => rows.find((row) => row.check_id === "Q-V15")?.value ?? 0;
 
 /** Round 1 reshapes the script; round 2 fixes the numbers and triads round 1 left or made, and reshapes beats still under the mean floor (TP-3817 S0, S13). */
 export const MAX_REWRITE_ROUNDS = 2;
@@ -24,10 +36,14 @@ export type RefusalRule = BeatRejectionRule | "missing";
 export interface BeatDirective {
   beat: string;
   chapter: string;
-  /** The number mentions a crowded beat speaks, in order. */
+  /** The number mentions a crowded beat speaks, in order; a range such as "thirty to thirty-five" is one mention. */
   numbers?: string[];
-  /** The lists of three the beat speaks, in order. */
+  /** The lists of three the beat speaks, in order, except a list holding more than one cue word, which cannot collapse. */
   triads?: string[];
+  /** The over-represented phrases the beat speaks, in order, while the phrases row fails and warns at this length. */
+  phrases?: string[];
+  /** The PR, task or script ids the beat says aloud, each once; a daily says none (TP-4697). */
+  ids?: string[];
   /** Planned sentence lengths in words, shortest first. */
   shape?: number[];
   /** Why the previous round refused this beat's rewrite, each rule once; the prompt says it in plain words. */
@@ -50,17 +66,19 @@ export interface RegisterEditPlan {
 export interface PlanOptions {
   /** 1 or 2; a CLI passes its parsed `--rounds` value through, so any other number throws. */
   round?: number;
-  /** The longest sentence the guard accepts; a planned long sentence stays under it. */
+  /** The longest sentence the guard accepts; a planned long sentence stays under it, and at 24 words or fewer. */
   cap?: number;
   /** The beats the previous round refused, with the rules that refused them (TP-3817 S20). */
   refused?: ReadonlyMap<string, readonly RefusalRule[]>;
 }
 
-type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken">;
+type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual" | "fact_ids" | "new_terms">;
 
 const SHORT_WORDS = 5;
 // The model overshoots a planned length, so a long sentence is planned this far under the cap.
 const LONG_HEADROOM = 4;
+// The vet refuses most 26-32 word sentences, so the vetted cap is the guard's tolerance and never a planning target.
+const MAX_PLANNED_WORDS = 24;
 // A beat whose sorted sentence lengths each sit this close to the plan is left alone.
 const SHAPE_TOLERANCE = 3;
 // The plan aims inside the band, not at its edge, so a rewrite that drifts still lands in it.
@@ -95,10 +113,24 @@ function splitWords(words: number, n: number, shortShare: number): number[] {
   return [...Array<number>(shorts).fill(SHORT_WORDS), ...long].sort((a, b) => a - b);
 }
 
+/** Cuts each long sentence to `longest` and hands the cut words to the last short one, so the other shorts keep the spread. */
+function trimLong(lengths: readonly number[], longest: number): number[] {
+  const overflow = lengths.reduce((sum, n) => sum + Math.max(0, n - longest), 0);
+  const lastShort = lengths.lastIndexOf(SHORT_WORDS);
+  return lengths.map((n, i) => (i === lastShort ? n + overflow : Math.min(n, longest))).sort((a, b) => a - b);
+}
+
 function beatShape(words: number, n: number, shortShare: number, cap: number): number[] {
+  const headroom = cap - LONG_HEADROOM;
   for (let count = n; ; count++) {
     const lengths = splitWords(words, count, shortShare);
-    if (Math.max(...lengths) <= cap - LONG_HEADROOM || count * SHORT_WORDS >= words) return lengths;
+    const longest = Math.max(...lengths);
+    if (longest <= Math.min(headroom, MAX_PLANNED_WORDS) || count * SHORT_WORDS >= words) return lengths;
+    // Adding a sentence here would pull the script's mean under its floor, so the count holds and the words move.
+    if (count > 1 && longest <= headroom) {
+      const trimmed = trimLong(lengths, MAX_PLANNED_WORDS);
+      if (Math.max(...trimmed) <= MAX_PLANNED_WORDS) return trimmed;
+    }
   }
 }
 
@@ -160,10 +192,11 @@ const numbersCrowded = (rows: readonly L0Result[]): boolean => {
 
 function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDirective, "numbers" | "triads"> {
   const text = beatText(beat);
-  const numbers = numberSpans(text).map((span) => span.text);
-  const triads = triadSpans(text).map((span) => span.text);
+  const crowded = numberSpans(text).length > MAX_SPOKEN_NUMBERS_PER_BEAT;
+  const triads = triadSpans(text).map((span) => span.text).filter((triad) => collapsible(triad, beat.visual));
+  const numbers = numberUnits(text).filter((unit) => cuedWordsIn(unit, beat.visual).length === 0);
   return {
-    ...(numbersCrowded(rows) && numbers.length > MAX_SPOKEN_NUMBERS_PER_BEAT ? { numbers } : {}),
+    ...(numbersCrowded(rows) && crowded && numbers.length > 0 ? { numbers } : {}),
     ...(failing(rows, "register:triads") && triads.length > 0 ? { triads } : {}),
   };
 }
@@ -190,18 +223,45 @@ function refusedFor(beat: string, refused: PlanOptions["refused"]): Pick<BeatDir
 }
 
 /**
+ * True when the phrases row fails and the status table makes it a gate or a warning at the script's length. Phrases
+ * once rode only on beats directed for another row, so they fell only while shape directed most beats (TP-4695).
+ */
+function phrasesAimed(beats: readonly PlanBeat[], rows: readonly L0Result[]): boolean {
+  const words = spokenText(beats.map((beat) => beat.spoken)).words.length;
+  return failing(rows, "register:phrases") !== undefined && humanSignalRowsAt(words).has("phrases");
+}
+
+function phrasesFor(beat: PlanBeat, aimed: boolean): Pick<BeatDirective, "phrases"> {
+  const phrases = aimed ? phraseSpans(beatText(beat)).map((span) => span.text) : [];
+  return phrases.length > 0 ? { phrases } : {};
+}
+
+/**
+ * A beat that says an id is directed to cut it whatever the register rows say: ids rode only on beats directed for
+ * another row, so a beat the bands left alone kept its id once the bands were met (TP-4697).
+ */
+function idsFor(beat: PlanBeat): Pick<BeatDirective, "ids"> {
+  const ids = [...new Set(spokenIds(beat).map((id) => id.text))];
+  return ids.length > 0 ? { ids } : {};
+}
+
+/**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
  * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
- * beat still under the mean floor while a shape row fails. A directed beat the previous round refused carries why.
+ * beat still under the mean floor while a shape row fails. While phrases is aimed, each beat that speaks a stock
+ * phrase is directed to replace it, directed for another row or not, and each beat that says an id is directed to cut
+ * it; a directed beat also carries why the previous round refused it.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS, refused } = options;
   if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
   const shape = shapeFailing(rows) ? (round === 1 ? planShape(script.beats, cap) : planStillShort(script.beats, cap)) : undefined;
+  const aimed = phrasesAimed(script.beats, rows);
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
-    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };
-    return Object.keys(directive).length > 0 ? [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }] : [];
+    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}), ...phrasesFor(beat, aimed), ...idsFor(beat) };
+    if (Object.keys(directive).length === 0) return [];
+    return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }];
   });
   return { round, directives, ...(shape ? { projected: shape.projected } : {}) };
 }

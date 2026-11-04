@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the summary lists the fastest files first",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "sort((a, b) => b[key] - a[key])",
+      "replace": "sort((a, b) => a[key] - b[key])",
+      "kills": [
+        "the file timing reporter puts the slowest files by each phase in the step summary",
+        "the file timing reporter lists no more than the top count in each table"
+      ]
+    },
+    {
+      "name": "collect time is dropped from the artifact",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "[diagnostic.collectDuration, diagnostic.setupDuration",
+      "replace": "[0, diagnostic.setupDuration",
+      "kills": [
+        "the file timing reporter writes every file's collect, setup and test time to the artifact",
+        "the file timing reporter puts the slowest files by each phase in the step summary"
+      ]
+    },
+    {
+      "name": "the summary is written outside Actions",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "if (this.env.GITHUB_STEP_SUMMARY) this.append",
+      "replace": "this.append",
+      "kills": [
+        "the file timing reporter writes the artifact but no summary outside Actions"
+      ]
+    },
+    {
+      "name": "the record names the merge commit instead of the pull request's head",
+      "file": "scripts/test-timing-record.mjs",
+      "find": "const commit = env.HEAD_SHA ||",
+      "replace": "const commit = env.GITHUB_SHA ||",
+      "kills": [
+        "the file timing reporter records the pull request's head commit, not the merge commit GitHub tests"
+      ]
+    },
+    {
+      "name": "a plain local run writes a record into the checkout",
+      "file": "scripts/test-timing-record.mjs",
+      "find": "return env.CI ? TIMING_FILE : null;",
+      "replace": "return TIMING_FILE;",
+      "kills": [
+        "the file timing reporter writes nothing for a plain local run with no spool"
+      ]
+    }
+  ]
+}

@@ -388,11 +388,12 @@ describe("the lint has no consumer", () => {
     expect([listing(repo), listing(dirname(repo)).filter((p) => !p.includes("/"))]).toEqual(before);
   });
 
-  it("merge-lint imports only node built-ins and its own modules", () => {
+  it("merge-lint imports only node built-ins, its own modules and the pure linear glob matcher", () => {
     const sources = readdirSync(here).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
     const specifiers = sources.flatMap((f) => [...readFileSync(join(here, f), "utf-8").matchAll(/from "([^"]+)"/g)].map((m) => m[1] ?? ""));
+    const allowed = new Set(["zod", "@titan-design/fix-proof/linear-regexp"]);
 
-    const foreign = specifiers.filter((s) => !s.startsWith("node:") && !s.startsWith("./") && s !== "zod");
+    const foreign = specifiers.filter((s) => !s.startsWith("node:") && !s.startsWith("./") && !allowed.has(s));
 
     expect(sources.length).toBeGreaterThan(5);
     expect(foreign).toEqual([]);

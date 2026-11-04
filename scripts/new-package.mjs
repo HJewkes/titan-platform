@@ -77,10 +77,11 @@ export function productIsolationRules(products = []) {
 
 /**
  * Writes the reference page the docs build demands for every public package. Returns the
- * path when it stamped one, and null when a page is already there — a re-stamp must never
+ * path when it stamped one, and null for a private product or when a page is already there — a re-stamp must never
  * flatten a hand-written page.
  */
 export function stampReferencePage(root, opts) {
+  if (opts.tier === "product") return null;
   const page = join(root, "site", "reference", `${opts.name}.md`);
   if (existsSync(page)) return null;
   let text = readFileSync(join(root, "templates", "reference-page.md"), "utf8");
@@ -96,7 +97,16 @@ export function stampPackageDir(root, opts) {
   const dest = join(root, dir, opts.name);
   cpSync(join(root, "templates", "package"), dest, { recursive: true, errorOnExist: true, force: false });
   substitute(dest, { NAME: opts.name, DIR: dir, TIER: String(opts.tier), DESCRIPTION: opts.description, TASK: opts.task });
+  if (opts.tier === "product") makePrivate(join(dest, "package.json"));
   return { dir, dest };
+}
+
+// Products are never published; the template's publishConfig would let `changeset publish` try.
+function makePrivate(manifestPath) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  delete manifest.publishConfig;
+  
+  writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, private: true }, null, 2)}\n`);
 }
 
 /** The new package has no dist/ yet, so its API snapshot waits for a build; the catalog does not. */

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a partly-fixed earlier item reads as a follow-up",
+      "file": "packages/review-panel/src/ci-unread.ts",
+      "find": "(?:(?:not|partly) +)?fixed:",
+      "replace": "(?:not +)?fixed:",
+      "kills": [
+        "ciUnreadOnly against the reviewer's probe partly fixed: in the item shape under Follow-ups"
+      ]
+    }
+  ]
+}

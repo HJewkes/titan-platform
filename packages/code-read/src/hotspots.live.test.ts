@@ -57,7 +57,7 @@ function exported(snapshotId: number): MemorySnapshot {
     attrs: n.attrs ?? {},
   }));
   const metrics = repo.store.listMetrics(snapshotId);
-  return JSON.parse(JSON.stringify({ info: toSnapshotInfo(repo.store.getSnapshot(snapshotId)!), nodes, metrics })) as MemorySnapshot;
+  return structuredClone({ info: toSnapshotInfo(repo.store.getSnapshot(snapshotId)!), nodes, metrics });
 }
 
 /** The static path: the snapshots as an export holds them, rebuilt and answered by the query resolver. */

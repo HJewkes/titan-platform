@@ -32,6 +32,7 @@ export interface RedeployInput {
 export interface Deployer {
   /** The sha the running service was built from. */
   runningSha: () => string;
+  /** Always passes `--expect`, so the unit's name and the sha it builds never come apart (TP-4279). */
   spawn: (mergeSha: string) => { pid: number | undefined; log: string };
   /** Queues the sha for serve's deploy pacer instead of spawning; absent means every merge spawns. */
   request?: (mergeSha: string) => Redeploy | Promise<Redeploy>;
@@ -195,8 +196,13 @@ async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store
   return { spawned: false, queued: true, detail };
 }
 
+/** A green main sha no Shepherd run merged (seat-merge, bin/merge, the owner) queues through the record Shepherd's redeploy step writes (TP-3474). */
+export function mainDeployQueue(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): (sha: string) => Promise<Redeploy> {
+  return (sha) => queueDeploy(options, ports, store, sha);
+}
+
 /** The pacer spawns through the same deployer, so both paths share A0's unit naming and log. */
-export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): DeployPacerOptions {
+export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): Pick<DeployPacerOptions, "stateDir" | "spawn"> {
   const deployer = systemDeployer(options, ports);
   return { stateDir: options.stateDir, spawn: (sha) => deployer.spawn(sha) };
 }
@@ -205,7 +211,7 @@ export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts 
 export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): Deployer {
   return {
     runningSha: buildSha,
-    request: (mergeSha) => queueDeploy(options, ports, store, mergeSha),
+    request: mainDeployQueue(options, ports, store),
     spawn: (mergeSha) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
       const at = options.now?.() ?? new Date();

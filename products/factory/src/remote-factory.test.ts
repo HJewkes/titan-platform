@@ -6,10 +6,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { StepRoute } from "@titan-design/workflow";
-import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { EXIT, runCli } from "./cli.js";
+import type { CliDeps } from "./cli-types.js";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import type * as Host from "./host.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
+import { portOf } from "./test-support/fakes.js";
 
 vi.mock("./host.js", async (importOriginal) => {
   const actual = await importOriginal<typeof Host>();
@@ -33,7 +36,9 @@ const approval = defineWorkflow({
     await ctx.dispatch("ship", "ship");
   },
 });
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 } };
+// The owner never confirms presence here, so no test can open the real helper's dialog.
+beforeEach(() => void fakeOwnerHelper(undefined));
 
 /** A home whose config file holds `config`; the database path is returned and never created by the test. */
 function home(config: object): { env: NodeJS.ProcessEnv; dbPath: string } {
@@ -64,7 +69,7 @@ async function pausedRun(dbPath: string): Promise<string> {
 async function deadPort(): Promise<string> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const port = portOf(probe);
   await new Promise<void>((resolve) => probe.close(() => resolve()));
   return String(port);
 }
@@ -79,7 +84,7 @@ async function answeringServe(): Promise<{ port: string; requests: () => number 
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  return { port: String((server.address() as { port: number }).port), requests: () => requests };
+  return { port: String(portOf(server)), requests: () => requests };
 }
 
 const cleanups: (() => Promise<void>)[] = [];

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the export count comes back, so exports added by two PRs conflict",
+      "file": "scripts/gen-capabilities.mjs",
+      "find": "`- More in the [reference page](${links.reference(entry.dir)})`",
+      "replace": "`- +${more} more in the [reference page](${links.reference(entry.dir)})`",
+      "kills": [
+        "merging two pull requests that change one unit adding exports and editing different CAPABILITY.md lines merges cleanly into the catalog the merged sources generate"
+      ]
+    },
+    {
+      "name": "the quick index holds the whole CAPABILITY.md on one line",
+      "file": "scripts/gen-capabilities.mjs",
+      "find": "e.tier, firstSentence(e.useWhen)]",
+      "replace": "e.tier, e.useWhen.join(\" \")]",
+      "kills": [
+        "merging two pull requests that change one unit adding exports and editing different CAPABILITY.md lines merges cleanly into the catalog the merged sources generate"
+      ]
+    },
+    {
+      "name": "the unit section joins its use-when lines into one",
+      "file": "scripts/gen-capabilities.mjs",
+      "find": "    ...entry.useWhen,\n",
+      "replace": "    entry.useWhen.join(\" \"),\n",
+      "kills": [
+        "merging two pull requests that change one unit adding exports and editing different CAPABILITY.md lines merges cleanly into the catalog the merged sources generate"
+      ]
+    }
+  ]
+}

@@ -1,24 +1,31 @@
 import { consoleLogger } from "@titan-design/daemon";
 import type { Command } from "commander";
-import type { CliDeps, Verbs } from "./cli.js";
+import type { CliDeps, Verbs } from "./cli-types.js";
+import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { EXIT } from "./exit-codes.js";
 import { resolveGate } from "./gate-resolve.js";
 import type { FactoryRoutes, PendingGate, ResumeReport } from "./host.js";
-import { resolveCommand } from "./registry.js";
+import { resolveCommand } from "./resolve-command.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 
 export const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
-export function registerResume(program: Command, { io, withHost }: Verbs): void {
+export function registerResume(program: Command, verbs: Verbs): void {
+  const { io, withHost } = verbs;
   program
     .command("resume")
     .description("drive every unfinished run until it ends or waits on a human, then list open gates")
-    .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
+    .option("--port <n>", "port titan-factory serve listens on; an agent env refuses to drive runs here when none answers", parsePort, FACTORY_PORT)
+    .action(async (opts: { port: number }) => {
+      if (await refusedWithoutServe(verbs, opts.port, "resume")) return;
+      await withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK));
+    });
 }
 
-export function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
+export function registerGate(program: Command, verbs: Verbs): void {
+  const { io, withHost } = verbs;
   program
     .command("gate")
     .description("human gates")
@@ -26,7 +33,7 @@ export function registerGate(program: Command, { io, deps, withHost }: Verbs): v
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
     .action((runId: string, stepId: string, opts: { json: string }) =>
-      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
+      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd))),
     );
 }
 
@@ -37,7 +44,7 @@ export function registerServe(program: Command, { io, deps, dbPath }: Verbs): vo
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action(async (opts: { port: number }) => {
       for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);
-      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env), reconciler: deps.reconciler?.(io.env), bot: deps.bot }, deps.stop);
+      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), ciTimingFallback: deps.ciTimingFallback?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env), reconciler: deps.reconciler?.(io.env), bot: deps.bot }, deps.stop);
       deps.exitAfterServe?.();
     });
 }

@@ -26,8 +26,9 @@ describe("validateEntry", () => {
   });
 
   it("rejects a nested missing field", () => {
-    const entry = clone(SHEPHERD_ENTRY);
-    delete (entry.metrics[0] as Partial<(typeof entry.metrics)[0]>).family;
+    const [first, ...others] = clone(SHEPHERD_ENTRY).metrics;
+    const withoutFamily = Object.fromEntries(Object.entries(first ?? {}).filter(([key]) => key !== "family"));
+    const entry = { ...clone(SHEPHERD_ENTRY), metrics: [withoutFamily, ...others] };
     expect(validateEntry(entry, "read").ok).toBe(false);
   });
 

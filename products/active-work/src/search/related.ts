@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { deriveQuery, type DerivedQuery } from './derive-query.js';
-import { graphDocumentFrequency } from './document-frequency.js';
+import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
 import type { ResolvedHit } from './resolve.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
@@ -70,6 +70,8 @@ export interface RelatedInput {
   exclude?: string[];
   /** How the caller renders a hit, so the budget counts what is actually printed. */
   render?: (hit: RelatedHit) => string;
+  /** False drops the hit before the cap, so a withheld initiative never takes a slot. */
+  servable?: (initiative: string | null) => boolean;
   dbPath?: string;
   activeRoot?: string;
 }
@@ -160,6 +162,7 @@ async function searchOpenIndex(
 ): Promise<RelatedResult> {
   const limit = input.limit ?? RELATED_DEFAULT_LIMIT;
   const exclude = new Set(input.exclude ?? []);
+  const servable = input.servable ?? (() => true);
   const result = await searchWorkspace(query.expression, {
     graph,
     rawExpression: true,
@@ -169,7 +172,7 @@ async function searchOpenIndex(
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
   const kept = result.hits
-    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit))
+    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && servable(hit.initiative))
     .slice(0, limit)
     .map(toRelatedHit);
   return {
@@ -191,7 +194,9 @@ async function relatedFromIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
 ): Promise<RelatedResult> {
-  const query = deriveQuery(input.text, graphDocumentFrequency(graph));
+  const { df, maxDfFor } = graphTermStatistics(graph);
+  const maxDf = maxDfFor(input.classes ?? RELATED_DEFAULT_CLASSES);
+  const query = deriveQuery(input.text, df, { maxDf });
   if (query.terms.length === 0) {
     return degradedResult(query, { source: 'query', reason: 'empty', message: 'no query terms' });
   }

@@ -12,7 +12,7 @@ describe("shared model-free Codex availability", () => {
   });
   it("preserves the version-inspection rejection context", async () => {
     expect(await checkCodexAvailable({}, { inspectVersion: async () => { throw new Error("fixture missing"); } }))
-      .toMatchObject({ ok: false, failure: { reason: "could not verify Codex CLI version: fixture missing" } });
+      .toMatchObject({ ok: false, failure: { kind: "harness_mismatch", reason: "could not verify Codex CLI version: fixture missing" } });
   });
   it("rejects relative overrides before probing", async () => {
     const inspectVersion = vi.fn(async () => "codex-cli 0.162.1");

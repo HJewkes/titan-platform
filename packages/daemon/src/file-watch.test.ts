@@ -30,11 +30,12 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * bug). Retrying keeps the assertion about our debounce rather than about OS delivery.
  */
 async function writeUntilChanged(dir: string, counter: { count: number }): Promise<void> {
+  const unchanged = (): boolean => counter.count === 0;
   const deadline = Date.now() + 10_000;
   for (let attempt = 0; counter.count === 0 && Date.now() < deadline; attempt++) {
     await writeFile(path.join(dir, `note-${attempt}.md`), "hello");
     const window = Date.now() + 300;
-    while (counter.count === 0 && Date.now() < window) await sleep(5);
+    while (unchanged() && Date.now() < window) await sleep(5);
   }
   if (counter.count === 0) throw new Error(`no change fired for ${dir}`);
 }
@@ -130,6 +131,26 @@ describe("watchTree", () => {
     expect(outcome).toBe(false);
   });
 
+  it("never fires for writes under an ignored directory", { timeout: 15_000 }, async () => {
+    const state = path.join(root, ".state", "db");
+    await mkdir(state, { recursive: true });
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, {
+      debounceMs: DEBOUNCE_MS,
+      ignore: [path.join(root, ".state")],
+    });
+    expect(await watcher.whenWatching(root)).toBe(true);
+
+    await writeFile(path.join(root, ".state", "graph.sqlite3"), "rows");
+    await writeFile(path.join(state, "graph.sqlite3-wal"), "rows");
+    await mkdir(path.join(root, ".state", "fresh"));
+    await sleep(DEBOUNCE_MS * 10);
+
+    expect(counter.count).toBe(0);
+    expect(watcher.isWatching(state)).toBe(false);
+    await writeUntilChanged(root, counter);
+  });
+
   it("stops firing after close", async () => {
     const counter = { count: 0 };
     watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
@@ -218,15 +239,25 @@ describe("watchTree", () => {
   });
 
   it("never fires once closed, even with a change already pending", async () => {
-    const counter = { count: 0 };
-    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
-    await writeFile(path.join(root, "pending.md"), "hello");
-    await sleep(DEBOUNCE_MS / 2);
+    // Fake timers hold the debounce pending until close(); a real sleep shorter than the
+    // debounce lets a loaded event loop expire it first and fire legitimately.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const counter = { count: 0 };
+      watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+      for (let attempt = 0; vi.getTimerCount() === 0 && attempt < 100; attempt++) {
+        await writeFile(path.join(root, `pending-${attempt}.md`), "hello");
+        await realDelay(50);
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
 
-    watcher.close();
-    await sleep(DEBOUNCE_MS * 5);
+      watcher.close();
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
 
-    expect(counter.count).toBe(0);
+      expect(counter.count).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears its pending debounce timer on close instead of leaving it to expire", { timeout: 15_000 }, async () => {

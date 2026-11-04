@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HOOK_MARKER, hookBody, installHook } from "./install.js";
-import { makeTestRepo, plantedHomePath, tempDir, withoutInjectedHooksPath, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, plantedHomePath, tempDir, withoutInjectedHooksPath, worldTemplate, type TestRepo } from "./test-repo.js";
 
 const dirs: string[] = [];
 const originalEnv = { ...process.env };
@@ -26,10 +26,19 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// installHook reads only git's config and directories, so a repository with no commit is enough for it.
 function newRepo(): TestRepo {
   const repo = makeTestRepo();
   dirs.push(repo.dir);
-  repo.commit("base");
+  return repo;
+}
+
+const committedCopy = worldTemplate(({ repo }) => ({ base: repo.commit("base") }));
+
+/** A copy of a repository with one commit, which `git worktree add` needs. */
+function committedRepo(): TestRepo {
+  const { root, repo } = committedCopy();
+  dirs.push(root);
   return repo;
 }
 
@@ -77,7 +86,7 @@ describe("installHook", () => {
   });
 
   it("writes to the shared hooks directory when run from a linked worktree", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
 
     const result = installHook(worktree, LOCAL);
@@ -150,7 +159,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   }
 
   it("runs the pushing worktree's scanner with the remote name, the push url and git's stdin", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const fakeBin = path.join(worktree, "node_modules", ".bin", "titan-egress-scan");
@@ -164,7 +173,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("falls back to the package's built script when pnpm left no .bin link", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const script = path.join(worktree, "node_modules", "@titan-design", "egress-scan", "dist", "bin.js");
@@ -178,7 +187,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("refuses the push and names all three places it looked when no scanner exists", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
 
@@ -194,7 +203,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("uses the main checkout's scanner from a linked worktree with no node_modules", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     fakeScanner(path.join(repo.dir, "node_modules", ".bin", "titan-egress-scan"), 5);
@@ -206,7 +215,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("uses the main checkout's built script when it has no .bin link", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const script = path.join(repo.dir, "node_modules", "@titan-design", "egress-scan", "dist", "bin.js");
@@ -217,7 +226,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("uses a scanner on PATH when neither checkout has one", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const pathDir = path.join(tempDir("egress-path-"), "bin");
@@ -231,7 +240,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("prefers the worktree's scanner over the main checkout's", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     fakeScanner(path.join(worktree, "node_modules", ".bin", "titan-egress-scan"), 3);
@@ -241,7 +250,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("prefers the main checkout's scanner over PATH", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const pathDir = path.join(tempDir("egress-path-"), "bin");
@@ -257,7 +266,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     ["a leading empty segment", ""],
     ["a middle empty segment", "/nonexistent-a::/nonexistent-b"],
   ])("fails closed when PATH has %s that would resolve a scanner planted in the pushed tree", (_name, extraPath) => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
     fakeScanner(path.join(worktree, "titan-egress-scan"), 0);
@@ -277,7 +286,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
   });
 
   it("hands the scanner the push url, so a real push excludes what the remote already has", () => {
-    const repo = newRepo();
+    const repo = committedRepo();
     const bare = tempDir("egress-push-remote-");
     const priv = tempDir("egress-fetch-remote-");
     dirs.push(bare, priv);

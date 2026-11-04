@@ -1,0 +1,10 @@
+schema: beat-system/v1
+id: countdown-rung
+version: 0.1.0
+source: "story-structure §2.9 (listicle / countdown: each item a mini-ABT)"
+summary: "One rung of a countdown: its rank, then and, but, therefore, so the item is a small argument rather than a list entry."
+steps:
+  - { beats: [chapter], does: "The rank and the finding's name." }
+  - { beats: [code-walk, claim-card], does: "And: what the code does." }
+  - { beats: [stat, claim-card], does: "But: the cost or the surprise." }
+  - { beats: [claim-card, code-walk], does: "Therefore: what to take from it." }

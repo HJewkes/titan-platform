@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { filterRows, parsePhases } from "./status-filter.js";
-import type { Phase, WatchRow } from "./view.js";
+import type { Phase } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const row = (runId: string, phase: Phase, branch: string, task: string): WatchRow => ({
   repo: "acme/widgets",

@@ -4,6 +4,7 @@ export { SPAN_FIELD, chapterOwnerRef, indexCorpus, listChapters, migrateIndex, o
 export type { IndexStats } from "./index-corpus.js";
 export { LAYOUTS, archiveLayout, plainLayout } from "./layout.js";
 export type { CorpusLayout } from "./layout.js";
+export { youtubeLayout, paragraphAnchor } from "./youtube-layout.js";
 export { splitParagraphs } from "./paragraphs.js";
 export type { ParagraphSpan } from "./paragraphs.js";
 export { compareStoryOrder } from "./story-order.js";
@@ -16,3 +17,10 @@ export { DEFAULT_WINDOW, passageId, readPassage, retrieve } from "./retrieve.js"
 export type { RetrieveOptions, RetrieveResult } from "./retrieve.js";
 export * from "./judge/index.js";
 export * from "./workflow/index.js";
+export { mergeRows, normalise } from "./merge/merge.js";
+export type { MergedRow, MergeOptions, MergeResult, NearDuplicate, SourcedRow } from "./merge/merge.js";
+export { DISCORD_LIMIT, renderDiscord, renderMarkdown } from "./render/render.js";
+export type { DiscordOptions } from "./render/render.js";
+export { BASELINE_USD, foldCost, formatCostReport } from "./cost/cost.js";
+export type { CostLine, CostReport, UsageEntry } from "./cost/cost.js";
+export { costFilePath, costReportText, readUsageEntries } from "./cost/command.js";

@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the squash fallback sends the raw PR title",
+      "file": "products/factory/src/workflows/land-merge-message.ts",
+      "find": "    return { subject: defangCiSkip(source.title), body: \"\" };",
+      "replace": "    return { subject: source.title, body: \"\" };",
+      "kills": ["the squash message a land merge sends defangs a CI skip token in the fallback title"]
+    }
+  ]
+}

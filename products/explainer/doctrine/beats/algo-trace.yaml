@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: algo-trace
+summary: "An algorithm stepping through real state."
+role: explain
+component: { name: RecipeRunBeat, maturity: spike }
+slots: algo-trace
+speech: { band: code }
+durationS: [12, 22, 45]
+preset: false
+emphasis: { targets: [steps], treatments: [trace, highlight] }
+recipe: "Step through two to twelve states taken from a real run, one note each. Slow pass first, then a fast replay."

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a list past the cap is read again",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "      if (error.expected >= PR_FILES_CAP) throw error;\n",
+      "replace": "",
+      "kills": [
+        "the file list Shepherd reads at registration when GitHub's count and list disagree does not re-read a file list cut short at GitHub's cap"
+      ]
+    },
+    {
+      "name": "a short list is read again without waiting",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "      await pause(LIST_SETTLE_MS);\n",
+      "replace": "",
+      "kills": [
+        "the file list Shepherd reads at registration when GitHub's count and list disagree reads again after a wait when the count outruns the list below the cap, and classes the whole list",
+        "the file list Shepherd reads at registration when GitHub's count and list disagree holds as unread when the list is short of its count on both reads, waiting once"
+      ]
+    }
+  ]
+}

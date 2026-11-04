@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the broker principal absent from the roster proves nothing",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
+      "replace": "if (rows.length === 0 && name === `${HUMAN}-root`) return new Set([name]);",
+      "kills": [
+        "the evidence record's attestations names the independent reviewer that met a row and why the row it left out is unmet"
+      ]
+    },
+    {
+      "name": "any name absent from the roster is a lineage root",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (rows.length === 0 && name === HUMAN) return new Set([name]);",
+      "replace": "if (rows.length === 0) return new Set([name]);",
+      "kills": [
+        "the evidence record's attestations records a reviewer whose spawner is absent from the roster as unmet: meeter-is-author"
+      ]
+    },
+    {
+      "name": "a ref from before the directory holds no rows",
+      "file": "products/factory/src/shepherd/attest-read.ts",
+      "find": "(entries === undefined ? [LEGACY_ATTESTATIONS_PATH] :",
+      "replace": "(entries === undefined ? [] :",
+      "kills": [
+        "readClaims a base from before the directory reads its legacy file, so a migration claims nothing it moved"
+      ]
+    },
+    {
+      "name": "a stray file in the directory is ignored",
+      "file": "products/factory/src/shepherd/attest-read.ts",
+      "find": "if (stray) throw new MalformedLayout(",
+      "replace": "if (stray === null) throw new MalformedLayout(",
+      "kills": [
+        "readClaims a file in the directory no PR could have written reads unread"
+      ]
+    },
+    {
+      "name": "every head file is read again",
+      "file": "products/factory/src/shepherd/attest-read.ts",
+      "find": "headEntries?.filter((entry) => !unchanged.has(",
+      "replace": "headEntries?.filter((entry) => true || !unchanged.has(",
+      "kills": [
+        "readClaims a head file with the base file's blob is not read again"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the card reads evidence collected at another head",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "if (stored?.head !== headSha || stored.ciPolicy?.kind !== \"weakened\") return undefined;",
+      "replace": "if (stored?.ciPolicy?.kind !== \"weakened\") return undefined;",
+      "kills": ["the approve-merge prompt on a ci-policy-weakened gate shows no card on a gate at another head than the evidence was collected at"]
+    },
+    {
+      "name": "the prompt leaves out the card",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "const cardLines = ciPolicy ? [\"\", ...ciPolicyCardLines(ciPolicy, repo, pr)] : [];",
+      "replace": "const cardLines: string[] = [];",
+      "kills": ["the approve-merge prompt on a ci-policy-weakened gate names Class D21, the keys and each changed line read at the gate's head"]
+    }
+  ]
+}

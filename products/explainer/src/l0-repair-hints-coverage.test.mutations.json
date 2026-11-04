@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the flow, evidence, pace and spine hints are not registered",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "  ...FLOW_HINTS,\n",
+      "replace": "",
+      "kills": [
+        "repair hint coverage gives every error-severity L0 rule the script stage can fail a repair hint of its own"
+      ]
+    },
+    {
+      "name": "the voice hints are not registered",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "  ...VOICE_HINTS,\n",
+      "replace": "",
+      "kills": [
+        "repair hint coverage gives every error-severity L0 rule the script stage can fail a repair hint of its own"
+      ]
+    },
+    {
+      "name": "the Q-W1 hint asks for the edit on the last beat, not an early stake beat",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "In ${early[0]!.id}, say",
+      "replace": "In ${script.beats.at(-1)!.id}, say",
+      "kills": [
+        "the Q-W1 hint names the early STAKE beat and the two things it must say, and that edit passes the check"
+      ]
+    },
+    {
+      "name": "the Q-W1 hint drops the stake's number",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "the stake's number \"${stake.number}\"",
+      "replace": "the stake",
+      "kills": [
+        "the Q-W1 hint names the early STAKE beat and the two things it must say, and that edit passes the check"
+      ]
+    },
+    {
+      "name": "repairHint returns the table hint without naming the row's beats",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "return hint ? namingRowBeats(hint(script, row, facts, spine, coverage)?.trim() ?? \"\", row) : undefined;",
+      "replace": "return hint?.(script, row, facts, spine, coverage);",
+      "kills": [
+        "repair hint coverage gives every error-severity check in the rules registry a hint that names the beats its row fails"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -15,12 +14,13 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1" });
 
 /** H1 says `atH1` and every later head says MERGE; the `atH1` a host is built with stands in for the code it was deployed with. */
 function phases(atH1: () => NoVerdictCause): ShepherdPhases {

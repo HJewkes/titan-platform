@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a vitest type test under a visual glob reads as rendering",
+      "file": "products/factory/src/shepherd/visual-gate.ts",
+      "find": "const NON_RENDERING = /(\\.(test|spec)(-d)?\\.[^/]*|\\.md|\\.d\\.ts)$/;",
+      "replace": "const NON_RENDERING = /(\\.(test|spec)\\.[^/]*|\\.md|\\.d\\.ts)$/;",
+      "kills": [
+        "visual paths count only files that can render merges a PR whose only files under a visual glob are vitest type tests (td#936)"
+      ]
+    }
+  ]
+}

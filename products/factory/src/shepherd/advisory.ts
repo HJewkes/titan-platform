@@ -2,7 +2,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FreezeGuard } from "./freeze.js";
-import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
+import { HOLD_POLL_MS, type HoldTiming } from "./hold-timing.js";
 
 /** True for a repo where Shepherd reviews, watches CI and notifies, but never writes to a branch; read fresh on every call. */
 export type IsAdvisory = (repo: RepoSlug) => boolean;

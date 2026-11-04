@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -14,12 +13,19 @@ import { shepherdEventMigration } from "./events.js";
 import { evidenceComment, evidenceMarker, locatorReference } from "./evidence-comment.js";
 import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type EvidenceRecord, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
-import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
-import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
+import { shepherdLandOptions } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
+import { REVIEW_STEPS, mergeVerdict, reviewRoutes, type ReviewWiring } from "./review.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
-import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef, type TaskKind } from "./store.js";
+import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, lineageMigration, type Registration, type ShepherdStoreRef, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
+import { partialFake } from "@titan-design/test-kit";
+import { fakeLocator } from "../test-support/fakes.js";
+import type { ReviewerAgent, ReviewerDispatch } from "@titan-design/review-panel";
+import { attestAtHead, type AttestReaders } from "./attest-evidence.js";
+import { ATTESTATIONS_DIR, attestationsFileOf } from "./attest-read.js";
+import { ReviewerAskTimedOut } from "./review-wait.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -31,7 +37,7 @@ const HEAD = fakeSha("merge-facts-head");
 const OTHER_HEAD = fakeSha("merge-facts-other-head");
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
-const locator = { sourceId: "transcript-1", selector: { kind: "subrecord-text" } } as unknown as SourceTextLocator;
+const locator = fakeLocator({ sourceId: "transcript-1", selector: { kind: "subrecord-text" } });
 const ALLOW_ALL = { verdict: "allow", ruleId: "MRG-AU-RV" } as const;
 
 const input: MergeEvidenceInput = {
@@ -62,11 +68,11 @@ afterEach(() => vi.mocked(evaluate).mockReset());
 
 const HOSTNAME = "host-a.example";
 const TRANSCRIPT_PATH = "/srv/agents/sessions/s-1.jsonl";
-const hostLocator = {
+const hostLocator = fakeLocator({
   source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, namespace: HOSTNAME, conversation: { harness: "claude-code", namespace: HOSTNAME, nativeId: "s-1" } },
   evidence: { line: { sourceId: `claude-code:${HOSTNAME}:s-1`, byteOffset: 4096, byteLength: 80, contentHash: "abc", lineNumber: 7, nativeOrdinal: null }, subrecord: { index: 2, path: ["message"] } },
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"], textIndex: 1 },
-} as unknown as SourceTextLocator;
+});
 
 describe("evidenceComment", () => {
   const record = async () => (await collect(world(), { verdict: { value: "MERGE", head: HEAD, locator: hostLocator } })).record;
@@ -119,7 +125,7 @@ describe("evidenceComment layout", () => {
     ...base,
     decision: { outcome: "deny", rule: { table: "authority", rowId: "MRG-AU-X", version: 1 }, reason: "the reviewer did not merge" },
   };
-  const jsonOf = (body: string) => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!) as EvidenceRecord;
+  const jsonOf = (body: string): unknown => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!);
 
   it("leads a cleared comment with the marker, a one-line outcome and the check table, then the collapsed JSON", () => {
     expect(evidenceComment(base).split("\n").slice(0, 10)).toEqual([
@@ -190,7 +196,7 @@ describe("evidenceComment layout", () => {
 });
 
 describe("locatorReference", () => {
-  const withSource = (source: object, rest: object = {}) => ({ source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, ...source }, ...rest }) as unknown as SourceTextLocator;
+  const withSource = (source: object, rest: object = {}) => fakeLocator({ source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, ...source }, ...rest });
 
   it("posts unknown for a locator with no nativeId, not its path or source id", () => {
     const reference = locatorReference(withSource({ conversation: { harness: "claude-code" } }));
@@ -279,7 +285,7 @@ describe("mergeEvidence", () => {
 
   it("gates, not allows, when a required context is still pending at the head", async () => {
     const fake = world();
-    fake.setRuns(HEAD, [successRun("validate", 1, undefined, null as unknown as string), successRun("dag-check", 2)]);
+    fake.setRuns(HEAD, [Object.assign(successRun("validate", 1), { conclusion: null }), successRun("dag-check", 2)]);
 
     const evidence = await collect(fake);
 
@@ -472,17 +478,23 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A workflow that takes the MERGE review through the sh-merge-evidence step, then lands with the Shepherd options. */
-function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined): FactoryHost {
+interface HostSetup {
+  store?: ShepherdStoreRef;
+  wiring?: ReviewWiring;
+  request?: MergeEvidenceInput;
+}
+
+function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined, setup: HostSetup = {}): FactoryHost {
   const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
-  const deps: ShepherdDeps = { port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
-    const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, input)]]);
+    const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, setup.request ?? input)]]);
     beforeLand();
     await land(ctx, { repo: REPO, pr: 1 }, shepherdLandOptions(() => AUTO, (headSha) => reviews.get(headSha)));
   };
   const workflow = defineWorkflow({ name: "shepherd-merge", steps: [...LAND_STEPS, ...REVIEW_STEPS], run });
-  const routes = [...landRoutes({ port, now: deps.now, sleep: deps.sleep }), ...reviewRoutes(deps)];
+  const routes = [...landRoutes({ port, now: deps.now, sleep: deps.sleep }), ...reviewRoutes(deps, setup.wiring)];
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);
   return host;
@@ -585,7 +597,7 @@ async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
   const route = reviewRoutes(deps).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
   const prompt = JSON.stringify({ ...input, runId: EVIDENCE_RUN, ...carried() });
-  const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+  const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
   if (!outcome.ok) throw new Error(outcome.error);
   const { result } = JSON.parse(outcome.output) as { result: MergeEvidence };
   return result;
@@ -702,7 +714,7 @@ describe("a fact that cannot be read", () => {
 
   it("gates a carried MERGE whose registration read throws, and names only the store error's class, never its text", async () => {
     const leaky = new TypeError("fetch https://db.example.invalid/store failed: Authorization: Bearer tok_FAKE0000SECRET");
-    const failing = { get: () => { throw leaky; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw leaky; } });
 
     const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
     const comment = evidenceComment(evidence.record);
@@ -717,21 +729,21 @@ describe("a fact that cannot be read", () => {
   });
 
   it("names a fixed word, not the thrown value, when a registration read throws something that is not an Error", () => {
-    const failing = { get: () => { throw "secret-token-value"; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw "secret-token-value"; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: non-Error" });
   });
 
   it("names a plain Error when a thrown error's name is not identifier-shaped", () => {
     const named = Object.assign(new Error("boom"), { name: "https://leak.example.invalid" });
-    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw named; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
   });
 
   it("names a plain Error when a thrown error's identifier-shaped name looks like a GitHub token", () => {
     const named = Object.assign(new Error("boom"), { name: "ghp_FAKE0000NOTAREALTOKEN0000" });
-    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw named; } });
 
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
   });
@@ -739,7 +751,7 @@ describe("a fact that cannot be read", () => {
   it("gates with the fixed class Error, never failing the step or storing the message, when a thrown error's name getter throws", async () => {
     const hostile = new Error("boom");
     Object.defineProperty(hostile, "name", { get: () => { throw new Error("getter-secret-message"); } });
-    const failing = { get: () => { throw hostile; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw hostile; } });
 
     const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
@@ -755,7 +767,7 @@ describe("a fact that cannot be read", () => {
     ];
 
     it.each(hostileProxies)("gates with the fixed class Error, never failing the step or storing text, when %s", async (_case, thrown) => {
-      const failing = { get: () => { throw thrown(); } } as unknown as ShepherdStoreRef;
+      const failing = partialFake<ShepherdStoreRef>({ get: () => { throw thrown(); } });
 
       const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
@@ -770,12 +782,86 @@ describe("a fact that cannot be read", () => {
     let reads = 0;
     const shifty = new Error("boom");
     Object.defineProperty(shifty, "name", { get: () => answers[Math.min(reads++, 1)] });
-    const failing = { get: () => { throw shifty; } } as unknown as ShepherdStoreRef;
+    const failing = partialFake<ShepherdStoreRef>({ get: () => { throw shifty; } });
 
     const { unread } = registeredKind(failing, "run-1");
 
     expect(unread).not.toContain("leak");
     expect(unread).toMatch(/store unreadable: [A-Za-z][A-Za-z0-9_]*$/);
+  });
+});
+
+describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => {
+  const CI = ".github/workflows/ci.yml";
+  const WEAKENED = { ciPolicy: { kind: "weakened" as const, keys: ["permissions" as const] } };
+  const seeded = () => {
+    const fake = world([{ path: CI, status: "modified" }, { path: "src/a.ts", status: "modified" }]);
+    fake.files.set(`main:${CI}`, { content: "permissions:\n  contents: write\n", blobSha: "b1" });
+    fake.files.set(`${HEAD}:${CI}`, { content: "permissions:\n  contents: read\n", blobSha: "b2" });
+    return fake;
+  };
+
+  /** `count` changed .github/ files at long paths, each with 30 changed lines that JSON escapes to twice their length. */
+  const manyFiles = (count: number) => {
+    const paths = Array.from({ length: count }, (_, i) => `.github/workflows/${"p".repeat(150)}-${i}.yml`);
+    const fake = world(paths.map((path) => ({ path, status: "modified" })));
+    const content = (side: string) => Array.from({ length: 15 }, (_, j) => `k${j}: ${side}${'"\\'.repeat(200)}`).join("\n");
+    for (const path of paths) {
+      fake.files.set(`main:${path}`, { content: content("a"), blobSha: "b1" });
+      fake.files.set(`${HEAD}:${path}`, { content: content("b"), blobSha: "b2" });
+    }
+    return fake;
+  };
+
+  it("reads each changed .github/ file at the base and the head and records its changed lines", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, lines: [{ side: "-", n: 2, text: "  contents: write" }, { side: "+", n: 2, text: "  contents: read" }], omitted: 0 }]);
+  });
+
+  it("records the head blob of every changed path, .github/ or not, null for one absent at head", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.headBlobs).toEqual({ [CI]: "b2", "src/a.ts": null });
+  });
+
+  it("reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters", async () => {
+    const fake = manyFiles(300);
+    const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(port.getFile).toHaveBeenCalledTimes(20);
+    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read", "the head blobs of the changed files are unread: 300 changed files, more than the 20 a plan approval pins"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.ciPolicyChanges?.reduce((sum, change) => sum + change.lines.length, 0)).toBe(120);
+    expect(evidenceComment(evidence.record).length).toBeLessThan(60_000);
+  });
+
+  it("reads no file for an unchanged line", async () => {
+    const fake = seeded();
+    const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
+
+    const evidence = await mergeEvidence(port, { ...input, ciPolicy: { kind: "unchanged" } }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(port.getFile).not.toHaveBeenCalled();
+    expect(evidence.record).not.toHaveProperty("ciPolicyChanges");
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+  });
+
+  it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
+    const port = { ...githubPort(seeded().wire), getFile: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`, "the head blobs of the changed files are unread: HTTP 502"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.decision.reason).toContain(CI);
+    expect(evidence.record.decision.reason).not.toContain("/internal");
+    expect(evidence.record.ciPolicyChanges).toEqual([]);
   });
 });
 
@@ -801,7 +887,7 @@ describe("approve-merge under merge:auto", () => {
 
   it("opens approve-merge and does not merge when the facts at the head gate", async () => {
     const fake = world();
-    fake.setRuns(HEAD, [successRun("validate", 1, undefined, null as unknown as string), successRun("dag-check", 2)]);
+    fake.setRuns(HEAD, [Object.assign(successRun("validate", 1), { conclusion: null }), successRun("dag-check", 2)]);
     const host = shepherdHost(fake, () => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)])));
     const runId = host.runtime.start("shepherd-merge");
 
@@ -871,5 +957,150 @@ describe("an empty gh body while posting the sh-merge-evidence comment", () => {
     expect(gate.prompt).toContain(MERGE_EVIDENCE_STEP);
     expect(host.runtime.status(runId)!.status).not.toBe("failed");
     expect(fake.effects.merge).toBe(0);
+  });
+});
+
+describe("the attestation guard", () => {
+  const closure = (seed: string) => fakeSha(`closure-${seed}`) + fakeSha(`closure-${seed}-tail`).slice(0, 24);
+  const CI_WAIT = { step: "ci-wait", closure: closure("ci-wait"), pr: 1 };
+  const TOKEN = `ci-wait@${CI_WAIT.closure.slice(0, 12)}`;
+  const agent = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: "human", predecessor: null });
+  const roster = ["impl-a", "rev-1", "adv-1"].map(agent);
+  const as = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
+  const byReviewer = (name: string, attests: string[] = [TOKEN], extra: Partial<MergeEvidenceInput> = {}): Partial<MergeEvidenceInput> => ({ resolver: as(name), dispatchedReviewer: as(name), attest: { attests }, ...extra });
+
+  function claiming(head: unknown = [CI_WAIT]): FakeGitHub {
+    const fake = world();
+    fake.files.set(`${HEAD}:${attestationsFileOf(1)}`, { content: typeof head === "string" ? head : JSON.stringify(head), blobSha: "attest-head" });
+    return fake;
+  }
+
+  function readers(holdReason: string | null = null): AttestReaders {
+    const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason });
+    const store = partialFake<ShepherdStore>({ byRun: () => registration, authorsOf: () => [] });
+    return { store: partialFake<ShepherdStoreRef>({ get: () => store }), roster: async () => roster };
+  }
+
+  async function judged(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput>, holdReason?: string) {
+    const port = githubPort(fake.wire);
+    const attest = (request: MergeEvidenceInput, baseRef: string) => attestAtHead(port, readers(holdReason), request, baseRef);
+    return mergeEvidence(port, { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest });
+  }
+
+  it("a head that claims an attestation with no Attests line gates as attest-unmet", async () => {
+    const evidence = await judged(claiming(), byReviewer("rev-1", []));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: no-meeter" });
+  });
+
+  it("an attestation the implementer reviewed gates as attest-unmet: meeter-is-author", async () => {
+    const store = shepherdStoreRef();
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+    store.bind(db);
+    new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "rev-1", policy: AUTO, kind: "correctness" });
+    const deps: ShepherdDeps = { port: githubPort(claiming().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+    const route = reviewRoutes(deps, partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: async () => roster }) })).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
+
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ ...input, ...byReviewer("rev-1") }), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+
+    const output: unknown = JSON.parse(outcome.ok ? outcome.output : "{}");
+    expect(output).toMatchObject({ result: { record: { decision: { outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: meeter-is-author" } } } });
+  });
+
+  it("an independent reviewer's Attests line lets MRG-AU-RV allow, and the record lists the meeter", async () => {
+    const evidence = await judged(claiming(), byReviewer("rev-1"));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV" } });
+    expect(evidence.record.attested).toEqual([{ step: "ci-wait", closure: CI_WAIT.closure, meeters: [{ name: "rev-1", agentId: "agent-rev-1", shape: "correctness" }] }]);
+  });
+
+  it("an adversary-class head needs the adversary member's Attests line too", async () => {
+    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests }, adversaryPlanned: true } });
+
+    const silent = await judged(claiming(), adversary([]));
+    const attested = await judged(claiming(), adversary([TOKEN]));
+
+    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-missing" });
+    expect(attested.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
+  it("an unreadable attestation file gates and names it unread", async () => {
+    const evidence = await judged(claiming("not json"), byReviewer("rev-1"));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: `attestation unmet: unread: ${ATTESTATIONS_DIR} is unreadable: malformed` });
+  });
+
+  it("a roster read that fails for a reason other than the broker still gates as unread", async () => {
+    const port = githubPort(claiming().wire);
+    const failing: AttestReaders = { ...readers(), roster: async () => Promise.reject(new TypeError("roster row has no agentId")) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...byReviewer("rev-1") }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { attest: (request, baseRef) => attestAtHead(port, failing, request, baseRef) });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: unread: the meeters' facts are unreadable: TypeError" });
+  });
+
+  describe("when the broker is slow to answer the roster or lineage read", () => {
+    const registration = partialFake<Registration>({ runId: "run-1", implementer: "impl-a", holdReason: null, held: false, kind: "correctness", policy: AUTO });
+    const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => registration, authorsOf: () => [] }) });
+    const request = { ...input, ...byReviewer("rev-1") };
+
+    /** A read that times out `timeouts` times, then answers `value`. */
+    function slow<T>(timeouts: number, value: T): () => Promise<T> {
+      let reads = 0;
+      return async () => (++reads <= timeouts ? Promise.reject(new ReviewerAskTimedOut("read timed out")) : value);
+    }
+
+    function slowBroker(fake: FakeGitHub, timeouts: number, slowLineage = false): FactoryHost {
+      fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+      const readers = slowLineage ? { roster: async () => roster, lineage: slow(timeouts, { rows: roster, complete: true }) } : { roster: slow(timeouts, roster) };
+      const wiring = partialFake<ReviewWiring>({ dispatch: partialFake<ReviewerDispatch>({ roster: readers.roster }), ...(readers.lineage && { lineage: readers.lineage }), sessionStartTimeoutMs: 60_000 });
+      return shepherdHost(fake, undefined, { store, wiring, request });
+    }
+
+    it("a lineage read that times out once and then answers merges with no gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, 1, true);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("completed");
+      expect(fake.effects.merge).toBe(1);
+      expect(host.gates.listPending()).toEqual([]);
+    });
+
+    it("a read that times out once and then answers judges the attestation and merges with no gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, 1);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("completed");
+      expect(fake.effects.merge).toBe(1);
+      expect(host.gates.listPending()).toEqual([]);
+      const evidence = Object.values(run.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${HEAD}`);
+      expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
+    });
+
+    it("a read still timed out past the budget fails the run as infrastructure and opens no owner gate", async () => {
+      const fake = claiming();
+      const host = slowBroker(fake, Number.POSITIVE_INFINITY);
+
+      const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+      expect(run.status).toBe("failed");
+      expect(fake.effects.merge).toBe(0);
+      expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: ReviewerAskTimedOut \\(roster unread after 1 min\\)`));
+      expect(host.gates.listPending()).toEqual([]);
+    });
+  });
+
+  it("a head that claims nothing decides exactly as before", async () => {
+    const before = await collect(world());
+    const after = await judged(world(), byReviewer("rev-1", []));
+
+    expect(after.record.decision).toEqual(before.record.decision);
+    expect(after.record).not.toHaveProperty("attested");
+    expect(after).not.toHaveProperty("attest");
   });
 });

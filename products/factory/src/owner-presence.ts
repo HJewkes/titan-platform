@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { errorCode } from "@titan-design/rpc-protocol/narrow";
 
 /** Runs the helper with `input` on stdin; rejects on a non-zero exit or when the helper cannot start. */
 export type HelperRunner = (file: string, args: readonly string[], input?: Uint8Array) => Promise<string>
@@ -13,9 +14,6 @@ const DIALOG_TIMEOUT_MS = 120_000
 // eslint-disable-next-line no-control-regex -- matching control characters is the point
 const CONTROL_OR_BACKSLASH = /[\0-\x09\x0b-\x1f\x7f-\x9f\p{Cf}\\]/gu
 const NAMED: Record<string, string> = { "\t": "\\t", "\r": "\\r", "\\": "\\\\" }
-
-/** The helper's v4 UUID: anything else on stdout is not a proof, however the helper exited. */
-const PROOF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/
 
@@ -41,16 +39,13 @@ export const helperSearchOrder = (): readonly string[] => [ROOT_HELPER_PATH, def
 
 const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"])
 
-const errorCode = (error: unknown): string => {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === "string" ? code : "UNKNOWN"
-}
+const codeOrUnknown = (error: unknown): string => errorCode(error) ?? "UNKNOWN"
 
 export const defaultStat: StatPort = (path) => {
   try {
     return lstatSync(path, { throwIfNoEntry: false })
   } catch (error) {
-    if (ABSENT_CODES.has(errorCode(error))) return undefined
+    if (ABSENT_CODES.has(codeOrUnknown(error))) return undefined
     throw error
   }
 }
@@ -111,12 +106,26 @@ function escapeOne(char: string): string {
 /** Control bytes would redraw or hide what the owner reads in the dialog. */
 const escapeReason = (reason: string): string => reason.replace(CONTROL_OR_BACKSLASH, escapeOne)
 
-interface ConfirmOptions {
+/** The OS edge the helper is found, checked and run through; every field defaults to the real machine. */
+export interface ConfirmOptions {
   run?: HelperRunner
   helperPaths?: readonly string[]
   stat?: StatPort
   getuid?: () => number | undefined
   report?: (line: string) => void
+}
+
+let presenceEdge: ConfirmOptions = {}
+
+/**
+ * Swaps the OS edge ownerKeyId and signStatement run through, until the returned reset puts the real machine back. Only `test-support/owner-edges.ts`
+ * calls it (owner-identity-seams.test.ts checks), so no production deps object can choose who counts as the owner.
+ */
+export function setOwnerPresenceEdge(edge: ConfirmOptions): () => void {
+  presenceEdge = edge
+  return () => {
+    presenceEdge = {}
+  }
 }
 
 /** The checked helper path, or undefined after reporting why presence fails closed. */
@@ -125,7 +134,7 @@ function checkedHelper({ helperPaths = helperSearchOrder(), stat = defaultStat, 
   try {
     helper = pickHelper(helperPaths, stat, getuid())
   } catch (error) {
-    report(`owner presence refused: lstat of the helper path failed with ${errorCode(error)}\n`)
+    report(`owner presence refused: lstat of the helper path failed with ${codeOrUnknown(error)}\n`)
     return undefined
   }
   if ("refusal" in helper) {
@@ -136,29 +145,11 @@ function checkedHelper({ helperPaths = helperSearchOrder(), stat = defaultStat, 
 }
 
 /**
- * Asks the owner for Touch ID or their login password. Returns the helper's proof id, or
- * undefined on cancel, a missing helper, a helper on a path someone else could replace, a
- * non-zero exit, no GUI session or output that is not a UUID. The path is checked with
- * lstat before each run. There is no environment fallback: an agent can set any variable,
- * but cannot satisfy the dialog.
- */
-export async function confirmOwner(reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
-  const helper = checkedHelper(options)
-  if (helper === undefined) return undefined
-  try {
-    const proof = (await (options.run ?? defaultRunner)(helper, [escapeReason(reason)])).trim()
-    return PROOF.test(proof) ? proof : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/**
  * The id of the owner's Secure Enclave key, read from the same checked helper with `pubkey --id`
  * (no dialog). Returns undefined on a missing key, a non-zero exit, the same helper path refusals
  * or output that is not 16 lowercase hex, so a caller can refuse before asking for presence.
  */
-export async function ownerKeyId(options: ConfirmOptions = {}): Promise<string | undefined> {
+export async function ownerKeyId(options: ConfirmOptions = presenceEdge): Promise<string | undefined> {
   const helper = checkedHelper(options)
   if (helper === undefined) return undefined
   try {
@@ -177,13 +168,15 @@ function isDerSignature(text: string): boolean {
 }
 
 /**
- * Signs `statement` with the owner's Secure Enclave key after the same dialog as confirmOwner,
- * with the escaped `reason` in it. Returns the base64url DER ECDSA P-256 SHA-256 signature over
+ * Asks the owner for Touch ID or their login password, with the escaped `reason` in the dialog,
+ * then signs `statement` with the owner's Secure Enclave key. The helper path is checked with
+ * lstat before each run. There is no environment fallback: an agent can set any variable, but
+ * cannot satisfy the dialog. Returns the base64url DER ECDSA P-256 SHA-256 signature over
  * the exact bytes, or undefined on cancel, a missing key, the same helper path refusals, no GUI
  * session or output that is not a DER signature. The verifier, not this function, decides
  * whether the signature is the owner's.
  */
-export async function signStatement(statement: Uint8Array, reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
+export async function signStatement(statement: Uint8Array, reason: string, options: ConfirmOptions = presenceEdge): Promise<string | undefined> {
   const helper = checkedHelper(options)
   if (helper === undefined) return undefined
   try {

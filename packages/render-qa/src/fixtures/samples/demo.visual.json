@@ -1,0 +1,34 @@
+{
+ "beats": [
+  {
+   "id": "b1-map",
+   "map_state": {
+    "reveal": [
+     {
+      "atCue": "source"
+     },
+     {
+      "atCue": "queue"
+     },
+     {
+      "atCue": "worker"
+     },
+     {
+      "atCue": "sink"
+     }
+    ]
+   }
+  },
+  {
+   "id": "b3-cards",
+   "cues": [
+    {
+     "atCue": "first"
+    },
+    {
+     "atCue": "second"
+    }
+   ]
+  }
+ ]
+}

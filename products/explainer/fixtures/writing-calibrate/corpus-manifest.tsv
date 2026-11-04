@@ -1,0 +1,13 @@
+id	path	label	set	split	cluster	caption_kind	words	sha256_12
+held-a	texts/held-a.txt	human	human-ontopic	heldout	ch:alpha	auto	534	000000000000
+held-b	texts/held-b.txt	human	human-ontopic	heldout	ch:alpha	auto	985	000000000000
+held-c	texts/held-c.txt	human	human-ontopic	heldout	ch:beta	auto	341	000000000000
+held-d	texts/held-d.txt	human	human-ontopic	heldout	ch:gamma	auto	501	000000000000
+creator-a	texts/creator-a.txt	human	human-creator	train	ch:delta	creator	466	000000000000
+auto-a	texts/auto-a.txt	human	human-auto	train	ch:epsilon	auto	709	000000000000
+other-a	texts/other-a.txt	ai-other	ai-other	phrase-fit	topic:caches	none	423	000000000000
+other-b	texts/other-b.txt	ai-other	ai-other	phrase-fit	topic:caches	none	386	000000000000
+other-c	texts/other-c.txt	ai-other	ai-other	phrase-fit	topic:queues	none	646	000000000000
+new-a	texts/new-a.json	ours-new	n10	heldout	input:one	none	362	000000000000
+new-b	texts/new-b.json	ours-new	n10	heldout	input:one	none	422	000000000000
+new-c	texts/new-c.json	ours-new	n11	heldout	input:two	none	960	000000000000

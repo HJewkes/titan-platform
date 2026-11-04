@@ -3,7 +3,7 @@ import { createServer, request, type IncomingHttpHeaders } from "node:http";
 import { connect, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { silentLogger } from "@titan-design/daemon";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { eventLogMigration } from "../event-log/event-log.js";
@@ -125,12 +125,13 @@ describe("ingress listener timeouts", () => {
     const socket = connect(listener.port, "127.0.0.1");
     cleanups.push(() => void socket.destroy());
     const head = Object.entries({ ...signedHeaders(BODY), host: "127.0.0.1", "content-length": String(BODY.length) }).map(([name, value]) => `${name}: ${value}`);
-    const started = Date.now();
+    let closed = false;
+    socket.once("close", () => (closed = true)).resume();
 
     socket.write(`POST /ingress/github HTTP/1.1\r\n${head.join("\r\n")}\r\n\r\n${BODY.subarray(0, BODY.length / 2).toString("utf8")}`);
-    await new Promise<void>((resolve) => socket.once("close", () => resolve()).resume());
 
-    expect(Date.now() - started).toBeLessThan(1_000);
+    // Node's own request timeout is five minutes, so a socket the listener does not cut outlasts the wait budget.
+    await vi.waitFor(() => expect(closed).toBe(true));
     expect(rowCount(listener.db)).toBe(0);
   });
 });

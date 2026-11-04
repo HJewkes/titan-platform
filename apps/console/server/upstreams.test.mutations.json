@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "createSources gives the active-work cache no invalidation",
+      "file": "apps/console/server/upstreams.ts",
+      "find": "cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation)",
+      "replace": "cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder))",
+      "kills": [
+        "the active-work reads createSources builds go upstream once per window, and refresh behind an active-work relay frame"
+      ]
+    },
+    {
+      "name": "a write leaves the cached reads fresh",
+      "file": "apps/console/server/active-work-cache.ts",
+      "find": "      cache.stale();\n",
+      "replace": "",
+      "kills": [
+        "the active-work reads createSources builds refresh behind a write, since the write moved the tree"
+      ]
+    }
+  ]
+}

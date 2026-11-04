@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the batch keeps a held PR",
+      "file": "products/factory/src/shepherd/visual-week.ts",
+      "find": "return held === undefined ? undefined : `held: ${held}`;",
+      "replace": "return undefined;",
+      "kills": ["batches only pending visual-path gates at a current unheld head"]
+    },
+    {
+      "name": "the question binds a head the gate did not ask about",
+      "file": "products/factory/src/shepherd/visual-week.ts",
+      "find": "merge: { repo, pr, headSha: head, ship: [\"Ship\"] },",
+      "replace": "merge: { repo, pr, headSha: \"f\".repeat(40), ship: [\"Ship\"] },",
+      "kills": [
+        "names the unit for the ISO week and binds each question to the gate's head with only Ship as a ship option",
+        "a batch round with Ship on two of three PRs resolves those two through roundShips"
+      ]
+    },
+    {
+      "name": "a gate whose head the run no longer decided stays in the batch",
+      "file": "products/factory/src/shepherd/visual-week.ts",
+      "find": "visualPathHead(run, prompt) !== head) return",
+      "replace": "visualPathHead(run, prompt) === \"\") return",
+      "kills": ["batches only pending visual-path gates at a current unheld head"]
+    }
+  ]
+}

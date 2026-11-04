@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "beat windows end at the float boundary, so two beats share a frame",
+      "file": "products/explainer/src/composition/Composition.tsx",
+      "find": "durationS={beat.durationS - BOUNDARY_S} cues={beat.cues}>\n      <Frame ",
+      "replace": "durationS={beat.durationS} cues={beat.cues}>\n      <Frame ",
+      "kills": [
+        "the composition page the QA cue gate holds no error on the kind sheet's stage beats"
+      ]
+    },
+    {
+      "name": "the arch-map draws any edges as the node path",
+      "file": "products/explainer/src/composition/beats/ArchMapBeat.tsx",
+      "find": "if (missing.length > 0 || extra.length > 0 || given.length !== path.length) {",
+      "replace": "if (false) {",
+      "kills": [
+        "the composition page an arch-map whose edges are not the node path is refused, so no link is drawn that the map lacks"
+      ]
+    },
+    {
+      "name": "a dense line chart keeps the wide column gap",
+      "file": "products/explainer/src/composition/beats/stage/beats.css",
+      "find": ".beat-graph-plot[data-dense], .beat-graph-labels[data-dense] { gap: var(--beat-gap-sm); }",
+      "replace": "",
+      "kills": [
+        "the composition page a line chart of twelve points fits its stage box with and without a legend, through every frame"
+      ]
+    },
+    {
+      "name": "a line chart's plot gives no height back to its legend",
+      "file": "products/explainer/src/composition/beats/GraphBeat.tsx",
+      "find": " - (legend ? LEGEND_PLOT_PX : 0)",
+      "replace": "",
+      "kills": [
+        "the composition page a line chart of twelve points fits its stage box with and without a legend, through every frame"
+      ]
+    },
+    {
+      "name": "a dense line chart keeps the full plot height",
+      "file": "products/explainer/src/composition/beats/GraphBeat.tsx",
+      "find": "(points > DENSE_AFTER_POINTS ? DENSE_PLOT_PX : GRAPH_PLOT_PX)",
+      "replace": "GRAPH_PLOT_PX",
+      "kills": [
+        "the composition page a line chart of twelve points fits its stage box with and without a legend, through every frame"
+      ]
+    }
+  ]
+}

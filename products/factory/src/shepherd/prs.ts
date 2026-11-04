@@ -1,4 +1,4 @@
-import { ciVerdict, latestPerName, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { ciVerdict, latestPerName, type CheckRun, type CommitStatus, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
@@ -15,11 +15,39 @@ export const MERGED_WINDOW_MS = 24 * 60 * 60_000;
 /** `push` and `gh-write` name the writers that will feed rows in later slices; today only the first two are produced. */
 type PrRowSource = "snapshot" | "merge-step" | "push" | "gh-write";
 
+/** One check run, the newest per name, with the fields `gh pr checks` prints. */
+interface PrRowCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  url: string;
+  title: string | null;
+}
+
+interface PrRowStatus {
+  context: string;
+  state: string;
+  targetUrl: string | null;
+  description: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 interface PrRowCi {
+  /** The commit the checks were read for, which differs from the row's `headSha` once a push outran the read. */
   head: string;
   state: "pending" | "green" | "red" | "none";
-  /** Required contexts with no run on the head; empty when the run recorded no required list. */
+  /** Required contexts with no run or status on the head; empty when the run recorded no required list. */
   requiredMissing: string[];
+  checks: PrRowCheck[];
+  /** Absent when the status read failed: without it a red status could hide behind green runs. */
+  statuses?: PrRowStatus[];
+  /** The land-rules contexts; absent when the run recorded none or no run is registered. */
+  required?: string[];
+  /** The runs that decide the head are all complete, so the snapshot reads them again only once per settled window. */
+  settled: boolean;
   at: string;
 }
 
@@ -89,7 +117,7 @@ async function openRows(snapshot: PrsSources["snapshot"], repo: RepoSlug, runs: 
   const { prs, at } = await snapshot.openList(repo);
   return prs.sort((a, b) => a.number - b.number).map((pr) => {
     const entry = runFor(runs, repo, pr);
-    const ci = ciOf(pr.headSha, snapshot.cachedRuns(repo, pr.headSha), entry && requiredContexts(entry.run));
+    const ci = ciOf(snapshot.cachedRuns(repo, pr.headSha), entry && requiredContexts(entry.run));
     return { ...openFields(repo, pr), ...registeredFields(entry), ...(ci && { ci }), source: "snapshot" as const, at: iso(at) };
   });
 }
@@ -108,13 +136,21 @@ function runFor(runs: readonly ShepherdedRun[], repo: RepoSlug, pr: PullRequest)
   return mine.find(({ registration }) => registration.pr === pr.number) ?? mine.find(({ registration }) => registration.pr === null && registration.branch === pr.headRef);
 }
 
-function ciOf(head: string, cached: CachedRuns | undefined, required: readonly string[] = []): PrRowCi | undefined {
+function ciOf(cached: CachedRuns | undefined, required?: readonly string[]): PrRowCi | undefined {
   if (!cached) return undefined;
   const runs = latestPerName(cached.runs);
-  const names = new Set(runs.map((run) => run.name));
-  const requiredMissing = required.filter((context) => !names.has(context));
-  const state = runs.length === 0 ? "none" : ciVerdict({ rules: { contexts: [...required], strict: false }, runs, statuses: [] }).verdict;
-  return { head, state, requiredMissing, at: iso(cached.at) };
+  const statuses = cached.statuses ?? [];
+  const names = new Set([...runs.map((run) => run.name), ...statuses.map((status) => status.context)]);
+  const requiredMissing = (required ?? []).filter((context) => !names.has(context));
+  const state = runs.length === 0 ? "none" : ciVerdict({ rules: { contexts: [...(required ?? [])], strict: false }, runs, statuses }).verdict;
+  const listed = { checks: runs.map(checkOf), ...(cached.statuses && { statuses: cached.statuses.map(statusOf) }), ...(required && { required: [...required] }) };
+  return { head: cached.sha, state, requiredMissing, ...listed, settled: cached.settled, at: iso(cached.at) };
+}
+
+const checkOf = ({ name, status, conclusion, startedAt, completedAt, url, title }: CheckRun): PrRowCheck => ({ name, status, conclusion, startedAt, completedAt, url, title });
+
+function statusOf({ context, state, targetUrl, description, createdAt, updatedAt }: CommitStatus): PrRowStatus {
+  return { context, state, targetUrl: targetUrl ?? null, description: description ?? null, createdAt: createdAt ?? null, updatedAt: updatedAt ?? null };
 }
 
 function latest<T>(run: WorkflowRun, stepId: string, schema: z.ZodType<T>): { step: StepResult; data: T } | undefined {

@@ -1,4 +1,5 @@
 import { patternsOverlap } from "./glob-pattern.js";
+import type { OldPathRule } from "./old-paths.js";
 import { HUMAN_OPS, opsHits } from "./ops.js";
 import type { PlannedSlice } from "./report.js";
 
@@ -88,11 +89,33 @@ function dependencyCycle(slices: readonly PlannedSlice[]): string[] {
 /**
  * Advisory lines that never block seeding. A `dependsOn` edge between slices whose owns share no file serialises work
  * that could run in parallel unless `dependsWhy` names the semantic reason, and a linear chain of three or more over
- * disjoint owns is flagged whatever `dependsWhy` says.
+ * disjoint owns is flagged whatever `dependsWhy` says. `oldPaths` are the sunset manifest's agent-chat `src` rows.
  */
-export function sliceWarnings(slices: readonly PlannedSlice[]): string[] {
+export function sliceWarnings(slices: readonly PlannedSlice[], oldPaths: readonly OldPathRule[] = []): string[] {
   const byName = new Map(slices.map((s) => [s.n, s]));
-  return [...slices.flatMap((s) => unexplainedEdges(s, byName)), ...disjointChains(slices, byName), ...slices.flatMap(undeclaredPublish)];
+  return [
+    ...slices.flatMap((s) => unexplainedEdges(s, byName)),
+    ...disjointChains(slices, byName),
+    ...slices.flatMap(undeclaredPublish),
+    ...slices.flatMap((s) => oldPathOwns(s, oldPaths)),
+  ];
+}
+
+const AGENT_CHAT_REPO = /(^|\/)agent-chat\/?$/;
+
+/** Growing agent-chat `src` where the fold deletes it warns, never fails: the owner caps guard work at plan time to a report. */
+function oldPathOwns(slice: PlannedSlice, oldPaths: readonly OldPathRule[]): string[] {
+  if (!AGENT_CHAT_REPO.test(slice.repo ?? "") || (slice.carveOut ?? "").trim() !== "") return [];
+  const deleting = slice.owns.map((own) => deepestRule(own, oldPaths)).filter((rule) => rule?.fate === "delete");
+  const tasks = new Set(deleting.map((rule) => rule?.task ?? "unknown"));
+  if (tasks.size === 0) return [];
+  return [`slice ${slice.n}: adds to agent-chat src (old path, fold task ${[...tasks].join(", ")}); name the package home or set carveOut`];
+}
+
+function deepestRule(own: string, oldPaths: readonly OldPathRule[]): OldPathRule | undefined {
+  return oldPaths
+    .filter((rule) => own === rule.path || own.startsWith(`${rule.path}/`))
+    .reduce<OldPathRule | undefined>((best, rule) => (best === undefined || rule.path.length > best.path.length ? rule : best), undefined);
 }
 
 /** A publish mention with no `ops` field may be subject matter, so it warns rather than fails. */

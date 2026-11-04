@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "checkSims skips the emitted-statistics check",
+      "file": "products/explainer/src/sim/sim-load.ts",
+      "find": "return unemitted(model, spec);",
+      "replace": "return [];",
+      "kills": [
+        "checkSims reports a doctrine statistic the model never emits"
+      ]
+    },
+    {
+      "name": "fittedFrom may name an undeclared statistic",
+      "file": "products/explainer/src/sim/sim-load.ts",
+      "find": "spec.fittedFrom.filter((stat) => !Object.hasOwn(spec.statistics, stat))",
+      "replace": "spec.fittedFrom.filter(() => false)",
+      "kills": [
+        "loadSims names the file when fittedFrom lists a statistic the file does not declare"
+      ]
+    }
+  ]
+}

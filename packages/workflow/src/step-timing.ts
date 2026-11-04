@@ -27,6 +27,11 @@ export function dispatchTiming(step: ActiveStep): { firstStartedAt: string; rest
   return { firstStartedAt: step.firstStartedAt ?? step.startedAt, restarts: step.restarts ?? 0 };
 }
 
+/** The timing a completed try carries onto its result, so the run keeps its start times and restarts once the step is done. */
+export function completedTiming(step: ActiveStep): { startedAt: string; firstStartedAt: string; restarts: number } {
+  return { startedAt: step.startedAt, ...dispatchTiming(step) };
+}
+
 /** The intent a try persists before it starts: recoverable when the runner can reconcile it after a restart. */
 export function newActiveStep(
   deps: Pick<ContextDeps, "runner" | "executionId">,

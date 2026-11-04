@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LimitsConfigError } from "./index.js";
-import { loadLimits, readGrants } from "./node.js";
+import { LimitsBlockMissingError, loadLimits, readGrants } from "./node.js";
 import today from "./fixtures/limits-today.json" with { type: "json" };
 
 let dir: string;
@@ -36,6 +36,15 @@ describe("loadLimits", () => {
     expect(() => loadLimits(join(dir, "absent.json"))).toThrow(LimitsConfigError);
     expect(() => loadLimits(write("bad.json", "{"))).toThrow(LimitsConfigError);
     expect(() => loadLimits(write("host.json", { worktreeBudget: 12 }), { key: "limits" })).toThrow(LimitsConfigError);
+  });
+
+  it("types an absent block apart from an unreadable or malformed one", () => {
+    const missing = () => loadLimits(write("host.json", { worktreeBudget: 12 }), { key: "limits" });
+    expect(missing).toThrow(LimitsBlockMissingError);
+    expect(missing).toThrow(LimitsConfigError);
+    expect(() => loadLimits(write("bad.json", "{"), { key: "limits" })).not.toThrow(LimitsBlockMissingError);
+    expect(() => loadLimits(write("odd.json", { limits: { version: 9 } }), { key: "limits" })).not.toThrow(LimitsBlockMissingError);
+    expect(() => loadLimits(join(dir, "absent.json"), { key: "limits" })).not.toThrow(LimitsBlockMissingError);
   });
 });
 

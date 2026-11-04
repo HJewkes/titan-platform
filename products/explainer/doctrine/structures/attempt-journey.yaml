@@ -1,0 +1,26 @@
+schema: narrative-structure/v1
+id: attempt-journey
+version: 0.1.0
+source: "video-profiles plan §B.1 (journey of attempts); story-structure §2.5 (story spine)"
+summary: "The fix told as its attempts: what was tried, where each broke and why, then what holds."
+fit:
+  ask: "Is it a fix whose attempts broke along the way?"
+  all: [attempts-failed]
+blocks:
+  - { id: summary, goal: "The change in one line and the verdict.", share: 0.15 }
+  - { id: attempts, goal: "Each attempt and where it broke.", share: 0.45 }
+  - { id: proof, goal: "What shows the final attempt holds.", share: 0.25 }
+  - { id: ask, goal: "The risk left and the ask.", share: 0.15 }
+hook: "Open on the failure the viewer would hit without the change."
+ending: "button"
+spine:
+  - title: Summary
+    body: |-
+      <The change in one imperative line, and the verdict.>
+  - title: Attempts
+    body: |-
+      | # | Attempt | Where it broke | Why | Fact id |
+      |---|---|---|---|---|
+  - title: Proof
+    body: |-
+      <The test or measurement that shows the last attempt holds.>

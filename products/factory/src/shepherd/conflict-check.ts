@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { LeaveLand } from "./leave-land.js";
 import type { ShepherdDeps } from "./phases.js";
 import { gateHead } from "./stale-gates.js";
 
@@ -52,4 +53,9 @@ export function conflictCheckedGates(assisted: WorkflowContext["assisted"], conf
     if (answer.data?.decision === "merge" && (await conflicts(headSha))) throw leave(headSha);
     return answer;
   };
+}
+
+/** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
+export function leaveOnConflict(headSha: string): LeaveLand {
+  return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }

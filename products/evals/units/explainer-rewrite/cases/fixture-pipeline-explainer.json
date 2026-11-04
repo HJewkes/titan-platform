@@ -1,0 +1,31 @@
+{
+  "schema": "titan.case/v1",
+  "id": "fixture-pipeline-explainer",
+  "unit": {
+    "id": "explainer-rewrite",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "draft": "828d3d72769b7b31f2e341650db39af1457d510396d35c9f0a0a080160722176"
+    },
+    "files": {
+      "draft": "products/explainer/fixtures/spike/pipeline-explainer/script.json"
+    }
+  },
+  "fixture": {
+    "kind": "repo",
+    "repo": "HJewkes/titan-platform",
+    "sha": "5a288f3b2d346a03c3aa1326e361022e8f714cf0"
+  },
+  "split": "holdout",
+  "tags": [
+    "owner-named"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "repo fixture",
+    "labelVersion": 1
+  },
+  "visibility": "public"
+}

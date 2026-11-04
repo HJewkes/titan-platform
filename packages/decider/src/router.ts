@@ -1,8 +1,7 @@
 import { alwaysAskList } from "./always-ask.js";
 import type { Route } from "./ledger.js";
-import { normalizeKey } from "./normalize.js";
+import { categoryKey, normalizeKey } from "./normalize.js";
 import {
-  categoryKey,
   categoryPolicy,
   isLockedCategory,
   type DeciderMode,

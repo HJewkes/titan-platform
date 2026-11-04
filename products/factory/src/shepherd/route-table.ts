@@ -1,9 +1,11 @@
+import { isOneOf } from "../narrow.js"
 /** GitHub's `mergeable_state` values; a value GitHub adds later is read as `unknown`. */
 export const MERGEABLE_STATES = ["clean", "blocked", "behind", "unstable", "dirty", "unknown", "draft", "has_hooks"] as const;
 export type MergeableState = (typeof MERGEABLE_STATES)[number];
 
 /** What the review of one green head came to, read after the review ends. */
-export const REVIEW_OUTCOMES = ["MERGE", "FIX_FIRST", "no-verdict", "timeout", "head-moved", "external-hold", "not-started", "account-exhausted", "throttled"] as const;
+/** `needs-fixer` and `carried` come from review-workflow's preflight under `review.workflow: on:preflight` (TP-3928). */
+export const REVIEW_OUTCOMES = ["MERGE", "FIX_FIRST", "no-verdict", "timeout", "head-moved", "external-hold", "not-started", "account-exhausted", "throttled", "needs-fixer", "carried"] as const;
 export type ReviewOutcome = (typeof REVIEW_OUTCOMES)[number];
 
 /** Whether the PR is still Shepherd's to land, or was merged or closed by someone else. */
@@ -15,23 +17,24 @@ export type RunState = (typeof RUN_STATES)[number];
  * round, which updates a behind branch or re-reads a moved or unsettled head; `fresh-reviewer` reviews the same head
  * again under a never-held name; `retry-review` asks again for the reviewer a busy broker never started;
  * `await-external` reads the hold's reviewer again; `await-account` reviews the PR's current head again once the reviewer's
- * account hold has lifted or failed over, and counts no round, so it never reaches the owner; `end-run` ends the run.
+ * account hold has lifted or failed over, and counts no round, so it never reaches the owner; `end-run` ends the run. `await-fixer` holds a head preflight found a hard error at until it is released or moves, then
+ * reviews it again, and counts no round: the error is the workflow's, not the head's.
  */
-export const ROUTES = ["merge", "update-branch", "wake-fixer", "fresh-reviewer", "retry-review", "await-external", "await-account", "new-cycle", "end-run"] as const;
+export const ROUTES = ["merge", "update-branch", "wake-fixer", "fresh-reviewer", "retry-review", "await-external", "await-account", "await-fixer", "new-cycle", "end-run"] as const;
 export type Route = (typeof ROUTES)[number];
 
 type Row = Readonly<Record<ReviewOutcome, Route>>;
 type Table = Readonly<Record<RunState, Readonly<Record<MergeableState, Row>>>>;
 
 /** A state GitHub will merge through; `blocked` is here because merge facts judge a review-only block. */
-const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "fresh-reviewer" };
+const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "fresh-reviewer", "needs-fixer": "await-fixer", carried: "merge" };
 /** A behind head whose reviewer never started still needs its review: `update-branch` would go on to the merge decision with no review at all. */
-const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "retry-review" };
-const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer", "account-exhausted": "wake-fixer", throttled: "wake-fixer" };
-const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle", "account-exhausted": "await-account", throttled: "new-cycle" };
+const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "retry-review", "needs-fixer": "await-fixer", carried: "update-branch" };
+const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer", "account-exhausted": "wake-fixer", throttled: "wake-fixer", "needs-fixer": "wake-fixer", carried: "wake-fixer" };
+const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle", "account-exhausted": "await-account", throttled: "new-cycle", "needs-fixer": "new-cycle", carried: "new-cycle" };
 /** A draft is no merge candidate: the run ends without a gate, and registering the PR again restarts it. */
-const DRAFT: Row = { MERGE: "end-run", FIX_FIRST: "wake-fixer", "no-verdict": "end-run", timeout: "end-run", "head-moved": "new-cycle", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run" };
-const GONE: Row = { MERGE: "end-run", FIX_FIRST: "end-run", "no-verdict": "end-run", timeout: "end-run", "head-moved": "end-run", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run" };
+const DRAFT: Row = { MERGE: "end-run", FIX_FIRST: "wake-fixer", "no-verdict": "end-run", timeout: "end-run", "head-moved": "new-cycle", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run", "needs-fixer": "end-run", carried: "end-run" };
+const GONE: Row = { MERGE: "end-run", FIX_FIRST: "end-run", "no-verdict": "end-run", timeout: "end-run", "head-moved": "end-run", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run", "needs-fixer": "end-run", carried: "end-run" };
 
 const GONE_STATES: Readonly<Record<MergeableState, Row>> = { clean: GONE, blocked: GONE, behind: GONE, unstable: GONE, dirty: GONE, unknown: GONE, draft: GONE, has_hooks: GONE };
 
@@ -48,7 +51,7 @@ export function routeFor(run: RunState, state: MergeableState, outcome: ReviewOu
 
 export function mergeableState(raw: string, draft: boolean): MergeableState {
   if (draft) return "draft";
-  return (MERGEABLE_STATES as readonly string[]).includes(raw) ? (raw as MergeableState) : "unknown";
+  return isOneOf(MERGEABLE_STATES, raw) ? raw : "unknown";
 }
 
 /** Stuck rounds at one task before the owner is asked. */
@@ -78,8 +81,11 @@ export const ESCALATIONS = {
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
+/** How the failed-round list names a round whose one correction came to no verdict; its outcome reads `timeout` (TP-3237). */
+export const MALFORMED_ROUND = "malformed";
+
 /** Round outcomes that say nothing about the head: the reviewer never answered, so a standing MERGE still speaks for it (TP-3697). */
-export const INFRA_FAILURES: ReadonlySet<string> = new Set<ReviewOutcome>(["no-verdict", "timeout", "throttled"]);
+export const INFRA_FAILURES: ReadonlySet<string> = new Set<string>([...(["no-verdict", "timeout", "throttled"] satisfies ReviewOutcome[]), MALFORMED_ROUND]);
 
 /** How a failed-rounds gate names the outcome of its last round. */
 export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {

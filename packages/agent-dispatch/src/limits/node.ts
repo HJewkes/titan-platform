@@ -15,17 +15,24 @@ const grantsEnvelope = z.object({
   asked: z.array(z.string()).optional(),
 });
 
+/** The file parsed but has no property under the requested key: a host that has set no limits. */
+export class LimitsBlockMissingError extends LimitsConfigError {}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function readJson(path: string): unknown {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
   } catch (err) {
-    throw new LimitsConfigError(`cannot read ${path}: ${(err as Error).message}`, { cause: err });
+    throw new LimitsConfigError(`cannot read ${path}: ${errorMessage(err)}`, { cause: err });
   }
   try {
     return JSON.parse(text);
   } catch (err) {
-    throw new LimitsConfigError(`${path} is not JSON: ${(err as Error).message}`, { cause: err });
+    throw new LimitsConfigError(`${path} is not JSON: ${errorMessage(err)}`, { cause: err });
   }
 }
 
@@ -37,8 +44,8 @@ function readJson(path: string): unknown {
 export function loadLimits(path: string, options: { key?: string } = {}): ParsedLimits {
   const json = readJson(path);
   if (options.key === undefined) return parseLimits(json);
-  const block = typeof json === "object" && json !== null ? (json as Record<string, unknown>)[options.key] : undefined;
-  if (block === undefined) throw new LimitsConfigError(`${path} has no ${options.key} block`);
+  const block = typeof json === "object" && json !== null ? Reflect.get(json, options.key) : undefined;
+  if (block === undefined) throw new LimitsBlockMissingError(`${path} has no ${options.key} block`);
   return parseLimits(block);
 }
 

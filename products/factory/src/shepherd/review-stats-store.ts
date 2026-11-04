@@ -56,11 +56,46 @@ const DDL = `
     WHERE run.pr IS NOT NULL
     GROUP BY run.repo, run.pr;`;
 
-const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "factory:review_stats", up: (db) => db.exec(DDL) }];
+/**
+ * Schema v2 adds why a round was dispatched (`cause`: the intent's cause, or `convergence` for D8's review), the panel
+ * member it was (`shape`), and whether its brief was scoped to the fix diff (`scoped`, 0 or 1; null when not recorded).
+ * Dropping the watermark makes the next refresh read every run again, which fills the new columns on v1 rows.
+ */
+const V2 = `
+  ALTER TABLE review ADD COLUMN cause TEXT;
+  ALTER TABLE review ADD COLUMN shape TEXT;
+  ALTER TABLE review ADD COLUMN scoped INTEGER;
+  DELETE FROM review_meta WHERE key = 'refreshed_through';`;
+
+/**
+ * Schema v3 adds a scoped fix round's check counts (`scope_untagged`, `scope_repeated`; null when no check ran), and reads
+ * every run again so a shadow-scoped round stored as scoped is written again as full.
+ */
+const V3 = `
+  ALTER TABLE review ADD COLUMN scope_untagged INTEGER;
+  ALTER TABLE review ADD COLUMN scope_repeated INTEGER;
+  DELETE FROM review_meta WHERE key = 'refreshed_through';`;
+
+/** Exported so a test can build a store at an older version and watch it migrate. */
+export const REVIEW_STATS_MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: "factory:review_stats", up: (db) => db.exec(DDL) },
+  { version: 2, name: "factory:review_stats_cause_shape", up: (db) => db.exec(V2) },
+  { version: 3, name: "factory:review_stats_scope_check", up: (db) => db.exec(V3) },
+];
 
 export type CostSource = "retire" | "transcript";
 
-export interface ReviewRow {
+/** What a round was, read from the ledger rather than priced, so a refresh may write it again over a stored row. */
+export interface RoundLabels {
+  cause: string | null;
+  shape: string;
+  scoped: boolean | null;
+  /** The first scope check's counts at this round's head; null when none ran. */
+  scopeUntagged: number | null;
+  scopeRepeated: number | null;
+}
+
+export interface ReviewRow extends RoundLabels {
   runId: string;
   round: number;
   repo: string;
@@ -102,13 +137,15 @@ const reviewParams = (row: ReviewRow) => ({
   runId: row.runId, round: row.round, repo: row.repo, pr: row.pr, headSha: row.headSha, reviewer: row.reviewer, sessionId: row.sessionId,
   model: row.model, requestedAt: row.requestedAt, startedAt: row.startedAt, verdictAt: row.verdictAt, queueMs: row.queueMs, reviewMs: row.reviewMs,
   verdict: row.verdict, input: row.tokens?.input ?? null, cacheRead: row.tokens?.cacheRead ?? null, cacheWrite: row.tokens?.cacheWrite ?? null,
-  output: row.tokens?.output ?? null, usd: row.usd, costSource: row.costSource,
+  output: row.tokens?.output ?? null, usd: row.usd, costSource: row.costSource, ...labelParams(row),
 });
+
+const labelParams = ({ cause, shape, scoped, scopeUntagged, scopeRepeated }: RoundLabels) => ({ cause, shape, scoped: scoped === null ? null : Number(scoped), scopeUntagged, scopeRepeated });
 
 /** The derived review store: rows are written once a round is final and keyed so a repeat write replaces rather than adds. */
 export class ReviewStatsStore {
   constructor(readonly db: Db) {
-    runMigrations(db, MIGRATIONS);
+    runMigrations(db, REVIEW_STATS_MIGRATIONS);
   }
 
   static open(path: string): ReviewStatsStore {
@@ -118,15 +155,21 @@ export class ReviewStatsStore {
   upsertReview(row: ReviewRow): void {
     this.db.prepare(
       `INSERT INTO review (run_id, round, repo, pr, head_sha, reviewer, session_id, model, requested_at, started_at, verdict_at, queue_ms, review_ms,
-         verdict, input, cache_read, cache_write, output, usd, cost_source)
+         verdict, input, cache_read, cache_write, output, usd, cost_source, cause, shape, scoped, scope_untagged, scope_repeated)
        VALUES (@runId, @round, @repo, @pr, @headSha, @reviewer, @sessionId, @model, @requestedAt, @startedAt, @verdictAt, @queueMs, @reviewMs,
-         @verdict, @input, @cacheRead, @cacheWrite, @output, @usd, @costSource)
+         @verdict, @input, @cacheRead, @cacheWrite, @output, @usd, @costSource, @cause, @shape, @scoped, @scopeUntagged, @scopeRepeated)
        ON CONFLICT (run_id, round) DO UPDATE SET repo = excluded.repo, pr = excluded.pr, head_sha = excluded.head_sha, reviewer = excluded.reviewer,
          session_id = excluded.session_id, model = excluded.model, requested_at = excluded.requested_at, started_at = excluded.started_at,
          verdict_at = excluded.verdict_at, queue_ms = excluded.queue_ms, review_ms = excluded.review_ms, verdict = excluded.verdict,
          input = excluded.input, cache_read = excluded.cache_read, cache_write = excluded.cache_write, output = excluded.output,
-         usd = excluded.usd, cost_source = excluded.cost_source`,
+         usd = excluded.usd, cost_source = excluded.cost_source, cause = excluded.cause, shape = excluded.shape, scoped = excluded.scoped,
+         scope_untagged = excluded.scope_untagged, scope_repeated = excluded.scope_repeated`,
     ).run(reviewParams(row));
+  }
+
+  /** Rewrites a stored round's labels only, so a row stored before v2 gains them without being priced again. */
+  setLabels(key: Pick<Unpriced, "runId" | "round">, labels: RoundLabels): void {
+    this.db.prepare("UPDATE review SET cause = @cause, shape = @shape, scoped = @scoped, scope_untagged = @scopeUntagged, scope_repeated = @scopeRepeated WHERE run_id = @runId AND round = @round").run({ ...key, ...labelParams(labels) });
   }
 
   upsertRun(run: ReviewRunRow): void {

@@ -1,0 +1,26 @@
+schema: narrative-structure/v1
+id: before-after
+version: 0.1.0
+source: "story-structure §2.8 (problem–solution); video-profiles plan §B.1 (CL order)"
+summary: "The problem, the change as before against after grouped by purpose, then its proof and shortcomings."
+fit:
+  ask: "Is the material a change best shown as before against after?"
+  any: [before-after]
+blocks:
+  - { id: problem, goal: "The problem and why this approach.", share: 0.2 }
+  - { id: changes, goal: "Before against after, grouped into two to four purposes.", share: 0.4 }
+  - { id: shortcomings, goal: "Shortcomings, said aloud.", share: 0.15 }
+  - { id: proof, goal: "What shows it holds, then the ask.", share: 0.25 }
+hook: "Open on the before the viewer knows."
+ending: "button"
+spine:
+  - title: Problem
+    body: |-
+      <What hurt before the change, with one fact id.>
+  - title: Before and after
+    body: |-
+      | Purpose | Before | After | Fact id |
+      |---|---|---|---|
+  - title: Shortcomings
+    body: |-
+      <What the change does not fix.>

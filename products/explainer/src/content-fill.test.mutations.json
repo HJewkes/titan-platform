@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "fill is measured on the widest single box instead of the union of boxes",
+      "file": "products/explainer/src/content-fill.ts",
+      "find": "covered += Math.max(0, to - Math.max(from, reach));",
+      "replace": "covered = Math.max(covered, to - from);",
+      "kills": [
+        "contentFillFindings fails the four S4-styled beats and passes the S6 beats"
+      ]
+    },
+    {
+      "name": "decor counts as content",
+      "file": "products/explainer/src/content-fill.ts",
+      "find": ".filter((b) => !b.decor && ",
+      "replace": ".filter((b) => ",
+      "kills": [
+        "contentFillFindings ignores decor, empty boxes and the parts of a box off the frame"
+      ]
+    }
+  ]
+}

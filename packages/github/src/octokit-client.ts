@@ -4,7 +4,7 @@ import { throttling } from "@octokit/plugin-throttling";
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { execGh } from "./exec.js";
 import { redact } from "./redact.js";
-import { GRAPHQL_TIMEOUT_MS } from "./rest.js";
+import { CORE_TIMEOUT_MS, GRAPHQL_TIMEOUT_MS } from "./rest.js";
 
 export type RateLane = "rest" | "graphql";
 
@@ -101,13 +101,16 @@ export function octokitClient(options: OctokitClientOptions = {}): GitHubClient 
   return { request: octokit.request, budget: state.read };
 }
 
-/** Outermost hook, with `restCaller`'s two guards: the rate floor before every call, and a hung GraphQL call failing at 30 s. */
+/**
+ * Outermost hook, with `restCaller`'s two guards: the rate floor before every call, and a hung call failing at its lane's
+ * deadline (core 60 s, GraphQL 30 s), as `restCaller`'s exec timeout does. Being outermost, the deadline spans retries too.
+ */
 function guard(octokit: InstanceType<typeof ThrottledOctokit>, budget: RateBudget): void {
   octokit.hook.wrap("request", async (request, options) => {
-    const lane = laneOf(options.url);
-    await budget.acquire(lane === "graphql" ? "graphql" : "core");
-    if (lane !== "graphql") return request(options);
-    return withDeadline(`${options.method} graphql`, GRAPHQL_TIMEOUT_MS, (signal) => {
+    const graphql = laneOf(options.url) === "graphql";
+    await budget.acquire(graphql ? "graphql" : "core");
+    const what = `${options.method} ${graphql ? "graphql" : options.url}`;
+    return withDeadline(what, graphql ? GRAPHQL_TIMEOUT_MS : CORE_TIMEOUT_MS, (signal) => {
       options.request = { ...options.request, signal };
       return request(options);
     });

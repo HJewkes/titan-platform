@@ -11,7 +11,7 @@ import { H1, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { approveMergeGate } from "./land-approval.js";
 import { CiSnapshotResult, LandRulesResult, MergePolicyResult } from "./land-steps.js";
-import { LAND_STEPS, land, landRoutes, step, type LandOptions, type LandOutcome } from "./land.js";
+import { LAND_STEPS, land, landRoutes, sleep, step, type LandOptions, type LandOutcome } from "./land.js";
 
 const REPO = "o/r";
 const H2 = fakeSha("head2");
@@ -35,7 +35,11 @@ interface BaseWorld {
   routes: StepRoute[];
 }
 
-/** One PR on `base` whose checks pass on every head but `red`; every wait yields a tick, so a test can act mid-wait. */
+/**
+ * One PR on `base` whose checks pass on every head but `red`; every wait yields a tick, so a test can act mid-wait. The
+ * wait takes the step's signal, which `host.close()` aborts: a base-wait still polling would otherwise outlive its file
+ * and, in a shared worker, re-arm its 1 ms tick on a later file's fake clock (TP-4539).
+ */
 function baseWorld(base: string, body: Body, red?: string, dbPath = ":memory:"): BaseWorld {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, baseRef: base });
@@ -43,7 +47,7 @@ function baseWorld(base: string, body: Body, red?: string, dbPath = ":memory:"):
   const mergedInto: string[] = [];
   const merge = fake.wire.merge;
   fake.wire.merge = async (...args) => (mergedInto.push(fake.pr(1).baseRef), merge(...args));
-  const routes = landRoutes({ port: githubPort(fake.wire), now: () => 0, pollMs: 1, sleep: () => new Promise((resolve) => setTimeout(resolve, 1)) });
+  const routes = landRoutes({ port: githubPort(fake.wire), now: () => 0, pollMs: 1, sleep: (_ms, signal) => sleep(1, signal) });
   const outcomes: LandOutcome[] = [];
   const world = { fake, outcomes, mergedInto, routes };
   return { ...world, host: openBaseHost(world, body, dbPath) };

@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "plan retires the caller itself",
+      "file": "packages/agent-dispatch/src/isolation/retire-finished.ts",
+      "find": "const reason = callers.includes(agent.name)",
+      "replace": "const reason = false",
+      "kills": ["retireFinished scope skips the caller itself"]
+    },
+    {
+      "name": "plan ignores the stale cap",
+      "file": "packages/agent-dispatch/src/isolation/retire-finished.ts",
+      "find": "if (retires >= cap) break;",
+      "replace": "",
+      "kills": ["retireFinished stale scope stops planning at the cap"]
+    },
+    {
+      "name": "plan skips the holds",
+      "file": "packages/agent-dispatch/src/isolation/retire-finished.ts",
+      "find": "if (byHold) return byHold;",
+      "replace": "",
+      "kills": ["retireFinished holds skips with the Shepherd hold's reason"]
+    },
+    {
+      "name": "unpushed commits are not counted",
+      "file": "packages/agent-dispatch/src/isolation/work-blocker.ts",
+      "find": "return count === 0",
+      "replace": "return count >= 0",
+      "kills": ["workBlocker counts commits not on the upstream"]
+    },
+    {
+      "name": "retire does not look again before retiring",
+      "file": "packages/agent-dispatch/src/isolation/retire-finished.ts",
+      "find": "if (late) return { name, ok: false, reason: `became ${late} after the plan` };",
+      "replace": "",
+      "kills": ["retireFinished retires refuses an agent that went live between the plan and the retire"]
+    }
+  ]
+}

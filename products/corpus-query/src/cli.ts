@@ -5,6 +5,7 @@ import { appDirs } from "@titan-design/app-paths";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { Command, CommanderError } from "commander";
 import { indexCorpus, type IndexStats } from "./index-corpus.js";
+import { registerCostCommand } from "./cost/command.js";
 import { LAYOUTS } from "./layout.js";
 import type { MatchTerms } from "./match.js";
 import { DEFAULT_WINDOW, readPassage, retrieve } from "./retrieve.js";
@@ -84,6 +85,7 @@ export async function runCli(argv: string[], write: Write = console.log): Promis
   addHitsCommand(program, write);
   addAskCommand(program, write, defaultHost, defaultIndexPath);
   addResumeCommand(program, write, defaultHost);
+  registerCostCommand(program, write);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;

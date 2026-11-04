@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a stored D21 entry of another shape reads as an empty card",
+      "file": "products/factory/src/shepherd/review-schemas.ts",
+      "find": "z.strictObject({ path: z.string(), lines: z.array(CiPolicyLineSchema), omitted",
+      "replace": "z.looseObject({ path: z.string(), lines: z.array(CiPolicyLineSchema).default([]), omitted",
+      "kills": ["MergeEvidenceSchema reads stored D21 lines of the pre-redesign per-key shape as none and keeps the current shape"]
+    }
+  ]
+}

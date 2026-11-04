@@ -45,6 +45,6 @@ export async function standingMerge(ctx: WorkflowContext, merged: Verdict, headS
   const stepId = `${REVIEW_REFUSED_STEP}:${headSha}`;
   if (evidence?.head !== headSha || !ownMergeEvidence(evidence, headSha) || recordedElsewhere(ctx, stepId)) return undefined;
   await step(ctx, stepId, { reason: "merge-standing", cause: causeOf() }, Refused);
-  const reread = await refreshMergeEvidence(ctx, evidence, runPolicyCeiling(ctx.param("policy")).visualPaths);
+  const reread = await refreshMergeEvidence(ctx, evidence, runPolicyCeiling(ctx.param("policy")));
   return { ...merged, evidence: reread };
 }

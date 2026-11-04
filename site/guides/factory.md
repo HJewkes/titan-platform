@@ -14,8 +14,9 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
   [SLOs](/guides/shepherd#slo).
 
-The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
-when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
+The factory starts two kinds of agent through agent-chat: the Shepherd reviewer, only when
+`shepherd.review` is configured, and the fixer a red main spawns, only when `shepherd.fixer` is.
+Relay and agent-chat keep every other dispatch. For the design and the file map, read the
 [factory reference](/reference/factory) and
 [`products/factory/README.md`](https://github.com/HJewkes/titan-platform/blob/main/products/factory/README.md).
 
@@ -50,8 +51,8 @@ To run it by that short name, put it on `PATH`:
 pnpm factory:install
 ```
 
-That installs, builds the factory with its workspace dependencies, and links
-`~/.local/bin/titan-factory` to the built bin. The link survives a rebuild and needs no
+That installs, builds the factory and the session miner with their workspace dependencies, and links
+`~/.local/bin/titan-factory` and `~/.local/bin/titan-miner` to their built bins. The link survives a rebuild and needs no
 sudo. It leaves a link that points at another checkout alone unless you add `--force`, and
 `--bin-dir <dir>` picks another directory.
 
@@ -69,7 +70,7 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 registrations. Nothing else is written.
 
 A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
-`[ci-timeout]`, `[gh-api-5xx]`, `[land-rules]`, `[update-branch]` or `[other]`.
+`[ci-timeout]`, `[gh-api-5xx]`, `[gh-rate-limit]`, `[land-rules]`, `[update-branch]` or `[other]`.
 `titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
 classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
 
@@ -129,24 +130,33 @@ stays out of the repo.
   `fixer.fallbackConfigDirs` (see [Shepherd](/guides/shepherd)).
 - `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
   and successors share it. It refuses above `load5` (28), `buildLoad5` (20, with `reviewLoad`
-  4 added per review started in the last five minutes), at memory `pressureLevel` 2, and under
-  `freeMemoryPct` 20. Admits are spaced `windowMs` (60 s) apart. While the machine has headroom
-  (load5 under half of `buildLoad5`, memory pressure read as normal, and fewer than
-  `headroomReviews` (4) reviews started in the last five minutes) they are spaced
-  `headroomIntervalMs` (15 s) apart instead. At most `burstMax` (4) are admitted inside any
-  `windowMs`. Every deferral names the rule that refused. A deferred review asks again on its
-  busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
-  machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
-  of recording `none`.
+  0.05 added per review started in the last five minutes, or admitted and not yet seen running),
+  with fewer than `minIdleCores` (1) idle, read as the core count less load1 less those reviews,
+  at memory `pressureLevel` 2, and under `freeMemoryPct` 20. `reviewLoad` is measured: reviewers
+  run no tests and each claude process used 1 to 3 percent of a core in a 2026-10-29 sample, so
+  `review.maxConcurrent` is the backstop on how many start. Load is the only limiter by
+  default: `windowMs` and `headroomIntervalMs` are 0, and either can be raised live to space
+  admits that many ms apart (`headroomIntervalMs` while load5 is under half of `buildLoad5`,
+  memory pressure reads normal and fewer than `headroomReviews` (4) reviews are unabsorbed).
+  `burstMax` is gone and fails the load. Every deferral names the rule that refused. When the
+  gate admits a review, any asker within the first N of the queue goes, where N is the free
+  review slots the load check also allows. A queued ask whose PR moved to a new head, merged or
+  closed, by the open list another poll already read, leaves the queue and its review step ends
+  with no reviewer. Reviews queue once and never ask again on their own: the gate starts them
+  from the queue's front when one is queued, when a review ends, and on a one-minute tick while
+  any waits. A review still queued after the 3 hour machine-hold ceiling gives up, so a
+  saturated machine reaches the owner instead of waiting without end. A run cancelled or shut
+  down while its review waits takes the review out of the queue at once, so it never starts.
   A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
   filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
-- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory` and
-  `stackRestack`. All three keys are optional, and an unknown one fails the load. Keys match in any case. The
-  reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
-  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
+  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. For a
+  repo a seat lists, the reviewer starts in that seat's own path and `path` is never read. `path` applies only to a repo no
+  seat lists, which only a run registered before registration required a seat can still be. Registering needs a seat
+  that lists the repo, so with no `seatsDir` `shepherd register` refuses every PR. The map is re-read on every
   spawn, as the seat book is.
 - `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
   update the branch, push to it or delete its head ref. The run waits held at its merge
@@ -171,6 +181,19 @@ stays out of the repo.
   the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
   deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
   and keeps the branch with a caveat while any of them is still based on it.
+- `statusContexts: ["<context>"]` names commit-status contexts that count as the repo's CI beside
+  its GitHub Actions check runs, for a repo whose CI posts a commit status instead of running
+  Actions (TP-4645). Land's `ci-wait`, its no-required-checks rule and `sh-main-ci` read each
+  context as a check run: `success` is green, `pending` holds, `failure` or `error` is red, and a
+  context with no status yet holds until the wait times out. A failed status read fails that poll,
+  so it is read again rather than judged. A repo without the key reads only its check runs, as
+  before. The list is re-read on every check-run read.
+- `shepherd.redSeat` says where serve's [main CI watch](/guides/shepherd#main-ci-watch) sends a
+  red-main event: `{ "repos": { "acme/widgets": "widgets-coord" }, "fallback": "ops-coord" }`.
+  The repo's entry wins (keys match in any case), then `fallback`, and either one wins over the
+  run's seat, the branch-prefix seat and `shepherd.hubSeat`. Both keys are optional. Only red
+  events read it: merge grants, merge policy and the seat a run records stay with the seat
+  file. It needs `agentChatBin`, and an unknown key in it fails the load.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 ### GitHub event sources {#github-event-sources}
@@ -285,6 +308,35 @@ Each tick writes one serve-log line per outcome:
 | `reconciler.disagree class=unconfirmed` | the head guard was pending or unknown; the next tick reads again |
 | `reconciler.skipped` / `reconciler.starved` | the pool refused the repo's claim |
 | `reconciler.unit-failed` | the read or a step threw; the repo's cursor stays where it was |
+
+### Head guard {#head-guard}
+
+Before the reconciler appends a PR-head row or moves past a main tip, it runs the read through
+the head guard (`products/factory/src/head-guard/`, wired in by
+`reconciler/guard-verdicts.ts`). A replica can show a head or tip GitHub has already moved past,
+so a read is trusted only once it is confirmed.
+
+- **Stale classes** (`classify.ts`). A read is `same` as the stored head, `confirmed`, `suspect`,
+  `stale` or `unavailable`. It is stale when it is an ancestor of the stored head, equals a head
+  confirmed earlier, GitHub's compare cannot find it, or `ls-remote` still shows the stored head.
+- **Confirmation rules.** Only a `confirmed` read moves the per-PR epoch
+  (`epoch-store.ts`, a compare-and-set). A read is confirmed by being ahead of the stored head
+  (`fast-forward`), diverged from it and not seen before (`non-ancestor`), or agreed by
+  `ls-remote` when the compare is no help (`ls-remote`). A PR with no stored head is confirmed
+  the same way (`bootstrap`). A lost compare-and-set is re-classified once against the row that
+  won.
+- **The unknown outcome** (`guard.ts`). A stale read is re-read at 8, 16, 24, 32 and 40 seconds
+  (`RETRY_DELAYS_MS`). If replica lag outlasts them, the answer is `unknown`: nothing moves.
+  The reconciler's snapshot makes one try per tick on the head it already read, so a stale head
+  there logs `class=stale-read` and the next tick is the retry; a head it could not confirm logs
+  `class=unconfirmed`.
+- **When the pool refuses a read.** The compare goes through the bot's `github-api` pool as a
+  claim. A claim the pool answers as unavailable comes back from the guard as `Unavailable`, with
+  its `resetAt`, unchanged. It counts no try and moves no epoch, and the head is left
+  unconfirmed this tick. A 401 puts the pool in its auth state, which raises one alarm for the
+  whole identity (not one per PR) and holds every later claim until the token changes; the
+  failed read moves no epoch and is not retried per PR.
+  `reconciler/guard-pool.test.ts` pins both.
 
 ## A17 invariant tests: both event-source modes
 
@@ -581,7 +633,7 @@ Shepherd sweep also marks a merged run `sh-reverted` when a later main commit re
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `deployPaused` (the rollback pause) and `deployHeld` (the manual or Morning hold; see [below](#service-deploy-redeploy-from-main)), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `POST /gates/resolve-proof` | applies an owner-signed proof and returns each item's outcome; see [Owner-signed proofs](#owner-signed-proofs) |
 | `POST /holds/release-proof` | lifts one Shepherd hold on an owner-signed release; see [Owner-signed hold release](#owner-signed-hold-release) |
@@ -594,7 +646,8 @@ curl -s http://127.0.0.1:7410/health
 
 ```json
 {"runs":{"running":2,"paused":0,"cancelling":0,"recovery_required":0,"completed":0,"failed":0,"cancelled":0},
- "pendingGates":0,"github":"ok","ok":true,"version":"0.1.0","pid":4242,"uptime_ms":4784,"port":7410}
+ "pendingGates":0,"busy":[],"github":"ok","build":{"sha":"0123456789abcdef0123456789abcdef01234567","behindMain":0},
+ "lastDeploy":null,"ok":true,"version":"0.1.0","pid":4242,"uptime_ms":4784,"port":7410}
 ```
 
 `github` is `ok` when `gh api rate_limit` succeeds in the server's environment, the redacted
@@ -602,7 +655,7 @@ curl -s http://127.0.0.1:7410/health
 background at most once a minute, so a health request never waits on `gh`.
 
 The registry commands are `factory.land`, `factory.status`, `factory.gates`, `needs.list`,
-`needs.count`, and the seven `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
+`needs.count`, and the 14 `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
 without one the server answers 403.
 
 ```sh
@@ -684,6 +737,16 @@ The steps, in order (`products/factory/src/workflows/land.ts` and `land-pr.ts`):
    approves every merge.
 6. `merge` squashes the exact approved head. A head anyone else pushed asks again.
 7. `post-merge` runs the configured chore, if any, and records its exit code and output tail.
+
+## Steps
+
+The steps of `land-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
 
 ## `gate resolve` {#gate-resolve}
 
@@ -801,6 +864,56 @@ have had its effect is parked as `recovery_required` for a human. The post-merge
 reconciled from its result file instead: a finished chore is recorded, a running one is
 awaited, and only a chore that is gone and wrote no result parks the run.
 
+## `review` {#review}
+
+```sh
+titan-factory review acme/widgets#7                # review the PR's current head
+titan-factory review acme/widgets#7 --head <sha>   # review this full head sha
+titan-factory review acme/widgets#7 --json         # one JSON object: outcome, head, fingerprint, members
+titan-factory review acme/widgets#7 --wait-ci      # wait out pending CI, and follow a moved head once
+titan-factory review resolve <fingerprint>         # review every run parked on the fingerprint again
+```
+
+`review` runs the review workflow (`@titan-design/review-workflow`) on one PR head with no
+Shepherd run: preflight, the panel's members, and the aggregate. It reads the reviewer
+profiles, `agentChatBin`, the timeouts and the disk floors from `shepherd.review`, and the
+repo's checkout from the seat book or `shepherd.repos`. It prints the outcome, the head, the
+run id and each member dispatch. It posts nothing to GitHub and never updates the branch.
+
+| Outcome | Exit | What to do |
+|---|---|---|
+| `MERGE`, `carried` | 0 | nothing |
+| `needs-update` | 1 | the branch is behind and merges clean; the author updates it, then reviews again |
+| `needs-fixer` | 1 | a hard error parked the run and spawned a read-only `bd-planner` fixer that proposes a fix; once the fix is in, run `review resolve <fingerprint>` |
+| any other | 1 | read the outcome line |
+
+`review resolve` reviews every run parked on the fingerprint again, each as a fresh run, and
+exits 0 only when every one ends in `MERGE` or `carried`. Runs and parked fingerprints live in
+`review.sqlite3` beside the factory database, so `serve` never picks them up.
+
+`--wait-ci` polls every 30 seconds for up to an hour. Each pass stops at preflight, so waiting
+spends no reviewer session. CI comes from the base's required checks. When none can be read,
+it comes from every check run at the head: green once all have completed and none failed.
+The `CI:` line (and `ci` under `--json`) names which source was used.
+
+With no Shepherd run, the PR itself opens the fix-proof gate. A `fix/` head branch opens it,
+and so does a `fix-proof` run from GitHub Actions at the head. The review then reads that
+check's result line once, without waiting, so a `NO_REPRO` line ends the review as
+`NO_REPRO`. A `fix-proof` run still going reads as unverified. The review carries nothing
+across merge-ups.
+
+## `shepherd brief` {#shepherd-brief}
+
+```sh
+titan-factory shepherd brief owner/repo#N [--format md|round-section] [--images <dir>]
+```
+
+Prints the owner section for a PR that waits on its `approve-merge` gate: what it does, why it reaches the owner, pros and cons from the reviewer's owner brief, a recommendation, and what yes and no do. It reads the PR through the GitHub port (view, files, checks at the head), the run, pending gate, latest verdict and owner brief from Shepherd's store, and the task title and done_when from active-work. It writes nothing to GitHub or Shepherd.
+
+- `--format md` (the default) prints the markdown section. `--format round-section` prints `{ section, question }`, a round@2 section and its pick-one question for the review harness.
+- `--images <dir>` reads `<dir>/pr-<n>/manifest.json` for a UI PR and adds before and after variants. A missing manifest, `rendered: false`, a shot missing its before or its after, or a manifest captured at another head gives a stated reason and no images; an after-only set is never shown.
+- A PR that is not registered, or has no pending `approve-merge` gate, exits 66 with the reason. An unreadable task is stated in the section instead of failing it.
+
 ## `digest run`
 
 ```sh
@@ -842,9 +955,9 @@ titan-factory service install --port 7411 --mcp
 | Verb | What it does | Exits 0 when |
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
-| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`, `stale CLI`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured; a `stale CLI` alone still exits 0 |
-| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
+| `service status [--port <n>]` | Prints loaded or not (on Linux, `unreadable: <stderr>` when `systemctl --user show` fails), the pid, and a `/health` summary | `/health` answers with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable`, `not loaded`, `stale pid`, `crash loop`, `unresponsive`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`, `stale CLI`); a deploy the pacer holds adds `; deploy <sha> waits: <why> until <time>` to the line and `deployWaitSha`, `deployWaitWhy` and `deployWaitUntil` to `detail`; `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured; a `stale CLI` alone still exits 0 |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until the runs `/health` listed busy at the start clear, fences a foreign serve on the port, restarts without blocking on the stop and fences a process that outlives it by 45 s, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 
@@ -878,6 +991,8 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 (none unless `ActiveState` is `active`), `NRestarts` stands in for the run count and
 `ExecMainStatus` for the last exit code.
 
+On Linux, a failed `systemctl --user show` also makes `service install` (including `--dry-run`) and `service uninstall` refuse with that text and the user-bus remedy, with no mutating `systemctl` call and no file touched; `service status` prints `unreadable: ...` instead of `not loaded`.
+
 - **unreadable**: on Linux, `systemctl --user show` itself failed (no user bus, permission, timeout); the line carries its stderr, or `exit N` when it printed none, and `--json` puts both in `detail.exitCode` and `detail.stderr`.
 - **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded` on a successful read.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no usable `/health` answer, such as a refused connection (and it is not crash-looping).
@@ -901,10 +1016,12 @@ It never starts, stops or restarts the job.
 | `2` | Usage error, such as an invalid `--port` |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
-other platform these four verbs fail with one line.
+other platform these six verbs fail with one line.
 
-`service restart` drains first. It polls `/health` every 5 s until its `busy` list is
-empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
+`service restart` drains first. It polls `/health` every 5 s until no run that was busy at its
+first answer is still busy, and prints the busy runs once a minute. Serve keeps admitting review
+and merge steps during the drain, so a run that turns busy later does not hold the restart, and
+the drain names it instead; a park-routed step holds the restart whenever it is busy. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
 its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
@@ -986,6 +1103,21 @@ paused`, whatever its sha, and a pause file that does not parse still pauses. `t
 service pause` shows the pause. `titan-factory service pause --clear` removes it under the
 deploy lock, so it is refused while a deployer runs.
 
+The incident item and the stall alarm's item both go to the console's inbox spool as asker
+`titan-factory`, keyed `deploy-incident` or `deploy-alarm` plus an `alarm:<kind>:titan-factory`
+key that folds repeats into one inbox item. Once a later deploy records `deployed`, the deployer
+withdraws every open one of them with reason `resolved` and actor `titan-factory` (owner-queue's
+`withdrawMatching`), and logs how many. A failed withdraw is printed and does not fail the deploy; a `skipped`, `held` or
+rolled-back deploy withdraws nothing.
+
+`/health` carries the same pause as `deployPaused: {paused, since, reason, lastRollback}`, where
+`lastRollback` is `{target, from, status}` and `status` is the rollback's `pending`, `verified` or
+`failed`. With no pause file it reads `{paused: false}` and nulls. A pause file that does not
+parse reads `paused: true` with that as the reason, because the deployer holds on the file's
+existence. A file that cannot be read at all reads `paused: null` with the read error as the
+reason; `/health` still answers. The key covers only `deploy-pause.json`; the manual hold
+below is `deployHeld`.
+
 A person can hold deploys by hand with `titan-factory service pause --set <reason>`. It writes
 `deploy-hold.json` beside the pause file, a separate file so a rollback cannot overwrite the
 reason and the reason cannot overwrite a rollback's. The hold is honoured exactly like the
@@ -994,6 +1126,13 @@ deployer. `--set` does not take the lock, so it can be set while a deploy runs; 
 hold applies from the next deploy. A second `--set` replaces the reason. When both a pause and a
 manual hold stand, `service pause` and the `deploy held:` refusal show both reasons.
 `--clear` lifts both and prints one line for each hold it lifted.
+
+`/health` carries the manual hold as `deployHeld: {held, since, reason, source}`, read through
+the same reader the deployer uses. `source` is the Morning item that set the hold, or null for a
+`--set`. Its null rules match `deployPaused`: no file reads `{held: false}` and nulls, a file that
+does not parse reads `held: true`, and one that cannot be read reads `held: null` with the error
+as the reason. Deploys are held unless both `deployPaused.paused` and `deployHeld.held` are
+`false`.
 
 A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
 only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
@@ -1129,6 +1268,7 @@ checkout's bin.
 | `error: gate <id> is already <status>` | the gate was answered or cancelled before; `<status>` is `resolved` or `cancelled` |
 | `error: --json must be a JSON object`, exit 2 | the gate payload did not parse as an object |
 | a run `failed` with `ci-wait timed out after 2700000 ms` | required checks did not finish in 45 minutes |
+| a run `failed` with `ci-wait timed out after 2700000 ms on each of 3 attempts` | GitHub never settled the PR in 3 windows in a row: mergeable_state stayed unknown, an open repo's run set kept changing, or reads kept failing with a 5xx |
 | a run `failed` with `requires no status checks` | the base branch has no required check |
 | `/health` shows `"github":"gh api rate_limit failed …"` | the server's environment cannot use `gh` |
 

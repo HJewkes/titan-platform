@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the agent name no longer ellipsizes",
+      "file": "apps/console/src/pages/AgentDetailPage.tsx",
+      "find": "block min-w-0 max-w-full truncate whitespace-nowrap",
+      "replace": "block",
+      "kills": [
+        "an agent's detail a long agent name on a phone-width card is ellipsized with the full name in its title"
+      ]
+    },
+    {
+      "name": "the agent name loses its full-text title",
+      "file": "apps/console/src/pages/AgentDetailPage.tsx",
+      "find": "title={text}",
+      "replace": "title=\"\"",
+      "kills": [
+        "an agent's detail a long agent name on a phone-width card is ellipsized with the full name in its title"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { lstatSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { gitChildEnv, pinGitProtocols } from "./git.js";
+import { gitChildEnv, withPinnedGitProtocols } from "./git.js";
 import { signalGroup } from "./process-group.js";
 
 const execFileAsync = promisify(execFile);
@@ -114,12 +114,12 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return {
+  return withPinnedGitProtocols({
     ...out,
     ...PINNED_COREPACK,
     ...PINNED_ENV,
-    GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL),
-  };
+    GIT_ALLOW_PROTOCOL: env.GIT_ALLOW_PROTOCOL,
+  });
 }
 
 const isCommand = (value: unknown): value is string[] =>
@@ -140,16 +140,14 @@ export function parseSetupStep(text: string): SetupStep | null | string {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    return `${SETUP_FILE} is not valid JSON (${(err as Error).message})`;
+    return `${SETUP_FILE} is not valid JSON (${err instanceof Error ? err.message : String(err)})`;
   }
-  const setup = (parsed as { setup?: unknown } | null)?.setup;
+  const setup = typeof parsed === "object" && parsed !== null && "setup" in parsed ? parsed.setup : undefined;
   if (setup === undefined) return null;
   if (typeof setup !== "object" || setup === null)
     return `${SETUP_FILE} setup must be an object`;
-  const { command, timeoutMs } = setup as {
-    command?: unknown;
-    timeoutMs?: unknown;
-  };
+  const command = "command" in setup ? setup.command : undefined;
+  const timeoutMs = "timeoutMs" in setup ? setup.timeoutMs : undefined;
   if (!isCommand(command))
     return `${SETUP_FILE} setup.command must be a non-empty array of strings`;
   if (timeoutMs !== undefined && !isTimeout(timeoutMs))

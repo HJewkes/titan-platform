@@ -16,6 +16,12 @@ interface Call {
   init: RequestInit;
 }
 
+function onlyCall(calls: Call[]): Call {
+  const [call] = calls;
+  if (call === undefined) throw new Error("expected a fetch call");
+  return call;
+}
+
 let home: string;
 let profile: AccountProfile;
 let output: ReturnType<typeof captureOutput>;
@@ -57,7 +63,7 @@ function expectCanaryAbsent(text: string): void {
 }
 
 function expectNoCanary(...values: unknown[]): void {
-  for (const value of values) expectCanaryAbsent(value instanceof Error ? errorText(value) : (JSON.stringify(value) ?? ""));
+  for (const value of values) expectCanaryAbsent(value instanceof Error ? errorText(value) : `${JSON.stringify(value)}`);
   expectCanaryAbsent(output.text());
 }
 
@@ -82,7 +88,7 @@ describe("pollUsage sends the token only where it belongs", () => {
     await poll(fetch);
 
     expect(calls).toHaveLength(1);
-    const [{ url, init }] = calls as [Call];
+    const { url, init } = onlyCall(calls);
     expect(url).toBe(USAGE_URL);
     expect(init.method).toBe("GET");
     expect(init.redirect).toBe("error");

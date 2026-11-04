@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the unknown-words repair row passes every script",
+      "file": "products/explainer/src/unknown-words.ts",
+      "find": "pass: unknown.length === 0, detail_beats: beats",
+      "replace": "pass: true, detail_beats: beats",
+      "kills": [
+        "unknown words as a repair row fails on a spoken word the voice has no phonemes for, naming its beat, and passes once it is split"
+      ]
+    },
+    {
+      "name": "the split suggestion prefers the most uneven split",
+      "file": "products/explainer/src/unknown-words.ts",
+      "find": ".sort((a, b) => Math.min(b[0].length, b[1].length) - Math.min(a[0].length, a[1].length));",
+      "replace": ".sort((a, b) => Math.min(a[0].length, a[1].length) - Math.min(b[0].length, b[1].length));",
+      "kills": [
+        "unknown words as a repair row suggests the even split of a joined word whose halves the voice reads"
+      ]
+    }
+  ]
+}

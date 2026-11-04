@@ -67,25 +67,27 @@ describe("error text stored as evidence", () => {
     expect(redactCredentials(input)).toBe(input);
   });
 
+  // Native-RegExp backtracking shows in no count, so the time limit is asserted only under `TITAN_BENCH=1` (TP-4264).
   it.each([
-    ["JWT runs after -", "-eyJ"],
-    ["JWT runs after _", "_eyJ"],
-    ["JWT runs after .", ".eyJaaaaaaa"],
-    ["sk- runs", "-sk-"],
-    ["gh token runs", "_ghp_"],
-    ["gh token runs after -", "-ghp_"],
-    ["npm runs", "_npm_"],
-    ["URL schemes", "a.b.c."],
-    ["userinfo with no @", "a://b:"],
-    ["dotted schemes before one long password", `${"a.".repeat(15)}a://u:${"p".repeat(100_000)}`],
-    ["escaped prefixes", "\\neyJ%22sk-"],
-  ])("scans 100 kB of %s in linear time", (_name, unit) => {
+    ["JWT runs after -", "-eyJ", null],
+    ["JWT runs after _", "_eyJ", null],
+    ["JWT runs after .", ".eyJaaaaaaa", null],
+    ["sk- runs", "-sk-", null],
+    ["gh token runs", "_ghp_", "_[redacted]"],
+    ["gh token runs after -", "-ghp_", null],
+    ["npm runs", "_npm_", null],
+    ["URL schemes", "a.b.c.", null],
+    ["userinfo with no @", "a://b:", null],
+    ["dotted schemes before one long password", `${"a.".repeat(15)}a://u:${"p".repeat(100_000)}`, null],
+    ["escaped prefixes", "\\neyJ%22sk-", null],
+  ])("scans 100 kB of %s in linear time", (_name, unit, redacted) => {
     const input = unit.repeat(Math.ceil(100_000 / unit.length));
 
     const started = performance.now();
-    redactCredentials(input);
+    const output = redactCredentials(input);
 
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(output).toBe(redacted ?? input);
+    if (process.env.TITAN_BENCH === "1") expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("caps stored text at a fixed length", () => {

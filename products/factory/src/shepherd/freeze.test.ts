@@ -12,6 +12,9 @@ import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } f
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { repoFreezeMigration } from "./repo-freeze.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput } from "@titan-design/workflow";
 
 const RED = fakeSha("red");
 const CANCELLED_AT = "2026-10-05T00:29:38Z";
@@ -252,7 +255,7 @@ describe("the frozen-merge guard", () => {
   it("refuses the merge, never passes it, when the PR read fails", async () => {
     const r = rig();
     let merged = 0;
-    const failing = {
+    const failing = Object.assign(partialFake<GitHubPort>(), {
       ...r.port,
       getPr: async () => {
         throw new Error("github unavailable");
@@ -261,7 +264,7 @@ describe("the frozen-merge guard", () => {
         merged += 1;
         return { merged: true };
       },
-    } as unknown as GitHubPort;
+    });
     const port = holdingPort(failing, () => r.registrations);
 
     await expect(port.merge(A, 1, RED, "squash")).rejects.toThrow(/github unavailable/);
@@ -290,7 +293,7 @@ describe("the frozen-merge guard", () => {
       }),
     );
     const waiting = waitWhileHeld(
-      route as never,
+      partialFake<StepRoute>(route),
       held,
       {
         sleep: async () => control.abort(),
@@ -298,7 +301,7 @@ describe("the frozen-merge guard", () => {
       openHeadRead(r.port),
     );
 
-    const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
+    const result = await waiting.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal }));
 
     expect(result.ok).toBe(false);
     expect(ran).toBe(false);
@@ -434,6 +437,29 @@ describe("the freeze store", () => {
 
     expect([unfrozen, stale]).toEqual([false, false]);
     expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixTask: null, fixer: null });
+  });
+
+  it("setFixer does not overwrite an episode's fixer", () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+    r.freezes.setFixer(A, episode, "fix-a-aaaaaaa");
+
+    const second = r.freezes.setFixer(A, episode, "fix-a-bbbbbbb");
+    const repeat = r.freezes.setFixer(A, episode, "fix-a-aaaaaaa");
+
+    expect([second, repeat]).toEqual([false, true]);
+    expect(r.freezes.get(A)).toMatchObject({ fixer: "fix-a-aaaaaaa" });
+  });
+
+  it("names the sha that opened the live episode as its first red, not a later red in it", () => {
+    const r = rig();
+    r.freezes.freeze(A, fakeSha("old"));
+    r.freezes.unfreeze(A, GREEN);
+    const { episode } = r.freezes.freeze(A, RED);
+    r.freezes.freeze(A, fakeSha("red2"));
+
+    expect(r.freezes.episodes.firstRed(A, episode)).toBe(RED);
+    expect(r.freezes.episodes.firstRed(A, episode - 1)).toBeUndefined();
   });
 });
 
@@ -587,8 +613,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

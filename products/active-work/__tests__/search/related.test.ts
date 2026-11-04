@@ -4,9 +4,12 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { graphNoteRelevance } from '../../src/bootstrap/rank-notes.js';
+import { DF_CAP_FLOOR } from '../../src/search/derive-query.js';
 import { searchWorkspace } from '../../src/search/index.js';
 import { relatedContext, withinBudget, type RelatedInput } from '../../src/search/related.js';
-import { refreshInto, scaffold, writeFile } from '../workspace-index/fixture.js';
+import { openGraph, type WorkspaceGraph } from '../../src/session-index/graph.js';
+import { demoteToLegacy, refreshInto, scaffold, writeFile } from '../workspace-index/fixture.js';
 
 /**
  * `context related` over the miniature active root.
@@ -154,6 +157,7 @@ describe('relatedContext', () => {
   it('degrades to no hits when every retriever throws', async () => {
     const db = new Database(dbPath);
     db.exec('DROP TABLE search_fts');
+    db.exec('DROP TABLE workspace_fts');
     db.close();
 
     const result = await related({ text: 'lesson' });
@@ -168,6 +172,65 @@ describe('relatedContext', () => {
       expect(result.hits).toEqual([]);
       expect(result.degraded[0]).toMatchObject({ source: 'query', reason: 'empty' });
     }
+  });
+});
+
+describe('the frequency cap across a cutover', () => {
+  const TEXT = 'lesson quokka wombat numbat';
+  const NOTE = 'note:alpha/2026-09-02-alpha-lesson.md';
+
+  function withGraph(act: (graph: WorkspaceGraph) => void): void {
+    const graph = openGraph(dbPath);
+    try {
+      act(graph);
+    } finally {
+      graph.db.close();
+    }
+  }
+
+  /** Transcripts full of a word the fixture's note also uses, past the cap on a small graph. */
+  function seedCommonTranscripts(graph: WorkspaceGraph): void {
+    graph.db.transaction(() => {
+      for (let i = 0; i <= DF_CAP_FLOOR; i++) {
+        const span = { ownerRef: `session:s${i}`, field: 'text', sourceId: 1, byteOffset: i, byteLength: 1 };
+        graph.spans.index(span, 'lesson filler');
+      }
+    })();
+  }
+
+  beforeEach(() => withGraph(seedCommonTranscripts));
+
+  it('keeps a common word in a workspace query after the flip', async () => {
+    const result = await related({ text: TEXT });
+
+    expect(result.query.terms).toContain('lesson');
+    expect(result.hits.map((hit) => hit.ref)).toContain(NOTE);
+  });
+
+  it('drops a common word from a query that includes transcripts', async () => {
+    const result = await related({ text: TEXT, classes: ['notes', 'transcripts'] });
+
+    expect(result.query.terms).not.toContain('lesson');
+  });
+
+  it('drops a common word from a workspace query before the flip', async () => {
+    withGraph((graph) => demoteToLegacy(graph, root));
+
+    const result = await related({ text: TEXT });
+
+    expect(result.query.terms).not.toContain('lesson');
+  });
+
+  it('finds a note by a common word after the flip', () => {
+    const hits = graphNoteRelevance(dbPath)(TEXT.split(' '));
+
+    expect(hits.map((hit) => hit.ref)).toContain(NOTE);
+  });
+
+  it('does not find a note by a common word before the flip', () => {
+    withGraph((graph) => demoteToLegacy(graph, root));
+
+    expect(graphNoteRelevance(dbPath)(TEXT.split(' '))).toEqual([]);
   });
 });
 

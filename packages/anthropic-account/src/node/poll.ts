@@ -1,9 +1,11 @@
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { z } from "zod";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
 import { redactSecrets } from "../redact.js";
 import { usageFromOAuthResponse, type UsageReading } from "../usage.js";
-import { currentUid, readCredentialsFile, type CredentialsRead } from "./login.js";
+import type { KeychainOptions } from "./keychain.js";
+import { currentUid, readCredentialsFor, type CredentialsRead } from "./login.js";
 import { clearBackoff, nextBackoff, readBackoff, writeBackoff, type PollBackoff } from "./poll-backoff.js";
 import { discoverProfiles, type DiscoverOptions } from "./profiles.js";
 import { redactedError } from "./redact-error.js";
@@ -55,7 +57,7 @@ export type PollFailure =
 
 export type PollResult = { ok: true; reading: UsageReading } | PollFailure;
 
-export interface PollOptions {
+export interface PollOptions extends KeychainOptions {
   // Receives the raw access token in the authorization header, so pass only a fetch you trust
   // with it: one that does not log, forward or persist request headers. Defaults to globalThis.fetch.
   fetch?: FetchLike;
@@ -95,7 +97,8 @@ function assertOptions(now: number, timeoutMs: number): void {
 
 function tokenOf(credentials: unknown): string | null {
   try {
-    const token = (credentials as { claudeAiOauth: { accessToken: unknown } }).claudeAiOauth.accessToken;
+    const oauth = isRecord(credentials) ? credentials.claudeAiOauth : undefined;
+    const token = isRecord(oauth) ? oauth.accessToken : undefined;
     return typeof token === "string" && TOKEN_SHAPE.test(token) ? token : null;
   } catch {
     return null;
@@ -115,10 +118,10 @@ function accessFrom(read: CredentialsRead, now: number): { token: string } | Pol
   return token === null ? refused("malformed") : { token };
 }
 
-// A filesystem error's message is not kept, so nothing it quotes can travel further.
-function readAccess(configDir: string, uid: number, now: number): { token: string } | PollFailure {
+// A filesystem or Keychain error's message is not kept, so nothing it quotes can travel further.
+function readAccess(configDir: string, now: number, options: PollOptions): { token: string } | PollFailure {
   try {
-    return accessFrom(readCredentialsFile(configDir, uid), now);
+    return accessFrom(readCredentialsFor(configDir, options.uid ?? currentUid(), options), now);
   } catch {
     return fail("io");
   }
@@ -200,7 +203,7 @@ export async function pollUsage(profile: AccountProfile, options: PollOptions): 
   const now = options.now ?? Date.now();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   assertOptions(now, timeoutMs);
-  const access = readAccess(profile.configDir, options.uid ?? currentUid(), now);
+  const access = readAccess(profile.configDir, now, options);
   if (!("token" in access)) return access;
   try {
     const response = await request(access.token, options.fetch ?? globalThis.fetch, timeoutMs);

@@ -4,8 +4,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnExec, type Exec } from "./exec.js";
 import { execMutants } from "./mutant-side.js";
-import type { Mutation } from "./mutation.js";
-import { FIXED, makeRepo, removeRepos } from "./repo.test-helpers.js";
+import { MAX_MUTATIONS, type Mutation } from "./mutation.js";
+import { FIXED, makeRepo, REAL_RUNNER, removeRepos } from "./repo.test-helpers.js";
 import { isSandboxed, sudoStub } from "./sandbox.test-helpers.js";
 import { decodeMutantsReport, type DecodedMutants } from "./transport.js";
 
@@ -41,18 +41,25 @@ function spec(...mutations: Mutation[]): string {
 
 interface Scenario {
   build?: string;
+  /** The test reads no vitest outcome, so the runner only writes an empty report. */
+  fakeRunner?: boolean;
   head: Record<string, string>;
   base?: Record<string, string>;
   exec?: Exec;
   sandboxUser?: string;
+  out?: string;
 }
 
-async function runScenario({ build = DIST_BUILD, head, base = {}, exec, sandboxUser }: Scenario): Promise<DecodedMutants> {
-  const repo = makeRepo({ build }, os.tmpdir(), { "src/math.ts": FIXED, "src/double.ts": DOUBLE, ...base });
+async function runScenario({ build = DIST_BUILD, fakeRunner = false, head, base = {}, exec, sandboxUser, out = outDir() }: Scenario): Promise<DecodedMutants> {
+  const repo = makeRepo(fakeRunner ? { build } : { ...REAL_RUNNER, build }, os.tmpdir(), { "src/math.ts": FIXED, "src/double.ts": DOUBLE, ...base });
   const sha = repo.commit(head);
-  const out = outDir();
   await execMutants({ repo: repo.dir, base: repo.base, head: sha, out, exec, sandboxUser });
   return decodeMutantsReport(fs.readFileSync(path.join(out, "mutants.report"), "utf-8"));
+}
+
+function refusedIn(out: string): string | null {
+  const file = path.join(out, "mutants.refused");
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : null;
 }
 
 function listOf(value: unknown, key: string): unknown[] {
@@ -99,19 +106,68 @@ describe("execMutants", { timeout: 120_000 }, () => {
     expect(await runScenario({ head: { "src/calc.test.ts": CALC_TEST } })).toEqual({ ok: true, skipped: "no mutation spec in the diff" });
   });
 
-  it("with source in the diff writes a skipped marker naming it and runs nothing", async () => {
+  it("with source in the diff writes a skipped marker naming it and runs nothing, though the find is in no merge-base text", async () => {
     const built = path.join(outDir(), "built");
+    const out = outDir();
+    const triples: Mutation = { ...DOUBLE_ADDS, find: "n * 3" };
 
-    const decoded = await runScenario({ build: `touch ${built}`, head: { ...calcSpec(DOUBLE_ADDS), "src/double.ts": DOUBLE.replace("2", "3") } });
+    const decoded = await runScenario({ build: `touch ${built}`, head: { ...calcSpec(triples), "src/double.ts": DOUBLE.replace("2", "3") }, out });
 
     expect(decoded).toEqual({ ok: true, skipped: "the diff changes source: src/double.ts" });
     expect(fs.existsSync(built)).toBe(false);
+    expect(refusedIn(out)).toBeNull();
   });
 
-  it("a spec whose find is not in the merge-base file writes an error marker", async () => {
-    const decoded = await runScenario({ head: calcSpec({ ...DOUBLE_ADDS, find: "n * 9" }) });
+  it.each([
+    ["targets its own test file", { ...DOUBLE_ADDS, file: "src/calc.test.ts", find: "doubles" }, "src/calc.test.ts is a test"],
+    ["has a find not in the file at head", { ...DOUBLE_ADDS, find: "n * 9" }, "find does not occur in src/double.ts at head"],
+    ["has a find twice in the file at head", { ...DOUBLE_ADDS, find: "n" }, "find occurs more than once in src/double.ts at head"],
+    ["targets a file missing at head", { ...DOUBLE_ADDS, file: "src/gone.ts" }, "src/gone.ts does not exist at head"],
+  ])("with source in the diff, a spec whose mutation %s is refused", async (_what, mutation, error) => {
+    const out = outDir();
+
+    await runScenario({ head: { ...calcSpec(mutation), "src/double.ts": DOUBLE.replace("2", "3") }, out });
+
+    expect(refusedIn(out)).toContain(`src/calc.test.mutations.json: mutation double adds: ${error}`);
+  });
+
+  it("with source in the diff, a git failure reading the specs is refused, since no judge reads them", async () => {
+    const out = outDir();
+    const exec: Exec = (file, args, options) =>
+      args.includes("-r") && args.includes("--name-only") ? Promise.resolve({ status: 1, stdout: "", stderr: "" }) : spawnExec(file, args, options);
+
+    await runScenario({ head: { ...calcSpec(DOUBLE_ADDS), "src/double.ts": DOUBLE.replace("2", "3") }, exec, out });
+
+    expect(refusedIn(out)).toContain("listing the spec's directory failed");
+  });
+
+  it("with source in the diff, a spec over the mutation cap is refused, not skipped", async () => {
+    const built = path.join(outDir(), "built");
+    const out = outDir();
+    const overCap = Array.from({ length: MAX_MUTATIONS + 1 }, (_, index) => ({ ...DOUBLE_ADDS, name: `double adds ${index}` }));
+
+    const decoded = await runScenario({ build: `touch ${built}`, head: { ...calcSpec(...overCap), "src/double.ts": DOUBLE.replace("2", "3") }, out });
+
+    expect(refusedIn(out)).toContain(`src/calc.test.mutations.json: mutation spec: spec.mutations must hold 1 to ${MAX_MUTATIONS} mutations`);
+    expect(decoded).toEqual({ ok: false, error: expect.stringContaining("must hold 1 to"), reported: true });
+    expect(fs.existsSync(built)).toBe(false);
+  });
+
+  it("with source in the diff, a spec with no test beside it is refused", async () => {
+    const out = outDir();
+
+    await runScenario({ head: { "src/calc.test.mutations.json": spec(DOUBLE_ADDS), "src/double.ts": DOUBLE.replace("2", "3") }, out });
+
+    expect(refusedIn(out)).toContain("src/calc.test.mutations.json: no single test file sits beside it");
+  });
+
+  it("a spec whose find is not in the merge-base file writes an error marker and is refused", async () => {
+    const out = outDir();
+
+    const decoded = await runScenario({ head: calcSpec({ ...DOUBLE_ADDS, find: "n * 9" }), out });
 
     expect(decoded).toEqual({ ok: false, error: expect.stringContaining("find does not occur in src/double.ts"), reported: true });
+    expect(refusedIn(out)).toContain("find does not occur in src/double.ts");
   });
 
   it.each([
@@ -134,7 +190,7 @@ describe("execMutants", { timeout: 120_000 }, () => {
   it("with a sandbox user, every build and vitest call after the overlay runs in the sandbox", async () => {
     const { calls, exec } = sudoStub();
 
-    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "fix-proof-sandbox" });
+    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "nobody", fakeRunner: true });
 
     const isVitest = (args: readonly string[]) => args.includes("--reporter=json");
     const isBuild = (args: readonly string[]) => args.some((arg) => arg.startsWith(DIST_BUILD));
@@ -161,5 +217,26 @@ describe("execMutants", { timeout: 120_000 }, () => {
     expect(statuses(runsOf(decoded).runs[0]?.report)).toEqual({ adds: "failed" });
     const rebuild = ['pnpm --filter "$@"', "sh", "./packages/a", "run", "--if-present", "build"];
     expect(pnpm.filter((args) => args[0]?.startsWith("pnpm --filter"))).toEqual([rebuild, rebuild]);
+  });
+
+  it("in a pnpm workspace a mutated file outside every package is not rebuilt, and is restored", async () => {
+    const builds: string[][] = [];
+    const exec: Exec = (file, args, options) => {
+      if (file === "sh" && args[1] === 'true "$@"') builds.push([...args.slice(1)]);
+      // The empty lockfile cannot install anywhere, so only the install is stubbed.
+      if (file === "sh" && (args[1] ?? "").startsWith("pnpm ")) return Promise.resolve({ status: 0, stdout: "", stderr: "" });
+      return spawnExec(file, args, options);
+    };
+    const script = "export const add = (a, b) => a + b;\n";
+    const base = { "pnpm-lock.yaml": "", "scripts/sum.mjs": script };
+    const mutation: Mutation = { ...ADD_SUBTRACTS, file: "scripts/sum.mjs" };
+    const test = 'import { add } from "./sum.mjs";\ntest("adds", () => expect(add(1, 2)).toBe(3));\n';
+    const head = { "scripts/sum.test.mjs": test, "scripts/sum.test.mutations.json": spec(mutation) };
+
+    const decoded = await runScenario({ build: "true", base, head, exec });
+
+    expect(statuses(runsOf(decoded).runs[0]?.report)).toEqual({ adds: "failed" });
+    // Only the merge base's own prepare build runs; neither the mutant nor its restore rebuilds.
+    expect(builds).toHaveLength(1);
   });
 });

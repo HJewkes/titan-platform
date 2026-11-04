@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { writeManualHold } from "./deploy-pause.js";
 import { redactCredentials } from "./redact.js";
 import type { WatchIntent } from "./deploy-watch-window.js";
-import type { CommandResult, ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import type { ServicePorts } from "./service-control.js";
 
 const OUTPUT_TAIL_LINES = 20;
 const OUTPUT_TAIL_CHARS = 2_000;

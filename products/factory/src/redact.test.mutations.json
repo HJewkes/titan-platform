@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a gh token no longer matches after an underscore",
+      "file": "products/factory/src/redact.ts",
+      "find": "const AFTER_GH = String.raw`(?:(?<![A-Za-z0-9])|(?<=${ESCAPE}))`;",
+      "replace": "const AFTER_GH = String.raw`(?:(?<![A-Za-z0-9_])|(?<=${ESCAPE}))`;",
+      "kills": [
+        "error text stored as evidence scans 100 kB of gh token runs in linear time"
+      ]
+    },
+    {
+      "name": "an sk- key matches inside a run of dashes",
+      "file": "products/factory/src/redact.ts",
+      "find": "String.raw`${AFTER}sk-[A-Za-z0-9_-]{20,}`,",
+      "replace": "String.raw`sk-[A-Za-z0-9_-]{20,}`,",
+      "kills": [
+        "error text stored as evidence leaves task-sk-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa unchanged",
+        "error text stored as evidence leaves risk-assessment-for-the-quarterly-review unchanged",
+        "error text stored as evidence scans 100 kB of sk- runs in linear time"
+      ]
+    }
+  ]
+}

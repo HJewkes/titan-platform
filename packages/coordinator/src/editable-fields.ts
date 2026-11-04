@@ -32,6 +32,7 @@ const caps = { min: 0, max: 64, integer: true };
 const points = { min: 0, max: 1000, integer: false };
 const percent = { min: 0, max: 100, integer: false };
 const load = { min: 1, max: 256, integer: false };
+const paceMs = { min: 0, max: 3_600_000, integer: true };
 
 /** Mirrors the factory's own argv-word rule, so a value that reads as a flag or holds whitespace is refused here first. */
 const argvWord = z
@@ -53,12 +54,16 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   field("agent-chat", "worktreeBudget", { min: 1, max: 64, integer: true }, "per-spawn"),
   field("factory", "shepherd.spawnGate.load5", load, "live"),
   field("factory", "shepherd.spawnGate.buildLoad5", load, "live"),
+  field("factory", "shepherd.spawnGate.windowMs", paceMs, "live"),
+  field("factory", "shepherd.spawnGate.headroomIntervalMs", paceMs, "live"),
   shaped("factory", "shepherd.gateReset.noReproProceed", onOff, "live"),
+  shaped("factory", "shepherd.gateReset.nonSourceNoRepro", z.enum(["keep-owner", "record-fact"]), "live"),
   shaped("factory", "shepherd.gateReset.heldRepair", onOff, "live"),
   shaped("factory", "shepherd.gateReset.twoMergeRelease", z.enum(["off", "shadow", "on"]), "live"),
   shaped("factory", "shepherd.review.adversaryProfile", profileName, "live"),
   shaped("factory", "shepherd.review.fallbackConfigDirs", z.array(absoluteDir).max(16), "live"),
   field("factory", "shepherd.review.maxConcurrent", { min: 1, max: 64, integer: true }, "live"),
+  shaped("factory", "shepherd.taskClose", z.enum(["keep", "last-slice-only"]), "live"),
 ];
 
 function matches(pattern: string, path: string): boolean {

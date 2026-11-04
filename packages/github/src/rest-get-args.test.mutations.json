@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a read keeps -X GET in front of the path",
+      "file": "packages/github/src/rest.ts",
+      "find": "  if (query.length === 0) return [path];",
+      "replace": "  if (query.length === 0) return [\"-X\", \"GET\", path];",
+      "kills": [
+        "restCaller read argv sends a GET without fields as the bare path",
+        "restCaller read argv sends text reads with the escape-sequence flag after the path"
+      ]
+    }
+  ]
+}

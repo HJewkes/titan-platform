@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a budget entry with no runs passes",
+      "file": "scripts/ci-timing.mjs",
+      "find": "ok: actual !== null && actual <= entry[stat]",
+      "replace": "ok: actual <= entry[stat]",
+      "kills": [
+        "ci timing budget fails an entry that matches no runs, so a renamed job cannot pass"
+      ]
+    },
+    {
+      "name": "a stat at its ceiling fails",
+      "file": "scripts/ci-timing.mjs",
+      "find": "actual <= entry[stat]",
+      "replace": "actual < entry[stat]",
+      "kills": [
+        "ci timing budget passes a stat at its ceiling and fails one over it"
+      ]
+    },
+    {
+      "name": "a skipped step counts as a sample",
+      "file": "scripts/ci-timing.mjs",
+      "find": "job.steps.filter(ran)",
+      "replace": "job.steps",
+      "kills": [
+        "ci timing percentiles takes no sample from a skipped job or step"
+      ]
+    },
+    {
+      "name": "percentiles take the nearest rank instead of interpolating",
+      "file": "scripts/ci-timing.mjs",
+      "find": "return sorted[low] + (sorted[high] - sorted[low]) * (at - low);",
+      "replace": "return sorted[Math.round(at)];",
+      "kills": [
+        "ci timing percentiles interpolates between the closest ranks",
+        "ci timing percentiles summarizes run wall, job, queue and step per event"
+      ]
+    },
+    {
+      "name": "main lists pushes on every branch",
+      "file": "scripts/ci-timing.mjs",
+      "find": "if (event === \"push\") args.push(\"--branch\", \"main\");",
+      "replace": "",
+      "kills": [
+        "ci timing run selection lists main as pushes to main and views each chosen run"
+      ]
+    }
+  ]
+}

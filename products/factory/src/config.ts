@@ -4,8 +4,12 @@ import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
+import { MarkersConfigSchema } from "./markers/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
+import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
+import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -33,7 +37,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
   g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds.
+   * A reviewer or a fixer successor spawn the broker refuses at an account's limit is retried on each later one in turn. */
   fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -47,10 +52,16 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
+  /** `shadow` records, after each round, what review-workflow would have decided, and dispatches nothing; `on:preflight` refuses a head whose planned members could only be refused at dispatch; `on` runs as `off` until TP-3929. Absent means `off`. */
+  workflow: z.enum(["off", "shadow", "on:preflight", "on"]).optional(),
   /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
   adversaryProfile: profileName.optional(),
   /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
   adversaryConfigDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** A fix round's re-review: `shadow` records its fix diff on the sh-review step, `on` also scopes the correctness brief to it. Absent means `off`. */
+  scopedRereview: z.enum(["off", "shadow", "on"]).optional(),
+  /** A scoped fix round's FIX_FIRST: `shadow` counts its out-of-range and repeated items, `on` also asks for one correction. Absent means `off`. */
+  scopeCheck: z.enum(["off", "shadow", "on"]).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
@@ -63,14 +74,14 @@ export const ShepherdRepoConfigSchema = z.strictObject({
   advisory: z.boolean().optional(),
   /** Opt-in: after Shepherd's own merge, restack the repo's stacked agent-chat children by a fast-forward push. Absent means off. */
   stackRestack: z.boolean().optional(),
+  /** Commit-status contexts that count as the repo's CI beside its Actions check runs, for CI that posts a status (TP-4645). */
+  statusContexts: z.array(z.string().min(1)).optional(),
 });
 
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
-export const FixerConfigSchema = z.strictObject({
-  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-});
+export const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
 
 function isTimeZone(zone: string): boolean {
   try {
@@ -84,10 +95,7 @@ function isTimeZone(zone: string): boolean {
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
 const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
 
-export const DigestPushConfigSchema = z.strictObject({
-  url: httpUrl,
-  tokenFile: absolutePath.optional(),
-});
+export const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
 
 export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
 
@@ -101,8 +109,8 @@ export const DigestConfigSchema = z.strictObject({
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
-  logsDir: absolutePath.optional(),
-  push: DigestPushConfigSchema.optional(),
+  logsDir: absolutePath.optional(), // Unread since TP-4626 moved Seats to the roster; kept so a config that sets it still loads.
+  push: DigestPushConfigSchema.optional(), consoleOrigin: ConsoleOriginSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
@@ -120,9 +128,10 @@ export const SpawnGateConfigSchema = z.strictObject({
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
   headroomIntervalMs: z.number().int().min(0).optional(),
-  burstMax: z.number().int().positive().optional(),
+  burstMax: z.never({ error: "burstMax is no longer read: load is the only spawn limiter, so remove the key" }).optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
+  minIdleCores: z.number().min(0).optional(),
 });
 
 /** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
@@ -201,6 +210,7 @@ export const FactoryConfigSchema = z.object({
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
   autoresearch: ArConfigSchema.optional(),
+  markers: MarkersConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -215,17 +225,39 @@ export const FactoryConfigSchema = z.object({
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
+      /**
+       * Where serve's main CI watch sends a red-main event, ahead of the run's seat, the branch-prefix seat and `hubSeat`: the
+       * repo's entry (keys match in any case), else `fallback`. Red events only; merge policy and seat identity never read it.
+       */
+      redSeat: z
+        .strictObject({ repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.string().min(1)).optional(), fallback: z.string().min(1).optional() })
+        .optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
+      /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
+      seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /**
        * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
+       * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
        */
       gateReset: z
-        .strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional() })
+        .strictObject({
+          twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          heldRepair: z.enum(["off", "on"]).optional(),
+          noReproProceed: z.enum(["off", "on"]).optional(),
+          nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
+        })
         .optional(),
+      /**
+       * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
+       * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
+       * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
+       */
+      taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
@@ -235,6 +267,8 @@ export const FactoryConfigSchema = z.object({
       consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
+      visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
@@ -271,6 +305,7 @@ export const FactoryConfigSchema = z.object({
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.redSeat || s.agentChatBin, { message: "redSeat needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
@@ -283,7 +318,9 @@ export interface ConfigSources {
   dbFlag?: string;
 }
 
+/** `TITAN_FACTORY_CONFIG` exists because agent sessions cannot set `XDG_CONFIG_HOME`. */
 export function configPath(env: NodeJS.ProcessEnv): string {
+  if (env.TITAN_FACTORY_CONFIG) return env.TITAN_FACTORY_CONFIG;
   return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "titan-factory", "config.json");
 }
 
@@ -300,7 +337,7 @@ function parseJson(path: string, text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 

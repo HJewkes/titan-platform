@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import loopsCmd from '../../src/commands/loops.js';
@@ -12,6 +14,7 @@ import {
   type CommandRunner,
 } from '../../src/utils/git-gh.js';
 import type { CommandContext } from '../../src/registry/index.js';
+import { SNAPSHOT } from '../fixtures/loop-ledger.js';
 import { withTempActiveRoot } from '../setup/test-helpers.js';
 
 const SLUG = 'sample-initiative';
@@ -230,6 +233,31 @@ describe('loops --due', () => {
 
       expect(result.open).toEqual([]);
       expect(result.resolved).toEqual([]);
+    });
+  });
+});
+
+describe('loops ledger rows', () => {
+  it("adds the platform ledger's open rows for the slug, each row naming its source", async () => {
+    await withTempActiveRoot(async (root) => {
+      await openLoops(root, [{ id: 'note', kind: 'prose' }]);
+      const sources = path.join(root, 'titan-platform', 'sources');
+      await fs.mkdir(sources, { recursive: true });
+      await fs.writeFile(path.join(sources, 'open-loops.yml'), SNAPSHOT);
+
+      const { result } = await list(root, { offline: true });
+
+      const rows = result.open.map((loop) => [loop.ref.replace(/^.*#/, '#'), loop.source]);
+      expect(rows).toEqual([
+        ['#note', 'session'],
+        ['loop-a', 'ledger'],
+      ]);
+      expect(result.open[1]).toMatchObject({
+        text: 'Synthetic loop A',
+        kind: 'prose',
+        session_file: path.join('sources', 'open-loops.yml'),
+        opened_at: '2026-07-01',
+      });
     });
   });
 });

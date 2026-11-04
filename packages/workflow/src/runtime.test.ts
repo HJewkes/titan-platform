@@ -152,7 +152,7 @@ describe("WorkflowRuntime", () => {
     expect(run.error).toMatch(/step only \(iteration 0\) failed: boom 2/);
     expect(calls).toBe(2);
     expect(events.filter((e) => e.type === "step_retry")).toHaveLength(1);
-    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "only", error: "boom 2" }]);
+    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "only", error: "boom 2", at: expect.any(String) }]);
     expect(events.at(-1)).toMatchObject({ type: "workflow_failed" });
   });
 
@@ -166,7 +166,7 @@ describe("WorkflowRuntime", () => {
     });
     const run = await rt.wait(rt.start("fan"));
     expect(run.status).toBe("completed");
-    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "items/bad", error: "item broke" }]);
+    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "items/bad", error: "item broke", at: expect.any(String) }]);
   });
 
   it("seeds merge data into params and record each call of a step id under its own key", async () => {
@@ -316,7 +316,7 @@ describe("WorkflowRuntime", () => {
 
       expect(run).toMatchObject({ status: "recovery_required", currentStep: "ask" });
       expect(run.error).toContain(gateId);
-      expect(events).toContainEqual({ type: "workflow_recovery_required", runId, stepId: "ask", evidence: run.error, gateId });
+      expect(events).toContainEqual({ type: "workflow_recovery_required", runId, stepId: "ask", evidence: run.error, gateId, at: expect.any(String) });
       expect(gatesOpened(events)).toEqual([]);
       expect(new SqliteGateStore(db, { migrate: false }).get(gateId)).toBeUndefined();
     });
@@ -1273,7 +1273,7 @@ describe("a recovered step the replay never reaches", () => {
     expect(run.activeSteps).toEqual({});
     expect(run.stepResults["sh-landed:0"]).toBeDefined();
     expect(events.filter((e) => e.type === "step_abandoned")).toEqual([
-      { type: "step_abandoned", runId: run.id, stepId: "ci-wait:r3:17", reason: "replay never reached recovered step" },
+      { type: "step_abandoned", runId: run.id, stepId: "ci-wait:r3:17", reason: "replay never reached recovered step", at: expect.any(String) },
     ]);
   });
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "land marks no rule row",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "  if (rule.table === \"shepherd-merge-guard\" && isOwnerAtHeadRow(rule.rowId)) held.add(rule.rowId);\n",
+      "replace": "",
+      "kills": [
+        "the owner-at-head marker names the rule's own merge-guard row on a gate whose facts report none"
+      ]
+    },
+    {
+      "name": "a mangled marker reads as no row",
+      "file": "products/factory/src/owner-at-head.ts",
+      "find": "rows.length > 0 || named.every((row) => row === NONE) ? rows : [\"owner-at-head\"]",
+      "replace": "rows",
+      "kills": [
+        "the owner-at-head marker reads a marker naming no known row as owner-at-head, so a mangled one fails closed"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pacer's spawn builds origin/main, not the sha its unit is named after",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "args: [options.bin, \"service\", \"deploy\", \"--expect\", mergeSha] };",
+      "replace": "args: [options.bin, \"service\", \"deploy\"] };",
+      "kills": [
+        "deployPacerPorts spawns through the same systemd-run unit and log as the per-merge deployer, in the deployer's state dir"
+      ]
+    }
+  ]
+}

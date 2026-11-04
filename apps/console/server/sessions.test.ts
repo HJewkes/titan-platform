@@ -173,7 +173,7 @@ describe("sessions.list", () => {
 
     const result = await list();
 
-    expect(result).toMatchObject({ sessions: [], degraded: { reason: "graph-not-migrated" } });
+    expect(result).toMatchObject({ sessions: [], degraded: { reason: "graph-not-migrated", missing: [expect.stringMatching(/^\d+ \(.+\)$/)], fix: expect.stringContaining("active miner refresh") } });
   });
 });
 

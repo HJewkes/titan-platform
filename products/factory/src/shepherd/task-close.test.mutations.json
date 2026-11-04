@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "cleanup ignores shepherd.taskClose",
+      "file": "products/factory/src/shepherd/cleanup.ts",
+      "find": "if (deps.taskClose === \"last-slice-only\")",
+      "replace": "if (false)",
+      "kills": [
+        "shepherd.taskClose last-slice-only notes #2536 as a slice and leaves its task open while another registered PR is open"
+      ]
+    },
+    {
+      "name": "last-slice-only ignores other open PRs on the task",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "marker !== \"no\" && otherOpen.length === 0",
+      "replace": "marker !== \"no\" && true",
+      "kills": [
+        "shepherd.taskClose last-slice-only notes #2550 as a slice and leaves its task open while another registered PR is open"
+      ]
+    },
+    {
+      "name": "last-slice-only ignores a Last slice: yes body line",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "if (registration.lastSlice || marker === \"yes\") return true;",
+      "replace": "if (registration.lastSlice || false) return true;",
+      "kills": [
+        "shepherd.taskClose last-slice-only closes on a Last slice: yes body line, writing done_at as a date"
+      ]
+    },
+    {
+      "name": "last-slice-only ignores register --last-slice",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "if (registration.lastSlice || marker === \"yes\") return true;",
+      "replace": "if (marker === \"yes\") return true;",
+      "kills": [
+        "shepherd.taskClose last-slice-only closes on register --last-slice, writing done_at as a date"
+      ]
+    },
+    {
+      "name": "last-slice-only ignores a Last slice: no body line",
+      "file": "products/factory/src/shepherd/task-close.ts",
+      "find": "return registration.slice === null && marker !== \"no\" && otherOpen.length === 0;",
+      "replace": "return registration.slice === null && otherOpen.length === 0;",
+      "kills": [
+        "shepherd.taskClose last-slice-only leaves the task open on a Last slice: no body line, though nothing else is open"
+      ]
+    }
+  ]
+}

@@ -6,7 +6,6 @@ import type { SessionEvent } from "./events.js";
 import { FIXTURE_LINES, QUEUED_CHANNEL_TEXT, SESSION, offsetAfterLine, renderTranscript } from "./fixture.js";
 import { LineReader } from "./line-reader.js";
 import { extractTranscript } from "./read.js";
-import type { Json } from "./text.js";
 
 let dir: string;
 let transcript: string;
@@ -24,7 +23,7 @@ function eventsFor(lines: Record<string, unknown>[]): SessionEvent[] {
   let byteOffset = 0;
   for (const line of lines) {
     const byteLength = Buffer.byteLength(JSON.stringify(line), "utf8");
-    reader.handle(line as Json, { byteOffset, byteLength });
+    reader.handle(line, { byteOffset, byteLength });
     byteOffset += byteLength + 1;
   }
   return out;

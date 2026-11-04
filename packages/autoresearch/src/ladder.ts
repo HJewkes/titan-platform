@@ -79,11 +79,11 @@ function finish(built: Built, rungReached: Outcome["rungReached"], verdict: Outc
   return { ideaId: idea.id, lineage: idea.lineage, cell: idea.cell, verdict, reason, rungReached, head, branch, lesson, diff, ...record, micro, usage, ...rest, runs };
 }
 
-const evalRun = (rc: RoundContext, scope: string, tree: string, label: string) =>
-  step(rc.ctx, `${arStepId("eval")}:${scope}:${label}`, { ...runPinOf(rc), tree, case: rc.case, key: runKey(rc.ctx.runId, scope, label), rung: "seed" }, rc.result);
+const evalRun = (rc: RoundContext, scope: string, at: Pick<Built, "tree" | "head">, label: string) =>
+  step(rc.ctx, `${arStepId("eval")}:${scope}:${label}`, { ...runPinOf(rc), tree: at.tree, head: at.head, case: rc.case, key: runKey(rc.ctx.runId, scope, label), rung: "seed" }, rc.result);
 
 async function confirm(rc: RoundContext, scope: string, built: Built, runs: ArResult[], delta: number): Promise<Outcome> {
-  const confirms = [await evalRun(rc, scope, built.tree, "c1"), await evalRun(rc, scope, built.tree, "c2")];
+  const confirms = [await evalRun(rc, scope, built, "c1"), await evalRun(rc, scope, built, "c2")];
   const decision = confirmRule(rc.best.runs, confirms, rc.keep);
   const verdict = decision.decision === "accept" ? "kept" : "rejected";
   return finish(built, "L3", verdict, decision.reason, { runs: [...runs, ...confirms], delta });
@@ -94,12 +94,12 @@ async function confirm(rc: RoundContext, scope: string, built: Built, runs: ArRe
  * worse stops here. A re-evaluation passes a context rebased on the round's new head and a scope of its own.
  */
 export async function caseRungs(rc: RoundContext, scope: string, built: Built): Promise<Outcome> {
-  const first = await evalRun(rc, scope, built.tree, "r1");
+  const first = await evalRun(rc, scope, built, "r1");
   const firstDelta = improvement(rc.best.runs, [first], rc.keep);
   const violation = zeroToleranceHit([first], rc.keep);
   if (violation) return finish(built, "L2", "rejected", violation, { runs: [first], delta: firstDelta });
   if (firstDelta < -rc.band.width) return finish(built, "L2", "rejected", "clearly-worse", { runs: [first], delta: firstDelta });
-  const runs = [first, await evalRun(rc, scope, built.tree, "r2"), await evalRun(rc, scope, built.tree, "r3")];
+  const runs = [first, await evalRun(rc, scope, built, "r2"), await evalRun(rc, scope, built, "r3")];
   const decision = keepRule(rc.best.runs, runs, rc.band, rc.keep);
   if (decision.decision === "confirm") return confirm(rc, scope, built, runs, decision.delta);
   return finish(built, "L3", decision.decision === "accept" ? "kept" : "rejected", decision.reason, { runs, delta: decision.delta });

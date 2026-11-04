@@ -83,8 +83,10 @@ so `app/home/page.tsx` and `/UsersGuide` do not match.
 The private term list is UTF-8 with one term per line. `#` starts a comment and blank lines
 are skipped. A plain term matches case-insensitively on Unicode word boundaries. A line
 starting `re:` is a regular expression compiled with the `iu` flags. A term that matches the
-empty string, such as `re:.*`, is rejected, because it would match every line. `termIndex` is the
-term's line number, so the owner can find it locally without the report naming it.
+empty string, such as `re:.*`, is rejected, because it would match every line. A line may start with a
+`[category]` tag (`^[a-z][a-z0-9-]*$`) followed by the term; a malformed tag fails the load, and a term that
+begins with `[` is written `re:\[...`. `termIndex` is the term's line number, so the owner can find it locally
+without the report naming it; a tagged finding also carries `category`, and the report prints `[category]` in place of `#<line>`.
 
 ## The allow file
 

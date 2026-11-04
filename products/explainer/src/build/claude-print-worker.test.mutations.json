@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "spend taken from total_cost_usd",
+      "file": "products/explainer/src/build/claude-print-worker.ts",
+      "find": "usd: priced.reduce((total, p) => total + p.costUsd, 0),",
+      "replace": "usd: (usage as { totalCostUsd?: number } | undefined)?.totalCostUsd ?? 0,",
+      "kills": [
+        "claudePrintWorker prices the build from its tokens at the price table, not from the reported total cost",
+        "claudePrintWorker prices cache reads and writes at their own rates",
+        "claudePrintWorker marks the spend unknown for a model the price table lacks"
+      ]
+    },
+    {
+      "name": "the base prompt moves into the user prompt",
+      "file": "products/explainer/src/build/claude-print-worker.ts",
+      "find": "systemPrompt: basePrompt, prompt: packet.json,",
+      "replace": "prompt: `${basePrompt}\\n${packet.json}`,",
+      "kills": [
+        "claudePrintWorker sends the base prompt as the system prompt and only the packet as the prompt, in one sonnet call"
+      ]
+    },
+    {
+      "name": "claude-print is the default even with no claude binary",
+      "file": "products/explainer/src/build/claude-print-worker.ts",
+      "find": "return bin ? claudePrintWorker() : undefined;",
+      "replace": "return claudePrintWorker();",
+      "kills": [
+        "beatWorkerFor uses no worker when the host sets none and no claude binary can be found"
+      ]
+    },
+    {
+      "name": "a null worker falls through to the default",
+      "file": "products/explainer/src/build/claude-print-worker.ts",
+      "find": "if (configured !== undefined) return configured ?? undefined;",
+      "replace": "if (configured) return configured;",
+      "kills": [
+        "beatWorkerFor keeps the host's own worker, and none when the host sets null"
+      ]
+    }
+  ]
+}

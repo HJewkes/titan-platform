@@ -2,7 +2,7 @@ import type { GitHubPort, PrFile } from "@titan-design/github";
 import type { ChangedFile, PrFacts } from "@titan-design/review-panel";
 
 /** One pull request named on the command line, before its head is read. */
-interface PrTarget {
+export interface PrTarget {
   /** `owner/repo`. */
   repo: string;
   pr: number;
@@ -35,7 +35,7 @@ async function changedFiles(port: Pick<GitHubPort, "listPrFiles">, { repo, pr }:
   }
 }
 
-async function headOf(port: Pick<GitHubPort, "getPr">, { repo, pr }: PrTarget, head: string | undefined): Promise<string> {
+export async function headOf(port: Pick<GitHubPort, "getPr">, { repo, pr }: PrTarget, head: string | undefined): Promise<string> {
   if (head === undefined) return (await port.getPr(repo, pr)).headSha;
   if (!SHA.test(head)) throw new Error(`--head must be a full 40-character lowercase sha, got ${JSON.stringify(head)}`);
   return head;

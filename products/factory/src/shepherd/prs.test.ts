@@ -155,6 +155,57 @@ describe("shepherdPrs", () => {
 
     expect(row?.ci).toMatchObject({ state: "green", requiredMissing: [] });
   });
+
+  it("carries the newest run per name, the head's statuses, the run's required list and whether the runs settled", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: "agent-chat/demo-1" });
+    const failed = { ...successRun("validate", 1, "2026-03-02T11:00:00Z", "failure"), completedAt: "2026-03-02T11:04:00Z", title: "2 tests failed" };
+    const rerun = { ...successRun("validate", 2, "2026-03-02T11:10:00Z"), status: "in_progress", conclusion: null, completedAt: null };
+    w.fake.setRuns(H1, [failed, rerun]);
+    w.fake.statuses.set(H1, [{ context: "deploy", state: "success", targetUrl: "https://ci.example.test/7", description: "Preview ready" }]);
+    await w.snapshot.checkRuns(REPO, H1, () => false);
+    const run = { ...shepherded(1, [rulesStep(["validate", "deploy"])]), headSha: H1 };
+
+    const [row] = await shepherdPrs(sources(w, [run]));
+
+    expect(row?.ci).toEqual({
+      head: H1,
+      state: "pending",
+      requiredMissing: [],
+      checks: [{ name: "validate", status: "in_progress", conclusion: null, startedAt: "2026-03-02T11:10:00Z", completedAt: null, url: rerun.url, title: null }],
+      statuses: [{ context: "deploy", state: "success", targetUrl: "https://ci.example.test/7", description: "Preview ready", createdAt: null, updatedAt: null }],
+      required: ["validate", "deploy"],
+      settled: false,
+      at: new Date(NOW).toISOString(),
+    });
+  });
+
+  it("leaves required and statuses absent when no run recorded rules and the status read failed", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1 });
+    w.fake.setRuns(H1, [successRun("validate", 1)]);
+    w.fake.readFaults.listCommitStatuses = [new Error("HTTP 502")];
+    await w.snapshot.checkRuns(REPO, H1, () => true);
+
+    const [row] = await shepherdPrs(sources(w));
+
+    expect(row?.ci).toMatchObject({ head: H1, settled: true, checks: [{ name: "validate" }] });
+    expect(row?.ci).not.toHaveProperty("statuses");
+    expect(row?.ci).not.toHaveProperty("required");
+  });
+
+  it("names the sha the cached runs were read for as ci.head, so a list whose head moved since shows the mismatch", async () => {
+    const w = world();
+    const moved = fakeSha("pushed-after-the-read");
+    w.fake.addPr({ headSha: moved });
+    const cached = { sha: H1, runs: [successRun("validate", 1)], statuses: [], at: NOW, settled: true };
+    const snapshot = { openList: w.snapshot.openList, cachedRuns: () => cached };
+
+    const [row] = await shepherdPrs({ ...sources(w), snapshot });
+
+    expect(row?.headSha).toBe(moved);
+    expect(row?.ci?.head).toBe(H1);
+  });
 });
 
 const hosts: FactoryHost[] = [];

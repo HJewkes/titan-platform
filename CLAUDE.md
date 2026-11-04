@@ -57,6 +57,8 @@ All six must be green. `dag:check` is self-hosted: it runs against this repo's o
 `@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
 release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
 
+Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
+
 ## Rules that CI enforces
 
 - **Tier order.** A package imports only its own tier or lower. The `package-layers` rule in
@@ -113,4 +115,6 @@ on already exists on npm.
 ## Gotchas
 
 - A fresh worktree needs `pnpm install --frozen-lockfile` and then `pnpm build` before vitest can import sibling packages, because packages resolve through their built `dist/` entries.
+- A vitest run has no operator state: `scripts/vitest-tmpdir.mjs` points HOME, AGENT_CHAT_HOME, ACTIVE_ROOT, CLAUDE_CONFIG_DIR, CODEX_HOME and the XDG config, data and state dirs at an empty home inside the run's temp dir, and unsets the `TITAN_*` path overrides. A test that needs a seeded home stubs the variable to its own fixture (`isolateAgentChatHome` for agent-chat); `TITAN_TEST_HOST_STATE=1` turns the isolation off for a whole run. Add any new state root to its lists.
+- `.agent-chat/generated` lists, one exact path per line, the ignored files this repo's own scripts regenerate (`site/guides/capabilities.md`, written by `docs:build`), so `agent-chat agent park` may delete them instead of refusing the tree; add a path there when a new script writes an ignored file into the tree.
 - On the docs site, an explicit `<br/>` in a mermaid node label clips the last line; write short labels, let them wrap, and view the rendered diagram before committing.

@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { SEAT_NAME } from "./round-notice-transport.js";
@@ -53,7 +54,7 @@ export function normalTarget(raw: string): string | null {
   return pr === null ? null : `${pr[1]?.toLowerCase()}#${pr[2]}`;
 }
 
-const globRegex = (glob: string): RegExp => new RegExp(`^${glob.replaceAll("*", ".*").replaceAll("?", ".")}$`);
+const globRegex = (glob: string): RegExp => new LinearRegExp(`^${glob.replaceAll("*", ".*").replaceAll("?", ".")}$`);
 
 export function targetMatches(target: string, round: RoundFacts): boolean {
   const pr = PR_TARGET.exec(target);

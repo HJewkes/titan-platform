@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_ENTRY } from "./cli.js";
 import { answerWithin, HOOK_DEADLINE_MS, remainingMs, startWorker } from "./deadline.js";
 import type { Running, WithinPort } from "./deadline.js";
@@ -9,8 +9,6 @@ const BASH = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "
 const READ = JSON.stringify({ tool_name: "Read", session_id: "s", tool_use_id: "t", tool_input: { file_path: "/tmp/notes.txt" } });
 const PASS: HookResult = { stdout: "", log: [] };
 const TIMEOUT = "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.";
-/** Worker start-up, the deny and a busy CI runner. */
-const MARGIN_MS = 1000;
 
 /** A worker running `code` as an ES module, so each case exercises the real thread and its `terminate`. */
 function inWorker(code: string): () => Running {
@@ -27,12 +25,22 @@ function reasonOf(result: HookResult): string | undefined {
 }
 
 describe("answerWithin a check that runs past its deadline", () => {
-  it("denies a check that keeps its thread busy, within the deadline plus a margin", async () => {
-    const start = performance.now();
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    const result = await answerWithin(BASH, port(inWorker("for (;;) {}"), 100));
+  // On the hook's own timer, faked, so the deny is pinned to the deadline itself whatever load slows the runner (TP-4047).
+  it("denies a check that keeps its thread busy as its deadline passes, and not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    const answer = answerWithin(BASH, port(inWorker("for (;;) {}"), 100)).finally(() => (settled = true));
 
-    expect(performance.now() - start).toBeLessThan(100 + MARGIN_MS);
+    await vi.advanceTimersByTimeAsync(99);
+    const settledEarly = settled;
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await answer;
+
+    expect(settledEarly).toBe(false);
     expect(reasonOf(result)).toBe(TIMEOUT);
     expect(result.log).toHaveLength(1);
     expect(result.log[0]).toContain("\tbash.timeout\t");

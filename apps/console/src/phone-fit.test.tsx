@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import { unmountPages } from "./render-page.test-helpers.js";
 import { RpcProvider } from "@titan-design/react-app";
 import { staticSource, type Snapshot } from "@titan-design/rpc-client";
 import { twinSnapshot } from "../server/twin/snapshot.js";
@@ -25,8 +26,8 @@ class SeeNothing {
 
 beforeEach(() => vi.stubGlobal("IntersectionObserver", SeeNothing));
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await unmountPages();
   vi.unstubAllGlobals();
 });
 
@@ -80,5 +81,25 @@ describe("on a 390px phone", () => {
     const cards = [...document.querySelectorAll("[data-testid^=upstream-]")];
     expect(cards.length).toBeGreaterThan(0);
     expect(cards.filter((card) => !isCappedToRow(card))).toEqual([]);
+  });
+
+  it("keeps the beat editor's fields, row buttons and save row inside the page", async () => {
+    await renderAt("#/theater/v-relay-intro?t=2&edit=1");
+
+    const editor = await screen.findByTestId("beat-editor");
+    const rowItems = [...editor.querySelectorAll("button, input, h4")].filter((element) => rowItemOf(element) !== null);
+    const fields = [...editor.querySelectorAll("[data-testid^=slot-]")].filter((element) => element.tagName !== "BUTTON");
+    expect(rowItems.length).toBeGreaterThan(0);
+    expect(rowItems.filter((element) => !isCappedToRow(element))).toEqual([]);
+    expect(fields.filter((element) => !element.classList.contains("min-w-0") && !element.closest(".min-w-0"))).toEqual([]);
+  });
+
+  it("keeps the saved edits' rows and a note's Turn into edit inside the page", async () => {
+    await renderAt("#/theater/v-relay-intro");
+
+    const edits = await screen.findByTestId("theater-edits");
+    const items = [...edits.querySelectorAll("[data-testid^=theater-edit-status-]"), await screen.findByTestId("theater-note-edit-0123456789abcdef")];
+    expect(items.length).toBe(3);
+    expect(items.filter((element) => !isCappedToRow(element))).toEqual([]);
   });
 });

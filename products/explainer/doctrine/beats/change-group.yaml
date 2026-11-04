@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: change-group
+summary: "The changes grouped into two to four rows of related files."
+role: explain
+component: { name: ListBeat, maturity: spike }
+slots: change-group
+speech: { band: concept }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [groups], treatments: [highlight, pointer, camera] }
+recipe: "Group the changed files by purpose, two to four rows, each with a title and why it changed. Pin each row on the diff map when there is one. Never a file list."

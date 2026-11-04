@@ -80,7 +80,8 @@ function earliest(values: (string | undefined)[]): string | undefined {
 
 /** The first item in input order is primary: its fields lead and its sources[0] receives the answer. */
 function combine(items: OwnerItem[]): OwnerItem {
-  const [primary, ...others] = items as [OwnerItem, ...OwnerItem[]];
+  const [primary, ...others] = items;
+  if (primary === undefined) throw new Error("combine needs at least one item");
   if (others.length === 0) return primary;
   const merged: OwnerItem = {
     ...primary,

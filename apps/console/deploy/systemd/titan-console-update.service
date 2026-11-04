@@ -1,4 +1,4 @@
-# Rebuilds and swaps in the served console when a console change lands on main (TP-2258).
+# Builds origin/main and hands off to that build's own updater when main moves (TP-2258, TP-4043).
 # Installed by the owner; see apps/console/docs/self-update.md.
 [Unit]
 Description=titan-console self-update
@@ -6,8 +6,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-# The updater runs from the release that is serving; it keeps that release when it prunes.
-ExecStart=/usr/bin/env node %h/.local/share/titan-console/current/apps/console/dist/cli.js self-update
+# The bootstrap is a copy outside every release, so no release's bug can stop the update that fixes it.
+ExecStart=/usr/bin/env node %h/.local/share/titan-console/bin/titan-console-bootstrap.mts
 Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 # Exit 75 is a run that found another holding the lock, not a failure.
 SuccessExitStatus=75

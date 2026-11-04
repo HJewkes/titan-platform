@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, Card, CardContent, DateTime, EmptyState, ListItem, ListItemContent, ListItemTrailing, Spinner, VStack } from "@titan-design/react-ui";
+import { Alert, Card, CardContent, DateTime, EmptyState, ListItem, ListItemContent, ListItemTrailing, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";

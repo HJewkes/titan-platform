@@ -3,10 +3,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fixtureEnv } from "@titan-design/test-kit/git";
 import { loadFileFirstSeen } from "./first-seen.js";
 import { discoveryEnv } from "./git.js";
 import { loadChurnEntries } from "./log.js";
-import { daysAgo, isolatedGitEnv, makeTestRepo, type TestRepo } from "./test-repo.js";
+import { daysAgo, makeTestRepo, type TestRepo } from "./test-repo.js";
 
 describe("loadChurnEntries on a real repository", () => {
   let repo: TestRepo;
@@ -29,10 +30,10 @@ describe("loadChurnEntries on a real repository", () => {
   });
 
   it("drops commits older than the window and keeps all of them for lifetime", async () => {
-    await repo.write("a.ts", "1\n");
-    repo.commit("old", { date: daysAgo(400) });
-    await repo.write("a.ts", "1\n2\n");
-    repo.commit("new", { date: daysAgo(2) });
+    repo.history([
+      { message: "old", date: daysAgo(400), files: { "a.ts": "1\n" } },
+      { message: "new", date: daysAgo(2), files: { "a.ts": "1\n2\n" } },
+    ]);
     expect(loadChurnEntries({ repoRoot: repo.dir, windowDays: 30 })).toHaveLength(1);
     expect(loadChurnEntries({ repoRoot: repo.dir, windowDays: "lifetime" })).toHaveLength(2);
   });
@@ -46,11 +47,10 @@ describe("loadChurnEntries on a real repository", () => {
   });
 
   it("attributes a rename-with-edit to the new path", async () => {
-    await repo.write("src/old.ts", "v1\n");
-    repo.commit("init", { date: daysAgo(2) });
-    repo.git(["mv", "src/old.ts", "src/new.ts"]);
-    await repo.write("src/new.ts", "v1\nv2\n");
-    repo.commit("rename", { date: daysAgo(1) });
+    repo.history([
+      { message: "init", date: daysAgo(2), files: { "src/old.ts": "v1\n" } },
+      { message: "rename", date: daysAgo(1), files: { "src/old.ts": null, "src/new.ts": "v1\nv2\n" } },
+    ]);
     const paths = loadChurnEntries({ repoRoot: repo.dir, windowDays: 30 })!.map((e) => e.filePath);
     expect(paths).toEqual(["src/new.ts", "src/old.ts"]);
   });
@@ -69,13 +69,10 @@ describe("loadChurnEntries on a real repository", () => {
   });
 
   it("works on a shallow clone with the history it has", async () => {
-    for (const n of [1, 2, 3]) {
-      await repo.write("a.ts", `${"x\n".repeat(n)}`);
-      repo.commit(`c${n}`, { date: daysAgo(10 - n) });
-    }
+    repo.history([1, 2, 3].map((n) => ({ message: `c${n}`, date: daysAgo(10 - n), files: { "a.ts": "x\n".repeat(n) } })));
     const clone = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-shallow-"));
     try {
-      execFileSync("git", ["clone", "-q", "--depth", "1", `file://${repo.dir}`, clone], { env: isolatedGitEnv() });
+      execFileSync("git", ["clone", "-q", "--depth", "1", `file://${repo.dir}`, clone], { env: fixtureEnv() });
       expect(loadChurnEntries({ repoRoot: clone, windowDays: 30 })).toHaveLength(1);
       expect(loadFileFirstSeen({ repoRoot: clone })?.has("a.ts")).toBe(true);
     } finally {
@@ -119,11 +116,10 @@ describe("loadFileFirstSeen", () => {
   afterEach(() => repo.cleanup());
 
   it("records each path's earliest commit time, filtered to known paths", async () => {
-    await repo.write("a.ts", "1\n");
-    repo.commit("a", { date: "2024-01-01T00:00:00Z" });
-    await repo.write("a.ts", "1\n2\n");
-    await repo.write("b.ts", "1\n");
-    repo.commit("b", { date: "2024-02-01T00:00:00Z" });
+    repo.history([
+      { message: "a", date: "2024-01-01T00:00:00Z", files: { "a.ts": "1\n" } },
+      { message: "b", date: "2024-02-01T00:00:00Z", files: { "a.ts": "1\n2\n", "b.ts": "1\n" } },
+    ]);
     const all = loadFileFirstSeen({ repoRoot: repo.dir })!;
     expect(all.get("a.ts")).toBe(Date.parse("2024-01-01T00:00:00Z") / 1000);
     expect(all.get("b.ts")).toBe(Date.parse("2024-02-01T00:00:00Z") / 1000);

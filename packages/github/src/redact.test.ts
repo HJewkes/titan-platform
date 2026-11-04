@@ -1,11 +1,6 @@
+import { countCalls } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { redactStreams } from "./redact.js";
-
-const timed = (run: () => void): number => {
-  const start = performance.now();
-  run();
-  return performance.now() - start;
-};
 
 describe("redactStreams secret list", () => {
   it("redacts a secret that is a substring of another", () => {
@@ -26,17 +21,15 @@ describe("redactStreams secret list", () => {
     expect([out, err]).toEqual(["my sec \n", "ret"]);
   });
 
-  it("costs no more with 100 copies of a secret than with one", () => {
+  it("scans for 100 copies of a secret no more than for one", () => {
     const secret = "s3cr3t-value";
     const text = `${secret} `.repeat(Math.floor(1_000_000 / (secret.length + 1)));
-    const one = [secret];
     const many = Array.from({ length: 100 }, () => secret);
-    redactStreams(text, "", one);
+    // Each exact scan calls indexOf once per copy of the secret in the text, so a repeated secret would multiply them.
+    const searches = (secrets: string[], cap?: number) => countCalls([[String.prototype, "indexOf"]], () => redactStreams(text, "", secrets), cap);
+    const single = searches([secret]);
 
-    const single = Math.max(timed(() => redactStreams(text, "", one)), 1);
-    const duplicated = timed(() => redactStreams(text, "", many));
-
-    // Loose bound: undeduplicated this ran about 25x the single-secret time.
-    expect(duplicated).toBeLessThan(single * 4 + 200);
+    expect(single).toBeGreaterThan(0);
+    expect(searches(many, 2 * single)).toBe(single);
   });
 });

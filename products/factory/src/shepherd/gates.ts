@@ -1,27 +1,12 @@
-import type { WorkflowContext } from "@titan-design/workflow";
-import type { RepoSlug } from "@titan-design/github";
+import { z } from "zod";
 import { WAIVE_PROOF, conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
 import { waiveProof } from "./proof-waiver.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
-
-export interface PrTarget {
-  repo: RepoSlug;
-  pr: number;
-}
-
-/** What the run's owner gates read: its context, its pull request, and the wait counter the await-new-head steps number from. */
-export interface GateRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
-  state: { waits: number };
-  /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
-  carried?: Escalated;
-  /** The verdict taken at each head; a waived fix-proof drops its head's NO_REPRO, so the next round reviews that head. */
-  reviews?: Map<string, unknown>;
-}
+import { mainFixedSpent } from "./main-fixed.js";
+import type { GateRun } from "./run-state.js";
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
 type CiRead = Pick<CiSnapshot, "headSha" | "mergeableState">;
@@ -54,11 +39,23 @@ function resolvedAt(lastCi: CiRead | undefined, headSha: string): boolean {
 
 /**
  * Waits, with no gate, for the PR to show any other head; undefined lands the next round. After a red, `untilGreen`
- * also ends the wait once that head's required checks all pass on a rerun or a late run, so the next round reviews it.
+ * also ends the wait once that head's required checks all pass on a rerun or a late run, so the next round reviews it,
+ * and `failing` ends it once the base turns out to own that red, so the next round's hold merges the head up; a run
+ * that has spent its main-fixed merge-ups carries that into the wait, whose hook then holds as the next round would.
  */
-export async function awaitNewHead(run: GateRun, headSha: string, untilGreen = false): Promise<undefined> {
-  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha, ...(untilGreen && { untilGreen }) }, AwaitHeadResult);
+export async function awaitNewHead(run: GateRun, headSha: string, untilGreen = false, failing: readonly { name: string }[] = []): Promise<undefined> {
+  const names = failing.map((check) => check.name);
+  const red = names.length > 0 && { failing: names, ...(mainFixedSpent(run) && { mainFixedSpent: true }) };
+  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha, ...(untilGreen && { untilGreen }), ...red }, AwaitHeadResult);
   return undefined;
+}
+
+const CiRedPayload = z.object({ failing: z.array(z.object({ name: z.string() })) });
+
+/** The failing checks a ci-red wake named; none for any other kind or a payload that does not parse. */
+export function ciRedFailing(kind: string, payload: unknown): readonly { name: string }[] {
+  const red = kind === "ci-red" ? CiRedPayload.safeParse(payload) : undefined;
+  return red?.success ? red.data.failing : [];
 }
 
 /** A run that wakes agents. */
@@ -105,7 +102,7 @@ export async function conflictGate(run: GateRun, headSha: string, unsent = ""): 
 }
 
 /**
- * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO) send-back
+ * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO, or a fixer's exit from a fix-proof wake) send-back
  * the owner may instead waive this head's fix-proof, and the next round reviews it. Undefined lands the next round.
  */
 export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false): Promise<LandOutcome | undefined> {

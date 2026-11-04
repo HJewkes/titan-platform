@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the flake port replaces done_when without force",
+      "file": "products/factory/src/shepherd/cleanup-ports.ts",
+      "find": "value: flake.done_when, force: true });",
+      "replace": "value: flake.done_when });",
+      "kills": [
+        "the active-work flake port replaces the filed done_when with force, tags and reopens a done task, and appends the notes last, never closing it"
+      ]
+    },
+    {
+      "name": "an active-work refusal reads as an outage",
+      "file": "products/factory/src/shepherd/cleanup-ports.ts",
+      "find": "    if (error instanceof RpcError && REFUSAL_CODES.has(error.code)) throw new FixTaskRefused(`active-work refused ${error.command}: ${error.message}`);\n",
+      "replace": "",
+      "kills": [
+        "the active-work flake port names a refusal as final, so a caller does not wait it out as an outage"
+      ]
+    }
+  ]
+}

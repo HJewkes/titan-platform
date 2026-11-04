@@ -1,4 +1,5 @@
 import type { WorkflowRun } from "@titan-design/workflow";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { holdClassOf } from "./g10-release.js";
 import { checkHoldReason } from "./hold-reason.js";
 import { mergedAt } from "./stats.js";
@@ -97,7 +98,7 @@ function instantOf(ts: unknown): number | undefined {
 function parseLine(line: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(line);
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+    return isObjectLike(value) ? value : undefined;
   } catch {
     return undefined;
   }

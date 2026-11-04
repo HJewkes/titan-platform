@@ -1,0 +1,17 @@
+{
+  "durationS": 1.5,
+  "beats": [
+    {
+      "id": "only",
+      "kind": "catalogue",
+      "startS": 0,
+      "durationS": 1.5,
+      "slots": {
+        "file": { "path": "lib/cache/store.ts", "loc": 88, "fanIn": 2 },
+        "schemaLabel": "Cache entry table",
+        "schema": { "tables": [{ "id": "entry", "name": "entry", "fields": [{ "id": "key", "name": "key", "type": "text", "key": "primary" }, { "id": "ttl", "name": "ttl_s", "type": "int" }] }] },
+        "annotate": { "text": "entries expire", "kind": "circle" }
+      }
+    }
+  ]
+}

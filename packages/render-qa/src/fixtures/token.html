@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render-qa flow-token fixture</title>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0d1117; color: #f0f3f6; font-family: sans-serif; }
+      .xp-band-top { position: absolute; left: 0; top: 0; width: 1920px; height: 122px; box-sizing: border-box; padding: 33px 60px 0; font-size: 42px; line-height: 56px; }
+      .node { position: absolute; width: 300px; height: 100px; box-sizing: border-box; border: 1px solid #7d8590; padding: 0 12px; font-size: 42px; line-height: 98px; }
+      .xp-token { position: absolute; width: 28px; height: 28px; border-radius: 14px; background: #58a6ff; }
+    </style>
+  </head>
+  <body>
+    <div class="xp-chrome"><header class="xp-band-top"><h1 class="xp-headline" id="headline" style="margin: 0; font-size: 42px"></h1></header></div>
+    <div id="stage"></div>
+    <script type="module">
+      // The demo sample's beats, back to back. Beat `b2-loop` is a loop of four labelled nodes with a flow token that
+      // runs the outer loop, clear of every label; the other beats show their id. The page publishes its cues as
+      // `window.__cueLog`, as a page that resolves its own cues does.
+      const TOKEN_BEAT = 'b2-loop'
+      const NODES = [['Source', 500, 300], ['Queue', 1200, 300], ['Worker', 1200, 700], ['Sink', 500, 700]]
+      /** Corners of the outer loop the token runs, 60 px outside the nodes. */
+      const LOOP = [[440, 250], [1560, 250], [1560, 850], [440, 850]]
+      const TOKEN_R = 14
+
+      const { beats } = await (await fetch('./samples/demo.words.json')).json()
+      const starts = beats.map((_, i) => beats.slice(0, i).reduce((s, b) => s + b.durationS, 0))
+      const stage = document.getElementById('stage')
+      const headline = document.getElementById('headline')
+
+      window.__cueLog = new Map(beats.filter((b) => b.id === TOKEN_BEAT).flatMap((b) => b.words.map((w, i) => {
+        const word = w.word.toLowerCase().replace(/[^a-z0-9%]/g, '')
+        return [`${b.id}:${word}#1`, { beat: b.id, word, nth: 1, atS: w.start }]
+      })))
+
+      function pointOnLoop(share) {
+        const sides = LOOP.map((p, i) => [p, LOOP[(i + 1) % LOOP.length]])
+        const lengths = sides.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]))
+        let d = (share % 1) * lengths.reduce((s, l) => s + l, 0)
+        for (const [i, [a, b]] of sides.entries()) {
+          if (d <= lengths[i]) return [a[0] + ((b[0] - a[0]) * d) / lengths[i], a[1] + ((b[1] - a[1]) * d) / lengths[i]]
+          d -= lengths[i]
+        }
+        return LOOP[0]
+      }
+
+      function seek(t) {
+        const i = Math.max(0, starts.findLastIndex((s) => s <= t))
+        const beat = beats[i]
+        headline.textContent = beat.id
+        if (beat.id !== TOKEN_BEAT) { stage.innerHTML = ''; return }
+        const [x, y] = pointOnLoop((t - starts[i]) / beat.durationS)
+        stage.innerHTML = NODES.map(([label, left, top]) => `<div class="node" style="left: ${left}px; top: ${top}px">${label}</div>`).join('')
+          + `<div class="xp-token" style="left: ${x - TOKEN_R}px; top: ${y - TOKEN_R}px"></div>`
+      }
+
+      seek(0)
+      window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration: beats.reduce((s, b) => s + b.durationS, 0) }
+    </script>
+  </body>
+</html>

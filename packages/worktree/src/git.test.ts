@@ -68,16 +68,37 @@ describe("findGitRoot", () => {
   });
 });
 
+const EXT_NEVER = { GIT_CONFIG_KEY_0: "protocol.ext.allow", GIT_CONFIG_VALUE_0: "never", GIT_CONFIG_COUNT: "1" };
+
 describe("gitChildEnv", () => {
   it("drops the dispatcher identity variables and disables credential prompts", () => {
     const env = gitChildEnv({ PATH: "/usr/bin", AGENT_CHAT_NAME: "scout", AGENT_CHAT_ID: "a1" });
 
-    expect(env).toEqual({ PATH: "/usr/bin", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh" });
+    expect(env).toEqual({ PATH: "/usr/bin", GIT_TERMINAL_PROMPT: "0", ...EXT_NEVER });
   });
 
   it("drops the prefixes a caller names instead of the defaults", () => {
     const env = gitChildEnv({ OTHER_TOKEN: "x", AGENT_CHAT_NAME: "scout" }, ["OTHER_"]);
 
-    expect(env).toEqual({ AGENT_CHAT_NAME: "scout", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh" });
+    expect(env).toEqual({ AGENT_CHAT_NAME: "scout", GIT_TERMINAL_PROMPT: "0", ...EXT_NEVER });
+  });
+
+  it("leaves the protocol list unset when the caller exported only the legacy full list", () => {
+    const env = gitChildEnv({ PATH: "/usr/bin", GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh" });
+
+    expect(env).toEqual({ PATH: "/usr/bin", GIT_TERMINAL_PROMPT: "0", ...EXT_NEVER });
+  });
+
+  it("keeps the caller's config pairs and appends the ext pair last", () => {
+    const env = gitChildEnv({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "fixture" });
+
+    expect(env).toEqual({
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_CONFIG_KEY_0: "user.name",
+      GIT_CONFIG_VALUE_0: "fixture",
+      GIT_CONFIG_KEY_1: "protocol.ext.allow",
+      GIT_CONFIG_VALUE_1: "never",
+      GIT_CONFIG_COUNT: "2",
+    });
   });
 });

@@ -6,6 +6,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/githu
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { agentChatAgents } from "./agents.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
 import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMigration } from "./freeze.js";
@@ -57,11 +58,7 @@ function fakeAgentChat(): { bin: string; argv: () => string[] } {
   writeFileSync(argvFile, "");
   writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '[]'\n`);
   chmodSync(bin, 0o755);
-  // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
-  mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
-  writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
-  vi.stubEnv("HOME", SCRATCH);
-  vi.stubEnv("AGENT_CHAT_HOME", join(SCRATCH, ".agent-chat"));
+  isolateAgentChatHome(SCRATCH, ["bd-implementer"]);
   return { bin, argv: () => readFileSync(argvFile, "utf8").split("\0") };
 }
 

@@ -31,8 +31,9 @@ function urlsOf(config: ConsoleConfig, id: string): RoundUrls {
   return { url: `http://127.0.0.1:${config.port}${hash}`, lanUrl };
 }
 
-function textLines({ id, frames, feedback, asker, url, lanUrl }: ImportReport): string[] {
-  return [id, `frames: ${frames}`, `feedback: ${feedback}`, ...(asker === undefined ? [] : [`asked by: ${asker}`]), url, ...(lanUrl === null ? [] : [lanUrl])];
+function textLines({ id, frames, feedback, superseded = [], asker, url, lanUrl }: ImportReport): string[] {
+  const supersededLines = superseded.map((target) => `supersedes ${target.id}: ${target.outcome}`);
+  return [id, `frames: ${frames}`, `feedback: ${feedback}`, ...supersededLines, ...(asker === undefined ? [] : [`asked by: ${asker}`]), url, ...(lanUrl === null ? [] : [lanUrl])];
 }
 
 interface ImportArgs {

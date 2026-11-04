@@ -133,6 +133,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Categories | `active-work category init [--areas <file>]` | Seed `categories.yml` once from the `kind:` and `cos:` tags in use, the statuses open, done, wont-do and icebox, and the area section printed by titan-platform `scripts/areas.mjs`; leaves an existing file untouched |
 | Sessions | `active-work wrap <slug> ...` | End a session: summary + open-loop ledger + brief bump |
 | Sessions | `aw <slug>` | Launch Claude with the bootstrap prompt |
+| Sessions | `active-work spawn <name> <profile> (--brief-file <path>\|--brief-stdin) [--host h] [--account <name\|least-used>] [--cwd d] [--briefing slug] [--surface s] [--remote-control]` | Spawn an agent through `agent-chat agent spawn` as yourself (an agent's `AGENT_CHAT_NAME` is forwarded). With no `--account`, the broker picks the least-used logged-in account and prints the readings; a refusal prints them and exits 1. CLI only, never an MCP tool. Finds `agent-chat` on `PATH`, or `AGENT_CHAT_BIN` |
 | Sessions | `active-work open <slug>` | Print the bootstrap prompt to stdout (no claude spawn) |
 | Sessions | `active-work facet add <slug> <alias> --tags a,b [--about ...]` | Add a facet alias that `aw <alias>` opens |
 | Sessions | `active-work facet list [slug]` | List facet aliases, flagging shadowed ones |
@@ -161,6 +162,10 @@ User-level config lives at `$XDG_CONFIG_HOME/active-work/config.json` (typically
 `discovery.githubRepos` controls which repos `active-work discover` queries via `gh pr list`. `discovery.localRepos` is the list of local git checkouts to scan for branches, worktrees, and stashes. `discovery.projectsRoot` is the parent directory whose subdirectories are checked against active initiative slugs.
 
 The active root itself is not in this file — it follows the XDG spec and can be overridden with `ACTIVE_ROOT=/some/path` at the env level.
+
+### Timing an `open`
+
+`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`.
 
 ### Using `active-work` from Claude Code via MCP
 

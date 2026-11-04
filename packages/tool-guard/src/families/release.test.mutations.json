@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unknown gh path is not read as a release",
+      "file": "packages/tool-guard/src/families/release.ts",
+      "find": "  if (cmd.name === \"gh\" && ghPathUnknown(cmd)) return [classified(\"bash.release.gh-release\", { tool: \"gh\" })];\n",
+      "replace": "",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads gh $X as a gh release",
+        "a gh command whose group or verb is only known at run time reads gh release $X v1 as a gh release"
+      ]
+    }
+  ]
+}

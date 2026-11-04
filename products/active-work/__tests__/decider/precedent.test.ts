@@ -9,10 +9,10 @@
  */
 
 import Database from 'better-sqlite3';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { extractPrecedents, type ExtractResult } from '../../src/decider/extract.js';
 import { ledgerPath, readLedgerRows } from '../../src/decider/ledger.js';
@@ -148,19 +148,41 @@ async function indexFixture(): Promise<void> {
   }
 }
 
-beforeEach(async () => {
-  dir = mkdtempSync(path.join(os.tmpdir(), 'aw-precedent-'));
-  cwd = path.join(dir, 'repo');
-  mkdirSync(cwd, { recursive: true });
-  transcriptsRoot = path.join(dir, 'projects');
+// The refresh also reads the host's agent-chat event log unless pointed elsewhere; an
+// empty home keeps the index to the fixture and off the real log.
+let sharedDir: string;
+let sharedGraph: string;
+let priorAgentChatHome: string | undefined;
+
+beforeAll(async () => {
+  priorAgentChatHome = process.env.AGENT_CHAT_HOME;
+  sharedDir = mkdtempSync(path.join(os.tmpdir(), 'aw-precedent-shared-'));
+  process.env.AGENT_CHAT_HOME = path.join(sharedDir, 'agent-chat-home');
+  mkdirSync(process.env.AGENT_CHAT_HOME, { recursive: true });
+  cwd = path.join(sharedDir, 'repo');
+  transcriptsRoot = path.join(sharedDir, 'projects');
   mkdirSync(path.join(transcriptsRoot, 'demo'), { recursive: true });
   writeFileSync(
     path.join(transcriptsRoot, 'demo', `${SESSION}.jsonl`),
     fixtureTranscript(),
     'utf8',
   );
-  graphPath = path.join(dir, 'graph.sqlite3');
+  graphPath = path.join(sharedDir, 'graph.sqlite3');
   await indexFixture();
+  sharedGraph = graphPath;
+});
+
+afterAll(() => {
+  if (priorAgentChatHome === undefined) delete process.env.AGENT_CHAT_HOME;
+  else process.env.AGENT_CHAT_HOME = priorAgentChatHome;
+  rmSync(sharedDir, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  dir = mkdtempSync(path.join(os.tmpdir(), 'aw-precedent-'));
+  cwd = path.join(sharedDir, 'repo');
+  graphPath = path.join(dir, 'graph.sqlite3');
+  copyFileSync(sharedGraph, graphPath);
 });
 
 afterEach(() => {
@@ -290,6 +312,23 @@ describe('v1 precedents.jsonl rows', () => {
       });
       expect(summary(result, 'precedents-jsonl')).toMatchObject({ written: 1, alreadyIndexed: 1 });
       expect(after.filter((r) => r.key === 'transcript:sess-v1:tu-v1')).toHaveLength(1);
+    });
+  });
+
+  it('count invalid JSON and non-object lines as malformed without dropping good rows', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', [
+        '{truncated',
+        'null',
+        '[1, 2]',
+        v1Row('Cut the release now?', 'Cut 0.9.0 now (Recommended)'),
+      ]);
+      writeCharter(activeRoot, []);
+
+      const read = await readLedgerRows(activeRoot);
+
+      expect(read.malformed).toBe(3);
+      expect(read.rows.map((row) => row.recommended)).toEqual(['Cut 0.9.0 now']);
     });
   });
 

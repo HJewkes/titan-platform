@@ -25,7 +25,17 @@ export function workflowRunTableDdl(name: string = DEFAULT_RUN_TABLE): string {
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_status`)} ON ${t}(status);
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_owner_lease`)} ON ${t}(owner_lease_until);
+    ${workflowNameIndexDdl(name)}
   `;
+}
+
+function workflowNameIndexDdl(name: string): string {
+  return `CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_workflow_status`)} ON ${quoteIdent(name)}(workflow_name, status);`;
+}
+
+/** Adds the (workflow_name, status) index when an earlier workflowMigration already created the table. */
+export function workflowNameIndexMigration(version: number, name: string = DEFAULT_RUN_TABLE): Migration {
+  return { version, name: `workflow-name-index:${name}`, up: (db) => db.exec(workflowNameIndexDdl(name)) };
 }
 
 /** Creates a fresh table. Existing deployments also add workflowOwnershipMigration once. */
@@ -118,14 +128,21 @@ export class WorkflowRunStore {
   }
 
   get(id: string): WorkflowRun | undefined {
-    const raw = this.db.prepare(`SELECT * FROM ${this.table} WHERE id = ?`).get(id) as RawRunRow | undefined;
+    const raw = this.db.prepare<[string], RawRunRow>(`SELECT * FROM ${this.table} WHERE id = ?`).get(id);
     return raw ? toRun(raw) : undefined;
   }
 
   listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM ${this.table} WHERE status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,
-    ).all(JSON.stringify(statuses)) as RawRunRow[];
+    return this.runsWhere("status IN (SELECT value FROM json_each(?))", JSON.stringify(statuses));
+  }
+
+  /** One workflow's runs of `statuses`, so a caller that reads a single workflow never loads or parses another's step results. */
+  listByWorkflow(workflowName: string, statuses: readonly WorkflowStatus[]): WorkflowRun[] {
+    return this.runsWhere("workflow_name = ? AND status IN (SELECT value FROM json_each(?))", workflowName, JSON.stringify(statuses));
+  }
+
+  private runsWhere(condition: string, ...params: string[]): WorkflowRun[] {
+    const rows = this.db.prepare<string[], RawRunRow>(`SELECT * FROM ${this.table} WHERE ${condition} ORDER BY started_at`).all(...params);
     return rows.map(toRun);
   }
 
@@ -239,15 +256,17 @@ export function newRun(id: string, workflowName: string, params: Record<string, 
 }
 
 function toRun(raw: RawRunRow): WorkflowRun {
-  const active = JSON.parse(raw.active_steps) as Record<string, Partial<ActiveStep> & Pick<ActiveStep, "stepId" | "iterKey" | "startedAt">>;
+  const active: Record<string, Partial<ActiveStep> & Pick<ActiveStep, "stepId" | "iterKey" | "startedAt">> = JSON.parse(raw.active_steps);
+  const params: Record<string, string> = JSON.parse(raw.params);
+  const stepResults: Record<string, StepResult> = JSON.parse(raw.step_results);
   return {
     id: raw.id,
     workflowName: raw.workflow_name,
     ...(raw.definition_version == null ? {} : { definitionVersion: raw.definition_version }),
-    params: JSON.parse(raw.params) as Record<string, string>,
+    params,
     status: raw.status,
     currentStep: raw.current_step,
-    stepResults: JSON.parse(raw.step_results) as Record<string, StepResult>,
+    stepResults,
     activeSteps: Object.fromEntries(Object.entries(active).map(([key, step]) => [key, normalizeActiveStep(step)])),
     revision: raw.revision,
     ownerGeneration: raw.owner_generation,

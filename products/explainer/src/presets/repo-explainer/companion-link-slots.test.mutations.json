@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unmapped chapter's card takes no contents title",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "?.title ?? CONTENTS_TITLE;",
+      "replace": "?.title ?? link.section;",
+      "kills": [
+        "a chapter's companion-link card takes its section's title, or the contents' for an unmapped chapter"
+      ]
+    }
+  ]
+}

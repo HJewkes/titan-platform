@@ -230,6 +230,18 @@ describe("sh-spawn-fixer", () => {
     expect(brief).toContain("task `demo/FX-1`");
   });
 
+  it("tells the fixer a flaky-test fix registers test-only with no mutation spec, and that a rerun thaw leaves the root-cause task", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+
+    await spawnFixer(r.deps, r.wiring, fixer, signal);
+
+    const { brief } = r.spawned[0]!;
+    expect(brief).toContain("register the PR with `--kind test-only` and add no `<test>.mutations.json`");
+    expect(brief).toContain("with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO");
+    expect(brief).toContain("its done_when still asks for a root-cause fix");
+  });
+
   it("spawns nothing when the episode thaws and a new red freezes again while the broker is down", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
@@ -290,8 +302,46 @@ describe("sh-spawn-fixer", () => {
 
     const result = await spawnFixer(r.deps, r.wiring, { ...fixer, episode: 2 }, signal);
 
-    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), detail: "spawned" });
+    expect(result).toMatchObject({ fixer: fixerName(REPO, fakeSha("next-red")), detail: "spawned" });
     expect(r.spawned).toHaveLength(1);
+  });
+
+  it("two concurrent spawnFixer calls with different merge shas keep one fixer", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    r.freezes.freeze(REPO, LATER);
+
+    const results = await Promise.all([spawnFixer(r.deps, r.wiring, { ...fixer, mergeSha: RED }, signal), spawnFixer(r.deps, r.wiring, { ...fixer, mergeSha: LATER }, signal)]);
+
+    expect(new Set(r.spawned.map((s) => s.name))).toEqual(new Set([fixerName(REPO, RED)]));
+    expect(results.map((result) => result.fixer)).toEqual([fixerName(REPO, RED), fixerName(REPO, RED)]);
+    expect(r.freezes.get(REPO)?.fixer).toBe(fixerName(REPO, RED));
+  });
+
+  it("spawns nothing when another run records the episode's fixer while the roster is read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    const racing: FixerAgents = { ...fixers, roster: async () => (r.freezes.setFixer(REPO, 1, "fix-widget-other"), fixers.roster()) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: racing }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: "fix-widget-other", detail: "this episode already has its fixer" });
+    expect(r.spawned).toEqual([]);
+  });
+
+  it("retires the fixer it spawned when another fixer was recorded for the episode during the spawn", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    const retired: string[] = [];
+    const slow: FixerAgents = { ...fixers, spawn: async (...args) => (r.freezes.setFixer(REPO, 1, "fix-widget-other"), fixers.spawn(...args)), retire: async (name) => void retired.push(name) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: slow }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: "fix-widget-other", thawed: false, detail: expect.stringContaining(`retired ${fixerName(REPO, RED)}`) });
+    expect(retired).toEqual([fixerName(REPO, RED)]);
+    expect(r.freezes.get(REPO)?.fixer).toBe("fix-widget-other");
   });
 
   it("spawns nothing when the policy grants no fixer", async () => {
@@ -364,6 +414,19 @@ describe("a red after a thaw that fails like an earlier red", () => {
 
     expect(r.spawned.map((s) => s.name)).toEqual([fixerName(REPO, fakeSha("red-a")), fixerName(REPO, fakeSha("red-b"))]);
     expect(third.fixer).toBe(fixerName(REPO, fakeSha("red-a")));
+  });
+
+  it("keeps the fixer and task the episode gained while the standing fixer was looked up, so that fixer's exemption never moves", async () => {
+    const r = rosterRig("live");
+    await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    const { episode } = r.freezes.freeze(REPO, failAt(r, fakeSha("red-b"), 12, "validate", TIMEOUT));
+    const roster = r.wiring.fixers!.roster;
+    const racing: FixerAgents = { ...r.wiring.fixers!, roster: async () => (r.freezes.setFixTask(REPO, episode, "demo/FX-OWN"), r.freezes.setFixer(REPO, episode, "fix-widget-own"), roster()) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, fixers: racing }, { ...red, mergeSha: fakeSha("red-b"), episode }, signal);
+
+    expect(r.freezes.get(REPO)).toMatchObject({ fixTask: "demo/FX-OWN", fixer: "fix-widget-own" });
+    expect(result).toMatchObject({ task: "demo/FX-OWN", thawed: false, detail: expect.stringContaining("kept the episode's own fix task") });
   });
 
   it("gives a red with the same test under a different failing check its own fixer", async () => {

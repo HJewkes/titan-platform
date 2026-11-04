@@ -1,6 +1,8 @@
 import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
 import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
+import { ORIGIN_ROUTE_COLUMNS } from "./origin-route-schema.js";
+import { parseStringList } from "./stored-json.js";
 
 /**
  * Who started a session and why, as a launcher such as agent-chat recorded it.
@@ -42,6 +44,18 @@ export interface ResolvedOrigin {
   predecessor?: string | null;
   /** How many follow-ups of each kind (`fix`, `rebase`, `extension`, `review`) the session received. */
   followupKinds?: Readonly<Record<string, number>> | null;
+  /** The spawn-routing decision the launcher logged; `routeFacts` is compact JSON text. */
+  routeMode?: string | null;
+  routeSource?: string | null;
+  routePrior?: string | null;
+  routeReason?: string | null;
+  routeRequested?: string | null;
+  routeWanted?: string | null;
+  routeWorkflow?: string | null;
+  routeTable?: string | null;
+  routeFacts?: string | null;
+  routeCandidate?: string | null;
+  routeCandidateWanted?: string | null;
 }
 
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
@@ -98,10 +112,13 @@ const SESSIONS_NEEDING_ORIGIN = `
   WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at OR o.task_source IS NULL
   ORDER BY s.session_id`;
 
+const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
   "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
   "experiment_id", "experiment_arm", "predecessor", "followup_kinds",
+  ...ORIGIN_ROUTE_COLUMNS,
 ] as const;
 
 /** A null `task_source` means the resolver did not look for tasks, so the stored link stands; `none` clears it. */
@@ -113,11 +130,13 @@ const UPSERT_ORIGIN = `
   INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
     brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at,
-    experiment_id, experiment_arm, predecessor, followup_kinds)
+    experiment_id, experiment_arm, predecessor, followup_kinds,
+    ${ORIGIN_ROUTE_COLUMNS.join(", ")})
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
     @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt,
-    @experimentId, @experimentArm, @predecessor, @followupKinds)
+    @experimentId, @experimentArm, @predecessor, @followupKinds,
+    ${ORIGIN_ROUTE_COLUMNS.map((c) => `@${camel(c)}`).join(", ")})
   ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
     ${TASK_LINK_UPDATE}`;
 
@@ -135,7 +154,7 @@ const PROJECT_SUBAGENTS = `
     agent_type = excluded.agent_type, label = excluded.label, started_at = COALESCE(excluded.started_at, started_at)`;
 
 export function sessionsNeedingOrigin(graph: SessionGraph): string[] {
-  return (graph.db.prepare(SESSIONS_NEEDING_ORIGIN).all() as { session_id: string }[]).map((r) => r.session_id);
+  return graph.db.prepare<[], { session_id: string }>(SESSIONS_NEEDING_ORIGIN).all().map((r) => r.session_id);
 }
 
 /**
@@ -183,7 +202,17 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
     experimentId: o.experimentId ?? null, experimentArm: o.experimentArm ?? null, predecessor: o.predecessor ?? null,
     followupKinds: o.followupKinds ? JSON.stringify(o.followupKinds) : null,
+    ...routeColumns(o),
     ...taskLinkColumns(o),
+  };
+}
+
+function routeColumns(o: ResolvedOrigin): Record<string, string | null> {
+  return {
+    routeMode: o.routeMode ?? null, routeSource: o.routeSource ?? null, routePrior: o.routePrior ?? null,
+    routeReason: o.routeReason ?? null, routeRequested: o.routeRequested ?? null, routeWanted: o.routeWanted ?? null,
+    routeWorkflow: o.routeWorkflow ?? null, routeTable: o.routeTable ?? null, routeFacts: o.routeFacts ?? null,
+    routeCandidate: o.routeCandidate ?? null, routeCandidateWanted: o.routeCandidateWanted ?? null,
   };
 }
 
@@ -195,9 +224,8 @@ function taskLinkColumns(o: ResolvedOrigin): { taskIds: string | null; taskSourc
 }
 
 function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void {
-  const spawned = graph.db.prepare("SELECT session_id, parent_session_id, spawned_at, resolved_at FROM session_origin WHERE parent_session_id IS NOT NULL").all() as {
-    session_id: string; parent_session_id: string; spawned_at: string | null; resolved_at: string;
-  }[];
+  const spawned = graph.db.prepare<[], { session_id: string; parent_session_id: string; spawned_at: string | null; resolved_at: string }>(
+    "SELECT session_id, parent_session_id, spawned_at, resolved_at FROM session_origin WHERE parent_session_id IS NOT NULL").all();
   graph.db.transaction(() => {
     graph.db.prepare(PROJECT_SUBAGENTS).run();
     for (const o of spawned) {
@@ -210,6 +238,7 @@ function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void 
 /** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
 const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
 const LOWEST_CONFIDENCE = 0.6;
+const CONFIDENCE_BY_SOURCE: ReadonlyMap<string, number> = new Map(Object.entries(LINK_CONFIDENCE));
 
 interface TaskLinkRow { session_id: string; task_ids: string | null; task_source: string | null; spawned_at: string | null; resolved_at: string }
 
@@ -221,14 +250,14 @@ interface TaskLinkRow { session_id: string; task_ids: string | null; task_source
  */
 function projectTaskLinks(graph: SessionGraph, resolved: readonly string[]): void {
   const insertTask = graph.db.prepare("INSERT OR IGNORE INTO task (task_ref, task_id) VALUES (?, ?)");
-  const select = graph.db.prepare("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin WHERE session_id = ?");
+  const select = graph.db.prepare<[string], TaskLinkRow>("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin WHERE session_id = ?");
   for (const sessionId of resolved) {
-    const o = select.get(sessionId) as TaskLinkRow | undefined;
+    const o = select.get(sessionId);
     if (!o) continue;
-    const taskIds: string[] = o.task_ids ? (JSON.parse(o.task_ids) as string[]) : [];
+    const taskIds: string[] = o.task_ids ? parseStringList(o.task_ids) : [];
     const source = sessionRef(o.session_id);
     const attrs = { via: "origin", source: o.task_source };
-    const confidence = LINK_CONFIDENCE[o.task_source as keyof typeof LINK_CONFIDENCE] ?? LOWEST_CONFIDENCE;
+    const confidence = CONFIDENCE_BY_SOURCE.get(o.task_source ?? "") ?? LOWEST_CONFIDENCE;
     for (const taskId of taskIds) {
       insertTask.run(taskRef(taskId), taskId);
       graph.edges.assert({ sourceRef: source, relation: RELATIONS.RAN, targetRef: taskRef(taskId), tValid: o.spawned_at ?? o.resolved_at, attrs, confidence });

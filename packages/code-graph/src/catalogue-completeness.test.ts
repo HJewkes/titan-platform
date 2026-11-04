@@ -51,11 +51,11 @@ const FIXTURE: Record<string, string> = {
   ...TEST_KINDS_PROJECT,
 };
 
-async function buildFixture(repo: TestRepo): Promise<void> {
-  await repo.write("src/util.ts", "export const seed = 0;\n");
-  repo.commit("seed", { date: "2023-01-01T12:00:00Z" });
-  for (const [file, contents] of Object.entries(FIXTURE)) await repo.write(file, contents);
-  repo.commit("fixture", { author: "bob", date: daysAgo(5) });
+function buildFixture(repo: TestRepo): void {
+  repo.history([
+    { message: "seed", date: "2023-01-01T12:00:00Z", files: { "src/util.ts": "export const seed = 0;\n" } },
+    { message: "fixture", author: "bob", date: daysAgo(5), files: FIXTURE },
+  ]);
 }
 
 function storeCoverage(store: CodeGraphStore, snapshotId: number, repoDir: string): void {
@@ -74,11 +74,11 @@ interface StoredMetric {
 
 function storedMetrics(store: CodeGraphStore, snapshotId: number): StoredMetric[] {
   return store.db
-    .prepare(
+    .prepare<[number], StoredMetric>(
       `SELECT DISTINCT m.name AS name, m.unit AS unit, n.kind AS kind FROM metric m
        JOIN node n ON n.snapshot_id = m.snapshot_id AND n.id = m.node_id WHERE m.snapshot_id = ?`,
     )
-    .all(snapshotId) as StoredMetric[];
+    .all(snapshotId);
 }
 
 function catalogueNameOf(stored: string): string | undefined {
@@ -93,7 +93,7 @@ describe("metric catalogue completeness", () => {
 
   beforeAll(async () => {
     repo = await makeTestRepo();
-    await buildFixture(repo);
+    buildFixture(repo);
     store = openCodeGraph(":memory:");
     const { snapshotId } = await indexPaths(store, { paths: [repo.dir], churnWindows: [30, 90], lifetime: true });
     storeCoverage(store, snapshotId, repo.dir);
@@ -120,7 +120,7 @@ describe("metric catalogue completeness", () => {
       if (!d) return [];
       const problems: string[] = [];
       if (m.unit !== d.unit) problems.push(`${m.name}: stored unit ${m.unit}, descriptor says ${d.unit}`);
-      if (!d.appliesTo.includes(m.kind as never)) problems.push(`${m.name}: written on a ${m.kind} node`);
+      if (!d.appliesTo.some((kind) => kind === m.kind)) problems.push(`${m.name}: written on a ${m.kind} node`);
       return problems;
     });
     expect(mismatches, mismatches.join("\n")).toEqual([]);

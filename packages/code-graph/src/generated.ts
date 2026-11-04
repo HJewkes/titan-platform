@@ -1,5 +1,7 @@
 import * as path from "node:path";
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
+import { errnoCode } from "./narrow.js";
 
 /**
  * Generated-code detection. Generated files (codegen output, e.g. an OpenAPI
@@ -46,7 +48,7 @@ export function loadGeneratedPatterns(
     const content = source.readFile(path.join(rootDir, ".gitattributes"));
     return parseGeneratedPatterns(content);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (errnoCode(err) === "ENOENT") return [];
     throw err;
   }
 }
@@ -88,12 +90,13 @@ function parseGeneratedRules(content: string): GeneratedRule[] {
   return rules;
 }
 
-// Every pattern regex is anchored at both ends, so a lookahead over the
-// opt-out sources rejects exactly the ids a later line unsets.
+// Every pattern regex is anchored at both ends, so the lookahead source over
+// the opt-outs reads as the test does: the ids a later line unsets are rejected.
+// The test itself runs each linear regex in turn instead of backtracking.
 function excluding(rx: RegExp, optOuts: readonly RegExp[]): RegExp {
   if (optOuts.length === 0) return rx;
   const rejected = optOuts.map((o) => `(?:${o.source})`).join("|");
-  return new RegExp(`(?!${rejected})(?:${rx.source})`);
+  return new LinearRegExp(`(?!${rejected})(?:${rx.source})`, "", (id) => rx.test(id) && !optOuts.some((o) => o.test(id)));
 }
 
 /** Resolve the effective linguist-generated value from a line's attribute tokens. */
@@ -135,7 +138,7 @@ export function gitattributesPatternToRegex(pattern: string): RegExp {
   const anchored = p.includes("/");
   if (p.startsWith("/")) p = p.slice(1);
   const prefix = anchored ? "^" : "^(?:.*/)?";
-  return new RegExp(prefix + globBody(p) + "$");
+  return new LinearRegExp(prefix + globBody(p) + "$");
 }
 
 function globBody(p: string): string {

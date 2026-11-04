@@ -1,4 +1,5 @@
 import type { LineSource } from "@titan-design/evidence";
+import type { ProofReadInput } from "@titan-design/fix-proof";
 import type { PullRequest } from "@titan-design/github";
 import type { Headroom, PrFacts, ReviewClock, ReviewerAgent, ReviewerDispatch, ReviewerReader, ReviewTarget } from "@titan-design/review-panel";
 import type { MemberNamer } from "./types.js";
@@ -9,14 +10,16 @@ export interface HeadSnapshot {
   /** The head's required checks, rolled up. */
   ci: "green" | "pending" | "failing";
   facts: PrFacts;
+  /** The file list or a line count could not be read, so the head classifies as large. */
+  sizeUnread?: boolean;
 }
 
 export interface SnapshotPort {
   read(target: ReviewTarget): Promise<HeadSnapshot>;
 }
 
-/** `line` is the raw `fix-proof/v1` line; `none` means no proof ran; `unread` means one may have and could not be read. */
-export type ProofRead = { kind: "line"; line: string } | { kind: "none" } | { kind: "unread"; reason: string };
+/** The read `proofStanding` takes, so the workflow judges a head's proof exactly as every other fix-proof reader does. */
+export type ProofRead = ProofReadInput;
 
 export interface ProofReaderPort {
   read(target: ReviewTarget): Promise<ProofRead>;
@@ -57,6 +60,11 @@ export interface HeadroomPort {
   read(): Promise<HeadroomRead>;
 }
 
+/** Whether an agent profile is installed, so a member whose profile is not is refused before any dispatch (tp#1986). */
+export interface ProfilesPort {
+  installed(profile: string): boolean;
+}
+
 export interface ReviewWorkflowPorts {
   snapshot: SnapshotPort;
   proofReader: ProofReaderPort;
@@ -69,6 +77,7 @@ export interface ReviewWorkflowPorts {
   fixer: FixerPort;
   clock: ReviewClock;
   headroom: HeadroomPort;
+  profiles: ProfilesPort;
   /** Absent means review-panel's `memberName`. */
   namer?: MemberNamer;
 }

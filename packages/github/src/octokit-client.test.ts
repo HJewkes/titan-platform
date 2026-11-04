@@ -4,6 +4,7 @@ import { fakeFetch, rejectionOf, secondaryLimit, type FakeAnswer } from "./fetch
 import { octokitClient } from "./octokit-client.js";
 import { octokitWire } from "./octokit-wire.js";
 import { githubPort } from "./port.js";
+import { CORE_TIMEOUT_MS } from "./rest.js";
 
 const TOKEN = "ghp_synthetic_test_token_0000000000";
 const NOW = Date.parse("2026-03-01T12:00:00Z");
@@ -20,6 +21,25 @@ let clients = 0;
 function clientWith(answer: (index: number) => FakeAnswer, token: () => Promise<string> = async () => TOKEN) {
   const fake = fakeFetch((_call, index) => answer(index));
   return { ...fake, client: octokitClient({ fetch: fake.fetch, token, now: Date.now, throttleId: `test-${++clients}` }) };
+}
+
+/** A socket that never answers, aborting the way undici does so plugin-retry treats it as final; counts its calls. */
+function hungFetch() {
+  const counter = { calls: 0 };
+  const fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
+    counter.calls += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      const abort = () => reject(new DOMException("aborted", "AbortError"));
+      if (init.signal?.aborted) abort();
+      init.signal?.addEventListener("abort", abort);
+    });
+  }) as typeof globalThis.fetch;
+  return {
+    fetch,
+    get calls() {
+      return counter.calls;
+    },
+  };
 }
 
 /** Lets the throttle's and retry's timers run under fake time. */
@@ -169,11 +189,7 @@ describe("octokitClient", () => {
   });
 
   it("fails a hung GraphQL call over the Octokit wire at 30 s, as restCaller's exec timeout does", async () => {
-    const hung = (async (_input: string | URL | Request, init: RequestInit = {}) =>
-      new Promise<Response>((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-      })) as typeof globalThis.fetch;
-    const client = octokitClient({ fetch: hung, token: async () => TOKEN, throttleId: `test-${++clients}` });
+    const client = octokitClient({ fetch: hungFetch().fetch, token: async () => TOKEN, throttleId: `test-${++clients}` });
     let settled = false;
 
     const pending = githubPort(octokitWire({ client })).listReviewComments("octo/demo", 7).finally(() => (settled = true));
@@ -183,6 +199,32 @@ describe("octokitClient", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect((await rejection).message).toMatch(/graphql timed out after 30000 ms/);
+  });
+
+  it("fails a hung GET at the core deadline and does not retry it", async () => {
+    const hung = hungFetch();
+    const client = octokitClient({ fetch: hung.fetch, token: async () => TOKEN, throttleId: `test-${++clients}` });
+    let settled = false;
+
+    const rejection = rejectionOf(client.request("GET /repos/octo/demo").finally(() => (settled = true)), Error);
+    await vi.advanceTimersByTimeAsync(CORE_TIMEOUT_MS - 1_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await rejection).message).toMatch(/GET .*\/repos\/octo\/demo timed out after 60000 ms/);
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(hung.calls).toBe(1);
+  });
+
+  it("fails a hung POST at the core deadline", async () => {
+    const hung = hungFetch();
+    const client = octokitClient({ fetch: hung.fetch, token: async () => TOKEN, throttleId: `test-${++clients}` });
+
+    const rejection = rejectionOf(client.request("POST /repos/octo/demo/issues/1/comments", { body: "x" }), Error);
+    await vi.advanceTimersByTimeAsync(CORE_TIMEOUT_MS + 1_000);
+
+    expect((await rejection).message).toMatch(/POST .* timed out after 60000 ms/);
+    expect(hung.calls).toBe(1);
   });
 
   it("waits per backoffMs before a call once the shared floor is crossed, and records the headers it sees", async () => {

@@ -1,6 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,7 +29,9 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "titan-cli-health-"));
   server = createServer((_req, res) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(factoryHealth)));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("server is not listening on a TCP port");
+  const { port } = address;
   await mkdir(join(dir, "config", "titan"), { recursive: true });
   await writeFile(
     join(dir, "config", "titan", "host.json"),

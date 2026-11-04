@@ -1,4 +1,4 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { receivesMessages, type AgentRow } from "@titan-design/agent-dispatch";
 import { isSeat } from "./wake-brief.js";
 
 /** The run's registered implementer and the successors the store's lineage records, earliest first. */
@@ -24,6 +24,12 @@ function chain(lineage: Lineage, roster: readonly AgentRow[]): string[] {
 /** A name can span several sessions; the latest generation is the one that holds it. */
 export function latestRow(name: string, roster: readonly AgentRow[]): AgentRow | undefined {
   return roster.filter((row) => row.name === name).reduce<AgentRow | undefined>((best, row) => (best === undefined || row.generation >= best.generation ? row : best), undefined);
+}
+
+/** Whether a message to `name` reaches a session: only its latest row counts, under agent-dispatch's one liveness rule. */
+export function holdsLiveSession(name: string, roster: readonly AgentRow[]): boolean {
+  const row = latestRow(name, roster);
+  return row !== undefined && receivesMessages(row);
 }
 
 /** The earliest spawner in the lineage that is a session; a successor's own spawner is the human, which names no seat. */

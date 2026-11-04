@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: frame-flow
+summary: "A user flow as captured frames, in order."
+role: evidence
+component: { name: ImageBeat, maturity: spike }
+slots: frame-flow
+speech: { band: story }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [frames], treatments: [camera, highlight] }
+recipe: "Two to six captured frames, each with a caption, in the order a user meets them. Use real captures only."

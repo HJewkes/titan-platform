@@ -1,3 +1,4 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { z } from "zod";
 import type { Proposal } from "./schemas.js";
 
@@ -49,7 +50,7 @@ function globToRegExp(glob: string): RegExp {
     else if (char === ",") source += "|";
     else source += char.replace(/[.+^$()|[\]\\]/g, "\\$&");
   }
-  return new RegExp(`^${source}$`);
+  return new LinearRegExp(`^${source}$`);
 }
 
 export const matchesAny = (path: string, globs: readonly string[]): boolean => globs.some((glob) => globToRegExp(glob).test(path));

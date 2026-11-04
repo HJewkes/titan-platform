@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the default window ends two minutes before now",
+      "file": "products/factory/src/cli-coverage.ts",
+      "find": "  const end = opts.end === undefined ? now : Date.parse(opts.end);",
+      "replace": "  const end = opts.end === undefined ? now - 120_000 : Date.parse(opts.end);",
+      "kills": [
+        "shepherd coverage verb defaults to the 24 hours ending now"
+      ]
+    }
+  ]
+}

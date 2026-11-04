@@ -26,6 +26,7 @@ import { runProgress, type RunProgress } from "./autoresearch-progress.js";
 import { scoreboard, STOP_RUNGS, type Ranked, type Scoreboard } from "./autoresearch-scoreboard.js";
 import { AutoresearchProgressChart, AutoresearchSpendChart, type ProgressAxis } from "./AutoresearchProgressChart.js";
 import { formatCost } from "./SessionFormat.js";
+import { PHONE_TAP } from "./phone.js";
 
 const AXES: readonly { axis: ProgressAxis; label: string }[] = [
   { axis: "time", label: "Wall time" },
@@ -117,7 +118,7 @@ function ProgressPanel({ run }: { run: ArRunView }): ReactNode {
       <Tabs index={tab} onChange={setTab}>
         <TabList>
           {AXES.map(({ label }) => (
-            <Tab key={label}>{label}</Tab>
+            <Tab key={label} className={PHONE_TAP}>{label}</Tab>
           ))}
         </TabList>
       </Tabs>

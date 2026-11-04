@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { EXIT } from "@titan-design/registry";
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 /**
  * The console does not depend on titan-factory, so it pins only the WatchRow fields it shows and
@@ -21,6 +23,8 @@ const watchRow = z
     nextAction: z.string(),
     pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).passthrough().nullable(),
     held: z.object({ reason: z.string() }).passthrough().nullable(),
+    /** `hold` is Shepherd's own verdict that the run waits on its hold; the name stays a string so a new stage parses. */
+    stage: z.object({ name: z.string() }).passthrough().nullable().optional(),
     stalled: z.object({ reason: z.string() }).passthrough().nullable(),
   })
   .passthrough();
@@ -46,7 +50,10 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
-/** The factory's `owner-op.preview` for a PR op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
+/**
+ * The factory's `owner-op.preview`, pinned to the fields the read-back shows: a PR op's PR, where `head` is there only while
+ * the PR is open, a retire-agent's agent, or a deploy-pause-clear's failure pause as `/health` reads it.
+ */
 const opPreview = z
   .object({
     kind: z.string(),
@@ -66,6 +73,32 @@ const opPreview = z
       })
       .passthrough()
       .optional(),
+    /** For a retire-agent op: the agent holding the name now, as agent-chat's roster reads, and the live run that would stop it. */
+    agent: z
+      .object({
+        name: z.string(),
+        holder: z
+          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable(), exitedAt: z.string().nullable().optional() })
+          .passthrough()
+          .optional(),
+        exited: z.boolean(),
+        /** Why a forced retire is refused now, or null once the exit is past agent-chat's grace; absent from an older factory. */
+        forceStop: z.string().nullable().optional(),
+        liveRun: z.string().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    pause: z
+      .object({
+        paused: z.boolean().nullable(),
+        since: z.string().nullable(),
+        reason: z.string().nullable(),
+        lastRollback: z.object({ target: z.string(), from: z.string(), status: z.string() }).passthrough().nullable(),
+        deployerRunning: z.boolean(),
+        manualHold: z.string().nullable(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -78,11 +111,54 @@ interface ReleaseAt {
   actor: string;
 }
 
+/** GitHub's check-runs page as `shepherd.ghRead` relays it; only the fields the gate strip reads are pinned. */
+const checkRunsPage = z.object({
+  total_count: z.number().int(),
+  check_runs: z.array(z.object({ name: z.string(), status: z.string(), conclusion: z.string().nullable() }).passthrough()),
+});
+
+const ghAnswer = z.object({ status: z.number().int(), body: z.unknown() }).passthrough();
+
+const CHECK_RUNS_PAGE = 100;
+
+/** One changed file, each row's `text` already through the factory's reversible `exactLine`, so the sheet shows it verbatim. */
+const evidenceFile = z.object({ path: z.string(), rows: z.array(z.object({ side: z.enum(["-", "+"]), n: z.number().int(), text: z.string() })) });
+
+const ciPolicy = z.object({ kind: z.enum(["weakened", "malformed", "unchanged"]), keys: z.array(z.string()).optional() });
+
+/**
+ * The factory's `gate.ownerEvidence` (TP-4404): the card an owner-at-head merge gate's stored evidence shows, with the digest
+ * a tap posts back; or why the card cannot show it, with the terminal command.
+ */
+const ownerEvidence = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("none"), gateId: z.string() }),
+  z.object({
+    status: z.literal("ready"),
+    gateId: z.string(),
+    head: z.string(),
+    mergeBase: z.string(),
+    facts: z.array(z.string()),
+    sections: z.array(
+      z.object({
+        fact: z.string(),
+        ciPolicy: ciPolicy.optional(),
+        verdictLines: z.array(z.string()).optional(),
+        labelledLines: z.array(z.object({ raw: z.string(), reading: ciPolicy })).optional(),
+        files: z.array(evidenceFile),
+      }),
+    ),
+    digest: z.string().regex(/^[0-9a-f]{64}$/),
+  }),
+  z.object({ status: z.literal("missing"), gateId: z.string(), facts: z.array(z.string()), reason: z.string(), command: z.string() }),
+]);
+
 type WatchRow = z.infer<typeof watchRow>;
 type PrTimeline = z.infer<typeof prTimeline>;
 type Waiting = z.infer<typeof waiting>;
 type Released = z.infer<typeof released>;
+export type CheckRunsPage = z.infer<typeof checkRunsPage>;
 export type OpPreview = z.infer<typeof opPreview>;
+export type OwnerEvidence = z.infer<typeof ownerEvidence>;
 type ListState = (typeof LIST_STATES)[number];
 
 /** Each call rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
@@ -90,10 +166,14 @@ export interface ShepherdSource {
   list(state: ListState): Promise<WatchRow[]>;
   timeline(repo: string, pr: number): Promise<PrTimeline>;
   waiting(): Promise<Waiting>;
+  /** GitHub's check runs at one commit, through serve's throttled, ETag-cached gateway. */
+  checkRuns(repo: string, sha: string): Promise<CheckRunsPage>;
   /** The one write: only `inbox.act` calls it, after the owner confirmed a g10 hold's release. */
   release(at: ReleaseAt): Promise<Released>;
   /** The factory's live read-back for a typed owner op: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
   previewOp(op: OwnerOp): Promise<OpPreview>;
+  /** An approve-merge gate's owner-at-head evidence card: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
+  ownerEvidence(gateId: string): Promise<OwnerEvidence>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -102,10 +182,10 @@ const READ_TIMEOUT_MS = 10_000;
  * Calls Shepherd's read commands, and `shepherd.release`, on titan-factory's loopback port. It sends only the client header
  * `liveSource` adds: never the browser's cookie or Host, and no token, so 7410 keeps its own guards.
  */
-export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS): ShepherdSource {
+export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): ShepherdSource {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("factory", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
   async function read<T>(command: string, args: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
     const envelope = await source.call(command, args);
@@ -114,12 +194,22 @@ export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS
     if (!parsed.success) throw unexpectedShape(`factory ${command}`);
     return parsed.data;
   }
+  async function checkRuns(repo: string, sha: string): Promise<CheckRunsPage> {
+    const path = `repos/${repo}/commits/${sha}/check-runs?per_page=${CHECK_RUNS_PAGE}`;
+    const answer = await read("shepherd.ghRead", { path, caller: "titan-console", raw: true }, ghAnswer);
+    if (answer.status !== 200) throw failure(`factory shepherd.ghRead: GitHub answered ${answer.status} for ${path}`, EXIT.UNAVAILABLE);
+    const page = checkRunsPage.safeParse(answer.body);
+    if (!page.success) throw unexpectedShape("factory shepherd.ghRead check-runs");
+    return page.data;
+  }
   return {
     list: (state) => read("shepherd.list", { state }, z.array(watchRow)),
     timeline: (repo, pr) => read("shepherd.timeline", { repo, pr }, prTimeline),
     waiting: () => read("shepherd.waiting", {}, waiting),
+    checkRuns,
     release: ({ repo, pr, head, holdClass, actor }) => read("shepherd.release", { repo, pr, head, holdClass, actor }, released),
     previewOp: (op) => read("owner-op.preview", { op }, opPreview),
+    ownerEvidence: (gateId) => read("gate.ownerEvidence", { gateId }, ownerEvidence),
   };
 }
 

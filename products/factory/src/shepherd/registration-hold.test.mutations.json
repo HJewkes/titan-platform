@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "merge-facts.ts leaves the owner's skill-diff guard",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
+      "replace": "[\"skill-paths.ts\", \"approval-carry.ts\"]",
+      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/merge-facts.ts g10-adversary as policy, though it builds no resolver"]
+    },
+    {
+      "name": "skill-paths.ts leaves the owner's skill-diff guard",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
+      "replace": "[\"merge-facts.ts\", \"approval-carry.ts\"]",
+      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/skill-paths.ts g10-adversary as policy, though it builds no resolver"]
+    },
+    {
+      "name": "approval-carry.ts leaves the owner's skill-diff guard",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
+      "replace": "[\"merge-facts.ts\", \"skill-paths.ts\"]",
+      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/approval-carry.ts g10-adversary as policy, though it builds no resolver"]
+    },
+    {
+      "name": "the land workflow's gate rules leave the held set",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  \"products/factory/src/workflows/land-approval.ts\",\n",
+      "replace": "",
+      "kills": ["the G10 hold Shepherd places at registration holds a gate-resolve actor or evidence rule in products/factory/src/workflows/land-approval.ts g10-adversary"]
+    },
+    {
+      "name": "workflow types.ts leaves the held set",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  \"packages/workflow/src/types.ts\",\n",
+      "replace": "",
+      "kills": ["the G10 hold Shepherd places at registration holds a gate-resolve actor or evidence rule in packages/workflow/src/types.ts g10-adversary"]
+    }
+  ]
+}

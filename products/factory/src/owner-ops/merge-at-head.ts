@@ -9,7 +9,8 @@ import { startLand } from "../registry.js";
 import { LIVE } from "../shepherd/gone-elsewhere.js";
 import { SHIP_APPROVAL_MAX_AGE_MS } from "../shepherd/round-merge.js";
 import type { ShepherdServices } from "../shepherd/services.js";
-import { mergeStop, pendingMergeGates, type StandingAnswer, type StandingAnswers } from "./standing-answers.js";
+import { g10HoldOf } from "./loop-approval.js";
+import { mergeStop, pendingMergeGates, type ListedAnswer, type StandingAnswer, type StandingAnswers } from "./standing-answers.js";
 
 type MergeAtHead = Extract<OwnerOp, { kind: "merge-at-head" }>;
 
@@ -38,6 +39,7 @@ export async function mergeAtHead(actionId: string, { op, confirmEvent }: OpRead
   const stop = mergeStop(deps.services, op.repo, op.pr);
   if (stop !== undefined) return refused("class", `${op.repo}#${op.pr} ${stop}`);
   const answer = { actionId, confirmEvent, repo: op.repo, pr: op.pr, headSha: op.headSha, expiresAt: new Date(deps.now() + SHIP_APPROVAL_MAX_AGE_MS).toISOString() };
+  if (op.waitFor !== undefined) return approveAfterLoop({ ...answer, waitFor: op.waitFor }, deps);
   const shepherdGate = shepherdGateAt(deps, op);
   if (shepherdGate !== undefined) {
     await deps.answers.add({ ...answer, runId: shepherdGate.runId, gateId: shepherdGate.gate.id });
@@ -46,6 +48,18 @@ export async function mergeAtHead(actionId: string, { op, confirmEvent }: OpRead
   const { runId } = startLand(deps.host, { repo: op.repo, pr: op.pr, update: false });
   await deps.answers.add({ ...answer, runId });
   return { outcome: "accepted", runId };
+}
+
+/**
+ * The owner approves now and the machine half runs on: the answer stands on the PR's Shepherd run, which stays held until the
+ * adversary loop closes. Only a g10 hold has such a loop, so any other PR is refused and the plain merge-at-head is the tap.
+ */
+async function approveAfterLoop(answer: Omit<StandingAnswer, "runId">, deps: MergeAtHeadDeps): Promise<Outcome> {
+  const registration = deps.services.store.get().byPr(answer.repo, answer.pr);
+  const holdClass = g10HoldOf(registration);
+  if (registration === undefined || holdClass === undefined) return refused("class", `${answer.repo}#${answer.pr} holds no g10 hold, so there is no adversary loop to wait for`);
+  await deps.answers.add({ ...answer, runId: registration.runId, waitsOut: { holdClass, approvedAt: new Date(deps.now()).toISOString() } });
+  return { outcome: "approved", runId: registration.runId };
 }
 
 /** The PR's Shepherd run, pending on approve-merge at exactly the confirmed head. */
@@ -60,8 +74,10 @@ const gateRead = (answer: Omit<StandingAnswer, "gateId">, { runId, stepId, gate 
   confirmEvent: answer.confirmEvent,
 });
 
-/** What this record already did: the gate it resolved, or the land run it started and how far that run got. */
-async function readBack(answer: StandingAnswer, { host, port, now }: MergeAtHeadDeps): Promise<Outcome> {
+/** What this record already did: the gate it resolved, the land run it started and how far that run got, or the approval it left standing. */
+async function readBack(answer: ListedAnswer, { host, port, now }: MergeAtHeadDeps): Promise<Outcome> {
+  if (answer.voided !== undefined) return { outcome: "gone", reason: `this approval was voided: ${answer.voided}` };
+  if (answer.waitFor !== undefined) return { outcome: "already", runId: answer.runId };
   if (answer.gateId !== undefined) return readBackGate(answer, answer.gateId, { host, port });
   if (resolvedBy(host, answer)) return { outcome: "already", runId: answer.runId };
   const asked = pendingMergeGates(host, answer.runId).map((pending) => landGate(pending.gate)?.head).find((head) => head !== answer.headSha);

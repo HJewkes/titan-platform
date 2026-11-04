@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "land never asks the hook before the decision",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "  if (await mergesBaseFirst(ctx, options.mergeBaseFirst, input.update, { headSha: ci.headSha, base })) return mergeBase(ctx, input, ci, state);",
+      "replace": "",
+      "kills": [
+        "Shepherd merges main itself when a green PR's guard files are older than main's merges main into the head before deciding, and decides only the merged head"
+      ]
+    },
+    {
+      "name": "a conflicting merge of main reads as a clean one",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "UpdateResultResult);\n  return afterUpdate(ci, update, state);",
+      "replace": "UpdateResultResult);\n  return void update;",
+      "kills": [
+        "Shepherd's own merge of main that conflicts falls back to the conflict fix-round wake at the unchanged head"
+      ]
+    },
+    {
+      "name": "any file main changed counts as a guard file",
+      "file": "products/factory/src/shepherd/merge-main.ts",
+      "find": "mainFiles.filter((path) => GUARD_FILES.has(path))",
+      "replace": "mainFiles.filter((path) => path.length > 0)",
+      "kills": [
+        "Shepherd merges main itself when a green PR's guard files are older than main's leaves a head whose base moved only outside the guard files to its ordinary decision"
+      ]
+    },
+    {
+      "name": "a red main tip counts as green",
+      "file": "products/factory/src/shepherd/merge-main.ts",
+      "find": "judged.counted > 0 && judged.findings.length === 0",
+      "replace": "judged.counted > 0",
+      "kills": [
+        "Shepherd merges main itself when an approve-merge gate lacks only a green run asks the owner as before when main's tip is not green"
+      ]
+    },
+    {
+      "name": "a gate never reads as lacking only a green run",
+      "file": "products/factory/src/shepherd/merge-main.ts",
+      "find": "row.length === 1 && row[0] === NON_GREEN_RUN",
+      "replace": "row.length === 0",
+      "kills": [
+        "Shepherd merges main itself when an approve-merge gate lacks only a green run merges main at a gate citing MRG-AU no-non-green-run when main's tip is green, instead of asking"
+      ]
+    }
+  ]
+}

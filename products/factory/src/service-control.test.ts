@@ -3,7 +3,8 @@ import { EXIT, runCli } from "./cli.js";
 import { plistPath, SERVICE_LABEL, serviceLabel } from "./service.js";
 import type { BusyRun } from "./restart-drain.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "./test-support/leak.js";
-import type { CommandResult, ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import type { ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
 const UID = 501;

@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
-// `inbox file` lets an agent file an owner item, `decisions file` lets a seat file a questions-only decision round,
-// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds subscribe` tells a seat of answers,
-// `storybooks gc` sweeps the Storybook store, `config import` / `config compare-tree` run the coordinator config
-// store's shadow steps, and `self-update` (run by a systemd timer) rebuilds and swaps in the served console.
+// `inbox file` lets an agent file an owner item, `inbox withdraw`/`restore`/`withdraw-matching` let a seat take back its own,
+// `decisions file` lets a seat file a questions-only decision round,
+// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
+// and proposes ones the decisions file cites as answered, `rounds nudge` prints each round waiting over six hours once,
+// `rounds subscribe` tells a seat of answers,
+// `perf waits` ranks the owner's waits behind loaders,
+// `storybooks gc` sweeps the Storybook store, `shipped build` writes the day's theme digest, `config import` / `config compare-tree` run the coordinator config
+// store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
+import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
+import { inboxLink, inboxLinkArgs } from "./cli-inbox-link.js";
+import { PERF_USAGE, perfWaitsArgs, perfWaitsCli } from "./cli-perf.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
+import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
+import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
+import { shippedBuildArgs, shippedBuildCli } from "./cli-shipped.js";
 import { storybooksGcArgs, storybooksGcCli } from "./cli-storybooks.js";
 import { subscriptionArgs, subscriptionCli } from "./cli-subscriptions.js";
 import { CONFIG_USAGE, configArgs, configCli } from "./config-store/cli.js";
@@ -25,6 +35,18 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox file [<json>|-]
                                         file an owner item on loopback and print its id;
                                         with - or no argument, the JSON comes from stdin
+       titan-console inbox link <item-id>
+                                        print the console URL that opens the inbox on that item:
+                                        https on the first LAN name, or loopback with no LAN listener
+       titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> --actor <seat> [--json]
+                                        withdraw a deposit --as filed; no answer is written, and the
+                                        spool's withdrawals.jsonl logs asker, --actor, when and why;
+                                        a missing --actor exits 65
+       titan-console inbox restore <item-id> --as <asker> --actor <seat> [--json]
+                                        undo a withdraw, so the deposit is open again
+       titan-console inbox withdraw-matching --as <asker> --actor <seat> --key <key>... --reason <reason> [--dry-run] [--json]
+                                        withdraw every open deposit --as filed that carries a --key;
+                                        --dry-run lists them and writes nothing
        titan-console decisions file [<round.json>|-] [--seat <name>] [--initiative <slug>] [--json]
                                         file a questions-only round@2 into the rounds dir and print its
                                         id, asker and console URL; the round comes from stdin with - or
@@ -34,8 +56,15 @@ const USAGE = `usage: titan-console                    serve the console
                                         copy a review-harness round dir into the rounds dir and
                                         print its id, frame count, feedback outcome and console URL;
                                         with --seat, that seat is messaged once the owner answers
-       titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere> [--json]
+       titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere|superseded-by:<id>> [--json]
                                         mark an unanswered round withdrawn; an answered round is kept
+       titan-console rounds sweep [--dry-run|--apply] [--json] [--decisions <path>]
+                                        list the open rounds a round's supersedes names and the open
+                                        rounds the decisions file cites as answered or resolved;
+                                        writes nothing unless --apply, which withdraws them all
+       titan-console rounds nudge [--json]
+                                        print one "reply rec" line for each round open over 6 h with
+                                        no answer, once: a nudged.json marker keeps it from repeating
        titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
                                         message the seat (default AGENT_CHAT_NAME) once for each answer
                                         to a matching round, imported now or later, from now on
@@ -45,10 +74,18 @@ const USAGE = `usage: titan-console                    serve the console
                                         remove Storybook builds no open or recently closed round
                                         names, and print each build kept or removed and why;
                                         --dry-run deletes nothing
+       titan-console shipped build [--date <YYYY-MM-DD>] [--group <initiative>] [--dry-run] [--force] [--json]
+                                        group the day's merged Shepherd PRs into themes with one
+                                        claude-print call per 40-PR initiative batch (at most 12) and
+                                        write <stateDir>/shipped/<date>.json; an unchanged PR set is a
+                                        no-op without --force, --dry-run calls no model and writes
+                                        nothing, and a logged-out claude exits 2
+${PERF_USAGE}
 ${CONFIG_USAGE}
 ${SELF_UPDATE_USAGE}`;
 
 async function serve(config: ConsoleConfig): Promise<void> {
+  for (const warning of config.startupWarnings ?? []) console.warn(warning);
   if (!existsSync(PAGE_FILE)) console.warn(`${PAGE_FILE} is missing; run \`pnpm --filter titan-console build\` (the daemon serves a "not built" page until then)`);
   const handle = await startConsoleDaemon({ config, staticRoot: PAGE_FILE });
   console.log(`titan console: http://127.0.0.1:${handle.port}/ (pid ${process.pid})`);
@@ -95,20 +132,32 @@ const argv = process.argv.slice(2);
 const args = argv.join(" ");
 const roundsImport = roundsImportArgs(argv);
 const roundsWithdraw = roundsWithdrawArgs(argv);
+const roundsSweep = roundsSweepArgs(argv);
+const roundsNudge = roundsNudgeArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
+const inboxWithdraw = inboxWithdrawArgs(argv);
+const inboxLinkVerb = inboxLinkArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
+const shippedBuild = shippedBuildArgs(argv);
 const configVerb = configArgs(argv);
 const selfUpdateVerbArgs = selfUpdateArgs(argv);
+const perfWaits = perfWaitsArgs(argv);
 if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
 else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fileInbox(resolveConfig(), argv[2]);
+else if (inboxLinkVerb !== null) console.log(inboxLink(resolveConfig(), inboxLinkVerb.id));
+else if (inboxWithdraw !== null) await inboxWithdrawCli(resolveConfig(), inboxWithdraw);
 else if (decisionsFile !== null) await fileDecisionCli(resolveConfig(), decisionsFile, readSource);
 else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);
+else if (roundsSweep !== null) await sweepRoundsCli(resolveConfig(), roundsSweep);
+else if (roundsNudge !== null) await nudgeRoundsCli(resolveConfig(), roundsNudge);
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (storybooksGc !== null) await storybooksGcCli(resolveConfig(), storybooksGc);
+else if (shippedBuild !== null) await shippedBuildCli(resolveConfig(), shippedBuild);
+else if (perfWaits !== null) console.log(await perfWaitsCli(resolveConfig(), perfWaits));
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);
 else if (selfUpdateVerbArgs !== null) process.exitCode = await selfUpdateVerb(resolveConfig, selfUpdateVerbArgs);
 else if (args === "--help" || args === "help") console.log(USAGE);

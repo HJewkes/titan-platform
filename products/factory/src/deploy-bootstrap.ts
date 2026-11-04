@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { deployedBinPath } from "./deploy-checkout.js";
 import type { DeployPorts } from "./deploy.js";
 import { installedServiceFile } from "./service-control.js";
-import type { CommandResult } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
 
 /** `undefined` when the checkout already exists; otherwise the clone's result, or `no-remote`. Never copies a working tree. */
 export async function cloneIfAbsent(ports: DeployPorts, checkout: string, remote: string | undefined): Promise<CommandResult | "no-remote" | undefined> {

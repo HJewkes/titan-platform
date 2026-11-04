@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -15,14 +14,16 @@ import { G10_RELEASE_STEP, TWO_MERGE_RULE, type TwoMergeMode } from "./g10-relea
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
-import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import { fakeLocator } from "../test-support/fakes.js";
+import type { RosterReader } from "./ports.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -33,7 +34,7 @@ const G10_HOLD = "g10-review: auth change; TP-1";
 const row = (name: string, presence: Presence = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
 const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
   ...{ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text },
-  locator: { source: { conversation: { nativeId: who.sessionId } } } as unknown as SourceTextLocator,
+  locator: fakeLocator({ source: { conversation: { nativeId: who.sessionId } } }),
 });
 
 const STANDING = "rv-standing";
@@ -225,12 +226,12 @@ describe("tp#1558: a failed-rounds owner gate whose head a fix push moves (TP-30
 
   it("asks the owner again at the new head after Shepherd's own opus MERGE there, and merges nothing", async () => {
     const w = heldRun(OPUS, { silentAt: H1 });
-    await gateOpened(w.host, gateId(w.runId, "approve-merge"), 10_000);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
     expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain(`at head ${H1} into main? CI is green. Policy shepherd-route/failed-rounds`);
 
     w.fake.pushHead(1, H2);
     await supersedeMovedGates(w.host, w.services);
-    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1));
 
     expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.status).toBe("cancelled");
     expect(pendingApproveMerge(w).map((pending) => pending.gate.prompt)).toEqual([expect.stringContaining(`at head ${H2} into main? CI is green. Policy shepherd-route/failed-rounds`)]);

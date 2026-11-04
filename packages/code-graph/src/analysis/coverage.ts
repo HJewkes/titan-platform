@@ -33,8 +33,10 @@ function isFileCoverage(v: unknown): v is IstanbulFileCoverage {
   return (
     typeof v === "object" &&
     v !== null &&
-    typeof (v as IstanbulFileCoverage).fnMap === "object" &&
-    typeof (v as IstanbulFileCoverage).f === "object"
+    "fnMap" in v &&
+    typeof v.fnMap === "object" &&
+    "f" in v &&
+    typeof v.f === "object"
   );
 }
 
@@ -73,6 +75,22 @@ export function attributeCoverage(
     const covered = fnIds.filter((k) => (fc.f[k] ?? 0) > 0).length;
     out.push(pctMetric(fileId, covered, fnIds.length));
     out.push(...symbolCoverage(fc, fnIds, symbolsByFile.get(fileId) ?? []));
+  }
+  return out;
+}
+
+/** Start lines of functions Istanbul saw run at least once, by repo path; files it does not map are absent. */
+export function coveredFunctionStarts(
+  coverage: IstanbulCoverage,
+  fileIdOf: (absPath: string) => string | null,
+): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  for (const [absPath, fc] of Object.entries(coverage)) {
+    const fileId = isFileCoverage(fc) ? fileIdOf(absPath) : null;
+    if (!fileId) continue;
+    const starts = out.get(fileId) ?? new Set<number>();
+    for (const [k, fn] of Object.entries(fc.fnMap)) if ((fc.f[k] ?? 0) > 0) starts.add(fn.loc.start.line);
+    if (starts.size > 0) out.set(fileId, starts);
   }
   return out;
 }

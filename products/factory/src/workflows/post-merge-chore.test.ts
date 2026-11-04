@@ -1,16 +1,18 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { RecoverableActiveStep, StepRoute } from "@titan-design/workflow";
+import type { RecoverableActiveStep, StepResult, StepRoute, WorkflowEvent, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { PostMergeConfig } from "../config.js";
+import { openFactoryHost, type FactoryHost } from "../host.js";
 import { crashAt } from "../test-support/crash.js";
-import { H1, REPO, answerPendingGate } from "../test-support/land.js";
+import { H1, REPO, answerPendingGate, approveUntilSettled } from "../test-support/land.js";
+import { chorePruning } from "./chore-prune.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
 import { postMergeRoute } from "./post-merge.js";
-import { choreFiles, writeJson, type ChoreFiles, type ChorePorts } from "./post-merge-chore.js";
+import { choreFiles, pruneChores, writeJson, type ChoreFiles, type ChorePorts } from "./post-merge-chore.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -182,3 +184,92 @@ describe("post-merge chore across a serve crash", () => {
     expect(chores.launched).toEqual([]);
   });
 });
+
+const TRACE = (runId: string, attempt = 0) => ({ runId, stepId: "post-merge", iteration: 0, attempt });
+
+/** The files one chore leaves behind, in the shapes `launchChore` and its wrapper write them. */
+function choreSet(dir: string, requestKey: string, step: ReturnType<typeof TRACE>): ChoreFiles {
+  const files = choreFiles(dir, requestKey);
+  writeJson(files.spec, {});
+  writeJson(files.marker, { started: "2026-01-01T00:00:00.000Z", step });
+  writeJson(files.result, EXITED_3);
+  writeFileSync(`${files.marker}.123.partial`, "{");
+  return files;
+}
+
+const present = (files: ChoreFiles): string[] => [files.marker, files.spec, files.result, `${files.marker}.123.partial`].filter((file) => existsSync(file));
+
+describe("pruneChores", () => {
+  it("removes every attempt's files of a settled step and leaves other steps and unreadable markers", () => {
+    const { ports } = fakeChores();
+    const attempt0 = choreSet(ports.dir, "workflow:run-1:post-merge:0:0", TRACE("run-1", 0));
+    const attempt1 = choreSet(ports.dir, "workflow:run-1:post-merge:0:1", TRACE("run-1", 1));
+    const other = choreSet(ports.dir, "workflow:run-2:post-merge:0:0", TRACE("run-2"));
+    const broken = choreFiles(ports.dir, "workflow:run-3:post-merge:0:0");
+    writeFileSync(broken.marker, "not json");
+
+    const pruned = pruneChores(ports.dir, (step) => step.runId === "run-1" && step.iteration === 0);
+
+    expect(pruned).toHaveLength(2);
+    expect([present(attempt0), present(attempt1)]).toEqual([[], []]);
+    expect(present(other)).toHaveLength(4);
+    expect(existsSync(broken.marker)).toBe(true);
+  });
+
+  it("finds nothing to prune in a dir that does not exist", () => {
+    expect(pruneChores(join(tmpdir(), "factory-chores-missing"), () => true)).toEqual([]);
+  });
+});
+
+describe("chorePruning", () => {
+  it("removes a landed PR's chore files once the post-merge step records, and the run holds its result by then", async () => {
+    const chores = fakeChores((files) => writeJson(files.result, EXITED_3));
+    const { fake, routes } = world(chores.ports);
+    const dir = mkdtempSync(join(tmpdir(), "factory-prune-"));
+    dirs.push(dir);
+    const recordedAtEvent: boolean[] = [];
+    const onEvent = (event: WorkflowEvent) => {
+      if (event.type !== "step_complete" || event.stepId !== "post-merge") return;
+      recordedAtEvent.push(Object.values(host.runs.get(event.runId)?.stepResults ?? {}).some((result) => result.stepId === "post-merge"));
+    };
+    const host: FactoryHost = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [landPrWorkflow()], routes: Object.assign(routes, chorePruning(chores.ports)), gatePollMs: 5, onEvent });
+    const runId = host.runtime.start("land-pr", { repo: REPO, pr: "1" });
+    await approveUntilSettled(host, runId, fake);
+    const run = await host.runtime.wait(runId);
+    host.close();
+
+    expect(run.status).toBe("completed");
+    expect(chores.launched).toHaveLength(1);
+    expect(readdirSync(chores.ports.dir)).toEqual([]);
+    expect(recordedAtEvent).toEqual([true]);
+  });
+
+  it("prunes a recorded step's leftover files at bind and keeps an unrecorded step's, which a restart still reconciles", async () => {
+    const chores = fakeChores();
+    const dir = mkdtempSync(join(tmpdir(), "factory-prune-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "factory.sqlite3");
+    const keyA = "workflow:run-a:post-merge:0:0";
+    const keyB = "workflow:run-b:post-merge:0:0";
+    const recorded = choreSet(chores.ports.dir, keyA, TRACE("run-a"));
+    const unrecorded = choreSet(chores.ports.dir, keyB, TRACE("run-b"));
+    const seeding = openFactoryHost({ dbPath, workflows: [], routes: [] });
+    seeding.runs.create(seededRun("run-a", { "post-merge:0": postMergeResult }));
+    seeding.runs.create(seededRun("run-b", {}));
+    seeding.close();
+
+    const host = openFactoryHost({ dbPath, workflows: [], routes: Object.assign([], chorePruning(chores.ports)) });
+    const outcome = await postMergeRoute({ postMerge: CONFIG, chores: chores.ports }).reconcile!(interrupted(keyB), new AbortController().signal);
+    host.close();
+
+    expect(present(recorded)).toEqual([]);
+    expect(present(unrecorded)).toHaveLength(4);
+    expect(outcome.kind).toBe("terminal");
+  });
+});
+
+const postMergeResult: StepResult = { stepId: "post-merge", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", output: "{}" };
+
+function seededRun(id: string, stepResults: Record<string, StepResult>): WorkflowRun {
+  return { id, workflowName: "land-pr", params: {}, status: "running", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-01-01T00:00:00.000Z", completedAt: null, error: null };
+}

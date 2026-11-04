@@ -3,7 +3,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
-import type { VisualBaselines } from "./visual-gate.js";
+import type { VisualBaselines } from "./policy-schema.js";
 
 const HEAD = fakeSha("visual-baseline-head");
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };

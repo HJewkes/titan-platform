@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "added xargs readings past the cap are all read",
+      "file": "packages/tool-guard/src/shell/xargs-readings.ts",
+      "find": "  return { main, added: added.length > MAX_ADDED_RUNS ? failClosed(cmd) : added };",
+      "replace": "  return { main, added };",
+      "kills": [
+        "added xargs readings on a long input stay under the cap and the hook's work budget under -I -i -J %",
+        "added xargs readings on a long input stay under the cap and the hook's work budget under -I{} -J %",
+        "added xargs readings on a long input fails closed past the cap with the worst case at the insert argument"
+      ]
+    }
+  ]
+}

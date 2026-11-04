@@ -3,6 +3,7 @@ import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
 import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { WAIT_BUDGET_MS } from "./scripts/wait-budget.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -20,6 +21,65 @@ const needsProcess = [
   "products/session-miner/src/memory/discover.test.ts",
 ];
 
+// active-work kept its tests in a __tests__ tree when it was folded in (TP-3535). Its sandbox-home setup redirects
+// os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
+const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
+const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// These assign process.env.HOME or spy on os.homedir() in-process.
+const activeWorkNeedsProcess = [
+  "products/active-work/__tests__/commands/setup.test.ts",
+  "products/active-work/__tests__/integration/end-to-end.test.ts",
+  "products/active-work/__tests__/server/session-index-watch.test.ts",
+  "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
+];
+
+// With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
+// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and 25-45% for console
+// (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
+// product's file imported unmocked. They run in forks: Node forks the whole spawner to start a child, about 40 ms per
+// GB of its RSS, and as threads these graphs held the shared vitest process at 3 GB while other files spawned git
+// from it (TP-4526).
+const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
+const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
+const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
+// vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
+// stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
+// file's client has already moved. They run isolated.
+const sharedGraphNeedsIsolation = [
+  "apps/console/server/config-writers.test.ts",
+  "apps/console/server/daemon.test.ts",
+  "apps/console/server/owner-guard.test.ts",
+  "apps/console/server/round-frames.test.ts",
+  "apps/console/server/rounds.test.ts",
+  "products/explainer/src/collect/history.test.ts",
+  "products/explainer/src/yaml-dir.test.ts",
+  "products/factory/src/bot-identity.test.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/shepherd/merge-facts.test.ts",
+  "products/factory/src/shepherd/policy.test.ts",
+  "products/factory/src/shepherd/reviewer-reader.test.ts",
+  "products/factory/src/shepherd/spawn-profile.test.ts",
+  "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+];
+// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
+// their medians.
+const perfTests = ["apps/*/server/**/*.perf.test.ts"];
+
+const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...sharedGraphNeedsIsolation];
+
+// Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
+// worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
+// this process, which its threads share and its forks inherit.
+process.env.TZ = "UTC";
+
+// An in-process vite build runs rolldown, whose tokio and rayon pools default to one thread per core. On a busy 48-core
+// host their idle workers can spin in sched_yield: seven page-building files took 128 sys-seconds in one run against the
+// usual 4 (TP-4604). Set here for the same reason as TZ: the forks, and every vite a test spawns, inherit it before the
+// binding loads. It comes too late for this process, whose config load already ran rolldown; its sys time stayed under 1 s.
+process.env.ROLLDOWN_WORKER_THREADS ??= "4";
+process.env.RAYON_NUM_THREADS ??= "4";
+
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
 // the pool starts; forks are child processes and take execArgv.
@@ -32,21 +92,36 @@ const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
 
+// scripts/test-footprint.mjs opts a run in to the per-file resource rows (TP-4571). First, so its per-file TMPDIR is in
+// place for the other setup files and its afterAll, which vitest runs in reverse, sees what all of them left.
+const footprintSetup = process.env.TITAN_TEST_FOOTPRINT_DIR ? ["scripts/vitest-footprint.mjs"] : [];
+
 export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
-    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
-    env: { TITAN_SPEECH_OFFLINE: "1" },
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights. A test that
+    // spawns vitest would otherwise spool its nested run as a timing record beside the real one.
+    env: { TITAN_SPEECH_OFFLINE: "1", TITAN_TEST_TIMING_SPOOL: "" },
+    // A local runner opts in to a timing record by naming a spool (TP-4465); CI passes its reporters on the command line.
+    ...(process.env.TITAN_TEST_TIMING_SPOOL ? { reporters: ["default", "./scripts/vitest-file-timing.mjs"] } : {}),
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: [...footprintSetup, "products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    // Vitest's 5 s default is a wall budget, and a loaded runner stretches wall time 10x or more: CI puts 4 workers on
+    // 4 vCPUs beside the main thread's imports and every git, bash and node child the tests spawn. Tests that take
+    // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
+    // --testTimeout and still catches a hang.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
@@ -65,14 +140,39 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
+        },
+      },
+      {
+        extends: true,
+        test: { name: "factory", pool: "forks", execArgv: forksHeap, isolate: false, include: factoryTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "explainer", pool: "forks", execArgv: forksHeap, isolate: false, include: explainerTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "console", pool: "forks", execArgv: forksHeap, isolate: false, include: consoleTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: {
+          name: "isolated",
+          pool: "threads",
+          include: sharedGraphNeedsIsolation,
         },
       },
       {
         extends: true,
         test: {
           name: "repo",
-          pool: "threads",
+          // Node forks the whole parent to start a child, so a spawn costs about 40 ms per GB of the spawner's RSS.
+          // Thread workers share the vitest process, which still holds 1-3 GB after the isolate:false projects that
+          // sort ahead of this one; these files spawn git thousands of times, and ran 3x slower there (TP-4521).
+          // Their own forks start from a small heap.
+          pool: "forks",
+          execArgv: forksHeap,
           include: REPO_TIER_INCLUDE,
         },
       },
@@ -85,6 +185,38 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "perf",
+          pool: "forks",
+          maxWorkers: 1,
+          fileParallelism: false,
+          execArgv: forksHeap,
+          include: perfTests,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work",
+          pool: "threads",
+          include: activeWorkTests,
+          exclude: ["**/node_modules/**", ...activeWorkNeedsProcess],
+          setupFiles: activeWorkSetup,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work-forks",
+          pool: "forks",
+          maxWorkers: 1,
+          execArgv: forksHeap,
+          include: activeWorkNeedsProcess,
+          setupFiles: activeWorkSetup,
         },
       },
     ],

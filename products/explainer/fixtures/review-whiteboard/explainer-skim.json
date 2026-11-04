@@ -1,0 +1,177 @@
+{
+  "head": "2ddf3eb6",
+  "sources": [
+    {
+      "path": "README.md",
+      "chars": 6640
+    },
+    {
+      "path": "packages/agent-plugins/pi/skills/whiteboard/SKILL.md",
+      "chars": 676
+    },
+    {
+      "path": "apps/review-desktop/code-oss/.agents/skills/launch/SKILL.md",
+      "chars": 20000
+    },
+    {
+      "path": "docs/privacy.md",
+      "chars": 9025
+    },
+    {
+      "path": "docs/telemetry.md",
+      "chars": 20000
+    },
+    {
+      "path": "diffr/README.md",
+      "chars": 3659
+    }
+  ],
+  "pack": {
+    "purpose": {
+      "text": "Whiteboard is an open-source desktop app where humans and coding agents architect and review software together on a shared canvas.",
+      "quote": "Whiteboard is an open-source desktop app where humans and agents can architect software together in a common workspace.",
+      "source": "README.md"
+    },
+    "pain": [
+      {
+        "text": "Pure HTML tools made it hard to connect a spec or diagram to the underlying code.",
+        "quote": "Pure HTML tools didn’t provide easy affordances to connect a spec or diagram to code",
+        "source": "README.md"
+      },
+      {
+        "text": "Raw diff views are noisy, making it hard to see only the relevant code changes.",
+        "quote": "Raw diff views can be very noisy, so we wrote a semantic, AST-aware diff viewer in Rust",
+        "source": "README.md"
+      },
+      {
+        "text": "It was hard to reason about which decisions agents made autonomously and how they affect a change.",
+        "quote": "We found it difficult to reason about what set of decisions our agents made autonomously & how that impacts a change.",
+        "source": "README.md"
+      }
+    ],
+    "actors": [
+      {
+        "text": "Developers who work with coding agents such as Claude Code or Codex and review the agents' work.",
+        "quote": "Whiteboard plugs into the tools you already use - e.g. Claude Code, Codex, etc.",
+        "source": "README.md"
+      },
+      {
+        "text": "Coding agents that use the SDK to draw on the canvas and describe their work.",
+        "quote": "gives your agent an SDK to draw on an in-app canvas to describe its work.",
+        "source": "README.md"
+      }
+    ],
+    "jobs": [
+      {
+        "text": "Ask an agent to review the current branch against main and open the result in Whiteboard.",
+        "quote": "Ask your agent to review your current branch against up-to-date main and\n   open the result in Whiteboard.",
+        "source": "README.md"
+      },
+      {
+        "text": "Jump from diagrams or agent trace quotes directly to the underlying code.",
+        "quote": "you can jump to the underlying code directly",
+        "source": "README.md"
+      }
+    ],
+    "entry": [
+      {
+        "text": "Install on macOS via Homebrew.",
+        "quote": "brew install --cask devdotfast/tap/whiteboard",
+        "source": "README.md"
+      },
+      {
+        "text": "Agent runs this to get Whiteboard's authoring instructions.",
+        "quote": "whiteboard api session_get_instructions '{}'",
+        "source": "packages/agent-plugins/pi/skills/whiteboard/SKILL.md"
+      }
+    ],
+    "non_goals": [
+      {
+        "text": "Files cannot currently be edited inside Whiteboard.",
+        "quote": "You cannot currently edit files in Whiteboard.",
+        "source": "README.md"
+      },
+      {
+        "text": "Working across multiple repos in a single review isn't well supported.",
+        "quote": "Working and browsing files across multiple repos in a single review isn't well supported.",
+        "source": "README.md"
+      }
+    ]
+  },
+  "facts": [
+    {
+      "kind": "purpose",
+      "text": "Whiteboard is an open-source desktop app where humans and coding agents architect and review software together on a shared canvas.",
+      "quote": "Whiteboard is an open-source desktop app where humans and agents can architect software together in a common workspace.",
+      "source": "README.md"
+    },
+    {
+      "kind": "pain",
+      "text": "Pure HTML tools made it hard to connect a spec or diagram to the underlying code.",
+      "quote": "Pure HTML tools didn’t provide easy affordances to connect a spec or diagram to code",
+      "source": "README.md"
+    },
+    {
+      "kind": "pain",
+      "text": "Raw diff views are noisy, making it hard to see only the relevant code changes.",
+      "quote": "Raw diff views can be very noisy, so we wrote a semantic, AST-aware diff viewer in Rust",
+      "source": "README.md"
+    },
+    {
+      "kind": "pain",
+      "text": "It was hard to reason about which decisions agents made autonomously and how they affect a change.",
+      "quote": "We found it difficult to reason about what set of decisions our agents made autonomously & how that impacts a change.",
+      "source": "README.md"
+    },
+    {
+      "kind": "actor",
+      "text": "Developers who work with coding agents such as Claude Code or Codex and review the agents' work.",
+      "quote": "Whiteboard plugs into the tools you already use - e.g. Claude Code, Codex, etc.",
+      "source": "README.md"
+    },
+    {
+      "kind": "actor",
+      "text": "Coding agents that use the SDK to draw on the canvas and describe their work.",
+      "quote": "gives your agent an SDK to draw on an in-app canvas to describe its work.",
+      "source": "README.md"
+    },
+    {
+      "kind": "job",
+      "text": "Ask an agent to review the current branch against main and open the result in Whiteboard.",
+      "quote": "Ask your agent to review your current branch against up-to-date main and\n   open the result in Whiteboard.",
+      "source": "README.md"
+    },
+    {
+      "kind": "job",
+      "text": "Jump from diagrams or agent trace quotes directly to the underlying code.",
+      "quote": "you can jump to the underlying code directly",
+      "source": "README.md"
+    },
+    {
+      "kind": "entry_command",
+      "text": "Install on macOS via Homebrew.",
+      "quote": "brew install --cask devdotfast/tap/whiteboard",
+      "source": "README.md"
+    },
+    {
+      "kind": "entry_command",
+      "text": "Agent runs this to get Whiteboard's authoring instructions.",
+      "quote": "whiteboard api session_get_instructions '{}'",
+      "source": "packages/agent-plugins/pi/skills/whiteboard/SKILL.md"
+    },
+    {
+      "kind": "non_goal",
+      "text": "Files cannot currently be edited inside Whiteboard.",
+      "quote": "You cannot currently edit files in Whiteboard.",
+      "source": "README.md"
+    },
+    {
+      "kind": "non_goal",
+      "text": "Working across multiple repos in a single review isn't well supported.",
+      "quote": "Working and browsing files across multiple repos in a single review isn't well supported.",
+      "source": "README.md"
+    }
+  ],
+  "rejected": [],
+  "cost_usd": null
+}

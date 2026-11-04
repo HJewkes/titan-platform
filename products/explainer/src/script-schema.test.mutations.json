@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "cues resolve against the raw line, markup and all",
+      "file": "products/explainer/src/script-schema.ts",
+      "find": "const words = plainWords(beat.spoken).map(",
+      "replace": "const words = beat.spoken.split(/\\s+/).map(",
+      "kills": [
+        "script/v1 accepts a cue on a word the beat declares a reading for"
+      ]
+    }
+  ]
+}

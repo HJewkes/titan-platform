@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unfreeze of a repo that is not frozen reports a change",
+      "file": "products/factory/src/shepherd/repo-freeze-command.ts",
+      "find": "const changed = table.unfreeze(args.repo);",
+      "replace": "const changed = (table.unfreeze(args.repo), true);",
+      "kills": [
+        "shepherd.freeze answers an unfreeze of a repo that is not frozen with a message, not an error"
+      ]
+    },
+    {
+      "name": "shepherd freezes prints a main-red header with no open episode",
+      "file": "products/factory/src/shepherd/format.ts",
+      "find": "const red = mainRed.length === 0 ? \"\"",
+      "replace": "const red = mainRed.length === -1 ? \"\"",
+      "kills": [
+        "shepherd.freeze answers an unfreeze of a repo that is not frozen with a message, not an error"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import type { BudgetResource, RateBudget } from "./budget.js";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
+import { rateLimitMarker } from "./rate-limit-marker.js";
 import { redact, redactStreams } from "./redact.js";
 
 export interface HttpResponse {
@@ -57,7 +58,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
   const run = runner(exec, budget);
   const conditional = conditionalGetter(run, cacheSize);
   const retried = <A extends unknown[], R>(read: (...args: A) => Promise<R>) => (...args: A): Promise<R> => retryRead(() => read(...args), sleep);
-  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => (await conditional(getArgs(path, fields))).data as T);
+  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => shaped<T>((await conditional(getArgs(path, fields))).data));
   return {
     get,
     getOrNull: async <T>(path: string, fields?: Fields) => {
@@ -124,9 +125,20 @@ function runner(exec: GhExec, budget: RateBudget): Run {
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
-    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, scrubbed(result), response?.status);
+    if (result.code !== 0 || (response && response.status >= 400)) throw failed(full, scrubbed(result), response);
     return response ?? { status: 200, headers: new Map(), body: result.stdout };
   };
+}
+
+function failed(full: readonly string[], result: GhResult, response: HttpResponse | null): GhError {
+  const marker = response ? rateLimitMarker(response.status, methodOf(full), response.headers, `${result.stderr}\n${response.body}`) : "";
+  return new GhError(full, result, response?.status, marker);
+}
+
+/** `gh api` sends a GET unless `-X` names another method. */
+function methodOf(args: readonly string[]): string {
+  const flag = args.indexOf("-X");
+  return flag >= 0 ? (args[flag + 1] ?? "GET") : "GET";
 }
 
 /** Every non-exchange call's error quotes raw `gh` output, which can carry a token shape. */
@@ -138,7 +150,7 @@ function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
 async function followPages<P, T>(get: (args: readonly string[]) => Promise<Page>, start: string[], pick: (page: P) => T[], items: T[]): Promise<T[]> {
   for (let args: string[] | null = start; args; ) {
     const page = await get(args);
-    items.push(...pick(page.data as P));
+    items.push(...pick(shaped<P>(page.data)));
     const next = nextPage(page.headers.get("link"));
     args = next ? getArgs(next, {}) : null;
   }
@@ -187,8 +199,11 @@ export function nextPage(link: string | undefined): string | null {
   return next.slice(API_ORIGIN.length);
 }
 
+/** Fields ride in the URL, not as `-f`/`-X`, so the call is a plain read that a gh shim can tell from a write. */
 function getArgs(path: string, fields: Fields): string[] {
-  return ["-X", "GET", path, ...fieldArgs(fields)];
+  const query = Object.entries(fields).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+  if (query.length === 0) return [path];
+  return [`${path}${path.includes("?") ? "&" : "?"}${query.join("&")}`];
 }
 
 function fieldArgs(fields: Fields): string[] {
@@ -196,5 +211,11 @@ function fieldArgs(fields: Fields): string[] {
 }
 
 function json<T>(body: string): T {
-  return (body.trim() ? JSON.parse(body) : undefined) as T;
+  return shaped<T>(body.trim() ? JSON.parse(body) : undefined);
+}
+
+// The overload is the one unchecked step: the caller names the shape of a gh answer, which has no schema to parse against here.
+function shaped<T>(value: unknown): T;
+function shaped(value: unknown): unknown {
+  return value;
 }

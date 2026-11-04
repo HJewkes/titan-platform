@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: entry-points
+summary: "The real commands or entry points a user starts from."
+role: explain
+component: { name: StationMap, maturity: spike }
+slots: entry-points
+speech: { band: code }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [entries], treatments: [pointer, highlight] }
+recipe: "List one to five verified entry points: the command and what it does. Light each as it is named. Only commands that run as written."

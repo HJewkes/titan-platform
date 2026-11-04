@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the approval carry reads only the rule, not land's marker",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": " || (ownerAtHeadRowsIn(prompt)?.includes(row) ?? false)",
+      "replace": "",
+      "kills": [
+        "an owner merge approval meeting a D21 fact marked under another rule asks the owner again at a visual-path gate marked ci-policy-weakened, and follows that approval to no later head",
+        "an owner merge approval meeting a D21 fact marked under another rule asks the owner again at a seat gate marked skill-path"
+      ]
+    }
+  ]
+}

@@ -1,16 +1,8 @@
 import type { RegisterArgs } from "./register-args.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { kindMoveRefusal } from "./task-kind.js";
-import { testOnlyDiff, type TestOnlyDiff } from "./test-only-diff.js";
-
-type KindGuard = typeof kindMoveRefusal;
-
-/** The guard a register applies, and the PR's diff facts it reads them with. */
-export interface KindMove {
-  guard: KindGuard;
-  diff: TestOnlyDiff | undefined;
-}
+import { kindMoveRefusal, type KindMove } from "./task-kind.js";
+import { testOnlyDiff } from "./test-only-diff.js";
 
 /**
  * Read for every explicit move into test-only, whatever the stored kind: another register can change the kind between this read and
@@ -21,8 +13,9 @@ export async function kindMove(services: ShepherdServices, known: Registration, 
   return { guard: kindMoveRefusal, diff };
 }
 
+/** A mutation spec keeps a vacuous proof NO_REPRO (`proceedsOnNoRepro`), so a flake fix is steered away from adding one. */
 export const TEST_ONLY_HINT =
-  "hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO";
+  "hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO";
 
 /** The hint reads the same diff facts the guard does, so it never suggests a move the register would refuse. */
 export async function testOnlyHint(services: ShepherdServices, registration: Registration): Promise<string | undefined> {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { assertPromotable } from './_draft-promotion.js';
 import { readEdges } from '@titan-design/pm';
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry/index.js';
@@ -288,9 +289,10 @@ function guardFieldEdit(task: Task, field: EditableField, value: unknown): void 
   }
 }
 
-/** Wall-clock stamps a status change records: started_at once, on the first in-progress. */
+/** Wall-clock stamps a status change records: started_at once, on the first in-progress; reopening clears done_at. */
 function statusStamps(task: Task, status: unknown): Partial<Task> {
   if (status === 'done') return { done_at: nowIso() };
+  if (status === 'open') return { done_at: null };
   if (status === 'in-progress' && task.started_at === undefined) return { started_at: nowIso() };
   return {};
 }
@@ -397,6 +399,7 @@ export default defineCommand<Args, TaskOrLine>({
       const line = (): string => editedLine(task, edit);
       if (Object.keys(changes).length === 0) return quietOr(args.quiet, ctx, task, line);
       const next = { ...task, ...changes };
+      assertPromotable(ctx, task, next);
       await assertCategories(getActiveRoot(), next, changedCategoryFields(changes));
       const added = edit.kind === 'patch' ? newDeliverables(task, edit) : [];
       if (added.length > 0) await assertKnownDeliverables(getActiveRoot(), added);

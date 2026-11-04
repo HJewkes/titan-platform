@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "runNow reads stale at half its budget",
+      "file": "products/active-work/src/session-index/scheduler.ts",
+      "find": "    }, budgetMs);\n",
+      "replace": "    }, budgetMs / 2);\n",
+      "kills": [
+        "RefreshScheduler runNow resolves stale at the budget while a pass outlasts it"
+      ]
+    }
+  ]
+}

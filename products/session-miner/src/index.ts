@@ -26,3 +26,9 @@ export type { AdoptionRow, ToolAdoptionPorts, ToolAdoptionReport } from "./insig
 export { ADOPTION_FLAGS, adoptionForm, toolAdoptionQuestion, toolAdoptionReport, toolAdoptionSchema } from "./insights/tool-adoption.js";
 export type { ToolGapRow, ToolGapsPorts, ToolGapsReport } from "./insights/tool-gaps.js";
 export { GAP_STATUSES, replacementFlags, toolGapsQuestion, toolGapsReport, toolGapsSchema } from "./insights/tool-gaps.js";
+export type { DailySummary } from "./self-improve/daily.js";
+export { DAILY_WORKFLOW, dailyWorkflow, listChunks, parseRows } from "./self-improve/daily.js";
+export type { PromptFamily } from "./self-improve/families.js";
+export { PROMPT_FAMILIES } from "./self-improve/families.js";
+export type { DailyHost, DailyOptions, DailyResult, RunnerFor } from "./self-improve/run.js";
+export { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily } from "./self-improve/run.js";

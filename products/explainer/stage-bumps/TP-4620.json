@@ -1,0 +1,1 @@
+{ "stages": ["resolve", "render", "qa"], "why": "A stat figure keeps its prefix with its number, so the filled slots, the drawn frames and the drawn texts change" }

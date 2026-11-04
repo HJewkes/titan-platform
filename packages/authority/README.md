@@ -20,7 +20,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 116 rules: 44 allow, 6 gate and 66 deny.
+- The table holds 124 rules: 51 allow, 6 gate and 67 deny.
 - The `decider` actor class may only `answer-question`, and only through ANS-DC-QA: the
   gate's rule kind is exactly `question` and its category's mode is exactly `auto`
   (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a
@@ -49,6 +49,11 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `policyTableSchema`: rejects a table that misses or repeats the unconditional rule for
   an action by actor pair, or names anyone but `owner-terminal` or `owner-remote` as a
   resolver.
+- `TAINT_KINDS`, `TaintSource` and `taintSourceSchema`: the shared record of why an agent
+  identity is tainted, `{ kind, ref, at }`. `kind` is one of `web-fetch`, `web-search`,
+  `external-tool`, `inbound-message`, `untrusted-item` or `inherited`; `ref` is a short safe
+  label of 1 to 200 characters (a tool name, a host, an item id, a parent agent id), never
+  fetched content; `at` is an ISO timestamp. The schema refuses any other field.
 - `DEFAULT_TABLE`: the approved table, also shipped as `@titan-design/authority/table.json`
   for plain-node hooks.
 

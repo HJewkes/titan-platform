@@ -35,14 +35,14 @@ export function unblockFifoLater(fifo: string): ChildProcess {
 export function swapAfterLstat(file: string, swap: () => void): void {
   const realLstat = fs.lstatSync;
   let swapped = false;
-  vi.spyOn(fs, "lstatSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
-    const stat = (realLstat as (...args: unknown[]) => fs.Stats)(target, ...rest);
-    if (!swapped && String(target) === file) {
+  vi.spyOn(fs, "lstatSync").mockImplementation((...args: Parameters<typeof fs.lstatSync>) => {
+    const stat = realLstat(...args);
+    if (!swapped && String(args[0]) === file) {
       swapped = true;
       swap();
     }
     return stat;
-  }) as typeof fs.lstatSync);
+  });
 }
 
 // Every node test works in a fresh temp dir passed in explicitly, so no test can reach a

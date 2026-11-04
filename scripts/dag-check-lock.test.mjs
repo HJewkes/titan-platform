@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LockTimeoutError,
   acquire,
@@ -27,12 +27,21 @@ import {
 
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+afterEach(() => {
+  vi.restoreAllMocks();
+  roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }));
+});
 
 function lockPath() {
   const root = mkdtempSync(join(tmpdir(), "dag-check-lock-"));
   roots.push(root);
   return join(root, "nested", "dag-check.lock");
+}
+
+/** The attempt's error message if it fails before any poll delay could run, else "still waiting". */
+function failsBeforeAPoll(attempt) {
+  const nextTurn = new Promise((resolve) => setImmediate(() => resolve("still waiting")));
+  return Promise.race([attempt.then(() => "acquired", (err) => err.message), nextTurn]);
 }
 
 function deadPid() {
@@ -215,7 +224,7 @@ describe("the dag-check hold log", () => {
     const lines = readFileSync(holdLogPath(lockDir), "utf8").trim().split("\n");
     expect(lines).toHaveLength(1);
     const line = JSON.parse(lines[0]);
-    expect(line).toMatchObject({ check: "dead:check", pid: process.pid, aheadAtJoin: 0, exit: 1 });
+    expect(line).toMatchObject({ check: "dead:check", pid: process.pid, owner: ownerKey(process.cwd()), aheadAtJoin: 0, exit: 1 });
     expect(line.joinedAt).toBeLessThanOrEqual(line.acquiredAt);
     expect(line.acquiredAt).toBeLessThanOrEqual(line.releasedAt);
   });
@@ -234,14 +243,12 @@ describe("the dag-check hold log", () => {
     const lockDir = lockPath();
     seedHolds(lockDir, [100, 120, 140]);
     seedTicketsAhead(lockDir, 5);
-    const started = Date.now();
 
-    const attempt = acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+    const outcome = await failsBeforeAPoll(acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} }));
 
-    await expect(attempt).rejects.toThrow(
+    expect(outcome).toBe(
       "dag-check lock: 5 ahead, about 10 min at the median hold of 120 s; exit 75. CI's dag-check job runs dag:check and dead:check on the PR.",
     );
-    expect(Date.now() - started).toBeLessThan(1000);
     expect(readdirSync(`${lockDir}.queue`)).toHaveLength(5);
   }, 2000);
 
@@ -261,14 +268,12 @@ describe("the dag-check hold log", () => {
     const lockDir = lockPath();
     seedHolds(lockDir, [600, 600, 600]);
     tryAcquire(lockDir);
-    const started = Date.now();
 
-    const attempt = acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+    const outcome = await failsBeforeAPoll(acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} }));
 
-    await expect(attempt).rejects.toThrow(
+    expect(outcome).toBe(
       "dag-check lock: the holder and 0 ahead, about 10 min at the median hold of 600 s; exit 75. CI's dag-check job runs dag:check and dead:check on the PR.",
     );
-    expect(Date.now() - started).toBeLessThan(1000);
   }, 2000);
 
   it("acquires behind a long median when no one holds the lock", async () => {
@@ -458,8 +463,8 @@ describe("lock slots", () => {
   const quiet = { pollMs: 5, log: () => {} };
   const GIB = 1024 ** 3;
 
-  /** A process that takes a slot under DAG_CHECK_SLOTS, holds it for holdMs, releases, and exits 0, or 75 when it gives up. */
-  function spawnCheck(lockDir, { slots, holdMs, timeoutMs, gateDir = null }) {
+  /** A process that takes a slot under DAG_CHECK_SLOTS, holds it until gateDir/go exists, releases, and exits 0, or 75 when it gives up. */
+  function spawnCheck(lockDir, { slots, timeoutMs, gateDir }) {
     const script = `
       import { existsSync, writeFileSync } from "node:fs";
       import { join } from "node:path";
@@ -468,13 +473,9 @@ describe("lock slots", () => {
       try {
         const hold = await acquire({ lockDir: dir, slots: lockSlots(), timeoutMs: ${timeoutMs}, pollMs: 10, log: () => {} });
         const gateDir = ${JSON.stringify(gateDir)};
-        if (gateDir) {
-          // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
-          writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
-          while (!existsSync(join(gateDir, "go"))) await new Promise((resolve) => setTimeout(resolve, 10));
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
-        }
+        // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
+        writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
+        while (!existsSync(join(gateDir, "go"))) await new Promise((resolve) => setTimeout(resolve, 10));
         hold.exit = 0;
         release(dir, hold);
       } catch (err) {
@@ -565,8 +566,14 @@ describe("lock slots", () => {
 
   it("still serializes on one slot, so the same six checks overrun the bound and some exit 75", async () => {
     const lockDir = lockPath();
+    const gateDir = join(lockDir, "..", "gate");
+    mkdirSync(gateDir, { recursive: true });
 
-    const codes = await Promise.all(Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 1, holdMs: 800, timeoutMs: 3000 })));
+    // The first holder keeps its slot until a waiter has given up, so the overrun needs no wall-clock hold length.
+    const exits = Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 1, timeoutMs: 300, gateDir }));
+    await Promise.race(exits);
+    writeFileSync(join(gateDir, "go"), "");
+    const codes = await Promise.all(exits);
 
     expect(codes).toContain(75);
   }, 15000);
@@ -662,6 +669,9 @@ describe("hold log", () => {
     const lockDir = lockPath();
     mkdirSync(join(lockDir, ".."), { recursive: true });
     mkdirSync(`${holdLogPath(lockDir)}.lock`);
+    // Each clock read moves 100 ms, so the two-second wait runs out in a few polls while the lock stays short of stale.
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => (now += 100));
 
     appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: 1 });
 

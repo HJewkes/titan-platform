@@ -21,3 +21,13 @@ it("reads titan-platform's own committed required-checks policy as readable for 
   expect(contexts.length).toBeGreaterThan(0);
   expect(new Set(contexts).size).toBe(contexts.length);
 });
+
+it("lists every main-only test shard in ci.yml as a main-only context, so a red shard freezes main (TP-4401)", () => {
+  const policy = JSON.parse(readFileSync(new URL(`../../../${PATH}`, import.meta.url), "utf8"));
+  const ci = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const matrix = /\n {2}test-shard:\n[\s\S]*?\n {8}shard: \[([^\]]+)\]/.exec(ci);
+  const shards = (matrix?.[1] ?? "").split(",").map((shard) => `test-shard (${shard.trim()})`);
+
+  expect(shards.length).toBeGreaterThan(0);
+  expect(policy.branches.main.mainContexts).toEqual(shards);
+});

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a replot's points are not compared with the figure's data",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y)",
+      "replace": "true",
+      "kills": [
+        "paper publish eligibility fails a replot whose points are not the figure's data"
+      ]
+    },
+    {
+      "name": "a replot may drop points",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "a.length === b.length && ",
+      "replace": "",
+      "kills": [
+        "paper publish eligibility fails a replot that drops a point, and a replot with no series"
+      ]
+    },
+    {
+      "name": "a replot with no series passes",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "series.length > 0 && plotted",
+      "replace": "plotted",
+      "kills": [
+        "paper publish eligibility fails a replot that drops a point, and a replot with no series"
+      ]
+    },
+    {
+      "name": "a replot need not cite a gathered figure",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "if (!fact) return `replot ${beat.id} cites no gathered figure; its source.ref must name a figure fact id`;",
+      "replace": "if (!fact) return undefined;",
+      "kills": [
+        "paper publish eligibility fails a replot citing a source that is not a gathered figure"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the wake never hands the brief the run's merge-base exception",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "describeWake(deps.port, withMergeBaseException(input, deps.store), pr,",
+      "replace": "describeWake(deps.port, input, pr,",
+      "kills": [
+        "sh-wake-implementer: a planner's merge-base exception briefs a ci-red fixer with the merge-base exception a planner recorded on the run (TP-4242)"
+      ]
+    }
+  ]
+}

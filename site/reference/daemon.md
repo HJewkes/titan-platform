@@ -85,6 +85,11 @@ chunked body is counted as it arrives and gets 413 as soon as it passes the cap;
 then discards the rest of it for at most 500 ms before it closes the socket, and never holds
 it in memory.
 
+`onRpc` (on `startDaemon` and `buildHttpApp`) is called once per `/rpc` answer with
+`{ name, ms, bytes, status, surface }`. `bytes` is the length of the body sent, and an unknown
+command reports `(unknown)`. A sample never holds arguments or the body, and an observer that
+throws is ignored.
+
 The cap bounds one body, not how many are in flight. N slow bodies on loopback can hold N
 times the cap until Node's request timeout (300 s by default) drops them. This is left
 unbounded on purpose: a loopback caller already runs as the owner's account and can spend
@@ -372,8 +377,8 @@ app.on(["GET", "HEAD"], "/media/:id", async (c) =>
 
 ## The utilities, usable alone
 
-- `watchTree(root, onChange, { debounceMs, onError })` — recursive watcher that debounces
-  bursts into one callback. On macOS and Windows it holds one native recursive `fs.watch`
+- `watchTree(root, onChange, { debounceMs, onError, ignore })` — recursive watcher that debounces
+  bursts into one callback. Directories listed in `ignore` are neither watched nor reported. On macOS and Windows it holds one native recursive `fs.watch`
   handle on `root`; elsewhere (Linux), where `recursive` is version-dependent, it walks
   the tree and holds one handle per directory. `isWatching(dir)` is true for any existing
   path under a recursive root even though it has no handle of its own. `whenWatching(dir)`

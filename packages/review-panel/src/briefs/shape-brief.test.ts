@@ -23,6 +23,22 @@ function fixProof(overrides: Partial<FixProofResult> = {}): string {
 }
 
 describe("shape briefs", () => {
+  it.each([
+    ["no-repro-test-only", "This head changes only tests"],
+    ["no-repro-non-source", "for each workflow edit, say whether it weakens, skips or renames a check"],
+  ] as const)("asks the tests member of a head proceeding as %s the question for what it changes", (why, question) => {
+    const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "vacuous" }), fixProofUnverified: why });
+
+    expect(brief).toContain(question);
+  });
+
+  it("asks the tests member no proceed question for an unverified proof that does not proceed on a NO_REPRO", () => {
+    const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "error" }), fixProofUnverified: "error" });
+
+    expect(brief).not.toContain("so nothing can fail on the base");
+    expect(brief).not.toContain("This head changes only tests");
+  });
+
   it("gives every overlay shape a stable id and a sha256 content hash", () => {
     const ids = OVERLAY_SHAPES.map((shape) => SHAPE_BRIEFS[shape].id);
 

@@ -43,11 +43,12 @@ export interface SearchClass {
  * A workspace session record and a mined transcript are both owned by
  * `session:<id>` — deliberately, because that shared key is what makes the
  * cross-class join work. It means a prefix alone cannot tell them apart: the
- * record is the `body` field, the transcript is everything else. A prefix-only
- * scope would put 92,713 transcript spans into the records' list and look like
- * it was working.
+ * record is the `body` field, the transcript is its prompts and replies. A
+ * prefix-only scope would put 92,713 transcript spans into the records' list and
+ * look like it was working. Tool spans a graph indexed before TP-881 still holds
+ * are left out, so an old graph answers as a rebuilt one would.
  */
-const TRANSCRIPT_FIELDS = ['prompt', 'assistant_response', 'tool_input', 'tool_result'];
+const TRANSCRIPT_FIELDS = ['prompt', 'assistant_response'];
 
 export const SEARCH_CLASSES: SearchClass[] = [
   { name: 'notes', scope: { ownerPrefix: 'note:' }, weight: 1.3, share: 0.5 },

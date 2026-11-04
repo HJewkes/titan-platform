@@ -1,12 +1,15 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync, existsSync, lstatSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync, lstatSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import { z } from "zod";
+import { UPDATE_ALARM_ASKER, UPDATE_ALARM_KEY } from "./alarm.js";
 import { releaseCli, withTail, type NodeRun } from "./release-smoke.js";
+import { writeShim } from "./shim.js";
 import type { CommandResult, UpdatePorts } from "./update.js";
 
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
@@ -184,6 +187,20 @@ function isAlive(pid: number): boolean {
   }
 }
 
+function fileSize(file: string): number | undefined {
+  try {
+    return statSync(file).size;
+  } catch {
+    return undefined;
+  }
+}
+
+/** syncfs(2) on the release's filesystem: one call flushes the whole worktree without walking node_modules file by file. */
+async function syncFs(dir: string): Promise<string | undefined> {
+  const synced = await run("sync", ["-f", dir]);
+  return synced.code === 0 ? undefined : synced.stderr.trim() || `exit ${synced.code}`;
+}
+
 const readFile = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, "utf8") : undefined);
 const listDirs = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
 
@@ -200,6 +217,9 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     listDirs,
     mkdir: (dir) => void mkdirSync(dir, { recursive: true, mode: 0o700 }),
     writeFile: (file, text) => writeFileSync(file, text, { mode: 0o600 }),
+    writeShim,
+    syncFs,
+    fileSize,
     readFile,
     remove: (file) => rmSync(file, { force: true }),
     createExclusive,
@@ -208,6 +228,7 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     runNode: (script, args) => runNode(script, args),
     servedSha: (port, want) => pollSha(port, want),
     alarm: async (deposit) => void (await writeDeposit(inboxDir, deposit)),
+    resolveAlarms: async () => (await withdrawMatching(inboxDir, { asker: UPDATE_ALARM_ASKER, actor: UPDATE_ALARM_ASKER, keys: [UPDATE_ALARM_KEY], reason: "resolved" })).length,
     log: (line) => console.log(line),
     now: Date.now,
   };

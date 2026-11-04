@@ -1,5 +1,5 @@
 import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
-import type { ItemKind } from "@titan-design/matrix-bus";
+import { ITEM_KINDS, type ItemKind } from "@titan-design/matrix-bus";
 import type { MirrorState, PostedItem, StateChange } from "./types.js";
 
 export const DEFAULT_MIRROR_TABLE_PREFIX = "queue_mirror";
@@ -57,7 +57,43 @@ interface RawCursorRow {
   sync_token: string | null;
 }
 
-function toPostedItem(row: RawItemRow): PostedItem {
+function isRow(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function parseItemRow(value: unknown): RawItemRow {
+  if (isRow(value)) {
+    const { source_id, event_id, approvable, status, expires_at, record } = value;
+    const kind = ITEM_KINDS.find((candidate) => candidate === value.kind);
+    if (
+      typeof source_id === "string" &&
+      typeof event_id === "string" &&
+      kind !== undefined &&
+      typeof approvable === "number" &&
+      (status === "open" || status === "closed") &&
+      (expires_at === null || typeof expires_at === "number") &&
+      typeof record === "string"
+    ) {
+      return { source_id, event_id, kind, approvable, status, expires_at, record };
+    }
+  }
+  throw new Error("queue-mirror: malformed item row");
+}
+
+function parseCursorRow(value: unknown): RawCursorRow | undefined {
+  if (value === undefined) return undefined;
+  if (isRow(value) && isNullableString(value.source_cursor) && isNullableString(value.sync_token)) {
+    return { source_cursor: value.source_cursor, sync_token: value.sync_token };
+  }
+  throw new Error("queue-mirror: malformed cursor row");
+}
+
+function toPostedItem(value: unknown): PostedItem {
+  const row = parseItemRow(value);
   return {
     sourceId: row.source_id,
     eventId: row.event_id,
@@ -101,21 +137,17 @@ export class SqliteMirrorState implements MirrorState {
   }
 
   bySourceId(id: string): PostedItem | undefined {
-    const row = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE source_id = ?`).get(id) as
-      | RawItemRow
-      | undefined;
+    const row = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE source_id = ?`).get(id);
     return row ? toPostedItem(row) : undefined;
   }
 
   byEventId(eventId: string): PostedItem | undefined {
-    const row = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE event_id = ?`).get(eventId) as
-      | RawItemRow
-      | undefined;
+    const row = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE event_id = ?`).get(eventId);
     return row ? toPostedItem(row) : undefined;
   }
 
   openItems(): PostedItem[] {
-    const rows = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE status = 'open'`).all() as RawItemRow[];
+    const rows = this.db.prepare(`SELECT * FROM ${this.itemTable} WHERE status = 'open'`).all();
     return rows.map(toPostedItem);
   }
 
@@ -139,9 +171,7 @@ export class SqliteMirrorState implements MirrorState {
   }
 
   private readCursor(): RawCursorRow | undefined {
-    return this.db.prepare(`SELECT source_cursor, sync_token FROM ${this.cursorTable} WHERE id = 1`).get() as
-      | RawCursorRow
-      | undefined;
+    return parseCursorRow(this.db.prepare(`SELECT source_cursor, sync_token FROM ${this.cursorTable} WHERE id = 1`).get());
   }
 
   private upsertCursor(change: StateChange): void {

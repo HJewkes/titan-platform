@@ -29,6 +29,8 @@ interface MisakiEnglishOptions {
     fallback?: (token: G2pToken) => string | null;
     /** What a token with no phonemes contributes to the joined string. Default "", as Kokoro's pipeline uses. */
     unk?: string;
+    /** Misaki phonemes for words the shipped lexicon misreads or lacks, matched case-insensitively ahead of golds. */
+    words?: Readonly<Record<string, string>>;
 }
 interface G2p {
     /** Tokens in text order, after misaki's merge. Overrides from `[w](/ph/)` arrive with rating 5. */
@@ -38,7 +40,7 @@ interface G2p {
         phonemes: string;
         tokens: G2pToken[];
     };
-    /** Changes when the lexicon, the tokenizer data or the compromise release changes: a cache key and model version. */
+    /** Changes when the lexicon, the caller's `words`, the tokenizer data or the compromise release changes: a cache key and model version. */
     readonly version: string;
 }
 /** A token speech-tts accepts: phonemes always a string. */

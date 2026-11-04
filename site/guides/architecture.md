@@ -27,7 +27,6 @@ graph TD
     chatProtocol["chat-protocol"]
     clusterPkg["cluster"]
     codeParser["code-parser"]
-    egressScan["egress-scan"]
     embed["embed"]
     eslintPlugin["eslint-plugin"]
     evidence["evidence"]
@@ -35,6 +34,8 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    pngDelta["png-delta"]
+    reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
     testKit["test-kit"]
@@ -46,6 +47,7 @@ graph TD
     agentLifecycle["agent-lifecycle"]
     agentSurface["agent-surface"]
     daemon["daemon"]
+    egressScan["egress-scan"]
     frameCapture["frame-capture"]
     github["github"]
     health["health"]
@@ -58,6 +60,7 @@ graph TD
     speechG2p["speech-g2p"]
     speechStt["speech-stt"]
     speechTts["speech-tts"]
+    testTiming["test-timing"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -72,6 +75,7 @@ graph TD
     ownerQueue["owner-queue"]
     pm["pm"]
     queueMirror["queue-mirror"]
+    renderQa["render-qa"]
     reviewPanel["review-panel"]
     reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
@@ -93,28 +97,40 @@ graph TD
     evals["evals"]
     explainer["explainer"]
     factory["factory"]
+    fleetPanel["fleet-panel"]
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
     titan["titan"]
+    ytScout["yt-scout"]
     codewatch["codewatch"]
     console["console"]
   end
 
   agent --> agentLifecycle
   agent --> agentProtocol
+  agent --> rpcProtocol
+  agentDispatch --> rpcProtocol
+  agentDispatch --> storeSqlite
+  agentDispatch --> worktree
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  agentSurface --> rpcProtocol
+  anthropicAccount --> rpcProtocol
+  autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
+  codeGraph --> fixProof
   codeGraph --> retrieval
+  codeGraph --> rpcProtocol
   codeGraph --> storeSqlite
   codeRead --> codeGraph
   codeRead --> registry
   codeRead --> rpcProtocol
   coordinator --> agentDispatch
+  coordinator --> rpcProtocol
   daemon --> registry
   daemon --> rpcProtocol
   decider --> locator
@@ -123,34 +139,46 @@ graph TD
   decider --> storeSqlite
   dispatchLedger --> storeSqlite
   egressScan --> fixProof
+  egressScan --> worktree
+  eslintPlugin --> rpcProtocol
   graphLayout --> codeGraph
+  health --> rpcProtocol
   health --> storeSqlite
   hitl --> authority
   hitl --> evidence
   hitl --> storeSqlite
+  matrixBus --> rpcProtocol
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  messaging --> rpcProtocol
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
+  queueMirror --> rpcProtocol
   queueMirror --> storeSqlite
   reactApp --> rpcClient
   reactApp --> rpcProtocol
   registry --> rpcProtocol
+  renderQa --> frameCapture
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewBurden --> fixProof
+  reviewBurden --> rpcProtocol
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
   reviewWorkflow --> agentDispatch
   reviewWorkflow --> evidence
+  reviewWorkflow --> fixProof
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel
+  reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
+  sessionAnalytics --> rpcProtocol
   sessionAnalytics --> sessionGraph
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
@@ -161,7 +189,11 @@ graph TD
   sessionRead --> agentProtocol
   sessionRead --> anthropicAccount
   sessionRead --> locator
+  sessionRead --> rpcProtocol
+  speechG2p --> rpcProtocol
+  speechStt --> rpcProtocol
   speechTts --> appPaths
+  speechTts --> rpcProtocol
   speechVet --> speechG2p
   speechVet --> speechStt
   speechVet --> speechTts
@@ -169,105 +201,146 @@ graph TD
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
   styleChecker --> styleProfile
+  testTiming --> storeSqlite
   throughput --> evidence
   toolGuard --> authority
+  toolGuard --> fixProof
   workflow --> agent
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
+  workflow --> rpcProtocol
   workflow --> storeSqlite
+  activeWork --> agentDispatch
   activeWork --> agentProtocol
   activeWork --> clusterPkg
   activeWork --> daemon
   activeWork --> decider
   activeWork --> locator
+  activeWork --> memory
   activeWork --> pm
   activeWork --> registry
   activeWork --> retrieval
+  activeWork --> rpcProtocol
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead
   activeWork --> storeSqlite
   corpusQuery --> agent
+  corpusQuery --> agentProtocol
   corpusQuery --> appPaths
   corpusQuery --> evidence
   corpusQuery --> hitl
   corpusQuery --> storeSqlite
   corpusQuery --> workflow
   evals --> agent
+  evals --> appPaths
   evals --> authority
   evals --> evidence
   evals --> fixProof
   evals --> health
   evals --> hitl
   evals --> reviewPanel
+  evals --> reviewWorkflow
   evals --> sessionAnalytics
   evals --> sessionRead
   evals --> storeSqlite
   evals --> workflow
   explainer --> agent
+  explainer --> agentDispatch
   explainer --> agentProtocol
+  explainer --> appPaths
+  explainer --> codeGraph
+  explainer --> codeRead
   explainer --> evidence
+  explainer --> frameCapture
+  explainer --> github
   explainer --> graphLayout
+  explainer --> hitl
+  explainer --> ownerQueue
   explainer --> pm
+  explainer --> renderQa
+  explainer --> rpcProtocol
+  explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
   explainer --> speechTts
   explainer --> speechVet
+  explainer --> storeSqlite
+  explainer --> workflow
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
   factory --> autoresearch
+  factory --> clusterPkg
   factory --> coordinator
   factory --> daemon
+  factory --> dispatchLedger
   factory --> fixProof
   factory --> github
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pngDelta
   factory --> registry
   factory --> reviewPanel
+  factory --> reviewWorkflow
   factory --> rpcClient
+  factory --> rpcProtocol
   factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
   factory --> worktree
+  fleetPanel --> anthropicAccount
+  fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
   retrievalEval --> retrieval
+  retrievalEval --> rpcProtocol
   retrievalEval --> storeSqlite
   sessionMiner --> appPaths
   sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
+  sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> ownerQueue
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
+  sessionMiner --> rpcProtocol
   sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
   sessionMiner --> throughput
+  sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> agent
+  ytScout --> appPaths
+  ytScout --> ownerQueue
+  ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
   codewatch --> rpcProtocol
+  console --> agent
   console --> agentDispatch
   console --> appPaths
   console --> chatProtocol
   console --> coordinator
   console --> daemon
   console --> decider
+  console --> fixProof
   console --> github
   console --> ownerQueue
   console --> pm
+  console --> pngDelta
   console --> reactApp
   console --> registry
   console --> rpcClient
@@ -283,7 +356,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `frame-capture`, `github`, `matrix-bus`, `messaging`, `speech-g2p`, `speech-stt`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
@@ -332,14 +405,14 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds ten units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds twelve units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `fleet-panel`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an oversize command is classified before it is refused",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  if (event.kind === \"bash\" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);",
+      "replace": "  if (event.kind === \"bash\" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) {\n    classifyEvent(event, port.context);\n    return oversized(event, actor, OVERSIZE_REASON, port);\n  }",
+      "kills": [
+        "stdin text read for a literal operand is charged to the script budget refuses or reads a 64KB here-string under an operand with work linear in its length"
+      ]
+    }
+  ]
+}

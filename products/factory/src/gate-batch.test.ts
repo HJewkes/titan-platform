@@ -10,6 +10,7 @@ import { applyProof, type ApplyDeps } from "./gate-batch.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const REPO = "example-org/example-repo";
 const AUD = "factory.test";
@@ -75,7 +76,7 @@ function proofOf(items: readonly ProofItem[], { key = owner.privateKey, nonce = 
 }
 
 function fakePort(prs: Record<number, Partial<PullRequest>>): Pick<GitHubPort, "getPr"> {
-  return { getPr: async (_repo, pr) => ({ state: "open", headSha: "", ...prs[pr] }) as PullRequest };
+  return { getPr: async (_repo, pr) => partialFake<PullRequest>({ state: "open", headSha: "", ...prs[pr] }) };
 }
 
 const deps = (extra: Partial<ApplyDeps> = {}): ApplyDeps => ({ now: () => NOW_MS, aud: AUD, ...extra });

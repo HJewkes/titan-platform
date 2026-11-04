@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unknown gh path is read only for a literal pr merge",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (cmd.name === \"gh\") return ghPathUnknown(cmd) ? [classified(\"bash.merge.gh-pr-merge\", {})] : [...prMerge(cmd), ...apiMerge(cmd)];",
+      "replace": "  if (cmd.name === \"gh\") return [...prMerge(cmd), ...apiMerge(cmd)];",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads gh $X as a merge of an unknown PR",
+        "a gh command whose group or verb is only known at run time reads gh pr $X 5 as a merge of an unknown PR"
+      ]
+    },
+    {
+      "name": "an unknown gh path does not switch the branch",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "    const checksOut = ghPathUnknown(cmd) || /^pr checkout\\b/",
+      "replace": "    const checksOut = /^pr checkout\\b/",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads it as a switch to an unknown head, so a later push counts as protected"
+      ]
+    },
+    {
+      "name": "a dynamic command word read as gh ignores a run-time word",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  if (isNameReading(cmd)) return hidden;\n",
+      "replace": "  if (isNameReading(cmd)) return false;\n",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads a run-time verb behind a dynamic command word as a gh merge"
+      ]
+    },
+    {
+      "name": "no gh command path is read as unknown",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "replace": "  return false;\n  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "kills": [
+        "xargs runs gh with a word from its input denies every gh action when {} is the value of gh -R and the line has a space",
+        "xargs runs gh with a word from its input denies every gh action behind a stdin file"
+      ]
+    }
+  ]
+}

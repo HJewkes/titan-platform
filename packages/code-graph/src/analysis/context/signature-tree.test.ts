@@ -30,7 +30,7 @@ function shuffled<T>(items: T[], seed: number): T[] {
   for (let i = out.length - 1; i > 0; i--) {
     s = (s * 1103515245 + 12345) % 2147483648;
     const j = s % (i + 1);
-    [out[i], out[j]] = [out[j] as T, out[i] as T];
+    [out[i], out[j]] = [out[j]!, out[i]!];
   }
   return out;
 }

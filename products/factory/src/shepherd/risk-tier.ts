@@ -1,7 +1,7 @@
 import { compileGlobs } from "@titan-design/fix-proof";
-import { DEFAULT_CLASS_RULES, pathTouches } from "@titan-design/review-panel";
+import { DEFAULT_CLASS_RULES } from "@titan-design/review-panel";
 import type { CiPolicy } from "@titan-design/session-read";
-import { HOLD_COMMAND_FILES, MERGE_POLICY_FILES, OWNER_ACTION_FILES, SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
+import { HOLD_COMMAND_FILES, MERGE_POLICY_FILES, OWNER_ACTION_FILES, shepherdPathTouches } from "./g10-class-rules.js";
 import { OWNER_PACKET_FILES, adversaryTouches } from "./signoffs.js";
 import { skillPathsIn } from "./skill-paths.js";
 import type { Registration } from "./store.js";
@@ -124,7 +124,7 @@ interface RiskRead {
 
 export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold }: RiskRead): RiskFacts {
   const ownerPacket = paths.filter((path) => OWNER_PACKET_FILES.includes(folded(path)));
-  const touches = pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES);
+  const touches = shepherdPathTouches(paths.map((path) => ({ path })));
   const visual = visualPaths === undefined ? [] : visualMatches(paths, visualPaths);
   return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), ...(ciPolicy && { ciPolicy }), visual, ownerHold, changedLines, unread };
 }

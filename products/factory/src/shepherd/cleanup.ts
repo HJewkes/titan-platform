@@ -1,54 +1,20 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { OVERLAY_SHAPES } from "@titan-design/review-panel";
 import { z } from "zod";
-import { hasSlicesBlock, readSlices } from "../dispatch/report.js";
 import { redactCredentials } from "../redact.js";
 import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
-import type { Presence } from "./presence.js";
+import { ALL_SLICES_LANDED, completedBefore, heldOpenBy, LANDED_BEFORE_THIS_PR, SLICE_TAGS } from "./held-open.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
+import { closesTask, otherOpenOnTask } from "./task-close.js";
+import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose } from "./ports.js";
+
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
 export const SH_CLEANUP_GRACE_MS = 3 * 60_000;
 export const SH_CLEANUP_RETRY_MS = 10 * 60_000;
 export const SH_CLEANUP_GIVE_UP_MS = 60 * 60_000;
 export const SH_CLEANUP_POLL_MS = 30_000;
-
-export interface CleanupAgent {
-  name: string;
-  presence: Presence;
-  status: string;
-}
-
-export interface CleanupAgents {
-  roster(): Promise<readonly CleanupAgent[]>;
-  /** Drops any cached roster, so the next `roster()` reads the broker. */
-  invalidate(): void;
-  /** Never forced: a forced retire discards work the agent's worktree still holds. */
-  retire(name: string): Promise<void>;
-}
-
-export type TaskState = "open" | "done" | "missing";
-
-/** What tells an unsliced PR whether it may close its task: the task's tags and notes, and its plan's text when it has one. */
-export interface TaskSlicing {
-  tags: readonly string[];
-  notes: string;
-  plan: string | undefined;
-}
-
-export interface CleanupTasks {
-  state(initiative: string, id: string): Promise<TaskState>;
-  slicing(initiative: string, id: string): Promise<TaskSlicing>;
-  done(initiative: string, id: string): Promise<void>;
-  /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
-  appendNote(initiative: string, id: string, line: string): Promise<void>;
-}
-
-export interface CleanupPorts {
-  agents: CleanupAgents;
-  tasks: CleanupTasks;
-}
 
 export interface CleanupDeps {
   port: GitHubPort;
@@ -59,6 +25,8 @@ export interface CleanupDeps {
   cleanup?: CleanupPorts;
   /** An advisory repo's head ref is never deleted, even after a human merge. */
   advisory?: (repo: RepoSlug) => boolean;
+  /** Absent means `keep`: every merge of an unsliced PR closes its task. */
+  taskClose?: TaskClose;
 }
 
 /** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
@@ -204,17 +172,55 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   const tasks = deps.cleanup!.tasks;
   const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
-  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined), tasks);
+  if (deps.taskClose === "last-slice-only") return pr === undefined ? "unread" : settleLastSliceOnly(deps, registration, input, landing, wait);
+  if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined, registration.lastSlice), tasks);
   if (pr === undefined) return "unread";
-  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `${registration.slice} landed in ${landing}`).then(() => "noted"), tasks);
+  return onOpenTask(registration.task, wait, noteThenCloseIfLast(tasks, registration.slice, landing, registration.lastSlice), tasks);
+}
+
+/** Noting the slice first lets the close read it: the slice that completes the list closes the task, any other leaves it open and names what holds it. */
+function noteThenCloseIfLast(tasks: CleanupTasks, slice: string, landing: string, lastSlice = false): (initiative: string, id: string) => Promise<string> {
+  return async (initiative, id) => {
+    await noteSlice(tasks, slice, landing)(initiative, id);
+    const slicing = await tasks.slicing(initiative, id);
+    const heldBy = !lastSlice && completedBefore(slicing, landingLine(slice, landing)) ? LANDED_BEFORE_THIS_PR : heldOpenBy(slicing, lastSlice);
+    if (heldBy !== ALL_SLICES_LANDED && !(lastSlice && heldBy === undefined)) {
+      if (heldBy !== undefined) await tasks.appendNote(initiative, id, `${slice} merged; task left open: ${heldBy}`);
+      return "noted";
+    }
+    await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+    await tasks.done(initiative, id);
+    return "done";
+  };
+}
+
+const landingLine = (slice: string, landing: string): string => `${slice} landed in ${landing}`;
+
+const noteSlice = (tasks: CleanupTasks, slice: string, landing: string) => (initiative: string, id: string) => tasks.appendNote(initiative, id, landingLine(slice, landing)).then(() => "noted");
+
+/**
+ * Unlike `keep`, a PR body or open-PR list that cannot be read leaves the task open, since a wrong close is what this mode
+ * guards against. A slice registration still notes its slice landed, before a last-slice close reads the plan's slices.
+ */
+async function settleLastSliceOnly(deps: CleanupDeps, registration: Registration, input: CleanupInput, landing: string, wait: Waiter): Promise<string> {
+  const tasks = deps.cleanup!.tasks;
+  const read = async () => closesTask(registration, (await deps.port.getPr(input.repo, input.pr)).body, await otherOpenOnTask(deps.port, deps.store.get().all(), registration));
+  const closes = await retrying(`last slice of #${input.pr}`, read, wait);
+  if (closes === undefined) return "unread";
+  if (registration.slice !== null) await onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
+  if (closes) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, true, registration.lastSlice), tasks);
+  if (registration.slice !== null) return "noted";
+  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `slice merged: ${landing}`).then(() => "slice-noted"), tasks);
 }
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
-function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean): (initiative: string, id: string) => Promise<string> {
+function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolean, lastSlice = false): (initiative: string, id: string) => Promise<string> {
   return async (initiative, id) => {
-    const heldBy = heldOpenBy(await tasks.slicing(initiative, id));
-    if (heldBy === undefined) {
-      await tasks.appendNote(initiative, id, `closed by Shepherd: ${landing} merged`);
+    const slicing = await tasks.slicing(initiative, id);
+    const heldBy = heldOpenBy(slicing, lastSlice);
+    if (heldBy === undefined || (lastSlice && heldBy === ALL_SLICES_LANDED)) {
+      const overrodeTag = lastSlice && SLICE_TAGS.some((tag) => slicing.tags.includes(tag));
+      await tasks.appendNote(initiative, id, `closed by Shepherd: ${overrodeTag ? "last slice " : ""}${landing} merged`);
       await tasks.done(initiative, id);
       return "done";
     }
@@ -222,20 +228,6 @@ function closeUnlessSliced(tasks: CleanupTasks, landing: string, shaRead: boolea
     await tasks.appendNote(initiative, id, `PR ${landing} merged; task left open: ${heldBy}`);
     return "left-open";
   };
-}
-
-const EPIC_TAG = "epic";
-
-/** Why one unsliced PR cannot close its task, or undefined when nothing else is due to land on it. */
-function heldOpenBy({ tags, notes, plan }: TaskSlicing): string | undefined {
-  if (plan !== undefined && hasSlicesBlock(plan)) {
-    const slices = readSlices(plan).slices;
-    if (slices === undefined) return "its plan has a burndown-slices block that does not read";
-    const landed = new Set(notes.split("\n").flatMap((line) => /^(\S+) landed in /.exec(line)?.[1] ?? []));
-    const unlanded = slices.map((slice) => slice.n).filter((n) => !landed.has(n));
-    return unlanded.length === 0 ? "it is sliced, and every slice is noted landed" : `it has slices ${unlanded.join(", ")}`;
-  }
-  return tags.includes(EPIC_TAG) ? `it is tagged ${EPIC_TAG}` : undefined;
 }
 
 async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, id: string) => Promise<string>, tasks: CleanupTasks): Promise<string> {

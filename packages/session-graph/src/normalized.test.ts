@@ -92,7 +92,7 @@ describe("normalized ingestion", () => {
     try {
       await indexCodexSource(incremental,source);await indexCodexSource(full,source);
       expect(incremental.db.prepare("SELECT * FROM normalized_event ORDER BY byte_offset,subrecord_index").all()).toEqual(full.db.prepare("SELECT * FROM normalized_event ORDER BY byte_offset,subrecord_index").all());
-      const usage=incremental.db.prepare("SELECT byte_offset,subrecord_index FROM normalized_event WHERE kind = 'usage'").all() as {byte_offset:number;subrecord_index:number}[];
+      const usage=incremental.db.prepare<[], {byte_offset:number;subrecord_index:number}>("SELECT byte_offset,subrecord_index FROM normalized_event WHERE kind = 'usage'").all();
       expect(usage.length).toBeGreaterThan(1);expect(new Set(usage.map(u=>u.byte_offset)).size).toBe(1);
       expect(new Set(usage.map(u=>u.subrecord_index)).size).toBe(usage.length);
     } finally {incremental.db.close();full.db.close();}
@@ -169,7 +169,7 @@ describe("normalized readers", () => {
     try {
       expect(hasNormalizedTables(graph)).toBe(true);
       expect(countNormalizedSessions(graph)).toBe(1);
-      expect(countNormalizedEvents(graph)).toBe((graph.db.prepare("SELECT count(*) AS n FROM normalized_event").get() as { n: number }).n);
+      expect(countNormalizedEvents(graph)).toBe(graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM normalized_event").get()?.n);
       expect(normalizedSourcePath(graph, transcriptId)).toBe(file);
       expect(normalizedSourcePath(graph, transcriptId + 1)).toBeNull();
     } finally { graph.db.close(); }

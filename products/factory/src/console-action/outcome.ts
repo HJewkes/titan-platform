@@ -3,15 +3,33 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
+type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
 export type Outcome =
-  | { outcome: "resolved"; gateId: string }
+  /** `covered` names the owner-at-head facts whose evidence the owner read on the card before this resolve (TP-4404). */
+  | { outcome: "resolved"; gateId: string; covered?: string[] }
   | { outcome: "already"; gateId: string }
   | { outcome: "released"; runId: string; stillHeld: string | null }
   | { outcome: "already"; runId: string }
   /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
   | { outcome: "accepted"; runId: string }
+  /** A merge-at-head tap that waits out a g10 hold left the owner's approval standing on the PR's Shepherd run. */
+  | { outcome: "approved"; runId: string }
+  | { outcome: "retired"; name: string; caveats: string[] }
+  | { outcome: "already"; name: string }
+  /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
+  | { outcome: "pr-closed"; closedHead: string }
+  | { outcome: "already"; closedHead: string }
+  /** A deploy-pause-clear tap removed the failure pause it named; a manual hold, never cleared by the op, may still stand. */
+  | { outcome: "pause-cleared"; clearedPause: string; stillHeld: string | null }
+  | { outcome: "already"; clearedPause: string }
+  /** A plan-approval tap recorded the owner's plan-time answer; `claimedRun` is the one live run of the task it bound to, or null until a registration claims it. */
+  | { outcome: "plan-approved"; task: string; gate: string; claimedRun: string | null }
+  | { outcome: "already"; task: string }
   | { outcome: "moved"; currentHead: string | undefined }
+  /** The name now belongs to a different agent than the one the owner confirmed. */
+  | { outcome: "moved"; currentAgentId: string }
+  /** A newer failure pause than the one the record names stands, and stays. */
+  | { outcome: "moved"; currentPause: string }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
 
@@ -42,6 +60,11 @@ export function statusOf(outcome: Outcome): Status {
     case "resolved":
     case "released":
     case "accepted":
+    case "approved":
+    case "retired":
+    case "pr-closed":
+    case "pause-cleared":
+    case "plan-approved":
     case "already":
       return 200;
     case "moved":
@@ -49,6 +72,13 @@ export function statusOf(outcome: Outcome): Status {
     case "gone":
       return 410;
     case "refused":
-      return outcome.reason === "github-unreadable" ? 503 : outcome.reason === "class" || outcome.reason === "resolver" ? 403 : 422;
+      return refusalStatus(outcome.reason);
   }
+}
+
+/** A running deployer is a conflict that passes, so a later tap may land; a record or class fault never will. */
+function refusalStatus(reason: RefusalCode): Status {
+  if (reason === "github-unreadable" || reason === "agent-chat-unavailable") return 503;
+  if (reason === "deploying") return 409;
+  return reason === "class" || reason === "resolver" ? 403 : 422;
 }

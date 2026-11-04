@@ -52,6 +52,9 @@ runtime.signal(runId, "approve", { signal: "approved" }, {
 });
 ```
 
+Every event `onEvent` receives carries `at`, the ISO time the runtime emitted
+it by its `now` clock. Events recorded before 0.14 have no `at`.
+
 ## Database upgrade
 
 `workflowMigration` creates new tables with revision and ownership columns.
@@ -88,8 +91,13 @@ resolver afterwards. Gates resolved before it keep `resolvedBy` undefined.
   runner reported cost for, so a step that fails once and then succeeds
   reports both attempts. The active step persists the earlier attempts' cost as
   `priorUsage`, so a run resumed after a crash counts each attempt once.
+  The result also keeps the step's timing: `startedAt` (the try that
+  succeeded), `firstStartedAt` (its first attempt, across retries and restarts)
+  and `restarts`. Results stored before 0.14 lack them; read `firstStartedAt`
+  as `startedAt` and `restarts` as 0. `projectRunTrace` places an attempt at
+  its `startedAt`, and at `completedAt` for an older result.
 - `seed(stepId, fn)` runs deterministic work once per call and merges its data
-  into the workflow parameters.
+  into the workflow parameters. Its result records `startedAt`.
 - `assisted(stepId, prompt)` opens a durable gate and waits for
   `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
   and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
@@ -122,11 +130,14 @@ A runtime can hold handles a step body needs but the record must never see, such
 
 ```ts
 const rt = new WorkflowRuntime({ ...options, capabilities: { "github-bot": { handle: client, secrets: [token] } } });
-// in a workflow
-const bot = ctx.capability("github-bot") as BotClient;
+// in a workflow: only a step body may ask for it
+await ctx.seed("label", async () => {
+  const bot = ctx.capability("github-bot") as BotClient;
+  return { data: { labelled: await bot.label(pr) } };
+});
 ```
 
-`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured.
+`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured, and throws `CapabilityOutsideStepError` (naming the capability, never a secret) when asked outside a step body: the workflow function between steps gets no handle.
 
 ## Authority steps
 
@@ -242,7 +253,10 @@ schema)` dispatches the input as JSON and returns the stored record's
 parses the input, stores `fn`'s answer as `{ result }`, and repeats on a
 restart, so a code step must read before it writes. A throw is recorded once
 as a non-retryable failure. `codeRecordRoute` is the same for a body that
-returns the whole record, with trace keys beside `result`.
+returns the whole record, with trace keys beside `result`. A body that calls a
+model can return `usage` (a `StepUsage`) beside `result`: the route takes it off
+the stored record and reports it as the step's usage, so `mapItems` sums it and
+budgets against it like a dispatch's.
 
 Two options let a host shape what is stored. `envelope(record, step)` wraps
 the record, for example in an evidence envelope with a kind, a time and trace
@@ -366,6 +380,13 @@ A fresh `workflowMigration` table has the `definition_version` column. An
 existing table needs `workflowDefinitionVersionMigration(n)` once. Until then
 unpinned runs keep working, and starting a pinned run throws
 `WorkflowStoreSchemaOutdated` rather than dropping the pin.
+
+## Reading one workflow's runs
+
+`runtime.listByWorkflow(name, statuses)` loads only that workflow's runs, so a
+reader of one workflow does not parse every other run's step results. A fresh
+`workflowMigration` table has the `(workflow_name, status)` index it uses; an
+existing table needs `workflowNameIndexMigration(n)` once.
 
 ## Ownership and cancellation
 

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "owner-presence exports a bare-UUID confirmOwner again",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "export async function signStatement(",
+      "replace": "export async function confirmOwner(reason: string): Promise<string | undefined> {\n  return signStatement(new Uint8Array(), reason)\n}\n\nexport async function signStatement(",
+      "kills": [
+        "owner presence has no bare-UUID mode exports no confirmOwner"
+      ]
+    },
+    {
+      "name": "signStatement runs the helper with the reason alone",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "[\"sign\", \"--\", escapeReason(reason)]",
+      "replace": "[escapeReason(reason)]",
+      "kills": [
+        "owner presence has no bare-UUID mode never runs the helper with the reason alone, which would print a bare proof id"
+      ]
+    },
+    {
+      "name": "signStatement ignores the swapped presence edge",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "reason: string, options: ConfirmOptions = presenceEdge)",
+      "replace": "reason: string, options: ConfirmOptions = {})",
+      "kills": [
+        "owner presence has no bare-UUID mode runs the helper from native/build beside this package, whatever the environment says"
+      ]
+    },
+    {
+      "name": "the helper path check lets a refused path run",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "  if (\"refusal\" in helper) {",
+      "replace": "  if (false && \"refusal\" in helper) {",
+      "kills": [
+        "owner presence checks the helper path before each run prefers the root install and never falls back to native/build when that install fails the check"
+      ]
+    },
+    {
+      "name": "the reason escape lets bidi format characters through",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "\\x7f-\\x9f\\p{Cf}\\\\]",
+      "replace": "\\x7f-\\x9f\\\\]",
+      "kills": [
+        "signStatement escapes control, format and backslash characters in the reason"
+      ]
+    }
+  ]
+}

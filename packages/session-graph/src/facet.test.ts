@@ -62,12 +62,12 @@ function forgetAudit(target: SessionGraph = graph): void {
 
 const count = (table: string, transcriptId?: number) =>
   transcriptId === undefined
-    ? (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n
-    : (graph.db.prepare(`SELECT count(*) AS n FROM "${table}" WHERE transcript_id = ?`).get(transcriptId) as { n: number }).n;
+    ? graph.db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM "${table}"`).get()?.n
+    : graph.db.prepare<[number], { n: number }>(`SELECT count(*) AS n FROM "${table}" WHERE transcript_id = ?`).get(transcriptId)?.n;
 const dump = (target: SessionGraph, tables: readonly string[]) =>
   Object.fromEntries(tables.map((t) => [t, target.db.prepare(`SELECT * FROM "${t}" ORDER BY 1, 2, 3`).all()]));
 const facetOf = (transcriptId: number) =>
-  graph.db.prepare(`SELECT version, indexed_to FROM ${FACET_TABLE} WHERE transcript_id = ? AND facet = 'audit'`).get(transcriptId) as { version: number; indexed_to: number } | undefined;
+  graph.db.prepare<[number], { version: number; indexed_to: number }>(`SELECT version, indexed_to FROM ${FACET_TABLE} WHERE transcript_id = ? AND facet = 'audit'`).get(transcriptId);
 const idOf = (transcript: DiscoveredTranscript) => graph.transcripts.ensure(transcript.displayPath).sourceId;
 
 describe("backfillFacets", () => {
@@ -146,7 +146,7 @@ describe("backfillFacets", () => {
   });
 
   it("missing and quarantined transcripts are skipped", async () => {
-    const [ok, missing, quarantined] = ["ok", "gone", "bad"].map((name) => writeTranscript(name, firstHalf(name))) as [DiscoveredTranscript, DiscoveredTranscript, DiscoveredTranscript];
+    const [ok, missing, quarantined] = [writeTranscript("ok", firstHalf("ok")), writeTranscript("gone", firstHalf("gone")), writeTranscript("bad", firstHalf("bad"))];
     await refreshCorpus(graph, [ok, missing, quarantined]);
     forgetAudit();
     unlinkSync(missing.absolutePath);
@@ -160,5 +160,27 @@ describe("backfillFacets", () => {
     expect(summary).toEqual({ backfilled: 1, backlog: 0, sessionIds: ["ok"] });
     expect(count("request", idOf(quarantined))).toBe(0);
     expect(count(FACET_TABLE)).toBe(1);
+  });
+});
+
+describe("backfillFacets context_block policy", () => {
+  const backfillAfterStaleFacet = async (contextBlocks: boolean | undefined) => {
+    const transcript = writeTranscript("s1", [...firstHalf("s1"), ...secondHalf("s1")]);
+    await refreshCorpus(graph, [transcript], { contextBlocks: true });
+    graph.db.prepare(`UPDATE ${FACET_TABLE} SET version = ?`).run(EXTRACT_VERSION - 1);
+    await refreshCorpus(graph, [transcript], contextBlocks === undefined ? {} : { contextBlocks });
+    return { blocks: count("context_block", idOf(transcript)), facet: facetOf(idOf(transcript)) };
+  };
+
+  it("keeps a stale facet's context_block rows when the pass opts in", async () => {
+    const { blocks, facet } = await backfillAfterStaleFacet(true);
+    expect(blocks).toBeGreaterThan(0);
+    expect(facet?.version).toBe(EXTRACT_VERSION);
+  });
+
+  it("drops a stale facet's context_block rows under the default", async () => {
+    const { blocks, facet } = await backfillAfterStaleFacet(undefined);
+    expect(blocks).toBe(0);
+    expect(facet?.version).toBe(EXTRACT_VERSION);
   });
 });

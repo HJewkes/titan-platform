@@ -16,22 +16,66 @@ export type GitRunner = (args: readonly string[], cwd: string) => Promise<string
 /** The transports git may use for agent-chat and its agents; `ext::` runs a shell command (CC-1095). */
 export const SAFE_GIT_PROTOCOLS: readonly string[] = ['file', 'git', 'http', 'https', 'ssh']
 
+// Earlier releases exported this exact list for a caller who set none, so it reads as unset (CC-1336).
+const LEGACY_GIT_PROTOCOL_PIN = SAFE_GIT_PROTOCOLS.join(':')
+
 /**
- * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or the whole safe list when unset.
- * git reads this list over every `protocol.*.allow` config scope, so a repo's config cannot re-enable `ext`.
+ * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or undefined (leave it unset) when the
+ * caller set none or the legacy full list. git reads an exported list over every `protocol.*.allow`
+ * config, so exporting one for a caller who never chose it would lift their own denies (CC-1336).
  * A caller list with nothing safe in it (`ext` alone) gives '', which git reads as allowing no transport.
  */
-export function pinGitProtocols(value: string | undefined): string {
-  if (value === undefined) return SAFE_GIT_PROTOCOLS.join(':')
+export function pinGitProtocols(value: string | undefined): string | undefined {
+  if (value === undefined || value === LEGACY_GIT_PROTOCOL_PIN) return undefined
   return value
     .split(':')
     .filter(name => SAFE_GIT_PROTOCOLS.includes(name))
     .join(':')
 }
 
-/** `env` with GIT_ALLOW_PROTOCOL pinned, for a child that may run git without going through `gitChildEnv`. */
+const EXT_NEVER_KEY = 'protocol.ext.allow'
+const EXT_NEVER_VALUE = 'never'
+
+// git dies on a count it cannot parse or a pair missing below it, so refusing here loses nothing.
+function configCount(env: NodeJS.ProcessEnv): number {
+  const raw = env.GIT_CONFIG_COUNT ?? ''
+  if (!/^\d{0,9}$/.test(raw)) throw new Error(`GIT_CONFIG_COUNT ${JSON.stringify(raw)} is not a count git reads`)
+  const count = Number(raw)
+  for (let i = 0; i < count; i++) {
+    if (env[`GIT_CONFIG_KEY_${i}`] === undefined || env[`GIT_CONFIG_VALUE_${i}`] === undefined)
+      throw new Error(`GIT_CONFIG_COUNT is ${count} but GIT_CONFIG_KEY_${i} or GIT_CONFIG_VALUE_${i} is unset`)
+  }
+  return count
+}
+
+/**
+ * `env` with `protocol.ext.allow=never` as its last command-scope config pair. That pair outranks
+ * every config file and include and any `protocol.allow`, and only the caller's own `-c` beats it,
+ * so `ext::` stays off while git reads every other protocol policy itself (CC-1095, CC-1336).
+ */
+function withExtNeverPair(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const count = configCount(env)
+  const last = count - 1
+  if (count > 0 && env[`GIT_CONFIG_KEY_${last}`] === EXT_NEVER_KEY && env[`GIT_CONFIG_VALUE_${last}`] === EXT_NEVER_VALUE)
+    return env
+  return {
+    ...env,
+    [`GIT_CONFIG_KEY_${count}`]: EXT_NEVER_KEY,
+    [`GIT_CONFIG_VALUE_${count}`]: EXT_NEVER_VALUE,
+    GIT_CONFIG_COUNT: String(count + 1),
+  }
+}
+
+function pinnedGitEnv(env: NodeJS.ProcessEnv, protocols: string | undefined): NodeJS.ProcessEnv {
+  const out = { ...env }
+  if (protocols === undefined) delete out.GIT_ALLOW_PROTOCOL
+  else out.GIT_ALLOW_PROTOCOL = protocols
+  return withExtNeverPair(out)
+}
+
+/** `env` with the transport pin, for a child that may run git without going through `gitChildEnv`. */
 export function withPinnedGitProtocols(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return { ...env, GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL) }
+  return pinnedGitEnv(env, pinGitProtocols(env.GIT_ALLOW_PROTOCOL))
 }
 
 
@@ -47,8 +91,8 @@ export function gitChildEnv(
   for (const key of Object.keys(out)) {
     if (stripPrefixes.some((prefix) => key.startsWith(prefix))) delete out[key];
   }
-  // Prefix stripping cannot erase the mandatory pin or widen the original caller list.
-  return { ...out, GIT_ALLOW_PROTOCOL: protocols };
+  // Pinned after stripping, so a GIT_ strip cannot erase the ext pair or widen the original caller list.
+  return pinnedGitEnv(out, protocols);
 }
 
 /** Throws on a non-zero exit; `stderr` and `code` ride on the error. */

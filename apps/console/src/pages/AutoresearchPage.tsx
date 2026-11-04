@@ -1,20 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  EmptyState,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, EmptyState, Link, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArRunSummary } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
@@ -24,7 +10,9 @@ import { AutoresearchHeader, RunStatusBadge } from "./AutoresearchHeader.js";
 import { AutoresearchLanes } from "./AutoresearchLanes.js";
 import { AutoresearchProgress } from "./AutoresearchProgress.js";
 import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
+import { AutoresearchSnapshots } from "./AutoresearchSnapshots.js";
 import { AutoresearchValidator } from "./AutoresearchValidator.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
@@ -61,6 +49,7 @@ function RunsTable({ runs }: { runs: readonly ArRunSummary[] }): ReactNode {
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Phase</TableHeaderCell>
           <TableHeaderCell>Round</TableHeaderCell>
+          <TableHeaderCell>Open snapshot</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -76,7 +65,7 @@ function RunRow({ run }: { run: ArRunSummary }): ReactNode {
   return (
     <TableRow testID={`autoresearch-run-${run.runId}`}>
       <TableCell>
-        <Link color="primary" onPress={() => open({ view: "autoresearch", id: run.runId })}>
+        <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "autoresearch", id: run.runId })}>
           {run.runId}
         </Link>
       </TableCell>
@@ -86,6 +75,7 @@ function RunRow({ run }: { run: ArRunSummary }): ReactNode {
       </TableCell>
       <TableCell>{run.phase}</TableCell>
       <TableCell>{`${run.round} / ${run.rounds}`}</TableCell>
+      <TableCell>{run.openSnapshot === null ? "—" : `k${run.openSnapshot.k} · PR #${run.openSnapshot.pr}`}</TableCell>
     </TableRow>
   );
 }
@@ -100,6 +90,7 @@ function RunSection({ runId }: { runId: string }): ReactNode {
       <AutoresearchBacklog run={run.data} />
       <AutoresearchLanes run={run.data} />
       <AutoresearchDecisions run={run.data} />
+      <AutoresearchSnapshots run={run.data} />
       <AutoresearchProgress run={run.data} />
       <AutoresearchRegistries run={run.data} />
       <AutoresearchValidator run={run.data} />

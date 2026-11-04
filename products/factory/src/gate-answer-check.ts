@@ -3,11 +3,12 @@ import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
 import { acceptSetNote, approvedSetOf, type AfterDigest, type ApprovedSet } from "./approved-set.js";
-import { MERGE_GATE, landGate, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
+import { MERGE_GATE, landGate, ownerAtHeadRow, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
 import { stepIdMatches } from "./definition.js";
 import { gateStaleness } from "./gate-batch.js";
 import { pendingGateId, repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
+import { MAX_NOTE_CHARS } from "./note-limits.js";
 import { ROUND_SUBMIT_MAX_AGE_MS, RoundFeedbackSchema, shipAtHead } from "./shepherd/round-merge.js";
 import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";
 
@@ -96,8 +97,6 @@ const FeedbackWords = z.object({
   answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })),
   variants: z.array(FrameWords).default([]),
 });
-/** The most of the owner's note the gate payload carries; the rest stays in feedback.json. */
-export const MAX_NOTE_CHARS = 4000;
 
 const refused = (reason: RefusalCode, detail: string): AnswerCheck => ({ kind: "refused", reason, detail });
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -113,6 +112,8 @@ export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const gate = host.gates.get(request.gateId);
   const answerable = gate && Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id));
   if (!gate || !answerable) return refused("unknown-gate", `run ${request.runId} has no ${Object.keys(SHIP_CHOICES).join(" or ")} gate ${request.gateId}`);
+  const ownerRow = ownerAtHeadRow(gate);
+  if (ownerRow !== undefined) return refused("not-land-gate", `gate ${gate.id} is a ${ownerRow} gate, which no Ship answer gives`);
   const land = gateHead(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
   const early = land.step === VISUAL_ACCEPT_GATE ? choiceRefusal(inputs, land) : undefined;

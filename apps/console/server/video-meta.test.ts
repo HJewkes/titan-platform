@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { syntheticMp4 } from "./test-support.js";
-import { MAX_META_BYTES, VIDEO_FOLDER_SCHEMA, VIDEO_META_SCHEMA } from "./video-meta.js";
+import { MAX_FINGERPRINT_BYTES, MAX_META_BYTES, VIDEO_FOLDER_SCHEMA, VIDEO_META_SCHEMA } from "./video-meta.js";
 import { scanVideos } from "./videos.js";
 
 const SYNTHETIC_MP4 = syntheticMp4();
@@ -84,6 +84,61 @@ describe("video sidecars", () => {
     expect(gaps).toEqual(["1 video sidecar could not be read"]);
     expect(video.title).toBe("cut");
     expect(video).not.toHaveProperty("purpose");
+  });
+
+  describe("explainer block", () => {
+    const block = {
+      videoId: "vid-lantern",
+      runIds: ["run-1", "run-2"],
+      profile: "default",
+      scriptSha: "0123abcd",
+      fingerprint: { beats: 3, voice: "plain" },
+    };
+
+    it("exposes a valid block on the row", async () => {
+      await put("orbit/cut.mp4");
+      await put("orbit/cut.video.json", json({ schema: VIDEO_META_SCHEMA, explainer: block }));
+
+      const { video, gaps } = await onlyVideo();
+
+      expect(gaps).toEqual([]);
+      expect(video).toMatchObject({ explainer: block });
+    });
+
+    it("lists a sidecar with no block as before", async () => {
+      await put("orbit/cut.mp4");
+      await put("orbit/cut.video.json", json({ schema: VIDEO_META_SCHEMA, title: "Kettle" }));
+
+      const { video, gaps } = await onlyVideo();
+
+      expect(gaps).toEqual([]);
+      expect(video.title).toBe("Kettle");
+      expect(video).not.toHaveProperty("explainer");
+    });
+
+    it.each([
+      ["51 run ids", { ...block, runIds: Array.from({ length: 51 }, (_, i) => `run-${i}`) }],
+      ["a fingerprint over 32 KB", { ...block, fingerprint: { pad: "x".repeat(MAX_FINGERPRINT_BYTES) } }],
+      ["a missing profile", { ...block, profile: undefined }],
+      ["an unknown key", { ...block, extra: 1 }],
+    ])("counts a sidecar with %s as unreadable", async (_case, bad) => {
+      await put("orbit/cut.mp4");
+      await put("orbit/cut.video.json", json({ schema: VIDEO_META_SCHEMA, title: "Kettle", explainer: bad }));
+
+      const { video, gaps } = await onlyVideo();
+
+      expect(gaps).toEqual(["1 video sidecar could not be read"]);
+      expect(video).not.toHaveProperty("explainer");
+    });
+
+    it("keeps an unknown top-level key unreadable beside a valid block", async () => {
+      await put("orbit/cut.mp4");
+      await put("orbit/cut.video.json", json({ schema: VIDEO_META_SCHEMA, explainer: block, mood: "calm" }));
+
+      const { gaps } = await onlyVideo();
+
+      expect(gaps).toEqual(["1 video sidecar could not be read"]);
+    });
   });
 
   it("counts every bad sidecar in one plural gap line", async () => {

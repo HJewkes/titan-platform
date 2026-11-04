@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
-import { runPolicyCeiling, type EffectivePolicy } from "./policy.js";
+import { runPolicyCeiling } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { afterStages, type AfterStage } from "./post-merge.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 

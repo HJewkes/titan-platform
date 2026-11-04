@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
 import type { ShipBlockerTarget } from "../../server/ship-blockers.js";
+import { PHONE_TAP } from "./phone.js";
 
 /**
  * A PR's page splits into tabs (decision 167, the harness's pr-tabs.ts): Review asks the questions, Diff shows main
@@ -80,7 +81,7 @@ export function PrTabs({ pr, review, diff, context, bar }: PrTabsProps): ReactNo
         <VStack gap={4}>
           <Tabs index={tab} onChange={setTab}>
             <TabList>
-              {PR_TABS.map((each) => <Tab key={each.key}>{each.label}</Tab>)}
+              {PR_TABS.map((each) => <Tab key={each.key} className={PHONE_TAP}>{each.label}</Tab>)}
             </TabList>
           </Tabs>
           {PR_TABS.map((each, index) => (

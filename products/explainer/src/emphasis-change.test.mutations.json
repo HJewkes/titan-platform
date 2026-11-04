@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pixel moved by exactly the tolerance counts as changed",
+      "file": "products/explainer/src/emphasis-change.ts",
+      "find": "> CHANNEL_TOLERANCE) return true",
+      "replace": ">= CHANNEL_TOLERANCE) return true",
+      "kills": [
+        "emphasis step change does not count a pixel moved by the channel tolerance"
+      ]
+    },
+    {
+      "name": "a step at exactly the minimum share fails",
+      "file": "products/explainer/src/emphasis-change.ts",
+      "find": "changedShare(step) >= minShare",
+      "replace": "changedShare(step) > minShare",
+      "kills": [
+        "emphasis step change passes a step that changes 2 % of the box"
+      ]
+    },
+    {
+      "name": "the box is not clipped to the frame's right edge",
+      "file": "products/explainer/src/emphasis-change.ts",
+      "find": "const x1 = Math.min(before.width, Math.ceil(target.x + target.width));",
+      "replace": "const x1 = Math.ceil(target.x + target.width);",
+      "kills": [
+        "emphasis step change counts only the on-frame part of a box that runs off the frame"
+      ]
+    },
+    {
+      "name": "marks of different sizes are diffed",
+      "file": "products/explainer/src/emphasis-change.ts",
+      "find": "if (before.width !== after.width || before.height !== after.height) throw new Error(\"mark frames differ in size\");",
+      "replace": "",
+      "kills": [
+        "emphasis step change refuses marks of different sizes"
+      ]
+    }
+  ]
+}

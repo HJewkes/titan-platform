@@ -7,11 +7,14 @@ export type LimitsFindingKind =
   | "invalid_profile"
   | "invalid_seat"
   | "ignored_override"
+  | "ignored_section"
+  | "invalid_pace"
   | "expired_override"
   | "unknown_pool"
   | "unknown_profile"
   | "unknown_config_dir"
-  | "clamped";
+  | "clamped"
+  | "deprecated_key";
 
 export interface LimitsFinding {
   kind: LimitsFindingKind;
@@ -36,6 +39,10 @@ function invalidScopes(parsed: ParsedLimits): LimitsFinding[] {
     ...parsed.ignoredOverrides.map(({ index, reason }) => ({
       kind: "ignored_override" as const,
       message: `overrides[${index}] is ignored: ${reason}`,
+    })),
+    ...Object.entries(parsed.ignoredSections).map(([section, reason]) => ({
+      kind: section === "pace" ? ("invalid_pace" as const) : ("ignored_section" as const),
+      message: `${section} is ignored, so its fields stay unset: ${reason}`,
     })),
   ];
 }
@@ -96,12 +103,12 @@ function unknownConfigDirs(parsed: ParsedLimits, knownConfigDirs: readonly strin
 }
 
 function clampsIn(where: string, fields: object): LimitsFinding[] {
-  return Object.entries(fields)
-    .filter(([field, value]) => field in LIMIT_BOUNDS && typeof value === "number" && clampToBounds(field, value) !== value)
-    .map(([field, value]) => ({
-      kind: "clamped",
-      message: `${where}.${field} ${value} is clamped to ${clampToBounds(field, value as number)}`,
-    }));
+  return Object.entries(fields).flatMap(([field, value]): LimitsFinding[] => {
+    if (!(field in LIMIT_BOUNDS) || typeof value !== "number") return [];
+    const bounded = clampToBounds(field, value);
+    if (bounded === value) return [];
+    return [{ kind: "clamped", message: `${where}.${field} ${value} is clamped to ${bounded}` }];
+  });
 }
 
 function clamps(parsed: ParsedLimits): LimitsFinding[] {
@@ -118,6 +125,29 @@ function clamps(parsed: ParsedLimits): LimitsFinding[] {
   ];
 }
 
+const DEPRECATED_KEYS = ["per_run_points", "per_day_points"] as const;
+
+function deprecatedIn(where: string, fields: object): LimitsFinding[] {
+  return DEPRECATED_KEYS.filter((key) => key in fields).map((key) => ({
+    kind: "deprecated_key",
+    message: `${where}.${key} is deprecated (TP-2425, CC-1104): the pace controller replaces it`,
+  }));
+}
+
+function deprecatedKeys(parsed: ParsedLimits): LimitsFinding[] {
+  const { defaults, pools, profiles, seats, overrides } = parsed.limits;
+  return [
+    ...deprecatedIn("defaults", defaults ?? {}),
+    ...Object.entries(pools).flatMap(([name, pool]) => deprecatedIn(`pools.${name}`, pool)),
+    ...Object.entries(profiles).flatMap(([name, profile]) => [
+      ...deprecatedIn(`profiles.${name}`, profile),
+      ...Object.entries(profile.pools ?? {}).flatMap(([pool, f]) => deprecatedIn(`profiles.${name}.pools.${pool}`, f)),
+    ]),
+    ...Object.entries(seats).flatMap(([name, seat]) => deprecatedIn(`seats.${name}`, seat)),
+    ...overrides.flatMap((o) => deprecatedIn(`override ${o.decision}`, o)),
+  ];
+}
+
 /** Everything about a limits block worth telling the owner, without changing what resolves. */
 export function checkLimits(parsed: ParsedLimits, options: CheckOptions): LimitsFinding[] {
   return [
@@ -127,5 +157,6 @@ export function checkLimits(parsed: ParsedLimits, options: CheckOptions): Limits
     ...unknownProfiles(parsed, options.knownProfiles),
     ...unknownConfigDirs(parsed, options.knownConfigDirs),
     ...clamps(parsed),
+    ...deprecatedKeys(parsed),
   ];
 }

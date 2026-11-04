@@ -52,6 +52,7 @@ result to `options.env`. It never mutates its argument and never reads
 | `CLAUDE_CODE_OAUTH_TOKEN` | keep | the subscription credential |
 | `CLAUDE_CODE_USE_BEDROCK` / `_VERTEX` / `_FOUNDRY` | keep | a deliberate provider choice |
 | `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | keep | a deliberate opt-out |
+| `CLAUDE_CODE_REMOTE` | keep | the only switch that stops the CLI's subagent warmup in a headless `claude -p` run |
 | `CLAUDE_CODE_MAX_RETRIES` | keep, default `3` | the built-in default of 10 turns an outage into a long silent hang |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | strip unless `allowApiKeyBilling` | either one silently outranks the OAuth token and bills the API account |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (both cases) | strip | leak from the parent shell and re-route the child's API traffic |
@@ -220,7 +221,7 @@ probe `exec resume --help`: required flags come from the invoked subcommand,
 while sandbox values come from `exec --help`, because both commands set
 `sandbox_mode` through `--config`. Required capabilities follow the arguments
 the adapter builds. Both help probes share the setup deadline. Missing or unrecognized
-capabilities fail before starting a model; help is surface evidence, not sandbox or
+capabilities fail as `harness_mismatch` before starting a model; help is surface evidence, not sandbox or
 policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
 `SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.
 
@@ -302,6 +303,32 @@ exits, pending and later calls reject with `CodexAppServerExitedError`. The clie
 declines server requests such as approvals with a JSON-RPC error. Choose an approval
 policy at `threadStart` that never asks.
 
+## Launch identity and per-agent TMPDIR
+
+A host that launches long-lived agents marks each launch's process tree and gives it a private
+temp dir. These modules come from agent-chat, which still owns the policy around them: when to
+reap, which roster rows count, and what to log.
+
+- `AGENT_ID_ENV` and `LAUNCHER_PID_ENV` mark a launch. A process belongs to a launch only when
+  both match, so a resumed agent's live successor is never mistaken for a finished launch's stray.
+- `withoutLaunchIdentity(env)` and `clearLaunchIdentity(env)` drop the identity, any restart
+  token and any launch's private temp dir. Run one before starting shared infrastructure from
+  inside an agent; otherwise that infrastructure inherits the agent's identity.
+- `ensureAgentTmpDir({ name, pid, root })` makes `<root>/ac-<name>-<pid>` with mode 0700, on
+  Linux only. `root` is `/tmp`, `diskTmpRoot(home)` or `diskHarnessRoot(home)`. The dir is not
+  made, and the function returns undefined, when the path is a symlink, is not a directory or
+  belongs to another uid.
+- `removeOwnTmpDir` runs at the launcher's exit. `sweepAgentTmpDirs` runs periodically and
+  covers finished launches. Each removes only the exact path rebuilt from a validated name and
+  pid, and keeps the dir while a process of the launch is alive or holds its cwd or an fd inside.
+- `reapOwnLaunch(agentId, launcherPid, deps)` sends TERM and then KILL to the processes a
+  finished launch left behind. It spares the caller, the caller's ancestors and daemons.
+
+Path length: Linux caps a Unix socket path at 108 bytes. `<home>/.cache/agent-chat/tmp/ac-<name>-<pid>`
+reaches about 80 bytes with a 32-character name, so a tool that opens a pipe under TMPDIR, as
+tsx does, can exceed the cap and fail with `listen EINVAL`. The format stays fixed because
+`isLaunchTmpDir` must recognise dirs made by older launchers; keep agent names short instead.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message
@@ -328,6 +355,8 @@ reads and cache creation; those subset counters must not be added again.
 The adapter does not translate SDK `maxTurns` into a generic model-request or
 agent-iteration limit, or treat the SDK budget estimate as an exact monetary cap.
 Generic optional limits remain unsupported until their semantics are verified.
+A run that reaches the native `maxTurns` still reports `limit_exceeded` with unit
+`agent_iterations`, the closest shared unit, so callers see a definite limit failure.
 No process reattachment, visible terminal, or semantic-interrupt capability is
 claimed by this wrapper. Legacy `runAgent` callers retain their existing API.
 
@@ -356,6 +385,13 @@ native terminal acknowledgment after a deadline or abort, the ledger records
 `cancellation_unknown`. Lease-renewal, stale-owner, and local persistence failures
 settle completion promptly even when the adapter ignores abort; they cannot write a
 terminal result through a newer owner's fence. Durable results must be JSON-safe.
+
+Only a `runtime_error` failure is treated as ambiguous transport loss and parks the
+record in `recovery_required`. A Claude run that reaches its native `maxTurns`
+fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by
+the version or capability check fails as `harness_mismatch` before spawn, as does
+a version or help probe that throws (for example ENOENT). Both persist as terminal
+`failed`.
 
 
 ### Shared pricing implementation

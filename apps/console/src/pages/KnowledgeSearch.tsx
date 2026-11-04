@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { refToRoute } from "../refs.js";
 import { open } from "../router.js";
 import { openRef } from "./KnowledgeTable.js";
+import { PHONE_TAP, usePhoneInputSize } from "./phone.js";
 
 type Hit = ConsoleCommands["work.search"]["result"]["hits"][number];
 
@@ -13,11 +15,12 @@ const runSearch = (q: string): void => open({ view: "knowledge", query: new URLS
 /** The Search tab: the query lives in `q`, so a search is a link. */
 export function KnowledgeSearch({ q }: { q: string }): ReactNode {
   const [draft, setDraft] = useState(q);
+  const size = usePhoneInputSize();
   return (
     <VStack gap={4}>
-      <HStack gap={2} align="center">
-        <Input value={draft} onChangeText={setDraft} onSubmitEditing={() => runSearch(draft.trim())} placeholder="Search notes, briefs, sources, tasks and sessions" accessibilityLabel="Search" className="w-96" />
-        <Button onPress={() => runSearch(draft.trim())}><ButtonText>Search</ButtonText></Button>
+      <HStack gap={2} align="center" wrap>
+        <Input value={draft} onChangeText={setDraft} onSubmitEditing={() => runSearch(draft.trim())} placeholder="Search notes, briefs, sources, tasks and sessions" accessibilityLabel="Search" size={size} className="w-96 max-w-full" />
+        <Button className={PHONE_TAP} onPress={() => runSearch(draft.trim())}><ButtonText>Search</ButtonText></Button>
       </HStack>
       {q ? <Results q={q} /> : <Typography variant="caption" color="secondary">Search every initiative at once.</Typography>}
     </VStack>

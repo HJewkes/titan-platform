@@ -1,6 +1,7 @@
 import { conversationRef, type ConversationIdentity, type ExecutionRecord, type UsageMeasurement } from "@titan-design/agent-protocol";
 import { TRACE_SCHEMA_VERSION, TraceAttemptSchema, TraceRunSchema, type TraceAttempt, type TraceRecord, type TraceRun } from "@titan-design/agent-protocol/trace";
 import type { GateStore } from "@titan-design/hitl";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { pendingGateRecords, stepArtifactRecords, stepGateRecords } from "./trace-projection-gates.js";
 import { usageFromMeasurements } from "./usage.js";
 import { workflowStepRequestKey, type ActiveStep, type StepOperation, type StepResult, type StepUsage, type WorkflowRun } from "./types.js";
@@ -54,7 +55,7 @@ function resultAttempts(run: WorkflowRun, result: StepResult, sources: RunTraceS
   const final = finalFields(result, sources);
   const ledger = slot.stepKind === "dispatch" ? ledgerAttempts(run, slot, sources, final) : [];
   if (ledger.length > 0) return ledger;
-  return [attemptRecord(run, slot, result.completedAt, { ...final, outcome: "succeeded", completedAt: result.completedAt, ...usageField(result.usage) })];
+  return [attemptRecord(run, slot, result.startedAt ?? result.completedAt, { ...final, outcome: "succeeded", completedAt: result.completedAt, ...usageField(result.usage) })];
 }
 
 /** Results from before 0.5 carry no operation; only a dispatch has a runner id, and only a seed has output without one. */
@@ -130,10 +131,6 @@ function conversationOf(record: ExecutionRecord): ConversationIdentity | undefin
   const { conversation } = succeededResult(record.terminal);
   if (isConversation(conversation)) return conversation;
   return record.execution.conversation ?? (record.target.kind === "resume" ? record.target.conversation : undefined);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isMeasurement(value: unknown): value is UsageMeasurement {

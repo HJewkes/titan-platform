@@ -1,8 +1,11 @@
 import { mkdtemp, mkdir, writeFile, readFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { readLoginState, readUsage } from "./index.js";
+
+const fakeCodex = fileURLToPath(new URL("../../fixtures/fake-codex.sh", import.meta.url));
 
 const roots: string[] = [];
 const now = 1_800_000_000;
@@ -48,11 +51,9 @@ describe("Codex account node readers", () => {
     expect(state).toEqual({ status: "refused", reason: "probe-failed" });
   });
   it.each([0, 1, 2])("handles native probe exit %s without invoking installed Codex", async exitCode => {
-    const profile = await home();
-    const executablePath = join(profile.codeHome, "fake-cli");
     const output = exitCode === 0 ? "Logged in using ChatGPT" : "Not logged in";
-    await writeFile(executablePath, `#!${process.execPath}\nif (process.argv.slice(2).join(' ') !== 'login status') process.exit(99);\nconsole.error(${JSON.stringify(output)}); process.exit(${exitCode});\n`, { mode: 0o700 });
-    const state = await readLoginState(profile, { executablePath });
+    const env = { PATH: process.env.PATH, FAKE_CODEX_OUTPUT: output, FAKE_CODEX_EXIT: String(exitCode) };
+    const state = await readLoginState(await home(), { executablePath: fakeCodex, env });
     expect(state.status).toBe(exitCode === 0 ? "present" : exitCode === 1 ? "missing" : "refused");
   });
   it("kills an overlong model-free probe and refuses an already aborted probe", async () => {

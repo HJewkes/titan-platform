@@ -8,8 +8,36 @@ const VARIABLE_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]/y;
 const NAME_TAIL_RE = /[A-Za-z0-9_]+/y;
 
 export function ensureWord(s: LexState): WordToken {
+  if (!s.word) s.quotes = [];
   s.word ??= { type: "word", value: "", dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
   return s.word;
+}
+
+/** Notes the pending word's `value` from `from` to its end as read inside quotes or after an escape. */
+export function noteQuotedFrom(s: LexState, from: number): void {
+  const end = s.word?.value.length ?? from;
+  if (end > from) s.quotes.push([from, end]);
+}
+
+/** The ranges of `[0, length)` no quoted range covers. */
+function bareRanges(quotes: Array<[number, number]>, length: number): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  let at = 0;
+  for (const [start, end] of [...quotes].sort((a, b) => a[0] - b[0])) {
+    if (start > at) spans.push([at, start]);
+    at = Math.max(at, end);
+  }
+  if (at < length) spans.push([at, length]);
+  return spans;
+}
+
+/**
+ * The ranges of `value` read outside every quote and escape. A word read whole one way needs no record; a spliced word
+ * whose `value` was rewritten since the lexer read it counts as bare throughout, as it did before spans were kept.
+ */
+export function bareSpans(w: WordToken): Array<[number, number]> {
+  if (w.bare?.text === w.value) return w.bare.spans;
+  return w.quoted && !w.spliced ? [] : [[0, w.value.length]];
 }
 
 export function appendChar(s: LexState, c: string): void {
@@ -48,6 +76,7 @@ export function endWord(s: LexState): void {
   if (!w) return;
   s.word = null;
   if (w.tildes) w.tildes.text = w.value;
+  if (w.spliced) w.bare = { text: w.value, spans: bareRanges(s.quotes, w.value.length) };
   const pending = s.redirect;
   s.redirect = null;
   if (!pending) {
@@ -88,6 +117,7 @@ export function readEscape(s: LexState): void {
   if (next !== undefined && next !== "\n") {
     const w = ensureWord(s);
     w.value += next;
+    noteQuotedFrom(s, w.value.length - 1);
     w.quoted = true;
     w.spliced = true;
   }
@@ -97,13 +127,17 @@ export function readSingle(s: LexState): void {
   const end = s.src.indexOf("'", s.i + 1);
   if (end === -1) throw new ParseError("unterminated '");
   const w = markQuoted(ensureWord(s));
+  const from = w.value.length;
   w.value += s.src.slice(s.i + 1, end);
+  noteQuotedFrom(s, from);
   s.i = end + 1;
 }
 
 export function readAnsiC(s: LexState, w: WordToken): void {
   const end = ansiCEnd(s.src, s.i + 1);
+  const from = w.value.length;
   w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
+  noteQuotedFrom(s, from);
   w.quoted = true;
   w.spliced = true;
   s.i = end + 1;

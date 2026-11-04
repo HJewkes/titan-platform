@@ -1,7 +1,7 @@
 # @titan-design/agent-protocol
 
 Dependency-free identity and usage contracts shared by agent execution and session
-readers (TP-44). The `./trace` and `./worker-facts` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
+readers (TP-44). The `./trace`, `./worker-facts` and `./wire` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
 
 `ConversationIdentity` names a native thread by harness, corpus namespace and native
 ID. `conversationRef()` escapes each component into a `conversation:` reference;
@@ -137,6 +137,49 @@ the last Status or Verdict (`report`: message id, kind, text of at most 2,000 ch
 PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
 carries the exit facts only. The producer truncates the report; the schema rejects one over the
 cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
+
+## Agent-chat wire
+
+The `@titan-design/agent-protocol/wire` subpath (TP-643) holds zod schemas and types for
+agent-chat's dispatch frames: the `spawn`, `resume`, `retire`, `agents` and `surface`
+requests, their `spawn_result`, `agents_result` and `switch_result` replies, and the
+`AgentProfile`, `RemoteProfile`, `RemoteLaunch` and `AgentRecord` records they carry. It
+matches agent-chat's `src/protocol.ts` and `src/agents/types.ts` as of 2026-10-28. Like
+`./trace`, it needs `zod` as a peer, and the root entry never imports it.
+
+Each schema is written once and its type derived from it. The exported `*Schema` constants
+parse loosely: a key the contract does not name survives at every depth, so a reader one
+release behind forwards a newer peer's frame intact, while the derived types drop the catch-all
+index signature. `buildRequestSchemas("exact")` and `buildResultSchemas("exact")` build the
+same schemas refusing unnamed keys; a consumer's golden test parses its captured frames with
+them to catch drift. `RemoteProfileSchema` refuses `env`, `mcpServers` and `warnings` even
+loosely, since that type exists so none of them crosses to a remote host. Parsing a frame
+grants no launch, account or permission authority; those stay broker checks.
+
+These are legacy projections of agent-chat's vocabulary, not neutral contracts:
+
+| Wire | Canonical |
+|---|---|
+| `AgentRecord.agentId` | root `AgentIdentity.agentId`; the wire record is named apart so the two never clash |
+| `sessionId`, `resumeSession` | `ConversationIdentity.nativeId`, harness `claude` |
+| `configDir`, `account` | `HarnessAccountRef` in `./harness`, resolved by the host, never by this package |
+| `AgentProfile.model`, `effort` | `HarnessModelIntent` |
+| `SpawnResult` (`ok: false` with `code`) | `HarnessDispatchReceipt` `refused` |
+| `AgentLifecycle` | a roster state, not an `ExecutionPhase` |
+
+The MCP argument schemas for `agent_spawn`, `agent_resume`, `agent_surface`, `agent_list` and
+`agent_profiles` (`AgentSpawnArgsSchema` and so on) are plain objects in the snake_case a model
+types, so a key a tool does not name is stripped, where a socket frame keeps it. They carry no
+`.describe()` text. That help is written for the product's models and changes often, so the product
+adds it with `.extend()`. `requiredString`, `nonBlank`, `oneOf` and `isWorkRole` keep the refusal
+wording callers already match on.
+
+Synthetic fixtures ship under `fixtures/wire/v1/`. `socket-frames.json` and `records.json` hold
+one fully populated value of each frame and record, and `mcp-args.json` one call to each tool.
+All of them parse under the exact schemas.
+
+`SURFACE_NAMES` is owned by `@titan-design/agent-surface`, a tier above; the wire keeps a copy
+and agent-surface's test pins the two equal.
 
 ## Harness execution contracts
 

@@ -56,22 +56,25 @@ function gradeMatchesEvidence(rule: DoctrineRule, { evidence }: DoctrineRegistry
 }
 
 function layerScope(rule: DoctrineRule): DoctrineIssue[] {
-  const { layer, beats, types, audiences } = rule.scope;
+  const { layer, beats, types, audiences, structures } = rule.scope;
   if (layer === "B" && !beats) return [issue("beat-rule-without-beats", rule, "a B rule names its beats")];
-  if (layer === "T" && !types && !audiences) return [issue("type-rule-without-target", rule, "a T rule names its types or audiences")];
-  if ((layer === "U" || layer === "U*") && (beats || types)) {
-    return [issue("universal-rule-scoped", rule, `a ${layer} rule carries neither beats nor types`)];
+  if (layer === "T" && !types && !audiences && !structures) {
+    return [issue("type-rule-without-target", rule, "a T rule names its types, audiences or structures")];
+  }
+  if ((layer === "U" || layer === "U*") && (beats || types || structures)) {
+    return [issue("universal-rule-scoped", rule, `a ${layer} rule carries no beats, types or structures`)];
   }
   return layer === "U*" && !rule.param ? [issue("param-missing", rule, "a U* rule names the profile param that supplies its value")] : [];
 }
 
 function vocabulary(rule: DoctrineRule, registry: DoctrineRegistry): DoctrineIssue[] {
-  const { beats = [], types = [], audiences = [] } = rule.scope;
+  const { beats = [], types = [], audiences = [], structures = [] } = rule.scope;
   const allowed = registry.vocabulary;
   const unknown = [
     ...beats.filter((name) => !allowed.beats.includes(name)).map((name) => `beat ${name}`),
     ...types.filter((name) => !allowed.types.includes(name)).map((name) => `type ${name}`),
     ...audiences.filter((name) => !allowed.audiences.includes(name)).map((name) => `audience ${name}`),
+    ...structures.filter((name) => !allowed.structures.includes(name)).map((name) => `structure ${name}`),
   ];
   return unknown.map((name) => issue("unknown-vocabulary", rule, `${name} is not in vocabulary.yaml`));
 }

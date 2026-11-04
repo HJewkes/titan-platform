@@ -26,6 +26,20 @@ describe("explainer guide plan", () => {
     expect(out).toContain("## Rules for the plan stage");
   });
 
+  it("prints one video type's guide with --type", async () => {
+    const { code, out } = await run(["guide", "plan", "--type", "repo-tour"]);
+
+    expect(code).toBe(0);
+    expect(out).toContain("# Planner guide: repo-tour");
+  });
+
+  it("exits 2 on an unknown --type, naming the known profiles", async () => {
+    const { code, err } = await run(["guide", "plan", "--type", "repo-saga"]);
+
+    expect(code).toBe(2);
+    expect(err).toContain("unknown profile repo-saga; known: daily-overview");
+  });
+
   it("exits 2 on an unknown stage", async () => {
     const { code } = await run(["guide", "plan", "--stage", "render"]);
 

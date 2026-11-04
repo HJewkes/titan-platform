@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from '../errors.js';
 import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
@@ -19,7 +19,27 @@ export interface ProcessProbes {
   getComm: (pid: number) => string | null;
 }
 
-const DEFAULT_PROBES: ProcessProbes = { isAlive: isProcessAlive, getComm: getProcessCommand };
+/**
+ * On Linux `ps` reports a thread name such as `MainThread` for claude and node
+ * processes, so the executable comes from argv[0] in `/proc/<pid>/cmdline`.
+ * Unreadable means unknown, which the caller treats as claude.
+ */
+export function procCommand(
+  pid: number,
+  read: (file: string) => string = (file) => readFileSync(file, 'utf8'),
+): string | null {
+  try {
+    return read(`/proc/${pid}/cmdline`).split('\0')[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function defaultGetComm(pid: number): string | null {
+  return process.platform === 'linux' ? procCommand(pid) : getProcessCommand(pid);
+}
+
+const DEFAULT_PROBES: ProcessProbes = { isAlive: isProcessAlive, getComm: defaultGetComm };
 
 /** Claude runs as its own binary or under node; anything else is a recycled pid. */
 const CLAUDE_COMM = /claude|node/i;

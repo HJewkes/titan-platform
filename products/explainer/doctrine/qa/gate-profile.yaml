@@ -1,0 +1,36 @@
+# The qa stage's gate profile: which render-qa finding kinds fail the stage, and the inspector thresholds, per video
+# type. Gating kinds are QA vocabulary that changes with @titan-design/render-qa, so they live here and not in the
+# reviewed type profiles; pacing thresholds stay in types/<type>.yaml.
+#
+# default.gate: the kinds whose held findings fail the qa stage. It starts as every kind render-qa can gate, which is
+# exactly what the motion spike's examples/qa.ts gated, so a run here and a spike run on the same page agree.
+# default.inspect: overrides of render-qa's DEFAULT_OPTIONS thresholds; none yet.
+# types.<type>: a type's override. `gate` adds kinds, `info` demotes kinds to reported only, `inspect` sets thresholds.
+schema: explainer.qa-gate-profile/v1
+default:
+  gate:
+    - text-overlap
+    - text-box
+    - box-overlap
+    - occluded
+    - edge-crossing
+    - off-frame
+    - content-overflow
+    - small-text
+    - low-contrast
+    - wrap
+    - flex-wrap
+    - anchor-offset
+    - label-dropped
+    - edge-label-far
+    - late-fill
+    - double-chrome
+    - under-chrome
+    - fill-order
+    - tone-mismatch
+    - title-repeat
+    - unlabelled-number
+    - label-adjacent
+    - misaligned
+  inspect: {}
+types: {}

@@ -1,0 +1,29 @@
+schema: narrative-structure/v1
+id: mystery
+version: 0.1.0
+source: "story-structure §2.10 (mystery / open loop), §4 row 2"
+summary: "Cold open on an anomaly, follow the clues and false leads, then reveal the cause."
+fit:
+  ask: "Is there one surprising finding: a bug, a contradiction, a number that should not be true?"
+  any: [anomaly]
+blocks:
+  - { id: anomaly, goal: "Cold open on the thing that should not happen.", share: 0.15 }
+  - { id: clues, goal: "Deep dives as clues and false leads.", share: 0.45 }
+  - { id: reveal, goal: "The cause, shown in the material.", share: 0.25 }
+  - { id: takeaway, goal: "What the cause teaches.", share: 0.15 }
+hook: "Open on the anomaly itself, not on a description of it."
+ending: "takeaways+button"
+spine:
+  - title: Anomaly
+    body: |-
+      <The observation that should not be true, with one fact id.>
+  - title: Clues and false leads
+    body: |-
+      | # | Clue or false lead | What it rules in or out | Fact id |
+      |---|---|---|---|
+  - title: Reveal
+    body: |-
+      <The cause, and the one beat that shows it.>
+  - title: Open loops
+    body: |-
+      <Each question the open sets up, and the beat that closes it.>

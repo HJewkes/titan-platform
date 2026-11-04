@@ -5,6 +5,7 @@ import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { UNPARSED_AFTER_CORRECTION } from "./correct-verdict.js";
 import type { Verdict } from "./phases.js";
 import { causeLabel, noteCarryStep, reviewCause, reviewCauseStats, type CarryProbe, type CauseFacts, type LastReview } from "./review-cause.js";
+import { partialFake } from "@titan-design/test-kit";
 
 const H1 = fakeSha("cause-head-1");
 const H2 = fakeSha("cause-head-2");
@@ -37,6 +38,8 @@ describe("reviewCause", () => {
     ["a merge-up whose merge touched reviewed paths", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("feature"), tree, remerge("the merge changed 2 path(s) outside the declared generated files")) }), { cause: "merge-up-not-carried", reason: "remerge-touched" }],
     ["a merge-up whose base is off the branch", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("feature"), tree, remerge(`second parent ${H1} is not on main`)) }), { cause: "merge-up-not-carried", reason: "base-off-branch" }],
     ["a merge-up a seat objected to", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("refactor"), [`sh-carry:${H2}`, { equal: true, headTree: "t", mergeTree: "t" }], [`sh-carry-seat:${H2}`, { clear: false, reason: "a seat reviewer said FIX_FIRST" }]) }), { cause: "merge-up-not-carried", reason: "seat" }],
+    ["a merge-up to a head that claims attestation rows", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("correctness"), [`sh-carry-claims:${H2}:0`, { claimed: 1 }]) }), { cause: "merge-up-not-carried", reason: "attest-claims" }],
+    ["a merge-up to a head whose attestations.json is unread", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("correctness"), [`sh-carry-claims:${H2}:0`, { unread: "malformed" }]) }), { cause: "merge-up-not-carried", reason: "attest-claims" }],
     ["a merge-up with no base branch", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("feature", null)) }), { cause: "merge-up-not-carried", reason: "base-unknown" }],
     ["a merge-up whose probe failed", facts({ last: merged, updated: new Set([H2]), carry: probed(scope("feature"), tree, remerge("git fetch failed")) }), { cause: "merge-up-not-carried", reason: "probe-failed" }],
     ["a seat push after a MERGE that did not carry", facts({ last: merged, carry: probed(scope("feature"), tree, remerge(`${H2} is not ${H1} plus one merge`)) }), { cause: "seat-push", reason: "not-one-merge" }],
@@ -72,7 +75,7 @@ const intentAt = (head: string, at: number, cause?: unknown): StepResult => ({
   data: { result: { kind: "intent", head, reviewer: "rv", at, mode: "spawn", ...(cause !== undefined && { cause }) } },
 });
 const runOf = (repo: string, results: StepResult[]): WorkflowRun =>
-  ({ runId: `run-${repo}`, workflowName: "shepherd-pr", params: { repo }, status: "completed", error: null, stepResults: Object.fromEntries(results.map((result, i) => [`dispatch:${result.stepId}:${i}`, result])) }) as unknown as WorkflowRun;
+  Object.assign(partialFake<WorkflowRun>(), { runId: `run-${repo}`, workflowName: "shepherd-pr", params: { repo }, status: "completed", error: null, stepResults: Object.fromEntries(results.map((result, i) => [`dispatch:${result.stepId}:${i}`, result])) });
 
 describe("reviewCauseStats", () => {
   it("counts each recorded cause per repo and ISO week, and counts a run recorded before causes as unknown", () => {

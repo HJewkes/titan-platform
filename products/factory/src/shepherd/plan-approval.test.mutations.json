@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "record accepts any resolver that carries a confirm event",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "if (actor !== CONSOLE_ACTOR || !resolver.confirmEvent) throw",
+      "replace": "if (!resolver.confirmEvent) throw",
+      "kills": [
+        "the plan-approval store refuses a write from a coordinator and leaves no row"
+      ]
+    },
+    {
+      "name": "the read returns only rows another actor wrote",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "AND repo = ? AND actor = ? ORDER BY",
+      "replace": "AND repo = ? AND actor != ? ORDER BY",
+      "kills": [
+        "the plan-approval store never reads back a row an agent inserted directly, even one claimed by the run"
+      ]
+    },
+    {
+      "name": "the read ignores which run claimed the approval",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "WHERE claimed_run = ? AND task = ?",
+      "replace": "WHERE (claimed_run = ? OR 1) AND task = ?",
+      "kills": [
+        "binding a plan approval to one run lets a registration made after the approval claim it, and a second PR registered under the task later reads none"
+      ]
+    },
+    {
+      "name": "update() claims the task's unclaimed approvals",
+      "file": "products/factory/src/shepherd/store.ts",
+      "find": "      writeRegistrant(this.db, runId, meta.registrant, meta.implementer);\n",
+      "replace": "      writeRegistrant(this.db, runId, meta.registrant, meta.implementer);\n      claimPlanApprovals(this.db, runId, meta.task, stored.repo);\n",
+      "kills": [
+        "binding a plan approval to one run reads none for a claimed run once it is re-registered under another task, and none for a run updated to the approved task"
+      ]
+    }
+  ]
+}

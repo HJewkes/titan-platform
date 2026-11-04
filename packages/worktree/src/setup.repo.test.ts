@@ -2,10 +2,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixtureEnv, removeTemplates, type SeedFiles, seedRepo, seedRepoWithOrigin } from "@titan-design/test-kit/git";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator, type WorktreeRequest } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
 import {
@@ -19,8 +19,6 @@ import {
   type SetupResult,
   type SetupRunner,
 } from "./setup.js";
-import { seedRepo, seedRepoWithOrigin, type SeedFiles } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
 vi.setConfig({ testTimeout: 20_000 });
@@ -32,6 +30,12 @@ process.env.npm_config_fetch_timeout = "15000";
 process.env.npm_config_fetch_retry_maxtimeout = "10000";
 
 const tmpdirs: string[] = [];
+
+// Node children (npx, npm) fill a compile cache under TMPDIR that nothing else in this file registers.
+afterAll(() => {
+  removeTemplates();
+  fs.rmSync(path.join(os.tmpdir(), "node-compile-cache"), { recursive: true, force: true });
+});
 
 afterEach(() => {
   while (tmpdirs.length > 0)
@@ -318,7 +322,7 @@ describe("where the setup declaration is read from", () => {
       ctxFor(repo)
     );
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(fs.readFileSync(path.join(alloc.cwd, SETUP_FILE), "utf8")).toContain(
       "branch-step"
     );
@@ -339,11 +343,11 @@ describe("where the setup declaration is read from", () => {
     const record = {
       gitRoot: repo,
       worktree: first.cwd,
-      branch: first.ref?.branch ?? "",
+      branch: first.ref.branch ?? "",
     };
     const again = await reattachWorktree(record, { runSetup: runner });
 
-    expect(again.ref?.reattached).toBe("local");
+    expect(again.ref.reattached).toBe("local");
     expect(fs.readFileSync(path.join(again.cwd, SETUP_FILE), "utf8")).toContain(
       "branch-step"
     );
@@ -359,7 +363,7 @@ describe("where the setup declaration is read from", () => {
       ctxFor(repo)
     );
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(calls).toEqual([]);
     expect(setupWarnings(alloc.warnings)).toEqual([]);
   });
@@ -393,7 +397,7 @@ describe("worktree setup on resume re-creation", () => {
     const record = {
       gitRoot: repo,
       worktree: first.cwd,
-      branch: first.ref?.branch ?? "",
+      branch: first.ref.branch ?? "",
     };
     const again = await reattachWorktree(record, { runSetup: runner });
 
@@ -421,10 +425,13 @@ describe("the default setup runner", () => {
 
   it("kills a step that outlives its timeout", async () => {
     const dir = tmpdir("wt-run-");
-    const started = Date.now();
-    const result = await runSetupCommand(["sh", "-c", "sleep 30"], dir, 200);
-    expect(result.timedOut).toBe(true);
-    expect(Date.now() - started).toBeLessThan(10_000);
+    // The trap's exit code and output show SIGTERM ended the step, not its own sleep.
+    const result = await runSetupCommand(
+      ["sh", "-c", "trap 'echo got-term; exit 7' TERM; sleep 30 & wait"],
+      dir,
+      200
+    );
+    expect(result).toEqual({ exitCode: 7, timedOut: true, output: "got-term\n" });
   });
 
   it("passes the step PATH but not the rest of the broker environment", async () => {
@@ -584,7 +591,7 @@ describe("npm config during worktree setup", () => {
 
     const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(setupWarnings(alloc.warnings)).toEqual([]);
     expect(markersIn(alloc.cwd)).toEqual([]);
   }, 60_000);
@@ -604,7 +611,7 @@ describe("npm config during worktree setup", () => {
 
       const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
 
-      expect(alloc.ref?.reused).toBe("true");
+      expect(alloc.ref.reused).toBe("true");
       expect(setupWarnings(alloc.warnings)).toEqual([NPMRC_SKIPPED]);
       expect(markersIn(markers)).toEqual([]);
     },
@@ -628,7 +635,7 @@ describe("npm config during worktree setup", () => {
 
     const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(setupWarnings(alloc.warnings)).toEqual([]);
     expect(markersIn(markers)).toEqual([]);
   }, 120_000);
@@ -772,7 +779,9 @@ async function servePnpm(
     else res.writeHead(404).end("{}");
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("registry did not bind a TCP port");
+  const url = `http://127.0.0.1:${address.port}`;
   const registry: FakeRegistry = {
     url,
     requests: [],
@@ -880,7 +889,7 @@ describe("packageManager during worktree setup", () => {
 
     const alloc = await allocateAgainst(repo, registry);
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(setupWarnings(alloc.warnings)).toEqual([]);
     expect(registry.requests).toContain("/pnpm");
     expect(markersIn(markers)).toEqual([]);
@@ -945,7 +954,7 @@ describe("packageManager during worktree setup", () => {
         createWorktreeAllocator().allocate(ctxFor(repo))
       );
 
-      expect(alloc.ref?.reused).toBe("true");
+      expect(alloc.ref.reused).toBe("true");
       expect(registry.requests).toEqual([]);
       expect(markersIn(markers)).toEqual([]);
     } finally {
@@ -987,7 +996,7 @@ describe("pnpm-workspace.yaml during worktree setup", () => {
 
       const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
 
-      expect(alloc.ref?.reused).toBe("true");
+      expect(alloc.ref.reused).toBe("true");
       expect(setupWarnings(alloc.warnings)).toEqual([
         `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
       ]);
@@ -1044,7 +1053,7 @@ describe("pnpm-workspace.yaml during worktree setup", () => {
       runSetup: recorder.runner,
     }).allocate(ctxFor(repo));
 
-    expect(alloc.ref?.reused).toBe("true");
+    expect(alloc.ref.reused).toBe("true");
     expect(setupWarnings(alloc.warnings)).toEqual([]);
     expect(recorder.calls).toHaveLength(1);
   });

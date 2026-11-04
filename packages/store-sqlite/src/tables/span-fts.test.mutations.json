@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "purgeSource leaves the FTS rows behind",
+      "file": "packages/store-sqlite/src/tables/span-fts.ts",
+      "find": "if (contentlessDelete) deleteSourceFts.run(sourceId);",
+      "replace": "",
+      "kills": [
+        "SpanFtsTables contentlessDelete purgeSource removes only that source's spans and tokens"
+      ]
+    },
+    {
+      "name": "purgeOwner leaves the FTS rows behind",
+      "file": "packages/store-sqlite/src/tables/span-fts.ts",
+      "find": "if (contentlessDelete) deleteOwnerFts.run(ownerRef);",
+      "replace": "",
+      "kills": [
+        "SpanFtsTables contentlessDelete removes a purged owner's tokens from the index, leaving no orphans"
+      ]
+    },
+    {
+      "name": "the option no longer reaches the DDL",
+      "file": "packages/store-sqlite/src/tables/span-fts.ts",
+      "find": "${contentlessDelete ? \", contentless_delete=1\" : \"\"}",
+      "replace": "",
+      "kills": [
+        "SpanFtsTables contentlessDelete creates a contentless-delete FTS table"
+      ]
+    },
+    {
+      "name": "the version floor is dropped",
+      "file": "packages/store-sqlite/src/tables/span-fts.ts",
+      "find": "if (typeof version !== \"string\" || !supportsContentlessDelete(version)) {",
+      "replace": "if (false) {",
+      "kills": [
+        "SpanFtsTables contentlessDelete fails loudly when the SQLite build predates contentless_delete"
+      ]
+    },
+    {
+      "name": "the default path also deletes FTS rows",
+      "file": "packages/store-sqlite/src/tables/span-fts.ts",
+      "find": "if (contentlessDelete) deleteSourceFts.run(sourceId);",
+      "replace": "deleteSourceFts.run(sourceId);",
+      "kills": [
+        "SpanFtsTables contentlessDelete keeps the default table's DDL and still strands FTS rows on purgeSource"
+      ]
+    }
+  ]
+}

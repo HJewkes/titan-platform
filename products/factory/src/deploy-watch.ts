@@ -1,6 +1,8 @@
-import type { OwnerItemDeposit } from "@titan-design/owner-queue";
+import { alarmKey, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { runningHolds, type AncestryProbe } from "./build-ancestry.js";
-import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, type DeployHealth } from "./deploy-health.js";
+import { DEPLOY_ALARM_ASKER, DEPLOY_TARGET } from "./deploy-incident.js";
+import type { GitBehindProbe } from "./deploy-behind.js";
+import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, withGitBehind, withWanted, type DeployHealth, type HeldWanted } from "./deploy-health.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 
 export const DEPLOY_WATCH_MS = 5 * 60_000;
@@ -23,6 +25,10 @@ export interface DeployWatchPorts {
   /** Proves the running build descends from an ask, so a hand deploy of a later commit lands it; absent means only an equal sha does. */
   isAncestor?: AncestryProbe;
   indexLock: () => Promise<IndexLock>;
+  /** Reads main past the running build, so a merge that never asked for a deploy still reads behind; absent means only the asks count. */
+  originBehind?: GitBehindProbe;
+  /** The sha deploy-wanted.json holds; absent or undefined means the pacer holds none. A held one counts as an ask, so a pacer that waits still reads behind. */
+  deployWanted?: () => HeldWanted | undefined;
   /** Absent means no hub seat is configured, so only status and the owner queue carry the alarm. */
   notify?: (text: string) => Promise<void>;
   /** Files an owner-queue item; absent means a standing alarm never leaves status and the hub seat. */
@@ -79,11 +85,15 @@ async function heldByRunning(probe: AncestryProbe | undefined, entries: ReturnTy
 }
 
 async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
-  const entries = parseRedeployLog(ports.readLog() ?? "");
+  const wanted = ports.deployWanted?.();
+  const entries = withWanted(parseRedeployLog(ports.readLog() ?? ""), wanted);
   const note = await lockNote(ports, entries);
   const runningSha = ports.runningSha();
   const ancestry = await heldByRunning(ports.isAncestor, entries, runningSha);
-  return deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...(note !== undefined && { lockNote: note }) });
+  const waitingOn = wanted !== undefined && wanted.sha !== runningSha && !ancestry.held.has(wanted.sha) ? { wanted } : {};
+  const health = deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...waitingOn, ...(note !== undefined && { lockNote: note }) });
+  if (ports.originBehind === undefined) return health;
+  return withGitBehind(health, await ports.originBehind(runningSha), ports.now());
 }
 
 const failure = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -101,18 +111,18 @@ async function notice(ports: DeployWatchPorts, health: DeployHealth): Promise<Al
 const hubSeatNote = (told: AlarmNotice): string =>
   "sent" in told ? `The hub seat was told at ${told.sent}.` : "skipped" in told ? `The hub seat was not told: ${told.skipped}.` : `Telling the hub seat failed: ${told.failed}.`;
 
-/** One item per running build: its depositId repeats across serve restarts, so writeDeposit files it once. */
+/** One item per running build: its depositId repeats across serve restarts, so writeDeposit files it once; the alarm key folds builds. */
 function alarmDeposit(health: DeployHealth, minutes: number, told: AlarmNotice): OwnerItemDeposit {
   const summary = `titan-factory deploys stalled for ${minutes} min: ${health.causes.join("; ")}`.replace(/\s+/g, " ");
   return {
     depositId: `deploy-alarm-${health.runningSha}`,
-    asker: "titan-factory",
+    asker: DEPLOY_ALARM_ASKER,
     kind: "do",
     door: "two-way",
     summary: summary.length > SUMMARY_MAX ? `${summary.slice(0, SUMMARY_MAX - 1)}…` : summary,
     context: `${alarmMessage(health)} ${hubSeatNote(told)} Merged work is not live until a deploy lands.`,
     command: STATUS_COMMAND,
-    keys: ["deploy-alarm"],
+    keys: ["deploy-alarm", alarmKey(`deploy-alarm:${DEPLOY_TARGET}`)],
   };
 }
 

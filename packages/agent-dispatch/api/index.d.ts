@@ -186,7 +186,19 @@ interface LaunchedBy {
     /** Sent only alongside `launchedBy`. */
     launchReason?: string;
 }
-interface DispatchRequest extends LaunchedBy {
+/** The roles agent-chat's `--role` accepts. */
+type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+declare const TASK_ID_PATTERN: RegExp;
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+interface AgentRecord {
+    role?: AgentRole;
+    task?: string;
+}
+interface DispatchRequest extends LaunchedBy, AgentRecord {
     agentChatBinPath: string;
     /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
     peerName: string;
@@ -204,6 +216,8 @@ interface DispatchRequest extends LaunchedBy {
     configDir?: string;
     /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
     profilesDir?: string;
+    /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+    worktree?: string;
 }
 interface DispatchResult {
     peerName: string;
@@ -221,12 +235,23 @@ interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-declare function buildSpawnArgs(req: LaunchedBy & {
+declare function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
     peerName: string;
     profile: string;
     briefing?: string;
     configDir?: string;
+    worktree?: string;
 }): string[];
+/** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
+interface SpawnPlacement {
+    /** A configured alias or hostname; omitted means the broker's own host. */
+    host?: string;
+    /** An account name, or `least-used` for the broker's pick. */
+    account?: string;
+    /** Overrides the profile's surface. */
+    surface?: string;
+    remoteControl?: boolean;
+}
 /**
  * Start the agent and return the name it was started under.
  *
@@ -237,6 +262,45 @@ declare function buildSpawnArgs(req: LaunchedBy & {
  * close from agent-chat's own event stream.
  */
 declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): Promise<DispatchResult>;
+
+/**
+ * A spawn made on behalf of whoever runs this process, a human in a terminal
+ * or an agent in its Bash tool, rather than on behalf of a daemon.
+ *
+ * `dispatchToAgentChat` reaches the broker as the human on purpose: its
+ * callers are daemons whose environment says nothing about who asked. Here the
+ * caller's identity is the point. agent-chat's CLI reads `AGENT_CHAT_NAME` or
+ * `AGENT_CHAT_AGENT_ID` to name the spawner, which keeps the coordinator depth
+ * cap and the Remote Control rule on an agent's spawn, and `CLAUDE_CONFIG_DIR`
+ * as the spawner's account, which a least-used pick prefers on a tie. Those
+ * three are forwarded when set, and nothing else from the caller's
+ * environment is.
+ *
+ * No profile allowlist or headless check: the caller names the profile, and
+ * the broker applies the same gates to it as to any spawn the caller makes
+ * with the CLI directly. The brief still travels on stdin.
+ */
+
+declare const CALLER_IDENTITY_VARS: readonly ["AGENT_CHAT_NAME", "AGENT_CHAT_AGENT_ID", "CLAUDE_CONFIG_DIR"];
+interface SpawnAsCallerRequest extends SpawnPlacement {
+    agentChatBinPath: string;
+    name: string;
+    profile: string;
+    brief: string;
+    /** The directory the CLI sends to the broker as the spawn location. */
+    cwd: string;
+    /** active-work slug whose orientation agent-chat prepends to the brief. */
+    briefing?: string;
+}
+interface SpawnAsCallerResult {
+    name: string;
+    /** agent-chat's stdout, one entry per non-empty line, such as the account choice and the `Spawned` line. */
+    lines: string[];
+}
+/** `agentChatEnv()` plus each identity variable the caller's environment has a non-empty value for. */
+declare function callerEnv(source?: NodeJS.ProcessEnv): Record<string, string>;
+/** Starts the agent as the caller; a zero exit means the broker accepted the spawn, not that the work is done. */
+declare function spawnAsCaller(req: SpawnAsCallerRequest, timeoutMs: number): Promise<SpawnAsCallerResult>;
 
 /**
  * Duration of each agent-chat CLI call, reported to opt-in observers so a
@@ -347,25 +411,6 @@ declare function buildParkArgs(name: string, options?: ParkOptions): string[];
 declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions): Promise<ParkResult>;
 
 /**
- * Message a live agent through `agent-chat debug send`: the broker delivers the
- * text as one channel message, which starts a turn in an idle session. Use it
- * for a live agent; `resumeAgent` is for an ended one. The CLI connects
- * unregistered, so the broker delivers the text from the human seat. Like
- * `resumeAgent`, the text is in argv, where `ps` shows it.
- */
-/** `--` ends the options, so a text that begins with a dash stays one operand. */
-declare function buildMessageArgs(name: string, text: string): string[];
-/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
-
-/**
- * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
- * data. Ported from agent-chat's burndown `dataFence`.
- */
-/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
-declare function dataFence(label: string, text: string): string;
-
-/**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
  * and `execSafeAsync` discipline as dispatch.ts: absolute binary, argv array,
  * minimal env, no shell.
@@ -403,26 +448,99 @@ interface AgentRow {
     account?: string | null;
     generation: number;
     teleportFrom?: string | null;
+    /**
+     * The agent this one took over from; null when the broker says it took over
+     * from no one. Absent when the broker does not report it, which proves nothing.
+     */
+    predecessor?: string | null;
+    /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
+    retired?: boolean;
+    /**
+     * When the agent's session exited, as an ISO string; null while it has not. Absent from an agent-chat that
+     * predates it, which proves nothing about when, or whether, the agent exited.
+     */
+    exitedAt?: string | null;
+}
+/**
+ * Every row the broker's log holds, retired generations included. `complete` is false when the installed agent-chat
+ * predates `--include-retired`, so `rows` lacks the retired generations and cannot prove who spawned whom.
+ */
+interface AgentLineage {
+    rows: AgentRow[];
+    complete: boolean;
 }
 interface RetireResult {
     name: string;
     /** What the broker could not do on a successful retire, verbatim. */
     caveats: string[];
 }
-declare function buildListAgentsArgs(): string[];
+declare function buildListAgentsArgs(options?: {
+    includeRetired?: boolean;
+}): string[];
 declare function buildRetireArgs(name: string, force?: boolean): string[];
-/** Every agent the broker's log knows, live or ended. */
-declare function listAgents(agentChatBinPath: string, timeoutMs: number): Promise<AgentRow[]>;
+/** Every agent the broker's log knows, live or ended; retired generations only with `includeRetired`. */
+declare function listAgents(agentChatBinPath: string, timeoutMs: number, options?: {
+    includeRetired?: boolean;
+}): Promise<AgentRow[]>;
+/**
+ * The roster with retired generations, for a lineage walk. An agent-chat that predates the flag gets the plain roster,
+ * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
+ */
+declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number): Promise<AgentLineage>;
+interface RetireOptions {
+    force?: boolean;
+    /**
+     * Who the broker's `agent_retired` event names as the actor. The CLI reads
+     * it from `AGENT_CHAT_NAME`; absent, the broker records `human`.
+     */
+    caller?: string;
+}
 /**
  * Release the agent's isolation, end its process and free its name. `force`
  * discards uncommitted or unmerged work its worktree holds. Rejects with
  * `DispatchError` when the broker refuses.
  */
-declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: {
-    force?: boolean;
-}): Promise<RetireResult>;
+declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: RetireOptions): Promise<RetireResult>;
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
+
+/**
+ * Message a live agent through `agent-chat debug send`: the broker delivers the
+ * text as one channel message, which starts a turn in an idle session. Use it
+ * for a live agent; `resumeAgent` is for an ended one. The CLI connects
+ * unregistered, so the broker delivers the text from the human seat; a `source`
+ * labels it as that wake source, without human provenance. Like
+ * `resumeAgent`, the text is in argv, where `ps` shows it.
+ */
+
+/** Mirrors agent-chat's `WAKE_SOURCES`: the label a recipient sees instead of the owner typing. */
+type WakeSource = "watchdog" | "shepherd" | "console";
+interface MessageOptions {
+    /** Sent as `--source`, so the message arrives labelled `wake_source=<source>` rather than as the owner's words. */
+    source?: WakeSource;
+}
+/** `--` ends the options, so a text that begins with a dash stays one operand; `--source` must come before it. */
+declare function buildMessageArgs(name: string, text: string, options?: MessageOptions): string[];
+/**
+ * Whether `messageAgent` can reach the agent a roster row names. An unregistered sender reaches only a connected
+ * session, so a `detached` row (not exited, but nothing connected) is as unreachable as an `exited` one.
+ */
+declare function receivesMessages(row: Pick<AgentRow, "presence">): boolean;
+/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number, options?: MessageOptions): Promise<void>;
+
+/**
+ * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
+ * data. Ported from agent-chat's burndown `dataFence`.
+ */
+/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
+declare function dataFence(label: string, text: string): string;
+/**
+ * The body of the last ```json fenced block in `text`, parsed; undefined when there is none. An agent's final report
+ * ends with one, so the last block is the report even when earlier ones quote examples. A block whose body is not JSON
+ * throws a SyntaxError rather than reading as no report, so a malformed report is never mistaken for a missing one.
+ */
+declare function lastFencedJson(text: string): unknown;
 
 /** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
 declare const ASK_LABEL_PATTERN: RegExp;
@@ -465,4 +583,147 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+interface PrefixSection {
+    name: string;
+    text: string;
+}
+interface StablePrefixOptions {
+    /** Refused in every section: a per-agent name makes the prefix unique per spawn. */
+    agentName?: string;
+}
+interface StablePrefix {
+    text: string;
+    hash: string;
+}
+interface PrefixViolation {
+    section: string;
+    rule: string;
+    match: string;
+}
+declare class PrefixLintError extends Error {
+    readonly violations: readonly PrefixViolation[];
+    constructor(violations: readonly PrefixViolation[]);
+}
+declare function lintPrefixSections(sections: readonly PrefixSection[], options?: StablePrefixOptions): PrefixViolation[];
+/**
+ * Joins sections in the order given (order is part of the cache key, so it is
+ * never sorted) and hashes the result. Throws PrefixLintError on any per-spawn value.
+ */
+declare function stablePrefix(sections: readonly PrefixSection[], options?: StablePrefixOptions): StablePrefix;
+
+/** A file the plan names, with the line it points at when it gives one. */
+interface TouchPoint {
+    path: string;
+    line?: number;
+}
+/**
+ * The part of a plan about one slice: the section under a heading naming it, or, when no heading
+ * does, every paragraph, list item and table row that mentions the slice id as a whole word.
+ */
+declare function planSliceExcerpt(plan: string, slice: string): string | null;
+/** Backticked repo-relative paths in the text, first mention of each, with the first line number given. */
+declare function touchPointsIn(text: string, limit: number): TouchPoint[];
+
+interface GitState {
+    /** ISO time the state was read; the packet labels the section with it because it goes stale. */
+    capturedAt: string;
+    baseRef: string;
+    baseSha: string;
+    headSha: string;
+    /** One-line commits on HEAD that the base lacks. */
+    ahead: string[];
+    /** One-line base commits whose message names the task id. */
+    landed: string[];
+    /** Open pull requests naming the task id, when the reader can see them. */
+    openPrs?: string[];
+}
+interface TaskCard {
+    id: string;
+    title?: string;
+    status?: string;
+    estimate?: string | number;
+    doneWhen?: string[];
+    notes?: string[];
+}
+/** Everything the packet reads, injected so the builder itself does no I/O. */
+interface BootReaders {
+    /** A file's text, or null when it is missing or unreadable. Relative paths resolve against the repo root. */
+    readFile(path: string): string | null;
+    exists(path: string): boolean;
+    gitState(taskId: string): GitState | null;
+    readTask(taskId: string): TaskCard | null;
+}
+interface ReadinessFacts {
+    /** The command the repo wants run before a push, when the caller knows it. */
+    verify?: string;
+}
+
+type BootSectionId = "git" | "task" | "plan" | "touchPoints" | "readiness";
+interface BootPacketInput {
+    task: {
+        id: string;
+    };
+    /** The plan file and the slice id whose part of it the agent needs. */
+    plan?: {
+        path: string;
+        slice: string;
+    };
+    repo: ReadinessFacts;
+    /** Files to excerpt; defaults to the backticked paths in the plan slice. */
+    touchPoints?: TouchPoint[];
+    readers: BootReaders;
+    options?: BootPacketOptions;
+}
+interface BootPacketOptions {
+    /** Whole-packet budget in tokens. */
+    budget?: number;
+    /** Per-section caps in tokens; a section over its cap loses lines, or whole excerpts, from its end. */
+    caps?: Partial<Record<BootSectionId, number>>;
+    /** Sections to include, most important first; over budget, whole sections drop from the end. */
+    priority?: BootSectionId[];
+    maxTouchPoints?: number;
+    /** Token counter for the budget; the default estimates from characters. */
+    countTokens?: (text: string) => number;
+}
+interface BootSection {
+    id: BootSectionId;
+    title: string;
+    text: string;
+    tokens: number;
+    truncated: boolean;
+}
+interface BootPacket {
+    text: string;
+    tokens: number;
+    sections: BootSection[];
+    /** Sections left out, with why: no source, or dropped to fit the budget. */
+    omitted: Array<{
+        id: BootSectionId;
+        reason: string;
+    }>;
+}
+declare const BOOT_PACKET_BUDGET = 6000;
+declare const DEFAULT_BOOT_PRIORITY: readonly BootSectionId[];
+/** About four characters a token for English and code; a real tokenizer can be passed in instead. */
+declare function estimateTokens(text: string): number;
+/**
+ * The boot packet for an implementer: what the spawner already knows about the task's state, cut to a
+ * token budget so it can ride in the first turn. Every read goes through `input.readers`.
+ */
+declare function bootPacket(input: BootPacketInput): BootPacket;
+
+interface NodeBootReadersOptions {
+    repoRoot: string;
+    /** Absolute path of the git binary. */
+    gitBin: string;
+    baseRef?: string;
+    /** The task store read, e.g. a `@titan-design/pm` task mapped to a card; the packet does not parse task files. */
+    readTask: (taskId: string) => TaskCard | null;
+    /** Open PRs naming the task, when the caller can query a forge. */
+    openPrs?: (taskId: string) => string[];
+    now?: () => Date;
+}
+/** Readers over a local checkout: files from disk, git state from the git binary, tasks from the caller. */
+declare function nodeBootReaders(opts: NodeBootReadersOptions): BootReaders;
+
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRecord, type AgentRole, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, TASK_ID_PATTERN, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lastFencedJson, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix, touchPointsIn };

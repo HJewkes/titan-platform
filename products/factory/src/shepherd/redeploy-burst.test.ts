@@ -80,8 +80,10 @@ function tickAfterQuiet(store: WantedStore, runningHolds: (sha: string) => boole
     lastDeploy: () => undefined,
     busy: () => 0,
     paused: () => false,
+    green: (sha) => ({ sha }),
     spawn: (sha) => (spawned.push(sha), { pid: 4242 }),
     log: () => undefined,
+    waits: {},
   });
   return spawned;
 }

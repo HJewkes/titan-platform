@@ -1,4 +1,4 @@
-import { edgeWeight, hashContent, type GraphEdge, type GraphNode } from "@titan-design/code-graph";
+import { edgeWeight, hashContent, type GraphEdge, type GraphNode, type ProtocolEdge } from "@titan-design/code-graph";
 import { collapseToDirectories, dirOf, isSourceFile } from "./collapse-directories.js";
 import { collapseToPackages } from "./collapse-packages.js";
 import { computeCompoundLayoutStrict } from "./compound-layout.js";
@@ -21,6 +21,11 @@ export interface RepoMapOptions {
   maxFilesPerBox?: number;
   label?: LabelMetrics;
   layoutOptions?: Record<string, string>;
+  /**
+   * code-graph's `extractProtocolEdges` edges, drawn as labelled container arrows. An empty
+   * list labels the container import arrows "imports only"; leaving it out draws neither.
+   */
+  protocolEdges?: readonly ProtocolEdge[];
 }
 
 const PACKAGE = 1;
@@ -49,6 +54,11 @@ interface PlannedEdge {
   level: number;
   weight: number;
   edgeSource: MapEdgeSource;
+  /** Set only on a protocol arrow, so it can run beside the import arrow of the same pair. */
+  id?: string;
+  /** A protocol arrow's kinds joined by `+`, which the map shows in place of `kind`. */
+  protocols?: string;
+  label?: string;
 }
 
 interface MapPlan {
@@ -62,6 +72,7 @@ const packageId = (pkg: string): string => `pkg:${pkg}`;
 const directoryId = (dir: string): string => `dir:${dir}`;
 const overflowId = (dir: string): string => `more:${dir}`;
 const edgeId = (srcId: string, dstId: string): string => `${srcId}->${dstId}`;
+const IMPORTS_ONLY = "imports only";
 const lastSegment = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
 function packageRoot(pkg: string, fileId: string): string {
@@ -149,7 +160,42 @@ function aggregateEdges(
   });
 }
 
-function planRepoMap(input: GraphInput, max: number): MapPlan {
+/** Each kind's labels as its first label plus `+N` for the rest, kinds joined by ` · `. */
+function protocolLabel(edges: readonly ProtocolEdge[]): string {
+  const kinds = [...new Set(edges.map((e) => e.kind))].sort(byText);
+  return kinds
+    .map((kind) => {
+      const labels = [...new Set(edges.filter((e) => e.kind === kind).map((e) => e.label))].sort(byText);
+      return labels.length > 1 ? `${labels[0]} +${labels.length - 1}` : labels[0];
+    })
+    .join(" · ");
+}
+
+/** One arrow per ordered container pair; a call inside one container, or from a file off the map, draws none. */
+function protocolArrows(edges: readonly ProtocolEdge[], groups: Map<string, Box>): PlannedEdge[] {
+  const byPair = new Map<string, { srcId: string; dstId: string; folded: ProtocolEdge[] }>();
+  for (const e of edges) {
+    const [srcId, dstId] = [packageId(packageOf(e.srcId)), packageId(packageOf(e.dstId))];
+    if (srcId === dstId || !groups.has(srcId) || !groups.has(dstId)) continue;
+    const key = JSON.stringify([srcId, dstId]);
+    const pair = byPair.get(key) ?? { srcId, dstId, folded: [] };
+    byPair.set(key, { ...pair, folded: [...pair.folded, e] });
+  }
+  return [...byPair.values()].map(({ srcId, dstId, folded }) => {
+    const protocols = [...new Set(folded.map((e) => e.kind))].sort(byText).join("+");
+    const [id, label] = [`protocol:${edgeId(srcId, dstId)}`, protocolLabel(folded)];
+    return { srcId, dstId, kind: "calls", level: PACKAGE, weight: folded.length, edgeSource: "protocol", id, protocols, label };
+  });
+}
+
+function withProtocol(edges: PlannedEdge[], protocolEdges: readonly ProtocolEdge[] | undefined, groups: Map<string, Box>): PlannedEdge[] {
+  if (protocolEdges === undefined) return edges;
+  const arrows = protocolArrows(protocolEdges, groups);
+  if (arrows.length > 0) return [...edges, ...arrows];
+  return edges.map((e) => (e.level === PACKAGE ? { ...e, label: IMPORTS_ONLY } : e));
+}
+
+function planRepoMap(input: GraphInput, max: number, protocolEdges?: readonly ProtocolEdge[]): MapPlan {
   const files = input.nodes.filter(isSourceFile);
   const groups = new Map<string, Box>();
   const byDir = new Map<string, string[]>();
@@ -168,7 +214,7 @@ function planRepoMap(input: GraphInput, max: number): MapPlan {
     ...aggregateEdges(collapseToDirectories(source), DIRECTORY, directoryId, groups),
   ];
   assertDistinctIds(leaves, groups);
-  return { leaves, groups, edges };
+  return { leaves, groups, edges: withProtocol(edges, protocolEdges, groups) };
 }
 
 function assertDistinctIds(leaves: readonly Box[], groups: Map<string, Box>): void {
@@ -202,11 +248,13 @@ function toMapEdges(laid: CompoundLayoutResult, plan: MapPlan): MapEdge[] {
   const routes = new Map(laid.edges.map((e) => [edgeId(e.srcId, e.dstId), routeOf(e)]));
   return plan.edges
     .map((e) => {
-      const id = edgeId(e.srcId, e.dstId);
-      const route = routes.get(id);
+      const id = e.id ?? edgeId(e.srcId, e.dstId);
+      const route = routes.get(edgeId(e.srcId, e.dstId));
       if (!route || route.length < 2) throw new Error(`repo-map: ELK returned no route for ${id}`);
-      const { srcId: source, dstId: target, level, kind, edgeSource, weight } = e;
-      return { id, source, target, level, kind, edgeSource, weight, route: route.map((p) => [p.x, p.y] as const) };
+      const { srcId: source, dstId: target, level, edgeSource, weight, label } = e;
+      const points = route.map((p) => [p.x, p.y] as const);
+      const kind = e.protocols ?? e.kind;
+      return { id, source, target, level, kind, edgeSource, ...(label && { label }), weight, route: points };
     })
     .sort((a, b) => a.level - b.level || byText(a.id, b.id));
 }
@@ -237,7 +285,7 @@ function planSha(plan: MapPlan, label: LabelMetrics, layoutOptions: Record<strin
  */
 export async function emitRepoMap(input: GraphInput, options: RepoMapOptions = {}): Promise<MapLayout> {
   const { maxFilesPerBox = 6, label = MAP_LABEL_METRICS, layoutOptions = COMPOUND_LAYOUT_OPTIONS } = options;
-  const plan = planRepoMap(input, Math.max(2, maxFilesPerBox));
+  const plan = planRepoMap(input, Math.max(2, maxFilesPerBox), options.protocolEdges);
   const chains = new Map(plan.leaves.map((l) => [l.id, l.chain]));
   const laid = await computeCompoundLayoutStrict(
     { snapshotId: input.snapshotId, nodes: plan.leaves.map(asGraphNode), edges: plan.edges.map(asGraphEdge) },

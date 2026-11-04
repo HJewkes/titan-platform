@@ -13,7 +13,7 @@ import {
   type SupervisedCodexProcess,
   type CodexVersionInspectionOptions,
 } from "./codex-process.js";
-import { EXECUTION_CAPABILITIES } from "./harness-contracts.js";
+import { capabilityRecord } from "./capability-record.js";
 import type {
   CapabilityAssessment,
   CodexRunRequest,
@@ -104,12 +104,7 @@ export function prepareCodexEnv(env: NodeJS.ProcessEnv): Record<string, string> 
 export function codexExecCapabilities(): HarnessCapabilityDescriptor<"codex"> {
   const supported = (evidence: string): CapabilityAssessment => ({ status: "supported", evidence });
   const unsupported = (reason: string): CapabilityAssessment => ({ status: "unsupported", reason });
-  const capabilities = Object.fromEntries(
-    EXECUTION_CAPABILITIES.map((capability) => [
-      capability,
-      unsupported("not implemented by the supervised exec adapter"),
-    ]),
-  ) as HarnessCapabilityDescriptor<"codex">["capabilities"];
+  const capabilities = capabilityRecord(() => unsupported("not implemented by the supervised exec adapter"));
   capabilities.fresh_run = supported("codex exec starts a persisted thread");
   capabilities.resume = supported("codex exec resume uses an explicit native thread ID");
   capabilities.structured_output = supported("native output schema plus caller parser validation");

@@ -25,6 +25,9 @@ const HITS_PER_LOOP = 2;
 const HITS_TOTAL = 6;
 const CHARS_TOTAL = 1200;
 
+/** Launch waits on these queries, so a slow index costs a bounded delay, not an unbounded one. */
+const LOOP_RETRIEVAL_BUDGET_MS = 1500;
+
 export interface LoopHit extends RelatedHit {
   /** 1-based within this loop's lines. */
   rank: number;
@@ -44,6 +47,10 @@ export interface LoopContextInput {
   /** Refs rendered elsewhere in the prompt. */
   shown: string[];
   retriever?: LoopRetriever;
+  /** Wall-clock allowance for all loop queries together. */
+  budgetMs?: number;
+  /** Millisecond clock; injected so tests never sleep. */
+  now?: () => number;
 }
 
 export function renderSeeLine(hit: RelatedHit, slug: string): string {
@@ -101,6 +108,14 @@ function addDegraded(context: LoopContext, entries: RelatedDegradation[]): void 
   }
 }
 
+function budgetDegradation(budgetMs: number): RelatedDegradation {
+  return {
+    source: 'loop-retriever',
+    reason: 'budget',
+    message: `stopped querying loops after ${budgetMs} ms`,
+  };
+}
+
 interface Allocation {
   hits: number;
   chars: number;
@@ -142,13 +157,22 @@ export async function relatedForLoops(input: LoopContextInput): Promise<LoopCont
   const context: LoopContext = { hits: new Map(), degraded: [] };
   const candidates = new Map<number, RelatedHit[]>();
   const allocation: Allocation = { hits: HITS_TOTAL, chars: CHARS_TOTAL, taken: new Set() };
+  const now = input.now ?? Date.now;
+  const budgetMs = input.budgetMs ?? LOOP_RETRIEVAL_BUDGET_MS;
+  const startedAt = now();
   for (let pass = 0; pass < HITS_PER_LOOP; pass++) {
     for (let i = 0; i < input.loops.length; i++) {
       const loop = input.loops[i]!;
       if ((context.hits.get(loop.ref)?.length ?? 0) !== pass) continue;
       // Nothing more can be taken once either budget is gone, so later loops are never queried.
       if (allocation.hits === 0 || allocation.chars <= 0) return context;
-      if (!candidates.has(i)) candidates.set(i, await queryLoop(input, i, context));
+      if (!candidates.has(i)) {
+        if (now() - startedAt >= budgetMs) {
+          addDegraded(context, [budgetDegradation(budgetMs)]);
+          return context;
+        }
+        candidates.set(i, await queryLoop(input, i, context));
+      }
       if (!allocateOne(loop, candidates.get(i)!, context, allocation, input.slug)) return context;
     }
   }

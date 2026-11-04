@@ -4,7 +4,9 @@
 
 ```
 packages/     the shared tiers, published to npm as @titan-design/<name>
-products/     apps composed from the tiers (private)
+products/     products composed from the tiers (private)
+apps/         workspace apps: codewatch and console (private)
+deploy/       deployable stacks: deploy/hub, the Matrix hub
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
 scripts/      new-package.mjs, dag-check.sh, gen-docs-reference.mjs
 site/         this documentation site (VitePress)
@@ -36,11 +38,27 @@ the `repo` project, which `test:affected` runs only when their package changed. 
 
 CI also runs `pnpm lint:types` as a step of the `dag-check` job. It applies the type-aware rules
 `no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
-(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs one
-eslint process per chunk of workspace `src` dirs, in sequence, so no process nears the V8
-heap cap; it takes about a minute and names any chunk that runs out of heap. Existing hits live in `eslint-suppressions.typed.json` and are fixed when the
-file is next touched. Fix a new hit with a type guard or a parse, not a disable comment:
-`pnpm lint` does not run these rules, so it reports such a comment as unused.
+(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first. It runs up to
+four eslint processes at once, one per package that has a baseline and one per chunk of the
+rest, so no process nears the V8 heap cap; it takes about a minute and names any chunk that
+runs out of heap. Existing hits live in each package's own `eslint-suppressions.typed.json`
+and are fixed when the file is next touched. Fix a new hit with a type guard or a parse, not
+a disable comment: `pnpm lint` does not run these rules, so it reports such a comment as unused.
+
+The baselines are per package so two PRs clearing different packages touch no file in common.
+`pnpm lint` keeps its entries in `<package>/eslint-suppressions.json`. Entry keys stay
+relative to the repo root, and a package with no baseline has no file. To drop entries you
+fixed, run `pnpm lint:types --only=<package dir> --prune-suppressions`, or
+`pnpm lint --prune-suppressions` for the untyped baselines. A baseline that empties is deleted.
+Both commands refuse to run while a baseline sits at the repo root.
+
+## Measuring what tests cost the machine
+
+`node scripts/test-footprint.mjs run --out <dir> [-- <vitest args>]` is one vitest run with a row per test file: CPU
+with children, child processes, paths created and left under `TMPDIR` and `/tmp`, peak fds and peak memory. It keeps
+the project's pool settings and writes `footprint.md` (totals and rankings) and `files.tsv` (every file) to `<dir>`.
+`node scripts/test-footprint.mjs report <dir>` redoes the report from the records. Linux only, since it reads `/proc`.
+The header of `scripts/test-footprint.mjs` says which figures are exact and which are estimates.
 
 ## The egress scan
 
@@ -279,14 +297,20 @@ fixed by running `pnpm docs:reference` and committing; the second needs a line o
 
 ### The capability catalog {#the-capability-catalog}
 
-`pnpm capabilities` writes `CAPABILITIES.md` at the repository root and
-`site/guides/capabilities.md` from the same data. It reuses the reference index's package
-discovery, then adds each unit's version, its key exports parsed from `src/index.ts` (capped
-at twelve, runtime values before types), and the text of its `CAPABILITY.md`. The runtime
-paths and known gaps come from `scripts/capabilities-data.json`, which is edited by hand.
+`pnpm capabilities` writes `CAPABILITIES.md` at the repository root. It reuses the reference
+index's package discovery, then adds each unit's version, its key exports parsed from
+`src/index.ts` (capped at twelve, runtime values before types), and the lines of its
+`CAPABILITY.md`. The runtime paths and known gaps come from `scripts/capabilities-data.json`,
+which is edited by hand.
 
-Both outputs are committed. `validate` runs `pnpm capabilities:check`, which regenerates in
-memory and fails when either file differs, so edit the sources and rerun the script. The
+The catalog is merge-stable: each output line comes from one input line, and it holds no
+counts, so two pull requests whose sources merge cleanly also merge cleanly in the catalog.
+The quick index takes only the first sentence of each `CAPABILITY.md`.
+
+`CAPABILITIES.md` is committed. `validate` runs `pnpm capabilities:check`, which regenerates in
+memory and fails when it differs, so edit the sources and rerun the script. The site's copy,
+`site/guides/capabilities.md`, is not committed: `docs:build` writes it with
+`gen-capabilities.mjs --site` before VitePress builds. The
 "Version Packages" pull request stays green because `pnpm version-packages` regenerates the
 catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 

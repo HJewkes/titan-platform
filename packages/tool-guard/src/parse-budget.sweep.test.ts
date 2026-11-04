@@ -13,8 +13,9 @@ import type { HookRun } from "./test-support/parse-budget.js";
 const HOME = "/home/you";
 const DEPTH = 8;
 const PAD = "echo hi;";
-// The helper's 500 ms default holds: the worst case is secret inside cmd-subst, at 55 to 67 ms of CPU locally and
-// 250.5 to 259.4 ms on CI (2026-10-21, TP-3898).
+// The helper's work cap holds under pnpm test: the worst case, a sentinel inside sh-c, reads 808 characters a byte
+// (TP-4047). Its 500 ms default holds under the bench: that row took 55 to 67 ms of CPU locally and 250.5 to 259.4 ms on
+// CI (2026-10-21, TP-3898).
 // Each test also pads its line to the cap; the slowest took 0.5 s of wall time on a green CI run.
 const TEST_CPU_MS = 2_000;
 

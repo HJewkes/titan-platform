@@ -1,0 +1,43 @@
+# Daily briefing (TP-4125 plan §3 S5): a report against goals, so the chapter order is fixed on goal-walk.
+# Most of the runtime goes to the goals and the parallel lanes moving toward them; side quests are named as
+# side quests, the most consequential ships get a generated diagram or chart, then stats and a reflection.
+schema: type-profile/v1
+type: daily-overview
+version: 0.5.2
+family: briefing
+intent: "What the factory got done against its goals: each lane and what it moved, the ships that mattered most, the side quests, the stats, then what slows us down and what to change."
+audience: { default: owner-internal, allow: [owner-internal] }
+inputs: { adapters: [gatherDaily], preconditions: [task-snapshot] }
+runtime: { targetS: 180, minS: 120, maxS: 240, splitAboveS: 300 }
+structure:
+  order: fixed
+  macro: goal-walk
+  systems:
+    - { system: bluf, macro: goal-walk }
+    - { system: board-walk, macro: goal-walk }
+  blocks:
+    - { id: bottom-line, goal: "The verdict of the day, how much merged and how much was decided.", seconds: [10, 20], beats: [verdict-card, stat], require: [verdict-card] }
+    - { id: goals, goal: "The goals each lane works toward, or merges by lane.", seconds: [15, 25], beats: [list, chart], labels: 'A list row is written "<lane> · <text>" so it gets a lane chip.' }
+    - { id: lanes, goal: "Each lane in turn: a lead beat, then one continuation beat per named thread, labelled by lane, and the count of the rest.", seconds: [60, 90], beats: [list, chart, kanban-flow], labels: 'A list row is written "<lane> · <text>" so it gets a lane chip. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
+    - { id: ships, goal: "The two or three most consequential ships, each described with a diagram or chart.", seconds: [25, 45], beats: [compare, arch-map, chart, claim-card], labels: 'A compare beat lists one label "before: <text>" and one "after: <text>", both sides. An arch-map lists 2-5 short package or stage names in flow order. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
+    - { id: side-quests, goal: "The side quests, named as side quests.", seconds: [8, 15], beats: [list, fact-flash] }
+    - { id: stats, goal: "Spend, its split, merges, cost per merge and the trend against the prior days.", seconds: [12, 20], beats: [stat, chart], labels: 'A stat lists one to four labels, each with its number. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
+    - { id: reflection, goal: "What slows us down, the top priorities, and proposed changes to how we work.", seconds: [15, 30], beats: [list, claim-card] }
+    - { id: ask, goal: "What the owner does next, then the button to the digest.", seconds: [5, 10], beats: [button], require: [button] }
+cuts: []
+hook: "The verdict of the day with how much merged and was decided, in the first 20 s."
+ending: button
+styles: { allow: [ember-desk, night-drafting, paper-margin], house: ember-desk }
+voice: { id: am_fenrir, rate: 1.1 }
+series:
+  mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice, structure, chapter-labels]
+  mustVary: [hook-kind, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines, lead-story, featured-visual]
+audition: { k: 3, storyboardOnly: true }
+# The daily is gathered with no planner in the loop, so the audition pick is the script stage's spine.
+spine: { from: audition-pick }
+# Renders through the host's daily bridge (bridges/daily.json in the explainer data dir) in every run's data dir.
+bridge: daily
+layers: { customMin: 1, templateMaxShare: 0.85, componentMaxShare: 0.3 }
+variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
+pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }
+coverage: [bottom-line, decisions-waiting, spend, merged-work, lanes-covered, ships, stats, reflection]

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a retriever that ignores its abort is awaited to the end",
+      "file": "packages/retrieval/src/fail-open.ts",
+      "find": "await withAbort(retriever.retrieve(query, { limit: options.limit, signal: controller.signal }), controller.signal);",
+      "replace": "await retriever.retrieve(query, { limit: options.limit, signal: controller.signal });",
+      "kills": [
+        "gatherFailOpen times out a stalled retriever without blocking the others"
+      ]
+    },
+    {
+      "name": "the per-retriever deadline fires ten times late",
+      "file": "packages/retrieval/src/fail-open.ts",
+      "find": "setTimeout(() => controller.abort(), options.timeoutMs);",
+      "replace": "setTimeout(() => controller.abort(), options.timeoutMs * 10);",
+      "kills": [
+        "gatherFailOpen times out a stalled retriever without blocking the others"
+      ]
+    }
+  ]
+}

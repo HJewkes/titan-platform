@@ -2,18 +2,20 @@ import { execFile } from "node:child_process";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
+import type { QuotaContext } from "../queue.js";
 import type { Digest } from "../digest.js";
 import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
+import { fakeEval, fakeMicro } from "./fake-scripts.js";
 import { fakeMergeOnto } from "./fake-integrate.js";
+import { fakeSnapshotPorts, type SnapshotCalls, type SnapshotOptions } from "./fake-snapshot.js";
 
 const run = promisify(execFile);
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
 const IDENTITY = ["-c", "user.name=autoresearch fixture", "-c", "user.email=fixture@example.invalid"];
 
 type Named = Record<string, number>;
@@ -28,7 +30,7 @@ interface Mechanism {
   files?: Record<string, string>;
 }
 
-/** What `fake_eval.sh` reports: base metrics, which one carries ±sigma noise, and each mechanism's effect. */
+/** What `fakeEval` reports: base metrics, which one carries ±sigma noise, and each mechanism's effect. */
 export interface Policy {
   sigma: number;
   noisy: string;
@@ -70,18 +72,12 @@ export function writeFiles(dir: string, files: Record<string, string>): void {
   }
 }
 
+/** A copy of the policy's template repo and its bare origin, which already holds the seed commit. */
 export async function fixtureRepo(policy: Policy): Promise<FixtureRepo> {
   const root = mkdtempSync(join(tmpdir(), "ar-fixture-"));
   const bare = join(root, "origin.git");
   const work = join(root, "work");
-  mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
-  writeFiles(work, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
-  await git(work, "add", ".");
-  await git(work, "commit", "--quiet", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", work, bare);
-  await git(work, "remote", "add", "origin", bare);
-  await git(work, "fetch", "--quiet", "origin");
+  seedRepoWithOrigin(work, bare, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
   return { root, bare, work, policyPath: join(work, "policy.json"), pin: await git(work, "rev-parse", "HEAD") };
 }
 
@@ -174,12 +170,12 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
       : { exempt: { bold: "script ends after round one", followup: "script ends after round one" } };
 }
 
-interface FakeCalls {
-  plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
+interface FakeCalls extends SnapshotCalls {
+  plans: { round: number; violations: string[]; digest: Digest; quota: QuotaContext; mode: string }[];
   implement: string[];
   /** Every implement input but the brief, in call order. */
   implementInputs: Omit<ImplementRequest, "brief">[];
-  evals: { ideaId: string | null; key: string }[];
+  evals: { ideaId: string | null; key: string; rung: string; head: string }[];
   micro: string[];
   microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
@@ -196,8 +192,10 @@ interface FakeCalls {
 const FIXTURE_FROZEN_HASH = "f".repeat(64);
 const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, frozenHash });
 
-export interface FakeOptions {
+export interface FakeOptions extends SnapshotOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
+  /** A parse error to answer instead of ops, as a planner whose final message held no JSON does. */
+  plannerMalformed?: (input: { round: number; violations: string[] }) => string | undefined;
   target?: Target;
   bounds?: Bounds;
   /** Case names the L0 post-check refuses in an added line. */
@@ -219,10 +217,6 @@ export interface FakeOptions {
 const FIXTURE_LOOK = { aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: { all_gate: 3 } }, provenance: "fixture validator", usd: 0 };
 
 export type FakeArPorts = ArPorts & { calls: FakeCalls };
-
-async function script(name: string, args: string[]): Promise<unknown> {
-  return JSON.parse((await run("bash", [join(FIXTURES, name), ...args])).stdout);
-}
 
 /** The idea's own edit; `applied/` is the fake evaluator's channel and stays out of the diff L0 checks. */
 function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, string> {
@@ -284,14 +278,14 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.micro.push(idea.id);
       calls.microInputs.push(input);
       calls.runPins.push({ step: "l1", runPin: runPinIn(input) });
-      return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung, idea.mechanism]));
+      return ArMicroSchema.parse(fakeMicro(repo.policyPath, tree, rung, idea.mechanism));
     },
-    async evalCase({ tree, case: testCase, key, ...runPin }: RunPin & { tree: string; case: string; key: string }) {
+    async evalCase({ tree, case: testCase, key, rung, head, ...runPin }: Parameters<ArPorts["evalCase"]>[0]) {
       const ideaId = ideaOfTree.get(tree) ?? null;
-      calls.evals.push({ ideaId, key });
+      calls.evals.push({ ideaId, key, rung, head });
       calls.runPins.push({ step: "eval", runPin: runPinIn(runPin) });
       await options.beforeEval?.(ideaId, key);
-      return ArResultSchema.parse(await script("fake_eval.sh", [repo.policyPath, tree, testCase, key]));
+      return ArResultSchema.parse(fakeEval(repo.policyPath, tree, testCase, key));
     },
   };
 }
@@ -349,7 +343,7 @@ function movePorts(calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "ratch
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], integrate: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], integrate: [], snapshot: [], sync: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   const now = () => Date.parse("2026-10-21T00:00:00Z");
@@ -365,9 +359,12 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.plans.push(input);
       await options.beforePlan?.(input.round);
       const agent = `planner-${input.runId}`;
-      return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
+      const malformed = options.plannerMalformed?.(input);
+      const answer = malformed === undefined ? { ops: options.planner(input) } : { ops: {}, malformed };
+      return { ...answer, agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     ...movePorts(calls, options),
+    ...fakeSnapshotPorts(calls, options),
     ...recordPorts(repo, calls, options),
     ...validatePort(calls, options, now),
     ...treePorts(repo, calls, ideaOfTree, policy, options),

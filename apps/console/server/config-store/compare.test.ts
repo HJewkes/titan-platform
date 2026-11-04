@@ -1,20 +1,24 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { invokeCommand } from "@titan-design/registry";
 import { configArgs, importRevisionZero } from "./cli.js";
-import { compareTree, compareTreeResult, configStoreCommands, type CompareTreeResult, type ConfigStoreSource } from "./compare.js";
+import { compareTree, compareTreeResult, configStoreCommands, relativeReadError, type CompareTreeResult, type ConfigStoreSource } from "./compare.js";
 import { readRevisionLog, revisionLogPath } from "./log.js";
 import { FIXTURE_LIMITS, copyFixtureTree, tempDir } from "./test-tree.js";
 
 const AT = new Date("2031-01-02T03:04:05.000Z");
 
-async function importedStore(): Promise<ConfigStoreSource & { autonomyTree: string }> {
-  const stateDir = tempDir("state");
+function writtenLimits(stateDir: string): string {
   const limitsFile = path.join(stateDir, "limits.json");
   writeFileSync(limitsFile, JSON.stringify(FIXTURE_LIMITS));
+  return limitsFile;
+}
+
+async function importedStore(): Promise<ConfigStoreSource & { autonomyTree: string }> {
+  const stateDir = tempDir("state");
   const source = { stateDir, autonomyTree: copyFixtureTree(), coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
-  await importRevisionZero(source, source.autonomyTree, limitsFile, AT);
+  await importRevisionZero(source, source.autonomyTree, writtenLimits(stateDir), AT);
   return source;
 }
 
@@ -59,6 +63,62 @@ describe("the compare-tree diff", () => {
   });
 });
 
+describe("compare-tree read errors reaching a LAN caller", () => {
+  const asRoot = process.getuid?.() === 0;
+
+  async function rpcError(source: ConfigStoreSource): Promise<string> {
+    const { envelope } = await invokeCommand(configStoreCommands(source)["config.compareTree"], {}, { warnings: [], format: "json" });
+    return envelope.ok ? `unexpectedly ok: ${JSON.stringify(envelope.data)}` : envelope.error;
+  }
+
+  it("names the revision log relative to the state dir when its directory is a file (ENOTDIR)", async () => {
+    const stateDir = tempDir("state");
+    writeFileSync(path.join(stateDir, "config"), "");
+
+    const message = await rpcError({ stateDir, autonomyTree: copyFixtureTree(), coordinatorFile: "/unused" });
+
+    expect(message).toBe(`cannot read ${path.join("config", "coordinator.revisions.jsonl")}: ENOTDIR`);
+    expect(message).not.toContain(stateDir);
+  });
+
+  it.skipIf(asRoot)("names the revision log relative to the state dir when it cannot be read (EACCES)", async () => {
+    const source = await importedStore();
+    chmodSync(revisionLogPath(source.stateDir), 0o000);
+
+    const message = await rpcError(source);
+
+    expect(message).toBe(`cannot read ${path.join("config", "coordinator.revisions.jsonl")}: EACCES`);
+    expect(message).not.toContain(source.stateDir);
+  });
+
+  it("names a charter that is a directory relative to the tree (EISDIR)", async () => {
+    const source = await importedStore();
+    rmSync(path.join(source.autonomyTree, "charter.md"));
+    mkdirSync(path.join(source.autonomyTree, "charter.md"));
+
+    const result = await rpcCompare(source);
+
+    expect(result.state === "tree-invalid" && result.errors).toEqual([{ file: "charter.md", path: "", message: "the file is unreadable: EISDIR" }]);
+    expect(JSON.stringify(result)).not.toContain(source.autonomyTree);
+  });
+
+  it.skipIf(asRoot)("names an unreadable seat file relative to the tree (EACCES)", async () => {
+    const source = await importedStore();
+    chmodSync(path.join(source.autonomyTree, "seat-a.md"), 0o000);
+
+    const result = await rpcCompare(source);
+
+    expect(result.state === "tree-invalid" && result.errors).toEqual([{ file: "seat-a.md", path: "", message: "the file is unreadable: EACCES" }]);
+    expect(JSON.stringify(result)).not.toContain(source.autonomyTree);
+  });
+
+  it("passes an error that is not an fs error through unchanged", () => {
+    const error = new Error("not an fs error");
+
+    expect(relativeReadError("/root", error)).toBe(error);
+  });
+});
+
 describe("config import", () => {
   it("writes rev 0 by the import class and refuses a second import", async () => {
     const source = await importedStore();
@@ -68,6 +128,20 @@ describe("config import", () => {
     await expect(again).rejects.toThrow(/already has revisions/);
     const log = await readRevisionLog(revisionLogPath(source.stateDir));
     expect(log.state === "verified" && [log.revisions.length, log.head.by.class, log.head.at]).toEqual([1, "import", AT.toISOString()]);
+  });
+
+  it("writes rev 0 into a zero-byte revision log as one valid line (TP-3685)", async () => {
+    const stateDir = tempDir("state");
+    const logFile = revisionLogPath(stateDir);
+    mkdirSync(path.dirname(logFile), { recursive: true, mode: 0o700 });
+    writeFileSync(logFile, "", { mode: 0o600 });
+    const source = { stateDir, autonomyTree: copyFixtureTree(), coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
+
+    await importRevisionZero(source, source.autonomyTree, writtenLimits(stateDir), AT);
+
+    const log = await readRevisionLog(logFile);
+    expect(readFileSync(logFile, "utf8").split("\n")).toHaveLength(2);
+    expect(log.state === "verified" && [log.revisions.length, log.head.rev, log.head.by.class]).toEqual([1, 0, "import"]);
   });
 
   it("parses only the import and compare-tree verbs", () => {

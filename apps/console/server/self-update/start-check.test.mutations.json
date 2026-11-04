@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an empty served bin still starts",
+      "file": "apps/console/deploy/titan-console-start-check.mts",
+      "find": "if (size === undefined || size === 0) return `${CLI}",
+      "replace": "if (size === undefined) return `${CLI}",
+      "kills": [
+        "the start check before titan-console.service runs current points current at the newest whole release when a power loss emptied the served one"
+      ]
+    },
+    {
+      "name": "the fallback takes the oldest whole release",
+      "file": "apps/console/deploy/titan-console-start-check.mts",
+      "find": "b.stamp.builtAt.localeCompare(a.stamp.builtAt)",
+      "replace": "a.stamp.builtAt.localeCompare(b.stamp.builtAt)",
+      "kills": [
+        "the start check before titan-console.service runs current points current at the newest whole release when a power loss emptied the served one"
+      ]
+    },
+    {
+      "name": "no whole release still exits 0",
+      "file": "apps/console/deploy/titan-console-start-check.mts",
+      "find": "    ports.log(`error: no whole release under ${path.join(root, \"releases\")}; not starting the console`);\n    return EXIT.NO_BUILD;",
+      "replace": "    ports.log(`error: no whole release under ${path.join(root, \"releases\")}; not starting the console`);\n    return EXIT.OK;",
+      "kills": [
+        "the start check before titan-console.service runs current exits non-zero, saying why, when no release is whole, so systemd does not loop on exit 0"
+      ]
+    },
+    {
+      "name": "an unreadable served build-info still starts",
+      "file": "apps/console/deploy/titan-console-start-check.mts",
+      "find": "return readStamp(ports.readFile(path.join(dir, BUILD_INFO))) ?? `${BUILD_INFO} is unreadable`;",
+      "replace": "return readStamp(ports.readFile(path.join(dir, BUILD_INFO))) ?? { sha: \"\", builtAt: \"\" };",
+      "kills": [
+        "the start check before titan-console.service runs current falls back when the served bin has bytes but its build-info is unreadable, skipping an emptied candidate"
+      ]
+    }
+  ]
+}

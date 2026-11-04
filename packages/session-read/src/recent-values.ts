@@ -1,3 +1,4 @@
+import { messageOf } from "./absent.js";
 import type { Json } from "./text.js";
 import { asObject } from "./text.js";
 import type { RecentObservedValue, RecentSessionReadError } from "./recent-types.js";
@@ -45,7 +46,7 @@ export function renderedValue(value: unknown): string {
   const object = asObject(value);
   if (object && typeof object.text === "string") return oneLine(object.text);
   try {
-    return oneLine(JSON.stringify(value) ?? "");
+    return oneLine(stringify(value) ?? "");
   } catch {
     return "[unrenderable value]";
   }
@@ -57,6 +58,5 @@ export function withNativeOrdinal(line: RecentSourceLine, record: Json): RecentS
   return { ...line, evidence: { ...line.evidence, nativeOrdinal: ordinal } };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+// JSON.stringify returns undefined for undefined, functions and symbols, which its lib signature hides.
+const stringify: (value: unknown) => string | undefined = JSON.stringify;

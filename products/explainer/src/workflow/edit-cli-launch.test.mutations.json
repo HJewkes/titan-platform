@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "apply --start ignores the launcher seams",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "editLauncher(editId, deps.launch)",
+      "replace": "(() => undefined)",
+      "kills": [
+        "explainer edit apply --start through the default launcher starts the run as the edit's own transient unit, logging to the edit's log file",
+        "explainer edit apply --start through the default launcher launches a detached child logging to the edit's log file when no user manager is reachable"
+      ]
+    },
+    {
+      "name": "apply --start names every unit alike",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "editLauncher(editId, deps.launch)",
+      "replace": "editLauncher(\"edit\", deps.launch)",
+      "kills": ["explainer edit apply --start through the default launcher starts the run as the edit's own transient unit, logging to the edit's log file"]
+    },
+    {
+      "name": "apply --start hands the launcher the wrong log file",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "editLogFile(dataDir, editId));",
+      "replace": "editLogFile(dataDir, \"run\"));",
+      "kills": [
+        "explainer edit apply --start through the default launcher starts the run as the edit's own transient unit, logging to the edit's log file",
+        "explainer edit apply --start through the default launcher launches a detached child logging to the edit's log file when no user manager is reachable"
+      ]
+    }
+  ]
+}

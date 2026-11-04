@@ -71,7 +71,7 @@ function hasValueAt(raw: unknown, path: readonly PropertyKey[]): boolean {
   let node = raw;
   for (const key of path) {
     if (node === null || typeof node !== "object") return false;
-    node = (node as Record<PropertyKey, unknown>)[key];
+    node = Reflect.get(node, key);
   }
   return node !== undefined;
 }

@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every beat speaks at the concept band's rate",
+      "file": "products/explainer/src/workflow/tts-stage.ts",
+      "find": "tenths(speech.rates[band] * speech.voice.rate)",
+      "replace": "tenths(speech.rates.concept * speech.voice.rate)",
+      "kills": [
+        "tts stage: duration truing and absolute words trues a beat after its band's rate is applied: six code words at 40 wpm run 9 s, so a 5 s slot becomes 10.2 s",
+        "tts stage: per-beat rate and take cache voices each beat at its band's words a minute times the voice rate, and records them per beat in voice.json"
+      ]
+    },
+    {
+      "name": "the voice rate no longer scales the band rate",
+      "file": "products/explainer/src/workflow/tts-stage.ts",
+      "find": "tenths(speech.rates[band] * speech.voice.rate)",
+      "replace": "tenths(speech.rates[band])",
+      "kills": [
+        "tts stage: per-beat rate and take cache voices each beat at its band's words a minute times the voice rate, and records them per beat in voice.json",
+        "tts stage: per-beat rate and take cache misses the take cache for every beat when the voice rate changes"
+      ]
+    },
+    {
+      "name": "a beat is voiced at the provider's natural speed, uncalibrated",
+      "file": "products/explainer/src/workflow/tts-stage.ts",
+      "find": "{ targetWpm: rateWpm, wordCount: spokenWords(spoken).length }",
+      "replace": "{ targetWpm: rateWpm, wordCount: spokenWords(spoken).length, maxTries: 1 }",
+      "kills": [
+        "tts stage: duration truing and absolute words trues a beat after its band's rate is applied: six code words at 40 wpm run 9 s, so a 5 s slot becomes 10.2 s",
+        "tts stage: per-beat rate and take cache voices each beat at its band's words a minute times the voice rate, and records them per beat in voice.json"
+      ]
+    },
+    {
+      "name": "the take key leaves the rate out",
+      "file": "products/explainer/src/workflow/tts-cache.ts",
+      "find": "voice: key.voice, rateWpm: key.rateWpm, engine",
+      "replace": "voice: key.voice, engine",
+      "kills": [
+        "tts stage: per-beat rate and take cache re-voices only the beat whose beat type moved it to another band",
+        "tts stage: per-beat rate and take cache misses the take cache for every beat when the band rates changes"
+      ]
+    },
+    {
+      "name": "a beat resolve cut is voiced, or stops the stage",
+      "file": "products/explainer/src/workflow/tts-stage.ts",
+      "find": "keptBeats(script.beats, resolved).map(",
+      "replace": "script.beats.map(",
+      "kills": [
+        "tts stage: per-beat rate and take cache voices no beat that resolve cut, and still voices the rest"
+      ]
+    }
+  ]
+}

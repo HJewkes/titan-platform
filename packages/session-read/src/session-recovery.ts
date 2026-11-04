@@ -13,6 +13,7 @@ import type { RecentSessionTurn } from "./recent-types.js";
 import { oneLine, truncate } from "./recent-values.js";
 import { readSessionObservations } from "./session-observations.js";
 import { SessionSummaryAccumulator } from "./session-summary.js";
+import { asObject } from "./text.js";
 import { toolFamily } from "./tool-family.js";
 
 export const RECOVERY_MESSAGE_CHARS = 2000;
@@ -118,7 +119,7 @@ export class RecoveryFacts {
 
   add(observation: NormalizedSessionObservation): void {
     if (observation.historyOrigin || observation.kind !== "tool_call") return;
-    const input = asRecord(observation.input);
+    const input = asObject(observation.input);
     if (WRITE_TOOLS.has(observation.name)) this.addFile(field(input, "file_path") ?? field(input, "notebook_path"));
     else if (observation.name === "Bash") this.addCommand(field(input, "command"), observation.timestamp);
     else if (toolFamily(observation.name).family === "mcp_agentchat") this.addChat(observation, input);
@@ -177,10 +178,6 @@ function latest<T>(items: readonly T[]): CappedList<T> {
 function firstLine(text: string | null): string {
   const line = text?.split("\n").find(candidate => candidate.trim()) ?? "";
   return truncate(oneLine(line), RECOVERY_FIRST_LINE_CHARS);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function field(input: Record<string, unknown> | null, name: string): string | null {

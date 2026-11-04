@@ -32,10 +32,6 @@
         "link": "/reference/code-parser"
       },
       {
-        "text": "egress-scan",
-        "link": "/reference/egress-scan"
-      },
-      {
         "text": "embed",
         "link": "/reference/embed"
       },
@@ -62,6 +58,10 @@
       {
         "text": "owner-proof",
         "link": "/reference/owner-proof"
+      },
+      {
+        "text": "review-burden",
+        "link": "/reference/review-burden"
       },
       {
         "text": "rpc-protocol",
@@ -104,6 +104,10 @@
       {
         "text": "daemon",
         "link": "/reference/daemon"
+      },
+      {
+        "text": "egress-scan",
+        "link": "/reference/egress-scan"
       },
       {
         "text": "frame-capture",
@@ -152,6 +156,10 @@
       {
         "text": "speech-tts",
         "link": "/reference/speech-tts"
+      },
+      {
+        "text": "test-timing",
+        "link": "/reference/test-timing"
       },
       {
         "text": "worktree",

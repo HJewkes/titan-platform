@@ -5,12 +5,10 @@ import { botTokenExpiryWatch, observingFetch } from "./bot-token-expiry.js";
 import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js";
 import { usageMeter, type UsageMeter } from "./github-api/usage-meter.js";
 import { botLsRemote, type BotLsRemote } from "./bot-ls-remote.js";
+import { BOT_TOKEN_PATH } from "./bot-token-path.js";
 
-/**
- * The bot's token file. Fixed in code like `OWNER_KEYS_DIR`: no environment variable, flag or config can point serve
- * elsewhere. Undefined until the owner ratifies a path (TP-3094 A-4 or B-1), so until then serve looks nowhere.
- */
-export const BOT_TOKEN_PATH: string | undefined = undefined;
+export { botTokenPathIn } from "./bot-token-layout.js";
+export { BOT_TOKEN_PATH };
 
 /** The bot's GitHub login, fixed in code beside its token path, so C7 can tell its writes apart. Undefined until ratified. */
 export const BOT_LOGIN: string | undefined = undefined;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { hasSpokenDigits, numberForms, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
+import { hasSpokenDigits, heardForms, numberForms, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 import { deriveEvalView } from "./eval-view.js";
 
 const beatOf = (spoken: string, cues: string[] = []) => {
@@ -25,6 +25,19 @@ describe("spellSpokenNumbers", () => {
   it("reads a year as a pair of numbers", () => {
     expect(spell("The desk opened in 2026.")).toBe("The desk opened in twenty twenty-six.");
     expect(spell("It closed in 1905, then 2003.")).toBe("It closed in nineteen oh five, then two thousand three.");
+  });
+
+  it("voices a four-digit id as digit pairs and a plain count as a cardinal", () => {
+    // Catches: reading an id as a cardinal, which says "two thousand three hundred twenty-four" for PR 2324.
+    expect(spell("PR 2324 closed.")).toBe("PR twenty-three twenty-four closed.");
+    expect(spell("See TP-4103, then issue #1152.")).toBe("See TP forty-one oh three, then issue number eleven fifty-two.");
+    expect(spell("It is #1152 or pull request 4100.")).toBe("It is number eleven fifty-two or pull request forty-one hundred.");
+    expect(spell("The table has 2,324 rows.")).toBe("The table has two thousand three hundred twenty-four rows.");
+  });
+
+  it("keeps a cue after an id on its word and puts a cue on the id at the id's first word", () => {
+    expect(cuesOf("Ship PR 2324 now.", ["now"])).toEqual(["now"]);
+    expect(cuesOf("Ship PR 2324 now.", ["2324"])).toEqual(["PR"]);
   });
 
   it("spells percent, ordinals and decimals", () => {
@@ -94,7 +107,7 @@ describe("Q-V12 spoken digits", () => {
   };
 
   it("lists a beat that holds a digit", () => {
-    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "warning", pass: false, detail_beats: ["c2-1-stations"] }]);
+    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "error", pass: false, detail_beats: ["c2-1-stations"] }]);
   });
 
   it("passes a spelled beat and one whose only digits sit in markup", () => {
@@ -147,5 +160,13 @@ describe("numberForms", () => {
   it("keeps text it cannot read as written, lower-cased", () => {
     expect(numberForms("a dozen")).toEqual(["a dozen"]);
     expect(numberForms("Twelve trillion")).toEqual(["twelve trillion"]);
+  });
+});
+
+describe("heardForms", () => {
+  it("reads a number said in pairs as one value as well as its parts", () => {
+    expect(heardForms("five thirty-one")).toEqual(["5", "31", "531"]);
+    expect(heardForms("one two")).toEqual(["1", "2"]);
+    expect(heardForms("five and thirty-one")).toEqual(["5", "31"]);
   });
 });

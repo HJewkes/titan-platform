@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the strip hides when there are beats but no current notes",
+      "file": "apps/console/src/pages/ScrubMarkers.tsx",
+      "find": "if (current.length === 0 && beats.length === 0) return null;",
+      "replace": "if (current.length === 0) return null;",
+      "kills": [
+        "draws a tick where each beat starts, even with no notes, and seeks to the beat's start when tapped"
+      ]
+    },
+    {
+      "name": "a beat tick seeks to the wrong time",
+      "file": "apps/console/src/pages/ScrubMarkers.tsx",
+      "find": "onClick={() => seek(beat.startS)}",
+      "replace": "onClick={() => seek(0)}",
+      "kills": [
+        "draws a tick where each beat starts, even with no notes, and seeks to the beat's start when tapped"
+      ]
+    }
+  ]
+}

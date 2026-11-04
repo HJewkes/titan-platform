@@ -144,7 +144,7 @@ describe("loginPassword", () => {
     await owner.whoami();
 
     expect(owner.userId).toBe("@owner:hub.test");
-    expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject({ type: "m.login.password", password: "pw" });
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]!.body))).toMatchObject({ type: "m.login.password", password: "pw" });
     expect(urlOf(fetch, 1).searchParams.has("user_id")).toBe(false);
     expect(fetch.mock.calls[1]![1]!.headers).toMatchObject({ authorization: "Bearer tok" });
   });

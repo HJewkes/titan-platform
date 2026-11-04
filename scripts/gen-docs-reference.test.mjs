@@ -1,11 +1,23 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { MARKED_PAGES, collect, outputs, problems, roundedTestCount, countTestFiles } from "./gen-docs-reference.mjs";
+import { afterEach, describe, expect, it } from "vitest";
+import { MARKED_PAGES, collect, outputs, problems } from "./gen-docs-reference.mjs";
+
+const roots = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function tempRoot(prefix) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  roots.push(root);
+  return root;
+}
 
 function fixtureRoot() {
-  const root = mkdtempSync(join(tmpdir(), "gen-docs-reference-"));
+  const root = tempRoot("gen-docs-reference-");
   mkdirSync(join(root, ".codewatch"));
   const rule = { type: "layered-deps", $tiers: { 0: ["packages/alpha"], product: ["products/beta"] } };
   writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [rule] }));
@@ -39,7 +51,6 @@ describe("collect", () => {
 
 const MARKERS = {
   "README.md": "<!-- generated:package-count start -->99<!-- generated:package-count end --> reusable packages.\n",
-  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages in <!-- generated:test-file-count start -->999<!-- generated:test-file-count end --> test files.\n",
   "site/guides/architecture.md": "<!-- generated:arch-graph start --><!-- generated:arch-graph end -->\n\n<!-- generated:arch-leaves start --><!-- generated:arch-leaves end -->\n\n<!-- generated:arch-products start --><!-- generated:arch-products end -->\n\nComposes <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
   "site/guides/index.md": "Case study: <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
 };
@@ -47,7 +58,7 @@ const MARKERS = {
 const pkg = (name, deps = {}) => JSON.stringify({ name: `@titan-design/${name}`, version: "1.0.0", dependencies: deps });
 
 function siteRoot(tiers, families) {
-  const root = mkdtempSync(join(tmpdir(), "gen-docs-site-"));
+  const root = tempRoot("gen-docs-site-");
   mkdirSync(join(root, ".codewatch"));
   writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [{ type: "layered-deps", $tiers: tiers }] }));
   for (const dir of ["packages", "products", "apps", "site/reference", "site/guides", "site/.vitepress"]) {
@@ -103,38 +114,14 @@ describe("architecture page generation", () => {
     expect(page(root, "site/guides/index.md")).toContain("start -->two<!--");
   });
 
-  it("counts only the publishable packages under packages/ on the README and the landing page", () => {
+  it("counts only the publishable packages under packages/ on the README", () => {
     const root = workspaceWithNewUnit();
     writeManifest(root, "packages/hidden", JSON.stringify({ name: "@titan-design/hidden", private: true }));
     writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [{ type: "layered-deps", $tiers: {
       0: ["packages/alpha", "packages/hidden"], 1: ["packages/fresh-unit"], product: ["products/session-miner"],
     } }] }));
 
-    const counts = ["README.md", "site/index.md"].map((path) => page(root, path).match(/start -->(\w+)<!--/)[1]);
-
-    expect(counts).toEqual(["2", "2"]);
-  });
-
-  it("counts test files under the workspace globs and skips build output and installed dependencies", () => {
-    const root = workspaceWithNewUnit();
-    const touch = (path) => {
-      mkdirSync(join(root, path, ".."), { recursive: true });
-      writeFileSync(join(root, path), "");
-    };
-    touch("packages/alpha/src/a.test.ts");
-    touch("packages/alpha/src/nested/b.test.tsx");
-    touch("products/session-miner/test/c.test.mjs");
-    touch("packages/alpha/src/not-a-test.ts");
-    touch("packages/alpha/dist/d.test.js");
-    touch("packages/alpha/node_modules/dep/e.test.js");
-    touch("scripts/outside.test.mjs");
-
-    expect(["packages", "products"].reduce((sum, dir) => sum + countTestFiles(join(root, dir)), 0)).toBe(3);
-    expect(page(root, "site/index.md")).toContain("<!-- generated:test-file-count start -->0+<!-- generated:test-file-count end -->");
-  });
-
-  it("floors the test-file count to the hundred with a thousands separator and a plus sign", () => {
-    expect([1874, 1899, 1900].map(roundedTestCount)).toEqual(["1,800+", "1,800+", "1,900+"]);
+    expect(page(root, "README.md")).toContain("start -->2<!--");
   });
 
   it("reports a package that has no family on the families page", () => {
@@ -157,7 +144,17 @@ describe("architecture page generation", () => {
     writeFileSync(join(root, "site/reference/beta.md"), "");
     writeFileSync(join(root, "site/guides/package-families.md"), "`alpha`, `beta` and `fresh-unit`");
 
-    expect(problems(root)).toEqual([expect.stringMatching(/out of date: .*site\/reference\/index\.md, README\.md, site\/index\.md, site\/guides\/architecture\.md\./)]);
+    expect(problems(root)).toEqual([expect.stringMatching(/out of date: .*site\/reference\/index\.md, README\.md, site\/guides\/architecture\.md\./)]);
+  });
+
+  it("stays current when a test file pushes the repo's test count past a hundred (TP-3759)", () => {
+    const root = workspaceWithNewUnit();
+    for (const { path, content } of outputs(root)) writeFileSync(join(root, path), content);
+    mkdirSync(join(root, "packages/alpha/src"));
+
+    for (let i = 0; i < 100; i += 1) writeFileSync(join(root, "packages/alpha/src", `t${i}.test.ts`), "");
+
+    expect(problems(root)).toEqual([]);
   });
 
   it("fails naming the page when its generated markers are gone", () => {

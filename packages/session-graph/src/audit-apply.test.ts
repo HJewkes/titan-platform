@@ -84,10 +84,10 @@ async function indexRich(sessionId: string): Promise<number> {
 const pickLate = (d: TranscriptDelta) => ({ inbound: d.inbound, contextBlocks: d.contextBlocks, signals: d.signals });
 const count = (table: string, transcriptId?: number) =>
   transcriptId === undefined
-    ? (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n
-    : (graph.db.prepare(`SELECT count(*) AS n FROM "${table}" WHERE transcript_id = ?`).get(transcriptId) as { n: number }).n;
+    ? graph.db.prepare<[], { n: number }>(`SELECT count(*) AS n FROM "${table}"`).get()?.n
+    : graph.db.prepare<[number], { n: number }>(`SELECT count(*) AS n FROM "${table}" WHERE transcript_id = ?`).get(transcriptId)?.n;
 const countsOf = (transcriptId?: number) => Object.fromEntries(EVERY_AUDIT_TABLE.map((t) => [t, count(t, transcriptId)]));
-const columnsOf = (db: SessionGraph["db"], table: string) => (db.prepare("SELECT name FROM pragma_table_info(?)").all(table) as { name: string }[]).map((c) => c.name);
+const columnsOf = (db: SessionGraph["db"], table: string) => db.prepare<[string], { name: string }>("SELECT name FROM pragma_table_info(?)").all(table).map((c) => c.name);
 
 describe("migration 4", () => {
   /** The live graph's shape: session-graph at 3, plus active-work's own band at 1001 and 1002. */
@@ -101,7 +101,7 @@ describe("migration 4", () => {
     prepare(db);
     db.close();
   }
-  const migrationRows = (db: SessionGraph["db"]) => db.prepare("SELECT version, name, applied_at FROM _migration ORDER BY version").all() as { version: number; name: string }[];
+  const migrationRows = (db: SessionGraph["db"]) => db.prepare<[], { version: number; name: string }>("SELECT version, name, applied_at FROM _migration ORDER BY version").all();
 
   it("migration 4 applies on a version 3 database and is idempotent", () => {
     const file = path.join(dir, "graph.sqlite3");
@@ -115,7 +115,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME], [9, "stop storing bulk classes"], [10, "request_cost model-id boundary"], [11, ORIGIN_EXPERIMENT_MIGRATION_NAME], [12, INBOUND_BROADCAST_MIGRATION_NAME], [13, PRICE_LONG_PROMPT_MIGRATION_NAME],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME], [9, "stop storing bulk classes"], [10, "request_cost model-id boundary"], [11, ORIGIN_EXPERIMENT_MIGRATION_NAME], [12, INBOUND_BROADCAST_MIGRATION_NAME], [13, PRICE_LONG_PROMPT_MIGRATION_NAME], [14, "echo state per transcript"], [15, "origin route decision"],
       [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
@@ -264,7 +264,7 @@ describe("migration 12", () => {
 });
 
 describe("request rows", () => {
-  const requests = () => graph.db.prepare("SELECT * FROM request ORDER BY transcript_id").all() as Record<string, unknown>[];
+  const requests = () => graph.db.prepare<[], Record<string, unknown>>("SELECT * FROM request ORDER BY transcript_id").all();
 
   it("three assistant lines with one requestId store one request row with MAX tokens and MIN byte_offset", async () => {
     const lines = [
@@ -342,7 +342,7 @@ describe("audit apply, purge and reset", () => {
 
     applyAudit(graph.db, transcriptId, foldEvents(events));
 
-    const rows = graph.db.prepare("SELECT signal FROM session_signal WHERE transcript_id = ? ORDER BY signal").all(transcriptId) as { signal: string }[];
+    const rows = graph.db.prepare<[number], { signal: string }>("SELECT signal FROM session_signal WHERE transcript_id = ? ORDER BY signal").all(transcriptId);
     expect(rows.map((r) => r.signal)).toEqual(["commit", "push"]);
   });
 

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an orientation block with no found end is read from the brief's start",
+      "file": "packages/session-read/src/spawn-assignment.ts",
+      "find": "  return afterTruncation(brief, heading) ?? firstAnchorAfter(brief, heading);",
+      "replace": "  return afterTruncation(brief, heading) ?? firstAnchorAfter(brief, heading) ?? 0;",
+      "kills": [
+        "assignedTaskIds finishes a hostile 100 KB brief well under 50 ms"
+      ]
+    }
+  ]
+}

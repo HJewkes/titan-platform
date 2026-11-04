@@ -10,6 +10,7 @@ import type { PostedVariant } from "./frame-feedback.js";
 import { useWithSeen } from "./RoundReveal.js";
 import type { RoundAnswers } from "./RoundSections.js";
 import { checkGroups, sendProblems } from "./round-check.js";
+import { PHONE_TAP } from "./phone.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
@@ -74,7 +75,7 @@ export function RoundSend({ round, state, submitting, check, variants }: RoundSe
       <CardContent>
         <VStack gap={3}>
           <RoundGeneral value={state.general} onChange={state.setGeneral} />
-          <Button color="primary" isDisabled={!canSend} onPress={check.show}><ButtonText>Check and send</ButtonText></Button>
+          <Button color="primary" className={PHONE_TAP} isDisabled={!canSend} onPress={check.show}><ButtonText>Check and send</ButtonText></Button>
           {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
           {sending.status === "failed" ? <Alert status="error" message={`Not sent: ${sending.error}`} /> : null}
         </VStack>

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import type { Browser } from 'playwright-core'
 import { afterAll as after, beforeAll as before, describe, test } from 'vitest'
-import { captureFrame, launch, openCapturePage } from './capture.js'
+import { captureFrame, FontLoadError, launch, openCapturePage } from './capture.js'
 import { serveFixtures, type Served } from './fixtures/serve-fixtures.js'
 
 const VIEWPORT = { width: 640, height: 360 }
@@ -40,6 +40,17 @@ describe('openCapturePage and captureFrame', { timeout: BROWSER_TIMEOUT_MS }, ()
     const opening = openCapturePage(browser, served.url('missing-font'), VIEWPORT)
 
     await assert.rejects(opening, /^Error: fonts not loaded: .*MissingFace \(error\)/)
+  })
+
+  // Mutation: openCapturePage stops collecting the failed font requests; the error names a face but no URL.
+  test('the unloaded-font error names the face and the URL tried', async () => {
+    const opening = openCapturePage(browser, served.url('missing-font'), VIEWPORT)
+
+    const error = await opening.then(() => undefined, (e: unknown) => e)
+    assert.ok(error instanceof FontLoadError)
+    assert.deepEqual(error.faces.map((f) => f.family), ['MissingFace'])
+    assert.deepEqual(error.urls, [new URL('/fonts/missing.woff2', served.url('missing-font')).href])
+    assert.match(error.message, /MissingFace \(error\).*fonts\/missing\.woff2/)
   })
 
   // Mutation: openCapturePage checks fonts even when preloadFonts is false; the opt-out cannot measure anything.

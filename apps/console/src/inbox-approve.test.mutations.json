@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the endorse block renders the read-back's effect in place of the stored text",
+      "file": "apps/console/src/pages/InboxReadBack.tsx",
+      "find": "        {readBack.text}\n",
+      "replace": "        {readBack.effect}\n",
+      "kills": ["the inbox page, answering an agent's prompt from the console renders an endorsement's exact stored text with its whitespace intact, never the item's summary"]
+    },
+    {
+      "name": "the endorse block trims the stored text",
+      "file": "apps/console/src/pages/InboxReadBack.tsx",
+      "find": "        {readBack.text}\n",
+      "replace": "        {readBack.text.trim()}\n",
+      "kills": ["the inbox page, answering an agent's prompt from the console renders an endorsement's exact stored text with its whitespace intact, never the item's summary"]
+    },
+    {
+      "name": "approve-chat is left on the terminal",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "\"owner-op\", \"approve-chat\"]",
+      "replace": "\"owner-op\"]",
+      "kills": ["the inbox page, answering an agent's prompt from the console offers an approve-chat item as a console tap, not a terminal command"]
+    }
+  ]
+}

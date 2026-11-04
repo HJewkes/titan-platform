@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
+import { readPath } from "./narrow.js";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";
 /** Root files every workspace build reads; a lockfile change for an unrelated package over-triggers, which a drain makes harmless. */
@@ -27,7 +29,7 @@ export interface WorkspaceReader {
 
 /** The directories `pnpm-workspace.yaml` names; only literal paths and a trailing `/*` occur in this repo. */
 export function workspaceDirs(workspaceYaml: string, listDirs: WorkspaceReader["listDirs"]): string[] {
-  const globs = (parse(workspaceYaml) as { packages?: unknown } | null)?.packages;
+  const globs = readPath(parse(workspaceYaml), "packages");
   if (!Array.isArray(globs)) return [];
   return globs.flatMap((glob) => {
     if (typeof glob !== "string" || glob.startsWith("!")) return [];
@@ -43,10 +45,14 @@ export function readWorkspace(reader: WorkspaceReader): WorkspacePackage[] {
   return workspaceDirs(yaml, reader.listDirs).flatMap((dir) => {
     const text = reader.readFile(`${dir}/package.json`);
     if (text === undefined) return [];
-    const manifest = JSON.parse(text) as Record<string, unknown>;
-    if (typeof manifest.name !== "string") return [];
-    const deps = DEP_FIELDS.flatMap((field) => Object.keys((manifest[field] as Record<string, string> | undefined) ?? {}));
-    return [{ dir, name: manifest.name, deps }];
+    const manifest: unknown = JSON.parse(text);
+    const name = readPath(manifest, "name");
+    if (typeof name !== "string") return [];
+    const deps = DEP_FIELDS.flatMap((field) => {
+      const listed = readPath(manifest, field);
+      return isObjectLike(listed) ? Object.keys(listed) : [];
+    });
+    return [{ dir, name, deps }];
   });
 }
 
@@ -72,6 +78,11 @@ function isRootInput(path: string): boolean {
 export function touchedPaths(changed: readonly string[] | undefined, closure: readonly string[]): string[] {
   if (changed === undefined) return [UNKNOWN_DIFF];
   return changed.filter((path) => isRootInput(path) || (!NON_RUNTIME.test(path) && closure.some((dir) => path.startsWith(`${dir}/`))));
+}
+
+/** Whether a change would make the deployer build; an unread closure counts every change, so a lag is never hidden. */
+export function reachesFactoryBuild(changed: readonly string[] | undefined, closure: readonly string[] | undefined): boolean {
+  return closure === undefined || touchedPaths(changed, closure).length > 0;
 }
 
 function manifestWithoutVersion(text: string | undefined): Record<string, unknown> | undefined {

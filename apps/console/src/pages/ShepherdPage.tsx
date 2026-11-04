@@ -1,28 +1,10 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  Badge,
-  BadgeText,
-  EmptyState,
-  HStack,
-  Link,
-  Pill,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Typography,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 export type WatchRow = ConsoleCommands["shepherd.list"]["result"][number];
 type WaitingGate = ConsoleCommands["shepherd.waiting"]["result"]["owner"][number];
@@ -120,7 +102,7 @@ function PrLink({ row }: { row: WatchRow }): ReactNode {
   if (row.pr === null) return <Typography variant="body2">{`${row.repo} (${row.branch})`}</Typography>;
   const ref = prRef(row.repo, row.pr);
   return (
-    <Link color="primary" onPress={() => open({ view: "shepherd", id: ref })}>
+    <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "shepherd", id: ref })}>
       {ref}
     </Link>
   );

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the window takes the calendar date instead of the day-start boundary",
+      "file": "apps/console/server/coord-day.ts",
+      "find": "if (date === undefined && from.getTime() > now)",
+      "replace": "if (false)",
+      "kills": ["coordinator day window runs from the previous 07:00 when it is 06:30, not from the calendar date"]
+    },
+    {
+      "name": "beforeToday comes from the first reading after the day began",
+      "file": "apps/console/server/coord-day.ts",
+      "find": ".sort((a, b) => b.ts - a.ts)[0]",
+      "replace": ".sort((a, b) => a.ts - b.ts).at(-0)",
+      "kills": ["pool usage in the day takes beforeToday from the last reading at or before the day's start"]
+    },
+    {
+      "name": "the old window is carried across a reset",
+      "file": "apps/console/server/coord-day.ts",
+      "find": "windowStart > window.from ? undefined :",
+      "replace": "false ? undefined :",
+      "kills": ["pool usage in the day counts none of the old window once the seven-day window reset after the day's start"]
+    },
+    {
+      "name": "a bad day start is silently defaulted",
+      "file": "apps/console/server/coord-day.ts",
+      "find": "if (!DAY_START.test(raw)) throw new Error(",
+      "replace": "if (!DAY_START.test(raw)) return DEFAULT_DAY_START; throw new Error(",
+      "kills": ["day start setting defaults to 07:00 and refuses a value that is not HH:MM"]
+    }
+  ]
+}

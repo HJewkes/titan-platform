@@ -130,12 +130,19 @@ async function condenseDomain(store: CondenseStore, domain: string, entries: rea
   const batch = domainBatch(domain, evidence, principles);
   const rejected: RejectedCondenseDelta[] = [];
   const deltas = await reflect(reflector, batch, evidence, principles, rejected);
+  const bulk = rows.filter((row) => row.outcome === "bulk").length;
+  const domainRun = { domain, rows: entries.length, evidence: evidence.length, bulk, flagged: [...batch.flagged], rejected };
+  if (rejected.some(isWholeOutput)) return domainRun;
   const proposals = resolveProposals(store.playbook, domain, deltas, rejected);
   run.added.push(...proposals.added);
   run.feedback.push(...recordFeedback(store.playbook, evidence, [...deltas.map((d) => d.delta), ...proposals.cites]));
   advance(store.watermarks, domain, entries);
-  const bulk = rows.filter((row) => row.outcome === "bulk").length;
-  return { domain, rows: entries.length, evidence: evidence.length, bulk, flagged: [...batch.flagged], rejected };
+  return domainRun;
+}
+
+/** The reflector's output as a whole was unusable, so the batch is held back for the next run rather than consumed unread. */
+function isWholeOutput(rejection: RejectedCondenseDelta): boolean {
+  return rejection.index === -1;
 }
 
 /**

@@ -25,7 +25,7 @@ function tsShape(fn: Node): ParamShape | null {
   if (single) return { params: [single.text], positional: 1 };
   const params: string[] = [];
   for (const param of fn.childForFieldName("parameters")?.namedChildren ?? []) {
-    if (!param || !TS_PARAM_TYPES.has(param.type)) continue;
+    if (!TS_PARAM_TYPES.has(param.type)) continue;
     const pattern = param.childForFieldName("pattern");
     if (!pattern || pattern.type === "this") continue;
     if (pattern.type === "rest_pattern") break;
@@ -39,7 +39,6 @@ function pythonShape(fn: Node): ParamShape | null {
   const names: string[] = [];
   let positionalEnd: number | null = null;
   for (const param of fn.childForFieldName("parameters")?.namedChildren ?? []) {
-    if (!param) continue;
     if (param.type === "keyword_separator" || param.type === "list_splat_pattern") positionalEnd ??= names.length;
     const name = pythonParamName(param);
     if (name) names.push(name);
@@ -66,6 +65,6 @@ export function hasReceiver(fn: Node): boolean {
   const decorated = fn.parent?.type === "decorated_definition" ? fn.parent : null;
   const block = (decorated ?? fn).parent;
   if (block?.type !== "block" || block.parent?.type !== "class_definition") return false;
-  const decorators = decorated?.namedChildren.filter((c) => c?.type === "decorator") ?? [];
-  return !decorators.some((d) => d?.text === "@staticmethod");
+  const decorators = decorated?.namedChildren.filter((c) => c.type === "decorator") ?? [];
+  return !decorators.some((d) => d.text === "@staticmethod");
 }

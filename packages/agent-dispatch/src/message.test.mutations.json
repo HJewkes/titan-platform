@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "messageAgent drops the source, so a console notice reads as the owner typing",
+      "file": "packages/agent-dispatch/src/message.ts",
+      "find": "  return [\"debug\", \"send\", ...source, \"--\", name, text];",
+      "replace": "  return [\"debug\", \"send\", \"--\", name, text];",
+      "kills": [
+        "messageAgent passes --source console ahead of --, so the text stays one operand"
+      ]
+    },
+    {
+      "name": "the source lands after --, where it becomes part of the text",
+      "file": "packages/agent-dispatch/src/message.ts",
+      "find": "  return [\"debug\", \"send\", ...source, \"--\", name, text];",
+      "replace": "  return [\"debug\", \"send\", \"--\", name, text, ...source];",
+      "kills": [
+        "messageAgent passes --source console ahead of --, so the text stays one operand"
+      ]
+    },
+    {
+      "name": "messageAgent ignores its options",
+      "file": "packages/agent-dispatch/src/message.ts",
+      "find": "buildMessageArgs(name, text, options), timeoutMs)",
+      "replace": "buildMessageArgs(name, text), timeoutMs)",
+      "kills": [
+        "messageAgent passes --source console ahead of --, so the text stays one operand"
+      ]
+    },
+    {
+      "name": "every send claims the console source",
+      "file": "packages/agent-dispatch/src/message.ts",
+      "find": "options.source === undefined ? [] : [\"--source\", options.source]",
+      "replace": "[\"--source\", options.source ?? \"console\"]",
+      "kills": [
+        "messageAgent sends the whole text as one operand after --, so a leading dash is not an option"
+      ]
+    }
+  ]
+}

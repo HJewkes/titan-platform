@@ -13,6 +13,9 @@ Answer each question from this chapter alone, never from your own knowledge:
   exactly from the spoken words of this chapter's beats, each with its beat id, at least two words long.
   An answer whose quote is not found scores 0.
 - For an invariant, `what` is what keeps it, and `why` is how it breaks today.
+- For "the screen says ...", `what` is the spoken words that make that claim, and `why` is why it
+  matters. The screen's words are not something you heard: if no spoken words make the claim, it is
+  not stated.
 - For "which item is a different kind of thing?", set `odd_one_out` to that item's label exactly as
   listed, or null if they are all the same kind.
 

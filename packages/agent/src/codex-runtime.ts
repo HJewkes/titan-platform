@@ -113,6 +113,7 @@ function optionBlock(help: string, name: string): string | undefined {
   return lines.slice(start, next < 0 ? undefined : start + next + 1).join("\n");
 }
 
+// The installed CLI is known before any run process starts, so the failure is definite.
 function failure(reason: string): HarnessRunFailure {
-  return { kind: "runtime_error", reason };
+  return { kind: "harness_mismatch", reason };
 }

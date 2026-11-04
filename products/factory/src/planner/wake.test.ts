@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCli, type CliIo } from "../cli.js";
+import { runCli } from "../cli.js";
+import type { CliIo } from "../cli-types.js";
 import { factoryWorkflows } from "../workflows.js";
 import type { PlannerRun, RunOptions } from "./inputs.js";
 
@@ -19,6 +20,7 @@ let merged: { code: number; stdout: string };
 const run: PlannerRun = async (file, args, options) => {
   calls.push({ file, args, options });
   if (file === "gh") return { ...merged, stderr: merged.code === 0 ? "" : "gh: rate limited" };
+  if (args[1] === "spawn") writeFileSync(join(dir, "reviews", `review-${spawns().length}.md`), "# Review\n");
   return { code: 0, stdout: "", stderr: "" };
 };
 
@@ -36,6 +38,7 @@ function writeConfig(extra: Record<string, unknown> = {}, inputs: unknown[] = []
     JSON.stringify({
       cwd: dir,
       brief: join(dir, "brief.md"),
+      reviewDir: join(dir, "reviews"),
       inputs: [
         { name: "plan", file: join(dir, "plan.md"), selfWritten: true, dropSections: ["Revision log"] },
         { name: "decisions", file: join(dir, "decisions.md") },
@@ -50,8 +53,9 @@ function writeConfig(extra: Record<string, unknown> = {}, inputs: unknown[] = []
 
 async function wake(config: string, ...flags: string[]): Promise<{ code: number; out: string }> {
   let out = "";
-  const io: CliIo = { stdout: (text) => void (out += text), stderr: (text) => void (out += text), env: { XDG_STATE_HOME: join(dir, "state") } };
-  const code = await runCli(["planner", "wake", "--config", config, ...flags], io, { workflows: factoryWorkflows, routes: [], planner: { run, now: () => new Date("2026-01-02T03:00:00Z") } });
+  const io: CliIo = { stdout: (text) => void (out += text), stderr: (text) => void (out += text), env: { XDG_STATE_HOME: join(dir, "state"), TITAN_CONSOLE_INBOX_DIR: join(dir, "inbox") } };
+  const planner = { run, now: () => new Date("2026-01-02T03:00:00Z"), sleep: async () => {} };
+  const code = await runCli(["planner", "wake", "--config", config, ...flags], io, { workflows: factoryWorkflows, routes: [], planner });
   return { code, out };
 }
 
@@ -60,6 +64,7 @@ beforeEach(() => {
   calls = [];
   merged = { code: 0, stdout: "101 abc123 2026-01-01T10:00:00Z\n" };
   mkdirSync(join(dir, "tasks"));
+  mkdirSync(join(dir, "reviews"));
   fixture("brief.md", "You are the planner.\n");
   fixture("plan.md", "# Plan\n\n## 2. Priority order\n\n1. Ship the widget.\n\n## Revision log\n\n- 2026-01-01 00:00 review\n");
   fixture("decisions.md", "1. Owner 2026-01-01: ship the widget.\n");
@@ -130,6 +135,24 @@ describe("titan-factory planner wake", () => {
     expect(digest).not.toContain("old line");
     expect(digest).toMatch(/digest cut at 200 tokens/);
     expect(spawns()[0]!.options!.input).toMatch(/^Your inputs are pre-digested \(at most 200 tokens\) in .*factory-planner-digest\.md/);
+  });
+
+  it("the planner review input includes owner-gate-alarm.md and its cause-fix prompt line", async () => {
+    fixture("owner-gate-alarm.md", "Owner gates stale: 1 over 72h\n\n- acme/widgets#12 148h\n");
+    const alarmInput = { name: "owner-gate-alarm", file: join(dir, "owner-gate-alarm.md"), digest: true, optional: true, prompt: "Propose one cause fix for the stale owner gates: why they wait, not a ping." };
+    await wake(writeConfig({}, [alarmInput]));
+    const digest = readFileSync(join(dir, "state", "titan-factory", "planner-wake", "factory-planner-digest.md"), "utf8");
+    expect(digest).toContain("## owner-gate-alarm");
+    expect(digest).toContain("acme/widgets#12 148h");
+    expect(spawns()[0]!.options!.input).toContain("Propose one cause fix for the stale owner gates");
+  });
+
+  it("an absent optional alarm file adds neither a digest section nor the prompt line", async () => {
+    const alarmInput = { name: "owner-gate-alarm", file: join(dir, "owner-gate-alarm.md"), digest: true, optional: true, prompt: "Propose one cause fix for the stale owner gates." };
+    await wake(writeConfig({}, [alarmInput]));
+    const digest = readFileSync(join(dir, "state", "titan-factory", "planner-wake", "factory-planner-digest.md"), "utf8");
+    expect(digest).not.toContain("owner-gate-alarm");
+    expect(spawns()[0]!.options!.input).not.toContain("cause fix");
   });
 
   it("an input that cannot be read runs the planner rather than skipping it", async () => {

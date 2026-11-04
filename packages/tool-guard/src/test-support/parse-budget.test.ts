@@ -20,8 +20,8 @@ const slowRun = async () => {
 };
 
 describe("withinParseBudget", () => {
-  cpuBudgetIt("reports a run that spends more CPU than the budget, naming the time", TEST_CPU_MS, async () => {
-    const result = await withinParseBudget(slowRun, "ls", { ms: 10 });
+  cpuBudgetIt("under the bench, reports a run that spends more CPU than the budget, naming the time", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(slowRun, "ls", { ms: 10, bench: true });
 
     expect(result.cpuMs).toBeGreaterThanOrEqual(30);
     expect(result.problems).toHaveLength(1);
@@ -29,9 +29,34 @@ describe("withinParseBudget", () => {
   });
 
   cpuBudgetIt("reports nothing for the same run under a looser budget", TEST_CPU_MS, async () => {
-    const result = await withinParseBudget(slowRun, "ls", { ms: 1000 });
+    const result = await withinParseBudget(slowRun, "ls", { ms: 1000, bench: true });
 
     expect(result.problems).toEqual([]);
+  });
+
+  cpuBudgetIt("leaves CPU to the bench under pnpm test, since load on the runner moves it", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(slowRun, "ls", { ms: 10, bench: false });
+
+    expect(result.problems).toEqual([]);
+  });
+
+  cpuBudgetIt("fails a run past its work cap on an assertion, even when the run catches the cap", TEST_CPU_MS, async () => {
+    const busyRun = async () => {
+      try {
+        for (let i = 0; i < 1_000_000; i++) "x".slice(0);
+      } catch {
+        // The hook catches every error and denies; the count must fail the test anyway.
+      }
+      return { stdout: DENY };
+    };
+
+    await expect(withinParseBudget(busyRun, "ls", { workPerByte: 1 })).rejects.toMatchObject({ name: "AssertionError" });
+  });
+
+  cpuBudgetIt("counts the run's work", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(async () => (["a", "b"].forEach((c) => c.slice(0)), { stdout: "" }), "ls");
+
+    expect(result.work).toBe(2);
   });
 
   cpuBudgetIt("reports a silent run as not denied when a deny is required", TEST_CPU_MS, async () => {

@@ -1,13 +1,14 @@
 import { fakeSha } from "@titan-design/github";
 import { snapshotBrief } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
-import { gatePr, landGate } from "../coordinator-evidence.js";
+import { gatePr, landGate, ownerAtHeadRow } from "../coordinator-evidence.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { approveMergeAsk } from "../workflows/land-approval.js";
 import type { Verdict } from "./phases.js";
-import { shepherdGatePolicy, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy, shepherdLandOptions } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("skill-brief-head");
@@ -86,7 +87,8 @@ describe("the approve-merge gate land opens", () => {
     for (const path of SKILLS) expect(gate.prompt).toContain(path);
     expect(gate.prompt).toContain("https://github.com/octo/demo/pull/1/files");
     expect(gatePr(gate)).toEqual({ repo: "octo/demo", pr: 1 });
-    expect(landGate(gate)).toBeUndefined();
+    expect(landGate(gate)).toMatchObject({ repo: "octo/demo", pr: 1, head: H1 });
+    expect(ownerAtHeadRow(gate)).toBe("skill-path");
     expect(gate.questions![0]!.options.some((option) => option.recommended)).toBe(false);
   });
 

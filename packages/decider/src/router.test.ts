@@ -260,4 +260,22 @@ describe("route", () => {
       });
     }
   );
+
+  it.each([
+    ["", "other"],
+    ["  ", "other"],
+    ["??", "??"],
+  ])(
+    "queues a question in category %j for the owner instead of throwing",
+    (category, key) => {
+      expect(
+        route(q({ category, question: "Which one?" }), policy, agent)
+      ).toEqual({
+        route: "owner-queue",
+        shadow: true,
+        rule: 4,
+        reason: `category ${key} is in shadow mode`,
+      });
+    }
+  );
 });

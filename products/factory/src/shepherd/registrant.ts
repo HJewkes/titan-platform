@@ -1,6 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
-import { lineageSeat } from "./wake-roster.js";
+import { isSeat } from "./wake-brief.js";
+import { holdsLiveSession, latestRow, lineageSeat } from "./wake-roster.js";
 
 /** The run's first registrant, and, when that was its own fixer, the successors the store records after it. */
 interface RunLineage {
@@ -21,16 +22,32 @@ export function storedLineage(ref: ShepherdStoreRef, target: { repo: string; pr:
   return registration && runLineage(store, registration);
 }
 
-export const fixerRegistered = (lineage: RunLineage): boolean => lineage.registrant?.fixer === true;
-
 /**
- * The registering session hears the run's seat notices and digest. A fixer that registered its own PR exits when its turn
- * ends, so the first session that spawned its lineage hears them instead; no roster, or a lineage only the human spawned,
- * names none. Undefined sends them to the repo's seat, as before registrants were recorded.
+ * The registering session hears the run's seat notices and digest while it is live (TP-3958); a retired one would drop
+ * them. A fixer that registered its own PR exits when its turn ends, so the first session that spawned its lineage hears
+ * them instead. No roster, or a lineage only the human spawned, names none. Undefined sends them to the repo's seat, as
+ * before registrants were recorded.
  */
 export function registrantSeat(lineage: RunLineage, roster: readonly AgentRow[] | undefined): string | undefined {
   const { registrant, successors } = lineage;
-  if (!registrant) return undefined;
-  if (!registrant.fixer) return registrant.name;
-  return roster && lineageSeat({ implementer: registrant.name, successors }, roster);
+  if (!registrant || !roster) return undefined;
+  if (!registrant.fixer) return holdsLiveSession(registrant.name, roster) ? registrant.name : undefined;
+  return lineageSeat({ implementer: registrant.name, successors }, roster);
+}
+
+/**
+ * A registrant that is no live seat leaves its digest to whoever spawned it (TP-4061): the first live seat up its
+ * spawned-by chain, each hop read from the name's latest row. The chain stops at the human or a name already seen.
+ */
+export function spawnerSeat(lineage: RunLineage, roster: readonly AgentRow[] | undefined): string | undefined {
+  const { registrant } = lineage;
+  if (!registrant || registrant.fixer || !roster) return undefined;
+  const seen = new Set([registrant.name]);
+  let spawner = latestRow(registrant.name, roster)?.spawnedBy;
+  while (isSeat(spawner) && !seen.has(spawner)) {
+    if (holdsLiveSession(spawner, roster)) return spawner;
+    seen.add(spawner);
+    spawner = latestRow(spawner, roster)?.spawnedBy;
+  }
+  return undefined;
 }

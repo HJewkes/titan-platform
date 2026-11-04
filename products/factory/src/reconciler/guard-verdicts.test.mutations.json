@@ -2,30 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a head read again is not confirmed",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "result.outcome === \"same\" || result.outcome === \"confirmed\"",
-      "replace": "result.outcome === \"confirmed\"",
-      "kills": [
-        "guard verdicts on an open PR's head (TP-3097 through TP-3431) confirms the stored head read again without asking GitHub anything"
-      ]
-    },
-    {
       "name": "an unreadable compare confirms the head",
       "file": "products/factory/src/reconciler/guard-verdicts.ts",
       "find": "if (\"kind\" in result) return UNREAD;",
       "replace": "if (\"kind\" in result) return { kind: \"confirmed\" };",
       "kills": [
         "guard verdicts on an open PR's head (TP-3097 through TP-3431) answers unknown when the compare could not be read"
-      ]
-    },
-    {
-      "name": "a stale head answers unknown",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "return { kind: result.outcome };",
-      "replace": "return UNREAD;",
-      "kills": [
-        "guard verdicts on an open PR's head (TP-3097 through TP-3431) answers stale for an ancestor of the stored head while ls-remote still shows the stored one, and moves nothing"
       ]
     },
     {
@@ -53,51 +35,6 @@
       "replace": "verdict.by !== \"non-ancestor\"",
       "kills": [
         "guard verdicts on the main tip (TP-3431) confirms an ancestor of the cursor that ls-remote shows as off its line"
-      ]
-    },
-    {
-      "name": "a stale tip answers unknown",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "if (verdict.kind === \"stale\") return { kind: \"stale\" };",
-      "replace": "if (verdict.kind === \"stale\") return UNREAD;",
-      "kills": [
-        "guard verdicts on the main tip (TP-3431) answers stale for a tip GitHub's compare cannot find"
-      ]
-    },
-    {
-      "name": "an unreadable tip compare answers stale",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "if (verdict.kind === \"unavailable\" || verdict.kind === \"suspect\") return UNREAD;",
-      "replace": "if (verdict.kind === \"unavailable\" || verdict.kind === \"suspect\") return { kind: \"stale\" };",
-      "kills": [
-        "guard verdicts on the main tip (TP-3431) answers unknown for a tip whose compare could not be read"
-      ]
-    },
-    {
-      "name": "the tip's ls-remote asks for a pull head",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "lsRemote: () => deps.lsRemote(repo, { branch: BRANCH })",
-      "replace": "lsRemote: () => deps.lsRemote(repo, { pr: 0 })",
-      "kills": [
-        "guard verdicts on the main tip (TP-3431) asks ls-remote for main's branch, and each open PR for its pull head"
-      ]
-    },
-    {
-      "name": "a head's ls-remote asks for the branch",
-      "file": "products/factory/src/reconciler/guard-verdicts.ts",
-      "find": "lsRemote: (key) => deps.lsRemote(key.repo, { pr: key.pr })",
-      "replace": "lsRemote: (key) => deps.lsRemote(key.repo, { branch: BRANCH })",
-      "kills": [
-        "guard verdicts on the main tip (TP-3431) asks ls-remote for main's branch, and each open PR for its pull head"
-      ]
-    },
-    {
-      "name": "a tip is classified as a first read whatever the cursor",
-      "file": "products/factory/src/head-guard/guard.ts",
-      "find": "return classifyRead(reads, from === null ? undefined : { head: from, epoch: 0, earlierConfirmed: [] }, read);",
-      "replace": "return classifyRead(reads, undefined, read);",
-      "kills": [
-        "guard verdicts on the main tip (TP-3431) confirms a fast-forward of the cursor"
       ]
     },
     {

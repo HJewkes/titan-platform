@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS, runL0 } from "./eval-l0.js";
-import { invariantSeatRow, journeyOrderRow } from "./lint-spine.js";
+import { invariantSeatRow, journeyOrderRow, skippedSpineChecks } from "./lint-spine.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { ScriptSchema } from "./script-schema.js";
 import { parseSpine, type SpineV1 } from "./spine-schema.js";
@@ -112,5 +112,24 @@ describe("the spine checks inside runL0", () => {
     expect(ids()).not.toContain("Q-E15");
     expect(ids()).not.toContain("Q-E18");
     expect(ids(pilot())).toEqual(expect.arrayContaining(["Q-E15", "Q-E18"]));
+  });
+});
+
+describe("Q-E15 scoped to the design-journey structure", () => {
+  const ids = (structure?: string) => runL0(ScriptSchema.parse({ ...scriptWith(), structure }), undefined, L0_CHECKS, undefined, pilot()).map((r) => r.check_id);
+
+  // Mutation: running Q-E15 for every structure emits it under bluf.
+  it("runs Q-E15 for design-journey and for a legacy script with no structure, and only Q-E18 for another", () => {
+    expect(ids("design-journey")).toEqual(expect.arrayContaining(["Q-E15", "Q-E18"]));
+    expect(ids(undefined)).toEqual(expect.arrayContaining(["Q-E15", "Q-E18"]));
+    expect(ids("bluf")).toContain("Q-E18");
+    expect(ids("bluf")).not.toContain("Q-E15");
+  });
+
+  it("names the spine checks a run skips", () => {
+    expect([...skippedSpineChecks({}, false)]).toEqual(["Q-E15", "Q-E18"]);
+    expect([...skippedSpineChecks({ structure: "design-journey" }, true)]).toEqual([]);
+    expect([...skippedSpineChecks({ structure: "bluf" }, true)]).toEqual(expect.arrayContaining(["Q-E15"]));
+    expect([...skippedSpineChecks({ structure: "bluf" }, true)]).not.toContain("Q-E18");
   });
 });

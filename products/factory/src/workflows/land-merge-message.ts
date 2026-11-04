@@ -1,4 +1,4 @@
-import { formatSquashMessage, type GitHubPort, type MergeMessage, type MergeMethod, type RepoSlug } from "@titan-design/github";
+import { defangCiSkip, formatSquashMessage, type GitHubPort, type MergeMessage, type MergeMethod, type RepoSlug } from "@titan-design/github";
 
 export interface MergeInput {
   repo: string;
@@ -25,7 +25,8 @@ export function taskIdOf(task: string | undefined): string[] {
 
 /**
  * The squash subject and body for a PR. Formatting that throws falls back to the plain title and an empty body, so
- * GitHub's default concatenation of the PR's commits, trailers and addresses included, is never what lands.
+ * GitHub's default concatenation of the PR's commits, trailers and addresses included, is never what lands. The
+ * fallback title is still defanged, so a `[skip ci]` in it cannot skip main CI.
  */
 export async function squashMessageFor(port: GitHubPort, repo: RepoSlug, pr: number, taskIds: readonly string[], warn: (line: string) => void = console.warn): Promise<MergeMessage> {
   const source = await port.getSquashSource(repo, pr);
@@ -33,6 +34,6 @@ export async function squashMessageFor(port: GitHubPort, repo: RepoSlug, pr: num
     return formatSquashMessage({ ...source, prNumber: pr, taskIds });
   } catch (error) {
     warn(`land: formatting the squash message of ${repo}#${pr} failed, merging with the plain title: ${error instanceof Error ? error.message : String(error)}`);
-    return { subject: source.title, body: "" };
+    return { subject: defangCiSkip(source.title), body: "" };
   }
 }

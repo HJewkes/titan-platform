@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: sim
+summary: "A small model we run, sweeping one parameter."
+role: evidence
+component: { maturity: gap }
+slots: sim
+speech: { band: concept }
+durationS: [12, 22, 45]
+preset: false
+emphasis: { targets: [readouts], treatments: [highlight, trace, scale] }
+recipe: "Run the named model with a seed and sweep one parameter. A sim that stands for a published claim reproduces the claimed value within tolerance, or it is cut."

@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: list
+summary: "Up to five marked rows: tick, cross, risk, open or dot."
+role: explain
+component: { name: ListBeat, maturity: spike }
+slots: list
+speech: { band: concept }
+durationS: [5, 9, 18]
+preset: false
+emphasis: { targets: [rows], treatments: [highlight] }
+recipe: "One to five rows, each a short line with its mark. Each row lands on its word."

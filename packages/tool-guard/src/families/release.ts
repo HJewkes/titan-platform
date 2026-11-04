@@ -2,6 +2,7 @@ import type { SimpleCommand } from "../shell/commands.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, Family } from "../types.js";
+import { ghPathUnknown } from "./gh-path.js";
 import { ghPrMerge, VERSION_PACKAGES_RE } from "./merge.js";
 import { readOptions, set } from "./options.js";
 
@@ -81,6 +82,7 @@ function versionPackages(cmd: SimpleCommand): ClassifiedAction[] {
 }
 
 function bash(cmd: SimpleCommand): ClassifiedAction[] {
+  if (cmd.name === "gh" && ghPathUnknown(cmd)) return [classified("bash.release.gh-release", { tool: "gh" })];
   const call = invocation(cmd);
   const spelling = call && (RULES[call.tool] as Rule)(call.words);
   const direct = spelling ? [classified(spelling, { tool: call.tool })] : [];

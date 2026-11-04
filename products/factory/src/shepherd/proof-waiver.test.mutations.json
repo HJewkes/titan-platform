@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only a line that names no base binds, never one naming the PR's base",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "(candidate.run.status !== \"completed\" || base === binding.baseRef)",
+      "replace": "(candidate.run.status !== \"completed\" || base === undefined)",
+      "kills": [
+        "an owner's waive-proof on a NO_REPRO send-back lets the review at the waived head proceed, and its MERGE goes to the owner gate even under an auto policy",
+        "the reviewer brief after an owner's waive-proof tells the reviewer at the waived head that the fix-proof is waived by the owner"
+      ]
+    }
+  ]
+}

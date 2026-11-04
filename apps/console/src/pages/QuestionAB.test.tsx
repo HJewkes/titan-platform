@@ -11,6 +11,7 @@ import { FeedbackSchema, RoundSchema } from "../../server/round-schema.js";
 import { roundsSubmitCommands } from "../../server/rounds-submit.js";
 import { getRound, type RoundDetail } from "../../server/rounds.js";
 import { AnswerSourceProvider } from "../data/submit.js";
+import { getButton } from "./get-button.test-helpers.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
@@ -113,14 +114,8 @@ function Page({ framed = true }: { framed?: boolean }): ReactNode {
 
 const side = (questionId: string, name: "A" | "B"): HTMLElement => screen.getByTestId(`question-ab-side-${questionId}-${name}`);
 const pressed = (button: HTMLElement): string | null => button.closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
-// getByRole's accessible-name pass walks the whole page, about 250 ms a call here and ten times that on a loaded runner (TP-3974).
-function checkAndSend(): HTMLElement {
-  const button = screen.getByText("Check and send").closest<HTMLElement>("[role='button']");
-  if (button === null) throw new Error("Check and send is not a button");
-  return button;
-}
 async function sentFeedback(): Promise<unknown> {
-  fireEvent.click(checkAndSend());
+  fireEvent.click(getButton("Check and send"));
   fireEvent.click(screen.getByTestId("round-check-send"));
   await screen.findByText("Answers sent");
   return FeedbackSchema.parse(await staged.feedback());
@@ -189,7 +184,7 @@ describe("an A/B question", () => {
     render(<Page />);
 
     fireEvent.click(screen.getByText("Neither: request a revision"));
-    fireEvent.click(checkAndSend());
+    fireEvent.click(getButton("Check and send"));
     expect(screen.getByTestId("round-check-send").getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(screen.getByTestId("round-check-back"));
     fireEvent.change(screen.getByLabelText("Comment on Which beacon reads better?"), { target: { value: "Try a slow fade." } });
