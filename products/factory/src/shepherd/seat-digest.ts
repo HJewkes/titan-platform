@@ -84,7 +84,7 @@ interface SeatView {
   ended: { runId: string; key: string | undefined }[];
 }
 
-const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
+const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "dead-end"]);
 const SeatNoticeRecord = z.looseObject({ result: z.looseObject({ sent: z.literal(true), gate: z.string(), headSha: z.string() }) });
 
 const pr = (row: WatchRow): string => `${row.repo}#${row.pr ?? row.branch}`;

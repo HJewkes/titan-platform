@@ -6,7 +6,7 @@ import { headRegressionObserver } from "../head-guard/head-regression.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
-import { SUPERSEDED, cancelUnlessSettled, gateHead } from "./stale-gates.js";
+import { SUPERSEDED, cancelUnlessSettled, gateHead, headGateAsks } from "./stale-gates.js";
 import { readPath } from "../narrow.js";
 import { z } from "zod";
 
@@ -188,13 +188,14 @@ function stuckBehindHead(host: FactoryHost, { runId, gate }: PendingGate): strin
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
+  if (pending.stepId === "sh-dead-end") return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? headGateAsks(gate) : undefined;
   if (pending.stepId === "stuck-behind") return stuckBehindHead(host, pending);
   const run = approveMergeRun(host, pending);
   return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate) ?? releaseGateHead(run, gate.prompt));
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed, sh-visual-accept or stuck-behind gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, sh-dead-end, ci-failed, sh-visual-accept or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
