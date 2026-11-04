@@ -287,6 +287,18 @@ describe("evaluator L0", () => {
     expect(l0.checks!.every((row) => typeof row.ms === "number" && row.ms >= 0)).toBe(true);
   });
 
+  it("answers an aborted L0 with the abort, not a failed unit-suite row", async () => {
+    const repo = await fixture();
+    await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const gate = await ideaTree(repo, "shut-down", GATE_EDIT);
+    const shutdown = new AbortController();
+    shutdown.abort(new Error("runtime shutting down"));
+
+    const l0 = repo.ports.staticCheck({ ...repo.run, idea: idea("accept-gate"), ...gate }, shutdown.signal);
+
+    await expect(l0).rejects.toThrow("runtime shutting down");
+  });
+
   it("reads the params file at base and head and refuses an out-of-range value", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
