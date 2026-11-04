@@ -8,13 +8,14 @@ import { escalationReason, type Escalated, type Escalation } from "./route-table
 import type { GateRun } from "./run-state.js";
 
 /**
- * TP-4759: whether this dead end asks the seat. A run recorded before the seat gate took `ownerGate` here: where the record
- * continues, only a recorded address step means the seat; where it ends, a run paused on `ownerGate` keeps that gate.
+ * TP-4759: whether this dead end asks the seat; with the flag off nothing changes. A run recorded before the seat gate took
+ * `ownerGate` here: where the record continues, only a recorded address step means the seat; where it ends, a run paused
+ * on `ownerGate` keeps that gate.
  */
 export function asksSeat(ctx: WorkflowContext, ownerGate: string): boolean {
+  if (!GATE_DEMOTIONS.deadEndSeat) return false;
   const next = ctx.historyNext();
   if (next !== undefined) return stepIdMatches(ADDRESS_STEP, next);
-  if (!GATE_DEMOTIONS.deadEndSeat) return false;
   const paused = ctx.resumedGate();
   return paused === undefined || !stepIdMatches(ownerGate, paused);
 }
