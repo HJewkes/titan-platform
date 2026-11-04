@@ -92,7 +92,8 @@ function guardOf(child: ChildProcess, { timeoutMs, graceMs }: { timeoutMs?: numb
     clearTimeout(deadline);
     deadline = setTimeout(() => stop(`timed out after ${timeoutMs + allowanceMs} ms`), timeoutMs + allowanceMs);
   };
-  const clear = () => (clearTimeout(deadline), clearTimeout(hardKill));
+  const untrack = track(child.pid, graceMs);
+  const clear = () => (clearTimeout(deadline), clearTimeout(hardKill), untrack());
   return { stop, arm, clear, reason: () => reason };
 }
 
@@ -107,12 +108,12 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
   const { cwd, signal, graceMs = DEFAULT_GRACE_MS, waitAllowanceMs = 0 } = options;
   return new Promise((resolve) => {
     const child = spawn(file, args, { cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    const [untrack, guard] = [track(child.pid, graceMs), guardOf(child, { timeoutMs: options.timeoutMs, graceMs })];
+    const guard = guardOf(child, { timeoutMs: options.timeoutMs, graceMs });
     const [started, out] = [Date.now(), { stdout: "", stderr: "", waitedMs: undefined as number | undefined, spawnError: undefined as string | undefined }];
     const onAbort = () => guard.stop("aborted");
     guard.arm(waitAllowanceMs);
-    if (signal?.aborted) onAbort();
     signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     child.stdout.on("data", (chunk) => void (out.stdout.length < MAX_BUFFER && (out.stdout += chunk)));
     child.stderr.on("data", (chunk) => {
       if (out.stderr.length < MAX_BUFFER) out.stderr += chunk;
@@ -124,7 +125,6 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
     child.on("error", (error) => (out.spawnError = error.message));
     child.on("close", (code) => {
       guard.clear();
-      untrack();
       signal?.removeEventListener("abort", onAbort);
       // A descendant that outlived the script is still in the group; reap it on the normal path too.
       if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
