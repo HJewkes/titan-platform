@@ -64,6 +64,7 @@ import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { deadEndRoutes } from "./dead-end.js";
+import { readdressEscalation } from "./dead-end-route.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 import { sendBack } from "./send-back.js";
 
@@ -214,7 +215,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
+      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined), (gated, reask) => readdressEscalation(run, gated, reask))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),

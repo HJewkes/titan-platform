@@ -28,6 +28,15 @@ export const SUPERSEDED = "superseded: ";
 /** How a sweep cancel starts when the head stays and only its review must be taken again, so the facts are read afresh. */
 export const REREVIEW = `${SUPERSEDED}review again: `;
 
+/**
+ * How `readdress-dead-ends` cancels an owner gate that is a dead end (TP-4759): the head stays, and the run asks the
+ * gate's question again at that head, of the seat. A gate whose caller cannot readdress reads it as any other supersede.
+ */
+export const READDRESSED = `${SUPERSEDED}readdressed: `;
+
+/** The cancel reason that hands a dead-end owner gate to `seat`. */
+export const readdressedReason = (seat: string): string => `${READDRESSED}${seat} (TP-4759)`;
+
 type Superseded = { superseded: string };
 
 async function answerOrSuperseded(ctx: WorkflowContext, stepId: string, prompt: string, options: AssistedOptions): Promise<StepResult | Superseded> {
@@ -44,18 +53,34 @@ export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: st
   return "superseded" in answer ? undefined : answer;
 }
 
+/** As `askAtHead`, but a readdressed cancel says so: the caller asks the seat at the same head instead of waiting for a new one. */
+export async function askReaddressable(ctx: WorkflowContext, stepId: string, prompt: string, options: AssistedOptions = {}): Promise<StepResult | "readdressed" | undefined> {
+  const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
+  if (!("superseded" in answer)) return answer;
+  return answer.superseded.startsWith(READDRESSED) ? "readdressed" : undefined;
+}
+
+/** Asks a route approve-merge gate's question again at `gated`, of its seat; `reask` opens the owner's gate again. */
+export type Readdress = (gated: string, reask: () => Promise<StepResult>) => Promise<StepResult>;
+
 /** Land's own gates the head sweep may cancel; a cancelled one leaves land, so the run reads the head again. */
 const LAND_HEAD_GATES = ["approve-merge", "stuck-behind"];
 
-/** An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. `answered` runs when the owner answers an approve-merge gate. */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error, answered: () => void = () => undefined): WorkflowContext["assisted"] {
-  return async (stepId, prompt, options = {}) => {
+/**
+ * An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. `answered` runs when the owner answers an approve-merge gate.
+ * A readdressed approve-merge goes to `readdress` at the head it asked about, with no re-read (TP-4759).
+ */
+export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error, answered: () => void = () => undefined, readdress?: Readdress): WorkflowContext["assisted"] {
+  const assisted: WorkflowContext["assisted"] = async (stepId, prompt, options = {}) => {
     if (!LAND_HEAD_GATES.some((gate) => stepIdMatches(gate, stepId))) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
-    if (!("superseded" in answer)) return stepIdMatches("approve-merge", stepId) ? (answered(), answer) : answer;
+    const approve = stepIdMatches("approve-merge", stepId);
+    if (!("superseded" in answer)) return approve ? (answered(), answer) : answer;
     const gated = gateHead(prompt);
+    if (readdress && approve && gated && answer.superseded.startsWith(READDRESSED)) return readdress(gated, () => assisted(stepId, prompt, options));
     throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated, stepId);
   };
+  return assisted;
 }
 
 /** The run state a superseded approve-merge gate clears or hands on. */
