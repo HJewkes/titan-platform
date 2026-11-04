@@ -1,4 +1,5 @@
 import type { MergeFacts } from "@titan-design/authority";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GateDecision } from "../gate-policy.js";
 import type { readRequiredChecks } from "../required-checks.js";
 import { budgetMeasurement, ciPolicyClass } from "./ci-policy-class.js";
@@ -35,8 +36,8 @@ export function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour, he
 export function budgetAt(evidence: Pick<DecidableEvidence, "head" | "merge" | "ciPolicy" | "ciPolicyClass">, headSha: string): string | undefined {
   const measurement = evidence.ciPolicy?.kind === "weakened" ? budgetMeasurement(evidence.ciPolicyClass) : undefined;
   // Stored evidence is not parsed on read (policy.ts), so its verdict may be missing.
-  const verdict: Partial<MergeFacts["verdict"]> | undefined = evidence.merge.verdict;
-  const fresh = evidence.head === headSha && verdict?.value === "MERGE" && verdict.head === headSha && evidence.merge.carry === undefined;
+  const verdict: unknown = evidence.merge.verdict;
+  const fresh = evidence.head === headSha && isObjectLike(verdict) && verdict.value === "MERGE" && verdict.head === headSha && evidence.merge.carry === undefined;
   return fresh ? measurement : undefined;
 }
 
