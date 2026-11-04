@@ -81,6 +81,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-dead-end": "awaiting-approval",
   "sh-dead-end-address": "awaiting-approval",
   "sh-replan": "awaiting-approval",
+  "sh-abandon": "awaiting-approval",
   "sh-conflict-check": "awaiting-approval",
   "stuck-behind": "awaiting-approval",
   "base-check": "awaiting-approval",

@@ -23,7 +23,7 @@ function replanPorts(spawn: (request: SpawnRequest) => Promise<void>): ReplanPor
 }
 
 function started(replan: ReplanPorts, heads: readonly string[] = [H1]): { host: FactoryHost; runId: string } {
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes: deadEndRoutes(DEAD_END_SEAT, replan), gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes: deadEndRoutes(DEAD_END_SEAT, { replan }), gatePollMs: 5 });
   hosts.push(host);
   const deadEnd = deadEndParam(heads, "fix-first-runaway", false, { sessions: SESSIONS, trail: ["round 1 FIX_FIRST: split the parser"] });
   return { host, runId: host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd }) };
