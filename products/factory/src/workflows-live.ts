@@ -120,3 +120,8 @@ export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef
 export function visualThresholdOf(config: ConfigRef): (repo: string) => VisualThreshold | undefined {
   return (repo) => Object.entries(config.get().shepherd?.visualThreshold ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
 }
+
+/** The raw `shepherd.visualTier` entry, read live like the threshold and never parsed here; repo keys match in any case. */
+export function visualTierOf(config: ConfigRef): (repo: string) => unknown {
+  return (repo) => Object.entries(config.get().shepherd?.visualTier ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
+}

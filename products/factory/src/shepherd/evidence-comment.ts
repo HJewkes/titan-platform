@@ -6,6 +6,7 @@ import type { EvidenceRecord } from "./merge-facts.js";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import { percent, wouldDecide } from "./visual-threshold-gate.js";
+import { tierLine } from "./visual-tier-guard.js";
 import { readPath } from "../narrow.js";
 import { oldPathLine } from "../old-path/freeze-gate.js";
 
@@ -193,6 +194,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     "",
     ...checksTable(record),
     ...visualDiffSection(record.visualDelta),
+    ...tierLine(record.visualTier),
     ...rule,
     ...notes,
     ...pathsSection(decision),

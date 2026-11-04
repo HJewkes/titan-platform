@@ -28,6 +28,7 @@ import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
 import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 import { oldPathGate, oldPathOf, type OldPathField, type OldPathWiring } from "../old-path/freeze-gate.js";
+import { readVisualTier, tierClearance, tierOutcome } from "./visual-tier-guard.js";
 
 export { isGithubPath };
 export { budgetAt } from "./ci-policy-guard.js";
@@ -113,6 +114,7 @@ export interface MergeEvidence extends GrantWithheldField, OldPathField {
   /** On a weakened line, budget or weakening (ci-policy-class.ts); absent reads as weakening. */
   ciPolicyClass?: CiPolicyClass;
   visualDelta?: VisualDelta;
+  visualTier?: unknown;
   attest?: AttestDecided;
   /** The input's `Attests:` tokens, so a re-read at this head judges the same lines. */
   attestVerdicts?: AttestVerdicts;
@@ -131,6 +133,8 @@ export interface DecidableEvidence extends GrantWithheldField, OldPathField {
   ciPolicy?: CiPolicy;
   ciPolicyClass?: CiPolicyClass;
   visualDelta?: VisualDelta;
+  /** The TP-4761 tier, read back unvalidated from a stored record; visual-tier-guard.ts parses it before it decides. */
+  visualTier?: unknown;
   attest?: AttestDecided;
 }
 
@@ -198,7 +202,7 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta));
+    const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, evidence.merge.changedPaths, visual.visualPaths);
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
@@ -223,8 +227,10 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0 || honour.coversPaths("visual", visual)) return undefined;
-  const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}${honour.unplanned("visual")}` };
-  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
+  const tier = tierOutcome(evidence.visualTier);
+  const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}${honour.unplanned("visual")}${tier?.clears === false ? tier.note : ""}` };
+  if (visualBaselines !== undefined) return baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
+  return tier?.clears ? undefined : globGate;
 }
 
 /**
@@ -341,6 +347,8 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
 interface EvidenceReads extends OldPathWiring {
   reviewAppId?: number;
   threshold?: VisualThreshold;
+  /** Raw `shepherd.visualTier` for the repo; absent records no tier. */
+  tier?: unknown;
   /** Judges the head's attestation claims at the PR's base; absent judges none. */
   attest?: (input: MergeEvidenceInput, baseRef: string) => Promise<AttestJudgment | undefined>;
 }
@@ -358,7 +366,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
-  const visual = await visualDeltaOf(port, input, observed, reads.threshold);
+  const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...(await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier })) };
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
   const oldPath = await oldPathOf(reads.oldPath, input.repo, observed.prFiles, kind ?? {});
