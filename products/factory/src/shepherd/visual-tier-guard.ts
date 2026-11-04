@@ -20,6 +20,8 @@ const MAX_REASON = 500;
 
 const VisualTierRecordSchema = z.strictObject({
   mode: z.enum(["shadow", "on"]),
+  /** The changed paths the evidence step's globs matched as visual; decide-time globs may be wider (TP-4761 S2 review). */
+  judged: z.array(z.string()),
   verdict: z.union([
     z.strictObject({ tier: z.literal(1), basis: z.enum(["non-rendering", "no-pixel-diff"]) }),
     z.strictObject({ tier: z.literal(2), reason: z.string() }),
@@ -59,30 +61,38 @@ interface TierTarget {
 export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, target: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
   const { repo, baseRef, visualPaths, config } = target;
   const mode = tierMode(config);
-  if (mode === undefined || visualPaths === undefined || visualMatches(merge.changedPaths, visualPaths).length === 0) return undefined;
+  const judged = visualPaths === undefined ? [] : visualMatches(merge.changedPaths, visualPaths);
+  if (mode === undefined || visualPaths === undefined || judged.length === 0) return undefined;
   const mergeBase = await mergeBaseOf(port, repo, baseRef, merge.head);
-  return { visualTier: { mode, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined }) } };
+  return { visualTier: { mode, judged, verdict: visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined }) } };
 }
 
 /** A stored record is read back unvalidated, so one that fails the schema is tier 2 whatever mode it claims. */
 function readRecord(recorded: unknown): VisualTierRecord | undefined {
   if (recorded === undefined) return undefined;
   const parsed = VisualTierRecordSchema.safeParse(recorded);
-  return parsed.success ? parsed.data : { mode: "on", verdict: { tier: 2, reason: "the recorded visual tier is malformed" } };
+  return parsed.success ? parsed.data : { mode: "on", judged: [], verdict: { tier: 2, reason: "the recorded visual tier is malformed" } };
 }
 
-/** Under `on`, tier 1 clears the visual-path row and tier 2 keeps it with its why; shadow or no record leaves it as it was. */
-export function tierOutcome(recorded: unknown): { clears: true; note: string } | { clears: false; note: string } | undefined {
+/**
+ * Under `on`, tier 1 clears the visual-path row and tier 2 keeps it with its why; shadow or no record leaves it as it
+ * was. The decide step's globs can be wider than the ones the tier judged under, so a decide-time visual path the tier
+ * never judged as visual reads as tier 2.
+ */
+export function tierOutcome(recorded: unknown, visual: readonly string[]): { clears: true; note: string } | { clears: false; note: string } | undefined {
   const record = readRecord(recorded);
   if (record?.mode !== "on") return undefined;
-  const { verdict } = record;
-  return verdict.tier === 1 ? { clears: true, note: `tier 1 (${verdict.basis})` } : { clears: false, note: `; tier 2: ${oneLine(verdict.reason, MAX_REASON)}` };
+  const { verdict, judged } = record;
+  if (verdict.tier === 2) return { clears: false, note: `; tier 2: ${oneLine(verdict.reason, MAX_REASON)}` };
+  const unjudged = visual.filter((path) => !judged.includes(path));
+  if (unjudged.length > 0) return { clears: false, note: `; tier 2: the tier did not judge ${shownPaths(unjudged)} as visual` };
+  return { clears: true, note: `tier 1 (${verdict.basis})` };
 }
 
 /** The allow note for visual files a tier 1 under `on` cleared, so the evidence comment records why the row did not fire. */
 export function tierClearance(recorded: unknown, changedPaths: readonly string[], visualPaths: readonly string[] | undefined): string {
-  const outcome = tierOutcome(recorded);
   const visual = visualPaths === undefined ? [] : visualMatches(changedPaths, visualPaths);
+  const outcome = tierOutcome(recorded, visual);
   return outcome?.clears && visual.length > 0 ? `; visual files ${shownPaths(visual)} ${outcome.note}` : "";
 }
 

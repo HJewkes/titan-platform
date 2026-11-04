@@ -61,7 +61,7 @@ describe("the visual tier at the merge guard (TP-4761 S2)", () => {
 
     expect(decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
     expect(decision.reason).toContain(`; visual files ${STORY}, ${HOOK} tier 1 (non-rendering)`);
-    expect(evidence.record.visualTier).toEqual({ mode: "on", verdict: { tier: 1, basis: "non-rendering" } });
+    expect(evidence.record.visualTier).toEqual({ mode: "on", judged: [STORY, HOOK], verdict: { tier: 1, basis: "non-rendering" } });
     expect(evidence.record.decision.outcome).toBe("allow");
   });
 
@@ -69,7 +69,7 @@ describe("the visual tier at the merge guard (TP-4761 S2)", () => {
     const evidence = await evidenceFor([STORY, HOOK], tierConfig("shadow"));
 
     expect(decide(evidence)).toMatchObject(VISUAL_ROW);
-    expect(evidence.record.visualTier).toEqual({ mode: "shadow", verdict: { tier: 1, basis: "non-rendering" } });
+    expect(evidence.record.visualTier).toEqual({ mode: "shadow", judged: [STORY, HOOK], verdict: { tier: 1, basis: "non-rendering" } });
   });
 
   it("a tier-2 gate keeps row visual-path so the round sweep can answer it", async () => {
@@ -77,6 +77,27 @@ describe("the visual tier at the merge guard (TP-4761 S2)", () => {
 
     expect(decision).toMatchObject(VISUAL_ROW);
     expect(decision.reason).toMatch(/^the owner decides visual changes: packages\/ui\/src\/button\/button\.tsx; tier 2: no pixel proof: no pr-visual artifact read$/);
+  });
+
+  it("a tier 1 judged under narrower globs gates a visual path only the decide-time globs match", async () => {
+    const widened = "apps/web/Button.tsx";
+    const evidence = await evidenceFor([HOOK, widened], tierConfig("on"));
+
+    const decision = decideAutoMerge(HEAD, evidence, [...VISUAL_PATHS, "apps/web/**"]);
+
+    expect(evidence.record.visualTier).toMatchObject({ judged: [HOOK], verdict: { tier: 1 } });
+    expect(decision).toMatchObject(VISUAL_ROW);
+    expect(decision.reason).toContain(`tier 2: the tier did not judge ${widened} as visual`);
+  });
+
+  it("a stored record with no judged paths gates as tier 2", async () => {
+    const evidence = await evidenceFor([STORY, HOOK], tierConfig("on"));
+    const legacy = { ...evidence, visualTier: { mode: "on", verdict: { tier: 1, basis: "non-rendering" } } };
+
+    const decision = decide(legacy);
+
+    expect(decision).toMatchObject(VISUAL_ROW);
+    expect(decision.reason).toContain("tier 2: the recorded visual tier is malformed");
   });
 
   it("a stored record with a malformed visualTier gates as tier 2", async () => {

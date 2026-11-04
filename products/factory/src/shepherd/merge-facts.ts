@@ -228,7 +228,7 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0 || honour.coversPaths("visual", visual)) return undefined;
-  const tier = tierOutcome(evidence.visualTier);
+  const tier = tierOutcome(evidence.visualTier, visual);
   const tierNote = tier?.clears === false ? tier.note : "";
   const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}${honour.unplanned("visual")}${tierNote}` };
   if (visualBaselines !== undefined) return baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);

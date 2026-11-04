@@ -1354,7 +1354,10 @@ Modes:
 These rules still run after a tier-1 clear: the skill, `.github/`, CI-policy, attest,
 authority and visual-threshold rules, and a seat's [Visual baselines](#visual-baselines). A
 stored `visualTier` that does not parse is read as tier 2 under `on`. Shepherd records a
-tier only for a head whose changed files match the seat's visual globs.
+tier only for a head whose changed files match the seat's visual globs, and it stores the
+paths those globs matched with the tier. If a later registration widens the globs, the
+decision can match a visual path the tier never judged. That path keeps the visual-path
+gate, with `; tier 2: the tier did not judge <path> as visual`.
 
 Run a repo in `shadow` first, and read a few tier lines in its evidence comments before you
 set it to `on`.
