@@ -9,7 +9,7 @@ import { gateHead } from "./stale-gates.js";
 
 const GATE_TARGET = /^Merge PR #(\d+) in (\S+) at head /;
 
-export interface WeekQuestion {
+interface WeekQuestion {
   id: string;
   kind: "pick-one";
   prompt: string;
@@ -17,7 +17,7 @@ export interface WeekQuestion {
   merge: { repo: string; pr: number; headSha: string; ship: string[] };
 }
 
-export interface WeekSkip {
+interface WeekSkip {
   pr: number;
   reason: string;
 }
