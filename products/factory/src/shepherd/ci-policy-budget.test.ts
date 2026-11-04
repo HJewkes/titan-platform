@@ -6,32 +6,11 @@ import { toJSONSchema } from "zod";
 import { coordinatorEvidencePolicy, type CoordinatorEvidence } from "../coordinator-evidence.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import type { GateRecord } from "@titan-design/hitl";
-import { ciPolicyClass, type CiPolicyClassInput } from "./ci-policy-class.js";
+import type { CiPolicyClassInput } from "./ci-policy-class.js";
+import { REPO, HEAD, RUN_URL, BODY, BUDGET, CI_YML, REQUIRED, budgetJson, PR_3117, ciYml, VALIDATE, CI_BEFORE, classOf } from "./ci-policy-budget.test-helpers.js";
 import type { CiPolicyFile } from "./ci-policy-changes.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { ownerAtHeadAt } from "./policy.js";
-
-const REPO = "octo/demo";
-const HEAD = fakeSha("budget-head");
-const RUN_URL = `https://github.com/${REPO}/actions/runs/123456`;
-const BODY = `Measured over 150 runs: ${RUN_URL}`;
-const BUDGET = ".github/ci-budget.json";
-const CI_YML = ".github/workflows/ci.yml";
-const REQUIRED = ["validate", "dag-check"];
-
-const budgetJson = (p90: number, extra = ""): string =>
-  ["{", '  "workflow": "ci.yml",', '  "budgets": [', `    { "event": "pull_request", "job": "validate", "p90": ${p90} },${extra}`, '    { "event": "pull_request", "job": "dag-check", "p90": 600 }', "  ]", "}", ""].join("\n");
-
-/** #3117's shape: validate p90 600 -> 900 s, plus a new release-PR budget entry. */
-const PR_3117: CiPolicyFile = { path: BUDGET, before: budgetJson(600), after: budgetJson(900, '\n    { "event": "release_pr", "job": "validate", "p90": 1800 },') };
-
-const ciYml = (jobs: string): string => `name: CI\non: pull_request\njobs:\n${jobs}`;
-const VALIDATE = "  validate:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    steps:\n      - run: pnpm test\n";
-const DAG_CHECK = "  dag-check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm dag:check\n";
-const CI_BEFORE = ciYml(VALIDATE + DAG_CHECK);
-
-const classOf = (files: CiPolicyFile[], overrides: Partial<CiPolicyClassInput> = {}) =>
-  ciPolicyClass({ keys: ["other"], files, changedPaths: files.map((file) => file.path), unread: false, required: REQUIRED, repo: REPO, prBody: BODY, freshMerge: true, ...overrides });
 
 describe("sorting a weakened CI-policy diff into budget or weakening", () => {
   it("reads a #3117-shaped p90 600 -> 900 change with a measurement link as budget", () => {
@@ -54,23 +33,6 @@ describe("sorting a weakened CI-policy diff into budget or weakening", () => {
     const file = { path: CI_YML, before: CI_BEFORE, after: CI_BEFORE.replace("dag-check:", "dag-check-lite:") };
 
     expect(classOf([file])).toEqual({ kind: "weakening", why: "required check dag-check was removed or renamed" });
-  });
-
-  it.each([
-    ["continue-on-error", "    continue-on-error: true\n", "it adds continue-on-error"],
-    ["if: false", "    if: false\n", "it adds if: false"],
-    ["if: ${{ false }}", "    if: ${{ false }}\n", "it adds if: false"],
-    ["a skip", "    # skip-ci: true\n", "it adds a skip"],
-  ])("reads an added %s beside a timeout bump as weakening", (_case, line, why) => {
-    const after = CI_BEFORE.replace("timeout-minutes: 20\n", `timeout-minutes: 30\n${line}`);
-
-    expect(classOf([{ path: CI_YML, before: CI_BEFORE, after }])).toEqual({ kind: "weakening", why: `${why} in ${CI_YML}` });
-  });
-
-  it("reads a changed run command beside a timeout bump as weakening", () => {
-    const after = CI_BEFORE.replace("timeout-minutes: 20", "timeout-minutes: 30").replace("pnpm test", "echo ok");
-
-    expect(classOf([{ path: CI_YML, before: CI_BEFORE, after }])).toEqual({ kind: "weakening", why: `${CI_YML} changes more than a timeout or budget number` });
   });
 
   it.each<[string, Partial<CiPolicyClassInput>, string]>([
@@ -102,11 +64,11 @@ describe("sorting a weakened CI-policy diff into budget or weakening", () => {
     expect(classOf([{ path: BUDGET, before: budgetJson(600), after }], { required: [] })).toEqual({ kind: "weakening", why });
   });
 
-  it("reads every line of a workflow named for budgets by the line rule", () => {
+  it("reads a new workflow named for budgets as weakening", () => {
     const path = ".github/workflows/budget-report.yml";
     const after = ciYml("  report:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n").replace("on: pull_request", "on: pull_request_target");
 
-    expect(classOf([{ path, before: "", after }])).toEqual({ kind: "weakening", why: `${path} changes more than a timeout or budget number` });
+    expect(classOf([{ path, before: "", after }])).toEqual({ kind: "weakening", why: `${path} is not a workflow that parses at base and head` });
   });
 });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { budgetJsonChange, CI_BUDGET_PATH } from "./ci-budget-json.js";
-import { lineEdits, shownLine, type CiPolicyFile } from "./ci-policy-changes.js";
+import { shownLine, type CiPolicyFile } from "./ci-policy-changes.js";
+import { isWorkflowPath, workflowYamlChange } from "./ci-workflow-yaml.js";
 
 /**
  * Owner decision 552 (2), TP-4760: a weakened CI-policy line splits in two. A budget change (timeout, p90 or budget numbers,
@@ -37,16 +38,6 @@ export interface CiPolicyClassInput {
   freshMerge: boolean;
 }
 
-/** A line that sets one timeout, p-percentile or budget number and nothing else. */
-const BUDGET_NUMBER_LINE = /^\s*"?(timeout(-minutes)?|p\d{2}|budget)"?\s*:\s*\d+\s*,?\s*$/i;
-const COMMENT_LINE = /^\s*(#.*)?$/;
-
-const ADDED_WEAKENINGS: readonly (readonly [RegExp, string])[] = [
-  [/continue-on-error/i, "it adds continue-on-error"],
-  [/\bif\s*:\s*(\$\{\{\s*)?false\b/i, "it adds if: false"],
-  [/skip/i, "it adds a skip"],
-];
-
 const weakening = (why: string): CiPolicyClass => ({ kind: "weakening", why });
 
 /** The first reason the diff is a weakening; budget only when none holds. */
@@ -74,28 +65,19 @@ function requiredCheckLost(files: readonly CiPolicyFile[], required: readonly st
 function diffWeakening(files: readonly CiPolicyFile[]): string | undefined {
   let budgetChanged = false;
   for (const file of files) {
-    const read = file.path === CI_BUDGET_PATH ? budgetJsonChange(file.before, file.after) : linesWeakening(file);
+    const read = structuralChange(file);
     if ("why" in read) return read.why;
     budgetChanged ||= read.changed;
   }
   return budgetChanged ? undefined : "no timeout, p90 or budget number changed";
 }
 
-/** Outside the budget data file, every changed line is a lone timeout or budget number, or a comment. */
-function linesWeakening(file: CiPolicyFile): { why: string } | { changed: boolean } {
-  let changed = false;
-  const sides = { "-": linesOf(file.before), "+": linesOf(file.after) };
-  for (const { side, index } of lineEdits(sides["-"], sides["+"])) {
-    const line = sides[side][index] ?? "";
-    const added = side === "+" ? ADDED_WEAKENINGS.find(([pattern]) => pattern.test(line)) : undefined;
-    if (added) return { why: `${added[1]} in ${shownLine(file.path)}` };
-    if (!BUDGET_NUMBER_LINE.test(line) && !COMMENT_LINE.test(line)) return { why: `${shownLine(file.path)} changes more than a timeout or budget number` };
-    changed ||= BUDGET_NUMBER_LINE.test(line);
-  }
-  return { changed };
+/** Every file is judged by its parsed structure; a kind with no structural reader may hide anything, so it is a weakening. */
+function structuralChange(file: CiPolicyFile): { why: string } | { changed: boolean } {
+  if (file.path === CI_BUDGET_PATH) return budgetJsonChange(file.before, file.after);
+  if (isWorkflowPath(file.path)) return workflowYamlChange(file.path, file.before, file.after);
+  return { why: `${shownLine(file.path)} is not the budget data file or a workflow, so its change is not read as budget` };
 }
-
-const linesOf = (text: string): string[] => text.split(/\r\n|\r|\n/);
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
