@@ -63,7 +63,7 @@ function ownerAsk(host: FactoryHost, runId: string, stepId = "approve-merge", en
   try {
     code = resolveGateByOwnerAsk(host, io, runId, stepId, MERGE);
   } catch (error) {
-    err += (error as Error).message;
+    err += error instanceof Error ? error.message : String(error);
     code = 1;
   }
   return { code, out, err };

@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-declare const ACTOR_CLASSES: readonly ["owner-terminal", "owner-remote", "coordinator", "worker", "headless", "automation", "decider"];
+/**
+ * `owner-ask` records a gate a seat resolved after the owner approved the exact command at a Claude Code ask prompt.
+ * The approval cannot be verified (same OS user), so it is never an owner class, and the table denies it every action.
+ */
+declare const ACTOR_CLASSES: readonly ["owner-terminal", "owner-remote", "coordinator", "worker", "headless", "automation", "decider", "owner-ask"];
 /** The only classes that may resolve a gate: the owner, at a terminal or through a verified remote channel. */
 declare const RESOLVER_CLASSES: readonly ["owner-terminal", "owner-remote"];
 /** The only classes a gate's rule may name as a delegate resolver; anything a delegate answers still goes through `authorize`. */
@@ -128,6 +132,7 @@ declare const ruleSchema: z.ZodObject<{
         headless: "headless";
         automation: "automation";
         decider: "decider";
+        "owner-ask": "owner-ask";
     }>;
     verdict: z.ZodEnum<{
         allow: "allow";

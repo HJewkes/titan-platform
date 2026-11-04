@@ -49,8 +49,8 @@ export function registerGate(program: Command, verbs: Verbs): void {
 function ownerAskLeads(command: Command): boolean {
   let root = command;
   while (root.parent) root = root.parent;
-  const [verb, sub, flag] = (root as Command & { rawArgs: string[] }).rawArgs;
-  return verb === "gate" && sub === "resolve" && flag === "--owner-ask";
+  const raw: unknown = Reflect.get(root, "rawArgs");
+  return Array.isArray(raw) && raw[0] === "gate" && raw[1] === "resolve" && raw[2] === "--owner-ask";
 }
 
 export function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
