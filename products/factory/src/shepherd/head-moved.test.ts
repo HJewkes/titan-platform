@@ -142,6 +142,11 @@ async function conflictAfterSeatGate(): Promise<{ host: FactoryHost; fake: FakeG
   return { ...run, fake };
 }
 
+// The guard gate at the new head waits out the whole supersede pipeline, which outlasts the 10 s
+// budget of scripts/wait-budget.mjs on a loaded runner.
+const GUARD_PIPELINE_WAIT_MS = 20_000;
+const GUARD_PIPELINE_TEST_MS = 45_000;
+
 const VISUAL_POLICY: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: false, seat: "none", visualPaths: ["**/*.css"] };
 
 /** An auto policy under visual paths with no changed file read: the merge guard gates GATED, which then moves on. */
@@ -537,10 +542,10 @@ describe("a pending shepherd-merge-guard approve-merge gate", () => {
 
     expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
-    await gateOpened(host, gateId(runId, "approve-merge", 1));
+    await gateOpened(host, gateId(runId, "approve-merge", 1), GUARD_PIPELINE_WAIT_MS);
     expect(reviewed).toEqual([GATED, MOVED]);
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}`);
-  });
+  }, GUARD_PIPELINE_TEST_MS);
 
   it("a dry run reports it and cancels nothing", async () => {
     const { host, fake, services, runId } = await guardGatedAtGated();

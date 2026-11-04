@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the titan-platform frozen-root warning is dropped",
+      "file": "products/factory/src/dispatch/slice-lint.ts",
+      "find": "    ...slices.flatMap(frozenRootOwns),\n",
+      "replace": "",
+      "kills": [
+        "warns once, and refuses nothing, for a titan-platform slice owning products/factory/src/shepherd with no carve-out"
+      ]
+    }
+  ]
+}
