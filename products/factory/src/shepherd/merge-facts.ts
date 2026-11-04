@@ -7,9 +7,11 @@ import { readRequiredChecks } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
+import type { CiPolicyClass } from "./ci-policy-class.js";
+import { ciPolicyGate, unknownAndCiPolicy } from "./ci-policy-guard.js";
 import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
-import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { planHonour, type PlanHonour } from "./plan-approval-cover.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
@@ -28,6 +30,7 @@ import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visua
 import { oldPathGate, oldPathOf, type OldPathField, type OldPathWiring } from "../old-path/freeze-gate.js";
 
 export { isGithubPath };
+export { budgetAt } from "./ci-policy-guard.js";
 export type { EvidenceRecord, OldPathWiring };
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -107,6 +110,8 @@ export interface MergeEvidence extends GrantWithheldField, OldPathField {
   changedFilesUnread?: string;
   /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
   ciPolicy?: CiPolicy;
+  /** On a weakened line, budget or weakening (ci-policy-class.ts); absent reads as weakening. */
+  ciPolicyClass?: CiPolicyClass;
   visualDelta?: VisualDelta;
   attest?: AttestDecided;
   /** The input's `Attests:` tokens, so a re-read at this head judges the same lines. */
@@ -124,15 +129,16 @@ export interface DecidableEvidence extends GrantWithheldField, OldPathField {
   unreadFacts?: string[];
   changedFilesUnread?: string;
   ciPolicy?: CiPolicy;
+  ciPolicyClass?: CiPolicyClass;
   visualDelta?: VisualDelta;
   attest?: AttestDecided;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
-export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged"] as const;
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew", "old-path-untagged"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
-function guardRule(rowId: MergeGuardRow): PolicyRule {
+export function guardRule(rowId: MergeGuardRow): PolicyRule {
   return { table: "shepherd-merge-guard", rowId, version: 1 };
 }
 
@@ -178,8 +184,14 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   }
   const pathGate = changedFilesGate(evidence, visual, honour);
   if (pathGate) return pathGate;
-  const policyGate = ciPolicyGate(evidence, honour);
-  if (policyGate) return policyGate;
+  const policyGate = ciPolicyGate(evidence, honour, headSha);
+  if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
+  const decision = decideAfterPolicy(headSha, evidence, visual, honour);
+  return policyGate && decision.outcome === "allow" ? policyGate : decision;
+}
+
+/** Everything after the CI-policy row; a budget class gates only where the rest would allow, so no other gate hides behind it. */
+function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual: VisualPolicy, honour: PlanHonour): GateDecision {
   const judged = attestGate(evidence.attest) ?? oldPathGate(evidence.oldPath);
   if (judged !== undefined) return { outcome: "gate", rule: guardRule(judged.row), reason: judged.reason };
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
@@ -228,24 +240,6 @@ function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: G
   return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
 }
 
-/**
- * A reviewer who says CI policy is weakened, or writes the line in a shape the parser refuses, gates any PR for the owner.
- * A `.github/` change, rename sources included, with no line gates too, so a stored record from before the line existed
- * fails closed. A weakened line clears only under a plan approval pinning everything the PR merges; a malformed one never does.
- */
-function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour): GateDecision | undefined {
-  const { ciPolicy } = evidence;
-  if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
-  if (ciPolicy?.kind === "weakened") {
-    if (honour.coversCiPolicy({ keys: ciPolicy.keys, changed: evidence.merge.changedPaths, headBlobs: evidence.record.headBlobs })) return undefined;
-    return { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}${honour.unplanned("ci-policy")}` };
-  }
-  if (ciPolicy?.kind === "unchanged") return undefined;
-  const github = evidence.merge.changedPaths.filter(isGithubPath);
-  if (github.length === 0) return undefined;
-  return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
-}
-
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
 function runFact(run: CheckRun): CheckRunFact {
   return { name: run.name, appId: run.appId ?? -1, headSha: run.headSha, conclusion: run.conclusion };
@@ -276,6 +270,7 @@ interface Observed {
   changedFilesUnread?: string;
   changedLines?: number;
   ciPolicyChanges?: CiPolicyFileChange[];
+  ciPolicyClass?: CiPolicyClass;
   headBlobs?: Record<string, string | null>;
   /** The pinned changed files with their statuses, or why they could not be read. */
   prFiles: PrFile[] | string;
@@ -338,8 +333,8 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
   const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
-  const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+  const facts = unknownAndCiPolicy(input, { prBody: pr.body, merge, read }, required, paths.unread);
+  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...facts, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, the attestation judge and the old-path judge. */
@@ -362,7 +357,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const { pr, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
-  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
+  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
   const visual = await visualDeltaOf(port, input, observed, reads.threshold);
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
