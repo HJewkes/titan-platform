@@ -48,9 +48,9 @@ function deadEndAsked({ stepId, gate }: Pick<PendingGate, "stepId" | "gate">): D
 
 /** The address step's own read, over the services the verb has: no roster wired reads as no seat, so the owner keeps the gate. */
 function servicePorts(services: ShepherdServices): DeadEndPorts | undefined {
-  const { roster, store, seats } = services;
+  const { roster, store, seats, hubSeat } = services;
   if (roster === undefined) return undefined;
-  return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => singleSeat(seats(), repo) };
+  return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => singleSeat(seats(), repo), ...(hubSeat && { hubSeat }) };
 }
 
 /** Each pending dead-end owner gate of a live shepherd-pr run that has not already addressed a seat at that head. */

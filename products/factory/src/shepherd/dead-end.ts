@@ -13,6 +13,7 @@ import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REPLAN_STEPS, replanRoute, requestReplan, type FailedSession } from "./replan.js";
+import { holdsLiveSession } from "./wake-roster.js";
 import { registrantSeat, spawnerSeat, storedLineage } from "./registrant.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { LeaveLand } from "./leave-land.js";
@@ -51,9 +52,10 @@ export function deadEndRule(kind: DeadEndKind): GateRule {
 
 type Lineage = Parameters<typeof registrantSeat>[0];
 
-/** The registrant (or its fixer lineage's live seat), else the live seat that spawned it, else the repo's one seat. */
-function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[] | undefined, repoSeat: string | undefined): string | undefined {
-  return (lineage && (registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster))) ?? repoSeat;
+/** The registrant (or its fixer lineage's live seat), else the live seat that spawned it, else the repo's one seat or the hub seat, whichever holds a live session. */
+function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[], repoSeat: string | undefined, hubSeat: string | undefined): string | undefined {
+  const lineageSeat = lineage && (registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster));
+  return lineageSeat ?? [repoSeat, hubSeat].find((seat) => seat !== undefined && holdsLiveSession(seat, roster));
 }
 
 /** What the address step reads; a lineage that cannot be read throws, and the run then takes the owner gate. */
@@ -61,6 +63,8 @@ export interface DeadEndPorts {
   lineage(target: { repo: string; pr: number }): Lineage | undefined;
   roster(): Promise<readonly AgentRow[]>;
   repoSeat(repo: string): string | undefined;
+  /** The config's shepherd.hubSeat, the stand-in when the repo's seat holds no live session. */
+  hubSeat?(): string | undefined;
 }
 
 const AddressInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), kind: z.enum(DEAD_END_KINDS), headSha: z.string().min(1) });
@@ -70,13 +74,13 @@ const AddressResult = z.looseObject({ seat: z.string().nullable(), kind: z.enum(
 export async function deadEndAddress(ports: DeadEndPorts | undefined, target: { repo: string; pr: number }): Promise<string | undefined> {
   if (ports === undefined) return undefined;
   const lineage = ports.lineage(target);
-  return deadEndSeat(lineage, lineage?.registrant ? await ports.roster() : undefined, ports.repoSeat(target.repo));
+  return deadEndSeat(lineage, await ports.roster(), ports.repoSeat(target.repo), ports.hubSeat?.());
 }
 
 /** Serve's ports: the run's stored lineage, serve's roster and the exit notice's seat book. With neither wired, no seat. */
 function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" | "roster" | "exitNotice">): DeadEndPorts | undefined {
   if (roster === undefined || exitNotice === undefined) return undefined;
-  return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => exitNotice.seatFor(repo) };
+  return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => exitNotice.seatFor(repo), hubSeat: () => exitNotice.hubSeat?.() };
 }
 
 export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | undefined): StepRoute =>
