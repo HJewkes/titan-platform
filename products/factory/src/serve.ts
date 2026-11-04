@@ -25,7 +25,6 @@ import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
-import { stopEvals } from "./autoresearch/run-command.js";
 import { startDeployWatch, sweepFixers } from "./serve-sweeps.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import type { ServeReconciler } from "./reconciler/bot-ports.js";
@@ -215,8 +214,6 @@ export async function serveFactoryUntilSignal(options: FactoryServerOptions, sto
     if (server === null) return;
     const reason = await untilStopped(stop);
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
-    // Detached eval groups never see this process's signal; stop them before the host releases their runs.
-    await stopEvals();
     await server.close();
   } finally {
     agentChatTiming.stop();

@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { execSafeAsync, type AnswersPage } from "@titan-design/agent-dispatch";
 import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FORKS_SLEEPER, PROCESS_TEST_MS, dead, recordedPids, scratch } from "./autoresearch/eval-driver.test-helpers.js";
+import { runCommand } from "./autoresearch/run-command.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
@@ -111,6 +113,18 @@ describe("serve's bounded shutdown", () => {
     expect(closed).toBe(true);
     expect(hung.abort).toHaveBeenCalledTimes(1);
   });
+
+  it("close stops an eval still running, whose detached group never sees serve's signal", async () => {
+    const dir = scratch();
+    const running = runCommand(["sh", "-c", FORKS_SLEEPER, dir], { cwd: dir, graceMs: 600_000 });
+    const [child] = await recordedPids(dir, 1);
+    const parts = { sweeps: [], watches: [], mainWatch: undefined, ingress: undefined, daemon: { close: async () => undefined }, unbindCarry: () => undefined };
+
+    await closeServer({ ...parts, host: { runtime: { shutdown: () => undefined }, close: () => undefined } }, silentLogger, GRACE_MS);
+
+    expect((await running).ok).toBe(false);
+    expect(await dead([child!])).toBe(true);
+  }, PROCESS_TEST_MS);
 
   it("a hung tick's child process is killed at the end of the grace", async () => {
     const pidFile = join(mkdtempSync(join(tmpdir(), "factory-child-")), "pid");
