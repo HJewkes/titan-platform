@@ -154,8 +154,8 @@ stays out of the repo.
   queue.
 - `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
   `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. The
-  reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
-  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+  reviewer starts in `path` when no seat binds the repo, for a repo a seat lists. Registering needs a seat
+  that lists the repo, so with no `seatsDir` `shepherd register` refuses every PR. A seat's own path for the repo wins. The map is re-read on every
   spawn, as the seat book is.
 - `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
   update the branch, push to it or delete its head ref. The run waits held at its merge

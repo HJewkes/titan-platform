@@ -41,10 +41,10 @@ export type RegisterArgs = z.infer<typeof RegisterArgs>;
 export function policyFor(seats: () => SeatBook, args: RegisterArgs): EffectivePolicy {
   try {
     const found = lookupSeat(seats(), args.repo);
-    if (found.kind === "none") throw new RegistrationRefused(`no seat lists ${args.repo}; add it to a seat file under claude-channels/sources/autonomy/seats`);
+    if (found.kind === "none") throw coded(`no seat lists ${args.repo}; add it to a seat file under claude-channels/sources/autonomy/seats`, EXIT.DATAERR);
     return resolveEffectivePolicy(found, args.policy ?? {});
   } catch (error) {
-    if (error instanceof RegistrationRefused) throw coded(error.message.startsWith("no seat lists ") ? error.message : `registration refused: ${error.message}`, EXIT.DATAERR);
+    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
   }
 }

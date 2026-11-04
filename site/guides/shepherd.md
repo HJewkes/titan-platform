@@ -1049,7 +1049,9 @@ Every registration resolves a policy before anything starts
 | `owner-gate` | every merge waits on the `approve-merge` gate |
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
-The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
+The ceiling comes from seat files. A repo that no seat lists cannot register: `shepherd register` exits non-zero with
+`no seat lists <owner/repo>; add it to a seat file under claude-channels/sources/autonomy/seats`,
+and a repo a seat lists only as `read_only` counts as unlisted. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
