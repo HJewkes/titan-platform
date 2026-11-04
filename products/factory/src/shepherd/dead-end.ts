@@ -22,7 +22,7 @@ import { noticeHeldSeat } from "./gate-route.js";
  * `GATE_DEMOTIONS.deadEndSeat` routes them here.
  */
 export const DEAD_END_KINDS = ["exited-without-push", "fix-first-runaway", "failed-rounds"] as const;
-export type DeadEndKind = (typeof DEAD_END_KINDS)[number];
+type DeadEndKind = (typeof DEAD_END_KINDS)[number];
 
 const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
@@ -34,7 +34,7 @@ export const DEAD_END_STEPS: readonly StepDeclaration[] = [
 export const DEAD_END_TABLE = "shepherd-dead-end";
 
 /** Respawns a run may take before the gate stops offering one: a worker that keeps exiting needs another answer. */
-export const RESPAWN_CAP = 2;
+const RESPAWN_CAP = 2;
 
 /**
  * hitl lets only the owner classes, read at open time, or a coordinator answer, and the factory's `authorize` admits the
@@ -47,12 +47,12 @@ export function deadEndRule(kind: DeadEndKind): GateRule {
 type Lineage = Parameters<typeof registrantSeat>[0];
 
 /** The registrant (or its fixer lineage's live seat), else the live seat that spawned it, else the repo's one seat. */
-export function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[] | undefined, repoSeat: string | undefined): string | undefined {
+function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[] | undefined, repoSeat: string | undefined): string | undefined {
   return (lineage && (registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster))) ?? repoSeat;
 }
 
 /** What the address step reads; a lineage that cannot be read throws, and the run then takes the owner gate. */
-export interface DeadEndPorts {
+interface DeadEndPorts {
   lineage(target: { repo: string; pr: number }): Lineage | undefined;
   roster(): Promise<readonly AgentRow[]>;
   repoSeat(repo: string): string | undefined;
@@ -89,7 +89,7 @@ export function addressedSeat(run: WorkflowRun, headSha: string): string | undef
   return recorded.filter((entry) => entry.headSha === headSha).at(-1)?.seat ?? undefined;
 }
 
-export interface DeadEnd {
+interface DeadEnd {
   kind: DeadEndKind;
   headSha: string;
   situation: string;

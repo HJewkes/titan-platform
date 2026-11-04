@@ -6,7 +6,7 @@ import { shownLine } from "./ci-policy-changes.js";
 export const CI_BUDGET_PATH = ".github/ci-budget.json";
 
 /** A weakening reason, or whether any budget number changed or any entry was added. */
-export type BudgetJsonChange = { why: string } | { changed: boolean };
+type BudgetJsonChange = { why: string } | { changed: boolean };
 
 type Entry = Record<string, unknown>;
 

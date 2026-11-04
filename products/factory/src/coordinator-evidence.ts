@@ -304,7 +304,7 @@ function prAtHeadAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-at-
 }
 
 /** The seat a dead-end gate's prompt names as the one that answers it. */
-export const deadEndAddressee = (prompt: string): string | undefined => /\. Seat (\S+) answers\b/.exec(prompt)?.[1];
+const deadEndAddressee = (prompt: string): string | undefined => /\. Seat (\S+) answers\b/.exec(prompt)?.[1];
 
 /** Only the addressed seat, only a seat answer pinned to the gate's head, and only while the PR is still open there. */
 function seatDeadEndAdmits(gate: GateRecord, resolverId: string, payload: unknown, evidence: Of<"seat-dead-end">): boolean {
