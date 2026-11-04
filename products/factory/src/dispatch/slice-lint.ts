@@ -1,3 +1,4 @@
+import { A1_FROZEN_ROOTS } from "../old-path/freeze-rule.js";
 import { patternsOverlap } from "./glob-pattern.js";
 import type { OldPathRule } from "./old-paths.js";
 import { HUMAN_OPS, opsHits } from "./ops.js";
@@ -98,6 +99,7 @@ export function sliceWarnings(slices: readonly PlannedSlice[], oldPaths: readonl
     ...disjointChains(slices, byName),
     ...slices.flatMap(undeclaredPublish),
     ...slices.flatMap((s) => oldPathOwns(s, oldPaths)),
+    ...slices.flatMap(frozenRootOwns),
   ];
 }
 
@@ -110,6 +112,17 @@ function oldPathOwns(slice: PlannedSlice, oldPaths: readonly OldPathRule[]): str
   const tasks = new Set(deleting.map((rule) => rule?.task ?? "unknown"));
   if (tasks.size === 0) return [];
   return [`slice ${slice.n}: adds to agent-chat src (old path, fold task ${[...tasks].join(", ")}); name the package home or set carveOut`];
+}
+
+const PLATFORM_REPO = /(^|\/)titan-platform\/?$/;
+const PLATFORM_FROZEN_ROOTS = A1_FROZEN_ROOTS.filter((root) => root.repo === "titan-platform").map((root) => root.path);
+
+/** A1's titan-platform root is frozen from M1b exit; the plan-time warning names it early and refuses nothing. */
+function frozenRootOwns(slice: PlannedSlice): string[] {
+  if (!PLATFORM_REPO.test(slice.repo ?? "") || (slice.carveOut ?? "").trim() !== "") return [];
+  return PLATFORM_FROZEN_ROOTS.filter((root) => slice.owns.some((own) => own === root || own.startsWith(`${root}/`))).map(
+    (root) => `slice ${slice.n}: adds to ${root} (old path frozen at M1b exit); tag the task superseded-at or survives, or set carveOut`,
+  );
 }
 
 function deepestRule(own: string, oldPaths: readonly OldPathRule[]): OldPathRule | undefined {
