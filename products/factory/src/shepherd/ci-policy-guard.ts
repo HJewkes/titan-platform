@@ -56,7 +56,7 @@ interface CiPolicyRead {
 /** The CI-policy read less its whole files, which are never stored, and on a weakened line its class (ci-policy-class.ts). */
 function ciPolicyFacts(input: MergeEvidenceInput, { prBody, merge, read: { ciPolicyFiles, ciPolicyUnread, ...read } }: CiPolicyRead, otherUnread: boolean) {
   if (input.ciPolicy?.kind !== "weakened") return read;
-  const sides = { files: ciPolicyFiles ?? [], unread: ciPolicyUnread === true || otherUnread, required: merge.requiredContexts };
+  const sides = { files: ciPolicyFiles ?? [], unread: ciPolicyUnread === true || otherUnread, required: merge.requiredContexts, changedPaths: merge.changedPaths };
   const freshMerge = merge.verdict.head === merge.head && merge.carry === undefined;
   return { ...read, ciPolicyClass: ciPolicyClass({ ...sides, keys: input.ciPolicy.keys, repo: input.repo, prBody, freshMerge }) };
 }

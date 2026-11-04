@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { lineEdits, type CiPolicyFile } from "./ci-policy-changes.js";
+import { budgetJsonChange, CI_BUDGET_PATH } from "./ci-budget-json.js";
+import { lineEdits, shownLine, type CiPolicyFile } from "./ci-policy-changes.js";
 
 /**
  * Owner decision 552 (2), TP-4760: a weakened CI-policy line splits in two. A budget change (timeout, p90 or budget numbers,
@@ -24,6 +25,8 @@ export interface CiPolicyClassInput {
   keys: readonly string[];
   /** Every changed `.github/` file read at base and head. */
   files: readonly CiPolicyFile[];
+  /** Every path the PR changes; one that is not among `files` was never classified, so it reads as weakening. */
+  changedPaths: readonly string[];
   /** Set when any changed or `.github/` file went unread, which could hide a weakening. */
   unread: boolean;
   /** The base branch's required contexts. */
@@ -34,11 +37,8 @@ export interface CiPolicyClassInput {
   freshMerge: boolean;
 }
 
-/** A file whose name says it holds budgets, such as `.github/ci-budget.json`; any of its lines may change. */
-const BUDGET_FILE = /budget[^/]*$/i;
 /** A line that sets one timeout, p-percentile or budget number and nothing else. */
 const BUDGET_NUMBER_LINE = /^\s*"?(timeout(-minutes)?|p\d{2}|budget)"?\s*:\s*\d+\s*,?\s*$/i;
-const BUDGET_NUMBER = /"?(timeout[\w-]*|p\d{2}|budget[\w-]*)"?\s*:\s*\d/i;
 const COMMENT_LINE = /^\s*(#.*)?$/;
 
 const ADDED_WEAKENINGS: readonly (readonly [RegExp, string])[] = [
@@ -54,6 +54,9 @@ export function ciPolicyClass(input: CiPolicyClassInput): CiPolicyClass {
   const nonBudgetKeys = input.keys.filter((key) => key !== "other");
   if (nonBudgetKeys.length > 0) return weakening(`the reviewer named ${nonBudgetKeys.join(", ")}`);
   if (input.unread) return weakening("a changed file was not read");
+  const classified = new Set(input.files.map((file) => file.path));
+  const outside = input.changedPaths.find((path) => !classified.has(path));
+  if (outside !== undefined) return weakening(`the PR changes ${shownLine(outside)}, which is not a classified .github/ file`);
   const why = requiredCheckLost(input.files, input.required) ?? diffWeakening(input.files);
   if (why !== undefined) return weakening(why);
   if (!input.freshMerge) return weakening("no reviewer MERGE was given at this head");
@@ -71,23 +74,32 @@ function requiredCheckLost(files: readonly CiPolicyFile[], required: readonly st
 function diffWeakening(files: readonly CiPolicyFile[]): string | undefined {
   let budgetChanged = false;
   for (const file of files) {
-    const sides = { "-": linesOf(file.before), "+": linesOf(file.after) };
-    for (const { side, index } of lineEdits(sides["-"], sides["+"])) {
-      const line = sides[side][index] ?? "";
-      const added = side === "+" ? ADDED_WEAKENINGS.find(([pattern]) => pattern.test(line)) : undefined;
-      if (added) return `${added[1]} in ${file.path}`;
-      if (!BUDGET_FILE.test(file.path) && !BUDGET_NUMBER_LINE.test(line) && !COMMENT_LINE.test(line)) return `${file.path} changes more than a timeout or budget number`;
-      budgetChanged ||= BUDGET_NUMBER.test(line);
-    }
+    const read = file.path === CI_BUDGET_PATH ? budgetJsonChange(file.before, file.after) : linesWeakening(file);
+    if ("why" in read) return read.why;
+    budgetChanged ||= read.changed;
   }
   return budgetChanged ? undefined : "no timeout, p90 or budget number changed";
+}
+
+/** Outside the budget data file, every changed line is a lone timeout or budget number, or a comment. */
+function linesWeakening(file: CiPolicyFile): { why: string } | { changed: boolean } {
+  let changed = false;
+  const sides = { "-": linesOf(file.before), "+": linesOf(file.after) };
+  for (const { side, index } of lineEdits(sides["-"], sides["+"])) {
+    const line = sides[side][index] ?? "";
+    const added = side === "+" ? ADDED_WEAKENINGS.find(([pattern]) => pattern.test(line)) : undefined;
+    if (added) return { why: `${added[1]} in ${shownLine(file.path)}` };
+    if (!BUDGET_NUMBER_LINE.test(line) && !COMMENT_LINE.test(line)) return { why: `${shownLine(file.path)} changes more than a timeout or budget number` };
+    changed ||= BUDGET_NUMBER_LINE.test(line);
+  }
+  return { changed };
 }
 
 const linesOf = (text: string): string[] => text.split(/\r\n|\r|\n/);
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A GitHub Actions run of this same repo, linked from the PR body. */
+/** A GitHub Actions run of this same repo, linked from the PR body as a whole URL, not inside another one. */
 function measurementLink(repo: string, body: string | undefined): string | undefined {
-  return new RegExp(`https://github\\.com/${escapeRegExp(repo)}/actions/runs/\\d+`).exec(body ?? "")?.[0];
+  return new RegExp(`(?:^|[\\s(<\\[])(https://github\\.com/${escapeRegExp(repo)}/actions/runs/\\d+)(?=$|[\\s)>\\],.;:])`).exec(body ?? "")?.[1];
 }

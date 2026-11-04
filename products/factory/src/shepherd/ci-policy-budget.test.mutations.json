@@ -6,7 +6,9 @@
       "file": "products/factory/src/coordinator-evidence.ts",
       "find": "  if (run.rule === CI_POLICY_BUDGET_RULE) return matches && run.merge === \"auto\" && !run.held && !run.frozen;\n",
       "replace": "",
-      "kills": ["a coordinator resolving a CI-policy gate admits a ci-policy-budget gate on fresh merge evidence"]
+      "kills": [
+        "a coordinator resolving a CI-policy gate admits a ci-policy-budget gate on fresh merge evidence"
+      ]
     },
     {
       "name": "a required check removed reads as budget",
@@ -19,25 +21,32 @@
       ]
     },
     {
-      "name": "an added skip reads as budget",
+      "name": "a changed path outside the classified files reads as budget",
       "file": "products/factory/src/shepherd/ci-policy-class.ts",
-      "find": "  [/skip/i, \"it adds a skip\"],\n",
+      "find": "  if (outside !== undefined) return weakening(`the PR changes ${shownLine(outside)}, which is not a classified .github/ file`);\n",
       "replace": "",
-      "kills": ["sorting a weakened CI-policy diff into budget or weakening reads an added a skip beside a timeout bump as weakening"]
+      "kills": [
+        "sorting a weakened CI-policy diff into budget or weakening reads a #3117-shaped diff with a vitest.config.ts change beside it as weakening",
+        "the merge guard on a weakened CI-policy line keeps a #3117-shaped diff beside a package.json change on ci-policy-weakened, marked for the owner"
+      ]
     },
     {
       "name": "a budget-class line is still marked owner-only",
       "file": "products/factory/src/shepherd/policy.ts",
       "find": "if (evidence.ciPolicy?.kind === \"weakened\" && budgetAt(evidence, headSha) === undefined) rows.push",
       "replace": "if (evidence.ciPolicy?.kind === \"weakened\") rows.push",
-      "kills": ["the merge guard on a weakened CI-policy line gates a #3117-shaped budget diff on ci-policy-budget, unmarked, so a coordinator may resolve it"]
+      "kills": [
+        "the merge guard on a weakened CI-policy line gates a #3117-shaped budget diff on ci-policy-budget, unmarked, so a coordinator may resolve it"
+      ]
     },
     {
       "name": "the budget row hides a later guard or authority gate",
       "file": "products/factory/src/shepherd/merge-facts.ts",
       "find": "  return policyGate && decision.outcome === \"allow\" ? policyGate : decision;",
       "replace": "  return policyGate ?? decision;",
-      "kills": ["the merge guard on a weakened CI-policy line lets another gate the rest of the guard opens win over the budget row"]
+      "kills": [
+        "the merge guard on a weakened CI-policy line lets another gate the rest of the guard opens win over the budget row"
+      ]
     }
   ]
 }
