@@ -12,6 +12,7 @@ import type { ShepherdPhases, Verdict, WakeOutcome } from "../shepherd/phases.js
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
 import type { ExitNoticePorts, RosterReader } from "../shepherd/ports.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
+import type { ShepherdServices } from "../shepherd/services.js";
 import { fixFirstEscalation, type Escalated } from "../shepherd/route-table.js";
 import { routeEscalation } from "../shepherd/routed.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
@@ -26,7 +27,7 @@ import { liveRow } from "./registrant-routing.js";
 /** The seat that registered the PR; it holds a live session unless a world's roster leaves it out. */
 export const REGISTRANT = "tc-registrant";
 
-/** Turns TP-4759's seat route on for the running test alone; the flag stays off in production until S5. */
+/** Sets TP-4759's seat route for the running test alone; production has it on since S5. */
 export function deadEndSeatOn(on = true): void {
   const before = GATE_DEMOTIONS.deadEndSeat;
   GATE_DEMOTIONS.deadEndSeat = on;
@@ -54,9 +55,17 @@ interface ExitWorld {
   store: ShepherdStore;
   fake: FakeGitHub;
   sends: string[];
+  services: ShepherdServices;
 }
 
-function rosterOf(rows: readonly AgentRow[]): RosterReader {
+/** The shepherd services a factory route set carries; a route set built without them is a broken test world. */
+export function servicesOf(routes: { shepherd?: ShepherdServices }): ShepherdServices {
+  if (routes.shepherd === undefined) throw new Error("the factory routes carry no shepherd services");
+  return routes.shepherd;
+}
+
+/** A roster that always reads `rows`. */
+export function rosterOf(rows: readonly AgentRow[]): RosterReader {
   return { read: async () => ({ kind: "known", rows: [...rows] }), rows: async () => [...rows], invalidate: () => undefined };
 }
 
@@ -70,7 +79,7 @@ export function exitWorld({ kind, roster = [liveRow(REGISTRANT)], hubSeat, dbPat
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster: rosterOf(roster), exitNotice });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(exitedAt(kind))], routes, gatePollMs: 5 });
   onTestFinished(() => host.close());
-  return { host, store: ref.get(), fake, sends };
+  return { host, store: ref.get(), fake, sends, services: servicesOf(routes) };
 }
 
 export function startExit({ host, store, fake }: ExitWorld): string {

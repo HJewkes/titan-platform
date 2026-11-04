@@ -4,7 +4,7 @@
     {
       "name": "an exit with no seat told always takes the owner's sent-back gate",
       "file": "products/factory/src/shepherd/flake-check.ts",
-      "find": "return deadEndGate(run, { kind: \"exited-without-push\", headSha, situation, waivable }, owner);",
+      "find": "return asksSeat(run.ctx, \"sh-sent-back\") ? seat() : owner();",
       "replace": "return owner();",
       "kills": [
         "a fixer's exit with no push, with the dead-end seat route on (TP-4759) opens sh-dead-end for the registrant's seat after a ci-red wake, where no single seat owns the repo",
@@ -13,7 +13,7 @@
     },
     {
       "name": "a fix-first-runaway is no dead end and keeps approve-merge",
-      "file": "products/factory/src/shepherd/dead-end-route.ts",
+      "file": "products/factory/src/shepherd/dead-end.ts",
       "find": "  \"fix-first-runaway\": \"fix-first-runaway\",\n",
       "replace": "",
       "kills": [
