@@ -28,3 +28,6 @@ export interface DiagnosisPorts {
   /** The seat the planner reports to; absent means it reports to its spawner. */
   reportTo?: () => string | undefined;
 }
+
+/** How a dead-end gate's replan planner is spawned; it reports to the seat that answered replan, never to the hub. */
+export type ReplanPorts = Pick<DiagnosisPorts, "profile" | "agents" | "cwdFor">;
