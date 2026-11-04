@@ -3,7 +3,7 @@ import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, typ
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import type { AttestJudgment, AttestVerdicts } from "./attest-evidence.js";
 import { attestGate, type AttestDecided } from "./attest-read.js";
-import { readRequiredChecks, statusOf } from "../required-checks.js";
+import { readRequiredChecks } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
@@ -19,6 +19,7 @@ import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches } from "./visual-gate.js";
 import type { VisualBaselines, VisualPolicy } from "./policy-schema.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
+import { reviewBypassable } from "./review-bypass.js";
 import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
@@ -253,21 +254,6 @@ function runFact(run: CheckRun): CheckRunFact {
 function mergeTreeClean(pr: PullRequest, head: string, reviewBypassable: boolean): boolean {
   const mergeable = MERGEABLE.has(pr.mergeableState) || (pr.mergeableState === "blocked" && reviewBypassable);
   return pr.state === "open" && !pr.merged && pr.headSha === head && pr.mergeSha !== null && mergeable;
-}
-
-interface Bypass {
-  bypassable: boolean;
-  unread?: string;
-}
-
-/** GitHub reports a review-only block as `blocked`; an unreadable ruleset is not bypassable, so the merge gates. */
-async function reviewBypassable(port: GitHubPort, repo: RepoSlug, pr: PullRequest): Promise<Bypass> {
-  if (pr.mergeableState !== "blocked") return { bypassable: false };
-  try {
-    return { bypassable: await port.reviewRulesBypassable(repo, pr.baseRef) };
-  } catch (error) {
-    return { bypassable: false, unread: `review rules of ${repo}@${pr.baseRef} are unreadable: ${statusOf(error)}` };
-  }
 }
 
 /** Only `unknown` is transient; every other state is judged on the first read. */
