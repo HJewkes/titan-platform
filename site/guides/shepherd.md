@@ -1049,6 +1049,10 @@ Every registration resolves a policy before anything starts
 | `owner-gate` | every merge waits on the `approve-merge` gate |
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
+A repo's seat lookup has three outcomes. A repo a seat lists as an owned `remote:` has that seat. A repo on a deny list or
+a charter hard stop is refused with `registration refused:`. Any other repo has no seat, and a repo a seat lists only as
+`read_only` is in this group.
+
 The ceiling comes from seat files. A repo that no seat lists cannot register: `shepherd register` exits non-zero with
 `no seat lists <owner/repo>; add it to a seat file under claude-channels/sources/autonomy/seats`,
 and a repo a seat lists only as `read_only` counts as unlisted. A seat whose
