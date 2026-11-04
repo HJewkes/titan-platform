@@ -33,13 +33,13 @@ function ghWriteOn(fake: FakeGitHub, commands: string[][]) {
   };
 }
 
-async function pausedAtH1(): Promise<World> {
+async function pausedAtH1(advisory = false): Promise<World> {
   const fake = fakeGitHub();
   const pull = fake.addPr({ headSha: H1 });
   fake.refs.set(pull.headRef, H1);
   const [commands, reopened, notes]: [string[][], string[], string[]] = [[], [], []];
   const tasks = { reopen: async (initiative: string, id: string) => void reopened.push(`${initiative}/${id}`), appendNote: async (_: string, __: string, line: string) => void notes.push(line) };
-  const abandon = abandonCloseRoute(() => 0, { port: githubPort(fake.wire), agentChatBin: "agent-chat", run: ghWriteOn(fake, commands), task: () => TASK, tasks });
+  const abandon = abandonCloseRoute(() => 0, { port: githubPort(fake.wire), agentChatBin: "agent-chat", run: ghWriteOn(fake, commands), task: () => TASK, tasks, advisory: () => advisory });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes: deadEndRoutes(undefined, abandon), gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd: deadEndParam([H1, H2]) });
@@ -76,6 +76,17 @@ describe("abandon on a dead-end gate", () => {
 
     await gateOpened(world.host, gateId(world.runId, "sh-dead-end", 1));
     expect(world.host.gates.get(gateId(world.runId, "sh-dead-end", 1))?.prompt).toContain(`at head ${H2}`);
+    expect(world.commands).toEqual([]);
+    expect(world.fake.pr(1).state).toBe("open");
+    expect(world.reopened).toEqual([]);
+  });
+
+  it("abandon on an advisory repo runs no command, leaves the PR open and the task as it is, and only stops the run", async () => {
+    const world = await pausedAtH1(true);
+
+    abandonAtH1(world);
+
+    expect(await stopped(world)).toMatchObject({ result: { kind: "stopped", reason: "abandoned", detail: expect.stringContaining("PR advisory, task no-task") } });
     expect(world.commands).toEqual([]);
     expect(world.fake.pr(1).state).toBe("open");
     expect(world.reopened).toEqual([]);

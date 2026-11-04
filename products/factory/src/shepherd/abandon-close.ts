@@ -12,7 +12,7 @@ import type { GateRun } from "./run-state.js";
 const ABANDON_STEP = "sh-abandon";
 export const ABANDON_STEPS: readonly StepDeclaration[] = [{ id: ABANDON_STEP, kind: "dispatch" }];
 
-const OUTCOMES = ["closed", "already-closed", "merged", "moved"] as const;
+const OUTCOMES = ["closed", "already-closed", "merged", "moved", "advisory"] as const;
 type AbandonOutcome = (typeof OUTCOMES)[number];
 const TASK_STATES = ["reopened", "no-task", "unreachable"] as const;
 type TaskState = (typeof TASK_STATES)[number];
@@ -29,6 +29,8 @@ interface AbandonPorts {
   run: Run;
   /** The registered task as `<initiative>/<id>`; undefined when no registration names one. */
   task(target: { repo: string; pr: number }): string | undefined;
+  /** True for a repo where Shepherd never writes; absent means none is. */
+  advisory?: (repo: string) => boolean;
   /** Absent means the task is left as it is and the result says `no-task`. */
   tasks?: Pick<CleanupTasks, "reopen" | "appendNote">;
 }
@@ -39,8 +41,12 @@ async function closeThroughGhWrite(ports: AbandonPorts, { repo, pr }: AbandonTar
   if (done?.code !== 0) throw new Error(`could not close ${repo}#${pr}: ${done?.stderr.trim() ?? `${ports.agentChatBin} is not on PATH`}`);
 }
 
-/** A closed PR is read before the head guard, so a replay after the close reopens the task without closing again. */
+/**
+ * An advisory repo is refused before any read, because this close runs outside the advisory-wrapped port. A closed PR is
+ * read before the head guard, so a replay after the close reopens the task without closing again.
+ */
 async function closeAtHead(ports: AbandonPorts, target: AbandonTarget): Promise<AbandonOutcome> {
+  if (ports.advisory?.(target.repo)) return "advisory";
   const pull = await ports.port.getPr(target.repo, target.pr);
   if (pull.merged) return "merged";
   if (pull.state !== "open") return "already-closed";
@@ -73,16 +79,20 @@ export const abandonCloseRoute = (now: () => number, ports: AbandonPorts): StepR
   });
 
 /** Serve's ports: GitHub for the guard, `agent-chat gh-write` for the close, the registration's task and active-work. */
-export const abandonRoute = (deps: Pick<ShepherdDeps, "now" | "port" | "store" | "agentChatBin" | "cleanup">): StepRoute =>
+export const abandonRoute = (deps: Pick<ShepherdDeps, "now" | "port" | "store" | "agentChatBin" | "cleanup" | "advisory">): StepRoute =>
   abandonCloseRoute(deps.now, {
     port: deps.port,
     agentChatBin: deps.agentChatBin,
     run: runCommand,
+    ...(deps.advisory && { advisory: deps.advisory }),
     task: ({ repo, pr }) => deps.store.get().byPr(repo, pr)?.task,
     ...(deps.cleanup && { tasks: deps.cleanup.tasks }),
   });
 
-/** Undefined when the PR moved past the gate head: nothing was closed, and the next round asks again at the new head. */
+/**
+ * Undefined when the PR moved past the gate head: nothing was closed, and the next round asks again at the new head. On an
+ * advisory repo nothing is closed or reopened and the run only stops.
+ */
 export async function abandonAtHead(run: GateRun, headSha: string): Promise<LandOutcome | undefined> {
   const done = await step(run.ctx, ABANDON_STEP, { ...run.target, headSha }, AbandonResult);
   if (done.outcome === "moved") return undefined;

@@ -83,7 +83,7 @@ export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | und
   });
 
 /** Every code route a dead-end gate dispatches to: its address and its abandon. */
-export const deadEndRoutes = (deps: Pick<ShepherdDeps, "now" | "port" | "store" | "roster" | "exitNotice" | "agentChatBin" | "cleanup">): StepRoute[] => [
+export const deadEndRoutes = (deps: Pick<ShepherdDeps, "now" | "port" | "store" | "roster" | "exitNotice" | "agentChatBin" | "cleanup" | "advisory">): StepRoute[] => [
   deadEndAddressRoute(deps.now, deadEndPorts(deps)),
   abandonRoute(deps),
 ];

@@ -15,14 +15,27 @@
       "file": "products/factory/src/shepherd/abandon-close.ts",
       "find": "  if (pull.headSha !== target.headSha) return \"moved\";\n",
       "replace": "",
-      "kills": ["abandon on a dead-end gate abandon at a head the PR moved past closes nothing and re-asks"]
+      "kills": [
+        "abandon on a dead-end gate abandon at a head the PR moved past closes nothing and re-asks"
+      ]
     },
     {
       "name": "a replayed abandon does not read that the PR is already closed",
       "file": "products/factory/src/shepherd/abandon-close.ts",
       "find": "  if (pull.state !== \"open\") return \"already-closed\";\n",
       "replace": "",
-      "kills": ["abandon on a dead-end gate a replayed sh-abandon does not close twice"]
+      "kills": [
+        "abandon on a dead-end gate a replayed sh-abandon does not close twice"
+      ]
+    },
+    {
+      "name": "abandon closes a PR on an advisory repo",
+      "file": "products/factory/src/shepherd/abandon-close.ts",
+      "find": "  if (ports.advisory?.(target.repo)) return \"advisory\";\n",
+      "replace": "",
+      "kills": [
+        "abandon on a dead-end gate abandon on an advisory repo runs no command, leaves the PR open and the task as it is, and only stops the run"
+      ]
     }
   ]
 }
