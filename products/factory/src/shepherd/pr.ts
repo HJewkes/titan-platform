@@ -63,6 +63,7 @@ import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAc
 import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
+import { deadEndAddressRoute, deadEndPorts } from "./dead-end.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 import { sendBack } from "./send-back.js";
 
@@ -360,6 +361,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     reviewRefusedRoute(deps.now),
     autoPassRoute(deps.port, deps.now),
     ...diagnosisRoutes(deps),
+    deadEndAddressRoute(deps.now, deadEndPorts(deps)),
   ];
 }
 

@@ -20,6 +20,7 @@ import { shepherdStoreRef } from "./store.js";
 import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 import { readPath } from "../narrow.js";
 import { partialFake } from "@titan-design/test-kit";
+import { deadEndParam, deadEndWorkflow } from "../test-support/dead-end.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => {
@@ -588,6 +589,29 @@ describe("a pending sh-sent-back gate whose pull request head moved", () => {
     host.gates.cancel(gateId(runId, "sh-sent-back"), "the owner cancelled it");
 
     expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("sh-sent-back was cancelled: the owner cancelled it") });
+  });
+});
+
+describe("a pending sh-dead-end gate whose pull request head moved", () => {
+  it("a new PR head cancels a pending sh-dead-end as superseded", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: SENT_BACK });
+    const store = shepherdStoreRef();
+    const exitNotice = { seatFor: () => "tc-synthetic", lastReport: async () => undefined, send: async () => undefined };
+    const roster = { read: async () => ({ kind: "known" as const, rows: [] }), rows: async () => [], invalidate: () => undefined };
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), exitNotice, roster });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd: deadEndParam([SENT_BACK]) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(runId, "sh-dead-end"));
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, routes.shepherd!);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-dead-end"), from: SENT_BACK, to: MOVED, condition: "head-moved" }]);
+    expect(host.gates.get(gateId(runId, "sh-dead-end"))?.status).toBe("cancelled");
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
   });
 });
 

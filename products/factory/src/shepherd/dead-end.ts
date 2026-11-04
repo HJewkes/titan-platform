@@ -10,7 +10,8 @@ import { readPath } from "../narrow.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
-import { registrantSeat, spawnerSeat } from "./registrant.js";
+import type { ShepherdDeps } from "./phases.js";
+import { registrantSeat, spawnerSeat, storedLineage } from "./registrant.js";
 import type { Escalated } from "./route-table.js";
 import type { GateRun } from "./run-state.js";
 import { askAtHead } from "./stale-gates.js";
@@ -29,8 +30,8 @@ export const DEAD_END_STEPS: readonly StepDeclaration[] = [
   { id: DEAD_END_GATE, kind: "assisted" },
 ];
 
-/** The table a dead-end gate's rule names; the owner inbox leaves its gates to the seat. */
-export const SEAT_TABLE = "shepherd-seat";
+/** The table a dead-end gate's rule names; the owner inbox leaves its gates to the seat. Not `shepherd-seat`, the seat policy's own table. */
+export const DEAD_END_TABLE = "shepherd-dead-end";
 
 /** Respawns a run may take before the gate stops offering one: a worker that keeps exiting needs another answer. */
 export const RESPAWN_CAP = 2;
@@ -40,7 +41,7 @@ export const RESPAWN_CAP = 2;
  * coordinator only on seat-dead-end evidence.
  */
 export function deadEndRule(kind: DeadEndKind): GateRule {
-  return { table: SEAT_TABLE, version: "1", ruleId: `dead-end/${kind}`, resolvers: [...RESOLVER_CLASSES], delegates: ["coordinator"] };
+  return { table: DEAD_END_TABLE, version: "1", ruleId: `dead-end/${kind}`, resolvers: [...RESOLVER_CLASSES], delegates: ["coordinator"] };
 }
 
 type Lineage = Parameters<typeof registrantSeat>[0];
@@ -64,6 +65,12 @@ async function address(ports: DeadEndPorts | undefined, target: { repo: string; 
   if (ports === undefined) return undefined;
   const lineage = ports.lineage(target);
   return deadEndSeat(lineage, lineage?.registrant ? await ports.roster() : undefined, ports.repoSeat(target.repo));
+}
+
+/** Serve's ports: the run's stored lineage, serve's roster and the exit notice's seat book. With neither wired, no seat. */
+export function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" | "roster" | "exitNotice">): DeadEndPorts | undefined {
+  if (roster === undefined || exitNotice === undefined) return undefined;
+  return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => exitNotice.seatFor(repo) };
 }
 
 export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | undefined): StepRoute =>

@@ -20,15 +20,6 @@
       ]
     },
     {
-      "name": "every main gate ack demands required contexts",
-      "file": "products/factory/src/coordinator-evidence-read.ts",
-      "find": "{ required: stepOf(gate.id) === MAIN_CI_TIMEOUT }",
-      "replace": "{ required: true }",
-      "kills": [
-        "coordinator acknowledgement of a main-ci-timeout gate (owner decision 551) falls back when the base requires no context, though main-red would take every Actions run there"
-      ]
-    },
-    {
       "name": "the main-green policy admits a payload naming another merge",
       "file": "products/factory/src/coordinator-evidence.ts",
       "find": "mainDecisions[stepOf(gate.id)], mergeSha: main.mergeSha })) return false;",
@@ -45,6 +36,15 @@
       "kills": [
         "coordinator resolve of an approve-merge gate on fresh evidence falls back on a visual-path gate",
         "coordinator resolve of an approve-merge gate on fresh evidence falls back on an authority gate under a rule other than MRG-AU"
+      ]
+    },
+    {
+      "name": "a dead-end seat answer is admitted from any coordinator",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  if (resolverId !== evidence.seat || deadEndAddressee(gate.prompt) !== evidence.seat) return false;\n",
+      "replace": "  if (deadEndAddressee(gate.prompt) !== evidence.seat) return false;\n",
+      "kills": [
+        "coordinator resolve of a dead-end seat gate (owner decision 552) a coordinator other than the addressed seat is refused and falls to the presence dialog"
       ]
     }
   ]

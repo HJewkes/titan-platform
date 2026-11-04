@@ -36,7 +36,7 @@ describe("a dead-end seat gate", () => {
     expect(offered(host, gates[0]!)).toEqual(["respawn", "abandon"]);
     expect(host.gates.get(gates[2]!)?.prompt).toMatch(/answers: abandon\?$/);
     expect(host.gates.get(gates[2]!)?.schema).toMatchObject({ properties: { decision: { enum: ["abandon"] } } });
-    expect(host.gates.get(gates[0]!)?.rule).toEqual({ table: "shepherd-seat", version: "1", ruleId: "dead-end/exited-without-push", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
+    expect(host.gates.get(gates[0]!)?.rule).toEqual({ table: "shepherd-dead-end", version: "1", ruleId: "dead-end/exited-without-push", resolvers: ["owner-terminal", "owner-remote"], delegates: ["coordinator"] });
   });
 
   it("a coordinator's waive-proof or owner-merge is refused even where the schema offers it", async () => {
@@ -45,7 +45,7 @@ describe("a dead-end seat gate", () => {
     await gateOpened(host, id);
     const gate = host.gates.get(id)!;
     const evidence: CoordinatorEvidence = { kind: "seat-dead-end", gateId: id, repo: REPO, pr: 1, headSha: H1, seat: DEAD_END_SEAT, pull: { state: "open", headSha: H1 }, readAt: "2026-11-04T00:00:00.000Z" };
-    const admits = (decision: string): boolean => coordinatorEvidencePolicy(gate, { class: "coordinator", id: DEAD_END_SEAT }, { decision, headSha: H1 }, evidence);
+    const admits = (decision: string): boolean => coordinatorEvidencePolicy(gate, { class: "coordinator", id: DEAD_END_SEAT, channel: "test" }, { decision, headSha: H1 }, evidence);
 
     expect(offered(host, id)).toEqual(["respawn", "abandon", "waive-proof", "owner-merge"]);
     expect(["waive-proof", "owner-merge", "respawn", "abandon"].map(admits)).toEqual([false, false, true, true]);

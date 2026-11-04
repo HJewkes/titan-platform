@@ -8,6 +8,7 @@ import { ownerResolver, presenceReason, resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { fakeOwnerHelper, fakeOwnerSigner } from "./test-support/owner-edges.js";
+import { deadEndParam, deadEndRoutes, deadEndWorkflow } from "./test-support/dead-end.js";
 
 const HEAD = "a".repeat(40);
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -268,5 +269,24 @@ describe("ownerResolver", () => {
     expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: expect.stringMatching(/^gate-batch:/) });
     expect(terminal).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
     expect([refused.reasons, signed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
+  });
+});
+
+describe("gate resolve of a dead-end seat gate", () => {
+  it("the owner-terminal resolves sh-dead-end abandon with no evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "factory-gate-resolve-"));
+    dirs.push(dir);
+    const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [deadEndWorkflow], routes: deadEndRoutes(), gatePollMs: 10 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: "o/r", pr: "1", deadEnd: deadEndParam([HEAD]) });
+    await vi.waitFor(() => expect(host.gates.get(`${runId}/sh-dead-end`)?.status).toBe("pending"));
+    fakeOwnerSigner();
+    const io = { stdout: () => undefined, stderr: () => undefined, env: AGENT_SHELL };
+
+    const code = await resolveGate(host, io, runId, "sh-dead-end", JSON.stringify({ decision: "abandon", headSha: HEAD }));
+
+    expect(code).toBe(0);
+    expect(host.gates.get(`${runId}/sh-dead-end`)).toMatchObject({ status: "resolved", resolvedBy: { class: "owner-terminal" }, resolvedEvidence: undefined, rule: { table: "shepherd-dead-end" } });
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
   });
 });

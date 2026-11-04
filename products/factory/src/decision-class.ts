@@ -1,4 +1,5 @@
 import { SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { DEAD_END_TABLE } from "./shepherd/dead-end.js";
 import { OWNER_GATE_REASONS } from "./shepherd/policy-schema.js";
 import type { Escalation } from "./shepherd/route-table.js";
 
@@ -70,7 +71,7 @@ function tableClass(table: string, rowId: string, prompt: string): DClass | unde
   if (table === "shepherd-merge-guard") return MERGE_GUARD_CLASS[rowId];
   if (table === "authority") return "D4";
   if (table === "shepherd-release") return "D11";
-  if (table === "shepherd-seat") return DEAD_END_CLASS[rowId];
+  if (table === DEAD_END_TABLE) return DEAD_END_CLASS[rowId];
   if (table !== "shepherd-route") return undefined;
   return rowId === "policy-denial" ? seatPolicyClass(prompt) : ROUTE_CLASS[rowId];
 }

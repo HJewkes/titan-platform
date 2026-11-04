@@ -1,6 +1,7 @@
 import type { GateRecord, GateStore } from "@titan-design/hitl";
 import { cardLint, type ClosedStatus, type OwnerItem, type QueueSource, type ResolveResult } from "@titan-design/owner-queue";
 import { resolveCommand } from "../resolve-command.js";
+import { DEAD_END_TABLE } from "../shepherd/dead-end.js";
 import { cardFields, consequenceOf, gateStepOf } from "./gate-card.js";
 import { pollTail } from "./poll-tail.js";
 import { summaryOf } from "./queue-read-error.js";
@@ -81,7 +82,7 @@ function resolve(gates: GateReader, ref: string): Promise<ResolveResult> {
 }
 
 /** A seat gate (TP-4759) waits on the seat it was addressed to; the owner may still answer it, but it is not the owner's item. */
-const ownersGate = (gate: GateRecord): boolean => gate.status === "pending" && gate.rule?.table !== "shepherd-seat";
+const ownersGate = (gate: GateRecord): boolean => gate.status === "pending" && gate.rule?.table !== DEAD_END_TABLE;
 
 /** The factory's own pending hitl gates, but for the seats'. */
 export function hitlGateSource({ gates, pollMs }: HitlSourceOptions): QueueSource {
