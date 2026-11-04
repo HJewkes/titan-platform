@@ -2058,6 +2058,17 @@ guard rows honour them. Each row clears only when one approval of its gate cover
   `headBlobs`, up to 20 paths. A failed read or more paths leaves the field out, and a record
   without it never clears. A pinned path the PR does not change is ignored.
 
+**`old-path-untagged` (D-M1b-08, TP-3182).** The evidence step judges the head's changed files
+against A1's frozen roots (Shepherd, burndown and `scripts/seat`) and the registered task's tags.
+A head that changes a frozen root needs a `superseded-at:<M>` or `survives:<area>` tag on its
+task. Pure deletions and moves out of a root are exempt, and a `superseded-at` naming an exited
+milestone is stale. Before `milestones.json` records M1b as exited the row is advisory: the
+verdict is stored in the evidence record's `oldPath` field and the evidence comment shows an
+`Old path:` line marked "advisory until M1b exit", and the decision is unchanged. From M1b exit
+an untagged, stale-tagged, task-less or task-unreadable head gates at this row (class
+`deliberate`). A head whose files are unread gates only as `files-unread`. Tagging the task does
+not clear a gate at the same head: the owner decides it, or a new head re-judges.
+
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in
 front of the owner. A PR that mixes code with an approved policy edit still gates. The visual
