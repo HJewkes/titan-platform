@@ -1,4 +1,4 @@
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
+import { DispatchError } from "@titan-design/agent-dispatch";
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
@@ -7,14 +7,13 @@ import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { redactCredentials } from "../redact.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
-import { ReviewerAskTimedOut, ReviewerBrokerBusy, ReviewerBrokerDown, clearReviewWait, noteReviewWait } from "./review-wait.js";
+import { clearReviewWait, noteReviewWait, transient } from "./review-wait.js";
 import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
 import { awaitingTranscript, rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
-
-export { DamagedTranscriptError } from "./seat-evidence.js";
+import type { SeatReader } from "./seat-reader.js";
 import { fixFirstFindings, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
@@ -64,11 +63,6 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
 export function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
-
-/** A `ReviewerReader` whose seat read can take the roster its caller already holds, so a check reads the roster once. */
-export type SeatReader = Omit<ReviewerReader, "readSeat"> & {
-  readSeat?: (input: AwaitVerdictInput, roster?: readonly ReviewerAgent[]) => Promise<readonly ReviewerMessage[]>;
-};
 
 /**
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
@@ -149,12 +143,6 @@ async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: read
  * (`wait`, naming the `seat`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
  */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
-
-/** The broker's own failures that clear with time; a permission, missing-file or parse failure reads the same every time. */
-const TRANSIENT = [ReviewerAskTimedOut, ReviewerBrokerDown, ReviewerBrokerBusy, DispatchTimeoutError, BrokerUnavailableError];
-
-const transient = (error: unknown): boolean =>
-  TRANSIENT.some((kind) => error instanceof kind) || /^HTTP 5\d\d$/.test(failureOf(error));
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 

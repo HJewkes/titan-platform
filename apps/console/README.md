@@ -89,6 +89,24 @@ swap it writes a `titan-console` shim to `~/.local/bin`, so seats run the servin
 step, the alarm and the optional owner install commands are in [docs/self-update.md](docs/self-update.md);
 the bootstrap and units are in `deploy/`.
 
+## What shipped digest
+
+The coordinator view's "what shipped" section reads a digest that `titan-console shipped build` writes once a day
+(`--date <YYYY-MM-DD>` picks the day window; the day starts at 07:00 local). The only model call in the build runs on
+the Claude login named by `CLAUDE_CONFIG_DIR`. The agents account is the intended one.
+
+The units are `deploy/systemd/titan-console-shipped.{service,timer}`. The timer fires at 07:10 local and builds the
+window that just closed, so the service passes yesterday's date. The service ships a placeholder
+`CLAUDE_CONFIG_DIR`; put the agents account's config dir in a drop-in. They are **not installed or enabled** by
+anything in this repo; the owner installs them by hand:
+
+```sh
+mkdir -p ~/.config/systemd/user/titan-console-shipped.service.d
+cp deploy/systemd/titan-console-shipped.{service,timer} ~/.config/systemd/user/
+printf '[Service]\nEnvironment=CLAUDE_CONFIG_DIR=<agents account config dir>\n' > ~/.config/systemd/user/titan-console-shipped.service.d/20-account.conf
+systemctl --user daemon-reload && systemctl --user enable --now titan-console-shipped.timer
+```
+
 ## LAN mode
 
 With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,
@@ -151,6 +169,8 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, `stageGuessed` when no evidence was found, and `parent`, `dep` and `deliverables` read with `@titan-design/pm`'s `readEdges` (the field, else the edge tags) |
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, the sessions whose `session_origin.task_ids` name it, its `children`, and each deliverable id joined to its `deliverable.list` record (`null` when unknown; `deliverablesDegraded` when the registry is unread). An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/work.loops` | `{ fetchedAt, board, unavailable, tierWritesOff }`: active-work's `loop.board` (the contract is `server/loop-board.ts`), every open loop with its advisory tier and rank, status, seat, motion, emphasis, tasks, PRs and blockers, plus the tech tree. A daemon with no `loop.board` (older than active-work 0.25) answers `board: null` with `unavailable: "active-work ≥ 0.25 needed"`, never an empty board; any other failure is an error envelope. `tierWritesOff` is the owner guard's refusal for this caller, or null when it may re-tier |
+| `POST /rpc/work.loop-tier` | `{ id, tier, before? }` in, `tier` one of `S`, `A`, `B`, `C`, `parked` or `unsorted`; `{ id, tier, tierRank }` out. An `owner-write` that calls active-work's `loop.tier`, the console's one active-work write, kept in `WRITES` apart from `READS` |
 | `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
@@ -418,6 +438,14 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
   deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
   cleared by this tap; the read-back says when one will keep deploys held.
+- **Retire from the agent page.** An agent page offers Retire for an exited agent that agent-chat
+  spawned (`taps.prepare` and `taps.act`, keyed by `{kind: "retire-agent", name}`, behind the same
+  `TITAN_CONSOLE_INBOX_ACTIONS` switch and owner-write guard). It needs no deposit: the console
+  takes the agent id from its own roster and reads the rest back from the factory's preview, as the
+  inbox's `retire-agent` op does. A live agent and a seat get a line saying why there is no tap.
+  The record names only the `op`, so the factory treats it like any other `retire-agent` op. The
+  record and outcome files are the audit; the decision log gets nothing. There is never a forced
+  retire. The Agents roster has a "Finished, not retired" filter.
 
   A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
   "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
@@ -965,6 +993,25 @@ deposit whose op itself blocks asks the owner to act on its PR. A `personal`
 deposit and an agent-chat `approve` over a day old never block. A blocking item open past four days carries
 `aged: true`; the page lists it under "Older than 4 days" inside Blocking, after the fresh ones, never hidden.
 
+### Linking to one item
+
+`#/inbox/<encodeURIComponent(item id)>` opens the inbox on one item (TP-4389), with the id exactly as `inbox.list`
+returns it: `gate:<run>/<step>`, `deposit:<hex>`, `round:<round id>`. The row is scrolled to the middle of the screen,
+drawn as an accent card with a Linked badge, and keeps its own tap. Planning opens by itself when the item is listed
+there. An id no longer in the list, answered, withdrawn or never real, shows "This item is no longer open" with the id,
+above the whole inbox, and adds that its source may be unreadable when the list has a gap.
+
+```sh
+titan-console inbox link 'gate:<run>/approve-merge'
+# https://<first LAN name>:7500/#/inbox/gate%3A<run>%2Fapprove-merge
+```
+
+`inbox link` reads config alone, never the daemon, so run it with the service's `TITAN_CONSOLE_PORT`, `_HOST` and
+`_LAN_NAMES`. With a LAN listener it prints `https://` on the first of `TITAN_CONSOLE_LAN_NAMES` (this machine's
+hostname when unset, the bound address when there is none); with no `TITAN_CONSOLE_HOST` it prints the loopback
+`http://127.0.0.1:<port>` link, since no other device can reach the console then. A phone needs a session first:
+open a `login-link` once and the cookie lasts 30 days.
+
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
 `owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
@@ -1069,8 +1116,10 @@ replay of a released confirm is answered `already` from its outcome file, withou
 `/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
 `READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
 view never makes active-work call GitHub), `note.list`, `note.read`, `source.list`, `source.read`,
-`search`, `artifact.list`, `artifact.status`, `context.graph` and `deliverable.list`
-(active-work 0.23 on, read only for a task that names a deliverable). Each
+`search`, `artifact.list`, `artifact.status`, `context.graph`, `deliverable.list`
+(active-work 0.23 on, read only for a task that names a deliverable) and `loop.board`
+(active-work 0.25 on). Its one write, `loop.tier`, sits in a separate `WRITES` table and is
+called only by the owner-write `work.loop-tier`. Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 
@@ -1106,9 +1155,12 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
 | `#/` | Home | Upstream health, status counts, a read-only needs-you list and the last day's activity | TP-1061 |
+| `#/inbox`, `#/inbox/<item id>` | Inbox | Every pending owner decision; with an item id, that item scrolled into view and marked Linked (see "Linking to one item") | TP-4389 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
+| `#/loops` | Loops | Open loops in rows by advisory tier (Unsorted tray, S, A, B, C, Parked), each tier in tier-rank order. A card shows the loop's status, days since motion (stale from 7 days), owner emphasis, initiative, seat, task and PR chips, done-when and owner-gated blockers, and filters narrow by initiative and status. With owner writes allowed a card moves by drag (native HTML5 drag and drop, dropped ahead of the card it lands on) or by its Move to menu, the phone and keyboard path; the move shows at once, `work.loop-tier` saves it and the board is read again, and a refusal moves the card back and shows the reason. Otherwise every control is read-only and the page names the guard's reason. On a daemon without `loop.board` it says active-work ≥ 0.25 is needed | TP-4314 |
+| `#/tree`, `#/tree?layout=lanes` | Tree | The tech tree from the same `work.loops` read, read-only. Dependencies (the default) is a layered DAG with an edge from each prerequisite to the node it unlocks; Goal lanes puts each goal in its own band on the same columns. The toggle is held in `?layout=` so a link keeps it. A node shows its state (done, in progress, not started, or locked: not started with an unfinished dependency) and its closed-in-14-days count, with ⚠ for high churn and no done-when progress. Selecting a node lists its loops, each linking to `#/loops`. Lanes use react-ui's `laneLayout` once a release exports it, and a local layout over `layeredLayout` until then | TP-4315 |
 | `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |

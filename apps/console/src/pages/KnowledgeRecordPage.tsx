@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Tab, TabList, Tabs, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { KnowledgeGraph } from "./KnowledgeGraph.js";
+import { PageHeader } from "./PageShell.js";
+import { PHONE_TAP } from "./phone.js";
 
 type KnowledgeRecord = ConsoleCommands["work.record"]["result"];
 
@@ -18,8 +21,8 @@ export function KnowledgeRecordPage({ recordRef, graph }: { recordRef: string; g
       <Trail recordRef={recordRef} />
       <Tabs index={graph ? 1 : 0} onChange={(index) => open({ view: "knowledge", id: recordRef, ...(index === 1 ? { query: "tab=graph" } : {}) })}>
         <TabList>
-          <Tab>Record</Tab>
-          <Tab>Graph</Tab>
+          <Tab className={PHONE_TAP}>Record</Tab>
+          <Tab className={PHONE_TAP}>Graph</Tab>
         </TabList>
       </Tabs>
       {graph ? <KnowledgeGraph center={recordRef} /> : <RecordRead recordRef={recordRef} />}
@@ -42,7 +45,7 @@ function Reader({ record }: { record: KnowledgeRecord }): ReactNode {
   return (
     <VStack gap={4}>
       <VStack gap={2}>
-        <Typography variant="h2">{record.title}</Typography>
+        <PageHeader title={record.title} />
         <Meta record={record} />
       </VStack>
       {record.truncated ? <Alert status="info" size="compact" message="This file is longer than active-work's read cap; this is its head." /> : null}
@@ -71,10 +74,13 @@ function Meta({ record }: { record: KnowledgeRecord }): ReactNode {
 }
 
 function Trail({ recordRef }: { recordRef: string }): ReactNode {
+  // A ref is one long word, so only a break inside it keeps a phone from scrolling sideways, and react-native-web's rows do not shrink to let it.
   return (
-    <Breadcrumbs>
-      <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
-      <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
-    </Breadcrumbs>
+    <div className="min-w-0 break-all [&_*]:min-w-0 [&_*]:shrink">
+      <Breadcrumbs>
+        <BreadcrumbItem onPress={() => open({ view: "knowledge" })}>Knowledge</BreadcrumbItem>
+        <BreadcrumbItem isCurrentPage>{recordRef}</BreadcrumbItem>
+      </Breadcrumbs>
+    </div>
   );
 }

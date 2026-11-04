@@ -221,7 +221,7 @@ describe("buildClaudePrintArgs", () => {
   it("passes a JSON Schema without the draft 2020-12 header the CLI rejects", () => {
     const args = buildClaudePrintArgs(printConfig({ outputSchema: okSchema }));
 
-    const schema = JSON.parse(args[args.indexOf("--json-schema") + 1]!) as Record<string, unknown>;
+    const schema: unknown = JSON.parse(args[args.indexOf("--json-schema") + 1]!);
     expect(schema).not.toHaveProperty("$schema");
     expect(schema).toMatchObject({ type: "object", required: ["ok"] });
   });

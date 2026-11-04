@@ -20,10 +20,13 @@ import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
 import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
-  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan, sharedSections,
-  wholeScript,
-  type Call, type Lint, type Repaired, type ScriptPlan, type Written,
+  callsNote, checked, draftScript, failingErrors, failureList, planned, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan,
+  sharedSections, stageUsage, wholeScript,
+  type Call, type CallSpend, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
+import { hinted, keptOverSeed, splitStart } from "./split-start.js";
+import { holdStillBeats } from "../still-seed.js";
+import { dropOrphanCues } from "../orphan-cues.js";
 import { StageFailure } from "./stage-failure.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
@@ -81,28 +84,39 @@ export interface ScriptStageDeps {
 
 interface Repair extends Repaired {
   check: Check;
+  /** Each round's failure list as sent, hints and the split's line included. */
+  hints: string[];
 }
 
-/** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red. */
-export const MAX_REPAIR_ROUNDS = 2;
+/** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red, so four rounds halve it twice over. */
+export const MAX_REPAIR_ROUNDS = 4;
 
 /**
  * Up to `MAX_REPAIR_ROUNDS` calls, each answering the current script's failing error-severity L0 rows. A reply is
- * kept only when it parses and fails fewer rows, so a round never makes the script worse.
+ * kept only when it parses and fails fewer rows, or the same rows over fewer beats, so a round never makes the script worse.
  */
 async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
-  const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];
-  if (failing(draft.script).length === 0) return undefined;
+  const errorRows = (script: ScriptV1) => failingErrors(lint.rows(script));
+  const failing = (script: ScriptV1) => [...errorRows(script), ...fillRows(script)];
+  const seedFailing = failing(draft.script);
+  const seedRows = seedFailing.length;
+  if (seedRows === 0) return undefined;
+  const settle = (script: ScriptV1) => stampLedgerTerms(script, lint.spine, lint.rows);
+  const start = splitStart(draft, failing, settle);
   const rules = loadRuleRegistry();
-  const repaired = await repairRounds(call, draft, {
+  const hints: string[] = [];
+  const repaired = await repairRounds(call, start.stamped, {
     rounds: MAX_REPAIR_ROUNDS,
     failing,
-    prompt: (script, rows) => repairPrompt(prompt, script, failureList(rows, rules, script, lint)),
+    prompt: (script, rows) => repairPrompt(prompt, script, hinted(hints, failureList(rows, rules, script, lint), start.hint)),
     read: (outcome) => checked(outcome, plan),
-    settle: (script) => stampLedgerTerms(script, lint.spine, lint.rows),
+    // A reply can drop the seed's hold or leave a button still, and code holds one with no model call.
+    settle: (script) => settle(dropOrphanCues(holdStillBeats(script), errorRows).script),
   });
-  const detail = `${repaired.before} failing error checks before repair, ${repaired.after} after`;
-  return { ...repaired, check: { name: "l0-repair", gate: false, pass: repaired.after === 0, detail } };
+  const kept = keptOverSeed(repaired, draft, seedFailing);
+  const spliced = kept.spliced.length > 0 ? `; spliced chapters ${kept.spliced.join(", ")}` : "";
+  const detail = `${kept.before} failing error checks before repair, ${kept.after} after${spliced}`;
+  return { ...kept, candidates: [...start.candidates, ...kept.candidates], hints, check: { name: "l0-repair", gate: false, pass: kept.after === 0, detail } };
 }
 
 const SHOWN_KEYS = 10;
@@ -114,22 +128,70 @@ function unknownKeysCheck(stripped: readonly string[]): Check[] {
   return [{ name: "script-unknown-keys", gate: false, pass: false, detail: `dropped ${stripped.length} key(s) the schema does not allow: ${shown}` }];
 }
 
+/** A script the stage holds before any repair: the drafted reply, or a stored seed, with what it cost to get. */
+interface Drafted {
+  stamped: Stamped;
+  usage: StageUsage;
+  retries: number;
+  stripped: readonly string[];
+  dropped: readonly string[];
+  retimed: readonly string[];
+}
+
+/** The half a drafted script and a seeded one share: the L0 repair rounds, then the re-time. */
+async function repairedDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint, drafted: Drafted): Promise<Written> {
+  const repair = await repairScript(call, prompt, plan, drafted.stamped, lint);
+  const retimed = retimeRepaired(repair?.script ?? drafted.stamped.script, drafted.retimed);
+  return {
+    script: retimed.script,
+    stamps: repair?.stamps ?? drafted.stamped.stamps,
+    usage: repair ? addUsage(drafted.usage, repair.usage) : drafted.usage,
+    retries: drafted.retries,
+    stripped: repair?.stripped ?? [...drafted.stripped],
+    checks: [...(repair ? [repair.check] : []), ...retimed.checks],
+    notes: [...(repair?.dropped ?? drafted.dropped), ...retimed.notes],
+    ...(repair && repair.after > 0 ? { tried: { candidates: repair.candidates, hints: repair.hints } } : {}),
+  };
+}
+
+const orphansDropped = (script: ScriptV1, lint: Lint) => dropOrphanCues(script, (candidate) => failingErrors(lint.rows(candidate)));
+
+/** A parsed reply with its orphan cues dropped (`dropOrphanCues`), noted as dropped values. */
+function withoutOrphans(reply: Checked, lint: Lint): Checked {
+  if (!reply.script) return reply;
+  const { script, moves } = orphansDropped(reply.script, lint);
+  const dropped = [...(reply.dropped ?? []), ...moves];
+  return { ...reply, script, ...(dropped.length > 0 ? { dropped } : {}) };
+}
+
+/** The reader with each parsed reply's orphan cues dropped before its plan check, so they cost no plan retry. */
+const orphanFree = (reader: Reader, lint: Lint): Reader => ({ ...reader, check: (outcome) => withoutOrphans(reader.check(outcome), lint) });
+
 /** The single-call path: one draft call and its one retry, the ledger stamp, then the L0 repair rounds. */
 async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint): Promise<Written> {
-  const draft = await draftScript(call, prompt, wholeScript(plan));
+  const draft = await draftScript(call, prompt, orphanFree(wholeScript(plan), lint));
   const retries = draft.retried ? 1 : 0;
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
-  const repair = await repairScript(call, prompt, plan, stamped, lint);
-  const retimed = retimeRepaired(repair?.script ?? stamped.script, draft.retimed);
-  return {
-    script: retimed.script,
-    stamps: repair?.stamps ?? stamped.stamps,
-    usage: repair ? addUsage(draft.usage, repair.usage) : draft.usage,
-    retries,
-    stripped: repair?.stripped ?? draft.stripped ?? [],
-    checks: [...(repair ? [repair.check] : []), ...retimed.checks],
-    notes: [...(repair?.dropped ?? draft.dropped ?? []), ...retimed.notes],
+  return repairedDraft(call, prompt, plan, lint, { stamped, usage: draft.usage, retries, stripped: draft.stripped ?? [], dropped: draft.dropped ?? [], retimed: draft.retimed });
+}
+
+/**
+ * A stored draft in place of the draft call and its plan retry, so a resume pays only for the repair rounds its failing
+ * rows need. Its own name, not `draft`, keeps a base whose plan holds a draft from turning a later run into a resume.
+ */
+async function seededDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint, seed: ScriptV1): Promise<Written> {
+  const { script, moves } = orphansDropped(planned(seed, plan), lint);
+  const stamped = stampLedgerTerms(script, lint.spine, lint.rows);
+  return repairedDraft(call, prompt, plan, lint, { stamped, usage: NO_USAGE, retries: 0, stripped: [], dropped: moves, retimed: [] });
+}
+
+/** Each call's kind and spend, kept in `calls` for the stage's per-call note. */
+function recorded(call: Call, calls: CallSpend[]): Call {
+  return async (prompt, kind = "call") => {
+    const outcome = await call(prompt, kind);
+    calls.push({ kind, usage: stageUsage(outcome.usage) });
+    return outcome;
   };
 }
 
@@ -146,10 +208,26 @@ function scriptCall(input: ModelStageInput, deps: ScriptStageDeps, system?: stri
 const coverageOf = (input: ModelStageInput): CoverageManifest | undefined =>
   input.artifacts.coverage === undefined ? undefined : parseCoverage(input.store.readText(input.artifacts.coverage));
 
-/**
- * Spine and facts to a script/v1 draft, then the L0 repair rounds: in one call with one retry, or, for a long spine,
- * one chapter per call (script-chunks.ts).
- */
+interface ScriptContext {
+  spineText: string;
+  factsText: string;
+  spine: SpineV1;
+  plan: ScriptPlan;
+  lint: Lint;
+  coverage: CoverageManifest | undefined;
+  callFor: (system?: string) => Call;
+}
+
+/** A seeded run repairs its stored draft; otherwise one call with one retry, or, for a long spine, one chapter per call. */
+function writeScript(input: ModelStageInput, ctx: ScriptContext): Promise<Written> {
+  const { spineText, factsText, spine, plan, lint, coverage, callFor } = ctx;
+  const prompt = promptFor(promptSections(spineText, factsText, plan, coverage));
+  if (input.artifacts["seed-draft"] !== undefined) return seededDraft(callFor(), prompt, plan, lint, readScript(input, "seed-draft"));
+  if (!isChunked(spine)) return wholeDraft(callFor(), prompt, plan, lint);
+  return chunkedScript({ callFor, shared: sharedSections(spineText, plan, coverage), spineText, facts: factsText, plan, lint, capUsd: input.remainingUsd });
+}
+
+/** Spine and facts, or a stored seed draft, to a script/v1, then the L0 repair rounds; the notes list each call's spend. */
 export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDeps): Promise<StageOutcome> {
   const spineText = input.store.readText(need(input, "spine"));
   const spine = parseSpine(spineText);
@@ -161,15 +239,23 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const g2p = deps.g2p ?? doctrineG2p();
   const rows = (script: ScriptV1) => [...runL0(script, undefined, l0Checks, undefined, spine), unknownWordsRow(g2p, spellScript(script))];
   const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}), ...(coverage ? { coverage } : {}) };
-  const callFor = (system?: string) => scriptCall(input, deps, system);
-  const shared = sharedSections(spineText, plan, coverage);
-  const written = isChunked(spine)
-    ? await chunkedScript({ callFor, shared, spineText, facts: factsText, plan, lint, capUsd: input.remainingUsd })
-    : await wholeDraft(callFor(), promptFor(promptSections(spineText, factsText, plan, coverage)), plan, lint);
+  const calls: CallSpend[] = [];
+  const callFor = (system?: string) => recorded(scriptCall(input, deps, system), calls);
+  const written = await writeScript(input, { spineText, factsText, spine, plan, lint, coverage, callFor });
   const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(written.stripped), ...stampCheck(written.stamps), ...written.checks];
   const companion = companionOutputs(input, written.script, spine);
-  const notes = [...written.notes, ...(companion.notes ?? [])];
-  return { outputs: { draft: putJson(input, written.script, "script"), ...companion.outputs }, usage: written.usage, retries: written.retries, checks, notes };
+  const tried = triedOutputs(input, written.tried);
+  const notes = [...(calls.length > 0 ? [callsNote(calls)] : []), ...written.notes, ...tried.notes, ...(companion.notes ?? [])];
+  return { outputs: { draft: putJson(input, written.script, "script"), ...tried.outputs, ...companion.outputs }, usage: written.usage, retries: written.retries, checks, notes };
+}
+
+/** A repair that left rows failing stores each candidate it tried and notes the failure list each round sent. */
+function triedOutputs(input: ModelStageInput, tried: Written["tried"]): Required<Pick<StageOutcome, "outputs" | "notes">> {
+  if (!tried) return { outputs: {}, notes: [] };
+  const outputs = Object.fromEntries(tried.candidates.map(({ kind, text }) => [`candidate-${kind}`, input.store.putText(text, "script-candidate", input.from)]));
+  const stored = Object.entries(outputs).map(([name, sha]) => `${name} ${sha}`);
+  const hints = tried.hints.map((hint, i) => `repair-${i + 1} hint:\n${hint}`);
+  return { outputs, notes: [...(stored.length > 0 ? [`repair candidates: ${stored.join(", ")}`] : []), ...hints] };
 }
 
 /**

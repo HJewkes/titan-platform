@@ -3,8 +3,9 @@ import { L0_CHECKS, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { wordsOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
-import { guardBeat, rewrittenBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
-import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
+import { spokenText } from "./lint-register.js";
+import { guardBeat, rewrittenBeat, splitOverlong, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
+import { MAX_REWRITE_ROUNDS, REWRITE_AIMED_ROWS, REWRITE_TARGET_ROWS, planRegisterEdits, idBeats, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
@@ -12,6 +13,7 @@ import { draftFillRefusals, TEMPLATE_FILL_ID } from "./script-fill.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { declareReadings } from "./heteronym-readings.js";
+import { humanSignalRowsAt } from "./writing-statuses.js";
 
 export interface RewriteDeps {
   harness: JudgeHarness;
@@ -106,8 +108,8 @@ export interface RewriteResult {
 }
 
 const TARGETS: ReadonlySet<string> = new Set(REWRITE_TARGET_ROWS);
-const targetRows = (rows: readonly L0Result[]): TargetRow[] =>
-  rows.filter((row) => TARGETS.has(row.check_id)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass }));
+const targetRows = (rows: readonly L0Result[], ids: readonly string[] = REWRITE_TARGET_ROWS): TargetRow[] =>
+  rows.filter((row) => ids.includes(row.check_id)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass }));
 
 const failingTargets = (rows: readonly L0Result[]): number => targetRows(rows).filter((row) => !row.pass).length;
 const failingErrors = (rows: readonly L0Result[]): number => rows.filter((row) => row.severity === "error" && !row.pass).length;
@@ -116,11 +118,16 @@ const failingErrors = (rows: readonly L0Result[]): number => rows.filter((row) =
 const rowDistance = ({ pass, value, threshold }: TargetRow): number =>
   pass ? 0 : threshold === 0 ? Math.abs(value) : Math.abs(value - threshold) / threshold;
 
-/** The target rows' summed distance to band: zero only when all of them pass. */
-export const bandDistance = (rows: readonly L0Result[]): number => targetRows(rows).reduce((sum, row) => sum + rowDistance(row), 0);
+/** The aimed rows' summed distance to band: zero only when all of them pass. */
+export const bandDistance = (rows: readonly L0Result[]): number => targetRows(rows, REWRITE_AIMED_ROWS).reduce((sum, row) => sum + rowDistance(row), 0);
 
-/** Floor and cap rows outside the targets that a chapter must not turn red (TP-3817 D5); contractions is a rate floor no beat guard can hold. */
-export const PROTECTED_ROWS = ["register:contractions", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets"] as const;
+/**
+ * The register rows outside the targets that a chapter must not turn red (TP-3817 D5): each row whose status in
+ * `doctrine/writing-check.json` is gate or warning at a script of this many spoken words (TP-4662). A report-only or
+ * dropped row says nothing about human-ness at that length, so the pass neither chases nor protects it.
+ */
+export const protectedRows = (words: number): Set<string> =>
+  new Set([...humanSignalRowsAt(words)].map((row) => `register:${row}`).filter((id) => !TARGETS.has(id)));
 
 export interface ChapterRefusal {
   why: "more target rows fail" | "the distance to band did not fall" | "more error rows fail" | "a protected row turned red";
@@ -132,14 +139,12 @@ const turnedRed = (before: readonly L0Result[], after: readonly L0Result[], ids:
   return after.filter((row) => !row.pass && passedBefore.has(row.check_id)).map((row) => row.check_id);
 };
 
-const PROTECTED: ReadonlySet<string> = new Set(PROTECTED_ROWS);
-
-/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. */
-export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[]): ChapterRefusal | undefined {
+/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. Fewer beats saying an id at the same distance counts as progress. */
+export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[], protectedIds: ReadonlySet<string>): ChapterRefusal | undefined {
   if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
-  if (bandDistance(after) >= bandDistance(before)) return { why: "the distance to band did not fall" };
+  if (bandDistance(after) > bandDistance(before) || (bandDistance(after) === bandDistance(before) && idBeats(after) >= idBeats(before))) return { why: "the distance to band did not fall" };
   if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
-  const flipped = turnedRed(before, after, (row) => PROTECTED.has(row.check_id));
+  const flipped = turnedRed(before, after, (row) => protectedIds.has(row.check_id));
   return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;
 }
 
@@ -192,7 +197,7 @@ function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: Re
   const labelsAdded = reply.labels_added.map((label) => label.trim()).filter(Boolean);
   // Spelled and declared before the guard so its cap, the speech-vet and L0 all judge the words the voice will read,
   // and a reply that drops a `[w](=reading)` its context decides is not reverted for Q-V10.
-  const spoken = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);
+  const spoken = splitOverlong(beat.spoken, declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken), deps.speechClean);
   if (spoken === beat.spoken && labelsAdded.length === 0) return beat;
   const options: BeatGuardOptions = { ...(deps.guard ? { guard: deps.guard } : {}), ...(deps.speechClean ? { speechClean: deps.speechClean } : {}) };
   const rejections = guardBeat(beat, { spoken, labelsAdded }, options);
@@ -281,11 +286,12 @@ function keepChapters(script: ScriptV1, rows: L0Result[], candidate: readonly Sc
   const changed = script.chapters.map((chapter) => chapter.id).filter((id) => script.beats.some((beat, i) => beat.chapter === id && candidate[i] !== beat));
   const solo = new Map(changed.map((id) => [id, bandDistance(runL0(withChapter(script, candidate, id), undefined, checks))]));
   const order = [...changed].sort((a, b) => solo.get(a)! - solo.get(b)!);
+  const guarded = protectedRows(spokenText(script.beats.map((beat) => beat.spoken)).words.length);
   let kept: Greedy = { script, rows, chapters: [] };
   for (const chapter of order) {
     const next = withChapter(kept.script, candidate, chapter);
     const nextRows = runL0(next, undefined, checks);
-    const refusal = chapterRefusal(kept.rows, nextRows);
+    const refusal = chapterRefusal(kept.rows, nextRows, guarded);
     const verdict: ChapterVerdict = refusal ? { chapter, kept: false, ...refusal } : { chapter, kept: true };
     kept = refusal ? { ...kept, chapters: [...kept.chapters, verdict] } : { script: next, rows: nextRows, chapters: [...kept.chapters, verdict] };
   }
@@ -354,7 +360,8 @@ function checkRounds(rounds: number): number {
  * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A chapter is kept
  * only when, on top of the chapters kept before it, it fails no more target rows, comes closer to band, fails no more
  * error rows and turns no protected row red; a beat that gains an error row or goes over its word cap is reverted, and a failed call leaves its
- * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
+ * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted,
+ * and a candidate's new sentence over the cap is split at a clause joint before it is vetted.
  */
 export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promise<RewriteResult> {
   const rounds = checkRounds(deps.rounds ?? MAX_REWRITE_ROUNDS);
@@ -364,7 +371,7 @@ export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promis
   let current: RoundInput = { script: spelledInput, rows: before, refused: new Map() };
   const reports: RoundReport[] = [];
   const calls: RewriteCall[] = [];
-  for (let round = 1; round <= rounds && failingTargets(current.rows) > 0; round++) {
+  for (let round = 1; round <= rounds && (failingTargets(current.rows) > 0 || idBeats(current.rows) > 0); round++) {
     const outcome = await runRound(current, round, deps, checks);
     calls.push(...outcome.calls);
     if (outcome.report) reports.push(outcome.report);

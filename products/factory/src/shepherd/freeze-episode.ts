@@ -10,7 +10,11 @@ const RERUN_THAW = "rerun-green (flake suspected):";
 /** The thaw-event reason of `shepherd thaw`; the caller's own reason follows. */
 const HAND_THAW = "hand thaw:";
 
+/** The freeze-event reasons of a new episode; only the freeze that opens one writes them. */
+export const EPISODE_OPENED = { red: "main red", cancelOnly: "main red from cancelled runs only" } as const;
+
 const ReasonRow = z.object({ run_id: z.string().nullable(), reason: z.string() });
+const ShaRow = z.object({ head_sha: z.string() });
 
 /** What the episode records need of their freeze store: the live episode and its red sha, and the one thaw path. */
 interface EpisodeFreezes {
@@ -32,6 +36,11 @@ export interface EpisodeRecords {
    * already exempt keeps its exemption for the rest of the episode.
    */
   linkFix(repo: RepoSlug, episode: number, task: string, fixer: string): "linked" | "kept" | "not-live";
+  /**
+   * The red sha that opened live `episode`, which names its one fixer. A later red in the episode moves only the row's
+   * red sha, so every run that reaches the spawn agrees on this one. Undefined when `episode` is not live.
+   */
+  firstRed(repo: RepoSlug, episode: number): string | undefined;
   /**
    * Claims live `episode`'s one rerun of the red sha's failed jobs for `runId`, recording `after`, the newest check run
    * id at the red sha before the rerun, so only runs past it count as the rerun. The same run gets its own claim back
@@ -75,6 +84,14 @@ const LINK_FIX = "UPDATE shepherd_freeze SET fix_task = ?, fixer = ? WHERE repo 
 function linkFix({ db, freezes, repoKey }: Records, repo: RepoSlug, episode: number, task: string, fixer: string): "linked" | "kept" | "not-live" {
   if (db.prepare(LINK_FIX).run(task, fixer, repoKey(repo), episode).changes > 0) return "linked";
   return freezes.live(repo, episode) ? "kept" : "not-live";
+}
+
+/** The newest opening freeze event is the live episode's, since only a new episode writes one; a row with no event falls back to its red sha. */
+function firstRed({ db, freezes, repoKey }: Records, repo: RepoSlug, episode: number): string | undefined {
+  const live = freezes.live(repo, episode);
+  if (!live) return undefined;
+  const row = db.prepare("SELECT head_sha FROM shepherd_event WHERE repo = ? AND kind = 'freeze' AND pr IS NULL AND head_sha IS NOT NULL AND reason IN (?, ?) ORDER BY id DESC LIMIT 1").get(repoKey(repo), EPISODE_OPENED.red, EPISODE_OPENED.cancelOnly);
+  return row === undefined ? live.redSha : ShaRow.parse(row).head_sha;
 }
 
 function rerunClaim({ db, repoKey }: Records, repo: RepoSlug, episode: number): { runId: string | null; after: number } | undefined {
@@ -124,6 +141,7 @@ export function episodeRecords(db: Db, now: () => number, freezes: EpisodeFreeze
   const records: Records = { db, now, freezes, repoKey };
   return {
     linkFix: (repo, episode, task, fixer) => linkFix(records, repo, episode, task, fixer),
+    firstRed: (repo, episode) => firstRed(records, repo, episode),
     rerunClaim: (repo, episode) => rerunClaim(records, repo, episode),
     claimRerun: (repo, episode, runId, after) => claimRerun(records, repo, episode, runId, after),
     thawOnRerun: (repo, episode, redSha, tests) => thawOnRerun(records, repo, episode, redSha, tests),

@@ -12,6 +12,7 @@ import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 import { createRosterReader } from "./roster.js";
 import { spawnGate } from "./spawn-gate.js";
+import { errorMessage } from "../narrow.js";
 
 type ExecFileDone = (error: Error | null, stdout: string, stderr: string) => void;
 type ExecFileOverride = (bin: string, args: string[], options: { timeout: number }, done: ExecFileDone) => unknown;
@@ -30,6 +31,8 @@ const target: ReviewTarget = { repo: "octo/demo", pr: 7, head: "a".repeat(40) };
 // The exact line agent-chat's client prints once its reconnect ladder runs out.
 const BROKER_DOWN_LINE = "could not reach or start the agent-chat broker";
 const BROKER_DOWN = `echo '${BROKER_DOWN_LINE}' >&2\nexit 1\n`;
+// What agent-chat prints when AGENT_CHAT_NO_AUTOSTART=1 finds no broker listening, as at a boot race.
+const NO_AUTOSTART_LINE = "broker unavailable: no broker is listening and AGENT_CHAT_NO_AUTOSTART=1 forbids starting one";
 
 let dir: string;
 let home: string;
@@ -73,7 +76,7 @@ const failure = (attempt: Promise<unknown>): Promise<unknown> =>
 function expectRefusal(error: unknown, text: string): void {
   expect(error).toBeInstanceOf(Error);
   expect(error).not.toBeInstanceOf(ReviewerBrokerDown);
-  expect((error as Error).message).toContain(text);
+  expect(errorMessage(error)).toContain(text);
 }
 
 describe("expandHome", () => {
@@ -222,7 +225,13 @@ describe("agentChatReviewerDispatch roster", () => {
     const error = await failure(dispatchOver(BROKER_DOWN).roster());
 
     expect(error).toBeInstanceOf(ReviewerBrokerDown);
-    expect((error as Error).message).toContain(BROKER_DOWN_LINE);
+    expect(errorMessage(error)).toContain(BROKER_DOWN_LINE);
+  });
+
+  it("reports the no-autostart probe's refusal of agent ls as broker-down, not a refused dispatch (TP-4641)", async () => {
+    const error = await failure(dispatchOver(`echo '${NO_AUTOSTART_LINE}' >&2\nexit 1\n`).roster());
+
+    expect(error).toBeInstanceOf(ReviewerBrokerDown);
   });
 
   it("keeps a failed roster read that is not a broker outage a plain failure", async () => {
@@ -308,7 +317,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(undefined, { cwdFor }).spawn("rv-demo-7", BRIEF, target));
 
     expectRefusal(error, text);
-    expect((error as Error).message).toContain("octo/demo");
+    expect(errorMessage(error)).toContain("octo/demo");
     expect(wasRun()).toBe(false);
   });
 
@@ -323,7 +332,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(BROKER_DOWN).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerDown);
-    expect((error as Error).message).toContain(BROKER_DOWN_LINE);
+    expect(errorMessage(error)).toContain(BROKER_DOWN_LINE);
   });
 
   it.each([
@@ -344,7 +353,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: ${reason}'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe(reason);
+    expect(errorMessage(error)).toBe(reason);
   });
 
   it("reports a refusal agent-chat marks retryable as busy, carrying the guard's reason without the trailer", async () => {
@@ -352,14 +361,14 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: ${guard}'\necho 'code: machine_headless_limit retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe(guard);
+    expect(errorMessage(error)).toBe(guard);
   });
 
   it("reports a refusal coded machine_hold as a machine hold", async () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: machine stop holds: load5 34'\necho 'code: machine_hold retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerMachineHold);
-    expect((error as Error).message).toBe("machine stop holds: load5 34 (machine_hold)");
+    expect(errorMessage(error)).toBe("machine stop holds: load5 34 (machine_hold)");
   });
 
   it("tells the machine-stop ledger of a machine_hold refusal and still throws the machine hold", async () => {
@@ -392,7 +401,7 @@ describe("agentChatReviewerDispatch spawn", () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: spawn budget spent'\necho 'code: spawn_rate retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).message).toBe("spawn budget spent (spawn_rate)");
+    expect(errorMessage(error)).toBe("spawn budget spent (spawn_rate)");
   });
 
   it("keeps a refusal marked retryable: false a refusal", async () => {
@@ -445,6 +454,22 @@ describe("agentChatReviewerDispatch spawn", () => {
       await vi.advanceTimersByTimeAsync(45_000);
 
       await expect(spawned).resolves.toBeUndefined();
+    });
+
+    it("lets a lineage read the broker answers after 36 s finish, though the roster read would time out", async () => {
+      vi.useFakeTimers();
+      execFileHook.override = (_bin, _args, { timeout }, done) => {
+        setTimeout(() => (36_000 > timeout ? done(Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }), "", "") : done(null, "[]", "")), Math.min(36_000, timeout));
+        return { stdin: { on: () => undefined, end: () => undefined } };
+      };
+      const dispatch = dispatchOver();
+
+      const lineage = dispatch.lineage();
+      const roster = failure(dispatch.roster());
+      await vi.advanceTimersByTimeAsync(36_000);
+
+      await expect(lineage).resolves.toMatchObject({ rows: [] });
+      expect(await roster).toBeInstanceOf(ReviewerAskTimedOut);
     });
 
     it("maps a broker that hangs past 90 s to a timed-out ask", async () => {
@@ -502,6 +527,20 @@ describe("agentChatReviewerDispatch reviewer-slot reading", () => {
     await dispatch.spawn("rv-demo-7", BRIEF, target);
 
     expect(gate.reviewSlots()).toEqual({ running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" });
+  });
+
+  it("stops waiting in the gate's queue, starting nobody, once the step's signal aborts", async () => {
+    const gate = spawnGate({ read: () => ({ load5: 30 }), log: () => undefined });
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => []) });
+    const step = new AbortController();
+    const cancelled = new Error("cancelled");
+
+    const spawned = failure(dispatch.spawn("rv-demo-7", BRIEF, target, {}, step.signal));
+    const resumed = failure(dispatch.resume("rv-demo-8", BRIEF, step.signal));
+    step.abort(cancelled);
+
+    expect(await spawned).toBe(cancelled);
+    expect(await resumed).toBe(cancelled);
   });
 
   it("keeps a roster timeout as rosterError with no running list, so it never reads as 0", async () => {

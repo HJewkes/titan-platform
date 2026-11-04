@@ -6,6 +6,8 @@ import { href, open, type Route } from "../router.js";
 import { setPositionOf, setQuery, type SetPosition } from "./round-set.js";
 import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
+import { useMediaQuery } from "./FramePins.js";
+import { BELOW_MD, PHONE_TAP_LINK } from "./phone.js";
 
 const roundRoute = (round: RoundSummary): Route => ({ view: "rounds", id: round.id });
 const setRoute = (set: string): Route => ({ view: "rounds", query: setQuery(set) });
@@ -20,14 +22,15 @@ export function RoundSetNav({ id }: { id: string }): ReactNode {
 export function RoundSetLinks({ rounds, id }: { rounds: readonly RoundSummary[]; id: string }): ReactNode {
   const position = setPositionOf(rounds, id);
   useSetKeys(position);
+  const phone = useMediaQuery(BELOW_MD);
   if (position === null) return null;
   return (
     <HStack gap={3} align="center" wrap testID="round-set-nav">
-      <StepLink step="prev" round={position.prev} />
-      <Link color="primary" href={href(setRoute(position.set))} onPress={() => open(setRoute(position.set))}>
+      <StepLink step="prev" round={position.prev} named={!phone} />
+      <Link color="primary" className={PHONE_TAP_LINK} href={href(setRoute(position.set))} onPress={() => open(setRoute(position.set))}>
         {`${position.set} · ${position.index} of ${position.size}`}
       </Link>
-      <StepLink step="next" round={position.next} />
+      <StepLink step="next" round={position.next} named={!phone} />
       {position.size > 1 ? <KeyHint /> : null}
     </HStack>
   );
@@ -38,12 +41,15 @@ const stepText = (step: "prev" | "next", id: string | null): string => {
   return id === null ? "Next →" : `Next: ${id} →`;
 };
 
-/** An end of the set keeps its label, disabled, so the row does not shift between rounds. */
-function StepLink({ step, round }: { step: "prev" | "next"; round: RoundSummary | null }): ReactNode {
-  if (round === null) return <Link isDisabled>{stepText(step, null)}</Link>;
+/**
+ * An end of the set keeps its label, disabled, so the row does not shift between rounds. A phone leaves the
+ * neighbour's id off (`named` false), so Prev, the set and Next share one row.
+ */
+function StepLink({ step, round, named }: { step: "prev" | "next"; round: RoundSummary | null; named: boolean }): ReactNode {
+  if (round === null) return <Link isDisabled className={PHONE_TAP_LINK}>{stepText(step, null)}</Link>;
   return (
-    <Link color="primary" href={href(roundRoute(round))} onPress={() => open(roundRoute(round))}>
-      {stepText(step, round.id)}
+    <Link color="primary" className={PHONE_TAP_LINK} href={href(roundRoute(round))} onPress={() => open(roundRoute(round))}>
+      {stepText(step, named ? round.id : null)}
     </Link>
   );
 }

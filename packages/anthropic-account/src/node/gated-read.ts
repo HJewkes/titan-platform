@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { errorCode } from "./narrow.js";
 
 // O_NOFOLLOW makes a symlink swapped in after the lstat fail the open, and O_NONBLOCK keeps
 // a FIFO swapped in from hanging it; the fstat then refuses either.
@@ -23,7 +24,7 @@ function lstatOrNull(file: string): fs.Stats | null {
   try {
     return fs.lstatSync(file);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (errorCode(error) === "ENOENT") return null;
     throw error;
   }
 }
@@ -32,7 +33,7 @@ function openGated(file: string): number | GateRefusal | null {
   try {
     return fs.openSync(file, OPEN_FLAGS);
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
+    const code = errorCode(error);
     if (code === "ENOENT") return null;
     if (code === "ELOOP" || code === "EMLINK") return "not-a-regular-file";
     throw error;

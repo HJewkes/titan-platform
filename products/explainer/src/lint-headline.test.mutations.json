@@ -28,6 +28,13 @@
       "find": "(${assertionDefects(beat).join(\", \")})",
       "replace": "()",
       "kills": ["Q-D7 assertion headlines hints each failing headline with what keeps it from asserting"]
+    },
+    {
+      "name": "no irregular-past fallback for a misread verb",
+      "file": "products/explainer/src/lint-headline.ts",
+      "find": "|| saysIrregularPast(headline)",
+      "replace": "|| false",
+      "kills": ["Q-D7 assertion headlines a headline whose verb is an irregular past the tagger calls a noun asserts"]
     }
   ]
 }

@@ -1,4 +1,5 @@
-import { OWNER_GATE_REASONS, SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { SHEPHERD_POLICY_TABLE } from "./shepherd/policy.js";
+import { OWNER_GATE_REASONS } from "./shepherd/policy-schema.js";
 import type { Escalation } from "./shepherd/route-table.js";
 
 type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
@@ -28,6 +29,9 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "skill-path": "D21",
   "ci-policy-weakened": "D21",
   "ci-policy-malformed": "D21",
+  "attest-unmet": "D6",
+  "attest-deploy-skew": "D5",
+  "old-path-untagged": "D6",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
   "head-mismatch": "D5",

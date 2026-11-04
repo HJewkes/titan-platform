@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isConcluded, isPassingConclusion, latestPerName, withoutSupersededCancels, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import type { HeadObserver } from "../head-guard/head-regression.js";
@@ -108,15 +108,6 @@ function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: 
 }
 
 /**
- * A newer push cancels the older run of the same check, so that cancel is not a verdict on the head. Only a cancel is
- * dropped, and only when a newer run of that name exists: a superseded failure still counts, and a lone cancel stays red.
- */
-function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const supersededBy = (run: CheckRun) => runs.some((other) => other !== run && other.name === run.name && other.headSha === run.headSha && other.appId === run.appId && latestPerName([run, other])[0] === other);
-  return runs.filter((run) => run.conclusion !== "cancelled" || !supersededBy(run));
-}
-
-/**
  * Concurrency can cancel one of two Actions runs at a head, and an aggregate job of the cancelled run then fails on its
  * cancelled needs (td#894). Such a run is no verdict while another run at that head, sharing a job name, has neither
  * failed nor been cancelled: the live or passed run is. A failure in the other run keeps both, so a real red stays red.
@@ -124,7 +115,7 @@ function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
 function withoutCancelledWorkflowRuns(runs: readonly CheckRun[]): CheckRun[] {
   const jobs = new Map<number, CheckRun[]>();
   for (const run of runs) if (run.workflowRunId !== null) jobs.set(run.workflowRunId, [...(jobs.get(run.workflowRunId) ?? []), run]);
-  const standing = (own: readonly CheckRun[]) => own.every((job) => job.status !== "completed" || isPassingConclusion(job.conclusion));
+  const standing = (own: readonly CheckRun[]) => own.every((job) => !isConcluded(job) || isPassingConclusion(job.conclusion));
   const sibling = (id: number, own: readonly CheckRun[]) => [...jobs].some(([other, theirs]) => other !== id && standing(theirs) && theirs.some((job) => own.some((mine) => mine.name === job.name)));
   const cancelled = new Set([...jobs].filter(([id, own]) => own.some((job) => job.conclusion === "cancelled") && sibling(id, own)).map(([id]) => id));
   return runs.filter((run) => run.workflowRunId === null || !cancelled.has(run.workflowRunId));

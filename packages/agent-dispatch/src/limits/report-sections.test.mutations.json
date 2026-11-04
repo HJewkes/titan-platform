@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shepherd section drops its error branch",
+      "file": "packages/agent-dispatch/src/limits/report-sections.ts",
+      "find": "  if (\"error\" in input) return { error: input.error };\n",
+      "replace": "",
+      "kills": ["yields {error} for an error read"]
+    },
+    {
+      "name": "the shepherd section counts every run as a review in flight",
+      "file": "packages/agent-dispatch/src/limits/report-sections.ts",
+      "find": "r.reviewInFlight === true",
+      "replace": "true",
+      "kills": ["tallies runs by phase, lists held runs and counts reviews in flight against the cap"]
+    },
+    {
+      "name": "the worktree ceiling ignores left-free",
+      "file": "packages/agent-dispatch/src/limits/report-sections.ts",
+      "find": "totalCeiling - (leftFree ?? 0)",
+      "replace": "totalCeiling",
+      "kills": ["subtracts left-free from the ceiling and repeats the per-repo cap on each repo"]
+    }
+  ]
+}

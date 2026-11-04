@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a main green past the merge ref still wakes the fixer",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "if (await greenFor(read, sha, rules)) return sha;",
+      "replace": "if (await greenFor(read, sha, rules)) return undefined;",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) merges main up with no fixer woken and no repair spent once main went green past its last same red"]
+    },
+    {
+      "name": "a base red at another step or none reads as the head's red",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "  return own.length === 0;\n}",
+      "replace": "  return own.length >= 0;\n}",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer when the head fails at its own step while the merge ref's base run was cancelled"]
+    },
+    {
+      "name": "a cancelled run at the CI base is read as the base's last run",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "sha).filter(finished);",
+      "replace": "sha);",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) merges main up with no fixer woken and no repair spent once main went green past its last same red"]
+    },
+    {
+      "name": "the await-new-head hook ignores a spent main-fixed budget",
+      "file": "products/factory/src/shepherd/inherited-red.ts",
+      "find": "...(target.mainFixedSpent === true && { mainFixedSpent: true })",
+      "replace": "",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer once, then waits for its head, after the run has spent its main-fixed merge-ups"]
+    },
+    {
+      "name": "a red main tip reads as green",
+      "file": "products/factory/src/shepherd/main-fixed.ts",
+      "find": "return judgeMain(sha, runs, rules).findings.length === 0 && read.failing.every((name) => passes(own, name));",
+      "replace": "return true;",
+      "kills": ["a ci-red head whose red came with a stale merge ref (TP-4650) wakes the fixer as before while main is still red past the merge ref's base"]
+    }
+  ]
+}

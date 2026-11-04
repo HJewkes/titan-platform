@@ -121,7 +121,7 @@ describe("PR outcome resolver", () => {
 });
 
 describe("PR commit times", () => {
-  const commitTimes = () => (graph.db.prepare("SELECT commit_times FROM pr").get() as { commit_times: string | null }).commit_times;
+  const commitTimes = () => graph.db.prepare<[], { commit_times: string | null }>("SELECT commit_times FROM pr").get()?.commit_times;
 
   it("a merged PR is offered again until a resolver sends commit times", async () => {
     const asked: PrKey[][] = [];

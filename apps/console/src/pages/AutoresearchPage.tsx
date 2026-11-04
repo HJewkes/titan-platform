@@ -1,20 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  EmptyState,
-  Link,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  VStack,
-} from "@titan-design/react-ui";
+import { Alert, EmptyState, Link, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ArRunSummary } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
@@ -26,6 +12,7 @@ import { AutoresearchProgress } from "./AutoresearchProgress.js";
 import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
 import { AutoresearchSnapshots } from "./AutoresearchSnapshots.js";
 import { AutoresearchValidator } from "./AutoresearchValidator.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
@@ -78,7 +65,7 @@ function RunRow({ run }: { run: ArRunSummary }): ReactNode {
   return (
     <TableRow testID={`autoresearch-run-${run.runId}`}>
       <TableCell>
-        <Link color="primary" onPress={() => open({ view: "autoresearch", id: run.runId })}>
+        <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "autoresearch", id: run.runId })}>
           {run.runId}
         </Link>
       </TableCell>

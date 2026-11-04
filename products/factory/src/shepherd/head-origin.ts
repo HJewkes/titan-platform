@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import type { CauseTrail } from "./review-cause.js";
-import type { GateRun } from "./gates.js";
+import type { GateRun } from "./run-state.js";
 import type { ShepherdDeps } from "./phases.js";
 
 export const HEAD_ORIGIN_STEP = "sh-head-origin";

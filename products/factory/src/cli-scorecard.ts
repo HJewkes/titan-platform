@@ -6,7 +6,7 @@ import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import type { Command } from "commander";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import type { Verbs } from "./cli.js";
+import type { Verbs } from "./cli-types.js";
 import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
 

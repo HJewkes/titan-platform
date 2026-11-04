@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "none counts the agent itself as sharing its checkout",
+      "file": "packages/agent-dispatch/src/isolation/none.ts",
+      "find": "(p) => p.agentId !== ctx.agentId && p.cwd === ctx.baseCwd,",
+      "replace": "(p) => p.cwd === ctx.baseCwd || p.agentId !== ctx.agentId,",
+      "kills": [
+        "none says nothing about agents in other checkouts"
+      ]
+    },
+    {
+      "name": "toolset goes quiet on an allow list alone",
+      "file": "packages/agent-dispatch/src/isolation/toolset.ts",
+      "find": "if (ctx.toolset?.disallowedTools?.length) return [];",
+      "replace": "if (ctx.toolset?.disallowedTools?.length || ctx.toolset?.allowedTools?.length) return [];",
+      "kills": [
+        "toolset-limited still warns when an allow list is present but nothing is denied"
+      ]
+    },
+    {
+      "name": "the toolset note drops the agent-chat grant",
+      "file": "packages/agent-dispatch/src/isolation/toolset.ts",
+      "find": "return `${limits}${unavailable}${chat}`;",
+      "replace": "return `${limits}${unavailable}`;",
+      "kills": [
+        "toolset-limited tells the agent it can still chat, which the profile list alone does not say"
+      ]
+    },
+    {
+      "name": "a trailing ** uses the interior form and matches nothing",
+      "file": "packages/agent-dispatch/src/isolation/file-ownership.ts",
+      "find": "regexStr += i >= pattern.length ? \".*\" : \"(?:.+/)?\";",
+      "replace": "regexStr += \"(?:.+/)?\";",
+      "kills": [
+        "file-ownership patterns matches directory prefixes, single-segment and multi-segment globs",
+        "file-ownership strategy warns by default when a claim overlaps a live peer"
+      ]
+    },
+    {
+      "name": "file-ownership refuses without --strict",
+      "file": "packages/agent-dispatch/src/isolation/file-ownership.ts",
+      "find": "return ctx.strict ? found : found.map(warn);",
+      "replace": "return found;",
+      "kills": [
+        "file-ownership strategy warns by default when a claim overlaps a live peer"
+      ]
+    }
+  ]
+}

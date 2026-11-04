@@ -1,0 +1,697 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { memoryHost } from '../host/index.js'
+import type { JournalRow } from '../host/index.js'
+import { AgentLog, foldAgent, pairPresence, stoppedAt } from './index.js'
+import type { AgentIdentity, AgentLifecycle } from './index.js'
+
+type AgentEventRow = JournalRow
+type EventKind = string
+
+/** Stands in for the agent-chat event log: stamps defaults and the clock on append, as its `append` does. */
+function freshLog() {
+  const { journal } = memoryHost()
+  return {
+    journal,
+    append: (partial: Partial<JournalRow> & { kind: string }) =>
+      journal.append({
+        ts: Date.now(),
+        actor: 'system',
+        target: null,
+        msgId: null,
+        ref: null,
+        body: null,
+        meta: {},
+        ...partial,
+      }),
+    agentEvents: () => journal.rows(),
+  }
+}
+
+// Synthetic rows: the fold takes no database, no clock and no process, so the
+// whole of §2.4 is exercised without any of them.
+let clock = 1_000
+
+const row = (kind: EventKind, over: Partial<AgentEventRow> = {}): AgentEventRow => ({
+  kind,
+  ts: (clock += 10),
+  actor: 'scout',
+  target: null,
+  msgId: null,
+  ref: 'a1',
+  body: null,
+  meta: {},
+  ...over,
+})
+
+const spawned = (over: Partial<AgentEventRow> = {}): AgentEventRow =>
+  row('agent_spawned', {
+    actor: 'human',
+    target: 'scout',
+    msgId: 'a1',
+    ref: null,
+    body: 'go read the log',
+    meta: {
+      profile: 'reader',
+      cwd: '/tmp/wt',
+      isolation: 'worktree',
+      surface: 'headless',
+      session_id: 'sess-1',
+    },
+    ...over,
+  })
+
+const stateAfter = (...rows: AgentEventRow[]): AgentLifecycle | undefined => foldAgent([spawned(), ...rows])?.state
+
+describe('the lifecycle fold', () => {
+  it('marks an exit from the settle timer as inferred and a recorded exit as not', () => {
+    const inferred = foldAgent([spawned(), row('agent_exited', { meta: { inferred: 'true' } })])
+    const recorded = foldAgent([spawned(), row('agent_exited', { meta: { code: '0' } })])
+
+    expect(inferred?.exit?.inferred).toBe(true)
+    expect(recorded?.exit?.inferred).toBeUndefined()
+  })
+
+  it('carries the spawn payload onto the identity', () => {
+    const agent = foldAgent([spawned()])
+
+    expect(agent).toMatchObject({
+      agentId: 'a1',
+      name: 'scout',
+      profile: 'reader',
+      spawnedBy: 'human',
+      brief: 'go read the log',
+      cwd: '/tmp/wt',
+      isolation: 'worktree',
+      surface: 'headless',
+      sessionId: 'sess-1',
+      state: 'spawning',
+    })
+  })
+
+  it('walks every transition in the table', () => {
+    expect(stateAfter()).toBe('spawning')
+    expect(stateAfter(row('agent_attached'))).toBe('live')
+    expect(stateAfter(row('agent_attached'), row('agent_detached'))).toBe('detached')
+    expect(stateAfter(row('agent_attached'), row('agent_exited'))).toBe('exited')
+    expect(stateAfter(row('agent_attached'), row('agent_retired'))).toBe('retired')
+  })
+
+  it('sends a resumed agent back to spawning, then live on the next attach', () => {
+    expect(stateAfter(row('agent_attached'), row('agent_detached'), row('agent_resumed'))).toBe('spawning')
+    expect(stateAfter(row('agent_attached'), row('agent_detached'), row('agent_resumed'), row('agent_attached'))).toBe(
+      'live',
+    )
+  })
+
+  it('treats retired as terminal, because the name is already free to reclaim', () => {
+    expect(stateAfter(row('agent_retired'), row('agent_attached'))).toBe('retired')
+  })
+
+  it('records the exit payload on the event that learned it', () => {
+    const agent = foldAgent([
+      spawned(),
+      row('agent_attached'),
+      row('agent_exited', {
+        body: 'read 40 files',
+        meta: { code: '0', cost_usd: '0.42' },
+      }),
+    ])
+
+    expect(agent?.exit).toEqual({
+      code: 0,
+      summary: 'read 40 files',
+      costUsd: 0.42,
+    })
+  })
+
+  it('reports a null exit code for a signal death rather than pretending it was 0', () => {
+    const agent = foldAgent([spawned(), row('agent_exited', { meta: {} })])
+
+    expect(agent?.exit).toEqual({ code: null, summary: '' })
+  })
+
+  it('ignores rows citing an id that was never spawned', () => {
+    expect(foldAgent([row('agent_attached'), row('agent_exited')])).toBeUndefined()
+  })
+
+  it('reads a row with no origin marker as a supervisor spawn', () => {
+    // Every row written before adoption existed is one, so the default decides
+    // how the whole existing log folds.
+    expect(foldAgent([spawned()])?.origin).toBe('spawned')
+  })
+
+  it('marks an adopted identity, so a self-chosen name is not read as an assigned one', () => {
+    const adopted = spawned({
+      meta: { origin: 'adopted', session_id: 'sess-9' },
+    })
+
+    expect(foldAgent([adopted])?.origin).toBe('adopted')
+  })
+
+  it('lets an adopted name follow the session, since the session chose it', () => {
+    const adopted = spawned({ meta: { origin: 'adopted' } })
+    const agent = foldAgent([adopted, row('agent_attached', { actor: 'scout-renamed' })])
+
+    expect(agent?.name).toBe('scout-renamed')
+  })
+
+  it('pins a spawned name, because peers were told it before the agent had a turn', () => {
+    const agent = foldAgent([spawned(), row('agent_attached', { actor: 'impostor' })])
+
+    expect(agent?.name).toBe('scout')
+  })
+
+  it('advances lastEventAt without letting isolation rows change lifecycle', () => {
+    const attached = row('agent_attached')
+    const allocated = row('isolation_allocated', {
+      meta: { branch: 'agent/scout' },
+    })
+    const agent = foldAgent([spawned(), attached, allocated])
+
+    expect(agent?.state).toBe('live')
+    expect(agent?.lastEventAt).toBe(allocated.ts)
+  })
+
+  it('keeps the exit time when later rows arrive, and forgets it on resume', () => {
+    const exited = row('agent_exited')
+    const refused = row('isolation_released', { meta: { released: 'false' } })
+
+    expect(foldAgent([spawned(), exited, refused])?.exitedAt).toBe(exited.ts)
+    expect(foldAgent([spawned(), exited, row('agent_resumed')])?.exitedAt).toBeUndefined()
+  })
+
+  // CC-1472. Mutation caught: the fold reading host only from the spawn row.
+  it('puts the agent on the host its newest resume launched on', () => {
+    const onMac = row('agent_resumed', { meta: { host: 'mac' } })
+
+    expect(foldAgent([spawned(), row('agent_exited'), onMac])?.host).toBe('mac')
+    expect(foldAgent([spawned(), onMac, row('agent_exited'), row('agent_resumed')])?.host).toBeUndefined()
+    const remoteSpawn = spawned({ meta: { ...spawned().meta, host: 'mac' } })
+    expect(foldAgent([remoteSpawn, row('agent_exited'), row('agent_resumed')])?.host).toBeUndefined()
+  })
+})
+
+describe('the predecessor fold (CC-1579)', () => {
+  const recorded = {
+    profile: 'reader',
+    session_id: 'sess-1',
+    coordinator_depth: '0',
+  }
+  const predecessorOf = (meta: Record<string, string>, target = 'scout'): AgentIdentity | undefined =>
+    foldAgent([spawned({ target, meta })])
+
+  it('names the predecessor a spawn was given', () => {
+    expect(predecessorOf({ ...recorded, predecessor: 'old-scout' })?.predecessor).toBe('old-scout')
+  })
+
+  // Mutation caught: a teleport row read through `meta.predecessor`, which it never writes.
+  it('names a teleport successor after itself, the name it took over', () => {
+    const agent = predecessorOf({ ...recorded, teleport_from: 'a0', origin: 'adopted' }, 'planner')
+    expect(agent?.predecessor).toBe('planner')
+  })
+
+  // Mutation caught: the field absent for a plain spawn, so every reviewer reads as unproven.
+  it('records null for a spawn row that shows no predecessor was given', () => {
+    const agent = predecessorOf(recorded)
+    expect(agent).toHaveProperty('predecessor', null)
+  })
+
+  // Mutation caught: a missing record defaulted to null, which claims no takeover without proof.
+  it('leaves the field out for a spawn row older than the predecessor record', () => {
+    const agent = predecessorOf({ profile: 'reader', session_id: 'sess-1' })
+    expect(agent).not.toHaveProperty('predecessor')
+  })
+
+  // Mutation caught: adoption read as a plain spawn, though a handoff can continue work unrecorded.
+  it('leaves the field out for an adopted session', () => {
+    const agent = predecessorOf({ ...recorded, origin: 'adopted' })
+    expect(agent).not.toHaveProperty('predecessor')
+  })
+})
+
+describe('when an agent stopped', () => {
+  it('falls back to the last detach while no exit is recorded, and ignores later rows', () => {
+    const detached = row('agent_detached')
+    const refused = row('isolation_released', { meta: { released: 'false' } })
+    const agent = foldAgent([spawned(), detached, refused])
+
+    expect(agent?.exitedAt).toBeUndefined()
+    expect(agent && stoppedAt(agent)).toBe(detached.ts)
+  })
+
+  it('prefers the exit over a detach, and forgets a detach on attach', () => {
+    const exited = row('agent_exited')
+    const detached = row('agent_detached')
+
+    expect(foldAgent([spawned(), exited, detached])?.exitedAt).toBe(exited.ts)
+    expect(foldAgent([spawned(), detached, row('agent_attached')])?.detachedAt).toBeUndefined()
+  })
+})
+
+describe('pairing identity with presence', () => {
+  const at = (state: AgentLifecycle): AgentIdentity => ({
+    agentId: 'a1',
+    name: 'scout',
+    profile: 'reader',
+    state,
+    origin: 'spawned',
+    spawnedBy: 'human',
+    spawnedAt: 1,
+    brief: '',
+    cwd: '',
+    isolation: '',
+    surface: '',
+    sessionId: '',
+    lastEventAt: 1,
+    // Every identity has one: 1 for an agent nothing has ever succeeded, which
+    // is the truth for this fixture rather than a placeholder.
+    generation: 1,
+  })
+
+  it('renders the normal cases from the table', () => {
+    expect(pairPresence(at('live'), { connected: true }).status).toBe('running')
+    expect(pairPresence(at('live'), { connected: false }).status).toBe('reconnecting')
+    expect(pairPresence(at('detached'), { connected: false }).status).toBe('detached')
+    expect(pairPresence(at('exited'), { connected: false }).status).toBe('finished')
+    expect(pairPresence(at('spawning'), { connected: false }).status).toBe('starting')
+    expect(pairPresence(at('retired'), { connected: false }).status).toBe('retired')
+  })
+
+  it('derives blocked from an open approval rather than storing it', () => {
+    expect(pairPresence(at('live'), { connected: true, blocked: true }).status).toBe('blocked')
+  })
+
+  it('only reports a stall when the caller supplied a threshold', () => {
+    expect(pairPresence(at('live'), { connected: true, idleMs: 900_000 }).status).toBe('running')
+    expect(
+      pairPresence(at('live'), {
+        connected: true,
+        idleMs: 900_000,
+        stalledAfterMs: 600_000,
+      }).status,
+    ).toBe('stalled?')
+  })
+
+  it('trusts presence over a detached lifecycle, and says so', () => {
+    const paired = pairPresence(at('detached'), { connected: true })
+
+    expect(paired.status).toBe('running')
+    expect(paired.anomaly).toMatch(/detached identity holds a live connection/)
+  })
+
+  it('trusts presence over an exited lifecycle, and says so', () => {
+    const paired = pairPresence(at('exited'), { connected: true })
+
+    expect(paired.status).toBe('running')
+    expect(paired.anomaly).toMatch(/exited identity holds a live connection/)
+  })
+
+  it('leaves the normal cases free of anomalies', () => {
+    expect(pairPresence(at('live'), { connected: true }).anomaly).toBeUndefined()
+    expect(pairPresence(at('detached'), { connected: false }).anomaly).toBeUndefined()
+  })
+
+  it('keeps a durable agent on the roster while the broker bounces', () => {
+    // Service plan §8 item 4: the registry empties on restart and every presence
+    // view lies for up to ~8.85s. The agent must change presence, not vanish.
+    expect(pairPresence(at('live'), { connected: false }).status).toBe('reconnecting')
+  })
+})
+
+describe('AgentLog over a journal', () => {
+  const spawn = (log: ReturnType<typeof freshLog>, id: string, name: string) =>
+    log.append({
+      kind: 'agent_spawned',
+      actor: 'human',
+      target: name,
+      msgId: id,
+      body: `brief for ${name}`,
+      meta: { profile: 'reader' },
+    })
+
+  it('folds independent agents without crossing their rows', () => {
+    const log = freshLog()
+    spawn(log, 'a1', 'scout')
+    spawn(log, 'a2', 'runner')
+    log.append({ kind: 'agent_attached', actor: 'scout', ref: 'a1' })
+
+    expect(log.agentEvents()).toHaveLength(3)
+    const agents = new AgentLog(log.journal)
+    expect(agents.get('a1')?.state).toBe('live')
+    expect(agents.get('a2')?.state).toBe('spawning')
+  })
+
+  it('ignores rows that are not agent rows at all', () => {
+    const log = freshLog()
+    log.append({
+      kind: 'message',
+      actor: 'alice',
+      target: 'bob',
+      body: 'unrelated',
+    })
+    spawn(log, 'a1', 'scout')
+
+    expect(new AgentLog(log.journal).roster()).toHaveLength(1)
+  })
+
+  it('hides retired agents from the roster unless asked', () => {
+    const log = freshLog()
+    spawn(log, 'a1', 'scout')
+    log.append({
+      kind: 'agent_retired',
+      actor: 'human',
+      target: 'scout',
+      ref: 'a1',
+    })
+
+    const agents = new AgentLog(log.journal)
+    expect(agents.roster()).toHaveLength(0)
+    expect(agents.roster({ includeRetired: true })).toHaveLength(1)
+  })
+
+  it('holds a name claimed until the identity retires, not until it exits', () => {
+    const log = freshLog()
+    spawn(log, 'a1', 'scout')
+    const agents = new AgentLog(log.journal)
+    expect(agents.nameIsClaimed('scout')).toBe(true)
+
+    log.append({ kind: 'agent_exited', actor: 'scout', ref: 'a1' })
+    expect(agents.nameIsClaimed('scout')).toBe(true)
+
+    log.append({
+      kind: 'agent_retired',
+      actor: 'human',
+      target: 'scout',
+      ref: 'a1',
+    })
+    expect(agents.nameIsClaimed('scout')).toBe(false)
+  })
+
+  it('does not claim a name nothing ever held', () => {
+    expect(new AgentLog(freshLog().journal).nameIsClaimed('nobody')).toBe(false)
+  })
+
+  it('resolves a reused name to the identity that currently holds it', () => {
+    const log = freshLog()
+    spawn(log, 'a1', 'scout')
+    log.append({
+      kind: 'agent_retired',
+      actor: 'human',
+      target: 'scout',
+      ref: 'a1',
+    })
+    spawn(log, 'a2', 'scout')
+
+    expect(new AgentLog(log.journal).byName('scout')?.agentId).toBe('a2')
+  })
+
+  const adoptRow = (id: string, name: string, sessionId: string) => ({
+    kind: 'agent_spawned' as const,
+    actor: 'human',
+    target: name,
+    msgId: id,
+    meta: { origin: 'adopted', session_id: sessionId },
+  })
+  const adopt = (log: ReturnType<typeof freshLog>, id: string, name: string, sessionId: string) =>
+    log.append(adoptRow(id, name, sessionId))
+
+  it('finds an adopted identity by the Claude Code session it belongs to', () => {
+    const log = freshLog()
+    adopt(log, 'a1', 'scout', 'sess-1')
+
+    expect(new AgentLog(log.journal).bySession('sess-1')?.agentId).toBe('a1')
+  })
+
+  it('refuses to hand a spawned identity to anyone quoting its session id', () => {
+    // The id is in the log where every session on the machine can read it, so
+    // matching on it would make adoption a way to claim someone else's agent.
+    const log = freshLog()
+    log.append({
+      kind: 'agent_spawned',
+      actor: 'human',
+      target: 'scout',
+      msgId: 'a1',
+      meta: { session_id: 'sess-1' },
+    })
+
+    expect(new AgentLog(log.journal).bySession('sess-1')).toBeUndefined()
+  })
+
+  it('matches no identity for a session id it has never seen, and none for none', () => {
+    const log = freshLog()
+    adopt(log, 'a1', 'scout', 'sess-1')
+    const agents = new AgentLog(log.journal)
+
+    expect(agents.bySession('sess-2')).toBeUndefined()
+    expect(agents.bySession('')).toBeUndefined()
+  })
+
+  it('keeps adopted identities out of retire and resume, which cannot act on them', () => {
+    // byName is what those two resolve through, and an adopted identity has no
+    // launch plan to relaunch and no isolation to release.
+    const log = freshLog()
+    adopt(log, 'a1', 'scout', 'sess-1')
+
+    expect(new AgentLog(log.journal).byName('scout')).toBeUndefined()
+  })
+
+  afterEach(() => void vi.useRealTimers())
+
+  /** Appends each step a second after the last, so spawn order is unambiguous. */
+  function inOrder(...steps: Array<() => unknown>): void {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    for (const step of steps) {
+      vi.setSystemTime(Date.now() + 1_000)
+      step()
+    }
+  }
+
+  describe('which identity supersedes a spawned one (CC-959)', () => {
+    it('names the newest hand-started session under the name, across accounts', () => {
+      const log = freshLog()
+      inOrder(
+        () => spawn(log, 'old', 'seat'),
+        () => adopt(log, 'new1', 'seat', 'sess-1'),
+        () => adopt(log, 'new2', 'seat', 'sess-2'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      const stale = agents.byName('seat')
+      expect(stale?.agentId).toBe('old')
+      expect(agents.supersededBy(stale!)?.agentId).toBe('new2')
+    })
+
+    it('does not count a hand-started session older than the spawned one', () => {
+      const log = freshLog()
+      inOrder(
+        () => adopt(log, 'earlier', 'seat', 'sess-1'),
+        () => spawn(log, 'current', 'seat'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)).toBeUndefined()
+    })
+
+    it('does not count a hand-started session under another name', () => {
+      const log = freshLog()
+      inOrder(
+        () => spawn(log, 'current', 'seat'),
+        () => adopt(log, 'other', 'elsewhere', 'sess-1'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)).toBeUndefined()
+    })
+
+    const attach = (log: ReturnType<typeof freshLog>, id: string, name: string, meta: Record<string, string> = {}) =>
+      log.append({ kind: 'agent_attached', actor: name, ref: id, meta })
+
+    it('does not count a session whose name was only derived from the agent worktree', () => {
+      const log = freshLog()
+      inOrder(
+        () => spawn(log, 'current', 'seat'),
+        () => adopt(log, 'opened-here', 'seat', 'sess-1'),
+        () => attach(log, 'opened-here', 'seat', { provisional: 'true' }),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)).toBeUndefined()
+    })
+
+    it('recognises a derived name on rows written before the mark existed', () => {
+      const log = freshLog()
+      const body = 'unregistered session in /work/.worktrees/seat'
+      inOrder(
+        () => spawn(log, 'current', 'seat'),
+        () => log.append({ ...adoptRow('old-session', 'seat', 'sess-1'), body }),
+        () =>
+          log.append({
+            kind: 'agent_attached',
+            actor: 'seat',
+            ref: 'old-session',
+            body,
+          }),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)).toBeUndefined()
+    })
+
+    it('takes a later name on a pre-mark row as chosen, though it carries the derived text', () => {
+      // The incident's seats: derived `projects`, renamed, then readopted with the original brief.
+      const log = freshLog()
+      const body = 'unregistered session in /Users/me/projects'
+      inOrder(
+        () => spawn(log, 'current', 'seat'),
+        () =>
+          log.append({
+            ...adoptRow('hand-started', 'projects', 'sess-1'),
+            body,
+          }),
+        () =>
+          log.append({
+            kind: 'agent_attached',
+            actor: 'projects',
+            ref: 'hand-started',
+            body,
+          }),
+        () =>
+          log.append({
+            kind: 'agent_attached',
+            actor: 'seat',
+            ref: 'hand-started',
+            body: 'coordinating',
+          }),
+        () =>
+          log.append({
+            kind: 'agent_attached',
+            actor: 'seat',
+            ref: 'hand-started',
+            body,
+          }),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)?.agentId).toBe('hand-started')
+    })
+
+    it('counts that session once it chooses the name for itself', () => {
+      const log = freshLog()
+      inOrder(
+        () => spawn(log, 'current', 'seat'),
+        () => adopt(log, 'opened-here', 'scratch', 'sess-1'),
+        () => attach(log, 'opened-here', 'scratch', { provisional: 'true' }),
+        () => attach(log, 'opened-here', 'seat'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)?.agentId).toBe('opened-here')
+    })
+  })
+
+  describe('a teleport chain that began as a hand-started session (CC-1453)', () => {
+    /** A broker-launched successor of `from`, recorded adopted as the teleport host writes it. */
+    const succeed = (log: ReturnType<typeof freshLog>, id: string, from: string, generation: number) =>
+      log.append({
+        kind: 'agent_spawned',
+        actor: 'seat',
+        target: 'seat',
+        msgId: id,
+        meta: {
+          origin: 'adopted',
+          profile: 'inherited',
+          teleport_from: from,
+          generation: String(generation),
+        },
+      })
+    const attach = (log: ReturnType<typeof freshLog>, id: string) =>
+      log.append({ kind: 'agent_attached', actor: 'seat', ref: id })
+    const retire = (log: ReturnType<typeof freshLog>, id: string, body: string) =>
+      log.append({
+        kind: 'agent_retired',
+        actor: 'agent-chat',
+        target: 'seat',
+        ref: id,
+        body,
+      })
+
+    it('resolves the name to the newest successor, two teleports on', () => {
+      const log = freshLog()
+      inOrder(
+        () => adopt(log, 'a', 'seat', 'sess-a'),
+        () => attach(log, 'a'),
+        () => succeed(log, 'b', 'a', 2),
+        () => retire(log, 'a', 'superseded by teleport'),
+        () => attach(log, 'b'),
+        () => succeed(log, 'c', 'b', 3),
+        () => retire(log, 'b', 'superseded by teleport'),
+        () => attach(log, 'c'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.byName('seat')?.agentId).toBe('c')
+      expect(agents.nameHolder('seat')?.agentId).toBe('c')
+    })
+
+    // The incident: an old spawned row, a hand restart, an exited successor, then its successor that never started.
+    it('resolves an exited successor over an older spawned row, past a successor that never started', () => {
+      const log = freshLog()
+      inOrder(
+        () => spawn(log, 'old', 'seat'),
+        () => log.append({ kind: 'agent_exited', actor: 'seat', ref: 'old' }),
+        () => adopt(log, 'hand', 'seat', 'sess-h'),
+        () => attach(log, 'hand'),
+        () => succeed(log, 'g2', 'hand', 2),
+        () => retire(log, 'hand', 'superseded by teleport'),
+        () => attach(log, 'g2'),
+        () => succeed(log, 'g3', 'g2', 3),
+        () => retire(log, 'g3', 'teleport successor did not start: no register'),
+        () => log.append({ kind: 'agent_exited', actor: 'seat', ref: 'g2' }),
+      )
+      const agents = new AgentLog(log.journal)
+
+      const current = agents.byName('seat')
+      expect(current?.agentId).toBe('g2')
+      expect(agents.supersededBy(current!)).toBeUndefined()
+    })
+
+    it('still lets a successor that ran supersede its predecessor', () => {
+      const log = freshLog()
+      inOrder(
+        () => adopt(log, 'hand', 'seat', 'sess-h'),
+        () => succeed(log, 'g2', 'hand', 2),
+        () => attach(log, 'g2'),
+        () => succeed(log, 'g3', 'g2', 3),
+        () => attach(log, 'g3'),
+        () => retire(log, 'g3', 'retired by hand'),
+      )
+      const agents = new AgentLog(log.journal)
+
+      expect(agents.supersededBy(agents.byName('seat')!)?.agentId).toBe('g3')
+    })
+  })
+
+  it('does not let a human session lease a name a later agent may need', () => {
+    const log = freshLog()
+    adopt(log, 'a1', 'scout', 'sess-1')
+
+    expect(new AgentLog(log.journal).nameIsClaimed('scout')).toBe(false)
+  })
+
+  it('still lists an adopted identity on the roster', () => {
+    const log = freshLog()
+    adopt(log, 'a1', 'scout', 'sess-1')
+
+    expect(new AgentLog(log.journal).roster().map((a) => a.agentId)).toEqual(['a1'])
+  })
+
+  it('re-reads the log on every call, so it cannot drift from it', () => {
+    const log = freshLog()
+    spawn(log, 'a1', 'scout')
+    const agents = new AgentLog(log.journal)
+    expect(agents.get('a1')?.state).toBe('spawning')
+
+    log.append({ kind: 'agent_attached', actor: 'scout', ref: 'a1' })
+    expect(agents.get('a1')?.state).toBe('live')
+  })
+})

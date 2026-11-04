@@ -59,7 +59,9 @@ hasErrorSignal("Bash", "src/a.ts(3,5): error TS2322: bad type", anchors); // tru
 
 `clusterer.snapshot()` captures every tree with its learned wildcards and its
 cluster-to-template bindings; `Clusterer.fromSnapshot(snapshot)` restores them. Storing
-the snapshot and the occurrences is the caller's concern. A chunked sequence of runs
+the snapshot and the occurrences is the caller's concern. Read a stored snapshot back
+through `parseClustererSnapshot(value)`, which throws on a wrong shape or version and keeps
+unknown keys; do not fall back to a fresh `Clusterer`, since that rebinds template ids. A chunked sequence of runs
 converges on the same templates and ids as one all-at-once run over the same input order.
 
 ## Tuning

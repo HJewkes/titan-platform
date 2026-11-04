@@ -6,6 +6,8 @@ import type { EvidenceRecord } from "./merge-facts.js";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import { percent, wouldDecide } from "./visual-threshold-gate.js";
+import { readPath } from "../narrow.js";
+import { oldPathLine } from "../old-path/freeze-gate.js";
 
 export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
 export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
@@ -30,16 +32,17 @@ interface LocatorReference {
 const SESSION_ID = /^(?!\.\.$)[^/@\\%]{1,64}$/;
 
 function integer(value: unknown): number | undefined {
-  return Number.isInteger(value) ? (value as number) : undefined;
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
 }
-
-type PartialLocator = { source?: { conversation?: { nativeId?: string } }; evidence?: { line?: { byteOffset?: number }; subrecord?: { index?: number } }; selector?: { textIndex?: number } };
 
 /** Enough to find the message in the local store: the session, the record offset, the part, and a hash that checks the full locator. */
 export function locatorReference(locator: SourceTextLocator): LocatorReference {
-  const { source, evidence, selector }: PartialLocator = locator;
-  const position = { byteOffset: integer(evidence?.line?.byteOffset), subrecordIndex: integer(evidence?.subrecord?.index), textIndex: integer(selector?.textIndex) };
-  const nativeId: unknown = source?.conversation?.nativeId;
+  const position = {
+    byteOffset: integer(readPath(locator, "evidence", "line", "byteOffset")),
+    subrecordIndex: integer(readPath(locator, "evidence", "subrecord", "index")),
+    textIndex: integer(readPath(locator, "selector", "textIndex")),
+  };
+  const nativeId = readPath(locator, "source", "conversation", "nativeId");
   return {
     sessionId: typeof nativeId === "string" && SESSION_ID.test(nativeId) ? nativeId : "unknown",
     ...Object.fromEntries(Object.entries(position).filter(([, value]) => value !== undefined)),
@@ -62,6 +65,9 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "github-path": "a .github/ change has no CI-policy line from the reviewer",
   "ci-policy-weakened": "the reviewer says the change weakens CI policy",
   "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
+  "attest-unmet": "no independent reviewer attested a claimed attestation row",
+  "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",
+  "old-path-untagged": "the pull request changes old-path code and its task carries no carve-out tag",
 };
 
 const LONG_PATH_LIST = 5;
@@ -174,7 +180,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
   const gated = gatedPaths(decision);
   const reason = gated ? ruleInWords(decision.rule) : decision.reason;
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
-  const proof = record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`];
+  const notes = [...(record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`]), ...oldPathLine(record.oldPath)];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [
     evidenceMarker(record.head),
@@ -186,7 +192,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     ...checksTable(record),
     ...visualDiffSection(record.visualDelta),
     ...rule,
-    ...proof,
+    ...notes,
     ...pathsSection(decision),
     "",
     "<details><summary>Machine evidence</summary>",

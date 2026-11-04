@@ -12,6 +12,7 @@ import { createConsoleRegistry } from "../registry.js";
 import { FIXTURE_ROUNDS } from "../round-fixtures.js";
 import { HAND_ANSWERS, recorded, type TwinCall, type TwinCommand } from "./answers.js";
 import { TWIN_NOW } from "./clock.js";
+import { COORDINATOR_ANSWERS } from "./coordinator.js";
 
 const NOWHERE = "/nonexistent/titan-console-twin";
 
@@ -37,7 +38,7 @@ function recordingSources(roundsDir: string): ConsoleSources {
     activeWork: fixtureActiveWork(),
     inbox: { dir: NOWHERE },
     rounds: { dir: roundsDir },
-    shepherd: { list: unreachable, timeline: unreachable, waiting: unreachable, checkRuns: unreachable, release: unreachable, previewOp: unreachable },
+    shepherd: { list: unreachable, timeline: unreachable, waiting: unreachable, checkRuns: unreachable, release: unreachable, previewOp: unreachable, ownerEvidence: unreachable },
     work: { now: () => TWIN_NOW },
   };
 }
@@ -60,11 +61,17 @@ const RECORDED: readonly Pick<TwinCall, "command" | "args">[] = [
   recorded("work.portfolio", {}),
   recorded("work.initiative", { slug: "orbit-relay" }),
   recorded("work.notes", {}),
+  recorded("work.search", { q: "backoff" }),
   recorded("work.record", { ref: "note:orbit-relay/2031-03-03-backoff-ceiling.md" }),
+  recorded("work.loops", {}),
   recorded("rounds.list", {}),
   recorded("rounds.get", { id: "ship-tile-r1" }),
+  recorded("rounds.get", { id: "kiln-schedule-r2" }),
+  recorded("rounds.get", { id: "lantern-cards-r1" }),
+  recorded("rounds.frames", { id: "lantern-cards-r1" }),
   recorded("rounds.frames", { id: "ship-tile-r1" }),
   ...SHIP_TILE_FRAMES.map(([key, view]) => recorded("rounds.frame", { id: "ship-tile-r1", key, view })),
+  ...["panel-wide", "tile-dark", "tile-light"].map((key) => recorded("rounds.frameDelta", { id: "ship-tile-r1", key })),
 ];
 
 function inProcessContext(): ConsoleContext {
@@ -87,7 +94,7 @@ export async function twinSnapshot(): Promise<Snapshot> {
   const roundsDir = await pinnedRounds();
   const call = inProcessCaller(createConsoleRegistry(recordingSources(roundsDir)), inProcessContext);
   const fromCommands = await Promise.all(RECORDED.map(({ command, args }) => record(call, command, args))).finally(() => rm(roundsDir, { recursive: true, force: true }));
-  const hand = HAND_ANSWERS.map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)] as const);
+  const hand = [...HAND_ANSWERS, ...COORDINATOR_ANSWERS].map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)] as const);
   const calls: Snapshot["calls"] = {};
   for (const [key, envelope] of [...fromCommands, ...hand]) {
     if (key in calls) throw new Error(`twin fixture ${key} is recorded twice`);

@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
-import { App } from "./App.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
 afterEach(() => {
@@ -35,14 +35,9 @@ async function recorded(): Promise<Snapshot> {
   };
 }
 
-async function renderConsole(hash: string, snapshot?: Snapshot): Promise<void> {
+async function renderConsole(hash: string, snapshot?: Snapshot, { inApp = false } = {}): Promise<void> {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot ?? (await recorded())), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const question = (id: string): HTMLElement => screen.getByTestId(`round-question-${id}`);
@@ -61,13 +56,30 @@ describe("the rounds list", () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(9);
+    expect(rows).toHaveLength(7);
     expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
     expect(screen.getByText("Sent rounds")).toBeTruthy();
   });
 
+  it("folds invalid rounds into their own group, closed until pressed, each reason cut to one line", async () => {
+    await renderConsole("#/rounds");
+    const toggle = await screen.findByText("Invalid rounds (2)");
+    expect(screen.queryByTestId("round-row-legacy-r1")).toBeNull();
+    fireEvent.click(toggle);
+    const legacy = await within(screen.getByTestId("rounds-invalid")).findByTestId("round-row-legacy-r1");
+    expect(within(legacy).getByTestId("round-reason-legacy-r1").className).toContain("truncate");
+  });
+
+  it("shows an empty group as one muted line, not an empty-state heading", async () => {
+    await renderConsole("#/rounds");
+    const empty = await within(await screen.findByTestId("rounds-withdrawn")).findByText("No withdrawn rounds");
+    expect(empty.className).toContain("text-text-secondary");
+    expect(empty.className).not.toContain("text-lg");
+  });
+
   it("lists an invalid round with the schema's reason", async () => {
     await renderConsole("#/rounds");
+    fireEvent.click(await screen.findByText("Invalid rounds (2)"));
     const legacy = await screen.findByTestId("round-row-legacy-r1");
     expect(within(legacy).getByText("invalid")).toBeTruthy();
     expect(within(legacy).getByText(/titan-review\/round@1 predates the review contract/)).toBeTruthy();
@@ -82,7 +94,8 @@ describe("the rounds list", () => {
     expect(within(card).getByText("questions")).toBeTruthy();
     expect(within(card).getByText("4 questions")).toBeTruthy();
     expect(within(screen.getByTestId("round-card-lantern-cards-r1")).getByText("1 question")).toBeTruthy();
-    expect(within(screen.getByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
+    fireEvent.click(screen.getByText("Invalid rounds (2)"));
+    expect(within(await screen.findByTestId("round-card-legacy-r1")).getByText("invalid")).toBeTruthy();
     expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
   });
 
@@ -121,7 +134,7 @@ describe("the rounds list", () => {
   });
 
   it("opens a round from its row", async () => {
-    await renderConsole("#/rounds");
+    await renderConsole("#/rounds", undefined, { inApp: true });
     fireEvent.click(within(await screen.findByTestId("round-row-kiln-schedule-r2")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/rounds/kiln-schedule-r2"));
     expect(await screen.findByText("Which ramp should the calculator propose by default?")).toBeTruthy();

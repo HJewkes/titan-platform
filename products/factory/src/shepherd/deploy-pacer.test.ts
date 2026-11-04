@@ -134,25 +134,25 @@ describe("deploy pacer", () => {
     expect(p.spawns).toEqual([[24, "d"]]);
   });
 
-  it("steady merges still deploy by the cap", () => {
+  it("shas landing every 8 minutes deploy the newest at the 45-minute bound instead of starving behind the quiet window", () => {
     const p = pacer();
-    for (let minute = 0; minute <= 100; minute += 10) {
+    for (let minute = 0; minute <= 96; minute += 8) {
       p.ticksUntil(minute);
       p.merge(`sha-${minute}`);
     }
 
-    p.ticksUntil(110);
+    p.ticksUntil(100);
 
-    expect(p.spawns[0]).toEqual([90, "sha-80"]);
+    expect(p.spawns[0]).toEqual([45, "sha-40"]);
   });
 
   it("busy runs hold the deploy until the cap", () => {
     const wanted = wantedAt("a", 0, 0);
 
     const held = decide(wanted, 30, { busy: 2 });
-    const capped = decide(wanted, 90, { busy: 2 });
+    const capped = decide(wanted, 45, { busy: 2 });
 
-    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 90 * MIN, key: "busy runs" });
+    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 45 * MIN, key: "busy runs" });
     expect(capped).toEqual({ kind: "spawn", sha: "a" });
   });
 
@@ -260,7 +260,7 @@ describe("deploy pacer", () => {
 
     p.ticksUntil(240);
 
-    expect(p.spawns.map(([minute]) => minute)).toEqual([90, 180]);
+    expect(p.spawns.map(([minute]) => minute)).toEqual([45, 90, 135, 180, 225]);
   });
 
   it("a wanted file with an unparseable time reads as none instead of spawning at once", () => {
@@ -324,7 +324,7 @@ describe("deploy pacer", () => {
 
   it("reports the wanted sha and its cap for /health, or null when none is wanted", () => {
     expect(pacerStatus(undefined)).toBeNull();
-    expect(pacerStatus(wantedAt("a", 0, 5))).toEqual({ sha: "a", since: new Date(0).toISOString(), deploysBy: new Date(90 * MIN).toISOString() });
+    expect(pacerStatus(wantedAt("a", 0, 5))).toEqual({ sha: "a", since: new Date(0).toISOString(), deploysBy: new Date(45 * MIN).toISOString() });
   });
 
   it("a paused deploy is never spawned, even past the cap, and spawns once the pause is cleared", () => {
@@ -559,9 +559,9 @@ describe("the pacer's wait line (TP-2427)", () => {
     p.world.busy = 2;
     p.ticksUntil(30);
 
-    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("a", "1 busy run(s)", 90)]);
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("a", "1 busy run(s)", 45)]);
     expect(p.spawns).toEqual([]);
-    expect(p.waits.wait).toMatchObject({ sha: "a", why: "2 busy run(s)", until: at(90) });
+    expect(p.waits.wait).toMatchObject({ sha: "a", why: "2 busy run(s)", until: at(45) });
   });
 
   it("idle logs nothing and keeps no wait", () => {
@@ -601,7 +601,7 @@ describe("the pacer's wait line (TP-2427)", () => {
     const status = pacerStatus(wantedAt("a", 0, 5));
 
     expect(withWaiting(status, { sha: "b", why: "x", key: "x" })).toEqual(status);
-    expect(withWaiting(status, { sha: "a", why: "1 busy run(s)", until: at(90), key: "busy runs" })).toEqual({ ...status, waiting: { why: "1 busy run(s)", until: at(90) } });
+    expect(withWaiting(status, { sha: "a", why: "1 busy run(s)", until: at(45), key: "busy runs" })).toEqual({ ...status, waiting: { why: "1 busy run(s)", until: at(45) } });
   });
 });
 

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,7 +84,7 @@ describe("configRef", () => {
   it("keeps the loaded config when the reloaded file is invalid", () => {
     const env = configHome();
     writeConfig(env, noRepro("off"));
-    const ref = configRef(configPath(env));
+    const ref = configRef(configPath(env), Date.now, { warn: () => undefined });
     const stamp = ref.stamp();
 
     writeConfig(env, { shepherd: { gateReset: { noReproProceed: "maybe" } } });
@@ -95,6 +96,80 @@ describe("configRef", () => {
 
   it("stamps an absent file with no sha", () => {
     expect(configRef(configPath(configHome())).stamp().sha).toBeNull();
+  });
+});
+
+const CONFIG_FILE = "/config/titan-factory/config.json";
+
+/** An in-memory config file: each write bumps the probe, as a save moves mtime; `reads` counts the parses it fed. */
+function fakeConfigFile(initial: object) {
+  let text = JSON.stringify(initial);
+  let version = 0;
+  const file = {
+    reads: 0,
+    write(next: object | string) {
+      text = typeof next === "string" ? next : JSON.stringify(next);
+      version += 1;
+    },
+    probe: () => `v${version}`,
+    read() {
+      file.reads += 1;
+      return Buffer.from(text);
+    },
+  };
+  return file;
+}
+
+const visualKey = { shepherd: { visualThreshold: { "octo/ui": { mode: "shadow" as const, snapshotPaths: [], apiPaths: [], tokenPaths: [], harnessPaths: [] } } } };
+
+describe("configRef without a reload", () => {
+  it("shows a key added to the file after load on the next read", () => {
+    const file = fakeConfigFile({});
+    const ref = configRef(CONFIG_FILE, () => 0, { file, warn: () => undefined });
+    const before = ref.get().shepherd?.visualThreshold;
+
+    file.write(visualKey);
+
+    expect(before).toBeUndefined();
+    expect(ref.get().shepherd?.visualThreshold?.["octo/ui"]?.mode).toBe("shadow");
+    expect(ref.stamp().sha).toBe(createHash("sha256").update(JSON.stringify(visualKey)).digest("hex"));
+  });
+
+  it("does not re-parse while the file's probe is unchanged", () => {
+    const file = fakeConfigFile(noRepro("off"));
+    const ref = configRef(CONFIG_FILE, () => 0, { file, warn: () => undefined });
+
+    ref.get();
+    ref.stamp();
+    ref.get();
+
+    expect(file.reads).toBe(1);
+  });
+
+  it("keeps the previous config on an invalid edit and warns once", () => {
+    const file = fakeConfigFile(noRepro("off"));
+    const warnings: string[] = [];
+    const ref = configRef(CONFIG_FILE, () => 0, { file, warn: (line) => warnings.push(line) });
+    const stamp = ref.stamp();
+
+    file.write({ shepherd: { gateReset: { noReproProceed: "maybe" } } });
+    ref.get();
+
+    expect(ref.get().shepherd?.gateReset?.noReproProceed).toBe("off");
+    expect(ref.stamp()).toEqual(stamp);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/noReproProceed/);
+  });
+
+  it("loads a fixed edit after an invalid one", () => {
+    const file = fakeConfigFile(noRepro("off"));
+    const ref = configRef(CONFIG_FILE, () => 0, { file, warn: () => undefined });
+
+    file.write("{ not json");
+    ref.get();
+    file.write(noRepro("on"));
+
+    expect(ref.get().shepherd?.gateReset?.noReproProceed).toBe("on");
   });
 });
 
@@ -145,17 +220,17 @@ describe("configuredRoutes after a config reload", () => {
 });
 
 describe("liveSpawnLimits", () => {
-  it("reads the live rows afresh and keeps restart-class keys at their startup value", () => {
+  it("reads the live rows afresh, the pace windows included, and keeps restart-class keys at their startup value", () => {
     const env = configHome();
-    const startup = { spawnGate: { load5: 10, buildLoad5: 12, windowMs: 1_000 }, agentChatBin: "/opt/agent-chat", review: { profile: "example-reviewer", maxConcurrent: 2 } };
+    const startup = { spawnGate: { load5: 10, buildLoad5: 12, windowMs: 1_000, headroomIntervalMs: 500, reviewLoad: 3 }, agentChatBin: "/opt/agent-chat", review: { profile: "example-reviewer", maxConcurrent: 2 } };
     writeConfig(env, { shepherd: startup });
     const config = configRef(configPath(env));
     const limits = liveSpawnLimits(configuredSpawnLimits(startup), config);
 
-    writeConfig(env, { shepherd: { ...startup, spawnGate: { load5: 30, windowMs: 9_000 }, review: { ...startup.review, maxConcurrent: 5 } } });
+    writeConfig(env, { shepherd: { ...startup, spawnGate: { load5: 30, windowMs: 0, headroomIntervalMs: 0, reviewLoad: 9 }, review: { ...startup.review, maxConcurrent: 5 } } });
     config.reload();
 
-    expect(limits()).toEqual({ load5: 30, maxConcurrentReviews: 5, windowMs: 1_000 });
+    expect(limits()).toEqual({ load5: 30, maxConcurrentReviews: 5, windowMs: 0, headroomIntervalMs: 0, reviewLoad: 3 });
   });
 
   it("lets the spawn gate admit at a load the reloaded limit allows", () => {

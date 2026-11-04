@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
-import { Button, ButtonText, HStack, Spinner, Typography } from "@titan-design/react-ui";
+import { Button, ButtonText, HStack, Typography } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { PinLayer, naturalSize, useCoarsePointer, useFramePins, type FramePins } from "./FramePins.js";
@@ -106,7 +107,7 @@ interface EnlargeProps {
 }
 
 /** The image at least as wide as the screen, scrolling sideways when it is wider; Escape or Close leaves. */
-function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
+export function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
   const image = useRef<HTMLImageElement>(null);
   const onLoad = useLoadRender();
   useEscapeKey(onClose);

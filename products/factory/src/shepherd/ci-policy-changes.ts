@@ -66,7 +66,7 @@ const range = (side: Edit["side"], from: number, to: number): Edit[] => Array.fr
  * A positional diff of whole files in diff order: the common prefix and suffix, then a longest-common-subsequence over
  * the rest, so a swapped, moved or repeated line still shows. Set membership would cancel a `read` and a `write` that trade places.
  */
-function lineEdits(a: readonly string[], b: readonly string[]): Edit[] {
+export function lineEdits(a: readonly string[], b: readonly string[]): Edit[] {
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
   let endA = a.length;

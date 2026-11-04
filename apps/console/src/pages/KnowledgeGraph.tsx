@@ -1,18 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  Caption,
-  EmptyState,
-  NetworkGraph,
-  Spinner,
-  VStack,
-  egoLayout,
-  refGraphKinds,
-  useMeasuredWidth,
-  type GraphEdgeKind,
-  type GraphItemRef,
-  type GraphKind,
-} from "@titan-design/react-ui";
+import { Alert, Caption, EmptyState, NetworkGraph, VStack, egoLayout, refGraphKinds, useMeasuredWidth, type GraphEdgeKind, type GraphItemRef, type GraphKind } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { followRef } from "./homeLinks.js";
@@ -67,6 +55,7 @@ function EgoView({ ego }: { ego: Ego }): ReactNode {
   return (
     <VStack gap={2}>
       {ego.sources.fallback === "mentions" ? <Alert status="warning" size="compact" message="Session links are unavailable; showing mention links only." /> : null}
+      {ego.sources.mentions === "unavailable" ? <Alert status="warning" size="compact" message="Mentions did not load in time; showing session links only." /> : null}
       {ego.truncated ? <Caption>{`Showing ${shown} of ${foundNeighbours(ego)} neighbours.`}</Caption> : null}
       {shown > 0 ? <EgoPlot ego={ego} /> : <EmptyState title="No linked records." description="Pick a record to see its neighbours." />}
     </VStack>

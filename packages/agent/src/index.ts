@@ -128,3 +128,58 @@ export type {
 } from "./durable-types.js";
 export type { ClaudeCodeAdapterOptions } from "./claude-code-adapter.js";
 export { claudeCodeCapabilities, createClaudeCodeAdapter } from "./claude-code-adapter.js";
+export type { LaunchRow } from "./launch-identity.js";
+export {
+  AGENT_ID_ENV,
+  AGENT_NAME_PATTERN,
+  LAUNCH_IDENTITY_ENV,
+  LAUNCHER_PID_ENV,
+  RESTART_GAP_ENV,
+  RESTART_TOKEN_ENV,
+  clearLaunchIdentity,
+  clearLaunchTmpDirs,
+  isLaunchTmpDir,
+  withoutLaunchIdentity,
+} from "./launch-identity.js";
+export type { ExitReapDeps, LaunchMatch, ProcessTable, ReapReport, Target } from "./orphan-reap.js";
+export {
+  KILL_GRACE_MS,
+  SWEEP_GRACE_MS,
+  findTargets,
+  finishReap,
+  finishedIds,
+  isKnownDaemon,
+  isLauncherOf,
+  matchFinished,
+  matchLaunch,
+  procTable,
+  reapOwnLaunch,
+  realExitDeps,
+  reportOf,
+  startReap,
+} from "./orphan-reap.js";
+export type {
+  AgentTmpRequest,
+  RemovalDeps,
+  RemovalTarget,
+  TmpFs,
+  TmpProcessTable,
+  TmpRemoval,
+  TmpStat,
+} from "./agent-tmpdir.js";
+export {
+  DISK_TMP_ROOT_SUFFIX,
+  HARNESS_ROOT_SUFFIX,
+  TMP_ROOT,
+  agentTmpPath,
+  agentTmpSweepRoots,
+  diskHarnessRoot,
+  diskTmpRoot,
+  ensureAgentTmpDir,
+  isTmpRoot,
+  realTmpFs,
+  realTmpProcessTable,
+  removeAgentTmpDir,
+} from "./agent-tmpdir.js";
+export type { ExitTmpDeps, TmpSweepDeps } from "./agent-tmpdir-cleanup.js";
+export { passSnapshot, realExitTmpDeps, removeOwnTmpDir, sweepAgentTmpDirs } from "./agent-tmpdir-cleanup.js";

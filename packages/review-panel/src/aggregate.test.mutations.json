@@ -3,16 +3,16 @@
   "mutations": [
     {
       "name": "a vacuous line its mutants prove still counts as a bad fix-proof",
-      "file": "packages/review-panel/src/aggregate.ts",
-      "find": "(BAD_FIX_PROOF.has(parsed.result.verdict) && !provedByMutants(parsed.result))",
-      "replace": "BAD_FIX_PROOF.has(parsed.result.verdict)",
+      "file": "packages/fix-proof/src/standing.ts",
+      "find": "if (NO_REPRO_VERDICTS.has(result.verdict) && !provedByMutants(result)) {",
+      "replace": "if (NO_REPRO_VERDICTS.has(result.verdict)) {",
       "kills": ["aggregate reads a fix-proof/v1 line merges a vacuous line its killed mutants prove, with no unplanned tests member (tp#2145)"]
     },
     {
       "name": "any vacuous line carrying mutants passes, whatever they came to",
-      "file": "packages/review-panel/src/aggregate.ts",
-      "find": "!provedByMutants(parsed.result))",
-      "replace": "parsed.result.mutants === undefined)",
+      "file": "packages/fix-proof/src/standing.ts",
+      "find": "!provedByMutants(result)) {",
+      "replace": "result.mutants === undefined) {",
       "kills": [
         "aggregate reads a fix-proof/v1 line still withholds MERGE for a vacuous line whose mutants are not-killed",
         "aggregate reads a fix-proof/v1 line still withholds MERGE for a vacuous line whose mutants are error"

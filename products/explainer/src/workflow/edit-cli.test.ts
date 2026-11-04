@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { WorkflowRunStore } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { BeatWorker } from "../build/beat-worker.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { EDIT_BUDGET_USD } from "./edit-cli.js";
@@ -11,15 +11,16 @@ import { openState } from "./host.js";
 import { CUSTOM_LAYERS } from "./layer-build.js";
 import { RunPlanSchema } from "./pipeline.js";
 import { runRunCli } from "./run-cli.js";
-import { fakeRender, fakeHost, fakeScriptModel, fakeVoice, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, fakeRender, fakeHost, fakeScriptModel, fakeVoice, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
 const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 
-const { baseRun, editFile, cli } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx, (next) => (fx = next));
 
 /** Every file under the data dir with its bytes and mtime, and every run and artifact row: what a dry run must leave alone. */
 function snapshot(): unknown {
@@ -52,7 +53,6 @@ async function runLaunched(argv: readonly string[], extra: Parameters<typeof fak
 
 describe("explainer edit check", () => {
   it("prints the diff per beat and field and leaves the store and the ledger as they were", async () => {
-    fx = fixture();
     const base = await baseRun();
     const file = editFile(base, { h1: { slots: { figures } } });
     const before = snapshot();
@@ -65,7 +65,6 @@ describe("explainer edit check", () => {
   });
 
   it("refuses an override the beat's slot schema rejects before the template fill runs", async () => {
-    fx = fixture();
     const base = await baseRun();
     const file = editFile(base, { h1: { slots: { figures: [{ ...figures[0], label: "x".repeat(49) }] } } });
     const filled: unknown[] = [];
@@ -80,7 +79,6 @@ describe("explainer edit check", () => {
 
 describe("explainer edit apply", () => {
   it("stores the edited script and the ledger row, and launches nothing without --start", async () => {
-    fx = fixture();
     const base = await baseRun();
     const { spawn, launched } = recordingSpawn();
 
@@ -96,7 +94,6 @@ describe("explainer edit apply", () => {
   });
 
   it("with --start launches exactly the pinned resolve run, which links into the ledger, voices no take and sums with its base", async () => {
-    fx = fixture();
     const base = await baseRun();
     const { spawn, launched } = recordingSpawn();
 
@@ -115,7 +112,6 @@ describe("explainer edit apply", () => {
   });
 
   it("an edit run pins the base's custom layers and builds none", async () => {
-    fx = fixture();
     const builds: string[] = [];
     const worker: BeatWorker = {
       builder: { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) },
@@ -139,7 +135,6 @@ describe("explainer edit apply", () => {
 
 describe("explainer edit list", () => {
   it("lists a render's edits with each linked run's status", async () => {
-    fx = fixture();
     const base = await baseRun();
     const { spawn, launched } = recordingSpawn();
     const ran = JSON.parse((await cli(["apply", editFile(base, { h1: { slots: { figures } } }), "--start", "--json"], { spawn })).text);

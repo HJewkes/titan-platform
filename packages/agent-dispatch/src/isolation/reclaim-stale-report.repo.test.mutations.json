@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reclaim trusts the stale report",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "  if (!force) {\n    const safety",
+      "replace": "  if (force && !force) {\n    const safety",
+      "kills": [
+        "refuses to reclaim a tree that gained untracked work after the sweep, and keeps it",
+        "refuses to reclaim a tree that gained ignored work after the sweep, and keeps it",
+        "refuses to reclaim a tree that gained commit work after the sweep, and keeps it"
+      ]
+    },
+    {
+      "name": "a force still re-checks the work",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "  if (!force) {\n    const safety",
+      "replace": "  if (!force || force) {\n    const safety",
+      "kills": [
+        "still discards late work when a human forces the reclaim"
+      ]
+    },
+    {
+      "name": "the sweep keeps the package's file verdict",
+      "file": "packages/agent-dispatch/src/isolation/sweep.ts",
+      "find": "return Promise.all(swept.map((entry) => judgeByDispatchPolicy(entry, held)));",
+      "replace": "return swept;",
+      "kills": [
+        "reports a built tree whose only ignored files are tsbuildinfo as reclaimable"
+      ]
+    }
+  ]
+}

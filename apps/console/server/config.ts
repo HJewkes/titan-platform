@@ -4,12 +4,14 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
+import { blockerHoursFrom, type BlockerConfig } from "./blocker-hours.js";
 import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 import type { ConfigStorePaths } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
+import { coordinatorDayFrom, type CoordinatorDayConfig } from "./coord-day.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -25,7 +27,7 @@ export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 /** Where the repo-review skill writes its folders, under the active-work root. */
 const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
-export interface ConsoleConfig {
+export interface ConsoleConfig extends BlockerConfig, CoordinatorDayConfig {
   /** 0 binds an ephemeral port. */
   port: number;
   /**
@@ -162,18 +164,13 @@ export function resolveConfig(
     ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
-    ...surfaceRootsFrom(env, home),
+    ...surfaceRootsFrom(env, home, stateDir),
   };
   assertCoherent(config);
   return config;
 }
 
-function lanOptionsFrom(
-  env: NodeJS.ProcessEnv,
-  home: string,
-  stateDir: string,
-  machine: Machine,
-): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
+function lanOptionsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string, machine: Machine): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
   return {
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
@@ -193,8 +190,9 @@ function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Pla
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers" | "blockerHours"> {
   return {
+    blockerHours: blockerHoursFrom(env.TITAN_CONSOLE_BLOCKER_HOURS),
     capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
@@ -218,9 +216,9 @@ function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.
   };
 }
 
-/** Where `config.surfaces` reads the coordinator files and this host's own config. */
-function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
-  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
+/** Where `config.surfaces` reads the coordinator files and this host's own config, plus the coordinator view's day. */
+function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string, stateDir: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces" | "dayStart" | "shippedDir"> {
+  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home), ...coordinatorDayFrom(env, stateDir) };
 }
 
 export const AGENT_CHAT_NOT_FOUND = "agent-chat is not on PATH, so no seat is told when its round is answered; set TITAN_CONSOLE_AGENT_CHAT_BIN to its absolute path";

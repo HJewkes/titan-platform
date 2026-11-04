@@ -6,7 +6,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { AgentChatAgents } from "./agents.js";
+import type { DiagnosisPorts } from "./spawn-ports.js";
 import type { ReviewerSeen } from "./no-verdict-round.js";
 import { DEFAULT_BUSY_WAIT_MS, ReviewerSpawnQueued, whileBrokerBusy } from "./review-wait.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
@@ -23,19 +23,6 @@ const MAX_LOG_LINES = 40;
 const LOG_TAIL_BYTES = 4 * 1024 * 1024;
 /** A spawn the gate defers is asked again after its window, up to this many asks in all, before ops hears (TP-4157). */
 export const DIAGNOSIS_SPAWN_ATTEMPTS = 5;
-
-/** How the diagnosis planner is spawned; the profile is passed to agent-chat as configured, never lowered. */
-export interface DiagnosisPorts {
-  profile: string;
-  /** Absent means no agent-chat is configured, so the spawn is recorded as failed and the ops notice goes instead. */
-  agents?: Pick<AgentChatAgents, "roster" | "spawn">;
-  /** The repo's checkout, which the planner starts in. */
-  cwdFor?: (repo: string) => string | undefined;
-  /** The tail of `serve.err.log`; absent or undefined quotes no log lines. */
-  readLog?: () => Promise<string | undefined>;
-  /** The seat the planner reports to; absent means it reports to its spawner. */
-  reportTo?: () => string | undefined;
-}
 
 const Reviewer = z.object({
   ...{ head: z.string(), shape: z.string(), name: z.string().optional(), agentId: z.string().optional() },

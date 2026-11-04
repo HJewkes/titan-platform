@@ -140,16 +140,14 @@ export function parseSetupStep(text: string): SetupStep | null | string {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    return `${SETUP_FILE} is not valid JSON (${(err as Error).message})`;
+    return `${SETUP_FILE} is not valid JSON (${err instanceof Error ? err.message : String(err)})`;
   }
-  const setup = (parsed as { setup?: unknown } | null)?.setup;
+  const setup = typeof parsed === "object" && parsed !== null && "setup" in parsed ? parsed.setup : undefined;
   if (setup === undefined) return null;
   if (typeof setup !== "object" || setup === null)
     return `${SETUP_FILE} setup must be an object`;
-  const { command, timeoutMs } = setup as {
-    command?: unknown;
-    timeoutMs?: unknown;
-  };
+  const command = "command" in setup ? setup.command : undefined;
+  const timeoutMs = "timeoutMs" in setup ? setup.timeoutMs : undefined;
   if (!isCommand(command))
     return `${SETUP_FILE} setup.command must be a non-empty array of strings`;
   if (timeoutMs !== undefined && !isTimeout(timeoutMs))

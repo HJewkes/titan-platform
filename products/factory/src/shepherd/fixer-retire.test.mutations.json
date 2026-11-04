@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a tree already off disk is left, so the sweep retries it forever",
+      "file": "products/factory/src/shepherd/fixer-retire.ts",
+      "find": "if (NOT_ON_DISK.test(reason)) return",
+      "replace": "if (false) return",
+      "kills": [
+        "retireEndedFixers retires a fixer whose worktree is already gone, so the next sweep skips it"
+      ]
+    },
+    {
+      "name": "every park refusal counts as a gone tree",
+      "file": "products/factory/src/shepherd/fixer-retire.ts",
+      "find": "if (NOT_ON_DISK.test(reason)) return",
+      "replace": "if (true) return",
+      "kills": [
+        "retireEndedFixers keeps retrying a fixer whose park is refused for another reason",
+        "retireEndedFixers leaves a dirty or unpushed tree and its agent, and says why"
+      ]
+    }
+  ]
+}

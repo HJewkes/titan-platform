@@ -31,7 +31,7 @@ export class MigrationIdentityError extends Error {
 
 export function appliedVersions(db: Db): number[] {
   db.exec(MIGRATION_TABLE);
-  const rows = db.prepare("SELECT version FROM _migration ORDER BY version").all() as { version: number }[];
+  const rows = db.prepare<[], { version: number }>("SELECT version FROM _migration ORDER BY version").all();
   return rows.map((r) => r.version);
 }
 
@@ -72,7 +72,7 @@ function assertSameIdentity(m: Migration, recordedName: string | null): void {
 
 function appliedNames(db: Db): Map<number, string | null> {
   db.exec(MIGRATION_TABLE);
-  const rows = db.prepare("SELECT version, name FROM _migration").all() as { version: number; name: string | null }[];
+  const rows = db.prepare<[], { version: number; name: string | null }>("SELECT version, name FROM _migration").all();
   return new Map(rows.map((r) => [r.version, r.name]));
 }
 

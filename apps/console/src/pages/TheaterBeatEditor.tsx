@@ -3,6 +3,7 @@ import { Alert, Button, ButtonText, Card, CardContent, HStack, Heading, Typograp
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
+import { useWait } from "../shell/Loading.js";
 import { SlotForm } from "./SlotForm.js";
 import { formatAt } from "./TheaterComment.js";
 import { TheaterEdits } from "./TheaterEdits.js";
@@ -66,6 +67,7 @@ function useSaveEdit(videoId: string, props: BeatProps, onSaved: () => void) {
   const source = useAnswerSource();
   const invalidate = useInvalidate();
   const [save, setSave] = useState<Save>({ status: "idle" });
+  useWait(save.status === "sending", true);
   const send = useCallback(
     async (beats: Batch, fromNote: string | undefined) => {
       if (source === null || props.scriptSha === undefined) return;

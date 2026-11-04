@@ -48,12 +48,14 @@ how it fails.
   pairs from transcripts and score candidate retrievers.
 - **[Code report](/guides/codewatch)** — `apps/codewatch`: index a repo, browse the
   report live, or export one HTML file.
+- **[active-work](/guides/active-work)** — `products/active-work`: the CLI, MCP and daemon
+  surfaces, the tarball smoke test, and the host cutover and rollback script.
 - **[Matrix hub](/guides/hub)** — `deploy/hub`: the Tuwunel and Caddy compose stack the
   human queue runs on.
 
 ## End-to-end stories
 
-- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages composed into
+- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->nineteen<!-- generated:miner-count end --> packages composed into
   one product. Follows a refresh and a search through the DAG, with real output.
 - **[Case study: adopting registry and daemon](/guides/adopting-a-package)** — active-work
   replacing two hand-written modules with packages: about a thousand lines deleted, 1,321

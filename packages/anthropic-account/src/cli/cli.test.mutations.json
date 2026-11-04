@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "poll --refresh refreshes on darwin",
+      "file": "packages/anthropic-account/src/cli/poll-command.ts",
+      "find": "  const refresh = flags.refresh && (context.platform ?? process.platform) !== \"darwin\";",
+      "replace": "  const refresh = flags.refresh;",
+      "kills": ["darwin reads logins from the Keychain darwin never refreshes, even an expired token with a credentials file beside it"]
+    },
+    {
+      "name": "status reads the credentials file on darwin",
+      "file": "packages/anthropic-account/src/cli/status-command.ts",
+      "find": "readLoginState(profile.configDir, { ...keychainOf(context), now, uid: context.uid })",
+      "replace": "readLoginState(profile.configDir, { now, uid: context.uid })",
+      "kills": ["darwin reads logins from the Keychain status --json and a written poll carry no Keychain token"]
+    },
+    {
+      "name": "readAccounts reads the credentials file on darwin",
+      "file": "packages/anthropic-account/src/node/accounts.ts",
+      "find": "readLoginState(configDir, { ...keychainOptions(options), now, uid: options.uid })",
+      "replace": "readLoginState(configDir, { now, uid: options.uid })",
+      "kills": ["darwin reads logins from the Keychain status --json fails auth for an expired, unrefreshable Keychain login"]
+    }
+  ]
+}

@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
-import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
+import type { GraphEdge, GraphMetric, GraphNode, NodeRole } from "../types.js";
 import { buildReportContext } from "./graph-report-sections.js";
 import { publicApiFiles, topUnusedExports } from "./unused-exports.js";
 
-const file = (id: string, role?: string): GraphNode => ({
+const file = (id: string, role?: NodeRole): GraphNode => ({
   id,
   kind: "file",
   name: id,
-  ...(role ? { role: role as GraphNode["role"] } : {}),
+  ...(role ? { role } : {}),
 });
 const sym = (file: string, name: string, exported: boolean): GraphNode => ({
   id: `${file}#${name}`,

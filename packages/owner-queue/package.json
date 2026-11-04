@@ -50,6 +50,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   }
 }

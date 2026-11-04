@@ -37,7 +37,7 @@ describe("call edges under incremental reuse", () => {
     await fs.writeFile(path.join(root, "py/helpers.py"), "def renamed(a, b=1):\n    return a + b\n");
     const second = await runIndex(store, root);
 
-    const dsts = callsOf(second.snapshotId).map((e) => JSON.parse(e).dstId as string);
+    const dsts = callsOf(second.snapshotId).map((e) => String(JSON.parse(e).dstId));
     expect(dsts).not.toContain("py/helpers.py#shared_util");
     expect(readSnapshot(store, second.snapshotId)).toEqual(await fullIndexSnapshot(root));
   });

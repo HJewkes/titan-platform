@@ -1,0 +1,1 @@
+{ "stages": ["script", "rewrite", "eval"], "why": "Q-V11 rows warn only where writing-check.json gives them a gate or warning status at the script's length; the rewrite protects those rows and refuses an added \"no X\"" }

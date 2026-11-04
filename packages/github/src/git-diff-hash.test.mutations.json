@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "exclusion 2 accepts any clean merge-tree, whatever the head's tree",
+      "file": "packages/github/src/git-diff-hash.ts",
+      "find": "return tree === headTree ? { ok: true as const, mainParent }",
+      "replace": "return tree !== \"\" ? { ok: true as const, mainParent }",
+      "kills": ["Q13's two exclusions A17: a moved added line does not carry inside a merge of main either"]
+    },
+    {
+      "name": "several merge bases give an exact pin",
+      "file": "packages/github/src/git-diff-hash.ts",
+      "find": "if (bases.length !== 1) return",
+      "replace": "if (bases.length === 0) return",
+      "kills": ["gitDiffPin A17: an ambiguous merge base gives a pin that matches nothing, itself included"]
+    },
+    {
+      "name": "the global gitconfig reaches the diff",
+      "file": "packages/github/src/git-diff-hash.ts",
+      "find": "  GIT_CONFIG_GLOBAL: \"/dev/null\",\n",
+      "replace": "",
+      "kills": ["gitDiffPin A17: the hash is equal under a hostile gitconfig"]
+    }
+  ]
+}

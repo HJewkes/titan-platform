@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "priorSnapshotForRef ignores the commit a ref resolves to",
+      "file": "packages/code-graph/src/identity/store-identity.ts",
+      "find": "  const byCommit = commit ? candidates.find((s) => s.commitHash === commit) : undefined;\n",
+      "replace": "  const byCommit = commit ? undefined : undefined;\n",
+      "kills": [
+        "ref-scoped alias bases finds a snapshot by the commit an annotated tag points at, with no snapshot labelled by the tag"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import { blobOf, PlanBlockSchema, type PlanBlock } from "./plan-round.js";
@@ -18,13 +18,12 @@ const tempDir = (): string => {
   return dir;
 };
 
-const git = (dir: string, ...args: string[]): string =>
-  execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+const git = (dir: string, ...args: string[]): string => gitIn(dir)(...args);
 
 /** A checkout whose `main` holds `base`; `head` then commits each change (null deletes) on a `pr` branch, as the PR's head. */
 function checkout(base: Record<string, string>) {
   const dir = tempDir();
-  git(dir, "init", "-q", "-b", "main");
+  seedRepo(dir, {});
   const write = (files: Record<string, string | null>) => {
     for (const [path, content] of Object.entries(files)) {
       if (content === null) git(dir, "rm", "-q", path);
@@ -37,7 +36,7 @@ function checkout(base: Record<string, string>) {
     git(dir, "commit", "-q", "--allow-empty", "-m", "change");
     return git(dir, "rev-parse", "HEAD");
   };
-  write(base);
+  withHistory(dir, [{ files: base, message: "change" }]);
   git(dir, "switch", "-q", "-c", "pr");
   return { dir, head: write, rename: (from: string, to: string) => (git(dir, "mv", from, to), write({})) };
 }

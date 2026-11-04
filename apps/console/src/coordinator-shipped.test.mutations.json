@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unbuilt day drops the 07:10 timer note",
+      "file": "apps/console/src/pages/CoordinatorShipped.tsx",
+      "find": "the 07:10 timer builds it",
+      "replace": "it will be built",
+      "kills": [
+        "what shipped on the coordinator page says no digest is built, names the 07:10 timer, and lists the merged PRs"
+      ]
+    },
+    {
+      "name": "a stale digest raises no warning",
+      "file": "apps/console/src/pages/CoordinatorShipped.tsx",
+      "find": "{result.stale ? <Alert",
+      "replace": "{false ? <Alert",
+      "kills": [
+        "what shipped on the coordinator page warns that the digest is stale when the merged set changed after it was built"
+      ]
+    },
+    {
+      "name": "a PR link keeps its inline height on a phone",
+      "file": "apps/console/src/pages/CoordinatorShipped.tsx",
+      "find": "className={`${PHONE_TAP_LINK} break-all`}",
+      "replace": "className=\"break-all\"",
+      "kills": [
+        "what shipped on the coordinator page gives the PR links a 44px target on a narrow viewport"
+      ]
+    },
+    {
+      "name": "an empty day shows the unbuilt note instead",
+      "file": "apps/console/src/pages/CoordinatorShipped.tsx",
+      "find": "groups.length === 0 && result.merged.length === 0",
+      "replace": "false",
+      "kills": [
+        "what shipped on the coordinator page says Shepherd merged nothing on an empty day"
+      ]
+    }
+  ]
+}

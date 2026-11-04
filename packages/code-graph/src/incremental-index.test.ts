@@ -178,7 +178,7 @@ describe("fingerprint-based incremental indexing", () => {
     const classify = project.store
       .listNodes(incremental.snapshotId, { includeSymbols: true })
       .find((n) => n.kind === "symbol" && n.name === "classify");
-    expect((classify?.attrs as { startLine?: number }).startLine).toBe(5);
+    expect(classify?.attrs?.startLine).toBe(5);
   });
 
   it("a real token change is STRUCTURAL, not cosmetic (full extract)", async () => {

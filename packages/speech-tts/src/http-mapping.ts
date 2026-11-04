@@ -1,4 +1,4 @@
-import { isRecord } from "./guards.js";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import type { SynthesizeOptions, TtsInput } from "./types.js";
 
 /**

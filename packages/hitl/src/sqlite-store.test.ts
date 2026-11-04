@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   SqliteGateStore,
   gateBriefMigration,
@@ -64,12 +65,14 @@ function oldInsert(db: Db, id: string, status = "pending", payload: string | nul
   db.prepare(OLD_INSERT).run(id, "legacy?", null, status, payload, null, T_CREATED, resolvedAt, null);
 }
 
+const COUNT_ROW = z.object({ n: z.number() });
+
 function rawRow(db: Db, id: string): Record<string, unknown> {
-  return db.prepare(`SELECT * FROM "hitl_gate" WHERE id = ?`).get(id) as Record<string, unknown>;
+  return z.record(z.string(), z.unknown()).parse(db.prepare(`SELECT * FROM "hitl_gate" WHERE id = ?`).get(id));
 }
 
 function triggerCount(db: Db): number {
-  const row = db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger'").get() as { n: number };
+  const row = COUNT_ROW.parse(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger'").get());
   return row.n;
 }
 
@@ -78,14 +81,12 @@ function resolverColumnCount(db: Db): number {
 }
 
 function columnCount(db: Db, column: string): number {
-  const row = db.prepare("SELECT count(*) AS n FROM pragma_table_info('hitl_gate') WHERE name = ?").get(column) as {
-    n: number;
-  };
+  const row = COUNT_ROW.parse(db.prepare("SELECT count(*) AS n FROM pragma_table_info('hitl_gate') WHERE name = ?").get(column));
   return row.n;
 }
 
 function triggerNames(db: Db): string[] {
-  const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all() as Array<{ name: string }>;
+  const rows = z.array(z.object({ name: z.string() })).parse(db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all());
   return rows.map((row) => row.name);
 }
 
@@ -186,8 +187,7 @@ describe("an old writer against a migrated table", () => {
   it("refuses the new store's own anonymous resolve before the statement reaches the trigger", () => {
     const db = migratedWithLegacyRows();
     const store = new SqliteGateStore(db, { migrate: false });
-    const anonymous = undefined as unknown as GateResolver;
-    expect(() => store.resolve("p1", "yes", anonymous)).toThrow(
+    expect(() => Reflect.apply(store.resolve, store, ["p1", "yes", undefined])).toThrow(
       expect.objectContaining({ name: "GateResolverRefused", gateId: "p1", reason: "a resolver is required" }),
     );
     expect(store.get("p1")).toMatchObject({ status: "pending", resolvedBy: undefined });

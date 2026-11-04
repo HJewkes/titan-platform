@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "deposit commands serve as reads, which the budget table has no row for",
+      "file": "apps/console/server/owner-guard.ts",
+      "find": "commandClass: \"deposit\",",
+      "replace": "commandClass: \"read\",",
+      "kills": [
+        "console read budgets on the large-state fixture every read-classed command has a budget row"
+      ]
+    },
+    {
+      "name": "the inbox stops caching its upstream reads",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };",
+      "replace": "const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 0, staleMs: 0 };",
+      "kills": [
+        "console read budgets on the large-state fixture inbox.list answers within its bytes and upstream-call budgets"
+      ]
+    }
+  ]
+}

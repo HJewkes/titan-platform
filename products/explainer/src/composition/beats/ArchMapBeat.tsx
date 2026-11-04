@@ -2,7 +2,8 @@ import { useBeatTime } from "@titan-design/react-ui/motion";
 import type { z } from "zod";
 import type { BEAT_SLOTS } from "../../beat-slots.js";
 import type { BeatViewProps } from "../registry.js";
-import { MAP, MAP_H, nodeLeft, nodeLit, RAIL_Y, tokenAt } from "./flow.js";
+import { MAP, MAP_H, nodeLeft, nodeLit, nodeWidth, RAIL_Y, tokenAt } from "./flow.js";
+import { useLit } from "./stage/emphasis.js";
 import { fadeUp, mix, progress, SMALL_MOVE_S } from "./stage/video.js";
 
 /**
@@ -27,11 +28,11 @@ const FLOW_AFTER_S = 0.6;
 const ARROW_INSET = 14;
 
 // The step number brightens with its node: tertiary text on the lit node's brand tint reads 2.5:1, under QA's floor.
-function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit: number }) {
+function MapSlot({ node, k, count, t, lit }: { node: MapNode; k: number; count: number; t: number; lit: number }) {
   const filled = progress(t, node.atS);
   return (
     <div className="ex-map-node" style={{
-      left: nodeLeft(k), top: MAP.nodeTop, width: MAP.nodeW, height: MAP.nodeH,
+      left: nodeLeft(k, count), top: MAP.nodeTop, width: nodeWidth(count), height: MAP.nodeH,
       borderStyle: filled > 0 ? "solid" : "dashed",
       borderColor: mix(filled > 0 ? "var(--color-border-prominent)" : "var(--color-hairline-default)", "var(--color-brand-primary)", lit),
       background: mix("var(--color-surface-raised)", "var(--color-brand-primary)", lit * 0.25),
@@ -42,34 +43,54 @@ function MapSlot({ node, k, t, lit }: { node: MapNode; k: number; t: number; lit
   );
 }
 
-/** Each edge draws once both its ends are named. */
-function Edges({ nodes, t }: { nodes: readonly MapNode[]; t: number }) {
+const LIT_EDGE_W = 12;
+
+type MapEdge = MapSlots["edges"][number];
+
+/**
+ * The id of the edge from node `from` to node `to`, found by its ends as the fill's emphases find it: the map_state
+ * route numbers edges in the script map's order, which need not be the path's, so a slot position names the wrong hop.
+ */
+const edgeId = (edges: readonly MapEdge[], from: string, to: string): string => edges.find((edge) => edge.from === from && edge.to === to)!.id;
+
+/** Each edge draws once both its ends are named; a cue naming it lays a brand stroke under it, the arrowhead unchanged. */
+function Edges({ nodes, edges, t }: { nodes: readonly MapNode[]; edges: readonly MapEdge[]; t: number }) {
+  const lit = useLit();
   return nodes.slice(1).map((node, i) => {
     const drawAtS = Math.max(node.atS, nodes[i]!.atS) + SMALL_MOVE_S;
-    const x0 = nodeLeft(i) + MAP.nodeW + ARROW_INSET;
+    const x0 = nodeLeft(i, nodes.length) + nodeWidth(nodes.length) + ARROW_INSET;
     const x1 = x0 + (MAP.gap - 2 * ARROW_INSET) * progress(t, drawAtS);
-    return x1 > x0 ? <line key={node.id} x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" /> : null;
+    const id = edgeId(edges, nodes[i]!.id, node.id);
+    const shown = lit(id, t);
+    if (x1 <= x0) return null;
+    return (
+      <g key={node.id} data-reveal={id}>
+        {shown > 0 && <line x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} stroke="var(--color-brand-primary)" strokeWidth={LIT_EDGE_W} strokeLinecap="round" opacity={shown} />}
+        <line x1={x0} y1={RAIL_Y} x2={x1} y2={RAIL_Y} className="ex-map-edge" markerEnd="url(#ex-arrow)" />
+      </g>
+    );
   });
 }
 
-function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly MapNode[] }) {
+function ArchMapFrame({ headline, nodes, edges }: { headline: string; nodes: readonly MapNode[]; edges: readonly MapEdge[] }) {
   const { t } = useBeatTime();
+  const lit = useLit();
   const flowAtS = Math.max(...nodes.map((node) => node.atS)) + FLOW_AFTER_S;
   const token = tokenAt(t, flowAtS, nodes.length);
   return (
     <>
       <h2 className="ex-headline" style={fadeUp(t, 0)}>{headline}</h2>
-      <div className="ex-map" style={{ height: MAP_H, opacity: progress(t, 0) }}>
+      <div className="ex-map" style={{ height: MAP_H, ...fadeUp(t, 0, 16) }}>
         <svg className="ex-map-svg" width={MAP.width} height={MAP_H}>
           <defs>
             <marker id="ex-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" className="ex-map-arrowhead" />
             </marker>
           </defs>
-          <Edges nodes={nodes} t={t} />
+          <Edges nodes={nodes} edges={edges} t={t} />
           {token && <circle cx={token[0]} cy={token[1]} r={18} className="ex-map-token" />}
         </svg>
-        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} t={t} lit={nodeLit(t, k, flowAtS, nodes.length)} />)}
+        {nodes.map((node, k) => <MapSlot key={node.id} node={node} k={k} count={nodes.length} t={t} lit={Math.max(nodeLit(t, k, flowAtS, nodes.length), lit(node.id, t))} />)}
       </div>
     </>
   );
@@ -95,7 +116,8 @@ function notAPath(slots: MapSlots): string | null {
 
 /**
  * arch-map: a left-to-right path of 2 to 5 numbered slots, each node filled as it is named, edges drawn once both
- * ends exist, then a token that walks the path with a 0.8 s dwell per node. Any other map (a node count outside
+ * ends exist, then a token that walks the path with a 0.8 s dwell per node. A node or edge a later cue names lights
+ * as the token lights a node. Any other map (a node count outside
  * that range, edges that are not exactly node n to node n+1, a focus, an edge label) fails the page by name: the
  * fill's map_state route copies the script map's own edges, which this view would otherwise draw as a path.
  */
@@ -103,5 +125,5 @@ export function ArchMapKindBeat({ slots, reveal }: BeatViewProps<MapSlots>) {
   const refusal = notAPath(slots);
   if (refusal) throw new Error(`arch-map ${refusal}`);
   const nodes = slots.nodes.map((node) => ({ id: node.id, label: node.label, atS: reveal(node.id) ?? 0 }));
-  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} />;
+  return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} edges={slots.edges} />;
 }

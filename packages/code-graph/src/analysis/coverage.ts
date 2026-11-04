@@ -33,8 +33,10 @@ function isFileCoverage(v: unknown): v is IstanbulFileCoverage {
   return (
     typeof v === "object" &&
     v !== null &&
-    typeof (v as IstanbulFileCoverage).fnMap === "object" &&
-    typeof (v as IstanbulFileCoverage).f === "object"
+    "fnMap" in v &&
+    typeof v.fnMap === "object" &&
+    "f" in v &&
+    typeof v.f === "object"
   );
 }
 

@@ -8,6 +8,7 @@ import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
 import { EnvSplitError } from "./unsure-readings.js";
 import { unwrap } from "./unwrap.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 function argv0(src: string): Array<string | null> | undefined {
   const words = tokenize(src).filter((t): t is WordToken => t.type === "word");
@@ -92,8 +93,15 @@ describe.skipIf(!zshOnPath)("zsh under each argv0 form", () => {
   });
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-  const run = (line: string) =>
-    spawnSync("zsh", ["-f", "-c", line], { cwd: scratch, encoding: "utf-8", input: "", timeout: 5000 }).stdout.trim();
+  // Every row runs through one driver (TP-4453), after the hook above writes probe.zsh.
+  const oracle = shellOracle("argv0-rows-", (_dir, line: string) => ({
+    run: { program: "zsh", args: ["-f", "-c", line], cwd: scratch, input: "" },
+    read: (result) => result.stdout.trim(),
+  }));
+  const run = (line: string) => oracle.get(line);
+  const ENV_LINES = [`env -S '-a "sh" zsh -f probe.zsh'`, `env -S "-a 'sh' zsh -f probe.zsh"`, `env -S '-a s"h" zsh -f probe.zsh'`];
+  for (const line of ["exec -a =sh zsh -f probe.zsh", "zsh -f probe.zsh", ...(envSetsArgv0 ? ENV_LINES : [])]) oracle.add(line);
+  oracle.beforeAll();
 
   it("turns GLOB_SUBST on for exec -a =sh zsh -f probe.zsh", () => {
     expect(run("exec -a =sh zsh -f probe.zsh")).toBe("on");
@@ -101,11 +109,7 @@ describe.skipIf(!zshOnPath)("zsh under each argv0 form", () => {
 
   // GNU env gained -a/--argv0 after coreutils 9.4 (ubuntu-24.04), so the ground truth needs a
   // capable env; the guard's own verdict on these lines is asserted unconditionally above.
-  it.runIf(envSetsArgv0).each([
-    [`env -S '-a "sh" zsh -f probe.zsh'`],
-    [`env -S "-a 'sh' zsh -f probe.zsh"`],
-    [`env -S '-a s"h" zsh -f probe.zsh'`],
-  ])("turns GLOB_SUBST on for %s", (line) => {
+  it.runIf(envSetsArgv0).each(ENV_LINES.map((line) => [line]))("turns GLOB_SUBST on for %s", (line) => {
     expect(run(line)).toBe("on");
   });
 

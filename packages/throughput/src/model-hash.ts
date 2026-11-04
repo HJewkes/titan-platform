@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 
-export const PACKAGE_VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+export function readPackageVersion(manifest: unknown): string {
+  const version = typeof manifest === "object" && manifest !== null ? Reflect.get(manifest, "version") : undefined;
+  if (typeof version !== "string") throw new Error("throughput package.json has no string version");
+  return version;
+}
+
+export const PACKAGE_VERSION = readPackageVersion(createRequire(import.meta.url)("../package.json"));
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);

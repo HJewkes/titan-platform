@@ -224,7 +224,7 @@ describe("the compile gate on custom-layer builds", () => {
       build: async ({ json }): Promise<LayerBuild> => {
         packets.push(json);
         const id = packets.length === 1 ? "lane" : "lanes-1";
-        return { module: `export default () => <div id="${id}" />;\n`, anchors: ["B2:E5"], elements: [id], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
+        return { module: `import { useCue } from "@titan-design/react-ui/motion";\nexport default () => <div id="${id}">{useCue("desk")}</div>;\n`, anchors: ["B2:E5"], elements: [id], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
       },
     };
 

@@ -1,6 +1,5 @@
-import { existsSync, realpathSync } from "node:fs";
-import { dirname } from "node:path";
-import { renderCalendarTimer, renderOneshotService, SYSTEM_PATH, userUnitDir } from "../systemd/render.js";
+import { servicePath, userUnitDir } from "@titan-design/daemon/service";
+import { renderCalendarTimer, renderOneshotService } from "../systemd/render.js";
 import type { HostEnv } from "./targets.js";
 
 export const SAMPLE_SERVICE = "titan-health-sample.service";
@@ -25,7 +24,7 @@ export function renderSampleService(options: SampleServiceOptions): string {
     nice: 10,
     idleIo: true,
     accounting: true,
-    environment: { PATH: [...new Set([dirname(options.nodePath), ...SYSTEM_PATH])].join(":") },
+    environment: { PATH: servicePath(() => undefined, options.nodePath, []).path },
     errLog: options.errLog,
   });
 }
@@ -45,21 +44,4 @@ export function renderSampleTimer(): string {
   });
 }
 
-export const sampleUnitDir = (host: HostEnv): string => userUnitDir(host);
-
-interface NodeProbe {
-  exists: (path: string) => boolean;
-  realpath: (path: string) => string;
-}
-
-const CELLAR_NODE = /^(.+)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/;
-const fsProbe: NodeProbe = { exists: existsSync, realpath: realpathSync };
-
-/** A Homebrew Cellar path names one version and breaks on `brew upgrade`; the prefix symlink follows the upgrade. */
-export function stableNodePath(execPath: string, probe: NodeProbe = fsProbe): string {
-  const match = CELLAR_NODE.exec(execPath);
-  if (!match) return execPath;
-  const [, prefix, formula] = match;
-  const link = formula === "node" ? `${prefix}/bin/node` : `${prefix}/opt/${formula}/bin/node`;
-  return probe.exists(link) && probe.realpath(link) === probe.realpath(execPath) ? link : execPath;
-}
+export const sampleUnitDir = (host: HostEnv): string => userUnitDir(host.home, host.env.XDG_CONFIG_HOME);

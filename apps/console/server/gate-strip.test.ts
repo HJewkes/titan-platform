@@ -139,6 +139,9 @@ function countingShepherd() {
     previewOp: async () => {
       throw new Error("the strip never previews an op");
     },
+    ownerEvidence: async () => {
+      throw new Error("the strip never reads a gate's evidence");
+    },
   };
   return { shepherd, calls };
 }
@@ -157,6 +160,43 @@ describe("gateStripReader", () => {
     now = 31_000;
     await reader.readMany([row()]);
     expect(calls).toHaveLength(6);
+  });
+
+  it("serves the kept strip past its window while one refresh runs behind it", async () => {
+    let now = 0;
+    const { shepherd, calls } = countingShepherd();
+    const reader = gateStripReader(shepherd, () => now);
+    await reader.readMany([row()]);
+    shepherd.timeline = () => new Promise(() => undefined);
+
+    now = 31_000;
+    const served = await reader.readMany([row()]);
+
+    expect(served.get(RUN)?.ci.factory).toEqual({ verdict: "green", headSha: HEAD, atHead: true });
+    expect(calls).toEqual(["waiting", "timeline", "checkRuns", "waiting", "checkRuns"]);
+  });
+
+  it("waits for a fresh read once the kept one is past its stale limit", async () => {
+    let now = 0;
+    const { shepherd, calls } = countingShepherd();
+    const reader = gateStripReader(shepherd, () => now);
+    await reader.readMany([row()]);
+
+    now = 5 * 60_000;
+    await reader.readMany([row()]);
+
+    expect(calls.filter((call) => call === "timeline")).toHaveLength(2);
+  });
+
+  it("builds a kept strip from the live row, so a hold placed since shows at once", async () => {
+    const { shepherd, calls } = countingShepherd();
+    const reader = gateStripReader(shepherd, () => 0);
+    await reader.readMany([row()]);
+
+    const held = await reader.readMany([row({ held: { reason: "owner-asked: wait for me", since: "2026-10-10T02:00:00.000Z" } })]);
+
+    expect(held.get(RUN)?.holds.map((hold) => hold.key)).toEqual(["hold:owner-asked"]);
+    expect(calls).toEqual(["waiting", "timeline", "checkRuns"]);
   });
 
   it("re-reads a strip that had an unknown row", async () => {

@@ -98,7 +98,7 @@ function countTaskLinkedOrigins(graph: SessionGraph): number {
   return CountRow.parse(graph.db.prepare("SELECT count(*) AS n FROM session_origin WHERE task_ids IS NOT NULL").get()).n;
 }
 
-function fitTable(loaded: LoadedRows, args: TableArgs): { table: ClassTable; inputs: ThroughputInputs } {
+export function fitTable(loaded: LoadedRows, args: TableArgs): { table: ClassTable; inputs: ThroughputInputs } {
   const config = { asOf: args.asOf, halfLifeDays: args.halfLife, minN: args.minN, minerIndexedAt: loaded.minerIndexedAt ?? undefined };
   const table = classTable(loaded.rows, config);
   return { table, inputs: { modelHash: table.modelHash, watermark: table.watermark, excludedRows: table.excludedRows, ...loaded.inputs } };

@@ -11,17 +11,17 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Presence } from "./presence.js";
 import { reviewPhase } from "./review.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./review-panel-plan.js";
 import type { ScopedRereviewMode } from "./review-scope-round.js";
-import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef } from "./store.js";
 import type { Git } from "./tree-carry.js";
+import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
 /** Synthetic scene: a held security PR, FIX_FIRST at H1, the seat's fix pushed as H2, then MERGE from both members at H2. */
 const H1 = fakeSha("scoped-rereview-h1");

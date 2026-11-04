@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "retires a report that is not final",
+      "file": "packages/agent-dispatch/src/isolation/retire-at-report.ts",
+      "find": "if (!isFinishedReport(port.lastReport(agent) ?? \"\"))",
+      "replace": "if (false)",
+      "kills": ["retire at the final report keeps an agent whose last report is \"Status: BLOCKED\", since a retired name cannot be resumed"]
+    },
+    {
+      "name": "retires without the Shepherd hold",
+      "file": "packages/agent-dispatch/src/isolation/retire-at-report.ts",
+      "find": "(await port.holds.shepherd(agent, target));",
+      "replace": "undefined;",
+      "kills": ["retire at the final report keeps an agent whose branch a Shepherd hold names"]
+    },
+    {
+      "name": "retires through a refused park",
+      "file": "packages/agent-dispatch/src/isolation/retire-at-report.ts",
+      "find": "if (parked?.ok === false) return kept(parked.reason ?? \"park refused\");",
+      "replace": "",
+      "kills": ["retire at the final report keeps the agent with the park's reason when the park refuses"]
+    },
+    {
+      "name": "retires without the late check",
+      "file": "packages/agent-dispatch/src/isolation/retire-at-report.ts",
+      "find": "const late = lateBlocker(port, agentId, agent.name);",
+      "replace": "const late = undefined;",
+      "kills": ["retire at the final report keeps an agent resumed while the park ran"]
+    },
+    {
+      "name": "retires an agent of a spawner that did not opt in",
+      "file": "packages/agent-dispatch/src/isolation/retire-at-report.ts",
+      "find": " || !port.enabledFor(agent.spawnedBy)",
+      "replace": "",
+      "kills": ["retire at the final report does nothing for a spawner that did not opt in"]
+    }
+  ]
+}

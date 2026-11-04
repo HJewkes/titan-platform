@@ -1,6 +1,7 @@
+import { resolve } from "node:path";
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
-import type { CliIo, Verbs } from "./cli.js";
+import type { CliIo, Verbs } from "./cli-types.js";
 import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
@@ -25,8 +26,10 @@ import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/forma
 import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
-import type { ReviewSlots } from "./shepherd/review-slots.js";
-import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
+import { overdueOwnerGates } from "./shepherd/waiting.js";
+import { WaitingSchema } from "./shepherd/waiting-schema.js";
+import { errorMessage } from "./narrow.js";
+import type { ReviewSlots } from "./shepherd/ports.js";
 
 interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;
@@ -90,6 +93,24 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   registerVisualDeltaVerb(verb, verbs);
+  registerBriefVerb(verb, verbs);
+  registerVisualWeekVerb(verb, verbs);
+}
+
+/** TP-4761 S3: the weekly Ship batch for a repo's pending visual-path gates, printed. Reads gates and holds; resolves nothing. */
+function registerVisualWeekVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-week", "print as JSON the weekly Ship batch round spec for --repo: one merge-bound question per pending visual-path approve-merge gate at a current, unheld head; read-only, resolves no gate")
+    .requiredOption("--repo <owner/repo>", "the repo whose pending visual-path gates to batch")
+    .action((opts: ShepherdOpts & { repo: string }) => runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo }), opts));
+}
+
+/** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */
+function registerBriefVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("brief <ref>", "print the owner PR section for owner/repo#N as markdown, or as the review harness's round-section JSON; read-only")
+    .option("--format <format>", "md or round-section", "md")
+    .option("--images <dir>", "a directory holding pr-<n>/manifest.json, for the before and after pairs of a UI PR")
+    .action((ref: string, opts: ShepherdOpts & { format: string; images?: string }) =>
+      runShepherd(verbs, "shepherd.brief", () => ({ ...parsePrRef(ref), format: opts.format, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
 }
 
 /** TP-4320's calibration read: the delta the evidence step would measure, before a repo's threshold goes `on`. */
@@ -207,7 +228,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   try {
     args = await argsOf();
   } catch (err) {
-    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    verbs.io.stderr(`error: ${errorMessage(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
@@ -232,7 +253,7 @@ async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
-const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+const exitOf = (code: unknown): number => (typeof code === "number" && Number.isInteger(code) && code > 0 ? code : EXIT.FAILURE);
 
 /** What `status` prints after its rows, from serve's `/health`; each block is null when serve answered without it. */
 interface StatusTail {

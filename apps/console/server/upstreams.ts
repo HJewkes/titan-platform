@@ -3,16 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { cachedActiveWork } from "./active-work-cache.js";
 import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
 import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
+import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
+import type { UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { createInvalidation } from "./invalidation.js";
 import { factoryOwnerAction } from "./owner-action.js";
 import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
@@ -166,19 +170,26 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
-export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
-  const activeWork = activeWorkClient(config.activeWorkPort);
-  const shepherd = shepherdReader(config.factoryPort);
+function coordinatorOf(config: ConsoleConfig, shepherd: ShepherdSource, activeWork: ActiveWork): ConsoleSources["coordinator"] {
+  return { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart), cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath } };
+}
+
+export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
+  const invalidation = createInvalidation();
+  const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
+  const shepherd = shepherdReader(config.factoryPort, undefined, recorder);
   return {
     upstreams: createUpstreams(config),
+    invalidation,
     activeWork,
     agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
-    autoresearch: autoresearchReader(config.factoryPort),
+    autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
-    factory: factoryNeeds(config.factoryPort),
+    coordinator: coordinatorOf(config, shepherd, activeWork),
+    factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: listenersOf(config, shepherd, logger),
@@ -186,5 +197,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
+    shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
+    ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
   };
 }

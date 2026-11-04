@@ -3,9 +3,10 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
+type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
 export type Outcome =
-  | { outcome: "resolved"; gateId: string }
+  /** `covered` names the owner-at-head facts whose evidence the owner read on the card before this resolve (TP-4404). */
+  | { outcome: "resolved"; gateId: string; covered?: string[] }
   | { outcome: "already"; gateId: string }
   | { outcome: "released"; runId: string; stillHeld: string | null }
   | { outcome: "already"; runId: string }

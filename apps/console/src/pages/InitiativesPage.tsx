@@ -1,29 +1,11 @@
 import type { ReactNode } from "react";
-import {
-  Alert,
-  DateTime,
-  HStack,
-  Link,
-  PortfolioOverview,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  VStack,
-  type InitiativeCardProps,
-  type PortfolioOverviewSection,
-  type PortfolioOverviewStat,
-} from "@titan-design/react-ui";
+import { Alert, DateTime, HStack, Link, PortfolioOverview, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, VStack, type InitiativeCardProps, type PortfolioOverviewSection, type PortfolioOverviewStat } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
+import { PHONE_TAP_ID_LINK } from "./phone.js";
 
 type Row = ConsoleCommands["work.portfolio"]["result"]["initiatives"][number];
 
@@ -106,7 +88,7 @@ function RecordsRow({ row }: { row: Row }): ReactNode {
     <TableRow testID={`initiative-row-${row.slug}`}>
       <TableCell>
         <HStack gap={2} align="center">
-          <Link color="primary" onPress={() => open({ view: "initiatives", id: row.slug })}>
+          <Link color="primary" className={PHONE_TAP_ID_LINK} onPress={() => open({ view: "initiatives", id: row.slug })}>
             {row.slug}
           </Link>
           {row.personal ? <PersonalBadge /> : null}

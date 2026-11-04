@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "full validity ignores drift",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "fullValid: verdict.drift.length === 0",
+      "replace": "fullValid: true",
+      "kills": ["shadow disagreement log a verdict with drift is material-valid and not full-valid; an input-changed verdict is neither"]
+    },
+    {
+      "name": "the sink does not skip a taken key",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "WHERE NOT ${keyTaken((column) => PARAM[column])}",
+      "replace": "WHERE 1",
+      "kills": ["shadow disagreement log the same call-site-orphan sent twice, across two sink instances on one database, writes one row"]
+    },
+    {
+      "name": "a log row accepts DELETE",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "CREATE TRIGGER factory_shadow_log_no_delete BEFORE DELETE ON factory_shadow_log BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+      "replace": "",
+      "kills": ["shadow disagreement log the log refuses update and delete"]
+    },
+    {
+      "name": "the replace guard ignores the orphan key",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "AND kind = 'call-site-orphan' AND",
+      "replace": "AND kind = 'call-site-orphan' AND 0 AND",
+      "kills": ["shadow disagreement log INSERT OR REPLACE on a taken orphan or compare key aborts and keeps the original row"]
+    },
+    {
+      "name": "the replace guard ignores the compare key",
+      "file": "products/factory/src/markers/shadow-diff/log.ts",
+      "find": "AND kind = 'compare' AND",
+      "replace": "AND kind = 'compare' AND 0 AND",
+      "kills": ["shadow disagreement log INSERT OR REPLACE on a taken orphan or compare key aborts and keeps the original row"]
+    }
+  ]
+}

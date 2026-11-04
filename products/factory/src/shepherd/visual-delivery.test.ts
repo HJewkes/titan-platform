@@ -5,9 +5,9 @@ import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeSha } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { RosterRead } from "./roster.js";
 import { deliverGate, deliveryFileFor, withdrawDelivered, type DeliveryGate, type DeliveryWorld, type VisualDeliveryPorts } from "./visual-delivery.js";
 import { packagerName, packetDirFor } from "./visual-packet-trigger.js";
+import type { RosterRead } from "./ports.js";
 
 const RUN = "run-visual-1";
 const H = fakeSha("visual-head");

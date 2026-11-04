@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the skip records no visit",
+      "file": "products/factory/src/markers/shadow.ts",
+      "find": "      visit(scope.log, callSiteOf(scope.definition, stepId));\n",
+      "replace": "",
+      "kills": ["unlessPast a skip is a visit in the entry log and one sink line"]
+    },
+    {
+      "name": "an undeclared step may skip",
+      "file": "products/factory/src/runner/not-after.ts",
+      "find": "if (notAfter === undefined) throw",
+      "replace": "if (notAfter === null) throw",
+      "kills": ["unlessPast unlessPast refuses a step declared without notAfter"]
+    },
+    {
+      "name": "concurrent children are not refused",
+      "file": "products/factory/src/runner/not-after.ts",
+      "find": "if (scope.inFlight > 0) throw",
+      "replace": "if (scope.inFlight > 1) throw",
+      "kills": ["unlessPast unlessPast inside all is refused"]
+    },
+    {
+      "name": "an unknown notAfter fact is accepted",
+      "file": "products/factory/src/definition.ts",
+      "find": "if (!facts.has(step.notAfter)) throw",
+      "replace": "if (facts.has(step.notAfter) && false) throw",
+      "kills": ["unlessPast a notAfter naming an unknown fact fails registration"]
+    },
+    {
+      "name": "the first declaration may carry notAfter",
+      "file": "products/factory/src/definition.ts",
+      "find": "if (index === 0) throw",
+      "replace": "if (index === -1) throw",
+      "kills": ["unlessPast a notAfter on the first declaration fails registration"]
+    }
+  ]
+}

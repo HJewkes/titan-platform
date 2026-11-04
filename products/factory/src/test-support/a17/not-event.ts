@@ -20,4 +20,34 @@ export const NOT_EVENT: readonly NotEvent[] = [
     title: "watchServe when reads are unavailable (A17: a rate-limited probe never rolls back)",
     reason: "M0 deploy probe: asserts the serve watch window on an unavailable read, with no GitHub event input",
   },
+  {
+    file: "registry/registry.test.ts",
+    title: "A17: recipes call only registered steps: a workflow declaring an unregistered step does not open",
+    reason: "TP-3106 S7: asserts host registration against the step registry, with no GitHub event input",
+  },
+  {
+    file: "definition.test.ts",
+    title: "A17: a call to an unregistered step id fails the run",
+    reason: "TP-3106 S7: asserts the run guard against the step registry, with no GitHub event input",
+  },
+  {
+    file: "markers/shadow-orphan.test.ts",
+    title: "A17: a recipe changed to skip ci-wait sends one call-site-orphan to the sink and the run completes on the blob",
+    reason: "TP-3108 S5: asserts the shadow's orphan trap over a recorded replay, with no GitHub event input",
+  },
+  {
+    file: "markers/shadow-unavailable.test.ts",
+    title: "A17: an Unavailable step writes no marker and counts no re-drive, against the marker table",
+    reason: "TP-3108 S7: asserts the shadow's marker writes for a fake step answer, with no GitHub event input",
+  },
+  {
+    file: "markers/shadow-compare.test.ts",
+    title: "A17: step_results are byte-equal with the shadow on and off on a run with a false-hit",
+    reason: "TP-3111 S3a: asserts the shadow's compare leaves the blob unchanged for fake step answers, with no GitHub event input",
+  },
+  {
+    file: "host.c28.test.ts",
+    title: "A17: an in-flight run past an inserted step finishes",
+    reason: "TP-3108 S6: asserts a recorded replay past an inserted notAfter step, with no GitHub event input",
+  },
 ];

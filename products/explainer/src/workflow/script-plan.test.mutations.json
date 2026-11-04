@@ -22,8 +22,8 @@
     {
       "name": "the single-call repair rounds no longer answer template-fill rows",
       "file": "products/explainer/src/workflow/model-stages.ts",
-      "find": "const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];",
-      "replace": "const failing = (script: ScriptV1) => failingErrors(lint.rows(script));",
+      "find": "const failing = (script: ScriptV1) => [...errorRows(script), ...fillRows(script)];",
+      "replace": "const failing = (script: ScriptV1) => errorRows(script);",
       "kills": [
         "the script stage's plan retry answers a fill fault the plan retry left in an L0 repair round, naming the refused beat, and keeps the repair"
       ]

@@ -85,6 +85,11 @@ chunked body is counted as it arrives and gets 413 as soon as it passes the cap;
 then discards the rest of it for at most 500 ms before it closes the socket, and never holds
 it in memory.
 
+`onRpc` (on `startDaemon` and `buildHttpApp`) is called once per `/rpc` answer with
+`{ name, ms, bytes, status, surface }`. `bytes` is the length of the body sent, and an unknown
+command reports `(unknown)`. A sample never holds arguments or the body, and an observer that
+throws is ignored.
+
 The cap bounds one body, not how many are in flight. N slow bodies on loopback can hold N
 times the cap until Node's request timeout (300 s by default) drops them. This is left
 unbounded on purpose: a loopback caller already runs as the owner's account and can spend

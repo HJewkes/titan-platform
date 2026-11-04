@@ -45,8 +45,14 @@ export function parseTrialRecord(value: unknown, mode: SpecParseMode = "loose"):
   return (mode === "strict" ? TrialRecordSchema : looseTrialRecord).parse(value);
 }
 
-export type SpecSchemaVersion = keyof typeof strict;
-export const SPEC_SCHEMA_VERSIONS = Object.keys(strict) as SpecSchemaVersion[];
+export const SPEC_SCHEMA_VERSIONS = [
+  UNIT_SCHEMA_VERSION,
+  VARIANT_SCHEMA_VERSION,
+  CASE_SCHEMA_VERSION,
+  SUITE_SCHEMA_VERSION,
+  SCORECARD_SCHEMA_VERSION,
+] as const;
+export type SpecSchemaVersion = (typeof SPEC_SCHEMA_VERSIONS)[number];
 
 export type Spec =
   | UnitSpec
@@ -59,11 +65,12 @@ export type Spec =
 export function parseSpec(value: unknown, mode: SpecParseMode = "strict"): Spec {
   const version = schemaVersionOf(value);
   const schemas = mode === "strict" ? strict : loose;
-  return schemas[version].parse(value) as Spec;
+  return schemas[version].parse(value);
 }
 
 function schemaVersionOf(value: unknown): SpecSchemaVersion {
   const version = value !== null && typeof value === "object" ? (value as { schema?: unknown }).schema : undefined;
-  if (typeof version === "string" && (SPEC_SCHEMA_VERSIONS as string[]).includes(version)) return version as SpecSchemaVersion;
+  const known = SPEC_SCHEMA_VERSIONS.find((candidate) => candidate === version);
+  if (known !== undefined) return known;
   throw new Error(`unknown spec schema: ${JSON.stringify(version)}; expected one of ${SPEC_SCHEMA_VERSIONS.join(", ")}`);
 }

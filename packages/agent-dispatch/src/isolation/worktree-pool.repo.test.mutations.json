@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "holders rank by name instead of tree count",
+      "file": "packages/agent-dispatch/src/isolation/worktree-pool.ts",
+      "find": "sort(([a, m], [b, n]) => n - m || a.localeCompare(b))",
+      "replace": "sort(([a], [b]) => b.localeCompare(a))",
+      "kills": ["worktree budget names who holds the full pool, largest holder first (CC-1469)"]
+    },
+    {
+      "name": "a reused name charges its oldest spawner",
+      "file": "packages/agent-dispatch/src/isolation/worktree-pool.ts",
+      "find": "    if (!holders.has(slug(name))) holders.set(slug(name), spawnedBy || UNKNOWN_HOLDER);",
+      "replace": "    holders.set(slug(name), spawnedBy || UNKNOWN_HOLDER);",
+      "kills": ["worktree budget charges a reused name to its newest spawner"]
+    },
+    {
+      "name": "every tree counts against one pool",
+      "file": "packages/agent-dispatch/src/isolation/worktree-pool.ts",
+      "find": "    .filter((name) => poolOf(name) === pool);",
+      "replace": "    .filter(() => true);",
+      "kills": ["reviewer worktree pool (CC-1040) eight reviewer trees leave the implementer budget free, the default reviewer cap"]
+    },
+    {
+      "name": "the reviewer pool reads the implementer budget",
+      "file": "packages/agent-dispatch/src/isolation/worktree-pool.ts",
+      "find": "    ? (budgets.reviewerBudget?.() ?? DEFAULT_REVIEWER_WORKTREE_BUDGET)",
+      "replace": "    ? (budgets.budget?.() ?? DEFAULT_REVIEWER_WORKTREE_BUDGET)",
+      "kills": ["reviewer worktree pool (CC-1040) a reviewer past the cap is refused naming the reviewer pool"]
+    },
+    {
+      "name": "check ignores the holders the strategy was built with",
+      "file": "packages/agent-dispatch/src/isolation/worktree.ts",
+      "find": "      `${poolExhausted(use.pool, use.allocated, use.budget)} under ${basePath}` +\n        holdingsOf(use, ctx.treeHolders ?? opts.treeHolders),",
+      "replace": "      `${poolExhausted(use.pool, use.allocated, use.budget)} under ${basePath}` +\n        holdingsOf(use, ctx.treeHolders),",
+      "kills": ["worktree budget reads holders from the strategy options when the request carries none"]
+    }
+  ]
+}

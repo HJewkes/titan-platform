@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ownerAtHeadRow } from "../coordinator-evidence.js";
 import { approveMergeAsk } from "../workflows/land-approval.js";
 import type { Verdict } from "./phases.js";
-import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { shepherdLandOptions } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 
 /** TP-4141: Shepherd hands land each D21 fact its MERGE evidence holds, whatever rule the gate opens under; all text is synthetic. */
 const REPO = "example-org/example-repo";

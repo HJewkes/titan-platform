@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the workflow is dropped from factory frames",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "return workflow === \"autoresearch\" || workflow === \"shepherd\" ? { workflow } : {};",
+      "replace": "return {};",
+      "kills": ["factoryIds workflow keeps a known workflow beside the run id"]
+    },
+    {
+      "name": "any workflow string is kept",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "return workflow === \"autoresearch\" || workflow === \"shepherd\" ? { workflow } : {};",
+      "replace": "return typeof workflow === \"string\" ? ({ workflow } as RelayedIds) : {};",
+      "kills": ["factoryIds workflow drops a workflow it does not know and a frame with none"]
+    }
+  ]
+}

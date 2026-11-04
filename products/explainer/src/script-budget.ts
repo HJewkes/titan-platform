@@ -157,7 +157,7 @@ function raised<D extends Draft>(draft: D, row: BudgetRow, profile: TypeProfile)
   return plannedTotal(next) <= profile.runtime.maxS ? next : undefined;
 }
 
-const strictSubset = (after: readonly string[], before: readonly string[]): boolean =>
+export const strictSubset = (after: readonly string[], before: readonly string[]): boolean =>
   after.length < before.length && after.every((fault) => before.includes(fault));
 
 /**

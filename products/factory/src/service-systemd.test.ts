@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { UNIT_NAME, unitPath } from "./service.js";
-import type { CommandResult, ServicePorts } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
+import type { ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
 const DEPLOY_CHECKOUT = `${HOME}/.local/share/titan-factory/deploy/titan-platform`;
@@ -28,6 +29,8 @@ interface MachineInit {
   healthMs?: number;
   /** argv of a process outside the unit that holds the port until SIGTERM. */
   holder?: readonly string[];
+  /** `systemctl --user show` exits non-zero with this stderr, as with no user bus. */
+  showFails?: string;
 }
 
 /** A systemd --user manager that only knows a unit file as of its last daemon-reload, as the real one does. */
@@ -62,6 +65,7 @@ function fakeSystemd(init: MachineInit = {}) {
     known ? `LoadState=loaded\nActiveState=${pid ? "active" : "inactive"}\nSubState=${pid ? "running" : "dead"}\nMainPID=${pid ?? 0}\n` : "LoadState=not-found\nActiveState=inactive\nSubState=dead\nMainPID=0\n";
   const verbs: Record<string, (args: readonly string[]) => CommandResult> = {
     show: () => {
+      if (init.showFails !== undefined) return failed(1, init.showFails);
       settle();
       return ok(show());
     },
@@ -199,6 +203,58 @@ describe("titan-factory service install on Linux", () => {
     await service(["uninstall"], machine);
 
     expect(machine.calls.filter((call) => call.startsWith("launchctl"))).toEqual([]);
+  });
+});
+
+const BUS_DOWN = "Failed to connect to bus: No medium found";
+
+describe("titan-factory service when systemctl --user show cannot answer", () => {
+  const refusal = `error: systemctl --user show ${UNIT_NAME} failed: ${BUS_DOWN}; run the command as the service user in a session with a user bus (XDG_RUNTIME_DIR=/run/user/1000)\n`;
+
+  it("refuses install with the stderr and the user-bus remedy, and touches nothing", async () => {
+    const machine = fakeSystemd({ showFails: BUS_DOWN });
+
+    const { code, err } = await service(["install"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toBe(refusal);
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.files.size).toBe(0);
+  });
+
+  it("refuses install --dry-run the same way instead of printing a plan", async () => {
+    const machine = fakeSystemd({ showFails: BUS_DOWN });
+
+    const { code, out, err } = await service(["install", "--dry-run"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(out).toBe("");
+    expect(err).toBe(refusal);
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("refuses uninstall without disabling, removing the unit file or reloading", async () => {
+    const machine = fakeSystemd({ running: true, showFails: BUS_DOWN });
+
+    const { code, err } = await service(["uninstall"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toBe(refusal);
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.files.get(UNIT)).toBe("old unit");
+  });
+
+  it("prints unreadable with the stderr in status instead of not loaded", async () => {
+    const { code, out } = await service(["status"], fakeSystemd({ showFails: BUS_DOWN }));
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(out).toBe(`${UNIT_NAME}: unreadable: ${BUS_DOWN}\nhealth: no answer on port 7410\n`);
+  });
+
+  it("falls back to the exit code when systemctl printed no stderr", async () => {
+    const { out } = await service(["status"], fakeSystemd({ showFails: "" }));
+
+    expect(out).toContain(`${UNIT_NAME}: unreadable: exit 1\n`);
   });
 });
 

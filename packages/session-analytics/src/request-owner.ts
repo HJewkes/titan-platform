@@ -49,7 +49,7 @@ interface OwnedRow {
 /** The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent. */
 export function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, ActionCall[]> {
   const byRequest = new Map<string, Map<string, ActionCall>>();
-  for (const row of db.prepare(OWNED_CALLS).all(window) as OwnedRow[]) {
+  for (const row of db.prepare<[object], OwnedRow>(OWNED_CALLS).all(window)) {
     const calls = byRequest.get(row.requestId) ?? new Map<string, ActionCall>();
     byRequest.set(row.requestId, calls);
     const call = calls.get(row.callKey) ?? { tool: row.tool };

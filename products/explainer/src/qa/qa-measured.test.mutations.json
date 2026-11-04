@@ -3,8 +3,8 @@
   "mutations": [
     {
       "name": "qa registers no motion-happened check",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
-      "find": "    { name: \"motion-happened\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"motion-happened\") },\n",
+      "file": "products/explainer/src/qa/qa-gates.ts",
+      "find": "  { name: \"motion-happened\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"motion-happened\") },\n",
       "replace": "",
       "kills": [
         "qa stage motion-happened fails a beat whose frame at t and t + 0.5 are identical, reporting it by beat when no table holds its elements",
@@ -13,8 +13,8 @@
     },
     {
       "name": "qa registers no clipped-text check",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
-      "find": "    { name: \"clipped-text\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"clipped-text\") },\n",
+      "file": "products/explainer/src/qa/qa-gates.ts",
+      "find": "  { name: \"clipped-text\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"clipped-text\") },\n",
       "replace": "",
       "kills": [
         "qa stage clipped-text fails the X3 b20 headline whose third line its band cuts, anchored on the cells the headline sits on",

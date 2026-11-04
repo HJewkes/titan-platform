@@ -4,11 +4,11 @@ import type { FactoryHost } from "../host.js";
 import type { NtfyDeps } from "../ntfy.js";
 import { startSweep, type Sweep } from "../sweep.js";
 import { landGateHead } from "./approval-carry.js";
-import type { RosterReader } from "./roster.js";
 import { visualAcceptHead } from "./visual-accept.js";
 import type { GateReads, ShepherdServices, VisualDeliveryWatch } from "./services.js";
 import { DEFAULT_READY_TIMEOUT_MS, deliverGate, systemDeliveryExec, withdrawDelivered, type DeliveryExec, type DeliveryOutcome, type DeliveryWorld, type PrNow, type VisualDeliveryPorts } from "./visual-delivery.js";
 import { defaultTitanReviewBin } from "./visual-packet-trigger.js";
+import type { RosterReader } from "./ports.js";
 
 const VISUAL_DELIVERY_MS = 30_000;
 

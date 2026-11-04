@@ -21,6 +21,9 @@ export interface CommandContext extends BaseContext {
   // MCP server, whose process cwd is not the user's — those callers must pass
   // an explicit `cwd` arg to opt into cwd-based resolution.
   cwd?: string;
+  // Set by surfaces that know an agent is calling (MCP, or a CLI run under an
+  // agent's environment). Commands may hold agents to stricter input rules.
+  caller?: 'agent';
 }
 
 export type Command<Args = unknown, Result = unknown> = PkgCommand<Args, Result, CommandContext>;

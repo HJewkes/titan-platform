@@ -8,7 +8,7 @@
  * decides how the process terminates.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
+import { createServer as createHttpsServer, Server as HttpsServer } from "node:https";
 import type { ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
@@ -16,7 +16,7 @@ import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit, type RpcSample } from "./http.js";
 import { holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
@@ -73,6 +73,7 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   guards?: RequestGuardOptions;
   /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
   rpcBodyLimit?: RpcBodyLimit;
+  onRpc?: (sample: RpcSample) => void;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
@@ -164,6 +165,7 @@ function toHttpOptions<Ctx extends BaseContext>(
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
     rpcBodyLimit: options.rpcBodyLimit,
+    onRpc: options.onRpc,
   };
 }
 
@@ -226,7 +228,7 @@ async function listenContentOrClose({ origin, remote, host, hosts, bound, graceM
   let port = origin.port;
   const app = (guards: RequestGuardOptions, gate?: RemoteListener["gate"]) => buildContentApp({ mountRoutes: origin.mountRoutes, guards, gate, port: () => port });
   try {
-    opened.push(await bind(app({ allowedHosts: hosts, portOnly: true }).fetch, { hostname: host, port }).bound);
+    opened.push(await bind({ fetch: app({ allowedHosts: hosts, portOnly: true }).fetch }, { hostname: host, port }).bound);
     port = boundPortOf(opened[0]!, port);
     if (remote) {
       const tls = trackTlsFiles(remote.options.tls, remote.options.allowedHosts ?? []);
@@ -308,7 +310,7 @@ function listenLoopback(
   target: ListenTarget,
   mcp: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null,
 ): Promise<ServerType> {
-  const { server, bound } = bind(fetch, target);
+  const { server, bound } = bind({ fetch }, target);
   if (mcp) spliceMcpRoute(server, mcp);
   return bound;
 }
@@ -318,17 +320,16 @@ function listenLoopback(
  * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
  */
 async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
-  const server = await bind(app.fetch, { hostname: remote.options.host, port }, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
-  reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
+  const server = await bind({ fetch: app.fetch, createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }, { hostname: remote.options.host, port }).bound;
+  if (!(server instanceof HttpsServer)) throw new Error("the remote listener did not create an https server");
+  reloadTlsOnChange(server, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
   return server;
 }
 
-type ServerFactory = Pick<ServeOptions, "createServer" | "serverOptions">;
-
-function bind(fetch: Hono["fetch"], target: ListenTarget, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
+function bind(options: ServeOptions, target: ListenTarget): { server: ServerType; bound: Promise<ServerType> } {
   let server!: ServerType;
   const bound = new Promise<ServerType>((resolve, reject) => {
-    server = listenOn({ fetch, ...factory } as ServeOptions, target, () => {
+    server = listenOn(options, target, () => {
       server.off("error", onBindError);
       resolve(server);
     });

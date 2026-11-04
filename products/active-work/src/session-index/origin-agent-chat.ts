@@ -1,3 +1,4 @@
+import { isRecord } from '@titan-design/rpc-protocol/narrow';
 import { assignedTaskIds } from '@titan-design/session-read';
 import Database from 'better-sqlite3';
 import { existsSync, readFileSync } from 'node:fs';
@@ -70,6 +71,12 @@ export type OpenDatabase = (file: string, options: Database.Options) => Database
 
 const openBetterSqlite: OpenDatabase = (file, options) => new Database(file, options);
 
+/** A locked `events.db` is not worth better-sqlite3's default 5 s busy wait: origins and skipping are only savings. */
+const EVENTS_BUSY_TIMEOUT_MS = 100;
+
+export const openBriefly: OpenDatabase = (file, options) =>
+  new Database(file, { ...options, timeout: EVENTS_BUSY_TIMEOUT_MS });
+
 export function agentChatHome(): string {
   return process.env.AGENT_CHAT_HOME ?? path.join(os.homedir(), '.agent-chat');
 }
@@ -92,10 +99,10 @@ function readLifecycleEvents(file: string, open: OpenDatabase): LifecycleEvent[]
   try {
     const kinds = LIFECYCLE_KINDS.map(() => '?').join(', ');
     const rows = db
-      .prepare(
+      .prepare<string[], Omit<LifecycleEvent, 'meta'> & { meta: string | null }>(
         `SELECT ts, kind, actor, target, ref, meta FROM events WHERE kind IN (${kinds}) ORDER BY id`,
       )
-      .all(...LIFECYCLE_KINDS) as (Omit<LifecycleEvent, 'meta'> & { meta: string | null })[];
+      .all(...LIFECYCLE_KINDS);
     return rows.map((row) => ({ ...row, meta: parseMeta(row.meta) }));
   } finally {
     db.close();
@@ -108,13 +115,13 @@ function readFollowUps(file: string, open: OpenDatabase): FollowUp[] {
   const db = open(file, { readonly: true, fileMustExist: true });
   try {
     return db
-      .prepare(
+      .prepare<[], FollowUp>(
         `SELECT ts, target, json_extract(meta, '$.followup_kind') AS kind FROM events
          WHERE kind = 'message' AND target IS NOT NULL
            AND json_extract(meta, '$.followup_kind') IS NOT NULL
          ORDER BY id`,
       )
-      .all() as FollowUp[];
+      .all();
   } finally {
     db.close();
   }
@@ -135,12 +142,13 @@ function parseMeta(raw: string | null): Record<string, unknown> {
  * positional prompt after `--`, which is 1,134 of 1,278 plans as of 2026-09-23.
  */
 function readPlan(file: string): LaunchPlan | null {
-  let plan: { stdin?: unknown; args?: unknown };
+  let plan: unknown;
   try {
-    plan = JSON.parse(readFileSync(file, 'utf8')) as typeof plan;
+    plan = JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
+  if (!isRecord(plan)) return null;
   const brief = typeof plan.stdin === 'string' ? plan.stdin : promptArg(plan.args);
   return brief === null ? null : { path: file, brief };
 }
@@ -155,7 +163,7 @@ export type IsKnownTask = (taskId: string) => boolean;
 
 /** Known task ids are read once per pass, so every origin in it links against the same store. */
 export function agentChatOriginResolver(
-  source: SpawnSource = eventsDbSource(),
+  source: SpawnSource = eventsDbSource(agentChatHome(), openBriefly),
   taskRoot?: string,
 ): OriginResolver {
   return async (sessionIds) => {
@@ -302,6 +310,26 @@ function toOrigin(
     experimentArm: text(meta.experiment_arm),
     predecessor: text(meta.predecessor),
     followupKinds: followupKinds(spawn, index),
+    ...routeColumns(meta),
+  };
+}
+
+/** The launcher writes each `route_*` key as a string; any other type is a malformed row and reads as absent. */
+function routeColumns(meta: Record<string, unknown>): Partial<ResolvedOrigin> {
+  const str = (value: unknown): string | null =>
+    typeof value === 'string' && value !== '' ? value : null;
+  return {
+    routeMode: str(meta.route_mode),
+    routeSource: str(meta.route_source),
+    routePrior: str(meta.route_prior),
+    routeReason: str(meta.route_reason),
+    routeRequested: str(meta.route_requested),
+    routeWanted: str(meta.route_wanted),
+    routeWorkflow: str(meta.route_workflow),
+    routeTable: str(meta.route_table),
+    routeFacts: str(meta.route_facts),
+    routeCandidate: str(meta.route_candidate),
+    routeCandidateWanted: str(meta.route_candidate_wanted),
   };
 }
 
@@ -365,12 +393,20 @@ function externalKind(event: LifecycleEvent): { kind: string; detail: string | n
   switch (event.kind) {
     case 'agent_resumed': {
       const from = text(meta.from_surface);
-      return from ? { kind: 'teleport', detail: `${from} to ${text(meta.surface) ?? '?'}` } : null;
+      return from
+        ? {
+            kind: 'teleport',
+            detail: `${from} to ${text(meta.surface) ?? '?'}`,
+          }
+        : null;
     }
     case 'agent_handoff':
       return { kind: 'handoff', detail: labelled('successor', meta.successor) };
     case 'agent_retired':
-      return { kind: 'retired', detail: meta.reaped === 'true' ? 'reaped' : null };
+      return {
+        kind: 'retired',
+        detail: meta.reaped === 'true' ? 'reaped' : null,
+      };
     case 'agent_exited':
       return { kind: 'exited', detail: labelled('code', meta.code) };
     default:

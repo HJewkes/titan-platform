@@ -4,8 +4,8 @@
     {
       "name": "merge-facts skips the skill-path gate",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "  if (skills.length > 0) return { outcome: \"gate\", rule: guardRule(\"skill-path\"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };\n",
-      "replace": "",
+      "find": "  if (skills.length > 0 && !honour.coversPaths(\"skill\", skills)) {",
+      "replace": "  if (false as boolean) {",
       "kills": [
         "a self-granted skills implementer's PR under an auto policy is held at the skill-path gate with nothing merged when its diff adds a repo skill",
         "releasing that skill-path gate admits a coordinator's abandon only on evidence that the PR is already merged or closed, an answer that merges nothing",
@@ -43,8 +43,8 @@
     {
       "name": "an agent shell refused presence resolves as the owner",
       "file": "products/factory/src/gate-resolve.ts",
-      "find": "  return { resolver: typeof owner === \"string\" ? coordinator : owner };",
-      "replace": "  return { resolver: typeof owner === \"string\" ? ownerTerminal() : owner };",
+      "find": "if (\"refusal\" in minted) return { resolver: coordinator, presenceRefusal: minted.refusal };",
+      "replace": "if (\"refusal\" in minted) return { resolver: ownerTerminal() };",
       "kills": [
         "releasing that skill-path gate refuses an agent shell's gate resolve merge without the owner's presence, and the run stays held"
       ]

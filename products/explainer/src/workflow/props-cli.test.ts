@@ -1,14 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { editHarness } from "./edit-cli.test-helpers.js";
 import { runVideo } from "./host.js";
 import { runPropsCli } from "./props-cli.js";
-import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, fakeRender, fakeHost, fakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run or render.
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
-const { baseRun, editFile, cli } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx, (next) => (fx = next));
 
 async function props(mp4Sha: string): Promise<{ code: number; result: Record<string, unknown> }> {
   const lines: string[] = [];
@@ -18,7 +19,6 @@ async function props(mp4Sha: string): Promise<{ code: number; result: Record<str
 
 describe("explainer props --mp4-sha", () => {
   it("reads the run whose export linked that mp4, not a newer run that rendered it without exporting", async () => {
-    fx = fixture();
     const base = await baseRun();
     const newer = await runVideo({ from: "resolve", base: base.result.runId, to: "render" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
@@ -31,7 +31,6 @@ describe("explainer props --mp4-sha", () => {
   });
 
   it("of two runs that exported the same mp4, reads the newer", async () => {
-    fx = fixture();
     const base = await baseRun();
     const rerun = await runVideo({ from: "resolve", base: base.result.runId }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
@@ -42,7 +41,6 @@ describe("explainer props --mp4-sha", () => {
   });
 
   it("reports the script artifact sha, and an edit drafted on it passes edit check", async () => {
-    fx = fixture();
     const base = await baseRun();
 
     const { result } = await props(base.mp4Sha);
@@ -54,7 +52,6 @@ describe("explainer props --mp4-sha", () => {
   });
 
   it("answers found: false for an mp4 no explainer run exported", async () => {
-    fx = fixture();
     await baseRun();
 
     const { code, result } = await props("f".repeat(64));

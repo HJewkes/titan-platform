@@ -31,7 +31,7 @@ export async function checkWorkspaceIndex(
   graph: WorkspaceGraph,
   activeRoot: string,
 ): Promise<WorkspaceIndexHealth> {
-  const indexed = graph.db.prepare(INDEXED_REFS).all() as { ref: string; path: string }[];
+  const indexed = graph.db.prepare<[], { ref: string; path: string }>(INDEXED_REFS).all();
   const results = await Promise.all(
     indexed.map(async (row) => ((await opens(toAbsolute(activeRoot, row.path))) ? null : row)),
   );

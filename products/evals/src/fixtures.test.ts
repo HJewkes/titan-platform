@@ -2,19 +2,17 @@ import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { caseHash, judgesHash, pinSuitePrompts, suiteHash, unitHash, variantHash } from "./hash.js";
-import { parseSpec } from "./spec/index.js";
-import type { EvalCase, Scorecard, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
-import { FIXTURE_ROOT, readFixture } from "./test-fixtures.js";
+import { FIXTURE_ROOT, readCase, readFixture, readScorecard, readSuite, readUnit, readVariant } from "./test-fixtures.js";
 import { validateSpec } from "./validate.js";
 
 const readFromFixtures = (path: string) => readFile(`${FIXTURE_ROOT}${path}`);
 
 describe("the summarize-note fixture set", () => {
-  const unit = parseSpec(readFixture("unit.json")) as UnitSpec;
-  const variant = parseSpec(readFixture("variants/single-pass.json")) as VariantSpec;
-  const suite = parseSpec(readFixture("suite.json")) as SuiteSpec;
-  const scorecard = parseSpec(readFixture("scorecard.json")) as Scorecard;
-  const cases = readdirSync(`${FIXTURE_ROOT}cases`).map((file) => parseSpec(readFixture(`cases/${file}`)) as EvalCase);
+  const unit = readUnit();
+  const variant = readVariant();
+  const suite = readSuite();
+  const scorecard = readScorecard();
+  const cases = readdirSync(`${FIXTURE_ROOT}cases`).map((file) => readCase(`cases/${file}`));
 
   it("lists exactly the hashes of the shipped cases, sorted", () => {
     expect(suite.cases).toEqual(cases.map(caseHash).sort());
@@ -50,11 +48,11 @@ describe("validateSpec", () => {
     const result = await validateSpec(readFixture("variants/single-pass.json"), async () => "an edited prompt");
 
     expect(result.stalePrompts).toBe(true);
-    expect(result.hash).not.toBe(variantHash(parseSpec(readFixture("variants/single-pass.json")) as VariantSpec));
+    expect(result.hash).not.toBe(variantHash(readVariant()));
   });
 
   it("hashes a scorecard by its key, ignoring the environment fingerprint", async () => {
-    const scorecard = readFixture<Scorecard>("scorecard.json");
+    const scorecard = readScorecard();
     const otherHost = { ...scorecard, keys: { ...scorecard.keys, env: { ...scorecard.keys.env, os: "darwin-arm64" } } };
 
     const [here, there] = await Promise.all([validateSpec(scorecard, readFromFixtures), validateSpec(otherHost, readFromFixtures)]);
@@ -64,7 +62,7 @@ describe("validateSpec", () => {
 });
 
 describe("judge prompt pinning", () => {
-  const suite = parseSpec(readFixture("suite.json")) as SuiteSpec;
+  const suite = readSuite();
 
   it("moves the suite and judge hashes when the judge prompt file changes", async () => {
     const before = await pinSuitePrompts(suite, async () => "Grade the summary.");

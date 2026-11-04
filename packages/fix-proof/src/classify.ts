@@ -113,7 +113,7 @@ export function classifyReports(input: ClassifyInput): Classification {
   if (input.selected.length === 0) return { verdict: "no-tests", tests: [], files: [] };
   const selected = input.selected.map(normalizeRelative);
   if (selected.some((path) => path === null)) return errorResult("unsafe selected path");
-  const paths = [...new Set(selected as string[])].sort();
+  const paths = [...new Set(selected.filter((path): path is string => path !== null))].sort();
   const pathSet = new Set(paths);
   const base = readVitestReport(input.base.report, input.base.root, pathSet);
   if (!base.ok) return errorResult(`base: ${base.error}`);

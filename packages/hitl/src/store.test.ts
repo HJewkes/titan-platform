@@ -1,5 +1,6 @@
 import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass } from "@titan-design/authority";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -44,7 +45,7 @@ const T0 = Date.UTC(2026, 8, 8, 10, 0, 0);
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
 const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix" };
 /** Stands in for a caller that bypasses the type, such as plain JavaScript. */
-const ANONYMOUS = undefined as unknown as GateResolver;
+const resolveAnonymously = (store: GateStore, id: string) => Reflect.apply(store.resolve, store, [id, "ok", undefined]);
 const TERMINAL_ONLY: GateRule = { table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] };
 const BRIEF = { summary: "Ship 1.4.0? CI green. Recommend ship.", evidenceRef: "https://example.test/runs/1" };
 const SHIP_QUESTIONS: GateQuestion[] = [
@@ -155,6 +156,22 @@ describe.each([
     expect(store.get("g1")?.status).toBe("pending");
   });
 
+  it.each(["false", "0", "null", '""'])("refuses every payload for a stored schema of %s rather than reading it as no schema", (stored) => {
+    store.create({ id: "g1", prompt: "ship it?", schema: JSON.parse(stored) });
+    expect(() => store.resolve("g1", { approved: true }, OWNER)).toThrow(GatePayloadInvalid);
+    expect(store.get("g1")?.status).toBe("pending");
+  });
+
+  it("refuses every payload for a stored schema it cannot read", () => {
+    store.create({ id: "g1", prompt: "ship it?", schema: { ...APPROVAL_SCHEMA, requires: ["approved"] } });
+    expect(() => store.resolve("g1", { approved: true }, OWNER)).toThrow(/schema is unreadable/);
+  });
+
+  it("still takes any payload on a gate with no schema", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(store.resolve("g1", { anything: true }, OWNER).status).toBe("resolved");
+  });
+
   it("accepts a payload that matches the stored schema", () => {
     store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
     expect(store.resolve("g1", { approved: false, note: "not yet" }, OWNER).status).toBe("resolved");
@@ -214,14 +231,16 @@ describe.each([
   it("keeps a caller's mutation of a resolved payload out of the stored gate", () => {
     store.create({ id: "g1", prompt: "ship it?" });
     const resolved = store.resolve("g1", { approved: true, tags: ["a"] }, OWNER);
-    (resolved.payload as { tags: string[] }).tags.push("tampered");
+    if (!hasList(resolved.payload, "tags")) throw new Error("the resolved payload lost its tags");
+    resolved.payload.tags.push("tampered");
     expect(store.get("g1")?.payload).toEqual({ approved: true, tags: ["a"] });
   });
 
   it("keeps a caller's mutation of a read schema out of the stored gate", () => {
     store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
     const read = store.get("g1");
-    (read?.schema as { required: string[] }).required.push("tampered");
+    if (!hasList(read?.schema, "required")) throw new Error("the read schema lost its required list");
+    read.schema.required.push("tampered");
     expect(store.get("g1")?.schema).toEqual(APPROVAL_SCHEMA);
   });
 
@@ -267,9 +286,9 @@ describe.each([
     const error = catchError(() => store.resolve("g1", "ok", worker));
     expect(error).toBeInstanceOf(GateResolverRefused);
     expect(error).toMatchObject({ gateId: "g1", actorClass: "worker" });
-    expect((error as Error).message).toContain("g1");
-    expect((error as Error).message).toContain("worker");
-    expect((error as Error).message).not.toMatch(/secret/);
+    expect(messageOf(error)).toContain("g1");
+    expect(messageOf(error)).toContain("worker");
+    expect(messageOf(error)).not.toMatch(/secret/);
   });
 
   it("still refuses an agent class that authorize allows", () => {
@@ -282,7 +301,7 @@ describe.each([
 
   it("lets authorize refuse an owner resolver and carries its reason", () => {
     const refuseRemote: GateAuthorize = (_gate, resolver) =>
-      resolver?.class === "owner-remote" ? { allowed: false, reason: "remote resolution is off" } : { allowed: true };
+      resolver.class === "owner-remote" ? { allowed: false, reason: "remote resolution is off" } : { allowed: true };
     const narrowed = scoped(makeHarness(refuseRemote)).store;
     narrowed.create({ id: "g1", prompt: "ship it?" });
     const error = catchError(() => narrowed.resolve("g1", "ok", { class: "owner-remote", id: "o", channel: "matrix" }));
@@ -327,8 +346,8 @@ describe.each([
 
   it("refuses a resolver whose class is not a string", () => {
     store.create({ id: "g1", prompt: "ship it?" });
-    const numeric = { ...OWNER, class: 42 } as unknown as GateResolver;
-    const noChannel = { class: "owner-terminal", id: "o" } as unknown as GateResolver;
+    const numeric = Object.assign(partialFake<GateResolver>(), OWNER, { class: 42 });
+    const noChannel = partialFake<GateResolver>({ class: "owner-terminal", id: "o" });
     expect(catchError(() => store.resolve("g1", "ok", numeric))).toMatchObject({
       name: "GateResolverRefused",
       actorClass: undefined,
@@ -339,15 +358,15 @@ describe.each([
 
   it("never echoes a class outside the actor vocabulary", () => {
     store.create({ id: "g1", prompt: "ship it?" });
-    const invented = { ...OWNER, class: "superuser-invented" } as unknown as GateResolver;
+    const invented = Object.assign(partialFake<GateResolver>(), OWNER, { class: "superuser-invented" });
     const error = catchError(() => store.resolve("g1", "ok", invented));
     expect(error).toMatchObject({ name: "GateResolverRefused", actorClass: undefined });
-    expect((error as Error).message).not.toContain("superuser-invented");
+    expect(messageOf(error)).not.toContain("superuser-invented");
   });
 
   it("refuses a resolve that names no resolver and leaves the gate pending", () => {
     store.create({ id: "g1", prompt: "ship it?" });
-    expect(() => store.resolve("g1", "ok", ANONYMOUS)).toThrow(
+    expect(() => resolveAnonymously(store, "g1")).toThrow(
       expect.objectContaining({ name: "GateResolverRefused", gateId: "g1", actorClass: undefined, reason: "a resolver is required" }),
     );
     expect(store.get("g1")).toMatchObject({ status: "pending", payload: undefined, resolvedBy: undefined });
@@ -361,7 +380,7 @@ describe.each([
     };
     const guarded = scoped(makeHarness(permissive)).store;
     guarded.create({ id: "g1", prompt: "ship it?" });
-    expect(() => guarded.resolve("g1", "ok", ANONYMOUS)).toThrow(GateResolverRefused);
+    expect(() => resolveAnonymously(guarded, "g1")).toThrow(GateResolverRefused);
     expect(guarded.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
     expect(calls).toBe(0);
   });
@@ -370,7 +389,7 @@ describe.each([
     ["a promise", () => Promise.reject(new Error("async policy"))],
     ["undefined", () => undefined],
   ])("refuses an authorize that returns %s and leaves the gate open", (_label, callback) => {
-    const odd = scoped(makeHarness(callback as unknown as GateAuthorize)).store;
+    const odd = scoped(makeHarness((...args) => Reflect.apply(callback, undefined, args))).store;
     odd.create({ id: "g1", prompt: "ship it?" });
     const before = odd.get("g1");
     expect(() => odd.resolve("g1", "ok", OWNER)).toThrow(GateAuthorizeInvalid);
@@ -411,7 +430,7 @@ describe.each([
 
   it("refuses an anonymous resolve of a rule-bound gate", () => {
     store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
-    expect(() => store.resolve("g1", "ok", ANONYMOUS)).toThrow(GateResolverRefused);
+    expect(() => resolveAnonymously(store, "g1")).toThrow(GateResolverRefused);
     expect(store.get("g1")?.status).toBe("pending");
   });
 
@@ -429,7 +448,7 @@ describe.each([
     ["an agent class", { ...TERMINAL_ONLY, resolvers: ["coordinator"] }],
     ["a missing ruleId", { table: "F5", version: "1.0.0", resolvers: ["owner-terminal"] }],
   ])("refuses a rule with %s and creates nothing", (_label, rule) => {
-    expect(() => store.create({ id: "g1", prompt: "release?", rule: rule as GateRule })).toThrow(GateRuleInvalid);
+    expect(() => store.create({ id: "g1", prompt: "release?", rule: Object.assign(partialFake<GateRule>(), rule) })).toThrow(GateRuleInvalid);
     expect(store.get("g1")).toBeUndefined();
   });
 
@@ -467,9 +486,11 @@ describe.each([
     const created = store.create({ id: "g1", prompt: "ship it?", questions: input });
     const read = store.get("g1");
 
-    input.push(input[0] as GateQuestion);
+    const first = input[0];
+    if (first) input.push(first);
     for (const mutated of [created.questions, read?.questions]) {
-      (mutated?.[0]?.options[0] as { label: string }).label = "changed";
+      const option = mutated?.[0]?.options[0];
+      if (option) option.label = "changed";
       mutated?.pop();
     }
 
@@ -543,6 +564,14 @@ function shiftingClass(first: ActorClass, later: ActorClass): GateResolver {
     id: "shifty",
     channel: "test-cli",
   };
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : "";
+}
+
+function hasList<K extends string>(value: unknown, key: K): value is Record<K, string[]> {
+  return typeof value === "object" && value !== null && key in value && Array.isArray(Reflect.get(value, key));
 }
 
 function catchError(action: () => unknown): unknown {

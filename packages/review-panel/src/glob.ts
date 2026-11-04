@@ -5,7 +5,7 @@ const cache = new Map<string, RegExp>();
 function toSource(glob: string): string {
   let out = "";
   for (let i = 0; i < glob.length; i++) {
-    const c = glob[i] as string;
+    const c = glob.charAt(i);
     if (c === "*" && glob[i + 1] === "*") {
       const slash = glob[i + 2] === "/";
       out += slash ? "(?:.*/)?" : ".*";

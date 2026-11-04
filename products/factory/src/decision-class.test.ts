@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decisionClassOf, policyRowOf } from "./decision-class.js";
-import { SHEPHERD_POLICY_TABLE, shepherdGatePolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { SHEPHERD_POLICY_TABLE, shepherdGatePolicy } from "./shepherd/policy.js";
+import type { EffectivePolicy } from "./shepherd/policy-schema.js";
 
 const HEAD = "a".repeat(40);
 

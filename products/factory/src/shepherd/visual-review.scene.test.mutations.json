@@ -13,10 +13,12 @@
     {
       "name": "the land decision passes no baselines to decideAutoMerge",
       "file": "products/factory/src/shepherd/policy.ts",
-      "find": "effective.visualPaths, effective.visualBaselines);",
-      "replace": "effective.visualPaths);",
+      "find": "effective.visualPaths, effective.visualBaselines, effective.approved);",
+      "replace": "effective.visualPaths, undefined, effective.approved);",
       "kills": [
-        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green"
+        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green",
+        "a glob-matched PR on a seat with visual baselines records the clearance in the evidence comment, so it matches the merge",
+        "a seat with visual baselines under visualThreshold on merges a snapshot change below the threshold with no approve-merge gate, and the comment shows the max share"
       ]
     },
     {

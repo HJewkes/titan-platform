@@ -1,0 +1,27 @@
+{
+  "packages/tool-guard/src/hook.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/paths-glob.test.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 3
+    }
+  },
+  "packages/tool-guard/src/shell/ifs-values.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/lexer.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/unwrap.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

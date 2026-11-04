@@ -195,7 +195,7 @@ function whenWatching(tree: Tree, dir: string, timeoutMs = DEFAULT_ATTACH_TIMEOU
       resolve(covered(tree, dir));
     };
     const timer = setTimeout(done, timeoutMs);
-    timer.unref?.();
+    timer.unref();
     addWaiter(tree, dir, done);
   });
 }

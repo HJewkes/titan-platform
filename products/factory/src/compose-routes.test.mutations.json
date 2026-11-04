@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a throwing listener is not caught",
+      "file": "products/factory/src/compose-routes.ts",
+      "find": "    } catch (error) {",
+      "replace": "    } catch (error) {\n      throw error;",
+      "kills": [
+        "composeRoutes delivers an event to the second listener when the first throws, and logs the failure",
+        "composeRoutes binds the second bundle when the first bind throws"
+      ]
+    },
+    {
+      "name": "only the first bundle binds",
+      "file": "products/factory/src/compose-routes.ts",
+      "find": "[bindFirst, bindSecond].map(",
+      "replace": "[bindFirst, undefined].map(",
+      "kills": [
+        "composeRoutes binds both bundles in order and unbinds both"
+      ]
+    }
+  ]
+}

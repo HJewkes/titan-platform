@@ -4,7 +4,8 @@
  * console draws the PNG captured for each candidate, keyed as `scaleCandidateKey` names it.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Button, ButtonText, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import { frameSizeMismatch } from "../../server/review-schema-0.3/media.js";
 import type { Manifest } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";

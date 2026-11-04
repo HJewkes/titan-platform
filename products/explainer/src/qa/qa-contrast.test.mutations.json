@@ -23,7 +23,7 @@
     },
     {
       "name": "qa writes no contrast report",
-      "file": "products/explainer/src/qa/qa-stage.ts",
+      "file": "products/explainer/src/qa/qa-core.ts",
       "find": "    contrast: contrastReport(",
       "replace": "    contrastUnused: contrastReport(",
       "kills": [

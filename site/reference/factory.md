@@ -55,7 +55,7 @@ To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. O
 commands install it:
 
 ```sh
-pnpm factory:install                  # install, build, link titan-factory into ~/.local/bin
+pnpm factory:install                  # install, build, link titan-factory and titan-miner into ~/.local/bin
 titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
 
@@ -115,6 +115,36 @@ holds of that class are listed as untyped.
 The top-level `github` block in the config file (`sources`, `ingress`, `pollingIntervalMs`, `backstopIntervalMs`) chooses
 polling or webhook intake. Polling is the default and a permanent, supported configuration. The keys, bounds, effective-mode
 table and what `health.sources` reports are in [GitHub event sources](/guides/factory#github-event-sources).
+
+## Marker shadow (SHD-2)
+
+The marker shadow writes beside the run record and compares itself with it; it never decides anything. The top-level
+`markers` block turns it on. It is off when the block is absent:
+
+```json
+{ "markers": { "shadow": { "enabled": true, "entryBudget": { "evaluations": 200, "shadowMs": 2000 } } } }
+```
+
+- **`shadow.enabled`** defaults to `false`. When it is on, serve computes a marker verdict beside each fact step and
+  writes markers next to `step_results`. It logs each verdict, compare row and shadow error to `factory_shadow_log`. A
+  run's own results never change, and a shadow failure is logged rather than raised.
+- **`shadow.entryBudget`** overrides the per-entry caps the shadow stops at. Both fields are positive integers.
+  When it is absent, the shadow uses its own defaults.
+- Diff pins are read from a bare mirror for each repo, at `<state dir>/marker-git/<owner>__<name>.git`. The mirror is
+  cloned on first use from the `origin` of the repo's seat clone, or of its `shepherd.repos` path. The seat clone
+  itself is never fetched into.
+
+The block is strict, so an unknown key fails the config load. Serve reads it once at start.
+
+Each compared step leaves one row in the append-only `factory_shadow_log` table, in one of the pin families `tree`, `diff` or `observed`.
+
+- **Classes.** Fact rows are `hit` (would fast-forward, same projection), `false-hit` (would fast-forward, different projection), `miss` (would run, ran) or `unmarked` (no verdict). Carry rows are `carry-agrees` or `pin-differs`. A `false-hit` that was materially valid but not fully valid is counted apart as `materialOnly`: an under-declared material input.
+- **Causes.** Every `pin-differs` row carries one of `rebase-context`, `conflict-merge-up`, `whitespace`, `ambiguous-base`, or else `unclassified`.
+- **Verbs.** `titan-factory markers shadow-diff [--since 48h] [--json]` prints the counts. The JSON `counts` object (per family: `classes`, `causes`, `materialOnly`) is the published input to F12 (D-M6-01) and D-M3-17. `titan-factory markers shadow-gate [--json]` exits 0 on pass and 1 when blocked. Both open the database read-only.
+- **The gate.** It passes only when, over the trailing 48 hours, no gated family has a `false-hit`, `unmarked`, `call-site-orphan`, `shadow-error` or `budget-exceeded` row, no `pin-differs` row is `unclassified`, each family with a fact entry has at least one compared row, and the shadow has been on for 48 hours. A family with no fact entry reports `vacuous` and does not block.
+- **The GC sweep.** With the shadow on, serve collects marker blobs once at start and then daily. A blob is kept while its item is open, meaning a run on it is not `completed`, `failed` or `cancelled` and the item has no `landed` marker. It is also kept for 90 days after the item lands, and while a `factory_marker_root` row names its marker. Every other blob row is deleted, along with any digest-named file under `marker-blobs` that has no row. Marker rows are never deleted. With the shadow off, no sweep starts.
+
+The gate never turns the shadow off; D-M3-26 does. Nothing reads the gate's result, and running it leaves the database untouched. SHD-1 (D-M8-01, TP-2760) follows. The comparator and the log live in `products/factory/src/markers/shadow-diff/` and are deleted by D-M8-09.
 
 ## Scorecard
 

@@ -1,4 +1,4 @@
-import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub, type ForcePush } from "@titan-design/github";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -10,8 +10,10 @@ import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel"
 import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
+import { attestationsFileOf } from "./attest-read.js";
 import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
+import { fakeLocator } from "../test-support/fakes.js";
 
 const REPO = "acme/widgets";
 const TARGET = { repo: REPO, pr: 1 };
@@ -34,10 +36,14 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
+type ClaimsAnswer = (input: Record<string, unknown>) => Promise<object>;
+const NO_CLAIMS: ClaimsAnswer = async () => ({ claimed: 0 });
+
+function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string, claims: ClaimsAnswer = NO_CLAIMS): Rig {
   const asked: Rig["asked"] = [];
-  const answer = (stepId: string, input: Record<string, unknown>): object => {
+  const answer = async (stepId: string, input: Record<string, unknown>): Promise<object> => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
+    if (stepId.startsWith("sh-carry-claims:")) return claims(input);
     if (stepId.startsWith("sh-carry:")) return probe;
     if (stepId.startsWith("sh-carry-seat:")) return seats;
     if (stepId.startsWith("sh-remerge:")) return remerge;
@@ -46,12 +52,12 @@ function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: s
     return { head: input.head, merge: {}, record: {} };
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
-    const input = JSON.parse(Object.values(options.vars)[0]!) as Record<string, unknown>;
+    const input = z.record(z.string(), z.unknown()).parse(JSON.parse(Object.values(options.vars)[0]!));
     asked.push({ stepId, input });
-    return { data: { result: answer(stepId, input) } };
+    return { data: { result: await answer(stepId, input) } };
   };
   return {
-    ctx: { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => undefined } as unknown as WorkflowContext,
+    ctx: Object.assign(partialFake<WorkflowContext>(), { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => undefined }),
     asked,
   };
 }
@@ -98,7 +104,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(ids.indexOf(`sh-publish-review:${NEW_HEAD}`)).toBeLessThan(ids.indexOf(`sh-merge-evidence:${NEW_HEAD}`));
     const publish = r.asked.find((step) => step.stepId === `sh-publish-review:${NEW_HEAD}`)!.input;
     expect(publish).toMatchObject({ outcome: "MERGE", verdictHead: REVIEWED, head: NEW_HEAD, carriedFrom: REVIEWED });
-    expect(reviewCheck({ ...publish, autoMergeArmed: false } as Parameters<typeof reviewCheck>[0])).toMatchObject({ headSha: NEW_HEAD, conclusion: "success" });
+    expect(reviewCheck(partialFake<Parameters<typeof reviewCheck>[0]>({ ...publish, autoMergeArmed: false }))).toMatchObject({ headSha: NEW_HEAD, conclusion: "success" });
   });
 
   it("records the seat check as a step over the reviewed head, every head the run saw, and the new head", async () => {
@@ -158,7 +164,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(r.asked).toEqual([]);
   });
 
-  it.each([["none", { kind: "none" } as Verdict], ["NO_REPRO", { kind: "NO_REPRO", headSha: REVIEWED, result: {} } as Verdict]])("does not carry from a %s verdict", async (_name, latest) => {
+  it.each([["none", partialFake<Verdict>({ kind: "none" })], ["NO_REPRO", partialFake<Verdict>({ kind: "NO_REPRO", headSha: REVIEWED, result: {} })]])("does not carry from a %s verdict", async (_name, latest) => {
     const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
 
     await expect(carried(r, reviews([fakeSha("old"), mergeAt(fakeSha("old"))], [REVIEWED, latest]))).resolves.toBeUndefined();
@@ -183,7 +189,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
   });
 
   it("does not carry from evidence collected at another head than the verdict's", () => {
-    expect(carriedSource(reviews([REVIEWED, { ...mergeAt(REVIEWED), headSha: fakeSha("other") } as Verdict]), NEW_HEAD)).toBeUndefined();
+    expect(carriedSource(reviews([REVIEWED, Object.assign(partialFake<Verdict>(), { ...mergeAt(REVIEWED), headSha: fakeSha("other") })]), NEW_HEAD)).toBeUndefined();
   });
 
   it("has no source when the only review is at the head itself", () => {
@@ -211,7 +217,7 @@ describe("carrying a MERGE across a merge of the base whose remerge resolved not
 
     const publish = r.asked.find((step) => step.stepId === `sh-publish-review:${NEW_HEAD}`)!.input;
     expect(publish).toMatchObject({ carriedFrom: REVIEWED, carryRule: "remerge-generated-only" });
-    expect(reviewCheck({ ...publish, autoMergeArmed: false } as Parameters<typeof reviewCheck>[0])).toMatchObject({ conclusion: "success", title: expect.stringContaining("(remerge-generated-only)") });
+    expect(reviewCheck(partialFake<Parameters<typeof reviewCheck>[0]>({ ...publish, autoMergeArmed: false }))).toMatchObject({ conclusion: "success", title: expect.stringContaining("(remerge-generated-only)") });
   });
 
   it("carries an empty remerge-diff", async () => {
@@ -265,7 +271,7 @@ describe("the seat check of a carry", () => {
     sessionId: from.sessionId,
     writtenAt: 1,
     text: `Verdict: ${value}\nPR: ${REPO}#1\nHead: ${head}\n`,
-    locator: { sourceId: "synthetic" } as unknown as ReviewerMessage["locator"],
+    locator: fakeLocator({ sourceId: "synthetic" }),
   });
 
   interface SeatRun {
@@ -278,7 +284,7 @@ describe("the seat check of a carry", () => {
 
   async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
     const reviewer = seat("tc-x-review");
-    const wiring = { reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
+    const wiring = Object.assign(partialFake<ReviewWiring>(), { reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) });
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     if (run.commits) github.prCommits.set(TARGET.pr, run.commits);
@@ -287,9 +293,9 @@ describe("the seat check of a carry", () => {
     if (run.pushesFail) github.wire.listForcePushes = async () => Promise.reject(run.pushesFail);
     const route = carrySeatRoute({ now: () => 0, port: githubPort(github.wire) }, wiring);
     const prompt = JSON.stringify({ ...TARGET, fromHead: REVIEWED, head: NEW_HEAD, heads: [REVIEWED, NEW_HEAD] });
-    const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
-    return (JSON.parse(outcome.output) as { result: { clear: boolean; reason?: string } }).result;
+    return z.object({ clear: z.boolean(), reason: z.string().optional() }).parse(JSON.parse(outcome.output).result);
   }
 
   const checked = async (messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run?: SeatRun) => (await seatOutcome(messages, run)).clear;
@@ -392,7 +398,7 @@ describe("the seat check of a carry", () => {
 });
 
 describe("the heads force-pushed away since the reviewed head", () => {
-  const [H0, H1, H2, H3] = ["h0", "h1", "h2", "h3"].map((tag) => fakeSha(tag)) as [string, string, string, string];
+  const [H0, H1, H2, H3] = [fakeSha("h0"), fakeSha("h1"), fakeSha("h2"), fakeSha("h3")];
 
   it("counts the push that removed the reviewed head and every later one", () => {
     expect(pushedAwaySince([{ before: H0, after: H1 }, { before: H1, after: H2 }, { before: H2, after: H3 }], H1)).toEqual([H1, H2]);
@@ -468,7 +474,7 @@ describe("carrying a MERGE across a clean merge-up of the base", () => {
   it("follows a chain of merge-ups: H3's first parent is H2, itself a merge-up of the reviewed head", async () => {
     const second = fakeSha("second");
     const r = rig(SCOPE, { ...EQUAL, firstParent: second });
-    const carriedToSecond = { ...mergeAt(second, REVIEWED), mergeUpFrom: REVIEWED } as Verdict;
+    const carriedToSecond = Object.assign(partialFake<Verdict>(), { ...mergeAt(second, REVIEWED), mergeUpFrom: REVIEWED });
 
     const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [second, carriedToSecond]));
 
@@ -540,6 +546,61 @@ describe("carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725
     const r = rig(UNHELD, { ...SAME_DIFF, mergeTree: "tree-b" });
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+  });
+});
+
+describe("carrying a MERGE across a clean merge-up to a head that claims attestation rows (TP-4740)", () => {
+  const MERGE_UP: CarryResult = { ...EQUAL, firstParent: REVIEWED };
+  const SCOPE = { kind: "correctness", baseRef: "main" };
+  const CI_WAIT_ROW = { step: "ci-wait", closure: fakeSha("ci-wait-closure"), pr: 1 };
+
+  function attestWorld(atHead: unknown): FakeGitHub {
+    const github = fakeGitHub();
+    github.addPr({ headSha: NEW_HEAD });
+    github.files.set(`main:${attestationsFileOf(2)}`, { content: "[]", blobSha: "attest-base" });
+    github.files.set(`${NEW_HEAD}:${attestationsFileOf(1)}`, { content: typeof atHead === "string" ? atHead : JSON.stringify(atHead), blobSha: "attest-head" });
+    return github;
+  }
+
+  /** Answers the claims step from the real route, reading the world's attestation files at the base and the head. */
+  function claimsFrom(github: FakeGitHub): ClaimsAnswer {
+    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    return async (input) => {
+      const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
+      if (!outcome.ok) throw new Error(outcome.error);
+      return z.object({ result: z.record(z.string(), z.unknown()) }).parse(JSON.parse(outcome.output)).result;
+    };
+  }
+
+  const claimsRig = (atHead: unknown) => rig(SCOPE, MERGE_UP, { clear: true }, NOT_REMERGED, undefined, claimsFrom(attestWorld(atHead)));
+  it("a claimed ci-wait row refuses the carry, so the run asks a fresh review at the new head and takes no carried evidence", async () => {
+    const r = claimsRig([CI_WAIT_ROW]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toBeUndefined();
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.some((id) => id.startsWith("sh-merge-evidence"))).toBe(false);
+    expect(ids.some((id) => id.startsWith("sh-publish-review"))).toBe(false);
+    expect(ids).not.toContain(`sh-carry:${NEW_HEAD}`);
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-carry-claims:"))!.input).toEqual({ ...TARGET, baseRef: "main", head: NEW_HEAD });
+  });
+
+  it("a head whose attestation rows match the base carries the MERGE as before", async () => {
+    const r = claimsRig([]);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD, mergeUpFrom: REVIEWED });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: MERGE_UP, rule: "tree-equal" });
+  });
+
+  it("an unreadable attestation file at the head does not carry", async () => {
+    const r = claimsRig("{not json");
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-evidence"))).toBe(false);
   });
 });
 

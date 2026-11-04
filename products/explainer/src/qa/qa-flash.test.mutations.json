@@ -13,8 +13,8 @@
     },
     {
       "name": "qa.json drops the flash scan",
-      "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "    flash: await engine.flashScan(mp4),\n",
+      "file": "products/explainer/src/qa/qa-core.ts",
+      "find": "    flash: await engine.flashScan(sources.mp4),\n",
       "replace": "",
       "kills": [
         "qa stage photosensitive flash records the flash scan in qa.json",

@@ -144,6 +144,7 @@ describe('search', () => {
   it('survives a retriever that throws, naming it instead of failing', async () => {
     // Drop the table one retriever reads, so its query throws for real.
     graph.db.exec('DROP TABLE search_span');
+    graph.db.exec('DROP TABLE workspace_span');
 
     const result = await search('lesson');
 

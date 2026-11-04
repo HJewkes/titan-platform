@@ -21,20 +21,22 @@ import { z } from "zod";
 import type { BeatSlotRef } from "../beat-slots.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { TypeProfile } from "../profile-schema.js";
+import { SETTLED_SPEECH_MAX_S, settledSpeechExcuses, type SettledSpeech } from "../settled-speech.js";
 import type { ScriptTiming } from "../timing.js";
-import { timelineS, type QaTimeline } from "./qa-timeline.js";
+import { timelineS, type QaBeat, type QaTimeline } from "./qa-timeline.js";
 import { earlyReveal, holdThroughReference, textSpans, type TextSpan } from "./reference-timing.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
-const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
+export const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
 /** TD-856: no text on screen under 40 px. */
 export const TEXT_FLOOR_PX = 40;
 const FIRST_MOTION_S = 0.2;
 const HEADLINE_WORDS = 10;
 const LABEL_WORDS = 3;
-const SHARED_RUN_WORDS = 5;
+/** G10's limit: a display text sharing this many narration words in a row repeats the sentence. */
+export const SHARED_RUN_WORDS = 5;
 /** Assertion-evidence slides averaged about 21 words against 41 for topic-bullet ones: the near-20 line, not a tested threshold. */
-const FRAME_WORDS = 20;
+export const FRAME_WORDS = 20;
 /**
  * Code is the beat's evidence, not prose to read against the narration. The probe's tag is a text node's own parent
  * (a highlight `span` inside `div.ex-code-line`, never `pre` or `code`), so code is told apart by the beat's slot kind.
@@ -121,8 +123,29 @@ function excusedFrames(input: TimingInput): boolean[] {
     for (let i = Math.max(0, Math.round(fromS * input.fps)); i < Math.min(excused.length, Math.round(toS * input.fps)); i++) excused[i] = true;
   };
   for (const beat of input.timeline.beats) if (input.held.has(beat.id)) mark(beat.startS, beat.startS + beat.durationS);
-  for (const span of unspokenSpans(input)) mark(span.fromS, span.fromS + readingS(input, span.text));
+  for (const span of unspokenSpans(input)) {
+    const fromS = revealS(input, span);
+    mark(fromS, fromS + readingS(input, span.text));
+  }
   return excused;
+}
+
+/**
+ * When a text really appeared, somewhere after the last sample without it: the earliest cue of its beat in that gap,
+ * else the first frame there that moves after a still one, else the first sample showing it. Starting the reading
+ * hold at that sample would excuse up to a sample gap of still picture past the hold (TP-4557).
+ */
+function revealS(input: TimingInput, span: TextSpan): number {
+  const beat = input.timeline.beats.find((b) => b.id === span.beat);
+  const before = input.probed.filter((m) => m.t < span.fromS - EPS).at(-1)?.t ?? -Infinity;
+  const fromS = Math.max(before, beat?.startS ?? span.fromS);
+  const cues = (beat ? beat.cues.map((cue) => beat.startS + cue.atS) : []).filter((t) => t >= fromS - EPS && t <= span.fromS + EPS);
+  if (cues.length > 0) return Math.min(...cues);
+  const { diffs, fps } = input;
+  for (let i = Math.max(1, Math.round(fromS * fps)); i <= Math.min(diffs.length - 1, Math.round(span.fromS * fps)); i++) {
+    if (diffs[i]! > STATIC_LEVEL && diffs[i - 1]! <= STATIC_LEVEL) return i / fps;
+  }
+  return span.fromS;
 }
 
 /** Runs of frames whose change from the frame before stays at or under the static level, outside the excused frames. */
@@ -141,18 +164,42 @@ function staticRuns(input: TimingInput): { from: number; frames: number }[] {
   return runs;
 }
 
-/** Every static run, in seconds, and those longer than the profile allows. */
-function staticOver(input: TimingInput) {
-  const runs = staticRuns(input).map((run) => ({ ...run, s: run.frames / input.fps }));
-  return { runs, over: runs.filter((run) => run.s > input.profile.pacing.staticMaxS) };
+/**
+ * A beat's settled picture, from its last reveal (its cut, when it reveals nothing) to its end, and its speech, from its
+ * first word's start to its last's. qa cannot see what a custom layer draws, so its last cue stands for its last reveal
+ * (owner decision vc-6, TP-4611); an unvoiced beat has no speech.
+ */
+function settledSpeech(input: TimingInput, beat: QaBeat): SettledSpeech | undefined {
+  const starts = (input.words.get(beat.id)?.words ?? []).map((word) => beat.startS + word.startS);
+  if (starts.length === 0) return undefined;
+  const reveals = beat.layer === "custom" ? beat.cues.map((cue) => cue.atS) : (beat.reveals ?? []);
+  const settled = { fromS: beat.startS + Math.max(0, ...reveals), toS: beat.startS + beat.durationS };
+  return { settled, speech: { fromS: Math.min(...starts), toS: Math.max(...starts) } };
 }
 
-/** The longest still picture that is neither a reading hold nor a declared held beat. */
+/** Every static run, in seconds, that no settled frame under speech excuses, and those longer than the profile allows. */
+function staticOver(input: TimingInput) {
+  const { staticMaxS } = input.profile.pacing;
+  const excused = (run: { from: number; s: number }) => {
+    const fromS = run.from / input.fps;
+    const beat = input.timeline.beats.find((b) => b.id === beatAt(input.timeline, fromS));
+    return run.s > staticMaxS && settledSpeechExcuses({ fromS, toS: fromS + run.s }, beat && settledSpeech(input, beat), staticMaxS);
+  };
+  const runs = staticRuns(input).map((run) => ({ ...run, s: run.frames / input.fps })).filter((run) => !excused(run));
+  return { runs, over: runs.filter((run) => run.s > staticMaxS) };
+}
+
+/** The still stretches static-window fails, in seconds from the video start. */
+export const staticStretches = (input: TimingInput): { fromS: number; s: number }[] =>
+  staticOver(input).over.map((run) => ({ fromS: run.from / input.fps, s: run.s }));
+
+/** The longest still picture that is not a reading hold, a declared held beat or a settled frame under speech. */
 export function staticWindow(input: TimingInput): TimingGate {
   const { staticMaxS } = input.profile.pacing;
   const { runs, over } = staticOver(input);
   const beats = uniq(over.flatMap((run) => beatAt(input.timeline, run.from / input.fps) ?? []));
-  return { id: "static-window", value: r(Math.max(0, ...runs.map((run) => run.s))), threshold: `≤ ${staticMaxS} s`, pass: over.length === 0, beats };
+  const threshold = `≤ ${staticMaxS} s (≤ ${SETTLED_SPEECH_MAX_S} s settled under speech)`;
+  return { id: "static-window", value: r(Math.max(0, ...runs.map((run) => run.s))), threshold, pass: over.length === 0, beats };
 }
 
 const wordsByBeat = (words: ScriptTiming) => Object.fromEntries([...words].map(([id, beat]) => [id, beat.words ?? []]));
@@ -191,10 +238,14 @@ function unspokenSpans(input: TimingInput): TextSpan[] {
 
 const readingS = (input: TimingInput, text: string) => Math.max(input.profile.pacing.readingMinS, text.trim().length / input.profile.pacing.readingCps);
 
+/** The unspoken texts that leave before their reading hold is up. */
+export const shortReads = (input: TimingInput): TextSpan[] =>
+  unspokenSpans(input).filter((span) => span.untilS !== null && span.untilS - span.fromS < readingS(input, span.text) - EPS);
+
 /** An unspoken text stays at least max(readingMinS, chars / readingCps); one still shown at the last sample never left. */
 export function readingHold(input: TimingInput): TimingGate {
   const { readingMinS, readingCps } = input.profile.pacing;
-  const short = unspokenSpans(input).filter((span) => span.untilS !== null && span.untilS - span.fromS < readingS(input, span.text) - EPS);
+  const short = shortReads(input);
   return { id: "reading-hold", value: short.length, threshold: `max(${readingMinS} s, chars / ${readingCps})`, pass: short.length === 0, beats: uniq(short.map((s) => s.beat)) };
 }
 
@@ -227,18 +278,22 @@ export function g8TextSize({ probed }: Pick<TimingInput, "probed">): TimingGate 
   return { id: "G8", value, threshold: `≥ ${TEXT_FLOOR_PX} px`, pass: small.length === 0, beats: uniq(small.map((t) => t.beat)) };
 }
 
-/** G9: a headline holds at most 10 words and a label at most 3. */
-function g9Labels({ probed }: TimingInput): TimingGate {
-  const long = probedTexts(probed).filter((t) => {
+/** The probed headlines and labels past G9's word caps. */
+export const longLabels = ({ probed }: Pick<TimingInput, "probed">) =>
+  probedTexts(probed).filter((t) => {
     const n = tokens(t.text).length;
     return ((t.tag === "h1" || t.tag === "h2") && n > HEADLINE_WORDS) || (/label/.test(t.cls) && n > LABEL_WORDS);
   });
+
+/** G9: a headline holds at most 10 words and a label at most 3. */
+function g9Labels(input: TimingInput): TimingGate {
+  const long = longLabels(input);
   const threshold = `headline ≤ ${HEADLINE_WORDS} words; label ≤ ${LABEL_WORDS}`;
   return { id: "G9", value: uniq(long.map((t) => t.text)).length, threshold, pass: long.length === 0, beats: uniq(long.map((t) => t.beat)) };
 }
 
 /** Longest run of consecutive words a display text shares with its beat's narration. */
-function sharedRun(display: string, spoken: string): number {
+export function sharedRun(display: string, spoken: string): number {
   const a = tokens(display);
   const b = tokens(spoken);
   let best = 0;
@@ -260,13 +315,18 @@ function g10Shared(input: TimingInput): TimingGate {
   return { id: "G10", value: hits.length, threshold: `no run ≥ ${SHARED_RUN_WORDS} words`, pass: hits.length === 0, beats: uniq(hits.map((t) => t.beat)) };
 }
 
+/** Series chrome that repeats on every beat (the profile's `series.mayRepeat`): a listener reads it once, not per beat. */
+const FRAME_CHROME: ReadonlySet<string> = new Set(["xp-chapter", "xp-chapter-count", "xp-chip-kind", "ex-list-tick", "ex-list-ref", "ex-map-step"]);
+const isChrome = (cls: string): boolean => cls.split(/\s+/).some((name) => FRAME_CHROME.has(name));
+
+/** The words on screen together in one probed frame, as words-per-frame counts them: series chrome is read once, not per frame. */
+export const frameWords = (texts: readonly Pick<ProbedText, "text" | "cls">[]): number =>
+  texts.filter((t) => !isChrome(t.cls)).reduce((sum, t) => sum + tokens(t.text).length, 0);
+
 /** words-per-frame: the words on screen together at each sampled moment of a prose beat stay at or under 20. */
 function wordsPerFrame({ probed, timeline }: TimingInput): TimingGate {
   const code = new Set(timeline.beats.filter((beat) => beat.kind !== undefined && CODE_KINDS.has(beat.kind)).map((beat) => beat.id));
-  const counts = probed.filter((moment) => !code.has(moment.beat)).map((moment) => ({
-    beat: moment.beat,
-    n: moment.texts.reduce((sum, t) => sum + tokens(t.text).length, 0),
-  }));
+  const counts = probed.filter((moment) => !code.has(moment.beat)).map((moment) => ({ beat: moment.beat, n: frameWords(moment.texts) }));
   const over = counts.filter((c) => c.n > FRAME_WORDS);
   const value = counts.length === 0 ? null : Math.max(...counts.map((c) => c.n));
   return { id: "words-per-frame", value, threshold: `≤ ${FRAME_WORDS} words on screen`, pass: over.length === 0, beats: uniq(over.map((c) => c.beat)) };

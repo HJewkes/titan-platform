@@ -4,9 +4,12 @@ import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
+import { MarkersConfigSchema } from "./markers/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
+import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -34,7 +37,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
   g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds.
+   * A reviewer or a fixer successor spawn the broker refuses at an account's limit is retried on each later one in turn. */
   fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -48,6 +52,8 @@ export const ReviewConfigSchema = z.strictObject({
   maxConcurrent: z.number().int().positive().optional(),
   /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
   panel: z.enum(["off", "shadow", "on"]).optional(),
+  /** `shadow` records, after each round, what review-workflow would have decided, and dispatches nothing; `on:preflight` refuses a head whose planned members could only be refused at dispatch; `on` runs as `off` until TP-3929. Absent means `off`. */
+  workflow: z.enum(["off", "shadow", "on:preflight", "on"]).optional(),
   /** The profile of the adversary member a g10-adversary hold gets under `shepherd.gateReset.twoMergeRelease`; absent means `fable-reviewer`. */
   adversaryProfile: profileName.optional(),
   /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
@@ -68,14 +74,14 @@ export const ShepherdRepoConfigSchema = z.strictObject({
   advisory: z.boolean().optional(),
   /** Opt-in: after Shepherd's own merge, restack the repo's stacked agent-chat children by a fast-forward push. Absent means off. */
   stackRestack: z.boolean().optional(),
+  /** Commit-status contexts that count as the repo's CI beside its Actions check runs, for CI that posts a status (TP-4645). */
+  statusContexts: z.array(z.string().min(1)).optional(),
 });
 
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
-export const FixerConfigSchema = z.strictObject({
-  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
-});
+export const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
 
 function isTimeZone(zone: string): boolean {
   try {
@@ -89,10 +95,7 @@ function isTimeZone(zone: string): boolean {
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
 const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
 
-export const DigestPushConfigSchema = z.strictObject({
-  url: httpUrl,
-  tokenFile: absolutePath.optional(),
-});
+export const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
 
 export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
 
@@ -106,8 +109,8 @@ export const DigestConfigSchema = z.strictObject({
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
-  logsDir: absolutePath.optional(),
-  push: DigestPushConfigSchema.optional(),
+  logsDir: absolutePath.optional(), // Unread since TP-4626 moved Seats to the roster; kept so a config that sets it still loads.
+  push: DigestPushConfigSchema.optional(), consoleOrigin: ConsoleOriginSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
@@ -115,28 +118,6 @@ export const FlakyChecksSchema = z.strictObject({
   checks: z.array(z.string().min(1)).min(1),
   /** Below the ci-wait route's own 45 minute timeout, which the wait, the rerun and the settle all run inside. */
   waitSeconds: z.number().int().min(0).max(900),
-});
-
-const MI = 1024 * 1024;
-
-/**
- * One repo's visual-diff threshold (TP-4320). Absent, or `off`, records nothing; `shadow` records the delta on the merge
- * evidence, and nothing decides on it; `on` also decides the merge on it. `maxChangedShare` defaults to 0.01 of the content box and `pixelTolerance` to 0.1.
- * The caps bound the measuring work per evidence step, so each has a ceiling config cannot raise: `maxSnapshots` pairs,
- * `maxBytes` per blob, `maxPixels` per decoded image and `maxTotalPixels` decoded over the step.
- */
-const VisualThresholdSchema = z.strictObject({
-  mode: z.enum(["off", "shadow", "on"]),
-  maxChangedShare: z.number().min(0).max(1).optional(),
-  pixelTolerance: z.number().min(0).max(1).optional(),
-  snapshotPaths: z.array(z.string().min(1)),
-  apiPaths: z.array(z.string().min(1)),
-  tokenPaths: z.array(z.string().min(1)),
-  harnessPaths: z.array(z.string().min(1)),
-  maxSnapshots: z.number().int().positive().max(200).optional(),
-  maxBytes: z.number().int().positive().max(20 * MI).optional(),
-  maxPixels: z.number().int().positive().max(32 * MI).optional(),
-  maxTotalPixels: z.number().int().positive().max(256 * MI).optional(),
 });
 
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
@@ -147,9 +128,10 @@ export const SpawnGateConfigSchema = z.strictObject({
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
   headroomIntervalMs: z.number().int().min(0).optional(),
-  burstMax: z.number().int().positive().optional(),
+  burstMax: z.never({ error: "burstMax is no longer read: load is the only spawn limiter, so remove the key" }).optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
+  minIdleCores: z.number().min(0).optional(),
 });
 
 /** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
@@ -228,6 +210,7 @@ export const FactoryConfigSchema = z.object({
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
   autoresearch: ArConfigSchema.optional(),
+  markers: MarkersConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -335,7 +318,9 @@ export interface ConfigSources {
   dbFlag?: string;
 }
 
+/** `TITAN_FACTORY_CONFIG` exists because agent sessions cannot set `XDG_CONFIG_HOME`. */
 export function configPath(env: NodeJS.ProcessEnv): string {
+  if (env.TITAN_FACTORY_CONFIG) return env.TITAN_FACTORY_CONFIG;
   return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "titan-factory", "config.json");
 }
 

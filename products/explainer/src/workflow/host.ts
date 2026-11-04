@@ -6,6 +6,8 @@ import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, wor
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
+import type { LayerTextCheck } from "../build/layer-text.js";
+import { chromiumLayerTextCheck } from "../render/layer-text-check.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
@@ -32,10 +34,11 @@ import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
 
 // Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.
-function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer; textCheck?: LayerTextCheck } {
   const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};
   const worker = beatWorkerFor(host.beatWorker);
-  return { ...(worker ? { worker } : {}), ...repairer };
+  const textCheck = host.layerTextCheck === undefined ? chromiumLayerTextCheck() : host.layerTextCheck;
+  return { ...(worker ? { worker } : {}), ...repairer, ...(textCheck ? { textCheck } : {}) };
 }
 
 export interface RunHost {
@@ -68,6 +71,8 @@ export interface RunHost {
   beatWorker?: BeatWorker | null;
   /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
   layerRepairer?: LayerRepairer;
+  /** Renders each built layer against qa's text rules before it is stored; Chromium by default, `null` for none. */
+  layerTextCheck?: LayerTextCheck | null;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -137,17 +142,20 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   const to = request.to ?? "export";
   if (STAGES.indexOf(to) < STAGES.indexOf(from)) throw new Error(`--to ${to} comes before --from ${from}`);
   if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
-  const profile = request.profile ?? request.gather?.type;
+  const runs = new WorkflowRunStore(db);
+  const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const basePlan = base ? planOf(base) : undefined;
+  const gather = request.gather ?? basePlan?.gather;
+  // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
+  const profile = request.profile ?? request.gather?.type ?? basePlan?.profile;
   const settings = {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
-    ...(request.gather ? { gather: request.gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
+    ...(gather ? { gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
   if (from === "audition" && !profile) throw new Error("a run from audition needs --profile <type>");
-  const runs = new WorkflowRunStore(db);
-  const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
   const fromEdit = request.edit ? editPins(dataDir, request.edit, base) : {};
   const artifacts = { ...fromBase.artifacts, ...fromEdit, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };

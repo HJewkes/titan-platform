@@ -43,6 +43,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:^",
     "zod": "^4.0.0"
   }
 }

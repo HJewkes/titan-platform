@@ -9,7 +9,7 @@ import type { ShepherdPhases, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
-import { awaitFixerHead } from "./wake.js";
+import { awaitFixerHead } from "./wake-phase.js";
 
 const H2 = fakeSha("head2");
 /** tp#1188 c94ab3dc: attempt 1 of this run failed hub-compose at 04:18:37 while validate ran on until 04:25:01. */

@@ -16,6 +16,8 @@ interface CompileDeps {
   slotsFor?: SlotsFor;
   /** What the page draws beside each beat's slots, by storyboard id (boardFromFill); a beat without any carries none. */
   extras?: ReadonlyMap<string, PageExtras>;
+  /** Storyboard ids of custom-layer beats: they hold no slots, since their built layer draws them. */
+  custom?: ReadonlySet<string>;
 }
 
 // BEAT_SLOTS stands in for the @titan-design/beats registry until it publishes (TD-907); the page parses the same schemas.
@@ -56,12 +58,13 @@ function plannedResolver(board: Storyboard): CueResolver {
   };
 }
 
-/** A beat's page extras with each reveal's cue resolved to beat-local seconds; nothing when the beat carries none. */
+/** A beat's page extras with each reveal's and emphasis's cue resolved to beat-local seconds; nothing when the beat carries none. */
 function pageFields(beatId: string, extras: PageExtras | undefined, resolve: CueResolver): Partial<TimelineBeat> {
   if (!extras) return {};
   const reveals = extras.reveals.map(({ target, part, atCue }) => ({ target, ...(part ? { part } : {}), atS: resolve(beatId, atCue) }));
+  const emphases = (extras.emphases ?? []).map(({ target, atCue }) => ({ target, atS: resolve(beatId, atCue) }));
   const { chips, hints, headline, chapter } = extras;
-  return { reveals, chips, hints, headline, chapter };
+  return { reveals, ...(emphases.length > 0 ? { emphases } : {}), chips, hints, headline, chapter };
 }
 
 /** Beat-local cue seconds keyed by the cue as written, ordered by time then name; none without spoken words. */
@@ -89,7 +92,7 @@ export function compileTimeline(board: Storyboard, words?: unknown, deps: Compil
     const durationS = durations[i] ?? beat.duration_s;
     const cues = beatCues(beat, resolve);
     const page = pageFields(beat.id, deps.extras?.get(beat.id), revealAt);
-    const compiled = { id: beat.id, kind: beat.type, startS, durationS, ...(cues ? { cues } : {}), slots: slotsFor(beat.type, beat.slots), ...page };
+    const compiled = { id: beat.id, kind: beat.type, startS, durationS, ...(cues ? { cues } : {}), slots: deps.custom?.has(beat.id) ? {} : slotsFor(beat.type, beat.slots), ...page };
     startS += durationS;
     return compiled;
   });

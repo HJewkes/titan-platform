@@ -8,6 +8,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { ParseError, tokenize } from "./lexer.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -136,8 +137,16 @@ const bashOnPath = spawnSync("bash", ["-c", "true"]).status === 0;
 describe.skipIf(!bashOnPath)("bash on each ( position", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2600-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-  const bashN = (command: string, ...flags: string[]) =>
-    spawnSync("bash", [...flags, "-n", "-c", command], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("tool-guard-tp-2600-rows-", (_dir, command: string, ...flags: string[]) => ({
+    run: { program: "bash", args: [...flags, "-n", "-c", command], cwd: scratch, input: "" },
+    read: (run) => run,
+  }));
+  const bashN = (command: string, ...flags: string[]) => oracle.get(command, ...flags);
+  const extglob = ["echo @(x <<E)", "echo x@(x <<E)", "@(x <<E)"].map(probe);
+  for (const command of [...REJECTED, ...LEGAL]) oracle.add(command);
+  for (const command of extglob) oracle.add(command, "-O", "extglob");
+  oracle.beforeAll();
 
   it.each(REJECTED)("bash -n rejects %j as a syntax error", (command) => {
     const run = bashN(command);
@@ -146,7 +155,7 @@ describe.skipIf(!bashOnPath)("bash on each ( position", () => {
     expect(run.stderr).toMatch(/syntax error/);
   });
 
-  it.each(["echo @(x <<E)", "echo x@(x <<E)", "@(x <<E)"].map(probe))("bash -O extglob -n reads %j as pattern text", (command) => {
+  it.each(extglob)("bash -O extglob -n reads %j as pattern text", (command) => {
     expect(bashN(command, "-O", "extglob").status).toBe(0);
   });
 

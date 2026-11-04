@@ -1,10 +1,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { isRecord } from "@titan-design/rpc-protocol/narrow";
 import { loadTtsProfile, resolveTtsConfig } from "./config.js";
 import { runTtsConformance } from "./conformance.js";
 import { TtsFailedError, TtsUnavailableError } from "./errors.js";
-import { isRecord } from "./guards.js";
 import { httpTts, type HttpTtsOptions } from "./http-tts.js";
 import { defaultTtsRegistry } from "./registry.js";
 import type { TtsCapabilities } from "./types.js";

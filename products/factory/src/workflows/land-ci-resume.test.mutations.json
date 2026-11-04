@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a restarted wait ignores an answer that already concluded",
+      "file": "products/factory/src/workflows/land-ci-wait.ts",
+      "find": "      if (done) return { ...done, readAt };",
+      "replace": "      if (done && timing.startedAt === undefined) return { ...done, readAt };",
+      "kills": [
+        "ci-wait re-dispatched after the head's checks already concluded finishes green within one poll when every required check already passed",
+        "ci-wait re-dispatched after the head's checks already concluded finishes red within one poll when a required check already failed"
+      ]
+    }
+  ]
+}

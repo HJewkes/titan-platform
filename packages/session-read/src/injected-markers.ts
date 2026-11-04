@@ -46,8 +46,8 @@ export function hasMarker(text: string, name: InjectedMarkerName): boolean {
 
 /** The first marker present in the head of `text`, in declaration order. */
 export function findInjectedMarker(text: string): InjectedMarkerName | null {
-  for (const name of Object.keys(INJECTED_MARKERS) as InjectedMarkerName[]) {
-    if (hasMarker(text, name)) return name;
+  for (const marker of Object.values(INJECTED_MARKERS)) {
+    if (hasMarker(text, marker.name)) return marker.name;
   }
   return null;
 }

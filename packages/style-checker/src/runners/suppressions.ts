@@ -40,7 +40,7 @@ export function countSuppressions(files: string[], options?: { cwd?: string }): 
     try {
       diagnostics.push(...findSuppressions(shown, readFileSync(resolve(root, file), "utf-8")));
     } catch (err) {
-      failures.push({ tool: "suppressions", kind: "file-not-checked", file: shown, message: (err as Error).message });
+      failures.push({ tool: "suppressions", kind: "file-not-checked", file: shown, message: err instanceof Error ? err.message : String(err) });
     }
   }
   return emptyResult(0, { diagnostics, failures });

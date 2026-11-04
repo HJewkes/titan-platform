@@ -1,0 +1,17 @@
+{
+  "packages/style-checker/src/orchestrator/orchestrate.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 2
+    }
+  },
+  "packages/style-checker/src/profile-diff/diff-against-profile.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/style-checker/src/runners/tool-runner.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  }
+}

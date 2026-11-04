@@ -37,15 +37,19 @@ function percent(window: UsageWindow): string {
 
 // Another writer's reading file may carry any key, so only a short snake-case name that
 // redaction leaves alone is printed.
-export function windowNames(rateLimits: Readonly<Record<string, UsageWindow>>): string[] {
+export function windowNames(rateLimits: Readonly<Record<string, unknown>>): string[] {
   return Object.keys(rateLimits)
     .filter((name) => WINDOW_NAME.test(name) && redactSecrets(name) === name)
     .sort();
 }
 
 export function windowsText(rateLimits: Readonly<Record<string, UsageWindow>>): string {
-  const names = windowNames(rateLimits);
-  return names.map((name) => `${name} ${percent(rateLimits[name] as UsageWindow)}`).join(", ");
+  const names = new Set(windowNames(rateLimits));
+  return Object.entries(rateLimits)
+    .filter(([name]) => names.has(name))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, window]) => `${name} ${percent(window)}`)
+    .join(", ");
 }
 
 export function exitFor(codes: readonly number[]): number {

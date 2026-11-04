@@ -1,5 +1,6 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { tmpdir } from "node:os";
 import { runAndClassify, parseOrFail } from "./failures.js";
 import { buildEslintConfigModule } from "./eslint-config-module.js";
@@ -8,15 +9,22 @@ import type { CheckDiagnostic, ToolFailure } from "../orchestrator/types.js";
 import type { EslintFlatConfigEntry } from "../generators/eslint.js";
 import type { RunnerOptions, RunnerResult } from "./types.js";
 
-interface EslintJsonMessage {
-  ruleId: string | null;
-  fatal?: boolean;
-  message: string;
-}
+const EslintJsonOutputSchema = z.array(
+  z.object({
+    filePath: z.string(),
+    messages: z.array(
+      z.object({
+        ruleId: z.string().nullable(),
+        fatal: z.boolean().optional(),
+        message: z.string(),
+      }),
+    ),
+  }),
+);
 
 // ESLint reports a file it could not lint as a rule-less message: a fatal parse error, or "File ignored ...".
 function uncheckedFiles(stdout: string): ToolFailure[] {
-  const entries = JSON.parse(stdout) as Array<{ filePath: string; messages: EslintJsonMessage[] }>;
+  const entries = EslintJsonOutputSchema.parse(JSON.parse(stdout));
   return entries.flatMap((entry) =>
     entry.messages
       .filter((m) => m.ruleId === null && (m.fatal === true || m.message.startsWith("File ignored")))

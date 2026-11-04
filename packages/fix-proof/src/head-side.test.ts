@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spawnExec, type Exec } from "./exec.js";
 import { execHeadMutants, type HeadMutantsReport } from "./head-side.js";
 import type { HeadMutation } from "./mutation.js";
-import { git, makeRepo, removeRepos } from "./repo.test-helpers.js";
+import { git, makeRepo, REAL_RUNNER, removeRepos } from "./repo.test-helpers.js";
 
 const LIB = "packages/a/src/lib.ts";
 const TEST = "packages/a/src/lib.test.ts";
@@ -56,13 +56,19 @@ function countingPnpm() {
   return { rebuilds, exec };
 }
 
-function fixture() {
-  const repo = makeRepo({}, os.tmpdir(), { "pnpm-lock.yaml": "", "packages/a/package.json": "{}", [LIB]: LIB_TEXT, [TEST]: TEST_TEXT });
+function fixture(fakeRunner: boolean) {
+  const repo = makeRepo(fakeRunner ? {} : REAL_RUNNER, os.tmpdir(), { "pnpm-lock.yaml": "", "packages/a/package.json": "{}", [LIB]: LIB_TEXT, [TEST]: TEST_TEXT });
   return { repo, head: repo.base };
 }
 
-async function run(mutations: HeadMutation[], budgetMs?: number) {
-  const { repo, head } = fixture();
+interface RunOptions {
+  budgetMs?: number;
+  /** The test reads no mutant outcome, so the runner only writes an empty report. */
+  fakeRunner?: boolean;
+}
+
+async function run(mutations: HeadMutation[], { budgetMs, fakeRunner = false }: RunOptions = {}) {
+  const { repo, head } = fixture(fakeRunner);
   const { rebuilds, exec } = countingPnpm();
   const report = await execHeadMutants({ repo: repo.dir, head, mutations, budgetMs, exec });
   return { repo, head, rebuilds, report };
@@ -96,7 +102,7 @@ describe("execHeadMutants", { timeout: 120_000 }, () => {
   });
 
   it("two mutants in one package rebuild it three times: once each, and once to restore", async () => {
-    const { rebuilds, report } = await run([ADD, LOGGED]);
+    const { rebuilds, report } = await run([ADD, LOGGED], { fakeRunner: true });
 
     expect(report.runs.map((r) => r.package)).toEqual(["packages/a", "packages/a"]);
     expect(rebuilds).toEqual([0, 1, 2].map(() => ["./packages/a", "run", "--if-present", "build"]));
@@ -104,7 +110,7 @@ describe("execHeadMutants", { timeout: 120_000 }, () => {
   });
 
   it("leaves the caller's checkout, its status and its worktree list unchanged", async () => {
-    const { repo } = await run([ADD, SHAPE]);
+    const { repo } = await run([ADD, SHAPE], { fakeRunner: true });
 
     expect(fs.readFileSync(path.join(repo.dir, LIB), "utf-8")).toBe(LIB_TEXT);
     expect(git(repo.dir, ["status", "--porcelain"])).toBe("");
@@ -112,7 +118,7 @@ describe("execHeadMutants", { timeout: 120_000 }, () => {
   });
 
   it("with a 1 ms budget runs nothing and lists every mutation unrun", async () => {
-    const { report } = await run([ADD, LOGGED], 1);
+    const { report } = await run([ADD, LOGGED], { budgetMs: 1 });
 
     expect(report.runs).toEqual([]);
     expect(report.unrun).toEqual([ADD.name, LOGGED.name]);

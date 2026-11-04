@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPassing, isPassingConclusion, isSucceeded, latestPerName } from "./checks.js";
+import { isConcluded, isPassing, isPassingConclusion, isSucceeded, latestPerName, withoutSupersededCancels } from "./checks.js";
 import { successRun } from "./fake.js";
 
 describe("latestPerName", () => {
@@ -76,7 +76,7 @@ describe("latestPerName", () => {
 
 describe("isPassing", () => {
   it("a run still in progress is not passing even if it reports success", () => {
-    expect(isPassing({ ...successRun("validate", 1), status: "in_progress" })).toBe(false);
+    expect(isPassing({ ...successRun("validate", 1), status: "in_progress", completedAt: null })).toBe(false);
   });
 
   it("a cancelled run is not passing", () => {
@@ -86,7 +86,7 @@ describe("isPassing", () => {
 
 describe("isPassing and isSucceeded fail closed", () => {
   const completed = (conclusion: string | null) => ({ ...successRun("validate", 1), conclusion });
-  const running = (status: string) => ({ ...successRun("validate", 1), status });
+  const running = (status: string) => ({ ...successRun("validate", 1), status, completedAt: null });
 
   it.each(["queued", "in_progress", "waiting", "bogus"])("a run with status %s is neither passing nor succeeded", (status) => {
     expect([isPassing(running(status)), isSucceeded(running(status))]).toEqual([false, false]);
@@ -108,5 +108,68 @@ describe("isPassing and isSucceeded fail closed", () => {
     const conclusions = ["success", "neutral", "skipped", "failure", "cancelled", "stale", "bogus", null];
 
     expect(conclusions.filter(isPassingConclusion)).toEqual(["success", "neutral", "skipped"]);
+  });
+});
+
+describe("isConcluded", () => {
+  it("reads in_progress with a conclusion and a completion time as concluded", () => {
+    expect(isConcluded({ ...successRun("validate", 1), status: "in_progress" })).toBe(true);
+  });
+
+  it("reads in_progress with a conclusion but no completion time as running", () => {
+    expect(isConcluded({ ...successRun("validate", 1), status: "in_progress", completedAt: null })).toBe(false);
+  });
+});
+
+describe("withoutSupersededCancels", () => {
+  const early = "2026-01-01T00:00:00Z";
+  const late = "2026-01-01T00:05:00Z";
+
+  it("drops a cancelled run that a newer run of the same name, sha and app superseded", () => {
+    const runs = [successRun("validate", 1, early, "cancelled"), successRun("validate", 2, late)];
+
+    expect(withoutSupersededCancels(runs).map((run) => run.id)).toEqual([2]);
+  });
+
+  it("keeps a lone cancelled run", () => {
+    const runs = [successRun("validate", 1, early, "cancelled")];
+
+    expect(withoutSupersededCancels(runs)).toEqual(runs);
+  });
+
+  it("keeps a superseded failure", () => {
+    const runs = [successRun("validate", 1, early, "failure"), successRun("validate", 2, late)];
+
+    expect(withoutSupersededCancels(runs)).toEqual(runs);
+  });
+
+  it("keeps a cancelled run that is the newest of its group", () => {
+    const runs = [successRun("validate", 1, early), successRun("validate", 2, late, "cancelled")];
+
+    expect(withoutSupersededCancels(runs)).toEqual(runs);
+  });
+
+  it("keeps a cancel whose only newer run is at another sha", () => {
+    const runs = [successRun("validate", 1, early, "cancelled"), { ...successRun("validate", 2, late), headSha: "b".repeat(40) }];
+
+    expect(withoutSupersededCancels(runs)).toEqual(runs);
+  });
+
+  it("keeps a cancel whose only newer run is from another app", () => {
+    const runs = [successRun("validate", 1, early, "cancelled"), { ...successRun("validate", 2, late), appId: 999 }];
+
+    expect(withoutSupersededCancels(runs)).toEqual(runs);
+  });
+
+  it("orders an equal start by id, whatever order the runs are listed in", () => {
+    const lowCancel = successRun("validate", 1, early, "cancelled");
+    const highPass = successRun("validate", 2, early);
+    const highCancel = successRun("validate", 2, early, "cancelled");
+    const lowPass = successRun("validate", 1, early);
+
+    expect(withoutSupersededCancels([highPass, lowCancel]).map((run) => run.id)).toEqual([2]);
+    expect(withoutSupersededCancels([lowCancel, highPass]).map((run) => run.id)).toEqual([2]);
+    expect(withoutSupersededCancels([lowPass, highCancel])).toEqual([lowPass, highCancel]);
+    expect(withoutSupersededCancels([highCancel, lowPass])).toEqual([highCancel, lowPass]);
   });
 });

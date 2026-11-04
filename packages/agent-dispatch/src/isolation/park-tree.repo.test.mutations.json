@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a process in the tree does not refuse",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "  if (occupied) return { ok: false, reason: occupied };\n",
+      "replace": "",
+      "kills": [
+        "parking an agent a process may outlive refuses while a process has its cwd inside the tree, naming the pid"
+      ]
+    },
+    {
+      "name": "any process counts as inside the tree",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "procs.find((p) => isAtOrUnder(canonicalPath(p.cwd), root))",
+      "replace": "procs.find((p) => p.cwd !== root)",
+      "kills": [
+        "parking an agent a process may outlive parks past a process running elsewhere"
+      ]
+    },
+    {
+      "name": "park drops dispatch's ignored-file policy",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "    ignoredFiles: dispatchIgnoredFiles,\n",
+      "replace": "",
+      "kills": [
+        "parking under dispatch's ignored-file policy parks a tree whose only ignored files are tsbuildinfo, which the package alone would keep"
+      ]
+    },
+    {
+      "name": "a malformed sha reaches the package",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "      .filter((pr) => OBJECT_ID.test(pr.headSha))\n",
+      "replace": "",
+      "kills": [
+        "parking a squash-merged tree whose head branch origin deleted (CC-1064) drops a malformed sha and still counts the PR beside it"
+      ]
+    },
+    {
+      "name": "the merged PR number is lost",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "return backingRef === undefined ? parked : { ...parked, mergedPr: Number(backingRef) };",
+      "replace": "return parked;",
+      "kills": [
+        "parking a squash-merged tree whose head branch origin deleted (CC-1064) parks when a merged PR on the branch has HEAD as its head commit, keeping the branch"
+      ]
+    }
+  ]
+}

@@ -93,8 +93,8 @@ describe("process probes", () => {
   it("reports this process start time within seconds of its real start", () => {
     const started = getProcessStartTime(process.pid);
     const expected = Date.now() - process.uptime() * 1000;
-    expect(started).not.toBeNull();
-    expect(Math.abs((started as Date).getTime() - expected)).toBeLessThan(5000);
+    if (started === null) throw new Error("expected a start time for this process");
+    expect(Math.abs(started.getTime() - expected)).toBeLessThan(5000);
   });
 
   it("reads a pid with no process as unknown", () => {

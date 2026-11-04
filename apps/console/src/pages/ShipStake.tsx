@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Badge, HStack, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
 import { answerBlockers, shipStake, type DraftAnswer } from "../../server/ship-blockers.js";
+import { PHONE_TAP } from "./phone.js";
 
 const quoted = (options: readonly string[]): string => options.map((option) => `"${option}"`).join(" or ");
 
@@ -40,8 +41,8 @@ export function ShipStake({ manifest, question, answer, followUp, onFollowUp }: 
         </Typography>
       </HStack>
       <RadioGroup value={followUp ? "follow-up" : "this-pr"} onChange={(value) => onFollowUp(value === "follow-up")} orientation="horizontal" label="This answer is for">
-        <Radio value="this-pr" aria-checked={!followUp}>This PR</Radio>
-        <Radio value="follow-up" aria-checked={followUp}>Follow-up</Radio>
+        <Radio value="this-pr" aria-checked={!followUp} className={PHONE_TAP}>This PR</Radio>
+        <Radio value="follow-up" aria-checked={followUp} className={PHONE_TAP}>Follow-up</Radio>
       </RadioGroup>
     </VStack>
   );

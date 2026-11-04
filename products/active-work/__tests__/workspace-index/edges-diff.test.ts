@@ -109,6 +109,24 @@ describe('workspace edges by diff', () => {
     }
   });
 
+  it('treats a note whose stored tags are not a string list as untagged, keeping its mentions', async () => {
+    await refreshWorkspace(graph, { activeRoot: root });
+    const alphaEdges = (relation: string): Row[] =>
+      edgeRows(graph.db).filter(
+        (row) => row.source_ref.includes('alpha-lesson') && row.relation === relation,
+      );
+    const mentions = alphaEdges('mentions').map(triple);
+    graph.db
+      .prepare("UPDATE note SET tags = '{truncated' WHERE path LIKE '%alpha-lesson%'")
+      .run();
+
+    await refreshWorkspace(graph, { activeRoot: root });
+
+    expect(mentions.length).toBeGreaterThan(0);
+    expect(alphaEdges('mentions').map(triple)).toEqual(mentions);
+    expect(alphaEdges('shares_tag')).toEqual([]);
+  });
+
   it("leaves another writer's edge untouched across passes", async () => {
     graph.edges.assert({ sourceRef: 'session:s1', relation: 'touched', targetRef: 'task:AL-1' });
     const foreign = edgeRows(graph.db).filter((row) => row.relation === 'touched');

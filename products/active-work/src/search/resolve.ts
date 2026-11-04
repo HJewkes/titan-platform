@@ -55,11 +55,13 @@ interface RowFacts {
 function rowFor(graph: WorkspaceGraph, ref: string): RowFacts | null {
   for (const { table, refColumn, title } of ROW_SOURCES) {
     const row = graph.db
-      .prepare(
-        `SELECT path, "${title}" AS title, ${table === 'initiative' ? 'slug' : 'initiative'} AS initiative
+      .prepare<[string], RowFacts>(
+        `SELECT path, "${title}" AS title, ${
+          table === 'initiative' ? 'slug' : 'initiative'
+        } AS initiative
            FROM "${table}" WHERE "${refColumn}" = ? LIMIT 1`,
       )
-      .get(ref) as RowFacts | undefined;
+      .get(ref);
     if (row) return row;
   }
   return null;
@@ -81,13 +83,17 @@ interface SpanPayload {
 function fileForSource(graph: WorkspaceGraph, sourceId: number, activeRoot: string): string | null {
   if (sourceId >= WORKSPACE_SPAN_SOURCE_BASE) {
     const row = graph.db
-      .prepare('SELECT source_key FROM workspace_file WHERE source_id = ?')
-      .get(sourceId - WORKSPACE_SPAN_SOURCE_BASE) as { source_key: string } | undefined;
+      .prepare<[number], { source_key: string }>(
+        'SELECT source_key FROM workspace_file WHERE source_id = ?',
+      )
+      .get(sourceId - WORKSPACE_SPAN_SOURCE_BASE);
     return row ? toAbsolute(activeRoot, row.source_key) : null;
   }
   const row = graph.db
-    .prepare('SELECT source_key FROM transcript WHERE source_id = ?')
-    .get(sourceId) as { source_key: string } | undefined;
+    .prepare<[number], { source_key: string }>(
+      'SELECT source_key FROM transcript WHERE source_id = ?',
+    )
+    .get(sourceId);
   if (!row) return null;
   return row.source_key.startsWith('~')
     ? path.join(process.env.HOME ?? '', row.source_key.slice(1))

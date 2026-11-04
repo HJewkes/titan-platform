@@ -12,6 +12,7 @@ import { purgeTranscript } from "./purge.js";
 import { projectReviewRounds, type ReviewerProfilePredicate, type ReviewProjection } from "./review-rounds.js";
 import { reconcile, rollupSessions, rollupYielding, type ReconcileCounts } from "./rollup.js";
 import { allTaskIds, enrichTasks, NO_ENRICHMENT, type TaskEnrichment, type TaskResolver } from "./tasks.js";
+import { parseDescriptorPath } from "./stored-json.js";
 
 export interface IndexOptions {
   /** Re-hash the already-read prefix to catch same-length rewrites. O(file), so opt in. */
@@ -200,8 +201,8 @@ async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredT
   let marked = 0;
   for (const row of graph.transcripts.list()) {
     if (row.status === "missing" || present.has(row.sourceKey)) continue;
-    const normalized = hasNormalized ? graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) as { descriptor: string } | undefined : undefined;
-    const absolute = normalized ? (JSON.parse(normalized.descriptor) as { path: string }).path : byPath.get(row.sourceKey) ?? row.sourceKey;
+    const normalized = hasNormalized ? graph.db.prepare<[number], { descriptor: string }>("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) : undefined;
+    const absolute = normalized ? parseDescriptorPath(normalized.descriptor) : byPath.get(row.sourceKey) ?? row.sourceKey;
     if (await exists(expandHome(absolute, homeDir))) continue;
     graph.transcripts.markStatus(row.sourceKey, "missing", "source file no longer exists");
     marked += 1;

@@ -6,8 +6,8 @@ import { z } from "zod";
 import type { DigestPushConfig } from "../config.js";
 import { ntfyPublish, type NtfyDeps, type NtfyMessage } from "../ntfy.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import type { RosterReader } from "./roster.js";
 import { packagerName, packetDirFor } from "./visual-packet-trigger.js";
+import type { RosterReader } from "./ports.js";
 
 /** One bound for every titan-review and titan-console exec, so a hung child never holds the sweep. */
 const EXEC_TIMEOUT_MS = 120_000;

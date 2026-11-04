@@ -34,7 +34,7 @@ function splitSegments(command: string): string[] {
   let current = "";
   let quote: string | null = null;
   for (let i = 0; i < command.length; i++) {
-    const char = command[i] as string;
+    const char = command.charAt(i);
     const opener = quote === null && char === "<" && command[i + 1] === "<" && command[i + 2] !== "<" ? HEREDOC_OPENER.exec(command.slice(i)) : null;
     if (quote !== null) {
       if (char === quote) quote = null;
@@ -77,7 +77,9 @@ export function isInvestigativeCall(observation: NormalizedSessionObservation): 
   if (observation.kind !== "tool_call" || observation.historyOrigin !== null) return false;
   if ((INVESTIGATIVE_CALLS.tools as readonly string[]).includes(observation.name)) return true;
   if (observation.name !== "Bash") return false;
-  const command = (observation.input as { command?: unknown } | null)?.command;
+  const input = observation.input;
+  if (typeof input !== "object" || input === null || !("command" in input)) return false;
+  const command = input.command;
   if (typeof command !== "string") return false;
   return splitSegments(command).some(isReadSegment);
 }

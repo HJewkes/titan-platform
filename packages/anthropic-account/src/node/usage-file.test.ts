@@ -135,7 +135,7 @@ describe("writeReading", () => {
 
     expect(errorText(error)).toContain("EXDEV");
     expect(errorText(error)).not.toContain(CANARY);
-    expect((error as Error).cause).toBeUndefined();
+    expect(error instanceof Error && error.cause).toBeUndefined();
     expect(fs.readdirSync(sessionsDir(configDir))).toEqual([USAGE_FILE]);
     expect(JSON.parse(fs.readFileSync(usageFilePath(configDir), "utf8")).written_at).toBe(WRITTEN_AT);
   });

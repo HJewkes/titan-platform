@@ -1,5 +1,5 @@
 import { versionOnlyManifestChange } from "./deploy-closure.js";
-import type { CommandResult } from "./service-control.js";
+import type { CommandResult } from "./run-command.js";
 
 /** Runs git in the service checkout. */
 type CheckoutGit = (args: readonly string[]) => Promise<CommandResult>;

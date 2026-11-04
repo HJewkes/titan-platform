@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a fan-out callback ends the walk, so all inside a loop passes",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (all !== null) return inLoop(all);",
+      "replace": "    if (all !== null) return false;",
+      "kills": [
+        "recipe-step-in-loop invalid all over a map inside a while loop is an error",
+        "recipe-step-in-loop invalid all over a map inside an IIFE inside a for loop is an error"
+      ]
+    },
+    {
+      "name": "fan-out owner search crosses any parent",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (parent.type !== \"ArrayExpression\" && parent.type !== \"SpreadElement\") return null;\n",
+      "replace": "",
+      "kills": [
+        "recipe-step-in-loop invalid a .map nested in a .map under all is an error"
+      ]
+    },
+    {
+      "name": "a map callback is not a loop",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (isIterating(call)) return true;\n",
+      "replace": "",
+      "kills": [
+        "recipe-step-in-loop invalid a step called in a .map callback outside all is an error"
+      ]
+    },
+    {
+      "name": "only ctx.dispatch is a step op",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "STEP_OPS.has(calleeName(call) ?? \"\")",
+      "replace": "calleeName(call) === \"dispatch\"",
+      "kills": [
+        "recipe-step-in-loop invalid a step called in a .map callback outside all is an error",
+        "recipe-step-in-loop invalid authorize in a reduce callback"
+      ]
+    },
+    {
+      "name": "a wrapper function ends the walk",
+      "file": "packages/eslint-plugin/src/recipe-step-in-loop.ts",
+      "find": "    if (isIterating(call)) return true;\n",
+      "replace": "    if (isIterating(call)) return true;\n    return false;\n",
+      "kills": [
+        "recipe-step-in-loop invalid a step in a wrapper callback inside a for loop is an error",
+        "recipe-step-in-loop invalid a step in a then callback inside a for loop is an error"
+      ]
+    }
+  ]
+}

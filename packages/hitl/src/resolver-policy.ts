@@ -101,9 +101,9 @@ const MAX_EVIDENCE_BYTES = 16_384;
 export function snapshotEvidence(gateId: string, raw: unknown): Readonly<GateEvidence> {
   const text = serialized(gateId, raw);
   const copy: unknown = JSON.parse(text);
-  if (typeof copy !== "object" || copy === null || Array.isArray(copy)) throw new GateEvidenceInvalid(gateId, "it is not a JSON object");
+  if (!isObjectLike(copy) || Array.isArray(copy)) throw new GateEvidenceInvalid(gateId, "it is not a JSON object");
   if (text.length > MAX_EVIDENCE_BYTES) throw new GateEvidenceInvalid(gateId, `it is over ${MAX_EVIDENCE_BYTES} characters`);
-  return deepFreeze(copy as GateEvidence);
+  return deepFreeze(copy);
 }
 
 function serialized(gateId: string, raw: unknown): string {
@@ -135,7 +135,7 @@ export function jsonEqual(a: unknown, b: unknown): boolean {
   if (proto !== Object.getPrototypeOf(b) || (proto !== Object.prototype && proto !== Array.prototype && proto !== null)) return false;
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
-  return keys.every((key) => Object.hasOwn(b, key) && jsonEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
+  return keys.every((key) => Object.hasOwn(b, key) && jsonEqual(Reflect.get(a, key), Reflect.get(b, key)));
 }
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
@@ -156,26 +156,26 @@ export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver, 
 
 /** Reads each declared rule field once into a frozen copy, so a caller cannot widen the rule after `create`. */
 export function snapshotRule(gateId: string, raw: unknown): Readonly<GateRule> {
-  if (typeof raw !== "object" || raw === null) throw new GateRuleInvalid(gateId, "the rule is not an object");
-  const { table, version, ruleId, resolvers, delegates } = raw as Record<string, unknown>;
+  if (!isObjectLike(raw)) throw new GateRuleInvalid(gateId, "the rule is not an object");
+  const { table, version, ruleId, resolvers, delegates } = raw;
   if (typeof table !== "string" || typeof version !== "string" || typeof ruleId !== "string") {
     throw new GateRuleInvalid(gateId, "the rule's table, version and ruleId must be strings");
   }
-  const classes = Array.isArray(resolvers) ? [...(resolvers as unknown[])] : [];
+  const classes: unknown[] = Array.isArray(resolvers) ? [...resolvers] : [];
   if (classes.length === 0 || !classes.every(isResolverClass)) {
     throw new GateRuleInvalid(gateId, "the rule's resolvers must be a non-empty list of resolver classes");
   }
-  const rule = { table, version, ruleId, resolvers: Object.freeze(classes) as ResolverClass[] };
+  const rule = { table, version, ruleId, resolvers: freezeList(classes) };
   if (delegates === undefined) return Object.freeze(rule);
   return Object.freeze({ ...rule, delegates: snapshotDelegates(gateId, delegates) });
 }
 
 function snapshotDelegates(gateId: string, raw: unknown): DelegateResolverClass[] {
-  const classes = Array.isArray(raw) ? [...(raw as unknown[])] : [];
+  const classes: unknown[] = Array.isArray(raw) ? [...raw] : [];
   if (classes.length === 0 || !classes.every(isDelegateClass)) {
     throw new GateRuleInvalid(gateId, `the rule's delegates must be a non-empty list drawn from ${DELEGATE_RESOLVER_CLASSES.join(", ")}`);
   }
-  return Object.freeze(classes) as DelegateResolverClass[];
+  return freezeList(classes);
 }
 
 /**
@@ -183,8 +183,8 @@ function snapshotDelegates(gateId: string, raw: unknown): DelegateResolverClass[
  * checks and the stored row see the same resolver and nothing undeclared is kept.
  */
 export function snapshotResolver(gateId: string, raw: unknown): Readonly<GateResolver> {
-  if (typeof raw !== "object" || raw === null) throw new GateResolverRefused(gateId, undefined, "the resolver is not an object");
-  const { class: actorClass, id, channel, confirmEvent } = raw as Record<string, unknown>;
+  if (!isObjectLike(raw)) throw new GateResolverRefused(gateId, undefined, "the resolver is not an object");
+  const { class: actorClass, id, channel, confirmEvent } = raw;
   if (!isActorClass(actorClass)) {
     throw new GateResolverRefused(gateId, undefined, "the resolver's class is not a known actor class");
   }
@@ -200,10 +200,10 @@ export function snapshotResolver(gateId: string, raw: unknown): Readonly<GateRes
 
 /** Accepts only a synchronous `{ allowed: boolean }`; a promise is refused because the row cannot wait on it. */
 export function readDecision(gateId: string, decision: unknown): GateAuthorization {
-  if (typeof decision !== "object" || decision === null) throw new GateAuthorizeInvalid(gateId);
-  const { then, allowed, reason } = decision as Record<string, unknown>;
+  if (!isObjectLike(decision)) throw new GateAuthorizeInvalid(gateId);
+  const { then, allowed, reason } = decision;
   if (typeof then === "function") {
-    (then as (onFulfilled: undefined, onRejected: () => void) => unknown).call(decision, undefined, () => {});
+    Reflect.apply(then, decision, [undefined, () => {}]);
     throw new GateAuthorizeInvalid(gateId);
   }
   if (typeof allowed !== "boolean") throw new GateAuthorizeInvalid(gateId);
@@ -221,4 +221,14 @@ function isDelegateClass(value: unknown): value is DelegateResolverClass {
 
 function isActorClass(value: unknown): value is ActorClass {
   return typeof value === "string" && (ACTOR_CLASSES as readonly string[]).includes(value);
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Freezes in place and keeps the mutable element-list type the public rule types declare. */
+function freezeList<T>(list: T[]): T[] {
+  Object.freeze(list);
+  return list;
 }

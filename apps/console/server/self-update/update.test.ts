@@ -48,7 +48,11 @@ interface Scenario {
 }
 
 function fakePorts(scenario: Scenario = {}): Fake {
-  const files = new Map([[`${RELEASE}/apps/console/dist/cli.js`, "built"]]);
+  const files = new Map([
+    [`${RELEASE}/apps/console/dist/cli.js`, "built"],
+    [`${RELEASE}/apps/console/dist/index.html`, "<!doctype html>"],
+    [`${RELEASE}/apps/console/dist/build-info.json`, JSON.stringify({ sha: NEW, builtAt: "2031-03-05T11:58:00.000Z", dirty: false })],
+  ]);
   const links = new Map([[`${ROOT}/current`, scenario.serving ?? PREV]]);
   const calls: string[] = [];
   const alarms: OwnerItemDeposit[] = [];
@@ -72,6 +76,8 @@ function fakePorts(scenario: Scenario = {}): Fake {
     writeFile: (file, text) => void files.set(file, text),
     writeShim: (file, text) => (calls.push(`shim ${file}`), files.set(file, text), true),
     readFile: (file) => files.get(file),
+    fileSize: (file) => files.get(file)?.length,
+    syncFs: async (dir) => (calls.push(`sync -f ${dir}`), undefined),
     remove: (file) => void files.delete(file),
     createExclusive: (file, text) => (files.has(file) ? false : (files.set(file, text), true)),
     isAlive: (pid) => pid === scenario.liveHolder,
@@ -208,6 +214,29 @@ describe("the console updater the bootstrap hands off to", () => {
 
     expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build's smoke check did not finish in time; its stderr ended: still waiting on /health" });
     expect(fake.calls.some((call) => call.startsWith("smoke ") || call.startsWith("systemctl"))).toBe(false);
+  });
+
+  // TP-4638: the swap reached the disk before the release's pages did, and a power loss left `current` on empty files.
+  it("flushes the release to disk and reads it back before the swap", async () => {
+    const fake = fakePorts();
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    const order = fake.calls.filter((call) => call.startsWith("sync") || call.startsWith("swap"));
+    expect(order).toEqual([`sync -f ${RELEASE}`, `swap ${RELEASE}`]);
+  });
+
+  it("refuses the swap, keeps the old sha serving and raises the alarm when the flushed bin is empty", async () => {
+    const fake = fakePorts();
+    fake.files.set(`${RELEASE}/apps/console/dist/cli.js`, "");
+
+    expect(await apply(fake)).toBe(EXIT.FAILED);
+
+    expect(served(fake)).toBe(PREV);
+    expect(fake.calls.some((call) => call.startsWith("swap") || call.startsWith("systemctl"))).toBe(false);
+    expect(record(fake)).toMatchObject({ outcome: "failed", stage: "flush", why: `${RELEASE} is not a whole build after its flush: apps/console/dist/cli.js is empty` });
+    expect(fake.alarms.map((alarm) => alarm.depositId)).toEqual(["console-update-bbbbbbb-flush"]);
+    expect(removed(fake)).toEqual([RELEASE]);
   });
 
   it("withdraws the open update alarms once a verified swap serves the new sha", async () => {

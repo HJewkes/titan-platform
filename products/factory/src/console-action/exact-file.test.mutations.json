@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shown rows are not checked to rebuild the head",
+      "file": "products/factory/src/console-action/exact-file.ts",
+      "find": "if (rebuilt(sides[\"-\"], rows) !== (head?.content ?? \"\")) return",
+      "replace": "if (rebuilt(sides[\"-\"], rows) === null) return",
+      "kills": [
+        "an exact file section 'more changed lines than the card shows' shows rows that rebuild the head bytes, or reads missing"
+      ]
+    },
+    {
+      "name": "the decoded content is not checked against its blob sha",
+      "file": "products/factory/src/console-action/exact-file.ts",
+      "find": "const decodesWhole = (file: RepoFile | null): boolean => file === null || gitBlobId(",
+      "replace": "const decodesWhole = (file: RepoFile | null): boolean => true || gitBlobId(",
+      "kills": [
+        "an exact file section reads missing when the decoded head re-encodes to bytes other than its blob"
+      ]
+    },
+    {
+      "name": "a listed path with an unchanged blob is shown",
+      "file": "products/factory/src/console-action/exact-file.ts",
+      "find": "if ((base?.blobSha ?? null) === (head?.blobSha ?? null)) return",
+      "replace": "if (false) return",
+      "kills": [
+        "an exact file section reads missing for a listed path whose blob did not change, as a mode-only change"
+      ]
+    },
+    {
+      "name": "the evidence's head pin is not checked",
+      "file": "products/factory/src/console-action/exact-file.ts",
+      "find": "if (pin !== undefined && (head?.blobSha ?? null) !== pin) return",
+      "replace": "if (pin === \"never\") return",
+      "kills": [
+        "an exact file section reads missing when the head blob is not the one the merge evidence pinned"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { listAgents, type AgentRow } from "@titan-design/agent-dispatch";
 import { priceRequest } from "@titan-design/session-analytics";
-import { extractTranscript } from "@titan-design/session-read";
+import { distinctRequests, extractTranscript, type TranscriptRequest } from "@titan-design/session-read";
 
 export interface AgentChat {
   bin: string;
@@ -61,24 +61,37 @@ function lastJsonBlock(text: string): unknown {
   }
 }
 
+interface AgentTurn {
+  row: AgentRow;
+  /** The final assistant message, whole: an answer longer than the index's span cap would lose its closing fence. */
+  text: string | undefined;
+  usage: DispatchUsage;
+}
+
 /** Waits for the agent to exit, then reads its final message and sums every request it made past `from`. */
-export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSignal, from: { path?: string; offset: number } = { offset: 0 }): Promise<AgentResult> {
+export async function awaitTurn(chat: AgentChat, name: string, signal: AbortSignal, from: { path?: string; offset: number } = { offset: 0 }): Promise<AgentTurn> {
   const row = await awaitExit(chat, name, signal);
   if (!row.transcriptPath) throw new Error(`[no-transcript] ${name} exited with no transcript`);
   const fromByteOffset = from.path === row.transcriptPath ? from.offset : 0;
-  const delta = await extractTranscript(row.transcriptPath, { fromByteOffset });
+  const delta = await extractTranscript(row.transcriptPath, { fromByteOffset, spanTextCap: Infinity });
   const text = delta.spans.filter((span) => span.field === "assistant_response").at(-1)?.text;
-  if (text === undefined) throw new Error(`[final-message] ${name} exited without an assistant message`);
-  return { row, final: lastJsonBlock(text), usage: sumUsage(delta.requests) };
+  return { row, text, usage: sumUsage(delta.requests) };
 }
 
-type Request = Awaited<ReturnType<typeof extractTranscript>>["requests"][number];
+/** The final message must exist and parse; `name` names the agent in the error. */
+export function finalOf(name: string, text: string | undefined): unknown {
+  if (text === undefined) throw new Error(`[final-message] ${name} exited without an assistant message`);
+  return lastJsonBlock(text);
+}
 
-/** A response split over several transcript lines repeats its usage on each, so it counts once. */
-function sumUsage(requests: readonly Request[]): DispatchUsage {
-  const once = [...new Map(requests.map((request) => [request.requestId, request])).values()];
+export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSignal, from?: { path?: string; offset: number }): Promise<AgentResult> {
+  const turn = await awaitTurn(chat, name, signal, from);
+  return { row: turn.row, final: finalOf(name, turn.text), usage: turn.usage };
+}
+
+function sumUsage(requests: readonly TranscriptRequest[]): DispatchUsage {
   const total: DispatchUsage = { usd: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, retries: 0 };
-  for (const request of once) {
+  for (const request of distinctRequests(requests)) {
     total.usd += priceRequest(request, request.model, request.ts).costUsd;
     total.cacheReadTokens += request.cacheReadTokens;
     total.cacheWrite5mTokens += request.cacheCreation5mTokens;

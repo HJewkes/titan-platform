@@ -1,18 +1,18 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { editHarness } from "./edit-cli.test-helpers.js";
-import { fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, fakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
-const { baseRun, editFile, cli } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx, (next) => (fx = next));
 const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 
 describe("explainer edit check through the template fill", () => {
   it("refuses an edit whose filled slots leave an emphasis cue with no element to land on", async () => {
-    fx = fixture();
     // The base renders only if its cue lands on the figure its label derives, so the cue names the derived id.
     const cue = { action: "V6", target: "figures-1", atCue: "desk" };
     const visual = { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "stat", labels: ["4 scans a minute"], cues: [cue] };
@@ -30,7 +30,6 @@ describe("explainer edit check through the template fill", () => {
   });
 
   it("refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist", async () => {
-    fx = fixture();
     // No number in the label, so the base fills stat's list fallback and the cue lands on a list row.
     const cue = { action: "V6", target: "rows-1", atCue: "desk" };
     const visual = { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "stat", labels: ["Scans a minute"], cues: [cue] };
@@ -43,7 +42,6 @@ describe("explainer edit check through the template fill", () => {
   });
 
   it("passes an edit on a base whose resolve cut a sim beat, filling only the beats it kept", async () => {
-    fx = fixture();
     const cue = (target: string) => ({ action: "V6", target, atCue: "desk" });
     // A sim beat with no slots pin and no visual.slots has nothing to sweep, so the base's resolve cuts it.
     const stat = { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "stat", labels: ["4 scans a minute"], cues: [cue("figures-1")] };

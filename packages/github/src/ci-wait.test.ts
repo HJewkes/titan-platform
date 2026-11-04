@@ -138,7 +138,7 @@ describe("ciWait", () => {
     expect((await world(fake).run({ timeoutSeconds: 1, intervalSeconds: 1 })).outcome).toBe("timeout");
   });
 
-  it("reads the default branch's rules once and goes green when the required runs land", async () => {
+  it("re-reads the rules each poll but resolves the default branch once, and goes green when the required runs land", async () => {
     const fake = fakeGitHub();
     fake.rules = { contexts: ["dag-check", "validate"], strict: true };
     const early = [successRun("build", 1)];
@@ -149,7 +149,7 @@ describe("ciWait", () => {
 
     expect((await run()).outcome).toBe("green");
     expect(sleeps()).toBe(2);
-    expect(fake.calls.filter((call) => call === "getBranchRules")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call === "getBranchRules")).toHaveLength(3);
     expect(fake.calls.filter((call) => call === "getDefaultBranch")).toHaveLength(1);
   });
 
@@ -164,5 +164,52 @@ describe("ciWait", () => {
 
     expect(branches).toEqual(["trunk", "release/1.x"]);
     expect(fake.calls.filter((call) => call === "getDefaultBranch")).toHaveLength(1);
+  });
+
+  describe("when the required contexts change mid-wait", () => {
+    const startWith = (contexts: string[]) => {
+      const fake = fakeGitHub();
+      fake.rules = { contexts, strict: true };
+      fake.setRuns(SHA, [successRun("validate", 1)]);
+      return fake;
+    };
+    const timeoutLine = `TIMEOUT o/r ${SHA} after 540s: pending egress-scan`;
+
+    it("goes green when a context is dropped", async () => {
+      const fake = startWith(["validate", "egress-scan"]);
+      const { run, sleeps } = world(fake, () => (fake.rules = { contexts: ["validate"], strict: true }));
+
+      expect((await run()).outcome).toBe("green");
+      expect(sleeps()).toBe(1);
+    });
+
+    it("keeps the recorded list when the re-read fails", async () => {
+      const fake = startWith(["validate", "egress-scan"]);
+      const { run, errors } = world(fake, () => {
+        fake.rules = { contexts: ["validate"], strict: true };
+        fake.readFaults.getBranchRules = Array.from({ length: 20 }, () => new Error("HTTP 500"));
+      });
+
+      expect((await run()).line).toBe(timeoutLine);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it("keeps the recorded list when the re-read comes back empty", async () => {
+      const fake = startWith(["validate", "egress-scan"]);
+      const { run } = world(fake, () => (fake.rules = { contexts: [], strict: false }));
+
+      expect((await run()).line).toBe(timeoutLine);
+    });
+
+    it("judges a context added after the first poll", async () => {
+      const fake = startWith(["validate"]);
+      fake.setRuns(SHA, [queued("validate")]);
+      const { run } = world(fake, () => {
+        fake.setRuns(SHA, [successRun("validate", 1), successRun("lint", 2, undefined, "failure")]);
+        fake.rules = { contexts: ["validate", "lint"], strict: true };
+      });
+
+      expect(await run()).toEqual({ outcome: "red", line: `RED o/r ${SHA}: lint=failure` });
+    });
   });
 });

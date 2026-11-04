@@ -8,13 +8,15 @@ import type { ShepherdPhases } from "../shepherd/phases.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
 import type { PackageRegistry } from "../shepherd/release.js";
 import type { SeatBook } from "../shepherd/seats.js";
-import type { SpawnGate } from "../shepherd/spawn-gate.js";
+import { REPO } from "./land.js";
+import { DRIFTED } from "./toolchain.js";
 import { shepherdStoreRef } from "../shepherd/store.js";
 import type { VisualThreshold } from "../shepherd/visual-delta-read.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { prSnapshot } from "../workflows/pr-snapshot.js";
+import type { SpawnGate } from "../shepherd/ports.js";
 
 export const BRANCH = "agent-chat/demo-1";
 
@@ -63,7 +65,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     sleep: options.frozen ? never : tick,
     registry: options.registry ?? (async () => "trusted"),
     versions: async () => true,
-    ...(options.seats && { seats: () => options.seats! }),
+    seats: () => options.seats ?? DEFAULT_SEATS,
     ...(options.prFiles && { prFiles: options.prFiles }),
     ...(options.snapshot && { snapshot: prSnapshot(port, { now: () => clock }) }),
     ...(options.spawnGate && { spawnGate: options.spawnGate }),
@@ -71,6 +73,9 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }
+
+/** A seat that lists the fixture repo and grants nothing, so a registration reaches the owner gate as it did unseated. */
+const DEFAULT_SEATS: SeatBook = { seats: [{ name: "fixture-seat", remotes: [REPO, "example-org/example-repo", DRIFTED.toLowerCase()], paths: {}, grants: [] }], denied: [] };
 
 export async function callCommand<T>(host: FactoryHost, routes: FactoryRoutes, name: string, args: unknown): Promise<JsonEnvelope<T>> {
   return (await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args)) as JsonEnvelope<T>;

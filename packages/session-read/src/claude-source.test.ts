@@ -78,6 +78,58 @@ describe("findClaudeSessionSource", () => {
     });
   });
 
+  it("does not scan past an empty direct file", () => {
+    writeTranscript(claudeProjectSlug(cwd), null);
+    writeTranscript("other-project", conversation.nativeId);
+
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({ status: "not_written" });
+  });
+
+  it("skips a non-file candidate in the scan but rejects one at the direct path", () => {
+    mkdirSync(path.join(root, "projects", "other-project", "session-1.jsonl"), { recursive: true });
+    const valid = writeTranscript("third-project", conversation.nativeId);
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({
+      status: "found",
+      source: expect.objectContaining({ path: valid }),
+    });
+
+    mkdirSync(path.join(root, "projects", claudeProjectSlug(cwd), "session-1.jsonl"), { recursive: true });
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("is not a file"),
+    });
+  });
+
+  it("reports bad JSON in the probe as one could-not-verify failure", () => {
+    const filePath = writeTranscript(claudeProjectSlug(cwd), null);
+    writeFileSync(filePath, "not json\n", "utf8");
+
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringMatching(/^could not verify Claude transcript .*session-1\.jsonl: /),
+    });
+  });
+
+  it("reports invalid UTF-8 before the first newline as unavailable", () => {
+    const filePath = writeTranscript(claudeProjectSlug(cwd), null);
+    writeFileSync(filePath, Buffer.from([0xff, 0x0a]));
+
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("could not verify"),
+    });
+  });
+
+  it("refuses to choose between two scanned transcripts", () => {
+    writeTranscript("project-a", conversation.nativeId, conversation.nativeId);
+    writeTranscript("project-b", conversation.nativeId, conversation.nativeId);
+
+    expect(findClaudeSessionSource({ cwd, conversation, configDir: root })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("multiple Claude transcripts"),
+    });
+  });
+
   for (const nativeId of ["../session-1", "nested/session-1", "nested\\session-1", ".", ".."]) {
     it(`rejects native ID ${nativeId} before constructing a path`, () => {
       expect(findClaudeSessionSource({ cwd, conversation: { ...conversation, nativeId }, configDir: root })).toMatchObject({

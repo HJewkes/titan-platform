@@ -80,7 +80,7 @@ function withoutSpoolPath(error: unknown): never {
 const depositResult = z.object({ id: z.string(), created: z.boolean() });
 type DepositResult = z.infer<typeof depositResult>;
 
-async function spoolNames(dir: string): Promise<string[]> {
+export async function spoolNames(dir: string): Promise<string[]> {
   try {
     return await readdir(dir);
   } catch (error) {
@@ -122,14 +122,15 @@ function isClosed(present: ReadonlySet<string>, { asker, depositId }: FiledDepos
   }
 }
 
-/** Every deposit file with no answer or withdrawal beside it, under either the current or the legacy name. */
-function openDeposits(names: readonly string[]): FiledDeposit[] {
+/** Every deposit file name with no answer or withdrawal beside it, under either the current or the legacy name. */
+export function openDepositNames(names: readonly string[]): string[] {
   const present = new Set(names);
   return names
     .filter((name) => !name.startsWith(".") && name.endsWith(DEPOSIT_SUFFIX) && !name.endsWith(ANSWER_SUFFIX))
-    .map(parseDepositName)
-    .filter((filed) => !isClosed(present, filed));
+    .filter((name) => !isClosed(present, parseDepositName(name)));
 }
+
+const openDeposits = (names: readonly string[]): FiledDeposit[] => openDepositNames(names).map(parseDepositName);
 
 /** The item ids of one asker's open deposits, so a refusal can name what to merge or withdraw. */
 function openIdsOf(open: readonly FiledDeposit[], asker: string): string[] {

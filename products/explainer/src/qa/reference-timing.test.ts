@@ -1,6 +1,6 @@
 import type { ProbedMoment } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
-import { earlyReveal, holdThroughReference } from "./reference-timing.js";
+import { earlyReveal, holdThroughReference, textSpans } from "./reference-timing.js";
 import { TIMING_GATES, timingProfile, timingReport, type TimingInput } from "./timing-gates.js";
 
 /** Three sentences, one word every 0.5 s from 0.5 s: "cache" opens the third, at 4.5 s. */
@@ -108,5 +108,57 @@ describe("timing report", () => {
     expect(ids).toEqual(expect.arrayContaining(["early-reveal", "hold-through-reference"]));
     expect(TIMING_GATES).not.toContain("early-reveal");
     expect(TIMING_GATES).not.toContain("hold-through-reference");
+  });
+});
+
+describe("text spans", () => {
+  const counting = (value: string, t: number): ProbedMoment => ({ ...moment(t, [[value, "div.tile"]]), texts: [{ ...text(value, "div.tile"), lines: [{ x: 40, y: 300, width: 80, height: 40 }] }] });
+
+  it("a number counting up in one element is one reading span", () => {
+    // Arrange
+    const probed = [counting("5", 0), counting("19", 0.5), counting("32", 1), moment(1.5, [])];
+
+    // Act
+    const spans = textSpans(probed);
+
+    // Assert
+    expect(spans).toEqual([expect.objectContaining({ text: "32", fromS: 0, untilS: 1.5 })]);
+  });
+
+  it("sibling figures counting up are one reading span each", () => {
+    // Arrange
+    const at = (value: string, x: number) => ({ ...text(value, "span.fig"), lines: [{ x, y: 300, width: 80, height: 40 }] });
+    const step = (t: number, values: string[]): ProbedMoment => ({ beat: "b1", t, texts: values.map((v, i) => at(v, 40 + i * 600)), boxes: [] });
+    const probed = [step(0, ["1", "2"]), step(0.5, ["20", "30"]), step(1, ["41", "60"]), step(1.5, [])];
+
+    // Act
+    const spans = textSpans(probed);
+
+    // Assert
+    expect(spans.map((s) => [s.text, s.fromS, s.untilS])).toEqual([["41", 0, 1.5], ["60", 0, 1.5]]);
+  });
+
+  it("sibling numbers sharing an element description keep separate spans", () => {
+    const probed = [moment(0, [["12", "span.fig"], ["40", "span.fig"]]), moment(1, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans.map((s) => s.text)).toEqual(["12", "40"]);
+  });
+
+  it("text still shown after a beat cut keeps the beat it first showed in", () => {
+    const probed = [moment(0, [["Queue", "div.chapter"]]), { ...moment(1, [["Queue", "div.chapter"]]), beat: "b2" }, moment(2, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans).toEqual([expect.objectContaining({ text: "Queue", beat: "b1", fromS: 0, untilS: 2 })]);
+  });
+
+  it("words replacing words in one element stay separate spans", () => {
+    const probed = [moment(0, [["Queue", "div.t"]]), moment(0.5, [["Cache", "div.t"]]), moment(1, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans.map((s) => s.text)).toEqual(["Queue", "Cache"]);
   });
 });

@@ -11,8 +11,15 @@ const TIP = fakeSha("tip");
 const OTHER_APP = 999;
 const PINNED_APP = 777;
 
-function world(options: { required?: string[]; classic?: string[]; pins?: Record<string, number[]> } = {}): FakeGitHub {
+const POLICY_PATH = ".github/required-checks.json";
+const SHARDS = ["test-shard (1)", "test-shard (2)"];
+
+function world(options: { required?: string[]; classic?: string[]; pins?: Record<string, number[]>; mainOnly?: string[] } = {}): FakeGitHub {
   const fake = fakeGitHub({ repo: REPO });
+  if (options.mainOnly) {
+    const content = JSON.stringify({ version: 1, branches: { main: { contexts: options.required ?? ["validate"], mainContexts: options.mainOnly } } });
+    fake.files.set(`main:${POLICY_PATH}`, { content, blobSha: "policy" });
+  }
   fake.addPr({ headSha: fakeSha("head"), baseRef: "main" });
   fake.rules = { contexts: options.required ?? [], strict: false, ...(options.pins && { pins: options.pins }) };
   fake.classicRules = { contexts: options.classic ?? [], strict: false };
@@ -169,6 +176,40 @@ describe("a freeze recheck judged by the required contexts", () => {
     fake.setRuns(MERGE, [successRun("validate", 2), failed("release", 3)]);
 
     expect(await greenAfterRed(githubPort(fake.wire), REPO, MERGE, red, "main")).toBe(false);
+  });
+});
+
+describe("main-only contexts from the required-checks policy (TP-4401)", () => {
+  const red = { redSha: RED, cancelOnly: false };
+  const sharded = () => world({ required: ["validate"], mainOnly: SHARDS });
+
+  it("is red when a main-only test shard is red and every required context is green", async () => {
+    const fake = sharded();
+    fake.setRuns(MERGE, [successRun("validate", 1), successRun("test-shard (1)", 2), failed("test-shard (2)", 3)]);
+
+    expect(await readMain(fake)).toMatchObject({ verdict: "red", detail: "failed: test-shard (2)" });
+  });
+
+  it("waits on a main-only shard that has not run yet", async () => {
+    const fake = sharded();
+    fake.setRuns(MERGE, [successRun("validate", 1), successRun("test-shard (1)", 2)]);
+
+    expect((await readMain(fake)).verdict).toBe("none");
+  });
+
+  it("stays frozen while a main-only shard is red", async () => {
+    const fake = sharded();
+    fake.setRuns(MERGE, [successRun("validate", 1), successRun("test-shard (1)", 2), failed("test-shard (2)", 3)]);
+
+    expect(await greenAfterRed(githubPort(fake.wire), REPO, MERGE, red, "main")).toBe(false);
+  });
+
+  it("keeps the all-checks rule when the policy file cannot be read", async () => {
+    const fake = sharded();
+    fake.wire.getContent = async () => Promise.reject(new FakeHttpError(502, "bad gateway"));
+    fake.setRuns(MERGE, [successRun("validate", 1), failed("release", 2)]);
+
+    expect(await readMain(fake)).toMatchObject({ verdict: "red", detail: "failed: release" });
   });
 });
 

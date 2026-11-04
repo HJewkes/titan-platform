@@ -4,7 +4,8 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture } from "../test-support/shepherd.js";
 import { formatShepherd } from "./format.js";
-import type { PrTimeline, WatchRow } from "./view.js";
+import type { PrTimeline } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));

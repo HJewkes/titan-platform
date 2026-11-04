@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { z } from "zod";
 import type { ExecutionPhase, UsageMeasurement } from "../index.js";
 import {
   TRACE_RECORD_KINDS,
@@ -13,8 +14,9 @@ import {
 } from "./index.js";
 
 const FIXTURES = new URL("../../fixtures/trace/v1/", import.meta.url);
-const docRun = readFileSync(new URL("doc-run.jsonl", FIXTURES), "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
-const byKind = (kind: string) => JSON.parse(readFileSync(new URL(`${kind}.json`, FIXTURES), "utf8")) as Record<string, unknown>[];
+const FixtureRecord = z.record(z.string(), z.unknown());
+const docRun = readFileSync(new URL("doc-run.jsonl", FIXTURES), "utf8").trim().split("\n").map((line) => FixtureRecord.parse(JSON.parse(line)));
+const byKind = (kind: string) => z.array(FixtureRecord).parse(JSON.parse(readFileSync(new URL(`${kind}.json`, FIXTURES), "utf8")));
 const fixture = (id: string) => structuredClone(docRun.find((record) => record.id === id)!);
 const ATTEMPT = "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:0";
 
@@ -48,9 +50,9 @@ describe("trace fixtures for the documentation run", () => {
 describe("strict and loose parsing", () => {
   it("rejects an unknown key when producing, at the top level and nested", () => {
     expect(() => parseTraceRecord({ ...fixture(ATTEMPT), extra: 1 })).toThrow();
-    const cost = fixture("cost:response:claude-code:host-a:conv-1:msg_01") as { measurement: Record<string, unknown> };
-    cost.measurement.extra = 1;
-    expect(() => parseTraceRecord(cost)).toThrow();
+    const cost = fixture("cost:response:claude-code:host-a:conv-1:msg_01");
+    const measurement = { ...FixtureRecord.parse(cost.measurement), extra: 1 };
+    expect(() => parseTraceRecord({ ...cost, measurement })).toThrow();
   });
 
   it("parses an attempt whose step kind is authorize", () => {

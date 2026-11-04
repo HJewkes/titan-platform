@@ -9,8 +9,7 @@ import { readDeployHolds } from "./deploy-pause.js";
 import { readDeployWindow, readLastDeploy } from "./deploy-ports.js";
 import { nodeMorningHoldPorts, syncMorningHold, type MorningHoldAction } from "./morning-deploy-hold.js";
 import { morningQueuesDir } from "./needs/morning-source.js";
-import type { CommandResult } from "./service-control.js";
-import { runCommand } from "./service-ports.js";
+import { runCommand, type CommandResult } from "./run-command.js";
 import {
   DEPLOY_NOW_LABEL,
   nodeWantedStore,
@@ -195,6 +194,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
       busy: service.busy,
       paused: () => readDeployHolds(pauseReadPorts, stateDir).held,
       spawn,
+      ...(options.maxWaitMs !== undefined && { maxWaitMs: options.maxWaitMs }),
       log: (line) => log.info({}, line),
       waits: memoOf(options),
     });
@@ -207,7 +207,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
 /** Absent without a pacer, so a serve that does not pace deploys reports nothing it does not do. */
 export function deployPendingHealth(options: DeployPacerOptions | undefined): { deployPending?: ReturnType<typeof pacerStatus> } {
   if (options === undefined) return {};
-  return { deployPending: withWaiting(pacerStatus(readWanted(options.stateDir, options.store ?? nodeWantedStore)), memoOf(options).wait) };
+  return { deployPending: withWaiting(pacerStatus(readWanted(options.stateDir, options.store ?? nodeWantedStore), options.maxWaitMs), memoOf(options).wait) };
 }
 
 /** The same bin and state dir `workflows.ts` gives Shepherd's redeploy step, so the queue and the sweep share one record. */

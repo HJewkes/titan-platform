@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "a held qa error is reported only and the run goes on to sheets",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "file": "products/explainer/src/qa/qa-gates.ts",
       "find": "{ name: \"held-errors\", gate: true,",
       "replace": "{ name: \"held-errors\", gate: false,",
       "kills": [

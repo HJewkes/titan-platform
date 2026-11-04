@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { dailyWith, l0Row } from "./daily-script.test-helpers.js";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
 import { claimsCheckWith } from "./lint-claims.js";
@@ -132,5 +133,46 @@ describe("repair hints for rows whose value says too little", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 
     expect(hintFor(script, "Q-F11")).toMatch(/; the last beat c2 says 14 words \(at most 8\)$/);
+  });
+});
+
+describe("Q-D17 hint for a claim-card, which takes no cue", () => {
+  const words = (n: number): string => Array.from({ length: n }, (_, i) => `lane${i % 3 === 0 ? "s" : ""}`).join(" ");
+  const hintOf = (patch: Parameters<typeof dailyWith>[1]): string => {
+    const script = dailyWith("reflection-2", patch);
+    return repairHint(l0Row(script, "Q-D17"), script) ?? "";
+  };
+
+  it("a 9.3 s claim-card's hint names its word cap and offers a trim", () => {
+    const hint = hintOf({ plannedS: 12, spoken: words(26) });
+
+    const cap = Number(/at most (\d+) words \(now 26\)/.exec(hint)?.[1]);
+    expect(cap).toBeGreaterThan(0);
+    expect(cap).toBeLessThan(26);
+    expect(hint).toContain(`Trim it to ${cap} words`);
+  });
+
+  it("a split hint keeps the beat floor and asks heldS on one piece", () => {
+    const hint = hintOf({ plannedS: 20, heldS: 4, spoken: words(50) });
+
+    const pieces = Number(/split it into (\d+) claim-card beats/.exec(hint)?.[1]);
+    expect(pieces).toBeGreaterThanOrEqual(2);
+    expect(20 / pieces).toBeGreaterThanOrEqual(6);
+    expect(hint).toContain("6 s or longer by plannedS");
+    expect(hint).toContain("heldS on one piece only");
+  });
+
+  it("offers no split when its pieces would fall under the beat floor", () => {
+    const hint = hintOf({ plannedS: 10, spoken: words(26) });
+
+    expect(hint).toContain("Trim it to");
+    expect(hint).not.toContain("split it into");
+    expect(hint).not.toContain("heldS on one piece");
+  });
+
+  it("a reflection claim-card split asks each piece to cite its slow fact", () => {
+    const hint = hintOf({ plannedS: 20, spoken: words(50) });
+
+    expect(hint).toContain("cite the slow/ fact it answers in every piece");
   });
 });

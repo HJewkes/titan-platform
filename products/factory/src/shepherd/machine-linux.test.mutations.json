@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "readMachine drops the core count",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "  const cpu = { load5, cores: cores(), ",
+      "replace": "  const cpu = { load5, ",
+      "kills": ["readMachine's measured headroom reads load1, load5 and the core count from the load and core sources"]
+    }
+  ]
+}

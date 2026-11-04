@@ -18,5 +18,9 @@ export const awaitVerdictStep =
     if (!wiring) return { kind: "none" };
     const { reader, dispatch } = wiring;
     const work = () => awaitVerdict(reader, input, timing, signal, dispatch && (() => dispatch.roster()));
-    return thenDropCheckout(deps, input, work, (result) => result.kind === "verdict", MemberShapeRead.parse(raw).shape);
+    try {
+      return await thenDropCheckout(deps, input, work, (result) => result.kind === "verdict", MemberShapeRead.parse(raw).shape);
+    } finally {
+      deps.spawnGate?.reviewEnded();
+    }
   };

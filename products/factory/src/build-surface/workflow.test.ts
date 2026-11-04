@@ -1,0 +1,391 @@
+import { partialFake } from "@titan-design/test-kit";
+import { CodeStepFailure, StepFailedError, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
+import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
+import { openFactoryHost, type FactoryHost } from "../host.js";
+import { DEMO_REPO, demoSpec, fakeBuild, shaOf, stubbedRoutes, type FakeBuild, type GateScript } from "../test-support/build-surface.js";
+import { gateId, gateOpened } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
+import { BUILD_SURFACE_WORKFLOW } from "./manifest.js";
+import { buildSurfaceAgentRoutes } from "./routes.js";
+import { sliceStep, type SliceRun } from "./slice-run.js";
+import type { BuildSpec, Slice } from "./spec.js";
+import { buildSurfaceWorkflow } from "./workflow.js";
+
+const hosts: FactoryHost[] = [];
+afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+
+function start(fake: FakeBuild): { host: FactoryHost; runId: string } {
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [buildSurfaceWorkflow()], routes: stubbedRoutes(fake), gatePollMs: 5 });
+  hosts.push(host);
+  return { host, runId: host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }) };
+}
+
+async function approveDeploy(host: FactoryHost, runId: string, slice: string, pr: number): Promise<void> {
+  const step = `deploy-approve:${slice}`;
+  await gateOpened(host, gateId(runId, step));
+  host.runtime.signal(runId, step, { decision: "deploy", headSha: shaOf(9000 + pr) }, OWNER);
+}
+
+/** Answers both deploy gates and the final walk, in the order the run opens them. */
+async function drive(host: FactoryHost, runId: string) {
+  await approveDeploy(host, runId, "shell", 1);
+  await approveDeploy(host, runId, "panel", 2);
+  await gateOpened(host, gateId(runId, "final-walk"));
+  host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9002) }, OWNER);
+  return host.runtime.wait(runId);
+}
+
+const stepsOf = (host: FactoryHost, runId: string) => Object.keys(host.runtime.status(runId)!.stepResults);
+
+describe("build-surface on a toy two-slice spec with every agent step stubbed", () => {
+  it("builds the slices in dependency order, fixes a red gate, lands both and ends at an accepted final walk", async () => {
+    const gate: GateScript = (slice, _head, round) => (slice === "shell" && round === 0 ? { status: 1, records: [{ gate: "G4", pass: false, score: 0.4 }] } : { status: 0, records: [{ gate: "G4", pass: true, score: 1 }] });
+    const fake = fakeBuild({ gate });
+    const { host, runId } = start(fake);
+
+    const run = await drive(host, runId);
+
+    expect(run.status).toBe("completed");
+    expect(fake.agentCalls).toEqual(["bs-implement:shell", "bs-fix:shell:1", "bs-review:shell:1:0", "bs-implement:panel", "bs-review:panel:0:0"]);
+    expect(fake.registered).toEqual([
+      { repo: DEMO_REPO, pr: 1, task: "demo/DM-1", implementer: "bs-demo-repo-shell" },
+      { repo: DEMO_REPO, pr: 2, task: "demo/DM-1", implementer: "bs-demo-repo-panel" },
+    ]);
+    const deploys = fake.commands.filter((command) => command.argv[1] === "deploy").map((command) => command.env.BS_MERGE_SHA);
+    expect(deploys).toEqual([shaOf(9001), shaOf(9002)]);
+  });
+
+  describe("a slice's own preview and deploy switches", () => {
+    /** Beta waits on alpha so their PRs, and the last merge the final walk names, come in a fixed order. */
+    const twoSlices = (first: Record<string, unknown>) => [{ id: "alpha", title: "Alpha", brief: "b", ...first }, { id: "beta", title: "Beta", brief: "b", dependsOn: ["alpha"] }];
+    const callsOf = (fake: FakeBuild, verb: string) => fake.commands.filter((command) => command.argv[1] === verb).map((command) => command.env.BS_SLICE).sort();
+
+    /** Approves the deploys of the slices that ask, then the final walk. */
+    async function finish(host: FactoryHost, runId: string, approved: Record<string, number> = {}) {
+      for (const [slice, pr] of Object.entries(approved)) await approveDeploy(host, runId, slice, pr);
+      await gateOpened(host, gateId(runId, "final-walk"));
+      host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9002) }, OWNER);
+      return host.runtime.wait(runId);
+    }
+
+    it("skips the preview for the slice that says false while its sibling runs it", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ deploy: undefined, slices: twoSlices({ preview: false }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "preview")).toEqual(["beta"]);
+      expect(stepsOf(host, runId).filter((step) => step.startsWith("bs-preview:"))).toEqual(["bs-preview:beta:0:0"]);
+    });
+
+    it("skips the deploy for the slice that says false, with no approval gate, while its sibling deploys", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ slices: twoSlices({ deploy: false }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId, { beta: 2 });
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "deploy")).toEqual(["beta"]);
+      expect(stepsOf(host, runId).some((step) => step.startsWith("deploy-approve:alpha"))).toBe(false);
+      expect(stepsOf(host, runId).filter((step) => step.startsWith("bs-deploy:"))).toEqual(["bs-deploy:beta:0"]);
+    });
+
+    it("inherits the spec when the switches are absent", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ slices: twoSlices({}) }) });
+      const { host, runId } = start(fake);
+
+      await finish(host, runId, { alpha: 1, beta: 2 });
+
+      expect(callsOf(fake, "preview")).toEqual(["alpha", "beta"]);
+      expect(callsOf(fake, "deploy")).toEqual(["alpha", "beta"]);
+    });
+
+    it("does not turn a step on when the spec has none, even with true on the slice", async () => {
+      const fake = fakeBuild({ spec: demoSpec({ preview: undefined, deploy: undefined, slices: twoSlices({ preview: true, deploy: true }) }) });
+      const { host, runId } = start(fake);
+
+      const run = await finish(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(callsOf(fake, "preview")).toEqual([]);
+      expect(callsOf(fake, "deploy")).toEqual([]);
+    });
+  });
+
+  it("refuses a final-walk acceptance given for a sha other than the last merge", async () => {
+    const { host, runId } = start(fakeBuild());
+    await approveDeploy(host, runId, "shell", 1);
+    await approveDeploy(host, runId, "panel", 2);
+    await gateOpened(host, gateId(runId, "final-walk"));
+
+    const accept = () => host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+
+    expect(accept).toThrow(/final-walk does not match its schema: \$\.headSha/);
+  });
+
+  it("runs the gates at the head the implementer reported, with the evidence path the spec names", async () => {
+    const fake = fakeBuild();
+    const { host, runId } = start(fake);
+
+    await drive(host, runId);
+
+    const gateRun = fake.commands.find((command) => command.argv[1] === "gates")!;
+    expect(gateRun.env).toMatchObject({ BS_SLICE: "shell", BS_HEAD: shaOf(1), BS_EVIDENCE: `/work/demo-repo/evidence/shell/${shaOf(1)}`, BS_BRANCH: "build-surface/shell" });
+  });
+
+  it("stops a slice whose report is rejected twice, and never starts the slice that depends on it", async () => {
+    const fake = fakeBuild({ reportCheck: () => 1 });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/0 of 2 slices merged.*shell \(slice shell stopped: the report was rejected twice: diff leaves the partition.*not started: panel/);
+    expect(fake.agentCalls).toEqual(["bs-implement:shell", "bs-fix:shell:0r"]);
+  });
+
+  it("stops a slice that asks for new components with their names, and does not retry it", async () => {
+    const fake = fakeBuild({ newPrimitives: ["DataGrid", "Stepper"] });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/shell \(needs component: DataGrid, Stepper\)/);
+    expect(fake.agentCalls).toEqual(["bs-implement:shell"]);
+    expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(false);
+  });
+
+  it("goes on past a report that asks for no new components", async () => {
+    const fake = fakeBuild({ newPrimitives: [] });
+    const { host, runId } = start(fake);
+
+    await drive(host, runId);
+
+    expect(fake.agentCalls).toContain("bs-implement:shell");
+    expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(true);
+  });
+
+  it("stops a slice once one gate fails three rounds with no score improvement", async () => {
+    const fake = fakeBuild({ gate: () => ({ status: 1, records: [{ gate: "G6", pass: false, score: 0.5 }] }) });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.error).toMatch(/gate G6 failed 3 rounds with no score improvement/);
+    expect(stepsOf(host, runId).filter((step) => step.startsWith("bs-gates:shell"))).toHaveLength(3);
+  });
+
+  it("cancels the run when a gate's sensitivity proof fails twice", async () => {
+    const fake = fakeBuild({ gate: (_slice, _head, round) => ({ status: 3, records: [{ gate: "G4", pass: false, score: round }] }) });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.error).toMatch(/sensitivity proof failed twice/);
+  });
+
+  /** Two independent slices running together; beta is held at `hold` until alpha's deploy has failed. */
+  function siblingRun(hold: "gates" | "land", approve: boolean) {
+    const slices = [
+      { id: "alpha", title: "Alpha", brief: "Build alpha." },
+      { id: "beta", title: "Beta", brief: "Build beta." },
+    ];
+    const fake = fakeBuild({ spec: demoSpec({ deploy: { command: ["make", "deploy"], approve }, slices }) });
+    let alphaDeployFailed!: () => void;
+    const failed = new Promise<void>((resolve) => (alphaDeployFailed = resolve));
+    const { run, shepherd } = fake.ports;
+    fake.ports.run = async (argv, request) => {
+      if (hold === "gates" && argv[1] === "gates" && request.env.BS_SLICE === "beta") await failed;
+      if (argv[1] !== "deploy" || request.env.BS_SLICE !== "alpha") return run(argv, request);
+      fake.commands.push({ argv, env: request.env });
+      setTimeout(alphaDeployFailed, 20);
+      return { status: 1, stdout: "", stderr: "deploy target refused" };
+    };
+    const isBeta = (pr: number) => fake.registered.some((entry) => entry.pr === pr && entry.implementer.endsWith("-beta"));
+    fake.ports.shepherd = { ...shepherd, land: async (request, signal) => (hold === "land" && isBeta(request.pr) && (await failed), shepherd.land(request, signal)) };
+    return { fake, ...start(fake) };
+  }
+
+  const deploysOf = (fake: FakeBuild) => fake.commands.filter((command) => command.argv[1] === "deploy").map((command) => command.env.BS_SLICE);
+
+  it("stops a sibling slice in flight when another slice's deploy fails, before its next step", async () => {
+    const { fake, host, runId } = siblingRun("gates", false);
+
+    const result = await host.runtime.wait(runId);
+
+    expect(result.error).toMatch(/slice alpha: the deploy at .* failed/);
+    expect(deploysOf(fake)).toEqual(["alpha"]);
+    expect(stepsOf(host, runId).filter((step) => /^bs-(preview|review|pr|deploy):beta/.test(step))).toEqual([]);
+  });
+
+  it("never opens a sibling's deploy gate once another slice's deploy has failed", async () => {
+    const { fake, host, runId } = siblingRun("land", true);
+    await gateOpened(host, gateId(runId, "deploy-approve:alpha"));
+    host.runtime.signal(runId, "deploy-approve:alpha", { decision: "deploy", headSha: shaOf(9000 + fake.registered.find((entry) => entry.implementer.endsWith("-alpha"))!.pr) }, OWNER);
+
+    const result = await host.runtime.wait(runId);
+
+    expect(result.error).toMatch(/slice alpha: the deploy at .* failed/);
+    expect(deploysOf(fake)).toEqual(["alpha"]);
+    expect(stepsOf(host, runId)).not.toContain(expect.stringMatching(/^deploy-approve:beta/));
+  }, 5_000);
+
+  it("fails at plan when the spec names another repo, before any slice starts", async () => {
+    const fake = fakeBuild({ spec: demoSpec({ repo: "owner/other-repo" }) });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.error).toMatch(/build spec is for owner\/other-repo, not owner\/demo-repo/);
+    expect(fake.agentCalls).toEqual([]);
+  });
+
+  it.each([
+    [10, "proceeds, since a fresh extraction already runs", "completed"],
+    [20, "stops the slice", "failed"],
+  ])("routes a preflight exit of %i: %s", async (status, _what, expected) => {
+    const fake = fakeBuild({ spec: demoSpec({ preflight: { command: ["make", "preflight"] } }), preflight: status });
+    const { host, runId } = start(fake);
+
+    const run = expected === "completed" ? await drive(host, runId) : await host.runtime.wait(runId);
+
+    expect(run.status).toBe(expected);
+    if (expected === "failed") expect(run.error).toMatch(/slice shell stopped: blocked: exited 20: spec lock moved/);
+  });
+
+  it("stops the slice when its spend passes the slice cap", async () => {
+    const spec = demoSpec({ sliceBudgetUsd: 0.25, slices: [{ id: "shell", title: "Shell", brief: "b", extract: { prompt: "extract" } }] });
+    const fake = fakeBuild({ spec });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [buildSurfaceWorkflow()], routes: stubbedRoutes(fake).filter((route) => route.match !== "bs-extract").concat(buildSurfaceAgentRoutes(fake.ports).filter((route) => route.match === "bs-extract")), gatePollMs: 5 });
+    hosts.push(host);
+
+    const run = await host.runtime.wait(host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }));
+
+    expect(run.error).toMatch(/spend \$0\.50 is over the slice cap of \$0\.25/);
+  });
+
+  describe("agent-chat spend against the budgets", () => {
+    /** One finished turn: it pushes the next head, as the fake's own implementer does, so the report check accepts it. */
+    function turnOf(fake: FakeBuild, turns: { pushed: number }, usage: StepUsage) {
+      const head = shaOf(++turns.pushed);
+      fake.branches.set("build-surface/shell", head);
+      return { agent: "bs-demo-repo-shell", agentId: "a", sessionId: "s", report: { head, targetsCovered: [], newPrimitivesRequested: [], deviations: [], ideas: [] }, usage };
+    }
+    const oneSlice = (budgets: object) => demoSpec({ preview: undefined, reviewer: undefined, deploy: undefined, slices: [{ id: "shell", title: "Shell", brief: "b" }], ...budgets });
+
+    const REAL_AGENT_ROUTES = ["bs-implement", "bs-fix", "bs-review"];
+
+    /** Real implement, fix and review routes over a stubbed implementer; each turn's budget is kept for the assert. */
+    function metered(fake: FakeBuild, turn: (round: number) => StepUsage) {
+      const budgets: (number | undefined)[] = [];
+      const turns = { pushed: 0 };
+      const answer = async (budgetUsd: number | undefined) => (budgets.push(budgetUsd), turnOf(fake, turns, turn(budgets.length - 1)));
+      fake.ports.implementer = { start: (request) => answer(request.turn?.budgetUsd), resume: (_name, _message, _schema, _signal, turn) => answer(turn?.budgetUsd) };
+      return { ...hostOver(fake), budgets };
+    }
+
+    function hostOver(fake: FakeBuild) {
+      const real = buildSurfaceAgentRoutes(fake.ports).filter((route) => REAL_AGENT_ROUTES.includes(route.match));
+      const routes = stubbedRoutes(fake).filter((route) => !REAL_AGENT_ROUTES.includes(route.match)).concat(real);
+      const host = openFactoryHost({ dbPath: ":memory:", workflows: [buildSurfaceWorkflow()], routes, gatePollMs: 5 });
+      hosts.push(host);
+      return { host, runId: host.runtime.start(BUILD_SURFACE_WORKFLOW, { repo: DEMO_REPO, spec: "docs/BUILD-SPEC.md" }) };
+    }
+
+    const walkFinal = async (host: FactoryHost, runId: string) => {
+      await gateOpened(host, gateId(runId, "final-walk"));
+      host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+      return host.runtime.wait(runId);
+    };
+
+    it("records an under-budget agent step's usage on its step result and goes on", async () => {
+      const usage = { costUsd: 0.4, peakContextTokens: 120_000 };
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId, budgets } = metered(fake, () => usage);
+
+      const run = await walkFinal(host, runId);
+
+      expect(run.status).toBe("completed");
+      expect(budgets).toEqual([1]);
+      expect(Object.values(host.runtime.status(runId)!.stepResults).find((step) => step.stepId === "bs-implement:shell")?.usage).toEqual(usage);
+    });
+
+    it("hands the reviewer what the slice has left and the step's first start", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1, reviewer: { profile: "reviewer-ro" } }) });
+      const turns = { pushed: 0 };
+      const asked: { role: string | undefined; budgetUsd: number | undefined; firstStartedAtMs: number | undefined }[] = [];
+      fake.ports.implementer = {
+        start: async ({ role, turn, brief }) => {
+          asked.push({ role, budgetUsd: turn?.budgetUsd, firstStartedAtMs: turn?.firstStartedAtMs });
+          if (role !== "reviewer") return turnOf(fake, turns, { costUsd: 0.25 });
+          const head = /at exactly head ([0-9a-f]{40})/.exec(brief)![1]!;
+          return { agent: "reviewer", agentId: "r", sessionId: "s2", report: { head, verdict: "PASS", rows: [{ rubric: 1, result: "pass" }] }, usage: { costUsd: 0.1 } };
+        },
+        resume: () => Promise.reject(new Error("no fix round")),
+      };
+      const { host, runId } = hostOver(fake);
+
+      await walkFinal(host, runId);
+
+      expect(asked.map(({ role, budgetUsd }) => ({ role, budgetUsd }))).toEqual([{ role: undefined, budgetUsd: 1 }, { role: "reviewer", budgetUsd: 0.75 }]);
+      expect(asked.every(({ firstStartedAtMs }) => Number.isFinite(firstStartedAtMs))).toBe(true);
+    });
+
+    it("stops a slice whose finished agent step passed the cap", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId } = metered(fake, () => ({ costUsd: 1.25 }));
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/spend \$1\.25 is over the slice cap of \$1/);
+      expect(fake.commands.some((command) => command.argv[1] === "gates")).toBe(false);
+    });
+
+    it("hands a fix round only what the slice has left", async () => {
+      const gate: GateScript = (_slice, _head, round) => (round === 0 ? { status: 1, records: [{ gate: "G4", pass: false, score: 0.4 }] } : { status: 0, records: [{ gate: "G4", pass: true, score: 1 }] });
+      const fake = fakeBuild({ gate, spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId, budgets } = metered(fake, () => ({ costUsd: 0.25 }));
+
+      await walkFinal(host, runId);
+
+      expect(budgets).toEqual([1, 0.75]);
+    });
+
+    it("stops the wave when a retired agent's step fails", async () => {
+      const slices = [{ id: "shell", title: "Shell", brief: "b" }, { id: "panel", title: "Panel", brief: "b" }];
+      const gate: GateScript = () => ({ status: 1, records: [{ gate: "G4", pass: false, score: 0.4 }] });
+      const fake = fakeBuild({ gate, spec: oneSlice({ sliceBudgetUsd: 1, slices, concurrency: 1 }) });
+      const { host, runId, budgets } = metered(fake, (round) => {
+        if (round === 0) return { costUsd: 0.5 };
+        throw new CodeStepFailure("bs-demo-repo-shell was retired: it spent $0.70 of its $0.50 budget", { costUsd: 0.75 });
+      });
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/retired: it spent \$0\.70 of its \$0\.50 budget/);
+      expect(run.error).toMatch(/stopped by failure/);
+      expect(run.error).toMatch(/not started: panel/);
+      expect(budgets).toEqual([1, 0.5]);
+    });
+
+    it("reports a failed step's overshoot on top of the slice's earlier spend, so the run's budget counts all of it", async () => {
+      const ctx = partialFake<WorkflowContext>({ dispatch: () => Promise.reject(new StepFailedError("bs-fix:shell:1", 0, "retired", { usage: { costUsd: 0.75 } })) });
+      const run = partialFake<SliceRun>({ ctx, spec: partialFake<BuildSpec>({ sliceBudgetUsd: 1 }), slice: partialFake<Slice>({ id: "shell" }), spentUsd: 0.5, costUnknown: false, halt: { reason: null } });
+
+      await expect(sliceStep(run, "bs-fix", 1, {}, z.object({}))).rejects.toMatchObject({ usage: { costUsd: 1.25 }, reason: "retired" });
+    });
+
+    it("stops the slice on an agent step with no price, and the run reads cost_unknown", async () => {
+      const fake = fakeBuild({ spec: oneSlice({ sliceBudgetUsd: 1 }) });
+      const { host, runId } = metered(fake, () => ({ costUsd: 0, costUnknown: true }));
+
+      const run = await host.runtime.wait(runId);
+
+      expect(run.error).toMatch(/spend has no price/);
+      expect(run.error).toMatch(/stopped by cost_unknown/);
+    });
+  });
+});

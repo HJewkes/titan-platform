@@ -41,6 +41,10 @@ export interface RemoteListener {
   tls: TlsFileTracker;
 }
 
+function hasTlsFiles(tls: Partial<RemoteListenerOptions["tls"]> | undefined): boolean {
+  return Boolean(tls?.certFile && tls.keyFile);
+}
+
 /** Checked, and the token and TLS files read, before anything binds: a bad remote config never half-starts. */
 export function remoteListener(remote: RemoteListenerOptions | undefined, mainHost: string): RemoteListener | null {
   if (!remote) return null;
@@ -49,7 +53,7 @@ export function remoteListener(remote: RemoteListenerOptions | undefined, mainHo
   }
   assertRemoteHost(remote.host);
   // Checked at runtime too: a JavaScript caller, or a cast, can leave out the typed field.
-  if (!remote.tls?.certFile || !remote.tls.keyFile) throw new RemoteBindError(remote.host, "it has no TLS; pass remote.tls with certFile and keyFile");
+  if (!hasTlsFiles(remote.tls)) throw new RemoteBindError(remote.host, "it has no TLS; pass remote.tls with certFile and keyFile");
   const gate = createDaemonAuth({ tokenFile: remote.tokenFile, signInHint: remote.signInHint });
   return { options: remote, gate, tls: trackTlsFiles(remote.tls, remote.allowedHosts ?? []) };
 }

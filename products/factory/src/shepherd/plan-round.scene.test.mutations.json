@@ -4,8 +4,8 @@
     {
       "name": "the ci-policy scope pins only the plan's .github/ files",
       "file": "products/factory/src/shepherd/plan-round.ts",
-      "find": "return { ciPolicyKeys: keys, files: pinFiles(plan) };",
-      "replace": "return { ciPolicyKeys: keys, files: pinFiles(plan).filter((file) => isGithubPath(file.path)) };",
+      "find": "return { ciPolicyKeys: keys, files: pinFiles(plan, pins) };",
+      "replace": "return { ciPolicyKeys: keys, files: pinFiles(plan, pins).filter((file) => isGithubPath(file.path)) };",
       "kills": [
         "a CI-policy PR drafted with plan-round and approved at plan time merges with no owner gate when the PR's files are exactly the plan's bytes"
       ]

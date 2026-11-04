@@ -4,7 +4,7 @@ import { codeSource } from "../resolve-citation.js";
 import { keptBeats, ResolvedSchema } from "../resolve-stage.js";
 import { ScriptSchema } from "../script-schema.js";
 import type { Storyboard } from "../storyboard.js";
-import { fillScript } from "../template-fill/fill.js";
+import { fillScript, isCustomRow } from "../template-fill/fill.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import { storyboardIds } from "./beat-ids.js";
 import { boardFromFill, type PageExtras } from "./board-from-fill.js";
@@ -39,8 +39,8 @@ function required(input: BoardInput, name: string): unknown {
 
 /**
  * The storyboard render draws: the template fill over the beats resolve kept, as resolve gated it (cited code, the
- * owner's `slots` pin, else the `generated-slots` layer resolve stored). A custom-layer beat is filled from its
- * template spec too, which it is drawn from when the run has no built layer for it; a refused beat throws the fill's error.
+ * owner's `slots` pin, else the `generated-slots` layer resolve stored). A custom-layer beat is never template-filled,
+ * as at resolve: the board holds it by spec type with no slots, and its built layer draws it. A refused beat throws the fill's error.
  */
 export function renderBoard(input: BoardInput): RenderBoard {
   const script = ScriptSchema.parse(required(input, "script"));
@@ -48,11 +48,11 @@ export function renderBoard(input: BoardInput): RenderBoard {
   const pin = read(input, "slots") ?? read(input, "generated-slots");
   const code = read(input, "code");
   const kept = { ...script, beats: keptBeats(script.beats, resolved) };
-  const asTemplate = { beats: resolved.beats.map((row) => ({ ...row, layer: "template" as const })) };
-  const filled = fillScript(kept, asTemplate, {
+  const filled = fillScript(kept, resolved, {
     specs: loadBeatSpecs(), ...(code === undefined ? {} : { code: codeSource(code) }), ...(pin === undefined ? {} : { pinned: PinSchema.parse(JSON.parse(pin)) }),
   });
   const ids = storyboardIds(script, resolved);
-  const custom = new Map(resolved.beats.filter((row) => row.layer === "custom" && ids.has(row.id)).map((row) => [row.id, ids.get(row.id)!]));
-  return { ...boardFromFill(script, filled, ids), ids, custom };
+  const custom = new Map(resolved.beats.filter((row) => isCustomRow(row) && ids.has(row.id)).map((row) => [row.id, ids.get(row.id)!]));
+  const customSpecs = new Map(resolved.beats.filter((row) => custom.has(row.id)).map((row) => [row.id, row.beat]));
+  return { ...boardFromFill(script, filled, ids, customSpecs), ids, custom };
 }

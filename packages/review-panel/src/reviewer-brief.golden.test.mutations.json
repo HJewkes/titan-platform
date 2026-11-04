@@ -27,6 +27,15 @@
       "kills": [
         "rendered briefs against main's output is byte-identical for both scoped fix-round re-reviews"
       ]
+    },
+    {
+      "name": "claims from the PR's file reach the prompt unchecked",
+      "file": "packages/review-panel/src/briefs/attest.ts",
+      "find": "claims.filter(({ step, closure }) => CLAIM_STEP.test(step) && CLAIM_CLOSURE.test(closure))",
+      "replace": "claims",
+      "kills": [
+        "rendered briefs against main's output a brief with claimed rows asks for the Attests line and names each step and closure"
+      ]
     }
   ]
 }

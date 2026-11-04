@@ -1,4 +1,4 @@
-import { measurementAuditSchema, metricsEntrySchema } from "@titan-design/health/metrics";
+import { measurementAuditReadSchema, measurementAuditSchema, metricsEntryReadSchema, metricsEntrySchema } from "@titan-design/health/metrics";
 import { z } from "zod";
 
 export const AuditInputSchema = measurementAuditSchema.shape.inputs;
@@ -74,3 +74,12 @@ export const SurfacePlanSchema = z.object({ reports: z.array(metricsEntrySchema.
 export const ReviewAnswerSchema = z.object({ decision: z.enum(["publish", "discard"]) });
 
 export const PublishedSchema = z.object({ path: z.string(), report: z.unknown() });
+
+// Step prompts are checked with the read schemas so a route hands its port every key the dispatcher sent.
+const ReadInputShape = measurementAuditReadSchema.shape.inputs.shape;
+
+export const LoadStepSchema = z.looseObject({ input: z.unknown() });
+export const InventoryStepSchema = z.looseObject({ stores: ReadInputShape.stores });
+export const AnswerabilityStepSchema = z.looseObject({ questions: measurementAuditReadSchema.shape.questions, surfaces: ReadInputShape.surfaces });
+export const BaselineStepSchema = z.looseObject({ query: metricsEntryReadSchema.shape.metrics.element.shape.query, store: ReadInputShape.stores.element.optional() });
+export const PublishStepSchema = z.looseObject({ report: z.unknown(), out: z.string() });

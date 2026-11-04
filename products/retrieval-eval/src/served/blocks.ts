@@ -9,7 +9,12 @@
  */
 
 export type Trigger = "bootstrap" | "spawn";
-export type RefClass = "note" | "source" | "task" | "session";
+const REF_CLASSES = ["note", "source", "task", "session"] as const;
+export type RefClass = (typeof REF_CLASSES)[number];
+
+function isRefClass(value: string | undefined): value is RefClass {
+  return REF_CLASSES.some((refClass) => refClass === value);
+}
 
 export interface ServedRef {
   trigger: Trigger;
@@ -58,7 +63,8 @@ function uniqueRefs(trigger: Trigger, matches: Iterable<RegExpMatchArray>): Serv
   const byRef = new Map<string, ServedRef>();
   for (const [, foreign, refClass, rest] of matches) {
     const ref = `${refClass}:${rest}`;
-    if (!byRef.has(ref)) byRef.set(ref, servedRef(trigger, refClass as RefClass, rest!, foreign !== undefined));
+    if (!isRefClass(refClass) || byRef.has(ref)) continue;
+    byRef.set(ref, servedRef(trigger, refClass, rest!, foreign !== undefined));
   }
   return [...byRef.values()];
 }

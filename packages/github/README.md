@@ -40,7 +40,7 @@ numeric size, throws `BlobTooLargeError` before the blob is read.
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run; a run with no start is ordered by id
-unless it is still queued, which makes it newest. `behind` comes from the compare API.
+unless it is still queued, which makes it newest. `withoutSupersededCancels` drops a `cancelled` run only when a newer run of the same name, head sha and app exists; `mergeReadiness` does not apply it, so callers that ignore concurrency cancels pre-filter with it. `behind` comes from the compare API.
 `mergeReadiness` (and `headCheckFindings` under it) is the one rule for whether a required check
 passed: a required name needs a completed `success` run, so a `skipped` or `neutral` run, or no run
 at all, never passes.
@@ -144,7 +144,7 @@ repo, branch)` reads rulesets, then classic protection; both reads treat a free-
 ("Upgrade to GitHub Pro") as no rules and throw on any other 403. `resolveCommit(repo, sha)`
 expands an abbreviation (null when GitHub has no such commit) and `commitStatuses(repo, sha)`
 reads the combined status. `ciWait(port, options)` polls those until green, red or the deadline,
-reading the rules once and retrying a failed read. The `titan-gh` bin wraps it:
+re-reading the rules each poll (a failed or newly empty read keeps the last list) and retrying a failed read. The `titan-gh` bin wraps it:
 
 ```
 titan-gh ci-wait <owner/repo> <sha> [--base <branch>] [--timeout <seconds>] [--interval <seconds>]
@@ -192,6 +192,26 @@ mergeability: `unknown` is re-read after 1, 2 and 4 seconds and fails if it neve
 `FAIL <repo>#<N>: <reason>; ...`, and exits 0, 1, or 2 on usage. `--json` prints
 `{ repo, number, ok, reasons, head, base, required, strict, behindBy }`.
 
+`gitDiffPin(execGit, clone, head)` is I2's diff pin (v9.1 §2.3, Q13). It fetches `main` from `origin` into
+`refs/remotes/origin/main`, takes `merge-base --all` of that tip and `head` (a full sha), and runs the §2.3 command
+(`DIFF_HASH_ARGS`) between them under `HARDENED_GIT_ENV`: `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, and
+no `git -c` or `GIT_CONFIG_COUNT` injection from the caller. One merge base gives `{ kind: "exact", head, base, main,
+full, core }`; none, or more than one, gives `{ kind: "ambiguous", bases }`, which matches nothing, itself included.
+`serialiseDiff` and `diffHashes` are the pure canonicaliser: the whole `@@` line becomes a bare `@@`, a text file's
+`index` line is dropped, context, whitespace and mode lines are kept, and a binary keeps its new blob id instead of its
+data. `full` is the SHA-256 of all of it and is the identity; `core` is the SHA-256 of each file's `diff --git` line,
+mode lines and added and removed lines (or blob id), read only by exclusion 2.
+
+`diffCarry(reviewed, current, gitMergeUpCheck(execGit, clone))` says whether a diff-pinned fact carries to a new head,
+by Q13's two exclusions and nothing else: an equal `full` (`by: "equal-full"`, any head with an identical net diff), or
+an explained merge-up (`by: "merge-up"`): `core` equal, the new head a two-parent merge of the reviewed head and a
+commit already in the pin's `main`, and `merge-tree --write-tree` of the two reproducing the new head's tree. A
+whitespace, mode or binary change, a moved line, a rebase over changed context and an ambiguous base never carry. The
+named residual, accepted with no task: a hunk moved to a place with identical three-line context keeps its hash, as
+with `git patch-id --verbatim`. The clone's own config is trusted: it should be one the factory made, not a checkout
+an agent controls. These files are rule files (§2.7): `@titan-design/review-panel` classes a change to them as
+authority, so it needs `adversary:merge`.
+
 `classifyGitHubFailure(input)` is a pure classifier for a failed GitHub answer: status (absent for
 a network failure), lower-cased headers, redacted message, method, a `networkError` flag, the
 prior `streak` and `now` (epoch ms; it reads no clock). It returns `ok`, `auth` (401), `error`
@@ -201,6 +221,14 @@ prior `streak` and `now` (epoch ms; it reads no clock). It returns `ok`, `auth` 
 failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `now` + 60 s
 doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
 in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. `githubApiPool` calls it.
+
+Both `Rest` transports (`ghCliWire` and `octokitWire`) ask it about every failed 4xx answer. When
+it says `unavailable`, the thrown `GhError` message starts with a marker,
+`[gh-rate-limit status=<n> method=<M> retry-after=… x-ratelimit-remaining=… x-ratelimit-reset=… x-ratelimit-resource=…]`,
+carrying only the headers that are present. `GhError.rateLimit` holds the same text.
+`rateLimitMarker(status, method, headers, message)` writes it, and `parseRateLimitMarker(text)`
+returns `{ status, method, headers }`, or undefined. A caller that only has an error's text can then
+classify it again on its own clock. Shepherd's step retry relies on this.
 
 `githubApiPool({ identity, send, clock, probe, state?, onAvailable?, onAuthFailed? })` gates every call one GitHub identity makes.
 `pool.run(priority, callClass, call)` queues `call`, hands it to `send` when granted, and resolves

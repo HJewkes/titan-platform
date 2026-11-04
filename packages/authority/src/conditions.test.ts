@@ -75,7 +75,8 @@ describe("per-context check apps", () => {
   });
 
   it("fails closed on a malformed binding", () => {
-    const merge = facts({ contextApps: { [REVIEW]: "4242" } as unknown as Record<string, number[]> });
+    const merge = facts();
+    Reflect.set(merge, "contextApps", { [REVIEW]: "4242" });
 
     expect(unmet(merge)).toEqual(["required-contexts-green", "no-non-green-run"]);
   });

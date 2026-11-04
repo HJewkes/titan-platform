@@ -4,7 +4,7 @@ import { REPO } from "../test-support/land.js";
 import { REPO_SEAT, digestSweep, liveRow, redRun, retiredRow, type RedWorld } from "../test-support/registrant-routing.js";
 import type { NoticeFallbacks } from "./exit-notice.js";
 import { digestReads, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
-import type { WatchRow } from "./view.js";
+import type { WatchRow } from "./view-schema.js";
 
 const NOW = new Date("2026-10-20T12:00:00.000Z");
 const HOURS_AGO = (h: number): string => new Date(NOW.getTime() - h * 3_600_000).toISOString();

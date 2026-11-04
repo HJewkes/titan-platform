@@ -15,7 +15,8 @@ import { TEST_BRIEF } from "../test-support/brief.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER } from "../test-support/resolver.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { spendRepair } from "./repair.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
@@ -25,12 +26,13 @@ import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
 import { FIX_PROOF_WAKE_STEP, MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { WAKE_STEPS, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { wakePhase } from "./wake-phase.js";
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
+import type { ExitNoticePorts } from "./ports.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -49,12 +51,12 @@ function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return { ...base, cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
 }
 
-type Asked = { verb: "resume" | "spawn" | "message"; name: string; message: string; cwd?: string; args: number };
+type Asked = { verb: "resume" | "spawn" | "message" | "retire"; name: string; message: string; cwd?: string; args: number };
 
 /** An in-memory roster where a spawn adds a live row; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
   const asked: Asked[] = [];
-  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", (Error | undefined)[]>> = {};
+  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message" | "retire", (Error | undefined)[]>> = {};
   const next = (verb: keyof typeof fail) => {
     const error = fail[verb]?.shift();
     if (error) throw error;
@@ -67,6 +69,11 @@ function fakeAgents(rows: AgentRow[]) {
     resume: async (...args: unknown[]) => (next("resume"), void asked.push({ verb: "resume", name: String(args[0]), message: String(args[1]), args: args.length })),
     spawn: async (name, message, cwd) => (next("spawn"), asked.push({ verb: "spawn", name, message, cwd, args: 3 }), void rows.push(row(name, { presence: "live" }))),
     message: async (name, message) => (next("message"), void asked.push({ verb: "message", name, message, args: 2 })),
+    retire: async (name) => {
+      next("retire");
+      asked.push({ verb: "retire", name, message: "", args: 1 });
+      rows.splice(0, rows.length, ...rows.map((agent) => (agent.name === name ? { ...agent, presence: "exited", status: "retired" } : agent)));
+    },
   };
   return agents;
 }
@@ -500,13 +507,19 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
     expect(resumes).toBe(3);
   });
 
-  it("returns unhandled when neither the wake nor its fallback starts a turn", async () => {
+  it("returns unhandled when the successor of a retired live agent also starts no turn after its wake and fallback", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn within 5 minutes of the wake or of the message fallback" });
-    expect(asks(scene.agents)).toHaveLength(2);
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a-s1 started no turn within 5 minutes of the wake or of the message fallback" });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+      ["retire", "impl-a"],
+      ["spawn", "impl-a-s1"],
+      ["message", "impl-a-s1"],
+    ]);
   });
 
   it("returns unhandled with the error class, never its text, when the fallback ask is refused", async () => {
@@ -649,7 +662,7 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     const { outcome, result } = await scene.run("review", fixFirst("fix it"));
 
     expect(outcome.ok).toBe(true);
-    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
   });
 
   it("spawns a successor for a retired implementer at a FIX_FIRST, though its transcript is warm", async () => {
@@ -679,7 +692,29 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
+  });
+
+  it("messages a held FIX_FIRST's findings to the implementer that no successor could relieve", async () => {
+    const scene = wakeStep();
+    scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    await scene.run("review", fixFirst("the parser drops the last field"));
+
+    const message = scene.agents.asked.find((ask) => ask.verb === "message");
+    expect(message?.name).toBe("impl-a");
+    expect(message?.message).toContain("the parser drops the last field");
+  });
+
+  it("still holds, recording the failure, when the message to the implementer fails", async () => {
+    const scene = wakeStep();
+    scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+    scene.agents.fail.message = [new Error("broker refused the message")];
+
+    const { outcome, result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(outcome.ok).toBe(true);
+    expect(result).toMatchObject({ held: { agent: "impl-a-s1" }, predecessor: { agent: "impl-a", sent: false, detail: "the predecessor message failed: Error" } });
   });
 
   it("keeps a resume that fails with anything but a refusal unhandled, and starts no successor", async () => {
@@ -777,7 +812,7 @@ describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner"
     held.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
 
     expect((await woken.run("ci-red")).result).toMatchObject({ kind: "woken" });
-    expect((await held.run("review", fixFirst("fix it"))).result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect((await held.run("review", fixFirst("fix it"))).result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" }, predecessor: { agent: "impl-a", sent: true, detail: "told impl-a" } });
     expect(sent).toEqual([]);
   });
 });
@@ -1279,7 +1314,7 @@ describe("the fix-proof bounce cap", () => {
     first.host.close();
 
     vi.resetModules();
-    const second = scene.open(dbPath, run, await import("./wake.js"));
+    const second = scene.open(dbPath, run, { ...(await import("./wake.js")), ...(await import("./wake-phase.js")) });
     await second.host.runtime.hydrate();
     await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
     second.host.runtime.signal(runId, HOLD, {}, OWNER);
@@ -1307,7 +1342,7 @@ describe("the fix-proof bounce cap", () => {
     expect(scene.stepIds(first.host, runId)).not.toContain(FIX_PROOF_WAKE_STEP);
     first.host.close();
 
-    const second = scene.open(dbPath, run, await import("./wake.js"));
+    const second = scene.open(dbPath, run, { ...(await import("./wake.js")), ...(await import("./wake-phase.js")) });
     await second.host.runtime.hydrate();
     await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
     second.host.runtime.signal(runId, HOLD, {}, OWNER);

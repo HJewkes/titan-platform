@@ -27,13 +27,18 @@ shape. Any other page can publish it by hand.
 import { captureFrames, startEncoder } from "@titan-design/frame-capture";
 
 const encoder = startEncoder("out.mp4", 30, "mix.wav");
-await captureFrames({ url, fps: 30, width: 1920, height: 1080, workers: 8 }, (_, png) => encoder.write(png));
+await captureFrames({ url, fps: 30, width: 1920, height: 1080, workers: 8, spillDir: "out" }, (_, png) => encoder.write(png));
 await encoder.finish();
 ```
 
 With `workers` above 1, pass `beatStartsS` (the seconds at which the page lays out a fresh
 scene) so every chunk starts on a beat: the render then matches a sequential one frame for
 frame. Without it, chunks split by frame count and can start mid-beat.
+
+With `workers` above 1, `spillDir` is required. Frames reach the sink in index order, so every
+chunk after the first waits on disk: one append-only file per chunk, in a directory the capture
+makes inside `spillDir` and removes however it ends. Expect most of the video's PNGs there at the
+peak, so point it at real disk, not a tmpfs. A sequential capture never touches disk.
 
 `playwright-core` is a peer dependency; install a Chromium headless shell for it with
 `pnpm exec playwright-core install --only-shell chromium`. The encoder and `mixAudio`

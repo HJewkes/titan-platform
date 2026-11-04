@@ -51,7 +51,7 @@ describe("invokeCommand", () => {
   it("rejects invalid args with DATAERR by default and USAGE when asked", async () => {
     const server = await invokeCommand(echo, { n: "four" }, ctx());
     expect(server.envelope).toMatchObject({ ok: false, code: EXIT.DATAERR });
-    expect((server.envelope as { error: string }).error).toMatch(/^Invalid arguments: n: /);
+    expect(server.envelope).toMatchObject({ error: expect.stringMatching(/^Invalid arguments: n: /) });
 
     const cli = await invokeCommand(echo, {}, ctx(), { invalidArgsCode: EXIT.USAGE });
     expect(cli.exitCode).toBe(EXIT.USAGE);

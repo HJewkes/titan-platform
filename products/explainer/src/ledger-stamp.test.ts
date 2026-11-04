@@ -53,6 +53,16 @@ describe("stampLedgerTerms", () => {
     expect(stamped.stamps).toEqual([{ beat: "w1", term: "PR 101" }]);
   });
 
+  // Mutation: reading only spoken leaves a handle the screen shows, and the line no longer says, unstamped.
+  it("stamps a ch2 ledger item a ch2 beat shows on screen without saying it (TP-4697)", () => {
+    const shown = { ...WHY, visual: { assertion: "The desk refuses unknown parcels", job: "map", labels: ["PR 101"] } };
+    const script = tour(withSpoken("w1", "So the scan fix sends every scan to the desk server.", shown), glossed("PR 101"));
+
+    const stamped = stamp(script, spineOf(LEDGER));
+
+    expect(stamped.stamps).toEqual([{ beat: "w1", term: "PR 101" }]);
+  });
+
   it("stamps only the first beat that names the item", () => {
     const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.", WHY)), glossed("PR 101"));
 

@@ -46,8 +46,11 @@ function addBlock(byteOffset: number, blockIndex: number, source: string, chars:
   ).run(byteOffset, blockIndex, source, chars);
 }
 
-const cost = (requestId: string) =>
-  graph.db.prepare("SELECT * FROM request_cost WHERE request_id = ?").get(requestId) as Record<string, number | string | null>;
+const cost = (requestId: string) => {
+  const row = graph.db.prepare<[string], Record<string, number | string | null>>("SELECT * FROM request_cost WHERE request_id = ?").get(requestId);
+  if (!row) throw new Error(`no request_cost row for ${requestId}`);
+  return row;
+};
 
 beforeEach(() => {
   graph = openSessionGraph(":memory:");
@@ -201,7 +204,7 @@ describe("reconcilePrices", () => {
   it("keeps rows the incoming table does not name", () => {
     reconcilePrices(graph, [OPUS_5_5], { tableVersion: 2 });
 
-    const models = graph.db.prepare("SELECT model FROM price ORDER BY model").all().map((r) => (r as { model: string }).model);
+    const models = graph.db.prepare<[], { model: string }>("SELECT model FROM price ORDER BY model").all().map((r) => r.model);
     expect(models).toEqual(["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-opus-5-5"]);
   });
 

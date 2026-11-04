@@ -75,7 +75,7 @@ export function walkScopes(
     visit(node, scope);
     const inner = enter(scope, scopeSegment(node, python));
     for (const child of node.children) {
-      if (child) step(child, inner);
+      step(child, inner);
     }
   };
   step(root, "");

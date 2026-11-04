@@ -3,7 +3,7 @@ import nlp from "compromise";
 import { compromiseTagger } from "./compromise-tagger.js";
 import { MisakiEngine } from "./engine.js";
 import { Lexicon } from "./lexicon.js";
-import { dataVersion, loadLexiconData, sha256Hex } from "./lexicon-data.js";
+import { dataVersion, loadLexiconData, sha256Hex, type LexiconData } from "./lexicon-data.js";
 import type { TaggedToken } from "./pipeline.js";
 import { spacyTokenizer } from "./spacy-tokenizer.js";
 import type { G2pToken, PosTagger, Tokenizer } from "./types.js";
@@ -40,6 +40,8 @@ export interface TtsReadyToken {
 }
 
 let cachedVersion: string | null = null;
+// Growing the vendored dictionaries costs about a second and Lexicon only reads them, so one copy serves every instance.
+let baseLexicon: LexiconData | null = null;
 
 // Sorted so the same words in any key order give one version; absent or empty words keep the base version.
 function wordsSuffix(words: Readonly<Record<string, string>>): string {
@@ -64,7 +66,7 @@ export function misakiEnglish(options: MisakiEnglishOptions = {}): G2p {
     return raw.map((tk, i) => ({ ...tk, tag: tags[i] ?? "" }));
   };
   const engine = new MisakiEngine({
-    lexicon: new Lexicon(loadLexiconData(), options.words),
+    lexicon: new Lexicon((baseLexicon ??= loadLexiconData()), options.words),
     analyze,
     fallback: options.fallback ?? null,
     unk: options.unk ?? "",

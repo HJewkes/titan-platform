@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the row drops its lineage line",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "          <MergeLineage item={item} />\n",
+      "replace": "",
+      "kills": [
+        "the inbox page's Approve merge rows an Approve merge row whose head is 3 behind main shows the lineage line with 3 behind"
+      ]
+    },
+    {
+      "name": "the confirm sheet drops its lineage line",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "      <MergeLineage item={item} />\n      <InboxReadBack",
+      "replace": "      <InboxReadBack",
+      "kills": [
+        "the inbox page's Approve merge rows the confirm sheet shows the same lineage line"
+      ]
+    },
+    {
+      "name": "a gate without lineage renders nothing",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "action.decision === \"merge\" ? <ShipLineageLine",
+      "replace": "action.decision === \"merge\" && item.lineage ? <ShipLineageLine",
+      "kills": [
+        "the inbox page's Approve merge rows a gate with no lineage shows lineage unknown"
+      ]
+    }
+  ]
+}

@@ -11,15 +11,15 @@
     {
       "name": "a strip with an unknown row is kept and never re-read",
       "file": "apps/console/server/gate-strip.ts",
-      "find": "if (strip.unmet.every((gate) => !gate.key.startsWith(\"unknown:\"))) kept.set(",
-      "replace": "kept.set(",
+      "find": "    if (!timeline.ok || !checkRuns.ok) throw new UnkeptReads({ timeline, checkRuns });\n",
+      "replace": "",
       "kills": ["gateStripReader re-reads a strip that had an unknown row"]
     },
     {
       "name": "a kept strip is never reused inside its window",
       "file": "apps/console/server/gate-strip.ts",
-      "find": "now() - hit.at < ttlMs",
-      "replace": "now() - hit.at < 0",
+      "find": "const prReads = cachedReads(loadPr, times, {",
+      "replace": "const prReads = cachedReads(loadPr, { freshMs: 0, staleMs: 0 }, {",
       "kills": ["gateStripReader reads one PR head at most once per window"]
     },
     {
@@ -28,6 +28,13 @@
       "find": "baseStep(gate.stepId) !== OWNER_STEP",
       "replace": "true",
       "kills": ["gateStrip a pending ci-failed gate on the PR is an unmet other gate"]
+    },
+    {
+      "name": "a kept strip past its window waits for the refresh instead of being served",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000 };",
+      "replace": "const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 30_000 };",
+      "kills": ["gateStripReader serves the kept strip past its window while one refresh runs behind it"]
     }
   ]
 }

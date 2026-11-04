@@ -10,7 +10,8 @@
  * Sentences break after a word ending in `.`, `?` or `!`. words.json as read keeps word starts only, so a word ends
  * where the next one starts, and a beat's last word ends at its own start.
  */
-import type { ProbedMoment } from "@titan-design/render-qa";
+import type { ProbedMoment, ProbedText } from "@titan-design/render-qa";
+import { countingFigures, settle } from "./counting-figures.js";
 import type { TimingGate, TimingInput } from "./timing-gates.js";
 
 /** RW-12's margin past the last referring word. */
@@ -31,18 +32,35 @@ export interface TextSpan {
   untilS: number | null;
 }
 
-/** Each text's runs of consecutive samples on screen, keyed by element and text. */
+type Counting = (figure: ProbedText) => string | undefined;
+
+/** A number counting up in place is one text, so it is keyed by its element and place; its siblings keep their own. */
+const spanKey = (counting: ReadonlyMap<string, Counting>, beat: string, t: ProbedText): string =>
+  `${t.element}\u0000${counting.get(beat)?.(t) ?? t.text}`;
+
+/** Each beat's counting-figure lookup. */
+function countingBy(probed: readonly ProbedMoment[]): Map<string, Counting> {
+  const beats = new Map<string, ProbedMoment[]>();
+  for (const moment of probed) beats.set(moment.beat, [...(beats.get(moment.beat) ?? []), moment]);
+  return new Map([...beats].map(([beat, moments]) => [beat, countingFigures(moments)]));
+}
+
+/** Each text's runs of consecutive samples on screen, keyed by element and text; a counting number keeps its settled value. */
 export function textSpans(probed: readonly ProbedMoment[]): TextSpan[] {
   const open = new Map<string, TextSpan>();
   const spans: TextSpan[] = [];
+  const counting = countingBy(probed);
   for (const moment of probed) {
-    const shown = new Map(moment.texts.map((t) => [`${t.element}\u0000${t.text}`, t]));
+    const shown = new Map(moment.texts.map((t) => [spanKey(counting, moment.beat, t), t]));
     for (const [key, span] of open) {
       if (shown.has(key)) continue;
       spans.push({ ...span, untilS: moment.t });
       open.delete(key);
     }
-    for (const [key, t] of shown) if (!open.has(key)) open.set(key, { text: t.text, element: t.element, beat: moment.beat, fromS: moment.t, untilS: null });
+    for (const [key, t] of shown) {
+      const prior = open.get(key);
+      open.set(key, prior ? settle(prior, t) : { text: t.text, element: t.element, beat: moment.beat, fromS: moment.t, untilS: null });
+    }
   }
   return [...spans, ...open.values()];
 }

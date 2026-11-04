@@ -3,9 +3,12 @@ export {
   DispatchError,
   DispatchTimeoutError,
   PEER_NAME_PATTERN,
+  TASK_ID_PATTERN,
   agentChatEnv,
   buildSpawnArgs,
   dispatchToAgentChat,
+  type AgentRecord,
+  type AgentRole,
   type DispatchRequest,
   type DispatchResult,
   type LaunchedBy,
@@ -44,7 +47,7 @@ export {
   type ParkResult,
 } from "./park.js";
 export { buildMessageArgs, messageAgent, receivesMessages, type MessageOptions, type WakeSource } from "./message.js";
-export { dataFence } from "./fence.js";
+export { dataFence, lastFencedJson } from "./fence.js";
 export {
   buildListAgentsArgs,
   buildRetireArgs,
@@ -66,3 +69,26 @@ export {
   type AskRequest,
   type ServiceAnswer,
 } from "./ask.js";
+export {
+  PrefixLintError,
+  lintPrefixSections,
+  stablePrefix,
+  type PrefixSection,
+  type PrefixViolation,
+  type StablePrefix,
+  type StablePrefixOptions,
+} from "./prefix/stable-prefix.js";
+export {
+  BOOT_PACKET_BUDGET,
+  DEFAULT_BOOT_PRIORITY,
+  bootPacket,
+  estimateTokens,
+  type BootPacket,
+  type BootPacketInput,
+  type BootPacketOptions,
+  type BootSection,
+  type BootSectionId,
+} from "./boot-packet/packet.js";
+export { planSliceExcerpt, touchPointsIn, type TouchPoint } from "./boot-packet/plan-slice.js";
+export type { BootReaders, GitState, ReadinessFacts, TaskCard } from "./boot-packet/sections.js";
+export { nodeBootReaders, type NodeBootReadersOptions } from "./boot-packet/readers.js";

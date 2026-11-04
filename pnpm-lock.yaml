@@ -18,11 +18,8 @@ importers:
         specifier: ^10.4.2
         version: 10.4.2
       '@titan-design/egress-scan':
-        specifier: workspace:*
+        specifier: link:packages/egress-scan
         version: link:packages/egress-scan
-      '@titan-design/eslint-plugin':
-        specifier: workspace:*
-        version: link:packages/eslint-plugin
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.5
@@ -32,6 +29,9 @@ importers:
       eslint:
         specifier: ^9.39.0
         version: 9.39.5(jiti@1.21.7)
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@9.39.5(jiti@1.21.7))
       globals:
         specifier: ^16.0.0
         version: 16.5.0
@@ -144,6 +144,9 @@ importers:
 
   apps/console:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
@@ -174,6 +177,9 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -229,6 +235,9 @@ importers:
       '@titan-design/egress-scan':
         specifier: workspace:^
         version: link:../../packages/egress-scan
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/frame-capture':
         specifier: workspace:^
         version: link:../../packages/frame-capture
@@ -289,12 +298,31 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
 
   packages/agent-dispatch:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../worktree
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -308,17 +336,38 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
-
-  packages/agent-protocol:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/agent-surface: {}
+  packages/agent-protocol:
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/agent-surface:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
+    devDependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
 
   packages/anthropic-account:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       zod:
         specifier: ^4.0.0
         version: 4.5.4
@@ -331,6 +380,9 @@ importers:
 
   packages/authority:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -362,6 +414,9 @@ importers:
 
   packages/chat-protocol:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       ai:
         specifier: ^7.0.0
         version: 7.0.102(zod@4.5.4)
@@ -369,7 +424,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/cluster: {}
+  packages/cluster:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/code-graph:
     dependencies:
@@ -388,6 +447,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -433,6 +495,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../daemon
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       esbuild:
         specifier: ^0.27.0
         version: 0.27.7
@@ -445,6 +510,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../agent-dispatch
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@titan-design/egress-scan':
         specifier: workspace:^
@@ -471,6 +539,9 @@ importers:
         specifier: ^4.12.18
         version: 4.13.7
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -512,6 +583,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../worktree
     devDependencies:
       '@titan-design/test-kit':
         specifier: workspace:*
@@ -524,6 +598,10 @@ importers:
         version: 3.8.1
 
   packages/eslint-plugin:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       '@types/estree':
         specifier: ^1.0.9
@@ -542,6 +620,9 @@ importers:
 
   packages/frame-capture:
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -573,6 +654,9 @@ importers:
 
   packages/health:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -593,13 +677,20 @@ importers:
         specifier: workspace:*
         version: link:../store-sqlite
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
 
   packages/locator: {}
 
-  packages/matrix-bus: {}
+  packages/matrix-bus:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/memory:
     dependencies:
@@ -621,6 +712,10 @@ importers:
         version: 4.5.4
 
   packages/messaging:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -647,6 +742,9 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -660,6 +758,19 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/png-delta:
+    dependencies:
+      pixelmatch:
+        specifier: 8.0.0
+        version: 8.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+
   packages/queue-mirror:
     dependencies:
       '@titan-design/hitl':
@@ -668,9 +779,16 @@ importers:
       '@titan-design/matrix-bus':
         specifier: workspace:^
         version: link:../matrix-bus
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/react-app:
     dependencies:
@@ -755,6 +873,9 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/review-panel:
     dependencies:
@@ -783,12 +904,31 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../github
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../workflow
+    devDependencies:
+      '@titan-design/hitl':
+        specifier: workspace:*
+        version: link:../hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/rpc-client:
     dependencies:
@@ -802,6 +942,9 @@ importers:
       '@titan-design/registry':
         specifier: workspace:*
         version: link:../registry
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -816,6 +959,9 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../review-panel
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../session-graph
@@ -844,6 +990,10 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/session-read:
     dependencies:
@@ -856,9 +1006,15 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
 
   packages/speech-g2p:
     dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       compromise:
         specifier: 14.18.0
         version: 14.18.0
@@ -868,6 +1024,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.0.0
         version: 3.8.1
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -881,6 +1040,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../app-paths
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       kokoro-js:
         specifier: ^1.2.1
         version: 1.2.1
@@ -971,6 +1133,9 @@ importers:
         specifier: ^4.7.8
         version: 4.7.9
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.46.0
         version: 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
@@ -984,7 +1149,21 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/test-kit: {}
+  packages/test-kit:
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@25.9.5)(jsdom@30.1.0)(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+
+  packages/test-timing:
+    dependencies:
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/throughput:
     dependencies:
@@ -1022,6 +1201,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../hitl
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
@@ -1029,11 +1211,18 @@ importers:
       '@titan-design/agent-lifecycle':
         specifier: workspace:^
         version: link:../agent-lifecycle
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/worktree: {}
+  packages/worktree:
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   products/active-work:
     dependencies:
@@ -1064,6 +1253,9 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../../packages/memory
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
@@ -1073,6 +1265,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1215,6 +1410,9 @@ importers:
       '@titan-design/review-panel':
         specifier: workspace:^
         version: link:../../packages/review-panel
+      '@titan-design/review-workflow':
+        specifier: workspace:^
+        version: link:../../packages/review-workflow
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1233,6 +1431,10 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../../packages/test-kit
 
   products/explainer:
     dependencies:
@@ -1281,6 +1483,9 @@ importers:
       '@titan-design/render-qa':
         specifier: workspace:^
         version: link:../../packages/render-qa
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -1369,12 +1574,18 @@ importers:
       '@titan-design/autoresearch':
         specifier: workspace:^
         version: link:../../packages/autoresearch
+      '@titan-design/cluster':
+        specifier: workspace:^
+        version: link:../../packages/cluster
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/dispatch-ledger':
+        specifier: workspace:^
+        version: link:../../packages/dispatch-ledger
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../../packages/fix-proof
@@ -1390,6 +1601,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/png-delta':
+        specifier: workspace:^
+        version: link:../../packages/png-delta
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
@@ -1399,9 +1613,15 @@ importers:
       '@titan-design/review-schema':
         specifier: ^0.1.0
         version: 0.1.0(zod@4.5.4)
+      '@titan-design/review-workflow':
+        specifier: workspace:^
+        version: link:../../packages/review-workflow
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1420,9 +1640,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      pixelmatch:
-        specifier: 8.0.0
-        version: 8.0.0
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -1443,6 +1660,15 @@ importers:
         specifier: 7.0.0
         version: 7.0.0
 
+  products/fleet-panel:
+    dependencies:
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../../packages/anthropic-account
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
+
   products/retrieval-eval:
     dependencies:
       '@titan-design/app-paths':
@@ -1454,12 +1680,18 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   products/session-miner:
     dependencies:
@@ -1487,6 +1719,9 @@ importers:
       '@titan-design/memory':
         specifier: workspace:^
         version: link:../../packages/memory
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
@@ -1496,6 +1731,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/rpc-protocol':
+        specifier: workspace:^
+        version: link:../../packages/rpc-protocol
       '@titan-design/session-analytics':
         specifier: workspace:^
         version: link:../../packages/session-analytics
@@ -1535,6 +1773,30 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  products/yt-scout:
+    dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -4643,6 +4905,12 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
+  eslint-plugin-react-hooks@7.1.1:
+    resolution: {integrity: sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
+
   eslint-scope@8.4.0:
     resolution: {integrity: sha512-sNXOfKCn74rt8RICKMvJS7XKV/Xk9kA7DyJr8mJik3S7Cwgy3qlkkmyS2uQB3jiJg6VNdZd/pDBJu0nvG2NlTg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -4986,8 +5254,14 @@ packages:
   hermes-compiler@250829098.0.17:
     resolution: {integrity: sha512-qG1PXzTEtriF6oQLZF3vyHhSMxOdW5h2TqqLri0rdpstPustd2fSvRZQMVAPdlhgFwBfYnj3OUZtiO6LjYsEFw==}
 
+  hermes-estree@0.25.1:
+    resolution: {integrity: sha512-0wUoCcLp+5Ev5pDW2OriHC2MJCbwLwuRx+gAqMTOkGKJJiBCLjtrvy4PWUGn6MIVefecRpzoOZ/UV6iGdOr+Cw==}
+
   hermes-estree@0.36.1:
     resolution: {integrity: sha512-guv1nQ6IJ7S83NRFPWc3SA7IBZrdNC9kapwOq6uXvF4wP+sDCgjzQbKPCoyYmoyZRzztF/n/c36l/rccCZSiCw==}
+
+  hermes-parser@0.25.1:
+    resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
   hermes-parser@0.36.1:
     resolution: {integrity: sha512-GApNk4zLHi2UWoWZZkx7LNCOSzLSc5lB55pZ/PhK7ycFeg7u5LcF88p/WbpIi1XUDtE0MpHE3uRR3u3KB7TjSQ==}
@@ -7054,6 +7328,12 @@ packages:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
       zod: ^3.25.28 || ^4
+
+  zod-validation-error@4.0.2:
+    resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
@@ -10244,6 +10524,17 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
+  eslint-plugin-react-hooks@7.1.1(eslint@9.39.5(jiti@1.21.7)):
+    dependencies:
+      '@babel/core': 7.29.7
+      '@babel/parser': 7.29.8
+      eslint: 9.39.5(jiti@1.21.7)
+      hermes-parser: 0.25.1
+      zod: 4.5.4
+      zod-validation-error: 4.0.2(zod@4.5.4)
+    transitivePeerDependencies:
+      - supports-color
+
   eslint-scope@8.4.0:
     dependencies:
       esrecurse: 4.3.0
@@ -10659,7 +10950,13 @@ snapshots:
 
   hermes-compiler@250829098.0.17: {}
 
+  hermes-estree@0.25.1: {}
+
   hermes-estree@0.36.1: {}
+
+  hermes-parser@0.25.1:
+    dependencies:
+      hermes-estree: 0.25.1
 
   hermes-parser@0.36.1:
     dependencies:
@@ -12880,6 +13177,10 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   zod-to-json-schema@3.25.2(zod@4.5.4):
+    dependencies:
+      zod: 4.5.4
+
+  zod-validation-error@4.0.2(zod@4.5.4):
     dependencies:
       zod: 4.5.4
 

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the banner draws even when nothing is blocked",
+      "file": "apps/console/src/BlockerBanner.tsx",
+      "find": "if (banner.data === undefined || banner.data.count === 0) return null;",
+      "replace": "if (banner.data === undefined) return null;",
+      "kills": ["blocker banner no blockers renders nothing"]
+    },
+    {
+      "name": "the Shepherd line counts every item instead of its own class",
+      "file": "apps/console/src/BlockerBanner.tsx",
+      "find": "includes: (item) => item.source !== \"blocker\" },",
+      "replace": "includes: () => true },",
+      "kills": ["blocker banner two blocker classes render two collapsed lines with count and oldest age"]
+    },
+    {
+      "name": "an item links to the inbox list instead of its focused card",
+      "file": "apps/console/src/BlockerBanner.tsx",
+      "find": "href={item.link}",
+      "replace": "href=\"#/inbox\"",
+      "kills": ["blocker banner an item links to #/inbox/<id>"]
+    },
+    {
+      "name": "a line is not truncated to one row",
+      "file": "apps/console/src/BlockerBanner.tsx",
+      "find": "block min-w-0 max-w-full truncate whitespace-nowrap",
+      "replace": "block min-w-0",
+      "kills": ["blocker banner on a phone the banner fits one line per class"]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "load phase reads the wrong clock span",
+      "file": "products/active-work/src/bootstrap/prompt.ts",
+      "find": "const loadMs = clock() - loadStart;",
+      "replace": "const loadMs = 0;",
+      "kills": ["bootstrap timings_ms reads durations off the injected clock"]
+    },
+    {
+      "name": "loop query count dropped",
+      "file": "products/active-work/src/bootstrap/prompt.ts",
+      "find": "loop_queries: shownLoops.length,",
+      "replace": "loop_queries: -1,",
+      "kills": ["bootstrap timings_ms carries every phase key as a non-negative number and a loop query count"]
+    },
+    {
+      "name": "stderr line printed without the flag",
+      "file": "products/active-work/src/commands/open.ts",
+      "find": "if (process.env.AW_TIMING === '1') process.stderr",
+      "replace": "if (process.env.AW_TIMING !== '2') process.stderr",
+      "kills": ["open timings_ms prints one stderr line only when AW_TIMING is 1"]
+    },
+    {
+      "name": "total never recorded",
+      "file": "products/active-work/src/commands/open.ts",
+      "find": "metadata.timings_ms.total = clock() - openStart;",
+      "replace": "metadata.timings_ms.total = undefined;",
+      "kills": ["open timings_ms adds archive and total to the result metadata and keeps them out of the prompt"]
+    }
+  ]
+}

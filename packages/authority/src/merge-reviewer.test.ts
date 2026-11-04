@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CheckRunFact, MergeFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
@@ -33,6 +34,11 @@ function greenFacts(): MergeFacts {
     changedPaths: ["packages/authority/src/table.json"],
     seatGrants: ["merge-on-green-approve", "task-close-on-merged-pr"],
   };
+}
+
+// A run whose fields break the CheckRunFact contract, as an untyped fact feed could deliver it.
+function malformedRun(fields: Record<string, unknown>): CheckRunFact {
+  return Object.assign(partialFake<CheckRunFact>(), fields);
 }
 
 function mergeBy(actor: ActorClass, facts: MergeFacts | undefined, tainted = false): AuthorityRequest {
@@ -76,10 +82,10 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a required context whose only run was skipped", (f) => { f.checkRuns[0]!.conclusion = "skipped"; }, "required-contexts-green"],
   ["no allowed apps", (f) => { f.allowedApps = []; }, "required-contexts-green"],
   ["a failed run beside the green required one", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }); }, "no-non-green-run"],
-  ["a failed run with no headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, conclusion: "failure" } as CheckRunFact); }, "no-non-green-run"],
-  ["a failed run with a numeric headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: 1, conclusion: "failure" } as unknown as CheckRunFact); }, "no-non-green-run"],
-  ["a failed run with a string appId", (f) => { f.checkRuns.push({ name: "lint", appId: "third-party", headSha: HEAD, conclusion: "failure" } as unknown as CheckRunFact); }, "no-non-green-run"],
-  ["a run with no conclusion field", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD } as CheckRunFact); }, "no-non-green-run"],
+  ["a failed run with no headSha", (f) => { f.checkRuns.push(malformedRun({ name: "lint", appId: ACTIONS_APP, conclusion: "failure" })); }, "no-non-green-run"],
+  ["a failed run with a numeric headSha", (f) => { f.checkRuns.push(malformedRun({ name: "lint", appId: ACTIONS_APP, headSha: 1, conclusion: "failure" })); }, "no-non-green-run"],
+  ["a failed run with a string appId", (f) => { f.checkRuns.push(malformedRun({ name: "lint", appId: "third-party", headSha: HEAD, conclusion: "failure" })); }, "no-non-green-run"],
+  ["a run with no conclusion field", (f) => { f.checkRuns.push(malformedRun({ name: "lint", appId: ACTIONS_APP, headSha: HEAD })); }, "no-non-green-run"],
   ["a run still in progress", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: null }); }, "no-non-green-run"],
   ["a merge-tree conflict", (f) => { f.mergeTreeClean = false; }, "merge-tree-clean"],
   ["a mergeTreeClean of \"false\"", (f) => { setFact(f, "mergeTreeClean", "false"); }, "merge-tree-clean"],
@@ -218,7 +224,7 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
   });
 
   it.each(NOT_UNTAINTED)("decides a merge tainted %j exactly as the table without MRG-AU-RV does", (tainted) => {
-    const request = { ...mergeBy("automation", greenFacts()), tainted } as AuthorityRequest;
+    const request = Object.assign(mergeBy("automation", greenFacts()), { tainted });
     const decision = evaluate(DEFAULT_TABLE, request);
     const { verdict, ruleId } = evaluate(withoutRow("MRG-AU-RV"), request);
     expect(decision).toMatchObject({ verdict, ruleId });
@@ -253,11 +259,11 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
   });
 
   it.each(["tainted", "facts"])("ignores a request %s supplied only by Object.prototype", (key) => {
-    const request: Partial<AuthorityRequest> = mergeBy("automation", greenFacts());
+    const request = mergeBy("automation", greenFacts());
     const inherited = key === "tainted" ? false : { merge: greenFacts() };
-    delete request[key as "tainted" | "facts"];
+    Reflect.deleteProperty(request, key);
     withPollutedPrototype(key, inherited, () => {
-      expect(evaluate(DEFAULT_TABLE, request as AuthorityRequest)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+      expect(evaluate(DEFAULT_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
     });
   });
 
@@ -294,11 +300,12 @@ type TaintSource = "a prototype" | "a class getter";
 function inheritingTaint(base: AuthorityRequest, source: TaintSource, value: boolean): AuthorityRequest {
   const rest: Partial<AuthorityRequest> = { ...base };
   delete rest.tainted;
-  if (source === "a prototype") return Object.assign(Object.create({ tainted: value }) as AuthorityRequest, rest);
   class Request {
     get tainted(): boolean { return value; }
   }
-  return Object.assign(new Request() as AuthorityRequest, rest);
+  const inheriting = Object.assign(partialFake<AuthorityRequest>(), rest);
+  Object.setPrototypeOf(inheriting, source === "a prototype" ? { tainted: value } : Request.prototype);
+  return inheriting;
 }
 
 const ESCALATING_TABLE = {

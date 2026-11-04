@@ -5,13 +5,14 @@ const OID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
 /**
  * `git merge-tree --write-tree` in a local clone that already has both commits. Callers pass shas, never
- * ref names a local branch or tag could shadow. Only the titan-gh bin wires this in, for
- * `premerge --clone`; the package's cores never run git.
+ * ref names a local branch or tag could shadow. The titan-gh bin wires this in for `premerge --clone`,
+ * and `gitMergeUpCheck` with `env` set to `HARDENED_GIT_ENV`; the package's cores never run git.
  */
-export function gitMergeTree(clone: string): CleanMergeTree {
+export function gitMergeTree(clone: string, env?: Readonly<Record<string, string>>): CleanMergeTree {
+  const options = env === undefined ? {} : { env: { ...process.env, ...env } };
   return (baseParent, reviewed) =>
     new Promise((resolve, reject) => {
-      execFile("git", ["-C", clone, "merge-tree", "--write-tree", baseParent, reviewed], (error, stdout, stderr) => {
+      execFile("git", ["-C", clone, "merge-tree", "--write-tree", baseParent, reviewed], options, (error, stdout, stderr) => {
         const tree = stdout.split("\n")[0]!.trim();
         if (!error && OID.test(tree)) return resolve(tree);
         // Exit 1 also means an unknown commit; only a conflict still writes the conflicted tree's oid first.

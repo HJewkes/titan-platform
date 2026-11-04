@@ -3,9 +3,12 @@ import path from "node:path";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { QaGate } from "../qa/gate-profile.js";
+import type { QaEngine } from "../qa/qa-engine.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import { stageRecords } from "../workflow/report.js";
 import { planOf } from "../workflow/video-runs.js";
+import { StageFailure } from "../workflow/stage-failure.js";
 import { QaRefused } from "./qa-gate.js";
 import { RenderManifestSchema } from "./render-manifest.js";
 import { runRenderStage, type RenderEngine } from "./render-stage.js";
@@ -19,8 +22,8 @@ export const SMOKE_WORKERS = 16;
 
 /** What the render stage cannot draw without: a run that reached tts holds all four. */
 const REQUIRED = ["script", "resolved", "words", "audio"] as const;
-/** Read when the run has them, as the render stage reads them: the owner's pin, resolve's slots, the cited code. */
-const OPTIONAL = ["generated-slots", "slots", "code"] as const;
+/** Read when the run has them, as the render stage reads them: the owner's pin, resolve's slots, the cited code, the built custom layers. */
+const OPTIONAL = ["generated-slots", "slots", "code", "custom-layers"] as const;
 
 const GateReportSchema = z.object({ errors: z.array(z.object({ kind: z.string(), beat: z.string(), reason: z.string() })) });
 
@@ -49,7 +52,12 @@ interface SmokeInput {
   artifacts: Readonly<Record<string, string>>;
   store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "putTree" | "materialise">;
   gate: QaGate;
+  /** qa's engine and the run type's timing thresholds, for the render's after-encode check. */
+  qa: QaEngine;
+  timing: TimingProfile;
   workers: number;
+  /** Where capture spills frames; `renderSpillDir` of the run store's data dir. */
+  spillDir?: string;
   /** Where each render's `qa.json` is kept, since the render stage deletes its scratch. */
   keepDir: string;
 }
@@ -95,7 +103,8 @@ function heldRows(keepDir: string): HeldRow[] {
 
 async function renderOnce(input: SmokeInput, inputs: Record<string, string>, engine: RenderEngine): Promise<Record<string, string>> {
   const stage = { artifacts: inputs, store: input.store, from: { runId: `smoke-${input.runId}`, stage: "render" }, remainingUsd: 0 };
-  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate }, engine);
+  const spill = input.spillDir ? { spillDir: input.spillDir } : {};
+  const outcome = await runRenderStage(stage, { workers: input.workers, twoRun: false, noQa: false, gate: input.gate, timing: input.timing, ...spill }, engine, input.qa);
   return outcome.outputs;
 }
 
@@ -108,8 +117,9 @@ export async function renderSmoke(input: SmokeInput, engine: RenderEngine): Prom
   try {
     first = await renderOnce(input, inputs, gated);
   } catch (error) {
-    if (!(error instanceof QaRefused)) throw error;
-    return { ...base, qaGate: "refused", heldErrors: error.heldErrors, held: heldRows(input.keepDir), mp4s: [], pass: false };
+    const refusal = error instanceof StageFailure ? error.cause : error;
+    if (!(refusal instanceof QaRefused)) throw error;
+    return { ...base, qaGate: "refused", heldErrors: refusal.heldErrors, held: heldRows(input.keepDir), mp4s: [], pass: false };
   }
   const second = await renderOnce(input, inputs, gated);
   const { qaGate } = RenderManifestSchema.parse(JSON.parse(input.store.readText(first["render-manifest"]!)));

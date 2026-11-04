@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a phone gets the desktop card grid",
+      "file": "apps/console/src/pages/CoordinatorCards.tsx",
+      "find": "const isPhone = useMediaQuery(BELOW_MD);",
+      "replace": "const isPhone = false;",
+      "kills": [
+        "the coordinator page on a phone stacks the coordinator cards and gives PR and task links a 44px target"
+      ]
+    },
+    {
+      "name": "a PR link keeps its inline height on a phone",
+      "file": "apps/console/src/pages/CoordinatorCards.tsx",
+      "find": "className={`${PHONE_TAP_LINK} break-all`}",
+      "replace": "className=\"break-all\"",
+      "kills": [
+        "the coordinator page on a phone stacks the coordinator cards and gives PR and task links a 44px target"
+      ]
+    },
+    {
+      "name": "the previous-day button keeps its small height on a phone",
+      "file": "apps/console/src/pages/CoordinatorPage.tsx",
+      "find": "className={PHONE_TAP} isDisabled={shown === undefined}",
+      "replace": "isDisabled={shown === undefined}",
+      "kills": [
+        "the coordinator page on a phone gives the day buttons a 44px target"
+      ]
+    },
+    {
+      "name": "a desktop gets the stacked phone cards",
+      "file": "apps/console/src/pages/CoordinatorCards.tsx",
+      "find": "const isPhone = useMediaQuery(BELOW_MD);",
+      "replace": "const isPhone = true;",
+      "kills": [
+        "the coordinator page on a phone lays the cards out in a grid on a desktop"
+      ]
+    }
+  ]
+}

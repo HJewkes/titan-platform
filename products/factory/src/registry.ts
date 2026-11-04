@@ -1,40 +1,29 @@
 import { hostname } from "node:os";
 import type { Logger } from "@titan-design/daemon";
 import { isRepo } from "@titan-design/github";
-import type { GateQuestion } from "@titan-design/hitl";
-import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
+import { EXIT, createRegistry, defineCommand, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./autoresearch/commands.js";
+import { buildSurfaceAbandonCommand } from "./build-surface/abandon.js";
+import { buildSurfaceStartCommand } from "./build-surface/start.js";
 import type { ArConfig } from "./autoresearch/config.js";
+import type { FactoryContext, GateSummary, NeedsSources } from "./context.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
-import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
+import { NEEDS_COMMANDS } from "./needs/rpc.js";
 import { ownerOpPreview } from "./owner-ops/preview.js";
+import { gateOwnerEvidence } from "./console-action/owner-evidence-command.js";
+import { resolveCommand } from "./resolve-command.js";
 import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
 import { GH_GATEWAY_COMMANDS } from "./shepherd/gh-gateway.js";
-import type { ShepherdServices } from "./shepherd/services.js";
 
 /** The workflow `factory.land` starts. */
 export const LAND_WORKFLOW = "land-pr";
 
-export interface FactoryContext extends BaseContext {
-  host: FactoryHost;
-  /** Absent when the host runs routes without the shepherd store; the shepherd commands then refuse. */
-  shepherd?: ShepherdServices;
-  /** The serving factory's name, which an owner proof must carry as its `aud`; defaults to this machine's hostname. */
-  aud?: string;
-  /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
-  needsSources?: NeedsSources;
-  /** The local clone of an autoresearch target, from factory config; `autoresearch.diff` refuses a target with none. */
-  autoresearchClone?: (target: string) => string | undefined;
-  /** The autoresearch config section; absent, the autoresearch write commands refuse `[no-config]`. */
-  autoresearch?: ArConfig;
-}
-
-export interface PrRef {
+interface PrRef {
   repo: string;
   pr: number;
 }
@@ -62,20 +51,6 @@ export interface RunSummary {
   startedAt: string;
   completedAt: string | null;
   error: string | null;
-}
-
-export interface GateSummary {
-  runId: string;
-  stepId: string;
-  gateId: string;
-  prompt: string;
-  schema: unknown;
-  resolve: string;
-  /** Absent on a gate opened before the brief migration; surfaces fall back to `prompt`. */
-  summary?: string;
-  evidenceRef?: string;
-  questions?: GateQuestion[];
-  createdAt: string;
 }
 
 const PR_NUMBER = /^[1-9][0-9]*$/;
@@ -106,10 +81,6 @@ export function startLand(host: FactoryHost, args: LandArgs): LandStarted {
 function unfinishedLand(host: FactoryHost, target: PrRef): WorkflowRun | undefined {
   const pr = String(target.pr);
   return host.runtime.list().find((run) => run.workflowName === LAND_WORKFLOW && run.params.repo === target.repo && run.params.pr === pr);
-}
-
-export function resolveCommand(runId: string, stepId: string): string {
-  return `titan-factory gate resolve ${runId} ${stepId} --json '<payload>'`;
 }
 
 function summarize(run: WorkflowRun): RunSummary {
@@ -193,7 +164,8 @@ function autoresearchContext(config: ArConfig | undefined): Pick<FactoryContext,
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  const commands = [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
+  const own = [land, buildSurfaceStartCommand, buildSurfaceAbandonCommand, status, gates, gatesReview, ownerOpPreview, gateOwnerEvidence];
+  const commands = [...own, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
   for (const cmd of commands) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

@@ -12,11 +12,14 @@ import { defineWorkflow } from "./definition.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision, stuckBehindDecision } from "./gate-brief.js";
 import { resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
+import type { EffectivePolicy } from "./shepherd/policy-schema.js";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { codeRoute, step } from "./workflows/land.js";
 import { tableGateRule } from "./workflows/land-approval.js";
+import { partialFake } from "@titan-design/test-kit";
+import type { FailingCheck } from "./workflows/land-ci.js";
 
 const REPO = "o/r";
 const HEAD = fakeSha("head");
@@ -41,6 +44,14 @@ interface Scenario {
   thenStuck?: boolean;
 }
 
+const RunScenario = z.looseObject({
+  gate: z.enum(["merge", "sent-back", "ci-failed", "main-red", "main-frozen", "main-ci-timeout"]),
+  rule: z.string().optional(),
+  reason: z.string().optional(),
+  verdict: z.string().optional(),
+  stamped: z.boolean().optional(),
+  thenStuck: z.boolean().optional(),
+});
 const Verdict = z.looseObject({ kind: z.string(), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
 const Decision = z.looseObject({ outcome: z.string(), headSha: z.string(), rule: z.looseObject({ table: z.string(), rowId: z.string() }) });
 
@@ -59,7 +70,7 @@ const shepherdPr = defineWorkflow({
     { id: "stuck-behind", kind: "assisted" },
   ],
   run: async (ctx) => {
-    const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
+    const scenario = RunScenario.parse(JSON.parse(ctx.param("scenario")!));
     if (scenario.gate === "main-red") return void (await ctx.assisted("main-red", `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. Acknowledge.`, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "Main CI is red", detail: "failed: validate" }) }));
     if (scenario.gate === "main-ci-timeout") {
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is not red, but unread: no completed main run containing it. Acknowledge.`;
@@ -69,7 +80,7 @@ const shepherdPr = defineWorkflow({
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. The repo is frozen. Stay frozen, or unfreeze?`;
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
     }
-    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
+    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [partialFake<FailingCheck>({ name: "validate", url: "https://example.test/job/1" })] })));
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", `The review of PR #1 in ${REPO} at head ${HEAD} said FIX_FIRST. Await a new head or abandon?`, sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");

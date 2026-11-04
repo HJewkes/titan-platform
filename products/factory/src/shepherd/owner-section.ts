@@ -6,7 +6,7 @@
  */
 import type { ManifestInput } from "@titan-design/review-schema";
 import type { OwnerBrief } from "@titan-design/review-panel";
-import type { OwnerGateReason } from "./policy.js";
+import type { OwnerGateReason } from "./policy-schema.js";
 import { whyAsked, type GateRuleRef, type WhyAsked } from "./why-asked.js";
 
 type QuestionInput = ManifestInput["questions"][number];

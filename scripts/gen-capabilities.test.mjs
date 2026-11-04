@@ -192,6 +192,80 @@ describe("writing and checking API snapshots", () => {
     expect(errors).toEqual([expect.stringContaining(join("packages", "hitl", "api", "index.d.ts"))]);
   });
 
+  describe("a snapshot whose exports entry is gone", () => {
+    const pkgPath = (repoRoot) => join(repoRoot, "packages", "hitl", "package.json");
+    const apiFile = (repoRoot, ...parts) => join(repoRoot, "packages", "hitl", "api", ...parts);
+
+    function withoutSqliteEntry(repoRoot) {
+      const pkg = JSON.parse(readFileSync(pkgPath(repoRoot), "utf8"));
+      delete pkg.exports["./sqlite"];
+      writeFileSync(pkgPath(repoRoot), JSON.stringify(pkg));
+    }
+
+    function withNestedEntry() {
+      const repoRoot = fixtureRepo();
+      const pkg = JSON.parse(readFileSync(pkgPath(repoRoot), "utf8"));
+      pkg.exports["./limits/node"] = { types: "./dist/limits/node.d.ts" };
+      writeFileSync(pkgPath(repoRoot), JSON.stringify(pkg));
+      mkdirSync(join(repoRoot, "packages", "hitl", "dist", "limits"), { recursive: true });
+      writeFileSync(join(repoRoot, "packages", "hitl", "dist", "limits", "node.d.ts"), "export declare const LIMIT: number;\n");
+      generate(repoRoot, []);
+      return repoRoot;
+    }
+
+    it("fails the check naming the orphan, and a plain run deletes it so a re-check passes", () => {
+      const repoRoot = fixtureRepo();
+      generate(repoRoot, []);
+      withoutSqliteEntry(repoRoot);
+
+      const { code, errors } = generate(repoRoot, ["--check"]);
+      expect(code).toBe(1);
+      expect(errors).toEqual([expect.stringContaining(join("packages", "hitl", "api", "sqlite.d.ts"))]);
+
+      expect(generate(repoRoot, []).code).toBe(0);
+      expect(existsSync(apiFile(repoRoot, "sqlite.d.ts"))).toBe(false);
+      expect(existsSync(apiFile(repoRoot, "index.d.ts"))).toBe(true);
+      expect(generate(repoRoot, ["--check"])).toEqual({ code: 0, errors: [] });
+    });
+
+    it("finds an orphan under a nested subpath", () => {
+      const repoRoot = withNestedEntry();
+      const pkg = JSON.parse(readFileSync(pkgPath(repoRoot), "utf8"));
+      delete pkg.exports["./limits/node"];
+      writeFileSync(pkgPath(repoRoot), JSON.stringify(pkg));
+
+      const { code, errors } = generate(repoRoot, ["--check"]);
+      expect(code).toBe(1);
+      expect(errors).toEqual([expect.stringContaining(join("packages", "hitl", "api", "limits", "node.d.ts"))]);
+      generate(repoRoot, []);
+      expect(existsSync(apiFile(repoRoot, "limits", "node.d.ts"))).toBe(false);
+    });
+
+    it("flags every snapshot of a package turned private", () => {
+      const repoRoot = fixtureRepo();
+      generate(repoRoot, []);
+      const pkg = JSON.parse(readFileSync(pkgPath(repoRoot), "utf8"));
+      writeFileSync(pkgPath(repoRoot), JSON.stringify({ ...pkg, private: true }));
+
+      const { code, errors } = generate(repoRoot, ["--check"]);
+      expect(code).toBe(1);
+      expect(errors).toHaveLength(2);
+      generate(repoRoot, []);
+      expect(generate(repoRoot, ["--check"])).toEqual({ code: 0, errors: [] });
+      expect(existsSync(apiFile(repoRoot, "index.d.ts"))).toBe(false);
+    });
+
+    it("with --catalog-only neither flags nor deletes the orphan", () => {
+      const repoRoot = fixtureRepo();
+      generate(repoRoot, []);
+      withoutSqliteEntry(repoRoot);
+
+      expect(generate(repoRoot, ["--catalog-only"]).code).toBe(0);
+      expect(existsSync(apiFile(repoRoot, "sqlite.d.ts"))).toBe(true);
+      expect(generate(repoRoot, ["--catalog-only", "--check"])).toEqual({ code: 0, errors: [] });
+    });
+  });
+
   it("exits 2 naming the package when dist is missing", () => {
     const { code, errors } = generate(fixtureRepo({ dist: false }), ["--check"]);
     expect(code).toBe(2);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
+import { ciPolicyLabelledLines, parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const block = (verdict = "MERGE", pr = "octo/demo#12", head = SHA) =>
@@ -501,5 +501,31 @@ describe("refusedLines", () => {
 
   it("quotes nothing for another refusal", () => {
     expect(refusedLines(block(), "bad_head")).toEqual([]);
+  });
+});
+
+describe("ciPolicyLabelledLines", () => {
+  it("lists a decorated weakened line and the canonical unchanged line after it, each with its own reading", () => {
+    const text = ["**CI policy:** weakened secrets", "", block("MERGE"), "CI-policy: unchanged"].join("\n");
+
+    const lines = ciPolicyLabelledLines(text);
+
+    expect(lines).toEqual([
+      { raw: "**CI policy:** weakened secrets", reading: { kind: "weakened", keys: ["secrets"] } },
+      { raw: "CI-policy: unchanged", reading: { kind: "unchanged" } },
+    ]);
+    expect(parseVerdictBlock(text)).toMatchObject({ ciPolicy: { kind: "weakened", keys: ["secrets"] } });
+  });
+
+  it("reads a prose unchanged line away from Head+1 as malformed, as the block does", () => {
+    const text = ["CI-policy: unchanged", "", block("MERGE")].join("\n");
+
+    expect(ciPolicyLabelledLines(text)).toEqual([{ raw: "CI-policy: unchanged", reading: { kind: "malformed" } }]);
+    expect(parseVerdictBlock(text)).toMatchObject({ ciPolicy: { kind: "malformed" } });
+  });
+
+  it("lists nothing for text that is not one MERGE block", () => {
+    expect(ciPolicyLabelledLines([block("FIX_FIRST"), "CI-policy: weakened secrets"].join("\n"))).toEqual([]);
+    expect(ciPolicyLabelledLines("CI-policy: weakened secrets")).toEqual([]);
   });
 });

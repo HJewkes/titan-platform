@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the timeline row leaves out the merge-order wait",
+      "file": "products/factory/src/shepherd/commands.ts",
+      "find": "const row = withOrder(ctx.host, services, rowOf(ctx.host, services, registration, run));",
+      "replace": "const row = rowOf(ctx.host, services, registration, run);",
+      "kills": [
+        "a run parked behind the merge-order guard (TP-4137) names the reservation, its holder's phase and since in the timeline row"
+      ]
+    },
+    {
+      "name": "the wait never reads its holder's phase",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "const holderPhase = (holder && phaseOf(holder.runId)) ?? null;",
+      "replace": "const holderPhase = null;",
+      "kills": [
+        "a run parked behind the merge-order guard (TP-4137) names the reservation, its holder's phase and since in the timeline row",
+        "a run parked behind the merge-order guard (TP-4137) names the same wait in the status row"
+      ]
+    },
+    {
+      "name": "a released reservation is still named as the holder",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "const held = holder ? `; #${wait.behind}",
+      "replace": "const held = true ? `; #${wait.behind}",
+      "kills": [
+        "a run parked behind the merge-order guard (TP-4137) names only the wait once the holder's reservation is gone"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
+import type { LayerTextCheck } from "../build/layer-text.js";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
@@ -20,7 +21,7 @@ import { runTtsStage, type TtsEngine } from "./tts-stage.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
-import { defaultRenderEngine, runRenderStage, type RenderEngine } from "../render/render-stage.js";
+import { defaultRenderEngine, renderSpillDir, runRenderStage, type RenderEngine } from "../render/render-stage.js";
 import type { TimingProfile } from "../qa/timing-gates.js";
 
 interface BodyDeps {
@@ -76,8 +77,14 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "tts") return runTtsBody(config, input, deps);
   if (stage === "sheets") return runSheetsBody(config, input, deps);
   if (stage === "qa") return runQaBody(config, input, deps);
+  return runRenderBody(config, input, deps);
+}
+
+/** Render runs qa's gate rows after encode on the qa stage's engine, type and timing, so it refuses what qa would fail. */
+function runRenderBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.render) throw new Error("render stage spec has no render settings");
-  return runRenderStage({ ...input, store: deps.store }, config.render, deps.renderEngine ?? defaultRenderEngine());
+  const settings = { ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
+  return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media));
 }
 
 function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -128,7 +135,7 @@ export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, ou
 
 /** The record of a stage that threw: its timing, and its spend when the body had spent before failing. */
 export function failedRecord(stage: StageName, startedAt: Date, endedAt: Date, error: unknown): StageRecord {
-  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks] } : {};
+  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks], outputs: error.outputs } : {};
   return stageRecord(stage, startedAt, endedAt, { outputs: {}, checks: [], ...spent, notes: [error instanceof Error ? error.message : String(error)] });
 }
 
@@ -181,6 +188,6 @@ export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChec
 export const childStepIds = (stage: CachedStage): string[] => [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`, ...(stage === "resolve" ? LAYER_STEP_IDS : [])];
 
 /** Every route a child stage run dispatches to: its body, its checks, and resolve's custom-layer builds. */
-export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker; repairer?: LayerRepairer }): StepRoute[] {
+export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker; repairer?: LayerRepairer; textCheck?: LayerTextCheck }): StepRoute[] {
   return [bodyRoute(deps), checksRoute(deps), ...layerRoutes(deps)];
 }

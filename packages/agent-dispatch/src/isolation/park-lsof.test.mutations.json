@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an empty exit 1 is a failure",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "    if (status === 1 && stdout === \"\") return [];\n",
+      "replace": "",
+      "kills": [
+        "listing process working directories with lsof (CC-282) reads an empty exit 1 as no processes"
+      ]
+    },
+    {
+      "name": "any exit code may carry results",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "const found = status === 1 ? parseCwds(stdout) : undefined;",
+      "replace": "const found = parseCwds(stdout);",
+      "kills": [
+        "listing process working directories with lsof (CC-282) still throws for another exit code"
+      ]
+    },
+    {
+      "name": "unparseable output reads as no processes",
+      "file": "packages/agent-dispatch/src/isolation/park-tree.ts",
+      "find": "if (found === undefined) throw new Error(`lsof exited ${status}`);",
+      "replace": "if (found === undefined) return [];",
+      "kills": [
+        "listing process working directories with lsof (CC-282) still throws for unparseable output on exit 1"
+      ]
+    }
+  ]
+}

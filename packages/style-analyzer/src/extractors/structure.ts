@@ -132,7 +132,7 @@ export class StructureExtractor implements StyleExtractor {
     } else {
       if (child.type === "import_statement") {
         const sourceNode = child.childForFieldName("source");
-        source = sourceNode?.text?.replace(/['"]/g, "") ?? null;
+        source = sourceNode?.text.replace(/['"]/g, "") ?? null;
       }
     }
 

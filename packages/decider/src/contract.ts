@@ -63,8 +63,8 @@ export type DecideValidation = { ok: true; reply: DecideReply } | { ok: false; e
 /** JSON Schema for both halves of the contract, for model prompts and non-TypeScript callers. */
 export function decideJsonSchemas(): { input: Record<string, unknown>; reply: Record<string, unknown> } {
   return {
-    input: toJSONSchema(DecideInputSchema) as Record<string, unknown>,
-    reply: toJSONSchema(DecideReplySchema) as Record<string, unknown>,
+    input: toJSONSchema(DecideInputSchema),
+    reply: toJSONSchema(DecideReplySchema),
   };
 }
 

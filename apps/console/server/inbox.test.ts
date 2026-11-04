@@ -385,7 +385,7 @@ describe("the open-deposit cap", () => {
   });
 });
 
-/** Runs the real bin against the test's daemon, the way an agent would. */
+/** Runs the real bin against the test's daemon, the way an agent would; the stdin and refusal smokes only. */
 function runCli(args: string[], stdin = ""): Promise<{ code: number; stdout: string; stderr: string }> {
   const consoleDir = path.join(import.meta.dirname, "..");
   const env = { ...process.env, TITAN_CONSOLE_PORT: String(config.port), TITAN_CONSOLE_STATE: config.stateDir, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_LAN_NAMES: "lan-box" };
@@ -411,10 +411,11 @@ describe("titan-console inbox file", () => {
   it("takes the JSON as an argument, and on a refusal exits 1 without echoing the body", { timeout: 30_000 }, async () => {
     const marker = "do-not-echo-this-value";
 
-    const filed = await runCli([JSON.stringify(deposit({ depositId: "as-arg" }))]);
+    // The refusal reaching the daemon proves the spawned bin took its JSON argument; the filing runs in process.
+    const filed = await fileDeposit(config.port, JSON.stringify(deposit({ depositId: "as-arg" })));
     const refused = await runCli([JSON.stringify(deposit({ status: "answered", context: marker }))]);
 
-    expect(filed.stdout).toBe(`${depositItemId(ASKER, "as-arg")}\n`);
+    expect(filed).toBe(depositItemId(ASKER, "as-arg"));
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
     expect(refused.stderr).toMatch(/^inbox\.deposit refused \(HTTP 400\)/);
@@ -425,10 +426,13 @@ describe("titan-console inbox file", () => {
     const seeds = Array.from({ length: MAX_OPEN_DEPOSITS_PER_ASKER }, (_, index) => `seed-${index}`);
     for (const depositId of seeds) await writeDeposit(config.inboxDir, deposit({ depositId }));
 
-    const refused = await runCli([JSON.stringify(deposit({ depositId: "sixth" }))]);
+    // fileDeposit's rejection is what the bin prints to stderr before it exits 1.
+    const refused = await fileDeposit(config.port, JSON.stringify(deposit({ depositId: "sixth" }))).then(
+      (id) => ({ filed: id, stderr: "" }),
+      (error: unknown) => ({ filed: null, stderr: error instanceof Error ? error.message : String(error) }),
+    );
 
-    expect(refused.code).toBe(1);
-    expect(refused.stdout).toBe("");
+    expect(refused.filed).toBeNull();
     expect(refused.stderr).toContain("titan-console inbox withdraw <id>");
     const listed = refused.stderr.match(/deposit:[0-9a-f]{32}/g) ?? [];
     expect(listed.sort()).toEqual(seeds.map((depositId) => depositItemId(ASKER, depositId)).sort());

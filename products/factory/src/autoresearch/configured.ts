@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { ArPorts } from "@titan-design/autoresearch";
 import { loadLimits } from "@titan-design/agent-dispatch/limits/node";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
+import { composeRoutes } from "../compose-routes.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import { SHEPHERD_COMMAND_MAP } from "../shepherd/commands.js";
@@ -63,6 +64,7 @@ export function targetPorts(config: ArConfig, name: string, host?: SnapshotHost)
   const snapshot = snapshotWiring(config, name, host);
   const agents = arAgentPorts({
     clone,
+    target: { name, adapterDir: target.adapterDir },
     agentChat: { bin: config.agentChatBin, timeoutMs: AGENT_CHAT_TIMEOUT_MS, pollMs: AGENT_POLL_MS },
     configDir: config.configDir,
     account: config.account,
@@ -119,9 +121,8 @@ function refuseSnapshotsWithoutShepherd(config: ArConfig, shepherd: ShepherdServ
 /** A copy of `routes` that also hosts autoresearch when it is configured; unconfigured, `routes` itself. */
 export function withAutoresearch(routes: FactoryRoutes, config: ArConfig | undefined): FactoryRoutes {
   if (!config) return routes;
-  const { database, shepherd, config: configRef, bindHost } = routes;
-  if (bindHost) throw new Error("withAutoresearch: the routes already bind a host");
+  const { database, shepherd, config: configRef } = routes;
   refuseSnapshotsWithoutShepherd(config, shepherd);
   const wiring = autoresearchWiring(config, shepherd);
-  return Object.assign([...routes, ...wiring.routes], { database, shepherd, config: configRef, ...wiring.host });
+  return Object.assign([...routes, ...wiring.routes], { database, shepherd, config: configRef, ...wiring.host, ...composeRoutes(routes, wiring.host) });
 }

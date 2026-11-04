@@ -1,7 +1,7 @@
-import { isDeepStrictEqual } from "node:util";
 import type { MergeMethod } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
@@ -9,23 +9,15 @@ import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import type { LandOptions } from "../workflows/land.js";
 import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
-import { shownPaths, type VisualBaselines } from "./visual-gate.js";
+import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
-import type { PlanApproval } from "./plan-approval.js";
+import { EffectivePolicySchema, MERGE_ORDER, narrower, OWNER_GATE_REASONS, RegistrationRefused, type EffectivePolicy, type MergeMode } from "./policy-schema.js";
 import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
 import { skillPathsIn } from "./skill-paths.js";
-
-const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
-
-export type MergeMode = (typeof MERGE_ORDER)[number];
-
-export const OWNER_GATE_REASONS = ["gate-2-visual", "g10-security", "proof-fixture", "owner-asked"] as const;
-
-export type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
 
 /** The request's fields alone, so an argument parser accepts a request that `resolveEffectivePolicy` then refuses as a registration. */
 export const RequestedPolicyFields = z.strictObject({
@@ -48,46 +40,6 @@ const RequestedPolicySchema = RequestedPolicyFields.superRefine((request, ctx) =
 
 export type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
 
-export interface EffectivePolicy {
-  merge: MergeMode;
-  mergeMethod: MergeMethod;
-  reviewer?: string;
-  priority?: number;
-  fixer: boolean;
-  /** Why the owner is asked; absent on an owner-gate run registered before the field, which reads as legacy. */
-  ownerGateReason?: OwnerGateReason;
-  /** The seat that set the ceiling, or `none` for a repo no seat lists. */
-  seat: string;
-  /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
-  visualPaths?: string[];
-  /** The seat's baseline check and files: a head matching `visualPaths` that changes no baseline merges on that check's success. */
-  visualBaselines?: VisualBaselines;
-  /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
-  featureBase?: true;
-  /** The seat's `release-merge` grant: a Version Packages PR may merge on its preflight; absent, the release waits for the owner. */
-  release?: "grant";
-  /**
-   * The owner's plan approvals this run claimed, attached by each `sh-policy` read and never stored or taken from a run
-   * param: `EffectivePolicySchema` refuses the key, so only the store's console-written rows reach the guard.
-   */
-  approved?: PlanApproval[];
-}
-
-/** An `EffectivePolicy` read back from a run param or the store; unknown keys, `approved` among them, are refused. */
-export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject({
-  merge: z.enum(MERGE_ORDER),
-  mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]),
-  reviewer: z.string().optional(),
-  priority: z.number().int().optional(),
-  fixer: z.boolean(),
-  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
-  seat: z.string(),
-  visualPaths: z.array(z.string()).optional(),
-  visualBaselines: z.strictObject({ check: z.string(), paths: z.array(z.string()) }).optional(),
-  featureBase: z.literal(true).optional(),
-  release: z.literal("grant").optional(),
-});
-
 /** What a repo no seat lists resolves to: the owner gates every merge. */
 export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" };
 
@@ -96,16 +48,8 @@ export function runPolicyCeiling(rawPolicy: string | undefined): EffectivePolicy
   return rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
 }
 
-export class RegistrationRefused extends Error {
-  override readonly name = "RegistrationRefused";
-}
-
 export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
-
-function narrower(a: MergeMode, b: MergeMode): MergeMode {
-  return MERGE_ORDER.indexOf(a) <= MERGE_ORDER.indexOf(b) ? a : b;
-}
 
 /**
  * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
@@ -130,31 +74,6 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
     ...(seat?.grants.includes(RELEASE_MERGE_GRANT) && { release: "grant" as const }),
   };
-}
-
-/**
- * `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a
- * feature base, release grant or visual baselines, never loosen any. Baselines clear visual heads, so they survive only
- * when both sides carry the same ones; a run stored before the field has none and keeps the glob gate. Plan approvals
- * clear guard rows, so they follow the same rule.
- */
-export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
-  const merge = narrower(trusted.merge, other.merge);
-  const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
-  const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
-  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
-  if (!other.featureBase) delete stricter.featureBase;
-  if (other.release !== "grant") delete stricter.release;
-  if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;
-  if (!isDeepStrictEqual(trusted.approved, other.approved)) delete stricter.approved;
-  return stricter;
-}
-
-/** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
-export function repeatedPolicy(repeat: EffectivePolicy, stored: EffectivePolicy): EffectivePolicy {
-  const narrowed = stricterPolicy(repeat, stored);
-  const ownerGateReason = stored.ownerGateReason ?? narrowed.ownerGateReason;
-  return { ...narrowed, ...(ownerGateReason && { ownerGateReason }) };
 }
 
 function parseRequest(request: unknown): RequestedPolicy {
@@ -299,21 +218,19 @@ export function checkedBaseTap(): { base: () => string | undefined; tapping: (ct
   return { base: () => checked, tapping };
 }
 
+/** A guard, not a zod parse: `decideOnFacts` reads `carry` and the rest of the stored evidence, and a parse would strip them. */
+function isMergeEvidence(value: unknown): value is MergeEvidence {
+  if (!isObjectLike(value)) return false;
+  const { head, merge, record, changedFilesUnread } = value;
+  return typeof head === "string" && isObjectLike(merge) && Array.isArray(merge.changedPaths) && isObjectLike(record) && (changedFilesUnread === undefined || typeof changedFilesUnread === "string");
+}
+
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
 export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
   const verdict = verdictFor(headSha);
   if (verdict?.kind !== "MERGE") return undefined;
-  const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
-  const wellFormed =
-    typeof evidence?.head === "string" &&
-    typeof evidence.merge === "object" &&
-    evidence.merge !== null &&
-    Array.isArray(evidence.merge.changedPaths) &&
-    typeof evidence.record === "object" &&
-    evidence.record !== null &&
-    (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
-  if (!wellFormed) return undefined;
-  const stored = evidence as MergeEvidence;
+  const stored: unknown = verdict.evidence;
+  if (!isMergeEvidence(stored)) return undefined;
   // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
   const ciPolicy = CiPolicySchema.parse(stored.ciPolicy);
   return ciPolicy ? { ...stored, ciPolicy } : stored;
@@ -325,7 +242,7 @@ function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) =
 }
 
 /** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
-function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
+export function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
   return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
 }
 
@@ -335,7 +252,7 @@ function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict 
  * (merge-facts.ts), so a visual-path or files-unread gate can carry a weakened CI policy too. A MERGE whose evidence is
  * malformed read no files the owner can trust, so it reads as unread.
  */
-function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
+export function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
   const evidence = mergeEvidenceAt(headSha, verdictFor);
   if (evidence === undefined) return verdictFor(headSha)?.kind === "MERGE" ? ["files-unread"] : [];
   const rows: OwnerAtHeadRow[] = [];

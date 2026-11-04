@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Alert, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Typography, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { GateStrip as Strip, UnmetGate } from "../../server/gate-strip.js";
 import { useQuery } from "../data/rpc.js";
 

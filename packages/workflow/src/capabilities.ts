@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 /** A handle a step body may use, plus the secret strings that must never leave it. */
 export interface WorkflowCapability<T = unknown> {
   handle: T;
@@ -10,6 +12,21 @@ export class CapabilityLeakError extends Error {
     super(`capability secret refused in ${where}`);
     this.name = "CapabilityLeakError";
   }
+}
+
+/** Names the capability only, so the refusal cannot carry its handle or a secret. */
+export class CapabilityOutsideStepError extends Error {
+  constructor(readonly capability: string) {
+    super(`capability ${capability} asked outside a step body`);
+    this.name = "CapabilityOutsideStepError";
+  }
+}
+
+/** The step id whose body is running; unset in the workflow body between steps. */
+const stepBody = new AsyncLocalStorage<string>();
+
+export function inStepBody(): boolean {
+  return stepBody.getStore() !== undefined;
 }
 
 const REDACTED = "[redacted]";
@@ -65,7 +82,7 @@ export const NO_CAPABILITIES = new CapabilityVault({});
  */
 export async function seedBody<T>(vault: CapabilityVault | undefined, stepId: string, fn: () => Promise<T>): Promise<T> {
   try {
-    const result = await fn();
+    const result = await stepBody.run(stepId, fn);
     vault?.refuse(result, `${stepId} result`);
     return result;
   } catch (error) {

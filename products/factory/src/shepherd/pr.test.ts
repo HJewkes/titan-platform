@@ -25,7 +25,8 @@ import { CI_UNREAD_REASON, ciUnreadAsNone } from "./ci-unread.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS, MAX_THROTTLED_ROUNDS } from "./route-table.js";
-import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
+import type { EffectivePolicy } from "./policy-schema.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import type { FlakyChecks } from "../workflows/land-flaky.js";
 import { mergeVerdict } from "./review.js";
@@ -84,9 +85,9 @@ const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", sea
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const RELEASE_POLICY: EffectivePolicy = { ...AUTO_POLICY, release: "grant" };
 
-/** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will; an undefined `param` starts it with no policy param. */
-function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectivePolicy | undefined = OWNER_GATE_POLICY): string {
-  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", ...(param && { policy: JSON.stringify(param) }) });
+/** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will. */
+function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectivePolicy = OWNER_GATE_POLICY): string {
+  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(param) });
   w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: registered });
   return runId;
 }

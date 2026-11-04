@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   PROFILE_CATEGORIES,
   type Profile,
@@ -10,6 +11,11 @@ import {
   buildImportOrderRule,
 } from "./eslint-rules.js";
 
+const EslintExtensionSchema = z.object({
+  rule: z.string(),
+  options: z.array(z.unknown()).optional(),
+});
+
 interface EslintRuleEntry {
   plugin: string;
   rule: string;
@@ -21,10 +27,9 @@ function extensionEntry(
   rule: StyleRule,
   thresholds: SeverityThresholds,
 ): EslintRuleEntry | null {
-  const ext = rule.extensions?.eslint as
-    | { rule: string; options?: unknown[] }
-    | undefined;
-  if (!ext) return null;
+  const parsed = EslintExtensionSchema.safeParse(rule.extensions?.eslint);
+  if (!parsed.success) return null;
+  const ext = parsed.data;
 
   const sev = toEslintSeverity(rule.confidence, thresholds);
   if (sev === null) return null;
@@ -45,10 +50,7 @@ function collectEslintExtensions(profile: Profile): EslintRuleEntry[] {
   const entries: EslintRuleEntry[] = [];
 
   for (const category of PROFILE_CATEGORIES) {
-    const section = profile[category];
-    if (!section) continue;
-
-    for (const [, rule] of Object.entries(section)) {
+    for (const [, rule] of Object.entries(profile[category])) {
       const entry = extensionEntry(rule, profile.severityThresholds);
       if (entry) entries.push(entry);
     }
@@ -62,13 +64,15 @@ function addImportOrderRule(profile: Profile, entries: EslintRuleEntry[]): void 
   if (!result) return;
 
   const [ruleName, ruleConfig] = result;
-  const configArray = ruleConfig as unknown[];
+  if (!Array.isArray(ruleConfig)) return;
+  const [severity, options] = ruleConfig;
+  if (severity !== "error" && severity !== "warn") return;
 
   entries.push({
     plugin: "perfectionist",
     rule: ruleName,
-    severity: configArray[0] as EslintRuleEntry["severity"],
-    options: [configArray[1]],
+    severity,
+    options: [options],
   });
 }
 

@@ -12,7 +12,7 @@ import {
   readCommit,
 } from "./git.js";
 import { scan } from "./scan.js";
-import { makeTestRepo, plantedHomePath, tempDir, ZERO_SHA, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, plantedHomePath, tempDir, worldTemplate, ZERO_SHA, type RepoWorld, type TestRepo } from "./test-repo.js";
 
 const repos: TestRepo[] = [];
 const bares: string[] = [];
@@ -27,6 +27,20 @@ afterEach(() => {
   for (const repo of repos.splice(0)) fs.rmSync(repo.dir, { recursive: true, force: true });
   for (const dir of bares.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
+
+/** A copy of the world `build` leaves, its root cleaned after the test, with `bare` naming `root/bare`. */
+function copiesOf<T extends object>(build: (world: RepoWorld & { bare: string }) => T): () => RepoWorld & T & { bare: string } {
+  const copy = worldTemplate(({ root, repo }) => build({ root, repo, bare: path.join(root, "bare") }));
+  return () => {
+    const world = copy();
+    bares.push(world.root);
+    return { ...world, bare: path.join(world.root, "bare") };
+  };
+}
+
+function initBare(dir: string): void {
+  spawnSync("git", ["init", "-q", "--bare", "-b", "main", dir]);
+}
 
 function findings(repo: TestRepo, shas: readonly string[]): string[] {
   const result = scan(shas.map((sha) => readCommit(repo.dir, sha)));
@@ -46,16 +60,13 @@ describe("pre-push ranges", () => {
   });
 
   describe("a new branch", () => {
-    function setup() {
-      const repo = newRepo();
-      const bare = tempDir("egress-scan-remote-");
-      bares.push(bare);
-      spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    const setup = copiesOf(({ repo, bare }) => {
+      initBare(bare);
       repo.git(["remote", "add", "origin", bare]);
       const shared = repo.commit("on origin");
       repo.git(["push", "-q", "origin", "main"]);
-      return { repo, bare, shared };
-    }
+      return { shared };
+    });
 
     it("scans the commits that no ref the remote advertises already has", () => {
       const { repo, bare } = setup();
@@ -94,11 +105,8 @@ describe("pre-push ranges", () => {
     const flaggedFile = "notes.txt";
     const flaggedLine = `see ${plantedHomePath()}\n`;
 
-    function setup() {
-      const repo = newRepo();
-      const bare = tempDir("egress-scan-remote-");
-      bares.push(bare);
-      spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    const setup = copiesOf(({ repo, bare }) => {
+      initBare(bare);
       repo.git(["remote", "add", "origin", bare]);
       repo.commit("base");
       repo.git(["push", "-q", "origin", "main"]);
@@ -113,8 +121,16 @@ describe("pre-push ranges", () => {
       repo.commit("remove it again");
       repo.git(["push", "-q", "origin", "main"]);
       repo.git(["checkout", "-q", "feature"]);
-      return { repo, bare, branchTip, onMain };
-    }
+      return { branchTip, onMain };
+    });
+
+    // A copy still pointing at the template's bare would see the same history, so the tests below could pass against it.
+    it("hands each copy a remote inside its own root", () => {
+      const { repo, bare } = setup();
+
+      expect(repo.git(["remote", "get-url", "origin"]).trim()).toBe(bare);
+      expect(repo.git(["remote", "get-url", "--push", "origin"]).trim()).toBe(bare);
+    });
 
     it("skips a flagged commit that came in from a main the remote already has", () => {
       const { repo, bare, branchTip, onMain } = setup();
@@ -288,11 +304,8 @@ describe("a merge commit against parents the remote already has", () => {
   const flaggedLine = `see ${plantedHomePath()}\n`;
 
   /** main holds a flagged commit the remote has; feature (also on the remote) is about to merge it for real. */
-  function setup() {
-    const repo = newRepo();
-    const bare = tempDir("egress-scan-remote-");
-    bares.push(bare);
-    spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+  const setup = copiesOf(({ repo, bare }) => {
+    initBare(bare);
     repo.git(["remote", "add", "origin", bare]);
     repo.write("base.txt", "base\n");
     repo.commit("base");
@@ -306,8 +319,8 @@ describe("a merge commit against parents the remote already has", () => {
     repo.commit("flagged but already on the remote");
     repo.git(["push", "-q", "origin", "main"]);
     repo.git(["checkout", "-q", "feature"]);
-    return { repo, bare, branchTip };
-  }
+    return { branchTip };
+  });
 
   function pushFindings(repo: TestRepo, bare: string, branchTip: string): string[] {
     const localSha = repo.git(["rev-parse", "HEAD"]).trim();
@@ -353,12 +366,10 @@ describe("a merge commit against parents the remote already has", () => {
   });
 
   /** origin (fetch) is private and holds a flagged commit S; the push URL is a public bare that has only base. */
-  function privateFetchSetup() {
-    const repo = newRepo();
-    const privateBare = tempDir("egress-scan-private-");
-    const publicBare = tempDir("egress-scan-public-");
-    bares.push(privateBare, publicBare);
-    for (const bare of [privateBare, publicBare]) spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+  const privateFetchWorld = copiesOf(({ root, repo }) => {
+    const privateBare = path.join(root, "private");
+    const publicBare = path.join(root, "public");
+    for (const bare of [privateBare, publicBare]) initBare(bare);
     repo.git(["remote", "add", "origin", privateBare]);
     repo.write("base.txt", "base\n");
     const base = repo.commit("base");
@@ -366,7 +377,12 @@ describe("a merge commit against parents the remote already has", () => {
     repo.write("landed.md", flaggedLine);
     const landed = repo.commit("flagged, only on the private remote");
     repo.git(["push", "-q", "origin", "main"]);
-    return { repo, publicBare, base, landed: `commit ${landed.slice(0, 7)} landed.md:1 home-path` };
+    return { base, landed: `commit ${landed.slice(0, 7)} landed.md:1 home-path` };
+  });
+
+  function privateFetchSetup() {
+    const world = privateFetchWorld();
+    return { ...world, publicBare: path.join(world.root, "public") };
   }
 
   function newBranchFindings(repo: TestRepo, publicBare: string): string[] {

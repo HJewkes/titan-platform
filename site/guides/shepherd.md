@@ -275,6 +275,26 @@ The plan is read from the recorded intent, so a run whose intent was recorded wi
 (before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
 restart onto `on`.
 
+### Review workflow shadow {#review-workflow-shadow}
+
+`shepherd.review.workflow` in the factory config moves Shepherd's review onto
+`@titan-design/review-workflow` in phases. It takes `off`, `shadow`, `on:preflight` or `on`,
+and an absent key means `off`.
+
+| Value | What a head's review does |
+| --- | --- |
+| `off` | Shepherd's own review, unchanged |
+| `shadow` | The same review. `sh-review-intent` records `workflow: "shadow"`, and after each round `sh-review-shadow:<head>` records the workflow's preflight `decision`, the round's failure `classes` and the policy action it `would` take |
+| `on:preflight`, `on` | Not built yet; each runs as `off`, and serve logs why at startup |
+
+The shadow is computed from the round's own records (the fix-proof read, the intent's class,
+the dispatch and the verdict) and the installed-profile check, so it starts no session. Each
+round spends one step of its class's retry-policy row, so a timeout reads `late-read`, then
+`retry`, then `fixer(timeout)`. A run whose intent was recorded under `off`, or before the
+key existed, replays with no shadow step. `titan-factory shepherd stats --review-shadow`
+counts the would-actions per repo and ISO week, with the heads sent to the fixer by round 2
+and the heads it would have stopped that then merged.
+
 ### Fix-round re-review {#fix-round-rereview}
 
 `shepherd.review.scopedRereview` takes `off`, `shadow` or `on`, and an absent key means `off`.
@@ -325,7 +345,9 @@ Actions run on the commit must pass, so an API failure never thaws a red main.
 A task that is already done is left alone, so a replay after a restart closes nothing twice and adds no
 second note. If active-work cannot be reached, the step gives up after an hour, records `task <initiative>/<id> not
 closed: <error class>` as a caveat on its result, and the run still completes. A slice registration only
-notes the landing and leaves its task open for the seat to close after live evidence.
+notes the landing and leaves its task open for the seat to close after live evidence. A task whose plan has a
+slices block with slices unlanded, or that is tagged `epic`, `slices` or `multi-slice`, is left open too, with a note
+saying why; a task id the registered initiative does not hold is never closed.
 
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
@@ -619,6 +641,15 @@ kept. A successor never holds for an account. When every account is exhausted, o
 cannot be read, it spawns under the first. A resume keeps the agent's own account. A red main's
 fixer picks its account the same way (TP-3962).
 
+The broker can refuse a spawn before it starts, with code `reviewer_account_limit`, when the
+account's five_hour usage is at its ceiling. The account-limit store has not marked that account,
+so the pick above still names it. A reviewer, a successor or a red main's fixer refused this way
+is spawned again on each later account in the rotation, once per account and in order, within
+the one spawn-gate admission (TP-4507). For a reviewer, the rotation is `review.configDir` and
+then `review.fallbackConfigDirs`. Each fallback logs the account the agent spawned on. When the
+last account refuses too, the review waits as for any busy refusal. No other refusal moves the
+spawn: not a full agent pool, not a held name, not a spawn-gate deferral, not a seat budget stop.
+
 A woken fixer or successor can exit because its account ran out of usage. When its session ends
 on Claude Code's own usage-limit notice, the same record a review reads, Shepherd marks the
 account on its roster row exhausted until the notice's reset. agent-chat's default account is
@@ -731,6 +762,32 @@ pull request left it may be a file the pull request changed (a rename counts as 
 non-merge commit, another first parent, a second parent off the base, a hand-resolved or amended
 tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
 rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
+
+## Steps
+
+The steps of `shepherd-pr` that an agent or the owner answers. Every other step is software. A doc lint matches each row to the step registry.
+
+| Step | Marker |
+| --- | --- |
+| `approve-merge` | OWNER |
+| `stuck-behind` | OWNER |
+| `ci-failed` | OWNER |
+| `sh-sent-back` | OWNER |
+| `sh-review` | AGENT |
+| `sh-await-verdict` | AGENT |
+| `sh-late-verdict` | AGENT |
+| `sh-correct-verdict` | AGENT |
+| `sh-merge-evidence-gate` | OWNER |
+| `sh-review-panel` | AGENT |
+| `sh-spawn-fixer` | AGENT |
+| `main-red` | OWNER |
+| `main-ci-timeout` | OWNER |
+| `main-red-again` | OWNER |
+| `main-frozen` | OWNER |
+| `after-stages` | OWNER |
+| `sh-visual-packet` | AGENT |
+| `sh-visual-accept` | OWNER |
+| `sh-no-verdict-diagnosis` | AGENT |
 
 ## Watch
 
@@ -894,10 +951,19 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
-  error's `[<class>] ` prefix; an older error without one is classified from its text. A
-  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
+  class as the error's `[<class>] ` prefix; an older error without one is classified from its
+  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
+  secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
+
+  Neither class fails a run on its first answer. A step that may run again after a restart
+  (its route's `onRestart` is `repeat`) is retried on a `gh-api-5xx` after 5 s, 20 s and 60 s.
+  On a `gh-rate-limit` it is retried only when the refused call was a `GET` or `HEAD`, so a
+  write is never sent twice. It then waits until `retry-after`, or `x-ratelimit-reset` plus
+  5 s, or 60 s when GitHub names neither, and at most 61 min a wait. After two waits the next
+  limit fails the run. The waits are recorded as `ghRetries` on the step's result.
 
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
@@ -987,7 +1053,13 @@ Every registration resolves a policy before anything starts
 | `owner-gate` | every merge waits on the `approve-merge` gate |
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
-The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
+A repo's seat lookup has three outcomes. A repo a seat lists as an owned `remote:` has that seat. A repo on a deny list or
+a charter hard stop is refused with `registration refused:`. Any other repo has no seat, and a repo a seat lists only as
+`read_only` is in this group.
+
+The ceiling comes from seat files. A repo that no seat lists cannot register: `shepherd register` exits non-zero with
+`no seat lists <owner/repo>; add it to a seat file under claude-channels/sources/autonomy/seats`,
+and a repo a seat lists only as `read_only` counts as unlisted. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
@@ -1132,10 +1204,12 @@ a measured diff. Each repo has its own key (`owner/name`, matched in any case):
 }
 ```
 
-The merge evidence step reads the key live at every head and records the result on the
+The merge evidence step reads the key at every head and records the result on the
 evidence record as `visualDelta`. The record also stores the mode, threshold and tolerance
 that judged the head, so a later config change applies from the next evidence read and
-never to a head already decided.
+never to a head already decided. A running `titan-factory serve` notices an edit to the
+config file at the next read, with no restart; an edit that fails to load leaves the last
+good config in force and logs one warning.
 
 **Modes.**
 
@@ -1212,6 +1286,23 @@ longer at reads as unread and measures nothing. The command is read-only: it run
 posts no comment and stores no record. Like `shepherd status`, it asks `titan-factory
 serve` when one answers and otherwise runs here, in an agent shell too. A repo with no key
 exits 66.
+
+**Weekly Ship batch.** Gates the visual-path row holds stay pending until the owner ships
+them. `shepherd visual-week` builds one round spec from them:
+
+```sh
+titan-factory shepherd visual-week --repo owner/design > round.json
+```
+
+It prints JSON: a `unit` named `td-ship-week-<ISO week>`, `round` 1, one pick-one question
+per pending `approve-merge` gate that the visual-path row holds at a head the run last
+decided and that no hold covers, and `skipped`, the repo's other gates with why each is out. Each question binds the
+gate's own head and lists `Ship` as its only ship option. Import the round into the console;
+a Ship resolves its gate through the same round sweep as any console Ship, at the exact head
+and within 24 hours. A PR whose head moves before the Ship stays pending and appears in the
+next week's batch. The command is read-only: it resolves no gate and writes no file, so
+redirect its output to keep it. It asks `titan-factory serve` when one answers and otherwise
+runs here.
 
 ### Feature base {#feature-base}
 
@@ -1442,6 +1533,27 @@ TP-4068 and TP-4069 (the actor matrix) are the planned behavioural check.
 - The checks and proofs in the list that build no resolver, such as the skill-diff guard and the
   presence and evidence rules. Those are kept by hand, and `registration-hold.test.ts` pins each
   one with a row.
+
+Policy paths also cover Shepherd's sign-off, fix-proof, proof-waiver and merge-standing code
+(TP-4746). `SIGNOFF_POLICY_FILES` in `g10-class-rules.ts` lists them by role: `signoffs.ts`,
+`merge-standing.ts`, `reviewer-lineage.ts`, `auto-pass.ts`, `fix-proof.ts`, `take-verdict.ts`, the
+hold store (`store.ts`, `events.ts`), `registration-of.ts`, the proof waivers, `seat-recheck.ts`,
+the merge-up carries and `no-reviewer-hold.ts`, plus `packages/fix-proof/src/**` and
+`packages/review-panel/src/**`. A held module reads its imports, so an edit to one of them can
+change what the hold decides. The rest of the held set is therefore the import closure of the
+listed table, not a hand list. `g10-hold-closure.test.ts` seeds a walk from every Shepherd module the
+listed table holds and follows each relative import the compiler's scanner reports (value,
+type-only, re-export and dynamic) to a fixpoint. It fails when a module it reaches is not held,
+when a relative import does not resolve, or when `g10-hold-closure.json` differs from the walk.
+The class rules load that JSON, so a module newly imported by a held one becomes held when the
+list is regenerated (`vitest -u` on the test), with no edit to the listed table. The check itself,
+its sidecar, its walk and the JSON are policy, test files or not. Today the closure holds most of
+the Shepherd directory, because the command, release and carry modules import much of it. Store
+migrations in `store.ts` and its neighbours therefore take `g10-adversary`, not `g10-review`.
+
+**Accepted residual.** The hold-closure walk stays in the Shepherd directory: relative imports
+that leave it, package imports and the data flow through store rows are not followed. TP-3901
+covers the out-of-directory modules and TP-4747 the write sites.
 
 **Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
 answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value
@@ -1824,6 +1936,11 @@ check still ends the wait at once. When all 3 windows time out, the run fails as
 waiting again: ci-wait:0 timed out after 2700000 ms, waiting on mergeable_state unknown (by shepherd)`.
 A 5xx with no earlier read that answered has no head to return, so it still fails at the first
 timeout.
+
+A repo whose CI posts a commit status instead of running Actions names those contexts in
+`shepherd.repos.<repo>.statusContexts` ([factory config](/guides/factory)). Each one then waits like
+a check run: a pending or not yet posted status holds the wait, as a queued job does, and a
+failure or error status is red.
 
 GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
 never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute

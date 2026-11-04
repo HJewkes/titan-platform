@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -70,19 +70,14 @@ const RECORDED = snapshot({
   [HOSTS_KEY]: successEnvelope(HOSTS),
 });
 
-function renderConsole(recorded: Snapshot = RECORDED): void {
+function renderConsole(recorded: Snapshot = RECORDED, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", recorded), "text/html");
-  window.location.hash = "#/config";
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), "#/config", { inApp });
 }
 
 describe("the config page", () => {
   it("shows a terminal row's exact command, quoting a path with a space", async () => {
-    renderConsole();
+    renderConsole(RECORDED, { inApp: true });
     const seat = await screen.findByTestId("config-row-seat:seat-k-concurrency.implementers");
     expect(within(seat).getByTestId("config-row-command").textContent).toBe(`"\${EDITOR:-vi}" +17 '${SEAT_FILE}'`);
     expect(within(seat).getByText("terminal")).toBeTruthy();

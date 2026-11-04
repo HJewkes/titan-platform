@@ -1,10 +1,15 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { contentTerms, sentencesOf } from "./lint-text.js";
 import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
+import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
-import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
-import { numberForms, remapCuesInPlace } from "./spoken-numbers.js";
+import { numberRanges } from "./rewrite-spans.js";
 
+/** Runs before the guard: a new sentence the cap would refuse is split at a clause joint first (TP-4685). */
+export { splitOverlong } from "./rewrite-split.js";
+import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
+import { isIdTerm, spokenIds, type IdMention } from "./spoken-ids.js";
+import { numberForms } from "./spoken-numbers.js";
 
 export type BeatRejectionRule =
   | "empty"
@@ -14,15 +19,17 @@ export type BeatRejectionRule =
   | "length"
   | "number-lost"
   | "number-invented"
+  | "range-split"
   | "number-vague"
   | "device-added"
   | "closer-added"
-  | "label-bare"
   | "list-lost"
   | "list-emptied"
   | "cue-lost"
   | "cue-order"
   | "new-term"
+  | "fact-id"
+  | "id-changed"
   | "sentence-cap";
 
 export interface BeatRejection {
@@ -30,7 +37,7 @@ export interface BeatRejection {
   detail: string;
 }
 
-/** What a rewrite hands back for one beat: its new spoken line and the labels it appends for moved numbers. */
+/** What a rewrite hands back for one beat: its new spoken line and the labels it appends for a list it moved to the screen. */
 export interface BeatRewrite {
   spoken: string;
   labelsAdded: readonly string[];
@@ -49,7 +56,7 @@ const DEFAULT_LENGTH_TOLERANCE = 0.35;
 // A short beat that gains a "three things" clause grows by about six words, which 35 % of 15 words does not allow.
 const DEFAULT_LENGTH_SLACK = 6;
 
-const ONE_BEFORE = /\b(?:the|each|no|any|every|which|this|that|another|first|last)\s+$/i;
+const ONE_BEFORE = /\b(?:the|each|no|any|every|which|this|that|another|first|second|third|last|next|other)\s+$/i;
 const ONE_AFTER = /^\s+(?:of|that|who|which|matters|among)\b/i;
 
 /** "The one that", "one of" and "no one" count nothing, so a rewrite that says them invents no number. */
@@ -72,8 +79,8 @@ const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").t
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Whole-word containment, so "3" is not found in "30" or "13.5" and "led" is not found in "ledger". */
-const hasWord = (text: string, needle: string): boolean =>
-  new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[.,])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])(?![.,]\\d)`, "u").test(text);
+const hasWord = (text: string, needle: string, tail = ""): boolean =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[.,])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])(?![.,]\\d)${tail}`, "u").test(text);
 
 /** What `left` holds more often than `right`, with repeats. */
 function surplus(left: readonly string[], right: readonly string[]): string[] {
@@ -92,36 +99,37 @@ const formsIn = (spoken: string): string[] => numbersIn(spoken).flatMap(numberFo
 /** The number mentions that left the spoken line, in that form, with repeats. */
 const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(formsIn(before), formsIn(after.spoken));
 
-const carries = (label: string, form: string): boolean => formsIn(label).includes(form);
-const inLabel = (labels: readonly string[], form: string): boolean => labels.some((label) => carries(label, form));
-
-/** The number mentions of the original line, markup reduced, that an appended label now carries. */
-function carriedSpans(before: string, after: BeatRewrite): { text: string; spans: TextSpan[] } {
-  let carried = movedNumbers(before, after).filter((form) => inLabel(after.labelsAdded, form));
-  const text = spokenText([before]).text;
-  const spans = countSpans(text).filter((span) => {
-    const forms = numberForms(span.text);
-    const rest = surplus(carried, forms);
-    if (rest.length !== carried.length - forms.length) return false;
-    carried = rest;
-    return true;
-  });
-  return { text, spans };
-}
+const cut = (text: string, spans: readonly Pick<TextSpan, "index" | "text">[]): string =>
+  [...spans].sort((a, b) => a.index - b.index).reduceRight((rest, span) => rest.slice(0, span.index) + " " + rest.slice(span.index + span.text.length), text);
 
 /**
- * The original line without what an appended label now carries: its moved number mentions and every word a label
- * speaks. The terms rule reads this, so "5000 rows" moved to a label does not count "thousand" as a dropped content
- * term, and a list item moved to a label does not count its words.
+ * The original line without its number mentions, its ids and every word an appended label speaks. The terms rule
+ * reads this, so neither "5000 rows" cut from the line nor 2324 respelled from "two thousand three hundred twenty-four"
+ * to "twenty-three twenty-four" counts a number word as a dropped content term, an id cut from the line does not count
+ * its "pull request" or "ticket", and a list item moved to a label does not count its words. The number rows decide
+ * whether a number may go at all.
  */
-function withoutCarried(before: string, after: BeatRewrite): string {
-  const { text, spans } = carriedSpans(before, after);
-  const line = spans.reduceRight((rest, span) => rest.slice(0, span.index) + rest.slice(span.index + span.text.length), text);
+function withoutCarried(before: ScriptBeat, after: BeatRewrite): string {
+  const text = spokenText([before.spoken]).text;
+  const withoutIds = cut(text, spokenIds(before));
+  const line = cut(withoutIds, countSpans(withoutIds));
   const spokenByLabels = contentTerms(after.labelsAdded.join(" "));
   return line.replace(/[\p{L}\p{N}'’-]+/gu, (word) => {
     const terms = [...contentTerms(word)];
     return terms.length > 0 && terms.every((term) => spokenByLabels.has(term)) ? " " : word;
   });
+}
+
+const valueOf = (form: string): string => form.replace(/%$/, "");
+
+const saysBound = (values: readonly string[], bound: TextSpan): boolean => numberForms(bound.text).some((form) => values.includes(valueOf(form)));
+
+/** A range is one claim: a rewrite keeps both ends or cuts it whole, so "thirty to thirty-five percent" never becomes "thirty-five percent". */
+function rangeRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  const values = formsIn(after.spoken).map(valueOf);
+  return numberRanges(spokenText([before]).text)
+    .filter(({ low, high }) => saysBound(values, low) !== saysBound(values, high))
+    .map(({ low, high }) => ({ rule: "range-split" as const, detail: `the range from "${low.text}" to "${high.text}" kept one end and lost the other` }));
 }
 
 const VAGUE_QUANTIFIER =
@@ -134,11 +142,14 @@ function vagueRejections(before: string, after: BeatRewrite): BeatRejection[] {
   if (movedNumbers(before, after).length === 0) return [];
   return surplus(vagueIn(after.spoken), vagueIn(before)).map((word) => ({
     rule: "number-vague" as const,
-    detail: `"${word}" was added where a number left the line; keep the number or cut the clause and let the label carry it`,
+    detail: `"${word}" was added where a number left the line; keep the number or cut the clause`,
   }));
 }
 
-/** A beat may keep a colon, tail, semicolon or "let's" it had, but not gain one: these rows cap near zero in any state. */
+/**
+ * A beat may keep a colon, tail, semicolon, "let's" or "no X" it had, but not gain one: these rows cap with no floor,
+ * so a rewrite never needs to add one.
+ */
 function deviceRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const was = spokenText([before]).text;
   const now = spokenText([after.spoken]).text;
@@ -161,14 +172,6 @@ function closerRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const short = spokenText([last]).words.length <= MAX_CLOSER_WORDS;
   if (!endsOnShortest(after.spoken) || !short || inherited || endsOnShortest(before)) return [];
   return [{ rule: "closer-added", detail: `the rewrite ends on a new short line the original did not have: "${last}"` }];
-}
-
-/** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
-function bareLabelRejections(moved: readonly string[], labels: readonly string[]): BeatRejection[] {
-  return labels
-    .filter((label) => moved.some((form) => carries(label, form)))
-    .filter((label) => numbersIn(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
-    .map((label) => ({ rule: "label-bare", detail: `label "${label}" is only a number; it needs its noun phrase` }));
 }
 
 // A named list is three items joined by commas and a final and/or; the items are one to three words each.
@@ -266,14 +269,25 @@ function allowedCounts(lists: readonly NamedList[], after: BeatRewrite): string[
   return [...perList.flatMap(({ counts }) => counts), ...summed];
 }
 
-function numberRejections(before: string, after: BeatRewrite, lists: readonly NamedList[]): BeatRejection[] {
-  const moved = movedNumbers(before, after);
-  const lost = moved.filter((form) => !inLabel(after.labelsAdded, form));
-  const pronounOnes = Array<string>(pronounOnesIn(before)).fill("1");
-  const invented = surplus(surplus(formsIn(after.spoken), formsIn(before)), [...allowedCounts(lists, after), ...pronounOnes]);
+/**
+ * A number the screen shows must stay spoken, as qa's narration-facts and Q-D14 hold it (TP-4475): one the line stops
+ * saying while the beat's own fields still show it, or one an appended label shows that the line does not say. A
+ * number the screen does not show may leave the line, cut from the beat altogether.
+ */
+function shownUnspoken(before: ScriptBeat, after: BeatRewrite): BeatRejection[] {
+  const was = unspokenFieldNumbers(before).map(({ fact }) => fact);
+  const now = unspokenFieldNumbers(rewrittenBeat(before, after));
+  const gained = surplus(now.map(({ fact }) => fact), was);
+  return now
+    .filter(({ fact }) => gained.includes(fact))
+    .map(({ fact, shown }) => ({ rule: "number-lost" as const, detail: `"${fact}" is on screen in "${shown}" and the line no longer says it` }));
+}
+
+function numberRejections(before: ScriptBeat, after: BeatRewrite, lists: readonly NamedList[]): BeatRejection[] {
+  const pronounOnes = Array<string>(pronounOnesIn(before.spoken)).fill("1");
+  const invented = surplus(surplus(formsIn(after.spoken), formsIn(before.spoken)), [...allowedCounts(lists, after), ...pronounOnes]);
   return [
-    ...lost.map((form) => ({ rule: "number-lost" as const, detail: `"${form}" left the line and is not in an appended label` })),
-    ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
+    ...shownUnspoken(before, after),
     ...invented.map((form) => ({ rule: "number-invented" as const, detail: `"${form}" was not in the original` })),
   ];
 }
@@ -290,57 +304,59 @@ function positionIn(beat: Pick<ScriptBeat, "id" | "spoken">, cue: string): numbe
   }
 }
 
-const cueWord = (word: string): string => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
-
-/** The words of a label other than its number: the noun phrase a moved number's cue can land on. */
-function labelNouns(label: string): string[] {
-  const words = numberSpans(label).reduceRight((text, span) => text.slice(0, span.index) + text.slice(span.index + span.text.length), label);
-  return (words.match(/\S+/g) ?? []).map(cueWord).filter((word) => /\p{L}/u.test(word) && contentTerms(word).size > 0);
-}
-
-/**
- * Cues that named a word of a number an appended label now carries, each renamed to the first of that label's nouns
- * the new line still speaks: with "28 slots" appended, a cue on "twenty-eight" in "twenty-eight slots" lands on "slots".
- */
-export function carriedCueRenames(before: ScriptBeat, after: BeatRewrite): Map<string, string> {
-  const { spans } = carriedSpans(before.spoken, after);
-  const line = { id: before.id, spoken: after.spoken };
-  const spoken = (after.spoken.match(/\S+/g) ?? []).map(cueWord);
-  const renames = new Map<string, string>();
-  for (const cue of beatCues(before.visual).filter((c) => positionIn(line, c) === undefined)) {
-    const word = cueWord(cue.split("#")[0] ?? "");
-    const span = spans.find((s) => s.text.split(/\s+/).map(cueWord).includes(word));
-    const label = span && after.labelsAdded.find((l) => numberForms(span.text).every((form) => carries(l, form)));
-    const noun = label && labelNouns(label).find((n) => spoken.includes(n));
-    if (noun) renames.set(cue, noun);
-  }
-  return renames;
-}
-
 function cueRejections(before: ScriptBeat, after: BeatRewrite): BeatRejection[] {
   const cues = beatCues(before.visual);
-  const renames = carriedCueRenames(before, after);
-  const renamed = cues.map((cue) => renames.get(cue) ?? cue);
   const line = { id: before.id, spoken: after.spoken };
-  const lost = cues.filter((_, i) => positionIn(line, renamed[i]!) === undefined);
+  const lost = cues.filter((cue) => positionIn(line, cue) === undefined);
   if (lost.length > 0) return lost.map((cue) => ({ rule: "cue-lost", detail: `cue "${cue}" is no longer spoken` }));
   const was = orderOf(cues.map((cue) => positionIn(before, cue) ?? -1));
-  const now = orderOf(renamed.map((cue) => positionIn(line, cue) ?? -1));
+  const now = orderOf(cues.map((cue) => positionIn(line, cue) ?? -1));
   return was.every((cue, i) => cue === now[i]) ? [] : [{ rule: "cue-order", detail: "cues land in a different order" }];
 }
 
-/** The beat as an accepted rewrite leaves it: the new line, the appended labels, and cues on moved numbers renamed. */
+/** The beat as an accepted rewrite leaves it: the new line and the appended labels. */
 export function rewrittenBeat(before: ScriptBeat, after: BeatRewrite): ScriptBeat {
-  const renames = carriedCueRenames(before, after);
-  const visual = structuredClone(before.visual);
-  remapCuesInPlace(visual, (cue) => renames.get(cue) ?? cue);
-  return { ...before, spoken: after.spoken, visual: { ...visual, labels: [...visual.labels, ...after.labelsAdded] } };
+  return { ...before, spoken: after.spoken, visual: { ...before.visual, labels: [...before.visual.labels, ...after.labelsAdded] } };
 }
 
+/** A term as a line says it, word for word. */
+const saidForm = (spoken: string, term: string): string | undefined => (hasWord(norm(spoken), norm(term)) ? term : undefined);
+
+/** The terms a line must keep saying: a PR, task or script id may leave it (TP-4697), so it is not one. */
+const namedIn = ({ new_terms, fact_ids }: Pick<ScriptBeat, "new_terms" | "fact_ids">): string[] =>
+  [...new Set([...new_terms, ...fact_ids])].filter((term) => !isIdTerm(term));
+
+/** Only what the original said can stop being spoken, since a declared fact id is not a word any line holds. */
 const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
-  before.new_terms
-    .filter((term) => !hasWord(norm(spoken), norm(term)))
-    .map((term) => ({ rule: "new-term", detail: `"${term}" is introduced here and no longer spoken` }));
+  namedIn(before)
+    .filter((term) => saidForm(before.spoken, term) !== undefined && saidForm(spoken, term) === undefined)
+    .map((term) => ({ rule: "new-term", detail: `"${term}" is named in this beat and no longer spoken` }));
+
+/** What the beat names, as its line says it, for the prompt: a model told to keep a fact id pastes it into the line; ids are left out. */
+export const termsToKeep = (beat: Pick<ScriptBeat, "spoken" | "new_terms" | "fact_ids">): string[] =>
+  [...new Set(namedIn(beat).flatMap((term) => saidForm(beat.spoken, term) ?? []))];
+
+const factKinds = ({ new_terms, fact_ids }: ScriptBeat): string[] =>
+  [...new Set([...new_terms, ...fact_ids].flatMap((id) => /^[a-z]+(?=\/)/i.exec(id)?.[0].toLowerCase() ?? []))];
+
+const holdsFactId = (spoken: string, kind: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}])${kind}/`, "iu").test(spoken);
+
+/** A fact id is a citation, not speech: pasted in, the voice reads out its slashes and the spelling garbles its number. */
+const factIdRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
+  factKinds(before)
+    .filter((kind) => holdsFactId(spoken, kind) && !holdsFactId(before.spoken, kind))
+    .map((kind) => ({ rule: "fact-id", detail: `a "${kind}/" fact id was pasted into the line` }));
+
+/**
+ * An id may leave the line whole, but one the rewrite says must be one the original said: "TP seventy oh one" cut to
+ * "TP seventy" names a different ticket.
+ */
+function idRejections(before: ScriptBeat, spoken: string): BeatRejection[] {
+  const said = new Set(spokenIds(before).map((id) => id.key));
+  return spokenIds({ ...before, spoken })
+    .filter((id) => !said.has(id.key))
+    .map((id) => ({ rule: "id-changed" as const, detail: `"${id.text}" is an id the original did not say` }));
+}
 
 function capRejections(before: string, spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {
   const ceiling = maxVettedSentenceWords ?? MAX_VETTED_SENTENCE_WORDS;
@@ -350,27 +366,29 @@ function capRejections(before: string, spoken: string, { speechClean, maxVettedS
     .map((sentence) => ({ rule: "sentence-cap", detail: `a sentence runs past ${MAX_SENTENCE_WORDS} words without a clean speech verdict: "${sentence.slice(0, 40)}"` }));
 }
 
-/** A dropped entity moved to an appended label still reaches the screen, so it is not lost. */
-const entityInLabel = (rule: string, detail: string, after: BeatRewrite): boolean => {
+/** A dropped entity moved to an appended label still reaches the screen, and one that was part of an id may go with it. */
+const entityAllowed = (rule: string, detail: string, after: BeatRewrite, ids: readonly IdMention[]): boolean => {
   const entity = detail.replace(/^dropped /, "");
-  return rule === "entity" && after.labelsAdded.some((label) => hasWord(label, entity));
+  return rule === "entity" && [...after.labelsAdded, ...ids.map((id) => id.text)].some((text) => hasWord(text, entity));
 };
 
 /**
  * Every reason a rewritten beat may not replace its original; empty when it may. A beat with any rejection keeps its
- * original text. Moved numbers may leave `spoken` only when an appended label carries them, in digits or in words.
+ * original text. A number may leave `spoken` only when the screen does not show it.
  */
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
   const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, minLengthSlack: DEFAULT_LENGTH_SLACK, ...opts.guard };
+  const ids = spokenIds(before);
   const generic: BeatRejection[] = guardRewrite(before.spoken, after.spoken, "", guard)
-    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" || entityInLabel(rule, detail, after) ? [] : [{ rule, detail }]));
-  const terms: BeatRejection[] = guardRewrite(withoutCarried(before.spoken, after), after.spoken, "", guard)
+    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" || entityAllowed(rule, detail, after, ids) ? [] : [{ rule, detail }]));
+  const terms: BeatRejection[] = guardRewrite(withoutCarried(before, after), after.spoken, "", guard)
     .flatMap(({ rule, detail }) => (rule === "terms" ? [{ rule, detail }] : []));
   const lists = namedLists(before.spoken);
   return [
     ...generic,
     ...terms,
-    ...numberRejections(before.spoken, after, lists),
+    ...numberRejections(before, after, lists),
+    ...rangeRejections(before.spoken, after),
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
     ...closerRejections(before.spoken, after),
@@ -378,6 +396,8 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
+    ...factIdRejections(before, after.spoken),
+    ...idRejections(before, after.spoken),
     ...capRejections(before.spoken, after.spoken, opts),
   ];
 }

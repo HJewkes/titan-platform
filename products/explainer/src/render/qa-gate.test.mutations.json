@@ -4,8 +4,8 @@
     {
       "name": "the render gate passes no lead-line set",
       "file": "products/explainer/src/render/qa-gate.ts",
-      "find": ", { lead: leadLines(timeline) }",
-      "replace": "",
+      "find": ", { lead: leadLines(timeline), sweep: true }",
+      "replace": ", { sweep: true }",
       "kills": [
         "render QA gate lead lines holds late-fill on a verdict card unless the timeline hints its lead line"
       ]

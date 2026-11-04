@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, Card, CardContent, EmptyState, Link, ListItem, ListItemContent, ListItemTrailing, Spinner, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Card, CardContent, EmptyState, Link, ListItem, ListItemContent, ListItemTrailing, VStack } from "@titan-design/react-ui";
+import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { followRef, isWebTarget, openExternal, queueUrl } from "./homeLinks.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 import { ageOf, badgeOf, type InboxItem } from "./InboxPage.js";
 
 type QueueItem = ConsoleCommands["agents.queue"]["result"]["items"][number];
@@ -48,7 +50,7 @@ function needsOf(queue: readonly QueueItem[], tasks: readonly TaskRow[], upstrea
 export function NeedsYouRegion(): ReactNode {
   const health = useQuery("upstreams.health");
   const queue = useQuery("agents.queue");
-  const tasks = useQuery("work.tasks");
+  const tasks = useQuery("work.tasks", { stage: "blocked" });
   const inbox = useQuery("inbox.list");
   if ([health, queue, tasks, inbox].some((query) => query.status === "loading")) return <Spinner size="sm" label="Loading needs-you" />;
   const url = queueUrl(health.data?.upstreams.find((upstream) => upstream.id === "agents")?.target);
@@ -78,7 +80,7 @@ function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[];
   return (
     <Card variant="outline" testID="home-inbox">
       <CardContent>
-        <Link color="primary" onPress={openInbox}>
+        <Link color="primary" className={PHONE_TAP_LINK} onPress={openInbox}>
           {`Inbox: ${blockers.length} blocking${waiting > 0 ? `, ${waiting} ${waiting === 1 ? "round" : "rounds"} waiting over 6 h` : ""}${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
         </Link>
         {blockers.slice(0, TOP_BLOCKERS).map((item) => (

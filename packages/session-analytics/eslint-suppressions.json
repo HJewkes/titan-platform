@@ -1,0 +1,32 @@
+{
+  "packages/session-analytics/src/blocked-flow.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/cache-ttl.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/cost-report.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/fixture.ts": {
+    "titan/max-line-length": {
+      "count": 5
+    }
+  },
+  "packages/session-analytics/src/handoff-threshold.ts": {
+    "titan/max-line-length": {
+      "count": 1
+    }
+  },
+  "packages/session-analytics/src/liveness.ts": {
+    "titan/max-line-length": {
+      "count": 3
+    }
+  }
+}
