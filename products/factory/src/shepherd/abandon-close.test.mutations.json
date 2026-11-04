@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the abandon close deletes the PR's branch",
+      "file": "products/factory/src/shepherd/abandon-close.ts",
+      "find": "[\"gh-write\", \"--\", \"pr\", \"close\", String(pr), \"--repo\", repo]",
+      "replace": "[\"gh-write\", \"--\", \"pr\", \"close\", String(pr), \"--repo\", repo, \"--delete-branch\"]",
+      "kills": [
+        "abandon on a dead-end gate abandon runs `agent-chat gh-write -- pr close <n> --repo <r>` with no --delete-branch, leaves the branch ref, reopens the task with a note, and stops the run as abandoned"
+      ]
+    },
+    {
+      "name": "abandon closes a PR whose head moved past the gate head",
+      "file": "products/factory/src/shepherd/abandon-close.ts",
+      "find": "  if (pull.headSha !== target.headSha) return \"moved\";\n",
+      "replace": "",
+      "kills": ["abandon on a dead-end gate abandon at a head the PR moved past closes nothing and re-asks"]
+    },
+    {
+      "name": "a replayed abandon does not read that the PR is already closed",
+      "file": "products/factory/src/shepherd/abandon-close.ts",
+      "find": "  if (pull.state !== \"open\") return \"already-closed\";\n",
+      "replace": "",
+      "kills": ["abandon on a dead-end gate a replayed sh-abandon does not close twice"]
+    }
+  ]
+}

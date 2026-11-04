@@ -8,6 +8,7 @@ import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { WAIVE_PROOF, deadEndDecision, type DeadEndAnswer } from "../gate-brief.js";
 import { readPath } from "../narrow.js";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
+import { ABANDON_STEPS, abandonAtHead } from "./abandon-close.js";
 import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -28,6 +29,7 @@ const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
   { id: ADDRESS_STEP, kind: "dispatch" },
   { id: DEAD_END_GATE, kind: "assisted" },
+  ...ABANDON_STEPS,
 ];
 
 /** The table a dead-end gate's rule names; the owner inbox leaves its gates to the seat. Not `shepherd-seat`, the seat policy's own table. */
@@ -128,7 +130,7 @@ export async function deadEndGate(run: DeadEndRun, end: DeadEnd, ownerGate: () =
 }
 
 async function onAnswer(run: DeadEndRun, headSha: string, decision: DeadEndAnswer): Promise<LandOutcome | undefined> {
-  if (decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: `the dead-end gate at ${headSha} was answered abandon` };
+  if (decision === "abandon") return abandonAtHead(run, headSha);
   if (decision === WAIVE_PROOF) {
     await waiveProof(run.ctx, headSha);
     run.reviews?.delete(headSha);

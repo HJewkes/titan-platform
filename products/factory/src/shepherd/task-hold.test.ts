@@ -22,6 +22,7 @@ function fakeTasks(slicing: TaskSlicing): CleanupTasks & { closed: string[]; not
     state: async () => "open",
     slicing: async () => ({ ...slicing, notes: [slicing.notes, ...notes].join("\n") }),
     done: async (_, id) => void closed.push(id),
+    reopen: async () => undefined,
     appendNote: async (_, __, line) => void (notes.includes(line) || notes.push(line)),
   };
 }

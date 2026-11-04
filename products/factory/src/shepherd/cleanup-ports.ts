@@ -57,6 +57,10 @@ export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch 
       return { tags: task?.tags ?? [], notes: task?.notes ?? "", plan: await planText(client, slug, id) };
     },
     done: async (slug, id) => void (await client.call("task.done", { slug, id })),
+    reopen: async (slug, id) => {
+      const { tasks } = await client.call("task.list", { slug, status: "all" });
+      if (tasks.find((task) => task.id === id)?.status === "done") await client.call("task.edit", { slug, id, field: "status", value: "open" });
+    },
     appendNote: async (slug, id, line) => {
       const { tasks } = await client.call("task.list", { slug, status: "all" });
       const notes = tasks.find((task) => task.id === id)?.notes ?? "";
