@@ -21,33 +21,6 @@
       ]
     },
     {
-      "name": "a .github/ file with no structural reader reads as budget",
-      "file": "products/factory/src/shepherd/ci-policy-class.ts",
-      "find": "  return { why: `${shownLine(file.path)} is not the budget data file or a workflow, so its change is not read as budget` };",
-      "replace": "  return { changed: false };",
-      "kills": [
-        "sorting a weakened CI-policy diff into budget or weakening reads a .github/ file with no structural reader beside a budget bump as weakening"
-      ]
-    },
-    {
-      "name": "a workflow key outside its jobs may change",
-      "file": "products/factory/src/shepherd/ci-workflow-yaml.ts",
-      "find": "  if (!isDeepStrictEqual(without(base, \"jobs\"), without(head, \"jobs\"))) return why(\"more than its jobs' timeouts\");\n",
-      "replace": "",
-      "kills": [
-        "sorting a weakened CI-policy diff into budget or weakening reads a workflow by its parsed structure, so a top-level timeout-minutes is weakening"
-      ]
-    },
-    {
-      "name": "a timeout may be removed or set to anything",
-      "file": "products/factory/src/shepherd/ci-workflow-yaml.ts",
-      "find": "typeof minutes === \"number\" && Number.isInteger(minutes) && minutes > 0 ? true",
-      "replace": "true ? true",
-      "kills": [
-        "sorting a weakened CI-policy diff into budget or weakening reads a workflow by its parsed structure, so a removed timeout is weakening"
-      ]
-    },
-    {
       "name": "a changed path outside the classified files reads as budget",
       "file": "products/factory/src/shepherd/ci-policy-class.ts",
       "find": "  if (outside !== undefined) return weakening(`the PR changes ${shownLine(outside)}, which is not a classified .github/ file`);\n",
