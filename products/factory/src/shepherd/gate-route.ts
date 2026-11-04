@@ -47,7 +47,11 @@ const NEXT: Record<SeatNotice, string> = {
   "seat-held": `Nothing waits on the owner: the seat's hold on Shepherd's MERGE is the seat's to settle. ${WAITS} Next: release or answer the hold, push to the PR, or close it to end the run.`,
   conflict: `Nothing waits on the owner: two fixer attempts left the conflict in place. ${WAITS} Next: resolve the conflict on the PR's branch yourself or with a successor, split the PR, or close it to end the run.`,
   unreviewed: `Nothing waits on the owner: Shepherd asks the owner to merge only a head a reviewer said MERGE at. ${WAITS} Next: check why the reviewers gave no MERGE here, push to the PR, or register it again to review it afresh.`,
-  "dead-end": "Shepherd asks you, not the owner, at this head: answer its sh-dead-end gate (`titan-factory shepherd waiting` lists it). After you resume or start the worker: `titan-factory gate resolve <run> sh-dead-end --json '{\"decision\":\"respawn\",\"headSha\":\"<head>\"}'`. To end the run: the same with `abandon`.",
+  "dead-end": [
+    "Shepherd asks you, not the owner, at this head: answer its sh-dead-end gate (`titan-factory shepherd waiting` lists it).",
+    "After you resume or start the worker: `titan-factory gate resolve <run> sh-dead-end --json '{\"decision\":\"respawn\",\"headSha\":\"<head>\"}'`.",
+    "To have a planner redesign or split the task: the same with `replan`. To end the run: the same with `abandon`.",
+  ].join(" "),
   "order-expired": "Nothing waits on the owner, and Shepherd keeps landing the PR as before. An overlapping PR may now merge first and conflict it again. Next: see what keeps it from landing (titan-factory shepherd timeline), or close it to end the run.",
 };
 
