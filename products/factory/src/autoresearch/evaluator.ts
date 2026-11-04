@@ -191,6 +191,8 @@ async function paramsOf(bounds: Bounds, idea: Idea, diff: readonly DiffFile[], t
 async function timedRow(name: string, argv: readonly string[], cwd: string, signal: AbortSignal): Promise<Row> {
   const started = Date.now();
   const run = await runCommand(argv, { cwd, signal });
+  // A suite killed by a shutdown or a cancel measured nothing, so it is no failed row.
+  signal.throwIfAborted();
   const ms = Date.now() - started;
   return run.ok ? { name, ok: true, ms } : { name, ok: false, code: name, ms };
 }
