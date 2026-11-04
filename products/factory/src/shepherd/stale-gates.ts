@@ -84,7 +84,7 @@ export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string 
 }
 
 /** The run state a superseded approve-merge gate clears or hands on. */
-interface SupersededRun {
+export interface SupersededRun {
   reviews: Map<string, unknown>;
   escalations: Map<string, Escalated>;
   /** An owner-gated escalation the head moved past: it gates every head until an owner answer to an approve-merge gate consumes it. */

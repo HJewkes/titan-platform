@@ -157,7 +157,7 @@ export const ROUTE_DEAD_ENDS: Partial<Record<Escalation, DeadEndKind>> = {
   "failed-rounds": "failed-rounds",
 };
 
-interface ReaddressRun extends GateRun {
+export interface ReaddressRun extends GateRun {
   escalations: Map<string, Escalated>;
   carried?: Escalated;
 }
