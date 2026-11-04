@@ -18,7 +18,7 @@ export const PR_3117: CiPolicyFile = { path: BUDGET, before: budgetJson(600), af
 
 export const ciYml = (jobs: string): string => `name: CI\non: pull_request\njobs:\n${jobs}`;
 export const VALIDATE = "  validate:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    steps:\n      - run: pnpm test\n";
-export const DAG_CHECK = "  dag-check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm dag:check\n";
+const DAG_CHECK = "  dag-check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm dag:check\n";
 export const CI_BEFORE = ciYml(VALIDATE + DAG_CHECK);
 
 export const classOf = (files: CiPolicyFile[], overrides: Partial<CiPolicyClassInput> = {}) =>
