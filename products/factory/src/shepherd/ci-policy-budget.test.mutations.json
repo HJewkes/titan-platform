@@ -15,7 +15,7 @@
       "replace": "  return undefined;",
       "kills": [
         "sorting a weakened CI-policy diff into budget or weakening reads a required-check removal as weakening, naming the check",
-        "the merge guard on a weakened CI-policy line keeps a required-check removal on ci-policy-weakened, marked for the owner"
+        "sorting a weakened CI-policy diff into budget or weakening reads a required check renamed away as weakening"
       ]
     },
     {

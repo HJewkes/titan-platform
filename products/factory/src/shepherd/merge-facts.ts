@@ -373,12 +373,29 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
-  const { ciPolicyFiles, ciPolicyUnread, ...read } = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
-  const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  const sorted = input.ciPolicy?.kind === "weakened" && {
-    ciPolicyClass: ciPolicyClass({ keys: input.ciPolicy.keys, files: ciPolicyFiles ?? [], unread: ciPolicyUnread === true || paths.unread !== undefined || !required.readable, required: merge.requiredContexts, repo: input.repo, prBody: pr.body, freshMerge: input.verdict.head === input.head && carry === undefined }),
-  };
-  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...sorted, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+  const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
+  const facts = unknownAndCiPolicy(input, { prBody: pr.body, merge, read }, required, paths.unread);
+  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...facts, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+}
+
+/** What could not be read, beside the CI-policy facts, which read as weakening when anything could not. */
+function unknownAndCiPolicy(input: MergeEvidenceInput, read: CiPolicyRead, required: Awaited<ReturnType<typeof readRequiredChecks>>, filesUnread: string | undefined) {
+  const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(filesUnread !== undefined && { changedFilesUnread: filesUnread }) };
+  return { ...unknown, ...ciPolicyFacts(input, read, filesUnread !== undefined || !required.readable) };
+}
+
+interface CiPolicyRead {
+  prBody: string | undefined;
+  merge: MergeFacts;
+  read: Awaited<ReturnType<typeof withCiPolicyRead>>;
+}
+
+/** The CI-policy read less its whole files, which are never stored, and on a weakened line its class (ci-policy-class.ts). */
+function ciPolicyFacts(input: MergeEvidenceInput, { prBody, merge, read: { ciPolicyFiles, ciPolicyUnread, ...read } }: CiPolicyRead, otherUnread: boolean) {
+  if (input.ciPolicy?.kind !== "weakened") return read;
+  const sides = { files: ciPolicyFiles ?? [], unread: ciPolicyUnread === true || otherUnread, required: merge.requiredContexts };
+  const freshMerge = merge.verdict.head === merge.head && merge.carry === undefined;
+  return { ...read, ciPolicyClass: ciPolicyClass({ ...sides, keys: input.ciPolicy.keys, repo: input.repo, prBody, freshMerge }) };
 }
 
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, and the attestation judge. */
