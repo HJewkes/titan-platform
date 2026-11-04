@@ -2,6 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { DIAGNOSIS_RULE, GATE_DEMOTIONS, recordAutoPass, type GateDemotions } from "./auto-pass.js";
+import { escalateToDeadEnd } from "./dead-end-route.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import { awaitNewHead } from "./gates.js";
 import { LeaveLand } from "./leave-land.js";
@@ -109,14 +110,11 @@ async function tellFailedRounds(run: FailedRoundsRun, headSha: string, notice: N
 
 /**
  * Ops or the seat hears, and the run waits for a new head, whose rounds count afresh. Only a notice that could not go
- * out asks the owner, naming why, so the PR never waits on nobody.
+ * out asks the seat's dead-end gate, else the owner, naming why, so the PR never waits on nobody.
  */
 async function noticeOrGate(run: FailedRoundsRun, headSha: string, notice: Notice): Promise<boolean> {
   const told = await tellFailedRounds(run, headSha, notice);
-  if (told?.sent === false) {
-    run.escalations.set(headSha, { ...notice.escalated, detail: `${notice.escalated.detail} (${told.detail})` });
-    return true;
-  }
+  if (told?.sent === false) return escalateToDeadEnd(run, headSha, { ...notice.escalated, detail: `${notice.escalated.detail} (${told.detail})` });
   return awaitNewHeadAfresh(run, headSha);
 }
 
@@ -142,16 +140,14 @@ async function diagnoseOrNotice(run: FailedRoundsRun, headSha: string, escalated
   if (diagnosis.spawned) return awaitNewHeadAfresh(run, headSha);
   const unspawned = { ...escalated, detail: `${escalated.detail}; the diagnosis planner did not start: ${diagnosis.reason ?? "no reason given"}` };
   if (GATE_DEMOTIONS.failedFallback) return noticeOrGate(run, headSha, { route: "notice", to: "review-infra", escalated: unspawned });
-  run.escalations.set(headSha, unspawned);
-  return true;
+  return escalateToDeadEnd(run, headSha, unspawned);
 }
 
-/** True goes on to the merge decision, where the owner gate opens; false reviews the head again with the D7 fallback reviewer. */
+/** True goes on to the merge decision, where the owner gate opens unless a dead end asked the seat (TP-4759); false reviews the head again with the D7 fallback reviewer. */
 export async function onEscalated(run: FailedRoundsRun, headSha: string, escalated: Escalated): Promise<boolean> {
   const demoted = await demoteFailedRounds(run, headSha, escalated);
   if (demoted.route === "review-again") return false;
   if (demoted.route === "diagnose") return diagnoseOrNotice(run, headSha, demoted.escalated);
   if (demoted.route === "notice") return noticeOrGate(run, headSha, demoted);
-  run.escalations.set(headSha, demoted.escalated);
-  return true;
+  return escalateToDeadEnd(run, headSha, demoted.escalated);
 }

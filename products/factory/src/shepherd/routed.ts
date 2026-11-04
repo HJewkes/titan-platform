@@ -98,7 +98,7 @@ function failedRoundsEscalation(run: RoundCounts, routed: Routed): Escalated {
   return { escalation: "failed-rounds", detail: lastRoundDetail(routed), ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
 }
 
-/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
+/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7, then the seat's dead-end gate or the owner's. */
 export async function routeEscalation(run: FailedRoundsRun & FixFirstDemotionRun, headSha: string, escalated: Escalated): Promise<boolean> {
   return (await onFixFirstEscalated(run, headSha, escalated)) ?? onEscalated(run, headSha, escalated);
 }
