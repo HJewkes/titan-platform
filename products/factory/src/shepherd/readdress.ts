@@ -1,6 +1,6 @@
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost, PendingGate } from "../host.js";
-import { DEAD_END_KINDS, addressedSeat, deadEndAddress, type DeadEndKind, type DeadEndPorts } from "./dead-end.js";
+import { ROUTE_DEAD_ENDS, addressedSeat, deadEndAddress, type DeadEndKind, type DeadEndPorts } from "./dead-end.js";
 import { singleSeat } from "./exit-notice.js";
 import { storedLineage } from "./registrant.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
@@ -9,8 +9,8 @@ import { cancelUnlessSettled, gateHead, readdressedReason } from "./stale-gates.
 /** A fixer's exit with no push, word for word as `exitGate` asks it from wake-phase's exit reason; no other send-back. */
 const EXIT_PROMPT = /^The [a-z-]+ wake of PR #\d+ in \S+ at head ([0-9a-f]{40}) ended: \S+ exited without pushing a new head past \1\b.*\. Await a new head or abandon\?$/s;
 
-/** The two route rows that are dead ends; another route row, a merge guard or an authority gate never matches. */
-const ROUTE_PROMPT = / Policy shepherd-route\/(fix-first-runaway|failed-rounds): /;
+/** A route row's approve-merge; only the rows `ROUTE_DEAD_ENDS` names are dead ends. A merge guard or authority gate never matches. */
+const ROUTE_PROMPT = / Policy shepherd-route\/([a-z-]+): /;
 
 interface DeadEndAsk {
   kind: DeadEndKind;
@@ -41,7 +41,7 @@ export function deadEndAsked({ stepId, gate }: Pick<PendingGate, "stepId" | "gat
   }
   if (!stepIdMatches("approve-merge", stepId)) return undefined;
   const row = ROUTE_PROMPT.exec(gate.prompt)?.[1];
-  const kind = DEAD_END_KINDS.find((known) => known === row);
+  const kind = Object.values(ROUTE_DEAD_ENDS).find((known) => known === row);
   const headSha = gateHead(gate.prompt);
   return kind === undefined || headSha === undefined ? undefined : { kind, headSha };
 }

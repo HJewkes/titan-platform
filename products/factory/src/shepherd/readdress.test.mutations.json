@@ -13,9 +13,10 @@
     {
       "name": "the matcher takes any shepherd-route row",
       "file": "products/factory/src/shepherd/readdress.ts",
-      "find": "const ROUTE_PROMPT = / Policy shepherd-route\\/(fix-first-runaway|failed-rounds): /;",
-      "replace": "const ROUTE_PROMPT = / Policy shepherd-route\\/([a-z-]+): /;",
+      "find": "  const kind = Object.values(ROUTE_DEAD_ENDS).find((known) => known === row);",
+      "replace": "  const kind = row === undefined ? undefined : (\"failed-rounds\" as const);",
       "kills": [
+        "shepherd readdress-dead-ends (TP-4759) without --apply lists the eleven gate shapes with each addressee and cancels nothing",
         "shepherd readdress-dead-ends (TP-4759) never readdresses an approve-merge under authority, shepherd-merge-guard, another route row or a rule, nor another send-back"
       ]
     },
