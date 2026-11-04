@@ -202,7 +202,8 @@ function decideAfterPolicy(headSha: string, evidence: DecidableEvidence, visual:
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, evidence.merge.changedPaths, visual.visualPaths);
+    const { changedPaths } = evidence.merge;
+    const clearance = visualClearance(changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta)) + tierClearance(evidence.visualTier, changedPaths, visual.visualPaths);
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
@@ -228,7 +229,8 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0 || honour.coversPaths("visual", visual)) return undefined;
   const tier = tierOutcome(evidence.visualTier);
-  const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}${honour.unplanned("visual")}${tier?.clears === false ? tier.note : ""}` };
+  const tierNote = tier?.clears === false ? tier.note : "";
+  const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}${honour.unplanned("visual")}${tierNote}` };
   if (visualBaselines !== undefined) return baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
   return tier?.clears ? undefined : globGate;
 }
@@ -366,7 +368,8 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy, ...(observed.ciPolicyClass && { ciPolicyClass: observed.ciPolicyClass }) };
-  const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...(await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier })) };
+  const tier = await readVisualTier(port, merge, { repo: input.repo, baseRef: pr.baseRef, visualPaths: input.visualPaths, config: reads.tier });
+  const visual = { ...(await visualDeltaOf(port, input, observed, reads.threshold)), ...tier };
   const judged = await reads.attest?.(input, pr.baseRef);
   const attest = { ...(judged && { attest: judged }), ...(input.attest && { attestVerdicts: input.attest }) };
   const oldPath = await oldPathOf(reads.oldPath, input.repo, observed.prFiles, kind ?? {});

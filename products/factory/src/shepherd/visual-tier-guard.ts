@@ -56,7 +56,8 @@ interface TierTarget {
  * The tier of a head the visual-path row would gate, judged on every changed path. No pr-visual artifact is read until
  * TP-4761 S4, so `pixel` is undefined and only the non-rendering tier 1 is reachable.
  */
-export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, { repo, baseRef, visualPaths, config }: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
+export async function readVisualTier(port: Pick<GitHubPort, "compareFiles">, merge: MergeFacts, target: TierTarget): Promise<{ visualTier: VisualTierRecord } | undefined> {
+  const { repo, baseRef, visualPaths, config } = target;
   const mode = tierMode(config);
   if (mode === undefined || visualPaths === undefined || visualMatches(merge.changedPaths, visualPaths).length === 0) return undefined;
   const mergeBase = await mergeBaseOf(port, repo, baseRef, merge.head);

@@ -2,7 +2,11 @@ import { GITHUB_ACTIONS_APP_ID, fakeGitHub, fakeSha, githubPort, successRun, typ
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import type { z } from "zod";
+import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
+import { MergeEvidenceSchema } from "./review-schemas.js";
+
+type StoredEvidence = z.infer<typeof MergeEvidenceSchema>;
 
 const HEAD = fakeSha("visual-tier-head");
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
@@ -37,16 +41,16 @@ const GREEN: CheckRun[] = [successRun("validate", 1), successRun("dag-check", 3)
 const modified = (path: string): PrFile => ({ path, status: "modified" });
 
 /** A reviewed MERGE at HEAD under the given raw tier entry, decided again from its JSON round trip as the land step reads it. */
-async function evidenceFor(paths: string[], tier: unknown, runs: CheckRun[] = GREEN): Promise<MergeEvidence> {
+async function evidenceFor(paths: string[], tier: unknown, runs: CheckRun[] = GREEN): Promise<StoredEvidence> {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, runs);
   fake.prFiles.set(1, paths.map(modified));
   const evidence = await mergeEvidence(githubPort(fake.wire), input, noFreezeStoreUntilTp523, { kind: "feature" }, undefined, { tier });
-  return JSON.parse(JSON.stringify(evidence)) as MergeEvidence;
+  return MergeEvidenceSchema.parse(JSON.parse(JSON.stringify(evidence)));
 }
 
-const decide = (evidence: MergeEvidence) => decideAutoMerge(HEAD, evidence, VISUAL_PATHS);
+const decide = (evidence: StoredEvidence) => decideAutoMerge(HEAD, evidence, VISUAL_PATHS);
 const VISUAL_ROW = { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "visual-path", version: 1 } };
 
 describe("the visual tier at the merge guard (TP-4761 S2)", () => {
