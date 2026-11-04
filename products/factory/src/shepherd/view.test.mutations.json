@@ -27,6 +27,24 @@
       "kills": [
         "a run parked in recovery after it recorded its outcome says none for a completed merged run whose last step was sh-cleanup"
       ]
+    },
+    {
+      "name": "a running ci-wait with no read falls back to an older step's head",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "  if (ciWaitRunning(run)) return ciWaitHead(run.currentStep, repo, pr) ?? null;",
+      "replace": "  if (ciWaitRunning(run)) return ciWaitHead(run.currentStep, repo, pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;",
+      "kills": [
+        "a run whose PR moved while its ci-wait runs (TP-4092) says the head is not yet read, never an older step's head, while the live ci-wait has read none (TP-4767)"
+      ]
+    },
+    {
+      "name": "a run that stopped at ci-wait reads as still waiting",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "const ciWaitRunning = (run: WorkflowRun): boolean => run.status === \"running\" && run.currentStep",
+      "replace": "const ciWaitRunning = (run: WorkflowRun): boolean => run.currentStep",
+      "kills": [
+        "a run whose PR moved while its ci-wait runs (TP-4092) keeps the recorded head of a run that stopped at ci-wait"
+      ]
     }
   ]
 }

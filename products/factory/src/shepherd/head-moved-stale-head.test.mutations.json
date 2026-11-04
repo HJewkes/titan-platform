@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a head-moved cancel reads as the owner's answer",
+      "file": "products/factory/src/shepherd/stale-gates.ts",
+      "find": "  if (reason.startsWith(SUPERSEDED)) return { superseded: reason };",
+      "replace": "  if (reason.startsWith(SUPERSEDED)) return answer;",
+      "kills": [
+        "an owner approve-merge gate superseded by a head push (TP-4767) cancels the gate and puts the run in review at the new head, with no CI wait at the old head after the cancel"
+      ]
+    }
+  ]
+}
