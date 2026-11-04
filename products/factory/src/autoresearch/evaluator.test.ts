@@ -295,7 +295,7 @@ describe("evaluator L0", () => {
     writeFiles(gate.tree, { "move-head": "" });
 
     await repo.ports.staticCheck({ ...repo.run, idea: idea("accept-gate"), ...gate }, signal);
-    await repo.ports.evalCase({ ...repo.run, tree: gate.tree, case: "t-alpha", key: "k-head", rung: "seed" }, signal);
+    await repo.ports.evalCase({ ...repo.run, tree: gate.tree, head: gate.head, case: "t-alpha", key: "k-head", rung: "seed" }, signal);
 
     expect(readFileSync(join(gate.tree, ".artifacts", "proof-ran"), "utf8").trim()).toBe(`${gate.base} ${gate.head}`);
     expect(readFileSync(join(gate.tree, ".artifacts", "k-head", "head"), "utf8").trim()).toBe(gate.head);

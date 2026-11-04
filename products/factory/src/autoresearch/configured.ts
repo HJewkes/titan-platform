@@ -4,7 +4,7 @@ import { loadLimits } from "@titan-design/agent-dispatch/limits/node";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
 import { composeRoutes } from "../compose-routes.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
-import type { FactoryContext } from "../registry.js";
+import type { FactoryContext } from "../context.js";
 import { SHEPHERD_COMMAND_MAP } from "../shepherd/commands.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import { arAgentPorts } from "./agents.js";
