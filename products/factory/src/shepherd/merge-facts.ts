@@ -7,10 +7,11 @@ import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
-import { budgetMeasurement, ciPolicyClass, type CiPolicyClass } from "./ci-policy-class.js";
+import type { CiPolicyClass } from "./ci-policy-class.js";
+import { ciPolicyGate, unknownAndCiPolicy } from "./ci-policy-guard.js";
 import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
-import { CI_POLICY_BUDGET_PREFIX, CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import { SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import type { PlanApproval } from "./plan-approval.js";
 import { planHonour, type PlanHonour } from "./plan-approval-cover.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
@@ -27,6 +28,7 @@ import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visua
 import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 
 export { isGithubPath };
+export { budgetAt } from "./ci-policy-guard.js";
 export type { EvidenceRecord };
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -134,7 +136,7 @@ export interface DecidableEvidence extends GrantWithheldField {
 export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled", "github-path", "ci-policy-weakened", "ci-policy-budget", "ci-policy-malformed", "attest-unmet", "attest-deploy-skew"] as const;
 export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
 
-function guardRule(rowId: MergeGuardRow): PolicyRule {
+export function guardRule(rowId: MergeGuardRow): PolicyRule {
   return { table: "shepherd-merge-guard", rowId, version: 1 };
 }
 
@@ -181,7 +183,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   const pathGate = changedFilesGate(evidence, visual, honour);
   if (pathGate) return pathGate;
   const policyGate = ciPolicyGate(evidence, honour, headSha);
-  if (policyGate && policyGate.rule.rowId !== BUDGET_ROW) return policyGate;
+  if (policyGate && policyGate.rule.rowId !== "ci-policy-budget") return policyGate;
   const decision = decideAfterPolicy(headSha, evidence, visual, honour);
   return policyGate && decision.outcome === "allow" ? policyGate : decision;
 }
@@ -234,40 +236,6 @@ function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: G
   const uncleared = unclearedBaselines(changed, delta);
   if (uncleared.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(uncleared)}` };
   return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
-}
-
-/**
- * A reviewer who says CI policy is weakened, or writes the line in a shape the parser refuses, gates any PR for the owner.
- * A `.github/` change, rename sources included, with no line gates too, so a stored record from before the line existed
- * fails closed. A weakened line clears only under a plan approval pinning everything the PR merges; a malformed one never does.
- */
-function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour, headSha: string): GateDecision | undefined {
-  const { ciPolicy } = evidence;
-  if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
-  if (ciPolicy?.kind === "weakened") {
-    if (honour.coversCiPolicy({ keys: ciPolicy.keys, changed: evidence.merge.changedPaths, headBlobs: evidence.record.headBlobs })) return undefined;
-    const measurement = budgetAt(evidence, headSha);
-    if (measurement !== undefined) return { outcome: "gate", rule: guardRule(BUDGET_ROW), reason: `${CI_POLICY_BUDGET_PREFIX}${shownPaths(ciPolicy.keys)}; measured at ${measurement}` };
-    return { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}${honour.unplanned("ci-policy")}` };
-  }
-  if (ciPolicy?.kind === "unchanged") return undefined;
-  const github = evidence.merge.changedPaths.filter(isGithubPath);
-  if (github.length === 0) return undefined;
-  return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
-}
-
-const BUDGET_ROW: MergeGuardRow = "ci-policy-budget";
-
-/**
- * The measurement of a budget-class weakened line, read only when the reviewer's own MERGE is at this head and carried
- * nowhere; owner decision 552 (2) lets a coordinator resolve that gate, so any doubt reads as a weakening.
- */
-export function budgetAt(evidence: Pick<DecidableEvidence, "head" | "merge" | "ciPolicy" | "ciPolicyClass">, headSha: string): string | undefined {
-  const measurement = evidence.ciPolicy?.kind === "weakened" ? budgetMeasurement(evidence.ciPolicyClass) : undefined;
-  // Stored evidence is not parsed on read (policy.ts), so its verdict may be missing.
-  const verdict: Partial<MergeFacts["verdict"]> | undefined = evidence.merge.verdict;
-  const fresh = evidence.head === headSha && verdict?.value === "MERGE" && verdict.head === headSha && evidence.merge.carry === undefined;
-  return fresh ? measurement : undefined;
 }
 
 /** A run with no app id is counted from no app, so it cannot satisfy a required context. */
@@ -379,26 +347,6 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
   const facts = unknownAndCiPolicy(input, { prBody: pr.body, merge, read }, required, paths.unread);
   return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...facts, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
-}
-
-/** What could not be read, beside the CI-policy facts, which read as weakening when anything could not. */
-function unknownAndCiPolicy(input: MergeEvidenceInput, read: CiPolicyRead, required: Awaited<ReturnType<typeof readRequiredChecks>>, filesUnread: string | undefined) {
-  const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(filesUnread !== undefined && { changedFilesUnread: filesUnread }) };
-  return { ...unknown, ...ciPolicyFacts(input, read, filesUnread !== undefined || !required.readable) };
-}
-
-interface CiPolicyRead {
-  prBody: string | undefined;
-  merge: MergeFacts;
-  read: Awaited<ReturnType<typeof withCiPolicyRead>>;
-}
-
-/** The CI-policy read less its whole files, which are never stored, and on a weakened line its class (ci-policy-class.ts). */
-function ciPolicyFacts(input: MergeEvidenceInput, { prBody, merge, read: { ciPolicyFiles, ciPolicyUnread, ...read } }: CiPolicyRead, otherUnread: boolean) {
-  if (input.ciPolicy?.kind !== "weakened") return read;
-  const sides = { files: ciPolicyFiles ?? [], unread: ciPolicyUnread === true || otherUnread, required: merge.requiredContexts };
-  const freshMerge = merge.verdict.head === merge.head && merge.carry === undefined;
-  return { ...read, ciPolicyClass: ciPolicyClass({ ...sides, keys: input.ciPolicy.keys, repo: input.repo, prBody, freshMerge }) };
 }
 
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, the repo's `shepherd.visualThreshold`, and the attestation judge. */
