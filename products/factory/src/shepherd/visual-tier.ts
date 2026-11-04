@@ -3,9 +3,9 @@ import { compileGlobs } from "@titan-design/fix-proof";
 import { z } from "zod";
 import { baselineCheckGreen, cannotRender, shownPaths } from "./visual-gate.js";
 
-export type VisualTierVerdict = { tier: 1; basis: "non-rendering" | "no-pixel-diff" } | { tier: 2; reason: string };
+type VisualTierVerdict = { tier: 1; basis: "non-rendering" | "no-pixel-diff" } | { tier: 2; reason: string };
 
-export interface VisualTierInput {
+interface VisualTierInput {
   /** changedPaths is every touched path, both sides of a rename, never pre-filtered: the classifier sees all of it. */
   merge: Pick<MergeFacts, "head" | "checkRuns" | "changedPaths">;
   /** policy.visualPaths as configured; the classifier does its own visual match. */

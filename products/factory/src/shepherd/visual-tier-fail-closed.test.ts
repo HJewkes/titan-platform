@@ -34,7 +34,7 @@ const UNCOMPILABLE = "src/{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}/**";
 describe("visual tier fails closed (TP-4761 S1)", () => {
   it("a pixel proof holding anything but exact zero, true flags and the merge shas is tier 2", () => {
     const withShot = (over: Record<string, unknown>) => ({ ...proof, shots: [{ ...shot, ...over }] });
-    const { changedPixels: _dropped, ...noCount } = shot;
+    const noCount = { id: shot.id, paired: shot.paired };
     const bad = [
       ...[-1, 0.5, null, "0", 1, Number.NaN].map((changedPixels) => withShot({ changedPixels })),
       { ...proof, shots: [noCount] },
