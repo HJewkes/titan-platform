@@ -584,15 +584,19 @@ describe("a held run whose wait saw a pushed head", () => {
   const H1 = "1".repeat(40);
   const H2 = "2".repeat(40);
 
-  it("names the pushed head while CI runs at it", () => {
+  it("names the pushed head once the live ci-wait reads it", () => {
     const run = { ...pausedAt("ci-wait:r1:0"), status: "running" } as WorkflowRun;
     run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
     run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
 
-    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
-
-    expect(row).toMatchObject({ phase: "ci", headSha: H2 });
-    expect(row.nextAction).toContain(H2.slice(0, 7));
+      expect(row).toMatchObject({ phase: "ci", headSha: H2 });
+      expect(row.nextAction).toContain(H2.slice(0, 7));
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
   });
 });
 
@@ -614,6 +618,18 @@ describe("a run whose PR moved while its ci-wait runs (TP-4092)", () => {
     } finally {
       clearCiWaitHead("acme/widgets", 1);
     }
+  });
+
+  it("says the head is not yet read, never an older step's head, while the live ci-wait has read none (TP-4767)", () => {
+    const row = watchRow({ registration, run: waitingAt("ci-wait:r5:0") });
+
+    expect(row).toMatchObject({ phase: "ci", headSha: null, nextAction: "waiting for CI (head not yet read)" });
+  });
+
+  it("keeps the recorded head of a run that stopped at ci-wait", () => {
+    const run = { ...waitingAt("ci-wait:r5:0"), status: "failed" } as WorkflowRun;
+
+    expect(watchRow({ registration, run }).headSha).toBe(H1);
   });
 
   it("keeps the recorded head once the run has left ci-wait", () => {
