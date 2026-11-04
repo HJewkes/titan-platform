@@ -24,7 +24,7 @@ import { noticeHeldSeat } from "./gate-route.js";
 export const DEAD_END_KINDS = ["exited-without-push", "fix-first-runaway", "failed-rounds"] as const;
 type DeadEndKind = (typeof DEAD_END_KINDS)[number];
 
-const ADDRESS_STEP = "sh-dead-end-address";
+export const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
   { id: ADDRESS_STEP, kind: "dispatch" },
   { id: DEAD_END_GATE, kind: "assisted" },
