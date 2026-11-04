@@ -32,8 +32,8 @@
     {
       "name": "the authority allow is reached before the attestation gate",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "if (attest !== undefined) return { outcome: \"gate\", rule: guardRule(attest.row), reason: attest.reason };",
-      "replace": "void attest;",
+      "find": "const judged = attestGate(evidence.attest) ?? ",
+      "replace": "const judged = ",
       "kills": ["the attestation guard a head that claims an attestation with no Attests line gates as attest-unmet", "the attestation guard an attestation the implementer reviewed gates as attest-unmet: meeter-is-author"]
     }
   ]
