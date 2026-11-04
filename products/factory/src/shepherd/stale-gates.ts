@@ -4,7 +4,7 @@ import { stepIdMatches } from "../definition.js";
 import { resetBound, type UpdateBound } from "../workflows/land-budget.js";
 import type { Escalated } from "./route-table.js";
 
-const HEAD_GATES = /\/(approve-merge|sh-sent-back)(:\d+)?$/;
+const HEAD_GATES = /\/(approve-merge|sh-sent-back|sh-dead-end)(:\d+)?$/;
 const HEAD_IN_PROMPT = /\bat head ([0-9a-f]{40})\b/;
 
 /** The head a gate's prompt asks about, if it names one. */
