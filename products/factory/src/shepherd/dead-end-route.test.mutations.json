@@ -13,7 +13,7 @@
     },
     {
       "name": "a fix-first-runaway is no dead end and keeps approve-merge",
-      "file": "products/factory/src/shepherd/dead-end-route.ts",
+      "file": "products/factory/src/shepherd/dead-end.ts",
       "find": "  \"fix-first-runaway\": \"fix-first-runaway\",\n",
       "replace": "",
       "kills": [

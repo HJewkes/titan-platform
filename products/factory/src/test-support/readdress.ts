@@ -1,11 +1,9 @@
-import type { GateRule } from "@titan-design/hitl";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { onTestFinished } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { DEAD_END_STEPS, deadEndRule } from "../shepherd/dead-end.js";
-import { readdressEscalation } from "../shepherd/dead-end-route.js";
+import { DEAD_END_KINDS, DEAD_END_STEPS, deadEndRule, readdressEscalation, type DeadEndKind } from "../shepherd/dead-end.js";
 import { LeaveLand, untilLeft } from "../shepherd/leave-land.js";
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
 import { fixFirstEscalation, type Escalated } from "../shepherd/route-table.js";
@@ -17,22 +15,22 @@ import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { sleep } from "../workflows/land.js";
 import { TEST_BRIEF } from "./brief.js";
 import { DEAD_END_SEAT, deadEndRoutes } from "./dead-end.js";
-import { rosterOf } from "./dead-end-route.js";
+import { rosterOf, servicesOf } from "./dead-end-route.js";
 import { H1, REPO } from "./land.js";
 import { liveRow } from "./registrant-routing.js";
 
 /** The live seat that registered each synthetic PR whose gate names a registrant. */
 export const SHAPE_SEAT = "tc-shape-seat";
 
-const GateParams = z.object({ step: z.enum(["sh-sent-back", "approve-merge"]), prompt: z.string(), rule: z.string().optional() });
+const GateParams = z.object({ step: z.enum(["sh-sent-back", "approve-merge"]), prompt: z.string(), ruled: z.enum(DEAD_END_KINDS).optional() });
 
-/** A stand-in for a shepherd-pr run paused on one owner gate, whose step, prompt and rule the test gives. */
+/** A stand-in for a shepherd-pr run paused on one owner gate, whose step and prompt the test gives, and the dead-end rule it carries if any. */
 const gateShapeWorkflow = defineWorkflow({
   name: "shepherd-pr",
   steps: [{ id: "sh-sent-back", kind: "assisted" }, { id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
-    const { step, prompt, rule } = GateParams.parse({ step: ctx.param("step"), prompt: ctx.param("prompt"), rule: ctx.param("rule") });
-    await ctx.assisted(step, prompt, { brief: TEST_BRIEF, ...(rule !== undefined && { rule: JSON.parse(rule) as GateRule }) });
+    const { step, prompt, ruled } = GateParams.parse({ step: ctx.param("step"), prompt: ctx.param("prompt"), ruled: ctx.param("ruled") });
+    await ctx.assisted(step, prompt, { brief: TEST_BRIEF, ...(ruled !== undefined && { rule: deadEndRule(ruled) }) });
   },
 });
 
@@ -41,7 +39,8 @@ export interface GateShape {
   prompt: string;
   /** Who registered the PR; none records no registrant, as before registrants were recorded. */
   registrant?: string;
-  rule?: GateRule;
+  /** The dead-end rule the gate carries; none is a rule-less owner gate. */
+  ruled?: DeadEndKind;
 }
 
 interface ShapeWorld {
@@ -56,13 +55,12 @@ export function shapeWorld(): ShapeWorld {
   const routes = factoryRoutesFor({ port: githubPort(fakeGitHub().wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster: rosterOf([liveRow(SHAPE_SEAT)]) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [gateShapeWorkflow], routes, gatePollMs: 5 });
   onTestFinished(() => host.close());
-  return { host, services: routes.shepherd, store: ref.get() };
+  return { host, services: servicesOf(routes), store: ref.get() };
 }
 
 /** Starts one run on PR `pr` paused on `shape`'s gate. */
 export function openShape({ host, store }: ShapeWorld, pr: number, shape: GateShape): string {
-  const rule = shape.rule && { rule: JSON.stringify(shape.rule) };
-  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: String(pr), step: shape.step, prompt: shape.prompt, ...rule });
+  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: String(pr), step: shape.step, prompt: shape.prompt, ...(shape.ruled && { ruled: shape.ruled }) });
   store.register({ repo: REPO, pr, runId, task: `demo/${pr}`, implementer: `impl-${pr}`, policy: OWNER_GATE_POLICY, ...(shape.registrant && { registrant: shape.registrant }) });
   return runId;
 }
@@ -91,7 +89,7 @@ export function otherShapes(): GateShape[] {
     approve(22, "shepherd-merge-guard/ci-policy-weakened"),
     approve(23, "shepherd-route/no-progress"),
     approve(24, "shepherd-route/conflict"),
-    { ...approve(25, "shepherd-route/failed-rounds"), rule: deadEndRule("failed-rounds") },
+    { ...approve(25, "shepherd-route/failed-rounds"), ruled: "failed-rounds" },
     { step: "sh-sent-back", prompt: `The ci-red wake of PR #26 in ${REPO} at head ${head(26)} ended: no fixer could start. Await a new head or abandon?`, registrant: SHAPE_SEAT },
   ];
 }
@@ -129,7 +127,7 @@ export function routeShapeWorld(escalation: "fix-first-runaway" | "failed-rounds
   // The stand-in's own routes, over the factory's store tenant, so the registration and the verb's services share one database.
   const routes = Object.assign(deadEndRoutes(), { database: factory.database });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [readdressRouteWorkflow], routes, gatePollMs: 5 });
-  const services = factory.shepherd;
+  const services = servicesOf(factory);
   onTestFinished(() => host.close());
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", escalation });
   ref.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, registrant: DEAD_END_SEAT });

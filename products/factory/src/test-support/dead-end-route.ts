@@ -58,6 +58,12 @@ interface ExitWorld {
   services: ShepherdServices;
 }
 
+/** The shepherd services a factory route set carries; a route set built without them is a broken test world. */
+export function servicesOf(routes: { shepherd?: ShepherdServices }): ShepherdServices {
+  if (routes.shepherd === undefined) throw new Error("the factory routes carry no shepherd services");
+  return routes.shepherd;
+}
+
 /** A roster that always reads `rows`. */
 export function rosterOf(rows: readonly AgentRow[]): RosterReader {
   return { read: async () => ({ kind: "known", rows: [...rows] }), rows: async () => [...rows], invalidate: () => undefined };
@@ -73,7 +79,7 @@ export function exitWorld({ kind, roster = [liveRow(REGISTRANT)], hubSeat, dbPat
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster: rosterOf(roster), exitNotice });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(exitedAt(kind))], routes, gatePollMs: 5 });
   onTestFinished(() => host.close());
-  return { host, store: ref.get(), fake, sends, services: routes.shepherd };
+  return { host, store: ref.get(), fake, sends, services: servicesOf(routes) };
 }
 
 export function startExit({ host, store, fake }: ExitWorld): string {

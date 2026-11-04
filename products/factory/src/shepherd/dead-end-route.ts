@@ -1,10 +1,10 @@
-import type { StepResult, WorkflowContext } from "@titan-design/workflow";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
 import type { LandOutcome } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import { ADDRESS_STEP, deadEndGate, type DEAD_END_KINDS } from "./dead-end.js";
+import { ADDRESS_STEP, ROUTE_DEAD_ENDS, deadEndGate } from "./dead-end.js";
 import { LeaveLand } from "./leave-land.js";
-import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
+import { escalationReason, type Escalated } from "./route-table.js";
 import type { GateRun } from "./run-state.js";
 
 /**
@@ -19,12 +19,6 @@ export function asksSeat(ctx: WorkflowContext, ownerGate: string): boolean {
   const paused = ctx.resumedGate();
   return paused === undefined || !stepIdMatches(ownerGate, paused);
 }
-
-/** The route escalations that are dead ends; any other escalation keeps land's owner gate. */
-const ROUTE_DEAD_ENDS: Partial<Record<Escalation, (typeof DEAD_END_KINDS)[number]>> = {
-  "fix-first-runaway": "fix-first-runaway",
-  "failed-rounds": "failed-rounds",
-};
 
 interface EscalatedRun extends GateRun {
   escalations: Map<string, Escalated>;
@@ -46,31 +40,5 @@ export async function escalateToDeadEnd(run: EscalatedRun, headSha: string, esca
     return undefined;
   });
   if (asked.owner || !run.escalations.has(headSha)) return true;
-  throw new LeaveLand(outcome);
-}
-
-interface ReaddressRun extends EscalatedRun {
-  carried?: Escalated;
-}
-
-/**
- * A route approve-merge gate `readdress-dead-ends` cancelled (TP-4759): the escalation it asked about goes to the seat's
- * dead-end gate at the same head, whatever the flag reads, because the cancel is the run's record of the move. No seat,
- * an owner-merge, or an escalation that is no dead end asks the owner's approve-merge again; any other answer leaves land.
- */
-export async function readdressEscalation(run: ReaddressRun, gated: string, reask: () => Promise<StepResult>): Promise<StepResult> {
-  const escalated = run.carried ?? run.escalations.get(gated);
-  const kind = escalated && ROUTE_DEAD_ENDS[escalated.escalation];
-  if (escalated === undefined || kind === undefined) return reask();
-  run.carried = undefined;
-  run.escalations.set(gated, escalated);
-  const owner: { answer?: StepResult } = {};
-  const situation = escalationReason(escalated.escalation, escalated.detail, escalated.words);
-  const outcome = await deadEndGate(run, { kind, headSha: gated, situation }, async () => {
-    owner.answer = await reask();
-    return undefined;
-  });
-  if (owner.answer) return owner.answer;
-  if (!run.escalations.has(gated)) return reask();
   throw new LeaveLand(outcome);
 }

@@ -112,6 +112,7 @@
   "prs.ts",
   "publish-review.ts",
   "push-signal.ts",
+  "readdress-command.ts",
   "readdress.ts",
   "redeploy.ts",
   "register-args.ts",

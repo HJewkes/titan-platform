@@ -25,7 +25,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { readdressDeadEnds, type ReaddressReport } from "./readdress.js";
+import { readdressCommand } from "./readdress-command.js";
 import { orderCommand, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { mergeBaseCommand } from "./merge-base-command.js";
@@ -356,14 +356,6 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   args: z.object({ dryRun: z.boolean().optional() }),
   result: z.custom<ResyncReport>(),
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
-});
-
-const readdressCommand = defineCommand<{ apply?: boolean }, ReaddressReport, FactoryContext>({
-  name: "shepherd.readdress-dead-ends",
-  description: "TP-4759's one-shot move of pending dead-end owner gates (a fixer's exit with no push, shepherd-route fix-first-runaway or failed-rounds) to the seat that registered the PR; without apply it only lists each gate and its addressee",
-  args: z.object({ apply: z.boolean().optional() }),
-  result: z.custom<ReaddressReport>(),
-  run: async ({ apply }, ctx) => readdressDeadEnds(ctx.host, servicesOf(ctx), { apply }),
 });
 
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */

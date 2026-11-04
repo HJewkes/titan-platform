@@ -1,6 +1,6 @@
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost, PendingGate } from "../host.js";
-import { addressedSeat, deadEndAddress, type DeadEndKind, type DeadEndPorts } from "./dead-end.js";
+import { DEAD_END_KINDS, addressedSeat, deadEndAddress, type DeadEndKind, type DeadEndPorts } from "./dead-end.js";
 import { singleSeat } from "./exit-notice.js";
 import { storedLineage } from "./registrant.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
@@ -40,7 +40,8 @@ export function deadEndAsked({ stepId, gate }: Pick<PendingGate, "stepId" | "gat
     return headSha === undefined ? undefined : { kind: "exited-without-push", headSha };
   }
   if (!stepIdMatches("approve-merge", stepId)) return undefined;
-  const kind = ROUTE_PROMPT.exec(gate.prompt)?.[1] as DeadEndKind | undefined;
+  const row = ROUTE_PROMPT.exec(gate.prompt)?.[1];
+  const kind = DEAD_END_KINDS.find((known) => known === row);
   const headSha = gateHead(gate.prompt);
   return kind === undefined || headSha === undefined ? undefined : { kind, headSha };
 }
