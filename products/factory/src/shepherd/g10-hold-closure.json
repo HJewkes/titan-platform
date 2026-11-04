@@ -123,6 +123,7 @@
   "restart.ts",
   "resync.ts",
   "reverts.ts",
+  "review-bypass.ts",
   "review-cause.ts",
   "review-check.ts",
   "review-checkout.ts",
