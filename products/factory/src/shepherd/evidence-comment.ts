@@ -13,6 +13,7 @@ export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
 export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
 export const GITHUB_PATH_REASON_PREFIX = "a .github/ change needs the reviewer's CI-policy line: ";
 export const CI_POLICY_WEAKENED_PREFIX = "CI-policy weakened: ";
+export const CI_POLICY_BUDGET_PREFIX = "CI-policy budget change: ";
 export const CI_POLICY_MALFORMED_REASON = "the reviewer's CI-policy line is malformed or repeated, so it may hide a weakening";
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
@@ -64,6 +65,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "merge-state-unsettled": "GitHub had not computed mergeability",
   "github-path": "a .github/ change has no CI-policy line from the reviewer",
   "ci-policy-weakened": "the reviewer says the change weakens CI policy",
+  "ci-policy-budget": "a measured CI budget or timeout change a coordinator may accept",
   "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
   "attest-unmet": "no independent reviewer attested a claimed attestation row",
   "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",

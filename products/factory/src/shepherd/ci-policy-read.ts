@@ -32,12 +32,13 @@ async function readSides(port: GitHubPort, { repo, base, head }: CiPolicyRefs, p
 }
 
 /** The changed lines of `githubPaths` read at base and head; a read that fails is named unread, and the weakened gate still opens on the line alone. */
-async function readCiPolicyChanges(port: GitHubPort, refs: CiPolicyRefs, githubPaths: readonly string[]): Promise<{ changes: CiPolicyFileChange[]; unread: string[] }> {
+async function readCiPolicyChanges(port: GitHubPort, refs: CiPolicyRefs, githubPaths: readonly string[]): Promise<{ files: CiPolicyFile[]; changes: CiPolicyFileChange[]; unread: string[] }> {
   const reads = await Promise.all(githubPaths.slice(0, MAX_CI_POLICY_FILES).map((path) => readSides(port, refs, path)));
   const unread = reads.flatMap((read) => ("unread" in read ? [read.unread] : []));
   const skipped = githubPaths.length - MAX_CI_POLICY_FILES;
   if (skipped > 0) unread.push(`${CI_POLICY_UNREAD_PREFIX}${skipped} more .github/ files were not read`);
-  return { changes: ciPolicyChanges(reads.flatMap((read) => ("file" in read ? [read.file] : []))), unread };
+  const files = reads.flatMap((read) => ("file" in read ? [read.file] : []));
+  return { files, changes: ciPolicyChanges(files), unread };
 }
 
 interface ClosedRead {
@@ -50,6 +51,10 @@ interface ClosedRead {
 interface CiPolicyRead {
   unreadFacts?: string[];
   ciPolicyChanges?: CiPolicyFileChange[];
+  /** The whole `.github/` files read for the D21 lines, which sort a weakened line into budget or weakening; never stored. */
+  ciPolicyFiles?: CiPolicyFile[];
+  /** Set when a D21 file read failed or was skipped. */
+  ciPolicyUnread?: boolean;
   headBlobs?: Record<string, string | null>;
 }
 
@@ -62,7 +67,8 @@ export async function withCiPolicyRead(port: GitHubPort, input: { repo: RepoSlug
   const refs = { repo: input.repo, base: baseRef, head: input.head };
   const [policy, blobs] = await Promise.all([readCiPolicyChanges(port, refs, paths.filter(isGithubPath)), readHeadBlobs(port, input, paths)]);
   const blobsUnread = "unread" in blobs ? blobs.unread : undefined;
-  return { ...closedFacts([...unread, ...policy.unread, blobsUnread]), ciPolicyChanges: policy.changes, ...("headBlobs" in blobs && { headBlobs: blobs.headBlobs }) };
+  const files = { ciPolicyChanges: policy.changes, ciPolicyFiles: policy.files, ...(policy.unread.length > 0 && { ciPolicyUnread: true }) };
+  return { ...closedFacts([...unread, ...policy.unread, blobsUnread]), ...files, ...("headBlobs" in blobs && { headBlobs: blobs.headBlobs }) };
 }
 
 function closedFacts(unread: readonly (string | undefined)[]): Pick<CiPolicyRead, "unreadFacts"> {
