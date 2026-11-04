@@ -9,7 +9,7 @@ const declarations = factoryWorkflows.flatMap((definition) => definition.steps.m
 
 const AGENT_STEPS = [
   "audit-gaps", "audit-inventory-code", "audit-plan", "audit-propose", "audit-purpose", "bs-extract", "bs-fix", "bs-implement", "bs-review",
-  "sh-await-verdict", "sh-correct-verdict", "sh-late-verdict", "sh-no-verdict-diagnosis", "sh-review", "sh-review-panel", "sh-spawn-fixer", "sh-visual-packet",
+  "sh-await-verdict", "sh-correct-verdict", "sh-late-verdict", "sh-no-verdict-diagnosis", "sh-replan", "sh-review", "sh-review-panel", "sh-spawn-fixer", "sh-visual-packet",
 ];
 
 describe("factory step census", () => {

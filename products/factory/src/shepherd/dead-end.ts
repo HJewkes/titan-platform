@@ -11,7 +11,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
-import { REPLAN_STEPS, requestReplan, type FailedSession } from "./replan.js";
+import { REPLAN_STEPS, replanRoute, requestReplan, type FailedSession } from "./replan.js";
 import { registrantSeat, spawnerSeat, storedLineage } from "./registrant.js";
 import type { Escalated } from "./route-table.js";
 import type { GateRun } from "./run-state.js";
@@ -82,7 +82,8 @@ export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | und
     return { seat: seat ?? null, kind: input.kind, headSha: input.headSha };
   });
 
-export const deadEndRoute = (deps: Pick<ShepherdDeps, "now" | "store" | "roster" | "exitNotice">): StepRoute => deadEndAddressRoute(deps.now, deadEndPorts(deps));
+/** The address step and the replan spawn, as serve wires them. */
+export const deadEndRoutes = (deps: Pick<ShepherdDeps, "now" | "store" | "roster" | "exitNotice" | "replan">): StepRoute[] => [deadEndAddressRoute(deps.now, deadEndPorts(deps)), replanRoute(deps)];
 
 /** The seat the run addressed its dead-end gate at `headSha` to, from its own record; the evidence reader's source. */
 export function addressedSeat(run: WorkflowRun, headSha: string): string | undefined {
