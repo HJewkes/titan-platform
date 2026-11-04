@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runCommand } from "./run-command.js";
+import { killLiveGroups, runCommand } from "./run-command.js";
 
 const alive = (pid: number) => {
   try {
@@ -59,5 +59,18 @@ describe("runCommand", () => {
     const run = await runCommand(["sh", join(dir, "hang.sh")], { cwd: dir, signal: never, timeoutMs: 300, graceMs: 100 });
 
     expect(run.ok).toBe(false);
+  });
+
+  it("kills the forked child of an in-flight eval when the driver is signalled", async () => {
+    const dir = scratch();
+    const script = 'sleep 600 & echo $! > "$0/child.pid"; wait';
+    const running = runCommand(["sh", "-c", script, dir], { cwd: dir, signal: never, graceMs: 100 });
+    while (!existsSync(join(dir, "child.pid")) || !readFileSync(join(dir, "child.pid"), "utf8").trim()) await new Promise((done) => setTimeout(done, 20));
+    const child = Number(readFileSync(join(dir, "child.pid"), "utf8"));
+
+    await killLiveGroups();
+    await running;
+
+    expect(alive(child)).toBe(false);
   });
 });

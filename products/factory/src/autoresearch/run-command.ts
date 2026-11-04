@@ -32,6 +32,45 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
+/** Process groups of evals still running, so a signal to the driver can take them down: a detached group never gets the terminal's SIGINT. */
+const liveGroups = new Map<number, number>();
+const DRIVER_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+
+/** SIGTERM every live eval group, SIGKILL after the longest grace; resolves once the KILL is sent. */
+export function killLiveGroups(): Promise<void> {
+  const groups = [...liveGroups];
+  for (const [pid] of groups) killGroup(pid, "SIGTERM");
+  const grace = Math.max(0, ...groups.map(([, graceMs]) => graceMs));
+  return new Promise((done) =>
+    setTimeout(() => {
+      for (const [pid] of groups) killGroup(pid, "SIGKILL");
+      done();
+    }, grace),
+  );
+}
+
+function onDriverSignal(signal: NodeJS.Signals): void {
+  void killLiveGroups().then(() => {
+    uninstallDriverHandlers();
+    // Our listener replaced the default exit; restore it unless another listener owns shutdown.
+    if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+  });
+}
+
+function uninstallDriverHandlers(): void {
+  for (const signal of DRIVER_SIGNALS) process.removeListener(signal, onDriverSignal);
+}
+
+function track(pid: number | undefined, graceMs: number): () => void {
+  if (pid === undefined) return () => {};
+  if (liveGroups.size === 0) for (const signal of DRIVER_SIGNALS) process.on(signal, onDriverSignal);
+  liveGroups.set(pid, graceMs);
+  return () => {
+    liveGroups.delete(pid);
+    if (liveGroups.size === 0) uninstallDriverHandlers();
+  };
+}
+
 interface Guard {
   stop(reason: string): void;
   arm(allowanceMs: number): void;
@@ -68,7 +107,7 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
   const { cwd, signal, graceMs = DEFAULT_GRACE_MS, waitAllowanceMs = 0 } = options;
   return new Promise((resolve) => {
     const child = spawn(file, args, { cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    const guard = guardOf(child, { timeoutMs: options.timeoutMs, graceMs });
+    const [untrack, guard] = [track(child.pid, graceMs), guardOf(child, { timeoutMs: options.timeoutMs, graceMs })];
     const [started, out] = [Date.now(), { stdout: "", stderr: "", waitedMs: undefined as number | undefined, spawnError: undefined as string | undefined }];
     const onAbort = () => guard.stop("aborted");
     guard.arm(waitAllowanceMs);
@@ -85,6 +124,7 @@ export function runCommand(argv: readonly string[], options: RunOptions): Promis
     child.on("error", (error) => (out.spawnError = error.message));
     child.on("close", (code) => {
       guard.clear();
+      untrack();
       signal?.removeEventListener("abort", onAbort);
       // A descendant that outlived the script is still in the group; reap it on the normal path too.
       if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
