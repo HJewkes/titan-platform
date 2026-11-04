@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a coordinator may not resolve the ci-policy-budget row",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  if (run.rule === CI_POLICY_BUDGET_RULE) return matches && run.merge === \"auto\" && !run.held && !run.frozen;\n",
+      "replace": "",
+      "kills": ["a coordinator resolving a CI-policy gate admits a ci-policy-budget gate on fresh merge evidence"]
+    },
+    {
+      "name": "a required check removed reads as budget",
+      "file": "products/factory/src/shepherd/ci-policy-class.ts",
+      "find": "  return lost === undefined ? undefined : `required check ${lost} was removed or renamed`;",
+      "replace": "  return undefined;",
+      "kills": [
+        "sorting a weakened CI-policy diff into budget or weakening reads a required-check removal as weakening, naming the check",
+        "the merge guard on a weakened CI-policy line keeps a required-check removal on ci-policy-weakened, marked for the owner"
+      ]
+    },
+    {
+      "name": "an added skip reads as budget",
+      "file": "products/factory/src/shepherd/ci-policy-class.ts",
+      "find": "  [/skip/i, \"it adds a skip\"],\n",
+      "replace": "",
+      "kills": ["sorting a weakened CI-policy diff into budget or weakening reads an added a skip beside a timeout bump as weakening"]
+    },
+    {
+      "name": "a budget-class line is still marked owner-only",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "if (evidence.ciPolicy?.kind === \"weakened\" && budgetAt(evidence, headSha) === undefined) rows.push",
+      "replace": "if (evidence.ciPolicy?.kind === \"weakened\") rows.push",
+      "kills": ["the merge guard on a weakened CI-policy line gates a #3117-shaped budget diff on ci-policy-budget, unmarked, so a coordinator may resolve it"]
+    },
+    {
+      "name": "the budget row hides a later guard or authority gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "  return policyGate && decision.outcome === \"allow\" ? policyGate : decision;",
+      "replace": "  return policyGate ?? decision;",
+      "kills": ["the merge guard on a weakened CI-policy line lets another gate the rest of the guard opens win over the budget row"]
+    }
+  ]
+}
