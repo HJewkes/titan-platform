@@ -33,8 +33,8 @@
     {
       "name": "a dead end with no lineage or repo seat is addressed to the hub seat",
       "file": "products/factory/src/shepherd/dead-end.ts",
-      "find": "repoSeat: (repo) => exitNotice.seatFor(repo) };",
-      "replace": "repoSeat: (repo) => exitNotice.seatFor(repo) ?? exitNotice.hubSeat?.() };",
+      "find": "if (lineageSeat !== undefined || repoSeat === undefined) return lineageSeat;",
+      "replace": "if (lineageSeat !== undefined) return lineageSeat;",
       "kills": [
         "a fixer's exit with no push, with the dead-end seat route on (TP-4759) with no resolvable seat the owner's sent-back gate opens as before, never the hub seat's"
       ]

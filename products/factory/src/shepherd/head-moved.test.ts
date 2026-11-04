@@ -1,3 +1,4 @@
+import { liveRow } from "../test-support/registrant-routing.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -603,7 +604,8 @@ describe("a pending sh-dead-end gate whose pull request head moved", () => {
     fake.addPr({ headSha: SENT_BACK });
     const store = shepherdStoreRef();
     const exitNotice = { seatFor: () => "tc-synthetic", lastReport: async () => undefined, send: async () => undefined };
-    const roster = { read: async () => ({ kind: "known" as const, rows: [] }), rows: async () => [], invalidate: () => undefined };
+    const rows = [liveRow("tc-synthetic")];
+    const roster = { read: async () => ({ kind: "known" as const, rows }), rows: async () => rows, invalidate: () => undefined };
     const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), exitNotice, roster });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [deadEndWorkflow], routes, gatePollMs: 5 });
     hosts.push(host);

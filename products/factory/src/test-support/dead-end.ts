@@ -4,6 +4,7 @@ import { defineWorkflow } from "../definition.js";
 import { DEAD_END_KINDS, DEAD_END_STEPS, deadEndAddressRoute, deadEndGate } from "../shepherd/dead-end.js";
 import { replanRoute } from "../shepherd/replan.js";
 import type { ReplanPorts } from "../shepherd/spawn-ports.js";
+import { liveRow } from "./registrant-routing.js";
 import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 
@@ -50,7 +51,7 @@ export function deadEndRoutes(seat: string | null = DEAD_END_SEAT, { abandon = s
   const now = (): number => 0;
   return [
     abandon,
-    deadEndAddressRoute(now, { lineage: () => undefined, roster: async () => [], repoSeat: () => seat ?? undefined }),
+    deadEndAddressRoute(now, { lineage: () => undefined, roster: async () => (seat === null ? [] : [liveRow(seat)]), repoSeat: () => seat ?? undefined }),
     codeRoute("sh-seat-notice", now, async (input: { why: string }) => ({ sent: true, detail: input.why })),
     replanRoute({ now, ...(replan && { replan }) }),
     codeRoute("sh-stopped", now, async (outcome: object) => outcome),
