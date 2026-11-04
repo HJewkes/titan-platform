@@ -36,7 +36,7 @@ import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, type ScopeCheckWi
 import { FIX_PROOF_STEPS, readFixProofAt } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
-import type { VisualThreshold } from "./visual-delta-read.js";
+import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
@@ -169,7 +169,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, VisualReadsWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -211,8 +211,6 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   adversaryDispatch?: ReviewerDispatch;
   /** `shepherd.gateReset.twoMergeRelease` other than off: whether two MERGEs release a g10-adversary hold or only record that they would. */
   twoMergeRelease?: TwoMergeMode;
-  /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
-  visualThreshold?: (repo: string) => VisualThreshold | undefined;
   /** `review.workflow`, recorded on the intent: `shadow` records each round's would-action, `on:preflight` refuses a head preflight fails. Absent means `off`. */
   workflow?: ReviewWorkflowWiring;
 }
@@ -326,7 +324,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, wiring?.isFrozen ?? noFreezeStoreUntilTp523, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, { reviewAppId: wiring?.reviewAppId, threshold: wiring?.visualThreshold?.(input.repo), tier: wiring?.visualTier?.(input.repo), oldPath: wiring?.oldPath, attest: attestJudge(deps.port, deps.store, wiring ?? {}, { timing: { ...brokerTiming(deps), brokerDownWaitMs: wiring?.brokerDownWaitMs ?? DEFAULT_BROKER_DOWN_WAIT_MS }, budgetMs: wiring?.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, signal }) })),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),

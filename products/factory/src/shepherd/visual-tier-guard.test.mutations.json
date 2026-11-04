@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the visual-path row ignores the recorded tier",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "  return tier?.clears ? undefined : globGate;",
+      "replace": "  return globGate;",
+      "kills": [
+        "the visual tier at the merge guard (TP-4761 S2) tier-1 non-rendering head merges under mode on"
+      ]
+    },
+    {
+      "name": "shadow decides as on",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "  if (record?.mode !== \"on\") return undefined;",
+      "replace": "  if (record === undefined) return undefined;",
+      "kills": [
+        "the visual tier at the merge guard (TP-4761 S2) shadow records tier 1 and still gates visual-path"
+      ]
+    },
+    {
+      "name": "an unparsed stored record is trusted",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "  return parsed.success ? parsed.data : { mode: \"on\", judged: [], verdict: { tier: 2, reason: \"the recorded visual tier is malformed\" } };",
+      "replace": "  return parsed.success ? parsed.data : (recorded as VisualTierRecord);",
+      "kills": [
+        "the visual tier at the merge guard (TP-4761 S2) a stored record with a malformed visualTier gates as tier 2"
+      ]
+    },
+    {
+      "name": "the tier sees only the paths the visual globs matched",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "visualTier({ merge, visualPaths, mergeBase, config, pixel: undefined })",
+      "replace": "visualTier({ merge: { ...merge, changedPaths: visualMatches(merge.changedPaths, visualPaths) }, visualPaths, mergeBase, config, pixel: undefined })",
+      "kills": [
+        "the visual tier at the merge guard (TP-4761 S2) a harness path outside the visual globs makes a story-only head tier 2, as the tier sees every changed path"
+      ]
+    },
+    {
+      "name": "a tier 1 clears visual paths it never judged",
+      "file": "products/factory/src/shepherd/visual-tier-guard.ts",
+      "find": "  if (unjudged.length > 0) return",
+      "replace": "  if (unjudged.length < 0) return",
+      "kills": [
+        "the visual tier at the merge guard (TP-4761 S2) a tier 1 judged under narrower globs gates a visual path only the decide-time globs match"
+      ]
+    }
+  ]
+}

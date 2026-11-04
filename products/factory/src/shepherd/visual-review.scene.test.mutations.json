@@ -33,8 +33,8 @@
     {
       "name": "the evidence comment leaves out the Visual diff section",
       "file": "products/factory/src/shepherd/evidence-comment.ts",
-      "find": "    ...visualDiffSection(record.visualDelta),\n",
-      "replace": "",
+      "find": "[...visualDiffSection(record.visualDelta), ...tierLine(",
+      "replace": "[...tierLine(",
       "kills": [
         "a seat with visual baselines under visualThreshold on merges a snapshot change below the threshold with no approve-merge gate, and the comment shows the max share",
         "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the component when a snapshot changes above the threshold",
