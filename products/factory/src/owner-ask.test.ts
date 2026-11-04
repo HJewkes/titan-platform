@@ -4,11 +4,12 @@ import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { runCli } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { resolveGate, resolveGateByOwnerAsk } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
-import { ownerAskResolver } from "./owner-ask.js";
+import { ownerAskEvidence, ownerAskResolver } from "./owner-ask.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { fakeOwnerSigner } from "./test-support/owner-edges.js";
 
@@ -43,14 +44,15 @@ afterEach(() => {
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
 
-async function paused(params: Record<string, string>): Promise<{ host: FactoryHost; runId: string }> {
+async function paused(params: Record<string, string>): Promise<{ host: FactoryHost; runId: string; dbPath: string }> {
   const dir = mkdtempSync(join(tmpdir(), "factory-owner-ask-"));
   dirs.push(dir);
-  const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [gates], routes: [], gatePollMs: 10 });
+  const dbPath = join(dir, "factory.sqlite3");
+  const host = openFactoryHost({ dbPath, workflows: [gates], routes: [], gatePollMs: 10 });
   hosts.push(host);
   const runId = host.runtime.start("owner-ask-gates", params);
   await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
-  return { host, runId };
+  return { host, runId, dbPath };
 }
 
 function ownerAsk(host: FactoryHost, runId: string, stepId = "approve-merge", env: NodeJS.ProcessEnv = SEAT_SHELL) {
@@ -111,6 +113,19 @@ describe("gate resolve --owner-ask", () => {
     expect(host.gates.get(`${runId}/approve-merge`)?.status).toBe("pending");
   });
 
+  it.each([
+    ["another gate", (gateId: string) => ownerAskEvidence(`${gateId}:1`, SEAT), ownerAskResolver(SEAT)],
+    ["another seat", (gateId: string) => ownerAskEvidence(gateId, "tc-other"), ownerAskResolver(SEAT)],
+    ["another kind", (gateId: string) => ({ ...ownerAskEvidence(gateId, SEAT), kind: "approve-merge" }), ownerAskResolver(SEAT)],
+    ["another channel", (gateId: string) => ownerAskEvidence(gateId, SEAT), { ...ownerAskResolver(SEAT), channel: "factory-proof" }],
+  ])("refuses owner-ask evidence naming %s", async (_name, evidenceFor, resolver) => {
+    const { host, runId } = await paused({ rule: "shepherd-merge-guard/visual-path" });
+    const gateId = `${runId}/approve-merge`;
+
+    expect(() => host.gates.resolve(gateId, JSON.parse(MERGE), resolver, evidenceFor(gateId))).toThrow(/refused a resolution by owner-ask/);
+    expect(host.gates.get(gateId)?.status).toBe("pending");
+  });
+
   it("leaves a plain resolve from the same seat on the owner-presence path", async () => {
     const { host, runId } = await paused({ rule: "shepherd-merge-guard/visual-path" });
     fakeOwnerSigner();
@@ -119,5 +134,46 @@ describe("gate resolve --owner-ask", () => {
     await resolveGate(host, io, runId, "approve-merge", MERGE);
 
     expect(host.gates.get(`${runId}/approve-merge`)?.resolvedBy?.class).toBe("owner-terminal");
+  });
+});
+
+describe("the titan-factory gate resolve --owner-ask command", () => {
+  async function pausedDb(): Promise<{ dbPath: string; runId: string }> {
+    const { host, runId, dbPath } = await paused({ rule: "shepherd-merge-guard/visual-path" });
+    hosts.splice(hosts.indexOf(host), 1);
+    host.close();
+    return { dbPath, runId };
+  }
+
+  async function cli(dbPath: string, ...argv: string[]) {
+    let out = "";
+    let err = "";
+    const code = await runCli(argv, { stdout: (t) => (out += t), stderr: (t) => (err += t), env: { ...SEAT_SHELL, TITAN_FACTORY_DB: dbPath } }, { workflows: [gates], routes: [], host: { gatePollMs: 10 } });
+    return { code, out, err };
+  }
+
+  function gateAt(dbPath: string, id: string) {
+    const host = openFactoryHost({ dbPath, workflows: [gates], routes: [] });
+    hosts.push(host);
+    return host.gates.get(id);
+  }
+
+  it("resolves as owner-ask when the flag leads, the form the owner's ask rule matches", async () => {
+    const { dbPath, runId } = await pausedDb();
+
+    const { code } = await cli(dbPath, "gate", "resolve", "--owner-ask", runId, "approve-merge", "--json", MERGE);
+
+    expect(code).toBe(0);
+    expect(gateAt(dbPath, `${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-ask", id: SEAT, channel: "factory-cli" });
+  });
+
+  it("refuses the flag anywhere else, where the ask rule would not fire, and leaves the gate pending", async () => {
+    const { dbPath, runId } = await pausedDb();
+
+    const { code, err } = await cli(dbPath, "gate", "resolve", runId, "approve-merge", "--json", MERGE, "--owner-ask");
+
+    expect(code).toBe(2);
+    expect(err).toContain('write --owner-ask straight after "gate resolve"');
+    expect(gateAt(dbPath, `${runId}/approve-merge`)?.status).toBe("pending");
   });
 });

@@ -114,6 +114,26 @@ lets answer only on the evidence above, never on the rule alone. Release gates o
 owner may approve one from the phone (owner decision 2026-10-16). Seat, merge-guard, route and default
 gates have no row and open rule-less too, as do gates opened before the migrations.
 
+`gate resolve --owner-ask` (owner decision 552, TP-4763) is for a seat running a resolve the owner
+approved at a Claude Code permissions.ask prompt. The factory cannot verify that approval, because the
+seat and the owner are the same OS user, so the gate records `resolvedBy` as
+`{ class: "owner-ask", id: <seat>, channel: "factory-cli" }`, the seat named by `AGENT_CHAT_NAME`, and
+never `owner-terminal`. The store admits it only on an approve-merge land gate whose policy rule is not
+publish (`shepherd-release`, or an `authority/REL-*` row), device (`HW-CO`, any `device-*` step) or
+owner-presence (a D21 owner-at-head row: `skill-path`, `ci-policy-weakened`, `ci-policy-malformed`,
+`files-unread`, or a pre-marker prompt). It refuses every other gate with the rule named, and an
+authority-stamped gate refuses it through its row's resolvers. The owner adds this ask rule to the
+seat's settings, so each run waits for their approval at the prompt:
+
+```json
+{ "permissions": { "ask": ["Bash(titan-factory gate resolve --owner-ask:*)"] } }
+```
+
+The rule matches a prefix, so the command refuses `--owner-ask` anywhere but straight after
+`gate resolve` (exit 2): `titan-factory gate resolve --owner-ask <runId> <stepId> --json '<payload>'`.
+Run it only in a turn with the owner present and batched, never on a heartbeat tick or in a headless
+worker.
+
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
 to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner

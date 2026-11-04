@@ -33,11 +33,24 @@ export function registerGate(program: Command, verbs: Verbs): void {
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
     .option("--owner-ask", "record the seat as owner-ask: the owner approved this command at a Claude Code ask prompt (approve-merge gates only)")
-    .action((runId: string, stepId: string, opts: { json: string; ownerAsk?: boolean }) =>
-      withHost((host, routes) =>
+    .action((runId: string, stepId: string, opts: { json: string; ownerAsk?: boolean }, command: Command) => {
+      if (opts.ownerAsk && !ownerAskLeads(command)) {
+        io.stderr(`error: write --owner-ask straight after "gate resolve", so the owner's ask rule matches the command\n`);
+        verbs.setExit(EXIT.USAGE);
+        return;
+      }
+      return withHost((host, routes) =>
         opts.ownerAsk ? resolveGateByOwnerAsk(host, io, runId, stepId, opts.json) : resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd)),
-      ),
-    );
+      );
+    });
+}
+
+/** The owner's ask rule is a prefix, `titan-factory gate resolve --owner-ask:*`, so the flag must lead for the prompt to fire. */
+function ownerAskLeads(command: Command): boolean {
+  let root = command;
+  while (root.parent) root = root.parent;
+  const [verb, sub, flag] = (root as Command & { rawArgs: string[] }).rawArgs;
+  return verb === "gate" && sub === "resolve" && flag === "--owner-ask";
 }
 
 export function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
