@@ -44,6 +44,7 @@ const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
   "ci-policy-malformed": { gateClass: "accidental", words: "the reviewer wrote a CI-policy line Shepherd could not read, which may hide a weakening; a fresh review asks for it again" },
   "attest-unmet": { gateClass: "accidental", words: "it claims a step's behaviour is unchanged, and no independent reviewer's MERGE at this head attests it; a fresh review or a version bump clears it" },
   "attest-deploy-skew": { gateClass: "accidental", words: "main has registry commits the running Shepherd build lacks, so its attestation read waits for the deploy rather than judge the claims (transient deploy skew)" },
+  "old-path-untagged": { gateClass: "deliberate", words: "it changes old-path code frozen since M1b exit, and its task carries no superseded-at or survives carve-out tag" },
 };
 
 /** The gate rows of `release.ts` and the factory's catch-all default, keyed `table/row`. */

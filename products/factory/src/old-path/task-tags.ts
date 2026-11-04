@@ -11,7 +11,7 @@ const INITIATIVE_BY_PREFIX = new Map([ ["TP", "titan-platform"],
 ]);
 const BARE_ID = /^(TP|CC|TD)-\d+$/;
 
-/** The slice of active-work's command table this reader calls. */
+/** The slice of active-work's command table this reader calls; importing cleanup-ports' table would pull this file into Shepherd's import cycle. */
 type TaskTagsCommands = {
   "task.list": { args: { slug: string; status: "all" }; result: { tasks: { id: string; tags?: string[] }[] } };
 };
@@ -21,7 +21,7 @@ export interface TaskTagsPort {
   tags(initiative: string, id: string): Promise<string[] | undefined>;
 }
 
-type OldPathJudgment = OldPathVerdict & { kind: string };
+export type OldPathJudgment = OldPathVerdict & { kind: string };
 
 /** `<initiative>/<ID>` as given, or a bare TP/CC/TD id resolved to its initiative; any other name is no task. */
 export function taskRef(task: string): { initiative: string; id: string } | undefined {
