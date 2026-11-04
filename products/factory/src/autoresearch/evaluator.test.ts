@@ -4,8 +4,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { IdeaSchema, OutcomeSchema, type Idea, type RoundRecord } from "@titan-design/autoresearch";
+import { fakeGitHub, githubPort } from "@titan-design/github";
 import { partialFake } from "@titan-design/test-kit";
-import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
+import { gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluatorPorts, type EvaluatorOptions } from "./evaluator.js";
 import { execGit } from "./ratchet.js";
@@ -352,6 +353,57 @@ describe("evaluator ratchet and archive", () => {
     const listed = execFileSync("tar", ["-tzf", archived.path!], { encoding: "utf8" });
     expect(listed).toContain("./record.json");
     expect(listed).toContain("./artifacts/0-run-1-a-r1/lanes.json");
+  });
+});
+
+const SNAPSHOT_REPO = "fixture-owner/fixture-repo";
+const SNAPSHOT_HEAD_REF = "autoresearch/fixture-snap/run-1/m1";
+
+/** A snapshot target whose ratchet holds a kept idea, whose PR has merged, and whose main has moved on since. */
+async function mergedSnapshot() {
+  const fake = fakeGitHub({ repo: SNAPSHOT_REPO });
+  const snapshot = { repo: SNAPSHOT_REPO, task: "fixture/FX-1", implementer: "fixture-seat", logDir: "ar-log", target: "fixture", port: githubPort(fake.wire), register: async () => ({ runId: "sh-1", created: true }) };
+  const repo = await fixture(BOUNDS, { snapshot });
+  const pinned = await repo.ports.pin(repo.run, signal);
+  const kept = await ideaTree(repo, "kept", GATE_EDIT);
+  const record = { round: 1, ideaId: "i-1", kind: "ff" as const, keepRung: "L3", delta: 1, sigma: 0.1, runDigests: [], pin: repo.pin };
+  await repo.ports.ratchet({ ...repo.run, tree: pinned.integrationTree, ratchetRef: pinned.ratchetRef, ratchetPrefix: TARGET.ratchetPrefix, from: repo.pin, to: kept.head, ...record }, signal);
+  const fixtureGit = gitIn(repo.clone);
+  fixtureGit("commit", "--quiet", "--allow-empty", "-m", "main moves on");
+  fixtureGit("push", "--quiet", "origin", "HEAD:refs/heads/main");
+  const pr = fake.addPr({ state: "closed", merged: true, headRef: SNAPSHOT_HEAD_REF, headSha: fixtureGit("rev-parse", "HEAD") });
+  const sync = { ...repo.run, frozenHash: pinned.frozenHash, round: 2, pr: pr.number, branch: SNAPSHOT_HEAD_REF, head: kept.head, ratchetRef: pinned.ratchetRef, ratchetPrefix: TARGET.ratchetPrefix, tree: pinned.integrationTree, at: "2026-10-21T00:00:00Z" };
+  return { repo, kept, sync };
+}
+
+/** The owner's answer to a held sync gate: main merged into the kept head by hand, in a tree of its own. */
+async function resolvedByHand(repo: Fixture, kept: string): Promise<string> {
+  const tree = join(repo.root, "trees", "resolved");
+  await git(repo.clone, "worktree", "add", "--quiet", "--detach", tree, kept);
+  await git(tree, "merge", "--quiet", "--no-ff", "--no-edit", "main");
+  return git(tree, "rev-parse", "HEAD");
+}
+
+describe("evaluator sync after a held gate (C-277)", () => {
+  it("leaves the integration tree checked out at the resolved sha", async () => {
+    const { repo, kept, sync } = await mergedSnapshot();
+    const resolved = await resolvedByHand(repo, kept.head);
+
+    const result = await repo.ports.sync!({ ...sync, resolved, allowedFrozen: [] }, signal);
+
+    expect(result).toMatchObject({ state: "merged", merged: { to: resolved } });
+    expect(await git(sync.tree, "rev-parse", "HEAD")).toBe(resolved);
+  });
+
+  it("passes the eval head check when re-measuring the resolved head in the integration tree", async () => {
+    const { repo, kept, sync } = await mergedSnapshot();
+    const resolved = await resolvedByHand(repo, kept.head);
+    await repo.ports.sync!({ ...sync, resolved, allowedFrozen: [] }, signal);
+
+    const measured = await repo.ports.evalCase({ ...repo.run, tree: sync.tree, head: resolved, case: "t-alpha", key: "k-sync", rung: "seed" }, signal);
+
+    expect(measured).toMatchObject({ case: "t-alpha", metrics: { score: 1 } });
+    expect(readFileSync(join(sync.tree, ".artifacts", "k-sync", "head"), "utf8").trim()).toBe(resolved);
   });
 });
 
