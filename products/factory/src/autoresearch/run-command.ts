@@ -32,54 +32,41 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-/** Process groups of evals still running, so a signal to the driver can take them down: a detached group never gets the terminal's SIGINT. */
+/** Process groups of evals still running, so the process owner can take them down: a detached group never gets the terminal's SIGINT. */
 const liveGroups = new Map<number, number>();
-const DRIVER_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+const stopping = { done: undefined as Promise<void> | undefined, drained: () => {}, hardKill: undefined as NodeJS.Timeout | undefined };
 
-/**
- * One shutdown from the first driver signal until the driver exits. Listeners stay installed for all of it, so an eval
- * the caller starts during the grace is killed on spawn instead of escaping once the listeners come off.
- */
-const driver = { listening: false, finish: undefined as (() => void) | undefined };
-
-function onDriverSignal(signal: NodeJS.Signals): void {
-  // A second signal skips the rest of the grace.
-  if (driver.finish) return driver.finish();
-  for (const pid of liveGroups.keys()) killGroup(pid, "SIGTERM");
-  const timer = setTimeout(() => driver.finish?.(), Math.max(0, ...liveGroups.values()));
-  let done = false;
-  driver.finish = () => {
-    if (done) return;
-    done = true;
-    clearTimeout(timer);
-    for (const pid of liveGroups.keys()) killGroup(pid, "SIGKILL");
-    setListening(false);
-    // Our listener replaced the default exit; restore it unless another listener owns shutdown.
-    if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
-  };
-  if (liveGroups.size === 0) driver.finish();
+function killLive(signal: NodeJS.Signals): void {
+  for (const pid of liveGroups.keys()) killGroup(pid, signal);
 }
 
-function setListening(on: boolean): void {
-  if (driver.listening === on) return;
-  driver.listening = on;
-  for (const signal of DRIVER_SIGNALS) {
-    if (on) process.on(signal, onDriverSignal);
-    else process.removeListener(signal, onDriverSignal);
-  }
+/**
+ * SIGTERM every live eval group, SIGKILL after the longest grace, and SIGKILL any group spawned before the last one is
+ * down; resolves once none is left. A call while stopping skips the rest of the grace. It never exits or signals the
+ * process: that belongs to whoever owns the process, the CLI or serve.
+ */
+export function stopEvals(): Promise<void> {
+  if (stopping.done) return (killLive("SIGKILL"), stopping.done);
+  killLive("SIGTERM");
+  stopping.hardKill = setTimeout(() => killLive("SIGKILL"), Math.max(0, ...liveGroups.values()));
+  stopping.done = new Promise((done) => (stopping.drained = done));
+  if (liveGroups.size === 0) drain();
+  return stopping.done;
+}
+
+function drain(): void {
+  clearTimeout(stopping.hardKill);
+  stopping.done = undefined;
+  stopping.drained();
 }
 
 function track(pid: number | undefined, graceMs: number): () => void {
   if (pid === undefined) return () => {};
   liveGroups.set(pid, graceMs);
-  if (driver.finish) killGroup(pid, "SIGKILL");
-  else setListening(true);
+  if (stopping.done) killGroup(pid, "SIGKILL");
   return () => {
     liveGroups.delete(pid);
-    if (liveGroups.size > 0) return;
-    // Every eval is down: exit now rather than sit out the rest of the grace.
-    if (driver.finish) driver.finish();
-    else setListening(false);
+    if (liveGroups.size === 0 && stopping.done) drain();
   };
 }
 

@@ -1,19 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, onTestFinished } from "vitest";
-import { runCommand } from "./run-command.js";
+import { describe, expect, it } from "vitest";
+import { FORKS_SLEEPER, PROCESS_TEST_MS, alive, dead, exited, forkDriver, readPids, recordedPids, scratch } from "./eval-driver.test-helpers.js";
+import { runCommand, stopEvals } from "./run-command.js";
 
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-const scratch = () => mkdtempSync(join(tmpdir(), "run-command-"));
 const never = new AbortController().signal;
 
 describe("runCommand", () => {
@@ -62,71 +52,55 @@ describe("runCommand", () => {
     expect(run.ok).toBe(false);
   });
 
-  it("kills an in-flight eval's forked child when the driver gets SIGINT, then exits by the signal", async () => {
+  it("stopping evals kills an in-flight eval's forked child and resolves once it is down, without sitting out the grace", async () => {
     const dir = scratch();
-    // A grace far past the test timeout: the driver must exit once the eval is down, not sit out the grace.
-    const driver = forkDriver(`await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 600_000 });`, dir);
+    const running = runCommand(["sh", "-c", FORKS_SLEEPER, dir], { cwd: dir, graceMs: 600_000 });
     const [child] = await recordedPids(dir, 1);
 
-    driver.kill("SIGINT");
-    const exit = await exited(driver);
+    await stopEvals();
 
-    expect(exit.signal).toBe("SIGINT");
-    expect(alive(child!)).toBe(false);
-  });
+    expect((await running).ok).toBe(false);
+    expect(await dead([child!])).toBe(true);
+  }, PROCESS_TEST_MS);
 
-  it("kills an eval the driver starts during the grace, so none outlives the interrupt", async () => {
+  it("kills an eval started while evals are stopping, so none outlives the stop", async () => {
     const dir = scratch();
-    const stubborn = `trap "" TERM; echo $$ >> "$0/children"; while :; do sleep 0.1; done`;
-    const body = [
-      `void runCommand(["sh", "-c", ${JSON.stringify(stubborn)}, dir], { cwd: dir, graceMs: 1500 });`,
-      `for (;;) { console.log("spawn"); await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 100 }); await new Promise((r) => setTimeout(r, 50)); }`,
-    ].join("\n");
-    const driver = forkDriver(body, dir);
-    const spawns = countLines(driver);
-    await recordedPids(dir, 2);
+    const stubborn = runCommand(["sh", "-c", `trap "" TERM; echo $$ >> "$0/children"; while :; do sleep 0.1; done`, dir], { cwd: dir, graceMs: 1_000 });
+    const [holdout] = await recordedPids(dir, 1);
+    const stopped = stopEvals();
 
-    const before = spawns();
-    driver.kill("SIGINT");
-    const exit = await exited(driver);
-    const pids = await recordedPids(dir, 2);
+    const late = await runCommand(["sh", "-c", FORKS_SLEEPER, dir], { cwd: dir, graceMs: 600_000 });
+    await stopped;
+    await stubborn;
 
-    expect(exit.signal).toBe("SIGINT");
-    expect(spawns()).toBeGreaterThan(before);
-    for (const pid of pids) expect(alive(pid)).toBe(false);
+    expect(late.ok).toBe(false);
+    expect(await dead([holdout!, ...readPids(dir)])).toBe(true);
+  }, PROCESS_TEST_MS);
+
+  it("runs evals normally again once a stop has finished", async () => {
+    await stopEvals();
+
+    const run = await runCommand(["sh", "-c", "echo fine"], { cwd: scratch() });
+
+    expect(run).toMatchObject({ ok: true, stdout: "fine\n" });
   });
+
+  it("leaves the exit to a host that owns its shutdown, so its own cleanup finishes", async () => {
+    const dir = scratch();
+    const body = [
+      `process.once("SIGTERM", async () => { await stopEvals(); await new Promise((r) => setTimeout(r, 200)); writeFileSync(dir + "/cleaned", ""); process.exit(0); });`,
+      `void runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 600_000 });`,
+    ].join("\n");
+    const driver = forkDriver({ "runCommand, stopEvals": RUN_COMMAND, writeFileSync: "node:fs" }, body, dir);
+    const [child] = await recordedPids(dir, 1);
+
+    driver.kill("SIGTERM");
+    const exit = await exited(driver);
+
+    expect(exit).toEqual({ code: 0, signal: null });
+    expect(existsSync(join(dir, "cleaned"))).toBe(true);
+    expect(await dead([child!])).toBe(true);
+  }, PROCESS_TEST_MS);
 });
 
-const FORKS_SLEEPER = 'sleep 600 & echo $! >> "$0/children"; wait';
 const RUN_COMMAND = new URL("./run-command.ts", import.meta.url).href;
-
-function forkDriver(body: string, dir: string): ChildProcess {
-  const code = `const { runCommand } = await import(${JSON.stringify(RUN_COMMAND)});\nconst dir = process.argv[1];\n${body}`;
-  const driver = spawn(process.execPath, ["--input-type=module", "-e", code, dir], { stdio: ["ignore", "pipe", "inherit"] });
-  onTestFinished(() => {
-    driver.kill("SIGKILL");
-    for (const pid of readPids(dir)) if (alive(pid)) process.kill(pid, "SIGKILL");
-  });
-  return driver;
-}
-
-function readPids(dir: string): number[] {
-  const file = join(dir, "children");
-  if (!existsSync(file)) return [];
-  return readFileSync(file, "utf8").split("\n").filter(Boolean).map(Number);
-}
-
-async function recordedPids(dir: string, atLeast: number): Promise<number[]> {
-  while (readPids(dir).length < atLeast) await new Promise((done) => setTimeout(done, 20));
-  return readPids(dir);
-}
-
-function countLines(child: ChildProcess): () => number {
-  let lines = 0;
-  child.stdout!.on("data", (chunk) => (lines += String(chunk).split("\n").filter(Boolean).length));
-  return () => lines;
-}
-
-function exited(child: ChildProcess): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
-  return new Promise((done) => child.on("exit", (code, signal) => done({ code, signal })));
-}
