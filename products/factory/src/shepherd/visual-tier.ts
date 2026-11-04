@@ -4,7 +4,7 @@ import { baselineCheckGreen, caseFoldedMatcher, shownPaths } from "./visual-gate
 
 export type VisualMerge = Pick<MergeFacts, "checkRuns" | "head">;
 
-export type VisualTierMode = "off" | "shadow" | "on";
+type VisualTierMode = "off" | "shadow" | "on";
 
 export interface VisualTierConfig {
   mode: VisualTierMode;
@@ -25,10 +25,10 @@ export interface PixelRead {
   shots: readonly { paired: boolean; changedPixels: number }[];
 }
 
-export type VisualTierBasis = "non-rendering" | "no-pixel-diff";
-export type VisualTierVerdict = { tier: 1; basis: VisualTierBasis } | { tier: 2; reason: string };
+type VisualTierBasis = "non-rendering" | "no-pixel-diff";
+type VisualTierVerdict = { tier: 1; basis: VisualTierBasis } | { tier: 2; reason: string };
 
-export type PathClass = "harness" | "rendering" | "test" | "story" | "logic" | "rendered";
+type PathClass = "harness" | "rendering" | "test" | "story" | "logic" | "rendered";
 
 /** A bad list matches nothing for a class that clears a path, so a bad policy gates instead of allowing. */
 function clearingMatcher(globs: readonly string[]): (path: string) => boolean {
@@ -43,7 +43,7 @@ function clearingMatcher(globs: readonly string[]): (path: string) => boolean {
 const CODE_FILE = /\.(ts|js|mts|cts|mjs|cjs)$/;
 
 /** Gating classes come first, so a token `.ts` is rendering though it is `.ts`. */
-export function classifyVisualPaths(paths: readonly string[], config: VisualTierConfig): Map<string, PathClass> {
+function classifyVisualPaths(paths: readonly string[], config: VisualTierConfig): Map<string, PathClass> {
   const is = {
     harness: caseFoldedMatcher(config.harnessPaths),
     rendering: caseFoldedMatcher(config.renderingPaths),
