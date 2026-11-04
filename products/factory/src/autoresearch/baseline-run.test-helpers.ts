@@ -14,7 +14,8 @@ export const IGNORES_TERM = `trap "" TERM; echo $$ >> "$0/children"; while :; do
 function baselinePorts(dir: string): ArPorts {
   const unused = () => Promise.reject(new Error("not reached"));
   const metric = { primary: { name: "score", direction: "min" }, noise: {} };
-  const target = TargetSchema.parse({ schema: "ar-target/v1", ratchetPrefix: "autoresearch/fixture", metric, phases: [{ id: "p1", train: ["t-1"], baselineRuns: 2, stop: { ideasEvaluated: 1, roundsWithoutGain: 1 } }] });
+  const phase = { id: "p1", train: ["t-1"], baselineRuns: 2, stop: { ideasEvaluated: 1, roundsWithoutGain: 1 } };
+  const target = TargetSchema.parse({ schema: "ar-target/v1", ratchetPrefix: "autoresearch/fixture", metric, phases: [phase] });
   const bounds = BoundsSchema.parse({ schema: "ar-bounds/v1", classes: {} });
   const evalCase: ArPorts["evalCase"] = async (input, signal) => {
     const argv = ["sh", "-c", input.key.endsWith("-b1") ? IGNORES_TERM : FORKS_SLEEPER, dir];
