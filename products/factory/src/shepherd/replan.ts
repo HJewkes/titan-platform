@@ -24,7 +24,7 @@ const ReplanInput = z.object({
 type ReplanInput = z.infer<typeof ReplanInput>;
 
 const ReplanResult = z.looseObject({ spawned: z.boolean(), agent: z.string(), profile: z.string().optional(), reason: z.string().optional() });
-export type ReplanResult = z.infer<typeof ReplanResult>;
+type ReplanResult = z.infer<typeof ReplanResult>;
 
 /** Unique per run and head, and one argv word agent-chat takes as a name. */
 function replanName(runId: string, headSha: string): string {
@@ -88,7 +88,7 @@ export const replanRoute = (deps: { now: () => number; replan?: ReplanPorts }): 
   codeRoute(REPLAN_STEP, deps.now, async (raw: unknown) => spawnReplan(deps.replan, ReplanInput.parse(raw)));
 
 /** What the dead-end gate hands its planner beyond the run's own target. */
-export interface ReplanAsk {
+interface ReplanAsk {
   headSha: string;
   kind: string;
   situation: string;
