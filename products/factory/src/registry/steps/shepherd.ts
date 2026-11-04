@@ -87,4 +87,6 @@ export const shepherdSteps = [
   step("sh-auto-pass", "dispatch", "software", effect("pr", `${WRITE}: posts the audit comment for an owner gate a demotion rule passed`)),
   step("sh-no-verdict-diagnosis", "dispatch", "AGENT", effect("external", `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`)),
   step("sh-dead-end-address", "dispatch", "software", effect("item", `${RECORD}: the seat a dead-end gate is addressed to`)),
+  step("sh-replan", "dispatch", "AGENT", effect("external", `${WRITE}: spawns the planner a dead-end gate's replan answer asks for; a planner already on the roster is not spawned again`)),
+  step("sh-abandon", "dispatch", "software", effect("pr", `${WRITE}: closes the PR through gh-write at the gate head, keeping its branch, and reopens its task; a closed PR is not closed again`)),
 ];

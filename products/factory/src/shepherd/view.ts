@@ -178,10 +178,23 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
+const ciWaitRunning = (run: WorkflowRun): boolean => run.status === "running" && run.currentStep !== null && stepIdMatches("ci-wait", run.currentStep);
+
+/**
+ * A running ci-wait judges only the head it read itself, noted in memory per read; until its first read in this serve
+ * (a restarted step, or reads that keep failing) the head is unknown, and an older step's head is not the one it judges (TP-4767).
+ */
+function rowHead(run: WorkflowRun, steps: readonly StepResult[], { repo, pr }: Registration): string | null {
+  if (ciWaitRunning(run)) return ciWaitHead(run.currentStep, repo, pr) ?? null;
+  return steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+}
+
+const CI_HEAD_UNREAD = "waiting for CI (head not yet read)";
+
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = ciWaitHead(run.currentStep, registration.repo, registration.pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = rowHead(run, steps, registration);
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
@@ -196,7 +209,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (headSha === null && ciWaitRunning(run) && !pending ? CI_HEAD_UNREAD : undefined) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),

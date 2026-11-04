@@ -309,11 +309,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/stale-gates.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/stats-cost.ts": {
     "titan/max-line-length": {
       "count": 2
