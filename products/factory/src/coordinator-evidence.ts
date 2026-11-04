@@ -15,8 +15,9 @@ import { readPath } from "./narrow.js";
  * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Owner
  * decision 529 (2026-10-22, TP-4048) adds a fourth: an sh-sent-back `await-new-head` while the PR is open at the gate's
  * own head, which only waits and merges nothing. Owner decision 551 (2026-10-28, TP-4285) adds a main-ci-timeout
- * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Every other gate, a
- * visual or seat owner-gate merge, and a round pick stay the owner's.
+ * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Owner decision 552 (2,
+ * TP-4760) adds an approve-merge under the CI-policy budget row, on the same merge evidence. Every other gate, a visual or
+ * seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -136,6 +137,7 @@ export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): La
 }
 
 const MERGE_GUARD = "shepherd-merge-guard/";
+const CI_POLICY_BUDGET_RULE = `${MERGE_GUARD}ci-policy-budget`;
 
 /**
  * The D21 row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. It reads the
@@ -194,10 +196,11 @@ export function offersAbandon(gate: Pick<GateRecord, "questions">): boolean {
 /**
  * Only an MRG-AU gate whose recorded reason the owner classed as mechanical qualifies: authority is decided after every
  * Shepherd guard, so no visual change hides behind it, and the reason names each condition that did not hold. A seat
- * owner-gate, a route escalation, a release or any guard rule stays the owner's.
+ * owner-gate, a route escalation, a release or any guard rule but the CI-policy budget row stays the owner's.
  */
 function runEligible(run: RunFacts, land: LandGate): boolean {
   const matches = run.workflow === "shepherd-pr" && run.repo === land.repo && run.pr === land.pr && run.rule === land.rule && run.reason === land.reason;
+  if (run.rule === CI_POLICY_BUDGET_RULE) return matches && run.merge === "auto" && !run.held && !run.frozen;
   return matches && run.rule === "authority/MRG-AU" && mechanicalAuthorityReason(run.reason) && run.merge === "auto" && !run.held && !run.frozen;
 }
 

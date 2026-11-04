@@ -8,7 +8,7 @@ import { BaseCheckResult } from "../workflows/land-base.js";
 import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import type { LandOptions } from "../workflows/land.js";
 import { headWaits } from "./freeze-wait.js";
-import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { budgetAt, decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { EffectivePolicySchema, MERGE_ORDER, narrower, OWNER_GATE_REASONS, RegistrationRefused, type EffectivePolicy, type MergeMode } from "./policy-schema.js";
@@ -250,13 +250,14 @@ export function skillPathsAt(headSha: string, verdictFor: (headSha: string) => V
  * The D21 facts the MERGE evidence at this head holds, whatever rule the gate opens under; land reads a skill change from
  * `skillPathsAt`. An owner-gate seat never runs the merge guard, and the guard's first row wins over the rest
  * (merge-facts.ts), so a visual-path or files-unread gate can carry a weakened CI policy too. A MERGE whose evidence is
- * malformed read no files the owner can trust, so it reads as unread.
+ * malformed read no files the owner can trust, so it reads as unread. A budget-class weakened line (owner decision 552) is
+ * not marked, so its gate stays open to a coordinator.
  */
 export function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
   const evidence = mergeEvidenceAt(headSha, verdictFor);
   if (evidence === undefined) return verdictFor(headSha)?.kind === "MERGE" ? ["files-unread"] : [];
   const rows: OwnerAtHeadRow[] = [];
-  if (evidence.ciPolicy?.kind === "weakened") rows.push("ci-policy-weakened");
+  if (evidence.ciPolicy?.kind === "weakened" && budgetAt(evidence, headSha) === undefined) rows.push("ci-policy-weakened");
   if (evidence.ciPolicy?.kind === "malformed") rows.push("ci-policy-malformed");
   if (evidence.changedFilesUnread !== undefined) rows.push("files-unread");
   return rows;
