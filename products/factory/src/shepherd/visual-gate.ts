@@ -14,7 +14,7 @@ export function shownPaths(paths: readonly string[]): string {
 /** Tests, vitest type tests (`.test-d.ts`), markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
 const NON_RENDERING = /(\.(test|spec)(-d)?\.[^/]*|\.md|\.d\.ts)$/;
 
-function cannotRender(path: string): boolean {
+export function cannotRender(path: string): boolean {
   const name = path.toLowerCase().split("/").pop() ?? "";
   return NON_RENDERING.test(name);
 }
