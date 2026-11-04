@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ArPorts } from "@titan-design/autoresearch";
+import { SnapshotResultSchema, type ArPorts } from "@titan-design/autoresearch";
 import { fakeGitHub, githubPort, type GitHubPort } from "@titan-design/github";
 import { inProcessCaller } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
@@ -84,12 +84,12 @@ function spiedRegister() {
 }
 
 /** A pinned snapshot target whose ratchet holds one kept idea, over a fake GitHub that knows the snapshot branch. */
-async function keptRun(openPr?: (open: GitHubPort["openPr"]) => GitHubPort["openPr"]) {
+async function keptRun(openPr?: (open: GitHubPort["openPr"]) => GitHubPort["openPr"], snapshot: typeof SNAPSHOT & { register?: "external" } = SNAPSHOT) {
   const { root, clone } = await originWithSideBranch();
   const fake = fakeGitHub({ repo: SNAPSHOT.repo });
   const real = githubPort(fake.wire);
   const services = partialFake<ShepherdServices>({ port: { ...real, openPr: openPr ? openPr(real.openPr) : real.openPr } });
-  const config = arConfigFixture(root, { fixture: { clone, snapshot: SNAPSHOT } });
+  const config = arConfigFixture(root, { fixture: { clone, snapshot } });
   const ports = targetPorts(config, "fixture", snapshotHost(services, () => partialFake<FactoryHost>({})));
   const pinned = await ports.pin({ runId: "run-1", pin: "main" }, signal);
   const tree = pinned.integrationTree;
@@ -111,6 +111,29 @@ describe("a snapshot target", () => {
 
     expect(() => withAutoresearch([], config)).toThrow("[no-shepherd] targets fixture configure snapshots");
     expect(() => targetPorts(config, "fixture")).toThrow("[no-shepherd] target fixture");
+  });
+
+  it("registering externally, needs no Shepherd services but still refuses a host with no GitHub port", () => {
+    const config = arConfigFixture("/tmp/ar-fixture", { fixture: { clone: "/tmp/ar-fixture/a", snapshot: { ...SNAPSHOT, register: "external" } } });
+
+    expect(() => withAutoresearch([], config)).toThrow("[no-snapshot-port] targets fixture configure snapshots");
+    expect(() => targetPorts(config, "fixture")).toThrow("[no-snapshot-port] target fixture");
+  });
+
+  it("registering externally, opens the PR, starts no Shepherd run and announces the slice to register", async () => {
+    const register = spiedRegister();
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const { ports, fake, port, kept, cut } = await keptRun(undefined, { ...SNAPSHOT, register: "external" });
+
+    const result = await ports.snapshot!(cut, signal);
+
+    expect(register).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ k: 1, sha: kept, branch: `refs/heads/${SNAP_BRANCH}` });
+    expect(result).not.toHaveProperty("shepherdRunId");
+    expect(SnapshotResultSchema.parse(result)).toEqual(result);
+    expect(await port.getPr(SNAPSHOT.repo, result.pr)).toMatchObject({ headRef: SNAP_BRANCH, baseRef: "main" });
+    expect(fake.effects.createPr).toBe(1);
+    expect(stderr).toHaveBeenCalledWith(`[register-external] ${SNAPSHOT.repo}#${result.pr} slice p1-m1\n`);
   });
 
   it("omits the snapshot and sync ports for a target with no snapshot block", () => {
