@@ -7,7 +7,7 @@ import { partialFake } from "@titan-design/test-kit";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { shepherdEventMigration } from "../shepherd/events.js";
-import { MERGE_EVIDENCE_STEP, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "../shepherd/merge-facts.js";
+import { MERGE_EVIDENCE_STEP, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "../shepherd/merge-facts.js";
 import type { ShepherdDeps } from "../shepherd/phases.js";
 import { reviewRoutes, type ReviewWiring } from "../shepherd/review.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "../shepherd/store.js";
@@ -55,11 +55,11 @@ function tagsPort(tags: string[]): TaskTagsPort & { tags: ReturnType<typeof vi.f
   return { tags: vi.fn(async () => tags) };
 }
 
-/** The evidence step, then the decide step's re-read of the stored evidence at the same head, as `policy.ts` runs it. */
+/** The evidence step, then the decide step's re-read of its evidence at the same head, as `policy.ts` runs it. */
 async function decided(fake: FakeGitHub, port: TaskTagsPort, m1bExited: boolean) {
   const oldPath = judgeOldPath({ tags: port, exitedDir: milestonesDir(m1bExited) });
   const evidence = await mergeEvidence(githubPort(fake.wire), input, noFreezeStoreUntilTp523, { kind: "correctness", task: TASK }, undefined, { oldPath });
-  return { evidence, decision: decideAutoMerge(HEAD, JSON.parse(JSON.stringify(evidence)) as MergeEvidence) };
+  return { evidence, decision: decideAutoMerge(HEAD, evidence) };
 }
 
 describe("the old-path merge guard", () => {
@@ -131,7 +131,7 @@ describe("the old-path merge guard", () => {
 
     if (!outcome.ok) throw new Error(outcome.error);
     expect(judge).toHaveBeenCalledWith(REPO, [OLD_PATH_FILE], `titan-platform/${TASK}`, "security");
-    const { result } = JSON.parse(outcome.output) as { result: MergeEvidence };
-    expect(decideAutoMerge(HEAD, result)).toMatchObject({ outcome: "gate", rule: { rowId: "old-path-untagged" } });
+    const output: unknown = JSON.parse(outcome.output);
+    expect(output).toMatchObject({ result: { oldPath: { status: "untagged", kind: "security" }, record: { decision: { outcome: "gate", rule: { rowId: "old-path-untagged" } } } } });
   });
 });
