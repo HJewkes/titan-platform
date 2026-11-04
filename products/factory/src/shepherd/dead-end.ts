@@ -11,6 +11,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { awaitNewHead } from "./gates.js";
 import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
+import { REPLAN_STEPS, requestReplan, type FailedSession } from "./replan.js";
 import { registrantSeat, spawnerSeat, storedLineage } from "./registrant.js";
 import type { Escalated } from "./route-table.js";
 import type { GateRun } from "./run-state.js";
@@ -28,6 +29,7 @@ const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
   { id: ADDRESS_STEP, kind: "dispatch" },
   { id: DEAD_END_GATE, kind: "assisted" },
+  ...REPLAN_STEPS,
 ];
 
 /** The table a dead-end gate's rule names; the owner inbox leaves its gates to the seat. Not `shepherd-seat`, the seat policy's own table. */
@@ -95,6 +97,10 @@ interface DeadEnd {
   situation: string;
   /** A fix-proof exit, where the owner may still waive the proof. */
   waivable?: boolean;
+  /** What a replan brief names: the run's task, the worker sessions that ended here, and the FIX_FIRST trail. */
+  task?: string;
+  sessions?: readonly FailedSession[];
+  trail?: readonly string[];
 }
 
 type DeadEndRun = GateRun & { escalations?: Map<string, Escalated> };
@@ -104,27 +110,59 @@ const respawns = new WeakMap<object, number>();
 
 function offered(run: DeadEndRun, end: DeadEnd): DeadEndAnswer[] {
   const respawn: DeadEndAnswer[] = (respawns.get(run.ctx) ?? 0) < RESPAWN_CAP ? ["respawn"] : [];
-  const waive: DeadEndAnswer[] = end.waivable ? [WAIVE_PROOF] : [];
+  // Only an exit is waivable and only a route kind merges, so the menu stays within hitl's four options.
+  const waive: DeadEndAnswer[] = end.waivable && end.kind === "exited-without-push" ? [WAIVE_PROOF] : [];
   const merge: DeadEndAnswer[] = end.kind === "exited-without-push" ? [] : ["owner-merge"];
   const owner = [...waive, ...merge];
-  return [...respawn, "abandon", ...owner];
+  return [...respawn, "replan", "abandon", ...owner];
+}
+
+/** Respawn while the cap allows, then replan; a refused replan spawn recommends neither again at this head. */
+function recommended(answers: readonly DeadEndAnswer[], replanRefused: boolean): DeadEndAnswer | undefined {
+  if (answers.includes("respawn")) return "respawn";
+  return replanRefused ? undefined : "replan";
+}
+
+interface Addressed {
+  seat: string;
+  situation: string;
+}
+
+async function askSeat(run: DeadEndRun, end: DeadEnd, { seat, situation }: Addressed, replanRefused: boolean): Promise<DeadEndAnswer | undefined> {
+  const { headSha, kind } = end;
+  const answers = offered(run, end);
+  const { schema, brief } = deadEndDecision({ ...run.target, headSha, situation: end.situation, seat, offered: answers, recommend: recommended(answers, replanRefused) });
+  const prompt = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha} reached a dead end (${kind}): ${situation}. Seat ${seat} answers: ${answers.join(", ")}?`;
+  const answered = await askAtHead(run.ctx, DEAD_END_GATE, prompt, { schema, brief, rule: deadEndRule(kind) });
+  return answered && schema.parse(answered.data).decision;
+}
+
+/** True once the planner is spawned; a refused spawn tells the seat why, so its next answer is an informed one. */
+async function replanned(run: DeadEndRun, end: DeadEnd, { seat, situation }: Addressed, attempt: number): Promise<boolean> {
+  const { headSha, kind, task, sessions, trail } = end;
+  const replan = await requestReplan(run, { headSha, kind, situation, seat, ...(task !== undefined && { task }), ...(sessions && { sessions }), ...(trail && { trail }) });
+  if (replan.spawned) return true;
+  const why = `${situation}; the replan planner ${replan.agent} was not spawned (${replan.reason ?? "no reason given"}), so Shepherd asks again`;
+  await noticeHeldSeat(run, JSON.stringify(["sh-replan-refused", headSha, attempt]), { headSha, why, seat, gate: "dead-end" });
+  return false;
 }
 
 /**
  * Records the addressee, then asks it at the head. With no seat, `ownerGate` opens today's owner gate unchanged. Undefined
- * lands the next round: after a respawn once a new head shows, after an owner answer at once, and after a moved head.
+ * lands the next round: after a respawn or a spawned replan once a new head shows, after an owner answer at once, and
+ * after a moved head. A refused replan asks again at the same head.
  */
 export async function deadEndGate(run: DeadEndRun, end: DeadEnd, ownerGate: () => Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
   const { headSha, kind } = end;
   const { seat } = await step(run.ctx, ADDRESS_STEP, { ...run.target, kind, headSha }, AddressResult);
   if (seat === null) return ownerGate();
-  const answers = offered(run, end);
-  const { schema, brief } = deadEndDecision({ ...run.target, headSha, situation: end.situation, seat, offered: answers });
-  const situation = end.situation.replace(/[.\s]+$/, "");
-  await noticeHeldSeat(run, JSON.stringify([DEAD_END_GATE, headSha]), { headSha, why: situation, seat, gate: "dead-end" });
-  const prompt = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha} reached a dead end (${kind}): ${situation}. Seat ${seat} answers: ${answers.join(", ")}?`;
-  const answered = await askAtHead(run.ctx, DEAD_END_GATE, prompt, { schema, brief, rule: deadEndRule(kind) });
-  return answered && onAnswer(run, headSha, schema.parse(answered.data).decision);
+  const addressed = { seat, situation: end.situation.replace(/[.\s]+$/, "") };
+  await noticeHeldSeat(run, JSON.stringify([DEAD_END_GATE, headSha]), { headSha, why: addressed.situation, seat, gate: "dead-end" });
+  for (let attempt = 0; ; attempt += 1) {
+    const decision = await askSeat(run, end, addressed, attempt > 0);
+    if (decision !== "replan") return decision && onAnswer(run, headSha, decision);
+    if (await replanned(run, end, addressed, attempt)) return awaitNewHead(run, headSha);
+  }
 }
 
 async function onAnswer(run: DeadEndRun, headSha: string, decision: DeadEndAnswer): Promise<LandOutcome | undefined> {
