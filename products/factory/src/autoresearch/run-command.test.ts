@@ -64,15 +64,14 @@ describe("runCommand", () => {
 
   it("kills an in-flight eval's forked child when the driver gets SIGINT, then exits by the signal", async () => {
     const dir = scratch();
-    const driver = forkDriver(`await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 5000 });`, dir);
+    // A grace far past the test timeout: the driver must exit once the eval is down, not sit out the grace.
+    const driver = forkDriver(`await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 600_000 });`, dir);
     const [child] = await recordedPids(dir, 1);
 
-    const started = Date.now();
     driver.kill("SIGINT");
     const exit = await exited(driver);
 
     expect(exit.signal).toBe("SIGINT");
-    expect(Date.now() - started).toBeLessThan(4000);
     expect(alive(child!)).toBe(false);
   });
 
