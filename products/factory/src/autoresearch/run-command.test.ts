@@ -1,8 +1,9 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { killLiveGroups, runCommand } from "./run-command.js";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { runCommand } from "./run-command.js";
 
 const alive = (pid: number) => {
   try {
@@ -61,16 +62,72 @@ describe("runCommand", () => {
     expect(run.ok).toBe(false);
   });
 
-  it("kills the forked child of an in-flight eval when the driver is signalled", async () => {
+  it("kills an in-flight eval's forked child when the driver gets SIGINT, then exits by the signal", async () => {
     const dir = scratch();
-    const script = 'sleep 600 & echo $! > "$0/child.pid"; wait';
-    const running = runCommand(["sh", "-c", script, dir], { cwd: dir, signal: never, graceMs: 100 });
-    while (!existsSync(join(dir, "child.pid")) || !readFileSync(join(dir, "child.pid"), "utf8").trim()) await new Promise((done) => setTimeout(done, 20));
-    const child = Number(readFileSync(join(dir, "child.pid"), "utf8"));
+    const driver = forkDriver(`await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 5000 });`, dir);
+    const [child] = await recordedPids(dir, 1);
 
-    await killLiveGroups();
-    await running;
+    const started = Date.now();
+    driver.kill("SIGINT");
+    const exit = await exited(driver);
 
-    expect(alive(child)).toBe(false);
+    expect(exit.signal).toBe("SIGINT");
+    expect(Date.now() - started).toBeLessThan(4000);
+    expect(alive(child!)).toBe(false);
+  });
+
+  it("kills an eval the driver starts during the grace, so none outlives the interrupt", async () => {
+    const dir = scratch();
+    const stubborn = `trap "" TERM; echo $$ >> "$0/children"; while :; do sleep 0.1; done`;
+    const body = [
+      `void runCommand(["sh", "-c", ${JSON.stringify(stubborn)}, dir], { cwd: dir, graceMs: 1500 });`,
+      `for (;;) { console.log("spawn"); await runCommand(["sh", "-c", ${JSON.stringify(FORKS_SLEEPER)}, dir], { cwd: dir, graceMs: 100 }); await new Promise((r) => setTimeout(r, 50)); }`,
+    ].join("\n");
+    const driver = forkDriver(body, dir);
+    const spawns = countLines(driver);
+    await recordedPids(dir, 2);
+
+    const before = spawns();
+    driver.kill("SIGINT");
+    const exit = await exited(driver);
+    const pids = await recordedPids(dir, 2);
+
+    expect(exit.signal).toBe("SIGINT");
+    expect(spawns()).toBeGreaterThan(before);
+    for (const pid of pids) expect(alive(pid)).toBe(false);
   });
 });
+
+const FORKS_SLEEPER = 'sleep 600 & echo $! >> "$0/children"; wait';
+const RUN_COMMAND = new URL("./run-command.ts", import.meta.url).href;
+
+function forkDriver(body: string, dir: string): ChildProcess {
+  const code = `const { runCommand } = await import(${JSON.stringify(RUN_COMMAND)});\nconst dir = process.argv[1];\n${body}`;
+  const driver = spawn(process.execPath, ["--input-type=module", "-e", code, dir], { stdio: ["ignore", "pipe", "inherit"] });
+  onTestFinished(() => {
+    driver.kill("SIGKILL");
+    for (const pid of readPids(dir)) if (alive(pid)) process.kill(pid, "SIGKILL");
+  });
+  return driver;
+}
+
+function readPids(dir: string): number[] {
+  const file = join(dir, "children");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter(Boolean).map(Number);
+}
+
+async function recordedPids(dir: string, atLeast: number): Promise<number[]> {
+  while (readPids(dir).length < atLeast) await new Promise((done) => setTimeout(done, 20));
+  return readPids(dir);
+}
+
+function countLines(child: ChildProcess): () => number {
+  let lines = 0;
+  child.stdout!.on("data", (chunk) => (lines += String(chunk).split("\n").filter(Boolean).length));
+  return () => lines;
+}
+
+function exited(child: ChildProcess): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+  return new Promise((done) => child.on("exit", (code, signal) => done({ code, signal })));
+}

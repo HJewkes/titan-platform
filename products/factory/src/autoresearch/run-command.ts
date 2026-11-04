@@ -36,38 +36,50 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
 const liveGroups = new Map<number, number>();
 const DRIVER_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
-/** SIGTERM every live eval group, SIGKILL after the longest grace; resolves once the KILL is sent. */
-export function killLiveGroups(): Promise<void> {
-  const groups = [...liveGroups];
-  for (const [pid] of groups) killGroup(pid, "SIGTERM");
-  const grace = Math.max(0, ...groups.map(([, graceMs]) => graceMs));
-  return new Promise((done) =>
-    setTimeout(() => {
-      for (const [pid] of groups) killGroup(pid, "SIGKILL");
-      done();
-    }, grace),
-  );
-}
+/**
+ * One shutdown from the first driver signal until the driver exits. Listeners stay installed for all of it, so an eval
+ * the caller starts during the grace is killed on spawn instead of escaping once the listeners come off.
+ */
+const driver = { listening: false, finish: undefined as (() => void) | undefined };
 
 function onDriverSignal(signal: NodeJS.Signals): void {
-  void killLiveGroups().then(() => {
-    uninstallDriverHandlers();
+  // A second signal skips the rest of the grace.
+  if (driver.finish) return driver.finish();
+  for (const pid of liveGroups.keys()) killGroup(pid, "SIGTERM");
+  const timer = setTimeout(() => driver.finish?.(), Math.max(0, ...liveGroups.values()));
+  let done = false;
+  driver.finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    for (const pid of liveGroups.keys()) killGroup(pid, "SIGKILL");
+    setListening(false);
     // Our listener replaced the default exit; restore it unless another listener owns shutdown.
     if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
-  });
+  };
+  if (liveGroups.size === 0) driver.finish();
 }
 
-function uninstallDriverHandlers(): void {
-  for (const signal of DRIVER_SIGNALS) process.removeListener(signal, onDriverSignal);
+function setListening(on: boolean): void {
+  if (driver.listening === on) return;
+  driver.listening = on;
+  for (const signal of DRIVER_SIGNALS) {
+    if (on) process.on(signal, onDriverSignal);
+    else process.removeListener(signal, onDriverSignal);
+  }
 }
 
 function track(pid: number | undefined, graceMs: number): () => void {
   if (pid === undefined) return () => {};
-  if (liveGroups.size === 0) for (const signal of DRIVER_SIGNALS) process.on(signal, onDriverSignal);
   liveGroups.set(pid, graceMs);
+  if (driver.finish) killGroup(pid, "SIGKILL");
+  else setListening(true);
   return () => {
     liveGroups.delete(pid);
-    if (liveGroups.size === 0) uninstallDriverHandlers();
+    if (liveGroups.size > 0) return;
+    // Every eval is down: exit now rather than sit out the rest of the grace.
+    if (driver.finish) driver.finish();
+    else setListening(false);
   };
 }
 
