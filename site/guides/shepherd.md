@@ -789,6 +789,7 @@ The steps of `shepherd-pr` that an agent or the owner answers. Every other step 
 | `sh-visual-packet` | AGENT |
 | `sh-visual-accept` | OWNER |
 | `sh-no-verdict-diagnosis` | AGENT |
+| `sh-replan` | AGENT |
 
 ## Watch
 

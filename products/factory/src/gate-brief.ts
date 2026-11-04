@@ -290,23 +290,28 @@ export function sentBackDecision(target: PrHead & { situation: string; waivable?
   return { schema: target.waivable ? schema.meta({ anyOf: waiveShapes(target.headSha) }) : schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
 }
 
-/** TP-4759: an `sh-dead-end` answer. Respawn and abandon are the seat's; waive-proof and owner-merge stay the owner's. */
-export type DeadEndAnswer = "respawn" | "abandon" | typeof WAIVE_PROOF | "owner-merge";
+/** TP-4759: an `sh-dead-end` answer. Respawn, replan and abandon are the seat's; waive-proof and owner-merge stay the owner's. */
+export type DeadEndAnswer = "respawn" | "replan" | "abandon" | typeof WAIVE_PROOF | "owner-merge";
 
 const DEAD_END_OPTIONS: readonly DecisionOption<DeadEndAnswer>[] = [
-  { id: "respawn", label: "Respawn: resume or start the worker and wait for a new head", recommended: true },
+  { id: "respawn", label: "Respawn: resume or start the worker and wait for a new head" },
+  { id: "replan", label: "Replan: a planner redesigns or splits the task from the failed sessions" },
   { id: "abandon", label: "Abandon the PR" },
   { id: WAIVE_PROOF, label: "Owner only: waive the fix-proof at this head and review it" },
   { id: "owner-merge", label: "Owner only: hand this head back to land's merge decision" },
 ];
 
-/** Every answer names the gate's head, so an answer to a head the PR moved past cannot land on the next one. */
-export function deadEndDecision(target: PrHead & { situation: string; seat: string; offered: readonly DeadEndAnswer[] }) {
-  const [first, ...rest] = DEAD_END_OPTIONS.filter((option) => target.offered.includes(option.id));
+/**
+ * Every answer names the gate's head, so an answer to a head the PR moved past cannot land on the next one. `recommend`
+ * absent recommends nothing, as after a refused replan spawn.
+ */
+export function deadEndDecision(target: PrHead & { situation: string; seat: string; offered: readonly DeadEndAnswer[]; recommend?: DeadEndAnswer }) {
+  const recommended = (option: DecisionOption<DeadEndAnswer>) => ({ ...option, ...(option.id === target.recommend && { recommended: true }) });
+  const [first, ...rest] = DEAD_END_OPTIONS.filter((option) => target.offered.includes(option.id)).map(recommended);
   if (first === undefined) throw new Error("a dead-end gate offers at least one answer");
   const { schema, questions } = decisionGate({ question: `What next for PR #${target.pr} at this head?`, options: [first, ...rest], shape: { headSha: z.literal(target.headSha) } });
   const summary = summarize(`${where(target)} reached a dead end.`, target.situation, `Seat ${oneLine(target.seat, 80)} answers.`);
-  // hitl asks 2 to 4 options, so a lone answer, abandon once respawns ran out, carries no menu.
+  // hitl asks 2 to 4 options, so a lone answer carries no menu.
   return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), rest.length > 0 ? questions : undefined) };
 }
 
