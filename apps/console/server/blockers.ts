@@ -23,7 +23,7 @@ const HOUR = 3_600_000;
 const MAX_ITEMS = 5;
 const MAX_SUMMARY = 120;
 /** Shepherd's `SEAT_STEPS`, mirrored because the console cannot depend on titan-factory: a seat answers these, not the owner. */
-const SEAT_STEPS: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back", "stuck-behind"]);
+const SEAT_STEPS: ReadonlySet<string> = new Set(["ci-failed", "sh-dead-end", "sh-sent-back", "stuck-behind"]);
 /** Shepherd's G10 hold classes (`HOLD_CLASSES` in hold-reason.ts), mirrored for the same reason: a reviewer releases these, not the owner. */
 const REVIEWER_HOLD_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
 /** As the inbox's: short enough that a gate answered elsewhere leaves the banner soon. */
