@@ -14,7 +14,7 @@ export function shownPaths(paths: readonly string[]): string {
 /** Tests, vitest type tests (`.test-d.ts`), markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
 const NON_RENDERING = /(\.(test|spec)(-d)?\.[^/]*|\.md|\.d\.ts)$/;
 
-function cannotRender(path: string): boolean {
+export function cannotRender(path: string): boolean {
   const name = path.toLowerCase().split("/").pop() ?? "";
   return NON_RENDERING.test(name);
 }
@@ -49,7 +49,7 @@ export function changedBaselines(paths: readonly string[], baselines: VisualBase
 }
 
 /** Every run of the check from an allowed app at the head concluded `success`, and there is at least one; pending reads null. */
-export function baselineCheckGreen(merge: MergeFacts, check: string, allowedApps: readonly number[]): boolean {
+export function baselineCheckGreen(merge: Pick<MergeFacts, "checkRuns" | "head">, check: string, allowedApps: readonly number[]): boolean {
   const runs = merge.checkRuns.filter((run) => run.name === check && allowedApps.includes(run.appId) && run.headSha === merge.head);
   return runs.length > 0 && runs.every((run) => run.conclusion === "success");
 }

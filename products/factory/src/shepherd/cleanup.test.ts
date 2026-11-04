@@ -56,7 +56,7 @@ function fakeTasks(state: TaskState, slicing: TaskSlicing = NO_SLICING): Cleanup
   const closed: string[] = [];
   const notes: string[] = [];
   const appended: string[] = [];
-  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
+  return { closed, notes, state: async () => state, slicing: async () => ({ ...slicing, notes: [slicing.notes, ...appended].join("\n") }), done: async (initiative, id) => void closed.push(`${initiative}/${id}`), reopen: async () => undefined, appendNote: async (initiative, id, line) => void (notes.push(`${initiative}/${id}: ${line}`), appended.push(line)) };
 }
 
 const planOf = (...names: string[]): string => `# Plan\n\n\`\`\`burndown-slices\n${JSON.stringify(names.map((n) => ({ n, title: `slice ${n}`, points: 1, doneWhen: "a test passes", owns: [`src/${n}.ts`] })))}\n\`\`\`\n`;

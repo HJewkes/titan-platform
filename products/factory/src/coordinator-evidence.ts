@@ -16,8 +16,9 @@ import { readPath } from "./narrow.js";
  * decision 529 (2026-10-22, TP-4048) adds a fourth: an sh-sent-back `await-new-head` while the PR is open at the gate's
  * own head, which only waits and merges nothing. Owner decision 551 (2026-10-28, TP-4285) adds a main-ci-timeout
  * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Owner decision 552 (2,
- * TP-4760) adds an approve-merge under the CI-policy budget row, on the same merge evidence. Every other gate, a visual or
- * seat owner-gate merge, and a round pick stay the owner's.
+ * TP-4760) adds an approve-merge under the CI-policy budget row, on the same merge evidence. Owner decision 552 (3, TP-4759)
+ * adds a respawn, replan or abandon of an `sh-dead-end` gate, by the one seat it was addressed to, while the PR is open at
+ * the gate's head. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -89,7 +90,19 @@ const PrAtHeadEvidence = z.strictObject({
   readAt: z.string(),
 });
 
-export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence, PrAtHeadEvidence]);
+/** The seat the run addressed its dead-end gate to, from the run's own record, and the PR as read at resolve time. */
+const SeatDeadEndEvidence = z.strictObject({
+  kind: z.literal("seat-dead-end"),
+  gateId: z.string(),
+  repo: REPO,
+  pr: PR,
+  headSha: SHA,
+  seat: z.string().min(1),
+  pull: z.strictObject({ state: z.enum(["open", "merged", "closed"]), headSha: SHA }),
+  readAt: z.string(),
+});
+
+export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence, PrAtHeadEvidence, SeatDeadEndEvidence]);
 export type CoordinatorEvidence = z.infer<typeof CoordinatorEvidence>;
 export type RunFacts = z.infer<typeof RunFacts>;
 export type CheckRunFact = z.infer<typeof CheckRunFact>;
@@ -98,9 +111,12 @@ export const MERGE_GATE = "approve-merge";
 export const MAIN_CI_TIMEOUT = "main-ci-timeout";
 export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze", [MAIN_CI_TIMEOUT]: "acknowledged" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
-export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
+export const DEAD_END_GATE = "sh-dead-end";
+export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed", DEAD_END_GATE]);
 export const SENT_BACK_GATE = "sh-sent-back";
 export const AWAIT_NEW_HEAD = "await-new-head";
+/** The dead-end answers the addressed seat may give; waive-proof and owner-merge stay the owner's whatever the schema offers. */
+export const SEAT_DEAD_END_ANSWERS: ReadonlySet<string> = new Set(["respawn", "replan", "abandon"]);
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
 export function stepOf(gateId: string): string {
@@ -231,6 +247,7 @@ export const coordinatorEvidencePolicy: GateEvidencePolicy = (gate, resolver, pa
   if (evidence.kind === "approve-merge") return mergeAdmits(gate, payload, evidence);
   if (evidence.kind === "main-green") return mainGreenAdmits(gate, payload, evidence);
   if (evidence.kind === "pr-at-head") return prAtHeadAdmits(gate, payload, evidence);
+  if (evidence.kind === "seat-dead-end") return seatDeadEndAdmits(gate, resolver.id, payload, evidence);
   return prGoneAdmits(gate, payload, evidence);
 };
 
@@ -284,4 +301,18 @@ function prAtHeadAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-at-
   const head = headGateAsks(gate);
   if (stepOf(gate.id) !== SENT_BACK_GATE || head === undefined || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
   return evidence.state === "open" && evidence.headSha === head && isDeepStrictEqual(payload, { decision: AWAIT_NEW_HEAD });
+}
+
+/** The seat a dead-end gate's prompt names as the one that answers it. */
+const deadEndAddressee = (prompt: string): string | undefined => /\. Seat (\S+) answers\b/.exec(prompt)?.[1];
+
+/** Only the addressed seat, only a seat answer pinned to the gate's head, and only while the PR is still open there. */
+function seatDeadEndAdmits(gate: GateRecord, resolverId: string, payload: unknown, evidence: Of<"seat-dead-end">): boolean {
+  const target = gatePr(gate);
+  const head = headGateAsks(gate);
+  if (stepOf(gate.id) !== DEAD_END_GATE || head === undefined || evidence.headSha !== head || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
+  if (resolverId !== evidence.seat || deadEndAddressee(gate.prompt) !== evidence.seat) return false;
+  const decision = readPath(payload, "decision");
+  if (typeof decision !== "string" || !SEAT_DEAD_END_ANSWERS.has(decision) || !isDeepStrictEqual(payload, { decision, headSha: head })) return false;
+  return evidence.pull.state === "open" && evidence.pull.headSha === head;
 }

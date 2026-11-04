@@ -502,6 +502,10 @@ required contexts, the gate stays open. A coordinator may acknowledge the same g
 read before the sweep reaches it (owner decision 551, TP-4285). A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
+An `sh-dead-end` gate (TP-4759, owner decision 552) is asked of the seat that registered the pull
+request, not the owner: only that seat's coordinator may answer `respawn` or `abandon`, and only while
+the pull request is open at the gate's head. The owner may still answer it, and it stays out of the
+owner inbox. No run opens one until `GATE_DEMOTIONS.deadEndSeat` is turned on.
 The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
@@ -773,6 +777,7 @@ The steps of `shepherd-pr` that an agent or the owner answers. Every other step 
 | `stuck-behind` | OWNER |
 | `ci-failed` | OWNER |
 | `sh-sent-back` | OWNER |
+| `sh-dead-end` | OWNER |
 | `sh-review` | AGENT |
 | `sh-await-verdict` | AGENT |
 | `sh-late-verdict` | AGENT |

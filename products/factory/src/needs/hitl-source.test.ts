@@ -5,6 +5,7 @@ import { approveMergeDecision } from "../gate-brief.js";
 import { RUN_A, RUN_B, gateSnapshot } from "../test-support/owner-queue.js";
 import { hitlGateSource } from "./hitl-source.js";
 import { collectNeeds, renderNeeds } from "./merged.js";
+import { deadEndRule } from "../shepherd/dead-end.js";
 
 describe("hitlGateSource open", () => {
   it("lists pending gates only, each a schema-valid one-way approval", async () => {
@@ -29,6 +30,15 @@ describe("hitlGateSource open", () => {
       authority: { table: "example-table", ruleId: "merge-approval", resolvers: ["owner-terminal"] },
       expiresAt: "2026-02-01T00:00:00.000Z",
     });
+  });
+
+  it("a dead-end seat gate is not an owner inbox item", async () => {
+    const gates = gateSnapshot();
+    gates.create({ id: `${RUN_B}/sh-dead-end`, prompt: "A synthetic dead end. Seat tc-synthetic answers: respawn, abandon?", rule: deadEndRule("exited-without-push") });
+
+    const items = await hitlGateSource({ gates }).open();
+
+    expect(items.map((item) => item.id)).toEqual([`gate:${RUN_A}/approve-merge`, `gate:${RUN_B}/ci-failed:2`, "gate:bare-gate"]);
   });
 
   it("falls back to the prompt's first line for a gate with no brief", async () => {

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the owner inbox lists a dead-end seat gate",
+      "file": "products/factory/src/needs/hitl-source.ts",
+      "find": "gate.status === \"pending\" && gate.rule?.table !== DEAD_END_TABLE;",
+      "replace": "gate.status === \"pending\";",
+      "kills": [
+        "hitlGateSource open a dead-end seat gate is not an owner inbox item"
+      ]
+    }
+  ]
+}

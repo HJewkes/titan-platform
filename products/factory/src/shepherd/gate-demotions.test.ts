@@ -396,7 +396,7 @@ describe("D13: a red main with no freeze store", () => {
 
 describe("the demotion config", () => {
   it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, and diagnoses never-verdict rounds", () => {
-    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true });
+    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true, deadEndSeat: false });
   });
 });
 

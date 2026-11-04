@@ -36,6 +36,15 @@
         "a pending shepherd-route failed-rounds approve-merge gate is kept while the head it asks about is still the pull request's head",
         "a pending shepherd-route fix-first-runaway approve-merge gate is kept while the head it asks about is still the pull request's head"
       ]
+    },
+    {
+      "name": "an sh-dead-end gate names no head, so the sweep never supersedes it",
+      "file": "products/factory/src/shepherd/stale-gates.ts",
+      "find": "const HEAD_GATES = /\\/(approve-merge|sh-sent-back|sh-dead-end)(:\\d+)?$/;",
+      "replace": "const HEAD_GATES = /\\/(approve-merge|sh-sent-back)(:\\d+)?$/;",
+      "kills": [
+        "a pending sh-dead-end gate whose pull request head moved a new PR head cancels a pending sh-dead-end as superseded"
+      ]
     }
   ]
 }
