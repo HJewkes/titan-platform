@@ -31,7 +31,7 @@
     {
       "name": "the rendered layer check reads no narration rules",
       "file": "products/explainer/src/render/layer-text-check.ts",
-      "find": ", ...narrationRows(beat, packet.spoken, probed)]",
+      "find": ", ...narrationRows(beat, packet.spoken, probed, citedIdNumbers(packet.fact_ids ?? []))]",
       "replace": "]",
       "kills": [
         "the rendered text check on one custom layer flags a settled number the narration never says with the unspoken-fact rule"

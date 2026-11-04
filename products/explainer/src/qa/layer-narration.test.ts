@@ -28,6 +28,28 @@ describe("qa's narration rules on a layer's text", () => {
     expect(rows).toEqual([{ beat: "b1", element: "div#more", rule: "unspoken-fact", text: "+ 4 late scans", atS: 9.95, fact: "4" }]);
   });
 
+  it("reads a bare number equal to a cited task id as a citation, not an unspoken fact", () => {
+    // Arrange
+    const probed = [{ t: 9.95, texts: [text("div#count", "12 parcels"), text("div#ref", "7421")] }];
+
+    // Act
+    const rows = narrationRows("b1", SPOKEN, probed, new Set([7421]));
+
+    // Assert
+    expect(rows).toEqual([]);
+  });
+
+  it("still flags a bare number no cited id matches", () => {
+    // Arrange
+    const probed = [{ t: 9.95, texts: [text("div#count", "12 parcels"), text("div#ref", "7421")] }];
+
+    // Act
+    const rows = narrationRows("b1", SPOKEN, probed, new Set([7422]));
+
+    // Assert
+    expect(rows.map((row) => [row.rule, row.element, row.fact])).toEqual([["unspoken-fact", "div#ref", "7421"]]);
+  });
+
   it("flags a text sharing five narration words in a row at any moment, and passes four", () => {
     // Arrange
     const probed = [{ t: 3, texts: [text("div#echo", "parcels wait at the desk"), text("div#key", "wait at the desk")] }, { t: 9.95, texts: [] }];
