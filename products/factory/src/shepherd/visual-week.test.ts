@@ -15,8 +15,8 @@ function parked(pr: number, rowId = "visual-path", decidedHead = headOf(pr)): { 
   const runId = `run-${pr}`;
   const prompt = `Merge PR #${pr} in ${REPO} at head ${headOf(pr)}? CI is green. Policy shepherd-merge-guard/${rowId}: the owner decides visual changes`;
   const output = JSON.stringify({ result: { outcome: "gate", headSha: decidedHead, rule: { table: "shepherd-merge-guard", rowId } } });
-  const gate = { runId, stepId: "approve-merge", gate: { id: `${runId}/approve-merge`, prompt, status: "pending", payload: null, createdAt: "2026-11-02T10:00:00.000Z" } };
-  const run = {
+  const gate: PendingGate = JSON.parse(JSON.stringify({ runId, stepId: "approve-merge", gate: { id: `${runId}/approve-merge`, prompt, status: "pending", payload: null, createdAt: "2026-11-02T10:00:00.000Z" } }));
+  const run: WorkflowRun = JSON.parse(JSON.stringify({
     id: runId,
     workflowName: "shepherd-pr",
     params: { repo: REPO, pr: String(pr) },
@@ -29,8 +29,8 @@ function parked(pr: number, rowId = "visual-path", decidedHead = headOf(pr)): { 
     startedAt: "2026-11-02T09:00:00.000Z",
     completedAt: null,
     error: null,
-  } as unknown as WorkflowRun;
-  return { gate: gate as PendingGate, run };
+  }));
+  return { gate, run };
 }
 
 const world = (...parts: ReturnType<typeof parked>[]) => ({ gates: parts.map((part) => part.gate), runs: parts.map((part) => part.run) });
