@@ -4,10 +4,12 @@ import type { CliDeps, Verbs } from "./cli-types.js";
 import { refusedWithoutServe } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
+import { configPath, loadConfig } from "./config.js";
 import { EXIT } from "./exit-codes.js";
 import { resolveGate, resolveGateByOwnerAsk } from "./gate-resolve.js";
 import type { FactoryRoutes, PendingGate, ResumeReport } from "./host.js";
 import { resolveCommand } from "./resolve-command.js";
+import { loadSeatBook } from "./shepherd/seats.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 
 export const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
@@ -39,9 +41,8 @@ export function registerGate(program: Command, verbs: Verbs): void {
         verbs.setExit(EXIT.USAGE);
         return;
       }
-      return withHost((host, routes) =>
-        opts.ownerAsk ? resolveGateByOwnerAsk(host, io, runId, stepId, opts.json) : resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd)),
-      );
+      if (opts.ownerAsk) return withHost((host) => resolveGateByOwnerAsk(host, io, runId, stepId, opts.json, () => registeredSeats(io.env)));
+      return withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd)));
     });
 }
 
@@ -51,6 +52,12 @@ function ownerAskLeads(command: Command): boolean {
   while (root.parent) root = root.parent;
   const raw: unknown = Reflect.get(root, "rawArgs");
   return Array.isArray(raw) && raw[0] === "gate" && raw[1] === "resolve" && raw[2] === "--owner-ask";
+}
+
+/** The seat book's names; an unset seats dir lists none, so `--owner-ask` refuses rather than guess. */
+function registeredSeats(env: NodeJS.ProcessEnv): string[] {
+  const shepherd = loadConfig(configPath(env)).shepherd;
+  return shepherd?.seatsDir ? loadSeatBook(shepherd).seats.map((seat) => seat.name) : [];
 }
 
 export function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
@@ -16,7 +16,9 @@ import { fakeOwnerSigner } from "./test-support/owner-edges.js";
 const REPO = "o/r";
 const HEAD = fakeSha("head");
 const SEAT = "tc-synthetic";
-const SEAT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: SEAT };
+/** An attended seat's shell as agent-chat and Claude Code stamp it. */
+const SEAT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: SEAT, AGENT_CHAT_ROLE: "coordinator", AGENT_CHAT_SURFACE: "tmux", CLAUDE_CODE_ENTRYPOINT: "cli" };
+const SEAT_BOOK = () => [SEAT];
 const MERGE = JSON.stringify({ decision: "merge", headSha: HEAD });
 
 /** Opens one gate: an approve-merge land gate under the `rule` param, or the device step a device PR asks the owner to confirm. */
@@ -55,13 +57,13 @@ async function paused(params: Record<string, string>): Promise<{ host: FactoryHo
   return { host, runId, dbPath };
 }
 
-function ownerAsk(host: FactoryHost, runId: string, stepId = "approve-merge", env: NodeJS.ProcessEnv = SEAT_SHELL) {
+function ownerAsk(host: FactoryHost, runId: string, stepId = "approve-merge", env: NodeJS.ProcessEnv = SEAT_SHELL, seats: () => readonly string[] = SEAT_BOOK) {
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env };
   let code: number;
   try {
-    code = resolveGateByOwnerAsk(host, io, runId, stepId, MERGE);
+    code = resolveGateByOwnerAsk(host, io, runId, stepId, MERGE, seats);
   } catch (error) {
     err += error instanceof Error ? error.message : String(error);
     code = 1;
@@ -98,14 +100,23 @@ describe("gate resolve --owner-ask", () => {
     expect(host.gates.get(`${runId}/${stepId}`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 
-  it("refuses a shell that names no seat before touching the gate", async () => {
+  it.each([
+    ["names no seat", {}, SEAT_BOOK, "AGENT_CHAT_NAME is not set"],
+    ["is a headless worker", { ...SEAT_SHELL, AGENT_CHAT_ROLE: "worker", AGENT_CHAT_SURFACE: "headless", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }, SEAT_BOOK, "AGENT_CHAT_ROLE is worker"],
+    ["runs on a headless surface", { ...SEAT_SHELL, AGENT_CHAT_SURFACE: "headless" }, SEAT_BOOK, "AGENT_CHAT_SURFACE is headless"],
+    ["names no surface", { ...SEAT_SHELL, AGENT_CHAT_SURFACE: undefined }, SEAT_BOOK, "AGENT_CHAT_SURFACE is unset"],
+    ["was started through the SDK", { ...SEAT_SHELL, CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }, SEAT_BOOK, "CLAUDE_CODE_ENTRYPOINT is sdk-cli"],
+    ["is marked unattended", { ...SEAT_SHELL, CLAUDE_CODE_SESSION_ATTENDED: "0" }, SEAT_BOOK, "CLAUDE_CODE_SESSION_ATTENDED is 0"],
+    ["names a seat the book does not list", { ...SEAT_SHELL, AGENT_CHAT_NAME: "tc-other" }, SEAT_BOOK, "tc-other is not in the seat book"],
+    ["has a seat book that does not load", SEAT_SHELL, () => { throw new Error("seat file broken"); }, "seat book, which did not load: seat file broken"],
+  ])("refuses a caller that %s before touching the gate", async (_name, env, seats, named) => {
     const { host, runId } = await paused({ rule: "shepherd-merge-guard/visual-path" });
 
-    const { code, err } = ownerAsk(host, runId, "approve-merge", {});
+    const { code, err } = ownerAsk(host, runId, "approve-merge", env, seats);
 
     expect(code).toBe(2);
-    expect(err).toContain("AGENT_CHAT_NAME is not set");
-    expect(host.gates.get(`${runId}/approve-merge`)?.status).toBe("pending");
+    expect(err).toContain(named);
+    expect(host.gates.get(`${runId}/approve-merge`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 
   it("refuses an owner-ask resolver that arrives without its own evidence", async () => {
@@ -147,10 +158,21 @@ describe("the titan-factory gate resolve --owner-ask command", () => {
     return { dbPath, runId };
   }
 
-  async function cli(dbPath: string, ...argv: string[]) {
+  /** A factory config whose seat book lists `seats`, so the CLI reads the registered names the way a seat's does. */
+  function configListing(dbPath: string, seats: string[]): string {
+    const seatsDir = join(dbPath, "..", "seats");
+    mkdirSync(seatsDir, { recursive: true });
+    for (const name of seats) writeFileSync(join(seatsDir, `${name}.md`), `---\nschema: autonomy-seat/v1\nname: ${name}\nrepos: []\n---\n`);
+    const config = join(dbPath, "..", "config.json");
+    writeFileSync(config, JSON.stringify({ shepherd: { seatsDir } }));
+    return config;
+  }
+
+  async function cli(dbPath: string, argv: string[], seats: string[] = [SEAT]) {
     let out = "";
     let err = "";
-    const code = await runCli(argv, { stdout: (t) => (out += t), stderr: (t) => (err += t), env: { ...SEAT_SHELL, TITAN_FACTORY_DB: dbPath } }, { workflows: [gates], routes: [], host: { gatePollMs: 10 } });
+    const env = { ...SEAT_SHELL, TITAN_FACTORY_DB: dbPath, TITAN_FACTORY_CONFIG: configListing(dbPath, seats) };
+    const code = await runCli(argv, { stdout: (t) => (out += t), stderr: (t) => (err += t), env }, { workflows: [gates], routes: [], host: { gatePollMs: 10 } });
     return { code, out, err };
   }
 
@@ -163,7 +185,7 @@ describe("the titan-factory gate resolve --owner-ask command", () => {
   it("resolves as owner-ask when the flag leads, the form the owner's ask rule matches", async () => {
     const { dbPath, runId } = await pausedDb();
 
-    const { code } = await cli(dbPath, "gate", "resolve", "--owner-ask", runId, "approve-merge", "--json", MERGE);
+    const { code } = await cli(dbPath, ["gate", "resolve", "--owner-ask", runId, "approve-merge", "--json", MERGE]);
 
     expect(code).toBe(0);
     expect(gateAt(dbPath, `${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-ask", id: SEAT, channel: "factory-cli" });
@@ -172,10 +194,20 @@ describe("the titan-factory gate resolve --owner-ask command", () => {
   it("refuses the flag anywhere else, where the ask rule would not fire, and leaves the gate pending", async () => {
     const { dbPath, runId } = await pausedDb();
 
-    const { code, err } = await cli(dbPath, "gate", "resolve", runId, "approve-merge", "--json", MERGE, "--owner-ask");
+    const { code, err } = await cli(dbPath, ["gate", "resolve", runId, "approve-merge", "--json", MERGE, "--owner-ask"]);
 
     expect(code).toBe(2);
     expect(err).toContain('write --owner-ask straight after "gate resolve"');
+    expect(gateAt(dbPath, `${runId}/approve-merge`)?.status).toBe("pending");
+  });
+
+  it("refuses a seat the configured seat book does not list, and leaves the gate pending", async () => {
+    const { dbPath, runId } = await pausedDb();
+
+    const { code, err } = await cli(dbPath, ["gate", "resolve", "--owner-ask", runId, "approve-merge", "--json", MERGE], ["tc-other"]);
+
+    expect(code).toBe(2);
+    expect(err).toContain(`${SEAT} is not in the seat book`);
     expect(gateAt(dbPath, `${runId}/approve-merge`)?.status).toBe("pending");
   });
 });

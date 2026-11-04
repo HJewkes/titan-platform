@@ -10,7 +10,7 @@ import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { mintPresenceRecord } from "./gate-resolve-presence.js";
-import { ownerAskEvidence, ownerAskResolver } from "./owner-ask.js";
+import { ownerAskCallerRefusal, ownerAskEvidence, ownerAskResolver } from "./owner-ask.js";
 import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
 
 interface ResolveIo {
@@ -50,14 +50,20 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
 }
 
 /**
- * `titan-factory gate resolve --owner-ask`: the seat named by AGENT_CHAT_NAME answers the pending gate as `owner-ask`.
- * The store admits it only through `withOwnerAsk` and `ownerAskAuthorize`, so a refusal throws to the CLI, which exits 1.
+ * `titan-factory gate resolve --owner-ask`: an attended, registered seat answers the pending gate as `owner-ask`. The
+ * caller check runs before any gate is read; the store then admits it only through `withOwnerAsk` and
+ * `ownerAskAuthorize`, so a refusal there throws to the CLI, which exits 1.
  */
-export function resolveGateByOwnerAsk(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string): number {
+export function resolveGateByOwnerAsk(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, registeredSeats: () => readonly string[]): number {
+  const caller = ownerAskCallerRefusal(io.env, registeredSeats);
+  if ("refusal" in caller) {
+    io.stderr(`error: ${caller.refusal}\n`);
+    return EXIT.USAGE;
+  }
+  const { seat } = caller;
   const payload = parsePayload(json);
-  const seat = io.env.AGENT_CHAT_NAME || io.env.AGENT_CHAT_AGENT_ID;
-  if (!payload || !seat) {
-    io.stderr(payload ? "error: --owner-ask records the seat that ran it, and AGENT_CHAT_NAME is not set\n" : "error: --json must be a JSON object\n");
+  if (!payload) {
+    io.stderr("error: --json must be a JSON object\n");
     return EXIT.USAGE;
   }
   const repeated = repeatedResolution(host, runId, stepId, payload);

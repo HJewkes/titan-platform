@@ -117,8 +117,11 @@ gates have no row and open rule-less too, as do gates opened before the migratio
 `gate resolve --owner-ask` (owner decision 552, TP-4763) is for a seat running a resolve the owner
 approved at a Claude Code permissions.ask prompt. The factory cannot verify that approval, because the
 seat and the owner are the same OS user, so the gate records `resolvedBy` as
-`{ class: "owner-ask", id: <seat>, channel: "factory-cli" }`, the seat named by `AGENT_CHAT_NAME`, and
-never `owner-terminal`. The store admits it only on an approve-merge land gate whose policy table is a judgement table (`shepherd-merge-guard`, `shepherd-seat`, `shepherd-route` or `factory-default`; any other table, `authority` included, stays with the owner) and whose rule is not
+`{ class: "owner-ask", id: <seat>, channel: "factory-cli" }` and never `owner-terminal`. Before it reads
+any gate, the command refuses (exit 2) a process that is not an attended, registered seat: `AGENT_CHAT_ROLE`
+must be `coordinator`, `AGENT_CHAT_SURFACE` set and not `headless`, `CLAUDE_CODE_ENTRYPOINT` not `sdk-*`,
+`CLAUDE_CODE_SESSION_ATTENDED` not `0`, and `AGENT_CHAT_NAME` a seat in the configured seat book
+(`shepherd.seatsDir`; no seat book refuses every caller). So a spawned worker is refused by default. The store admits it only on an approve-merge land gate whose policy table is a judgement table (`shepherd-merge-guard`, `shepherd-seat`, `shepherd-route` or `factory-default`; any other table, `authority` included, stays with the owner) and whose rule is not
 publish (`shepherd-release`, or an `authority/REL-*` row), device (`HW-CO`, any `device-*` step) or
 owner-presence (a D21 owner-at-head row: `skill-path`, `ci-policy-weakened`, `ci-policy-malformed`,
 `files-unread`, or a pre-marker prompt). It refuses every other gate with the rule named, and an
@@ -131,13 +134,14 @@ seat's settings, so each run waits for their approval at the prompt:
 
 The rule matches a prefix, so the command refuses `--owner-ask` anywhere but straight after
 `gate resolve` (exit 2): `titan-factory gate resolve --owner-ask <runId> <stepId> --json '<payload>'`.
-Run it only in a turn with the owner present and batched, never on a heartbeat tick or in a headless
-worker.
+Run it only in a turn with the owner present and batched, never on a heartbeat tick.
 
 Known gap: nothing at resolve time proves the prompt fired. Another spelling (`npx titan-factory`, an
 absolute path, `node dist/bin.js`, an `env` or `VAR=1` prefix) passes the flag check but not the ask
 rule's prefix, and a seat without the rule gets no prompt at all; either still records `owner-ask`.
-The record names the seat and never claims `owner-terminal`, but it does not prove the owner saw it.
+The caller check reads environment variables the launcher and Claude Code set, so a process that rewrites
+them (the same OS user can) passes it, and `id` is the seat name that environment gives, checked only
+against the seat book. The record never claims `owner-terminal`, but it does not prove the owner saw it.
 
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
