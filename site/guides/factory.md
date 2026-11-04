@@ -153,9 +153,10 @@ stays out of the repo.
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
 - `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, `advisory`,
-  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. The
-  reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
-  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+  `stackRestack` and `statusContexts`. All four keys are optional, and an unknown one fails the load. Keys match in any case. For a
+  repo a seat lists, the reviewer starts in that seat's own path and `path` is never read. `path` applies only to a repo no
+  seat lists, which only a run registered before registration required a seat can still be. Registering needs a seat
+  that lists the repo, so with no `seatsDir` `shepherd register` refuses every PR. The map is re-read on every
   spawn, as the seat book is.
 - `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
   update the branch, push to it or delete its head ref. The run waits held at its merge
