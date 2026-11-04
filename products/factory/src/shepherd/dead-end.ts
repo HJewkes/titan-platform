@@ -1,7 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { RESOLVER_CLASSES } from "@titan-design/authority";
 import type { GateRule } from "@titan-design/hitl";
-import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
+import type { StepResult, StepRoute, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { DEAD_END_GATE } from "../coordinator-evidence.js";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
@@ -14,7 +14,8 @@ import { waiveProof } from "./proof-waiver.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REPLAN_STEPS, replanRoute, requestReplan, type FailedSession } from "./replan.js";
 import { registrantSeat, spawnerSeat, storedLineage } from "./registrant.js";
-import type { Escalated } from "./route-table.js";
+import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
+import { LeaveLand } from "./leave-land.js";
 import type { GateRun } from "./run-state.js";
 import { askAtHead } from "./stale-gates.js";
 import { noticeHeldSeat } from "./gate-route.js";
@@ -24,7 +25,7 @@ import { noticeHeldSeat } from "./gate-route.js";
  * `GATE_DEMOTIONS.deadEndSeat` routes them here.
  */
 export const DEAD_END_KINDS = ["exited-without-push", "fix-first-runaway", "failed-rounds"] as const;
-type DeadEndKind = (typeof DEAD_END_KINDS)[number];
+export type DeadEndKind = (typeof DEAD_END_KINDS)[number];
 
 export const ADDRESS_STEP = "sh-dead-end-address";
 export const DEAD_END_STEPS: readonly StepDeclaration[] = [
@@ -56,7 +57,7 @@ function deadEndSeat(lineage: Lineage | undefined, roster: readonly AgentRow[] |
 }
 
 /** What the address step reads; a lineage that cannot be read throws, and the run then takes the owner gate. */
-interface DeadEndPorts {
+export interface DeadEndPorts {
   lineage(target: { repo: string; pr: number }): Lineage | undefined;
   roster(): Promise<readonly AgentRow[]>;
   repoSeat(repo: string): string | undefined;
@@ -65,7 +66,8 @@ interface DeadEndPorts {
 const AddressInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), kind: z.enum(DEAD_END_KINDS), headSha: z.string().min(1) });
 const AddressResult = z.looseObject({ seat: z.string().nullable(), kind: z.enum(DEAD_END_KINDS), headSha: z.string() });
 
-async function address(ports: DeadEndPorts | undefined, target: { repo: string; pr: number }): Promise<string | undefined> {
+/** The seat a dead end of the run on `target` is addressed to now; `readdress-dead-ends` previews it with the same read. */
+export async function deadEndAddress(ports: DeadEndPorts | undefined, target: { repo: string; pr: number }): Promise<string | undefined> {
   if (ports === undefined) return undefined;
   const lineage = ports.lineage(target);
   return deadEndSeat(lineage, lineage?.registrant ? await ports.roster() : undefined, ports.repoSeat(target.repo));
@@ -80,7 +82,7 @@ function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" 
 export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | undefined): StepRoute =>
   codeRoute(ADDRESS_STEP, now, async (raw: unknown) => {
     const input = AddressInput.parse(raw);
-    const seat = await address(ports, input).catch(() => undefined);
+    const seat = await deadEndAddress(ports, input).catch(() => undefined);
     return { seat: seat ?? null, kind: input.kind, headSha: input.headSha };
   });
 
@@ -186,4 +188,37 @@ async function onAnswer(run: DeadEndRun, headSha: string, decision: DeadEndAnswe
   }
   respawns.set(run.ctx, (respawns.get(run.ctx) ?? 0) + 1);
   return awaitNewHead(run, headSha);
+}
+
+/** The route escalations that are dead ends; any other escalation keeps land's owner gate. */
+export const ROUTE_DEAD_ENDS: Partial<Record<Escalation, DeadEndKind>> = {
+  "fix-first-runaway": "fix-first-runaway",
+  "failed-rounds": "failed-rounds",
+};
+
+export interface ReaddressRun extends GateRun {
+  escalations: Map<string, Escalated>;
+  carried?: Escalated;
+}
+
+/**
+ * A route approve-merge gate `readdress-dead-ends` cancelled (TP-4759): the escalation it asked about goes to the seat's
+ * dead-end gate at the same head, whatever the flag reads, because the cancel is the run's record of the move. No seat,
+ * an owner-merge, or an escalation that is no dead end asks the owner's approve-merge again; any other answer leaves land.
+ */
+export async function readdressEscalation(run: ReaddressRun, gated: string, reask: () => Promise<StepResult>): Promise<StepResult> {
+  const escalated = run.carried ?? run.escalations.get(gated);
+  const kind = escalated && ROUTE_DEAD_ENDS[escalated.escalation];
+  if (escalated === undefined || kind === undefined) return reask();
+  run.carried = undefined;
+  run.escalations.set(gated, escalated);
+  const owner: { answer?: StepResult } = {};
+  const situation = escalationReason(escalated.escalation, escalated.detail, escalated.words);
+  const outcome = await deadEndGate(run, { kind, headSha: gated, situation }, async () => {
+    owner.answer = await reask();
+    return undefined;
+  });
+  if (owner.answer) return owner.answer;
+  if (!run.escalations.has(gated)) return reask();
+  throw new LeaveLand(outcome);
 }

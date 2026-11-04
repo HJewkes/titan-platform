@@ -2,9 +2,9 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
 import type { LandOutcome } from "../workflows/land.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
-import { ADDRESS_STEP, deadEndGate, type DEAD_END_KINDS } from "./dead-end.js";
+import { ADDRESS_STEP, ROUTE_DEAD_ENDS, deadEndGate } from "./dead-end.js";
 import { LeaveLand } from "./leave-land.js";
-import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
+import { escalationReason, type Escalated } from "./route-table.js";
 import type { GateRun } from "./run-state.js";
 
 /**
@@ -19,12 +19,6 @@ export function asksSeat(ctx: WorkflowContext, ownerGate: string): boolean {
   const paused = ctx.resumedGate();
   return paused === undefined || !stepIdMatches(ownerGate, paused);
 }
-
-/** The route escalations that are dead ends; any other escalation keeps land's owner gate. */
-const ROUTE_DEAD_ENDS: Partial<Record<Escalation, (typeof DEAD_END_KINDS)[number]>> = {
-  "fix-first-runaway": "fix-first-runaway",
-  "failed-rounds": "failed-rounds",
-};
 
 interface EscalatedRun extends GateRun {
   escalations: Map<string, Escalated>;

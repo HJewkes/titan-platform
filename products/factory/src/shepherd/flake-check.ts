@@ -134,11 +134,14 @@ async function noticeOrGate(run: ExitRun, { kind, headSha, payload }: { kind: Wa
   return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red", ciRedFailing(kind, payload))), gate);
 }
 
-/** The seat's dead-end gate (TP-4759), else the owner's sent-back gate; a fix-proof exit offers the owner's waive-proof on either. */
+/**
+ * The seat's dead-end gate (TP-4759), else the owner's sent-back gate; a fix-proof exit offers the owner's waive-proof on
+ * either. An owner gate `readdress-dead-ends` cancelled asks the seat at the same head.
+ */
 function exitGate(run: ExitRun, { kind, headSha, situation }: { kind: WakeRequest["kind"]; headSha: string; situation: string }, abandoned: string): Promise<LandOutcome | undefined> {
   const waivable = kind === "fix-proof";
   const prompt = `${situation} Await a new head or abandon?`;
-  const owner = () => sentBackGate(run, headSha, prompt, abandoned, prompt, waivable);
-  if (!asksSeat(run.ctx, "sh-sent-back")) return owner();
-  return deadEndGate(run, { kind: "exited-without-push", headSha, situation, waivable }, owner);
+  const seat = (): Promise<LandOutcome | undefined> => deadEndGate(run, { kind: "exited-without-push", headSha, situation, waivable }, owner);
+  const owner = (): Promise<LandOutcome | undefined> => sentBackGate(run, headSha, prompt, abandoned, prompt, waivable, seat);
+  return asksSeat(run.ctx, "sh-sent-back") ? seat() : owner();
 }

@@ -181,6 +181,8 @@ describe("D8: a replay of tp#1808, three FIX_FIRSTs on a tool-guard PR", () => {
 
 describe("D8 with GATE_DEMOTIONS.fixFirstRunaway false", () => {
   withDemotionOff("fixFirstRunaway");
+  // "As before" is also before TP-4759, whose seat gate would take the runaway this repo's seat is named for.
+  withDemotionOff("deadEndSeat");
 
   it("gates the third FIX_FIRST at approve-merge as before, with no convergence review", async () => {
     const w = tp1808Run({ convergence: () => "MERGE", fixFirstAt: RUNAWAY_AT_H3 });

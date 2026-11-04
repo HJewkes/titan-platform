@@ -30,7 +30,7 @@ export interface GateDemotions {
 
 export const GATE_DEMOTIONS: GateDemotions = {
   ...{ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true },
-  deadEndSeat: false,
+  deadEndSeat: true,
 };
 
 const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review", "R4/fresh-reviewer", "D7/no-verdict-diagnosis"] as const;
