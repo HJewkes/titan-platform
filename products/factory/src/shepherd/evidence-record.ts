@@ -6,6 +6,7 @@ import type { AttestJudgment } from "./attest-evidence.js";
 import type { CiPolicyFileChange } from "./ci-policy-changes.js";
 import type { RiskTier } from "./risk-tier.js";
 import type { VisualDelta } from "./visual-delta-read.js";
+import type { OldPathRecord } from "../old-path/freeze-gate.js";
 
 interface EvidenceCheckRun {
   name: string;
@@ -49,6 +50,8 @@ export interface EvidenceRecord {
   attestUnread?: string;
   /** Why the attest read waited for a deploy instead of judging (TP-4752). */
   attestWaiting?: string;
+  /** The old-path freeze verdict, its task and the registered kind (TP-3182); recorded before M1b exit too, so its counts inform the exit. */
+  oldPath?: OldPathRecord;
 }
 
 /** The parts of the evidence step's input a record names. */
@@ -62,7 +65,7 @@ interface RecordObserved {
   headBlobs?: Record<string, string | null>;
 }
 
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier; attest?: AttestJudgment };
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta" | "oldPath"> & { riskTier: RiskTier; attest?: AttestJudgment };
 
 /** A head that claims nothing records nothing; a meeter other than the accepted reviewer is the adversary member. */
 function attestFields(attest: AttestJudgment | undefined, resolver: AgentIdentity): Pick<EvidenceRecord, "attested" | "attestUnmet" | "attestUnread" | "attestWaiting"> {
@@ -87,7 +90,7 @@ export function evidenceRecord(
   input: RecordInput,
   { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
   decision: GateDecision,
-  { ciPolicy, riskTier, visualDelta, attest }: RecordExtras,
+  { ciPolicy, riskTier, visualDelta, attest, oldPath }: RecordExtras,
 ): EvidenceRecord {
   return {
     runId: input.runId,
@@ -109,5 +112,6 @@ export function evidenceRecord(
     riskTier,
     ...(visualDelta && { visualDelta }),
     ...attestFields(attest, input.resolver),
+    ...(oldPath && { oldPath }),
   };
 }

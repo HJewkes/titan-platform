@@ -31,6 +31,7 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "ci-policy-malformed": "D21",
   "attest-unmet": "D6",
   "attest-deploy-skew": "D5",
+  "old-path-untagged": "D6",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
   "head-mismatch": "D5",
