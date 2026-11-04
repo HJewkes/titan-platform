@@ -122,6 +122,8 @@ export const OutcomeSchema = z.object({
   usage: z.object({ implementUsd: nonnegative, evalUsd: nonnegative, microUsd: nonnegative }).optional(),
   /** Set when the round re-evaluated this winner; its own `delta` stays the solo ladder's. */
   reeval: ReevalVerdictSchema.optional(),
+  /** The failed step's message, cut to 500 characters, beside the `error:<stepId>` reason. */
+  error: z.string().optional(),
 });
 export type Outcome = z.infer<typeof OutcomeSchema>;
 

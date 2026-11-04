@@ -17,8 +17,8 @@ import { AUTORESEARCH_WORKFLOW } from "./workflow.js";
 /** `a` gains 4 pp and `b` 3 pp, so `a` always goes first; `b` edits the planner files, so the two merge cleanly. */
 const CC = "cc_total_delta_pct";
 const PROPOSALS: Record<string, Partial<Proposal>> = {
-  b: { class: "planner-ranking", targets: ["src/planner/rank.py"] },
-  "b-cancelled": { class: "planner-ranking", targets: ["src/planner/rank.py"] },
+  b: { class: "planner-ranking", microArgs: { cluster: "c" }, targets: ["src/planner/rank.py"] },
+  "b-cancelled": { class: "planner-ranking", microArgs: { cluster: "c" }, targets: ["src/planner/rank.py"] },
 };
 const POLICY: Policy = {
   ...FIXTURE_POLICY,

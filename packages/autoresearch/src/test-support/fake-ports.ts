@@ -99,6 +99,7 @@ export const FIXTURE_TARGET: Target = TargetSchema.parse({
     noise: NOISE,
   },
   microRung: { "accept-gate": "L1-replay", "planner-ranking": "L1-cluster" },
+  rungs: { "L1-replay": { cmd: ["replay", "{baselineDir}"] }, "L1-cluster": { cmd: ["replay", "--cluster", "{cluster}", "{runnerRoot}"] } },
   frozen: ["src/gate/measure.py", "tests/test_ar_*.py"],
   phases: PHASES,
 });

@@ -274,6 +274,7 @@ declare const OutcomeSchema: z.ZodObject<{
         }>;
         reason: z.ZodString;
     }, z.core.$strip>>;
+    error: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type Outcome = z.infer<typeof OutcomeSchema>;
 declare function ideaId(proposal: Pick<Proposal, "class" | "targets" | "params" | "mechanism">): string;

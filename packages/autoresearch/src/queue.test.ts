@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, quotaRules, quotaViolations, toIdea } from "./queue.js";
+import { applyOps, microArgViolations, quotaRules, quotaViolations, toIdea } from "./queue.js";
 import { QueueOpsSchema, type QueueOps } from "./schemas.js";
-import { FIXTURE_BOUNDS, proposal } from "./test-support/fake-ports.js";
+import { FIXTURE_BOUNDS, FIXTURE_TARGET, proposal } from "./test-support/fake-ports.js";
 
 const ops = (input: Partial<QueueOps>): QueueOps => QueueOpsSchema.parse(input);
 const QUOTA = { keptLastRound: [] as string[], minPool: 0, queuedBefore: 0 };
@@ -23,6 +23,22 @@ describe("planner quotas", () => {
 
   it("refuses a candidate pool under the minimum", () => {
     expect(quotaViolations(ops({ add: [proposal("a", { bold: true })] }), { ...QUOTA, minPool: 12, queuedBefore: 10 })).toEqual(["candidate pool 11 is under 12"]);
+  });
+});
+
+describe("micro args a rung template needs", () => {
+  const ranking = (microArgs: Record<string, string>) => ops({ add: [proposal("rank", { class: "planner-ranking", microArgs })] });
+
+  it("refuses an L1-cluster idea with no cluster", () => {
+    expect(microArgViolations(ranking({}), FIXTURE_TARGET)).toEqual([expect.stringContaining('needs microArgs "cluster"')]);
+  });
+
+  it("accepts the same idea once it names the cluster", () => {
+    expect(microArgViolations(ranking({ cluster: "x" }), FIXTURE_TARGET)).toEqual([]);
+  });
+
+  it("asks nothing of a class whose template uses only host-filled names", () => {
+    expect(microArgViolations(ops({ add: [proposal("gate")] }), FIXTURE_TARGET)).toEqual([]);
   });
 });
 

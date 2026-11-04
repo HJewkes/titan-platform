@@ -28,7 +28,7 @@ import {
   type StopReason,
 } from "./ports.js";
 import { frozenOverlap } from "./post-check.js";
-import { applyOps, quotaViolations } from "./queue.js";
+import { applyOps, microArgViolations, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { IdeaSchema, OutcomeSchema, QueueOpsSchema, resultSchemaFor, type ArResult, type Idea, type Outcome, type Proposal, type QueueOps } from "./schemas.js";
 import { select } from "./select.js";
@@ -153,7 +153,7 @@ async function planRound(run: Run, state: LoopState, round: number): Promise<Pla
     const planned = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, PlanStepSchema);
     if (planned.usage) usage.push(planned.usage);
     // An answer that held no JSON gets the same one corrective turn a quota miss does.
-    violations = planned.malformed === undefined ? quotaViolations(planned.ops, quota) : [planned.malformed];
+    violations = planned.malformed === undefined ? [...quotaViolations(planned.ops, quota), ...microArgViolations(planned.ops, run.pinned.target)] : [planned.malformed];
     first ??= violations;
     if (violations.length === 0) return { ops: planned.ops, planner: plannerOf(planned), violations: first, retried: attempt !== "", usage };
   }
