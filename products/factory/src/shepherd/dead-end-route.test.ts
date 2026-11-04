@@ -1,12 +1,15 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha } from "@titan-design/github";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { deadEndRoutes } from "../test-support/dead-end.js";
 import { REGISTRANT, deadEndSeatOn, exitWorld, routeWorkflow, startExit } from "../test-support/dead-end-route.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
+
+const H2 = fakeSha("dead-end-route-2");
 
 const stepIds = (host: FactoryHost, runId: string): string[] => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
 const pendingSteps = (host: FactoryHost, runId: string): string[] => host.pendingGates().filter((gate) => gate.runId === runId).map((gate) => gate.stepId);
@@ -73,9 +76,11 @@ describe("a route escalation, with the dead-end seat route on (TP-4759)", () => 
     onTestFinished(() => after.close());
     expect(await after.adopt()).toEqual([before.runId]);
     await vi.waitFor(() => expect(after.runtime.status(before.runId)?.currentStep).toBe("approve-merge"));
+    after.runtime.signal(before.runId, "approve-merge", { decision: "abandon" }, OWNER);
 
-    expect(pendingSteps(after, before.runId)).toEqual(["approve-merge"]);
-    expect(stepIds(after, before.runId)).not.toContain("sh-dead-end-address");
+    await vi.waitFor(() => expect(after.runtime.status(before.runId)?.status).toBe("completed"));
+    expect(stepIds(after, before.runId)).toEqual(["approve-merge"]);
+    expect(after.gates.get(gateId(before.runId, "sh-dead-end"))).toBeUndefined();
   });
 });
 
@@ -93,9 +98,12 @@ describe("a run paused on a pre-TP-4759 sent-back gate", () => {
     const { host, sends } = exitWorld({ kind: "fix-proof", dbPath }, fake);
     expect(await host.adopt()).toEqual([runId]);
     await vi.waitFor(() => expect(host.runtime.status(runId)?.currentStep).toBe("sh-sent-back"));
+    host.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" }, OWNER);
+    fake.pushHead(1, H2);
 
-    expect(pendingSteps(host, runId)).toEqual(["sh-sent-back"]);
+    await gateOpened(host, gateId(runId, "approve-merge"));
     expect(stepIds(host, runId)).not.toContain("sh-dead-end-address");
+    expect(host.gates.get(gateId(runId, "sh-dead-end"))).toBeUndefined();
     expect(sends).toEqual([]);
   });
 });
