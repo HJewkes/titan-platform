@@ -2,6 +2,13 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a shot counts as changed only when its count is above zero",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "shot.changedPixels !== 0",
+      "replace": "shot.changedPixels > 0",
+      "kills": ["a shot whose changed-pixel count is not exactly zero is tier 2"]
+    },
+    {
       "name": "a missing pixel read defaults to tier 1",
       "file": "products/factory/src/shepherd/visual-tier.ts",
       "find": "if (pixel === undefined) return tier2(\"no pr-visual artifact read at the head\");",

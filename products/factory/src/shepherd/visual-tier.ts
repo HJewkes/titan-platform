@@ -63,6 +63,7 @@ function classifyVisualPaths(paths: readonly string[], config: VisualTierConfig)
 
 const tier2 = (reason: string): VisualTierVerdict => ({ tier: 2, reason });
 
+/** Only an exact zero proves no change: a NaN, negative, missing or null count from a bad artifact reads as changed. */
 function pixelVerdict(pixel: PixelRead | undefined, head: string, mergeBase: string | undefined): VisualTierVerdict {
   if (pixel === undefined) return tier2("no pr-visual artifact read at the head");
   if (pixel.head !== head) return tier2("pr-visual artifact is at another head");
@@ -70,7 +71,7 @@ function pixelVerdict(pixel: PixelRead | undefined, head: string, mergeBase: str
   if (!pixel.rendered) return tier2("pr-visual says nothing rendered but a rendered path changed");
   if (pixel.shots.length === 0) return tier2("pr-visual artifact holds no shots");
   if (pixel.shots.some((shot) => !shot.paired)) return tier2("pr-visual artifact has a shot with no pair");
-  const changed = pixel.shots.filter((shot) => shot.changedPixels > 0).length;
+  const changed = pixel.shots.filter((shot) => shot.changedPixels !== 0).length;
   return changed > 0 ? tier2(`pr-visual shows changed pixels on ${changed} shot(s)`) : { tier: 1, basis: "no-pixel-diff" };
 }
 

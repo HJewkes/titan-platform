@@ -58,6 +58,15 @@ describe("visual tier verdict (TP-4761 S1)", () => {
     expect(verdict(["src/button/button.tsx"], { pixel: clean() })).toEqual({ tier: 1, basis: "no-pixel-diff" });
   });
 
+  it("a shot whose changed-pixel count is not exactly zero is tier 2", () => {
+    const tier = (changedPixels: unknown) => verdict(["src/button/button.tsx"], { pixel: clean([{ paired: true, changedPixels: Number(changedPixels) }]) }).tier;
+    const missing = clean([JSON.parse('{"paired":true}')]);
+
+    expect([tier(Number.NaN), tier(-1), tier(0.5)]).toEqual([2, 2, 2]);
+    expect(verdict(["src/button/button.tsx"], { pixel: missing }).tier).toBe(2);
+    expect(verdict(["src/button/button.tsx"], { pixel: clean([JSON.parse('{"paired":true,"changedPixels":null}')]) }).tier).toBe(2);
+  });
+
   it("a rendered path is tier 2 when the artifact is stale, unpaired, changed or unrendered", () => {
     const tier2 = (pixel: PixelRead) => verdict(["src/button/button.tsx"], { pixel }).tier;
 
