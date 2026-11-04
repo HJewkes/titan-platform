@@ -32,6 +32,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-await-verdict": `${RECORD}: the reviewer's verdict at a head`,
   "sh-late-verdict": `${RECORD}: a timed-out reviewer's verdict read once more`,
   "sh-correct-verdict": `${RECORD}: a corrected verdict`,
+  "sh-dead-end-address": `${RECORD}: the seat a dead-end gate is addressed to`,
   "sh-seat-recheck": `${RECORD}: the seat check over a held MERGE`,
   "sh-merge-evidence": `${RECORD}: the merge evidence the merge relied on`,
   "sh-carry": `${RECORD}: a verdict carried across an unchanged tree`,

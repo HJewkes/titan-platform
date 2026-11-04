@@ -43,7 +43,7 @@ export interface LayerContrast {
 export interface LayerCheckInput {
   builder: BuilderRef;
   layer: BuiltLayer;
-  packet: Pick<LayerPacket, "beat_id" | "spoken" | "cues" | "planned_s" | "band">;
+  packet: Pick<LayerPacket, "beat_id" | "spoken" | "cues" | "planned_s" | "band"> & Partial<Pick<LayerPacket, "fact_ids">>;
 }
 
 /** Renders one built layer at its reveal points and returns every element that breaks a rule; empty when it passes. */

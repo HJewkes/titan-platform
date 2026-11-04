@@ -8,7 +8,7 @@ import { WaitingSchema } from "./waiting-schema.js";
 import type { WatchRow } from "./view-schema.js";
 
 /** Gates a seat can answer; TP-2033 routes these to the seat that owns the PR. Any other gate, a new kind included, is the owner's. */
-export const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuck-behind"];
+export const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuck-behind", "sh-dead-end"];
 
 const HOUR_MS = 3_600_000;
 /** The longest an owner gate may wait before `shepherd waiting` exits 1. */

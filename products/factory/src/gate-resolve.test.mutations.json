@@ -18,6 +18,15 @@
       "kills": [
         "ownerResolver refuses an agent shell without a signed hold release, names its record with one, and asks nothing of the owner's own terminal"
       ]
+    },
+    {
+      "name": "a dead-end gate's rule admits only the coordinator",
+      "file": "products/factory/src/shepherd/dead-end.ts",
+      "find": "resolvers: [...RESOLVER_CLASSES], delegates: [\"coordinator\"] };",
+      "replace": "resolvers: [], delegates: [\"coordinator\"] };",
+      "kills": [
+        "gate resolve of a dead-end seat gate the owner-terminal resolves sh-dead-end abandon with no evidence"
+      ]
     }
   ]
 }

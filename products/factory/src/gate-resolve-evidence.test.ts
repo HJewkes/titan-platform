@@ -18,6 +18,7 @@ import { authorityGateReason, pendingCheck } from "./test-support/authority-reas
 import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { codeRoute, step } from "./workflows/land.js";
 import { tableGateRule } from "./workflows/land-approval.js";
+import { deadEndParam, deadEndRoutes, deadEndWorkflow } from "./test-support/dead-end.js";
 import { partialFake } from "@titan-design/test-kit";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
@@ -657,5 +658,69 @@ describe("an approve-merge gate stamped with the MRG-AU row", () => {
     const result = await resolveAs(world, "stuck-behind", { decision: "retry" });
 
     expect(result.gate).toMatchObject({ status: "resolved", payload: { decision: "retry" }, resolvedBy: { class: "coordinator" } });
+  });
+});
+
+describe("coordinator resolve of a dead-end seat gate (owner decision 552)", () => {
+  const RESPAWN = { decision: "respawn", headSha: HEAD };
+
+  /** A stand-in run paused on sh-dead-end at HEAD, addressed to tc-synthetic, the coordinator AGENT_SHELL names. */
+  async function deadEnd(): Promise<World> {
+    const dir = mkdtempSync(join(tmpdir(), "factory-gate-dead-end-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "factory.sqlite3");
+    const host = openFactoryHost({ dbPath, workflows: [deadEndWorkflow], routes: deadEndRoutes(), gatePollMs: 10 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", deadEnd: deadEndParam([HEAD]) });
+    await vi.waitFor(() => expect(host.gates.get(`${runId}/sh-dead-end`)?.status).toBe("pending"));
+    const gh = greenWorld();
+    const registration = { held: false, frozen: false };
+    const sources: EvidenceSources = { port: githubPort(gh.wire), registration: () => ({ repo: REPO, pr: 1, policy: AUTO, held: false }), frozen: () => false, now: () => NOW };
+    return { host, dbPath, runId, gh, sources, registration };
+  }
+
+  async function resolveDeadEnd(world: World, payload: object, env: NodeJS.ProcessEnv = AGENT_SHELL) {
+    const { reasons } = fakeOwnerHelper(undefined);
+    let out = "";
+    let err = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env };
+    const code = await resolveGate(world.host, io, world.runId, "sh-dead-end", JSON.stringify(payload), world.sources).catch((error: Error) => ((err += error.message), 1));
+    return { code, out, err, reasons, gate: world.host.gates.get(`${world.runId}/sh-dead-end`) };
+  }
+
+  it("a coordinator that is the addressed seat resolves sh-dead-end respawn while the PR is open at the gate head", async () => {
+    const world = await deadEnd();
+
+    const result = await resolveDeadEnd(world, RESPAWN);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.gate).toMatchObject({
+      status: "resolved",
+      payload: RESPAWN,
+      resolvedBy: { class: "coordinator", id: "tc-synthetic" },
+      resolvedEvidence: { kind: "seat-dead-end", seat: "tc-synthetic", headSha: HEAD, pull: { state: "open", headSha: HEAD } },
+    });
+  });
+
+  it("a coordinator other than the addressed seat is refused and falls to the presence dialog", async () => {
+    const world = await deadEnd();
+
+    const result = await resolveDeadEnd(world, RESPAWN, { ...AGENT_SHELL, AGENT_CHAT_NAME: "tc-other" });
+
+    expect(result.reasons).toHaveLength(1);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("only on evidence or an allowance");
+    expect(result.gate?.status).toBe("pending");
+  });
+
+  it("falls to the presence dialog once the PR moved off the gate's head", async () => {
+    const world = await deadEnd();
+    world.gh.pushHead(1, fakeSha("pushed"));
+
+    const result = await resolveDeadEnd(world, { decision: "abandon", headSha: HEAD });
+
+    expect(result.reasons).toHaveLength(1);
+    expect(result.gate?.status).toBe("pending");
   });
 });
