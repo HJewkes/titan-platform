@@ -68,7 +68,7 @@ async function address(ports: DeadEndPorts | undefined, target: { repo: string; 
 }
 
 /** Serve's ports: the run's stored lineage, serve's roster and the exit notice's seat book. With neither wired, no seat. */
-export function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" | "roster" | "exitNotice">): DeadEndPorts | undefined {
+function deadEndPorts({ store, roster, exitNotice }: Pick<ShepherdDeps, "store" | "roster" | "exitNotice">): DeadEndPorts | undefined {
   if (roster === undefined || exitNotice === undefined) return undefined;
   return { lineage: (target) => storedLineage(store, target), roster: () => roster.rows(), repoSeat: (repo) => exitNotice.seatFor(repo) };
 }
@@ -79,6 +79,8 @@ export const deadEndAddressRoute = (now: () => number, ports: DeadEndPorts | und
     const seat = await address(ports, input).catch(() => undefined);
     return { seat: seat ?? null, kind: input.kind, headSha: input.headSha };
   });
+
+export const deadEndRoute = (deps: Pick<ShepherdDeps, "now" | "store" | "roster" | "exitNotice">): StepRoute => deadEndAddressRoute(deps.now, deadEndPorts(deps));
 
 /** The seat the run addressed its dead-end gate at `headSha` to, from its own record; the evidence reader's source. */
 export function addressedSeat(run: WorkflowRun, headSha: string): string | undefined {
