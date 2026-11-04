@@ -36,3 +36,26 @@ describe("the agent-chat old-path warning", () => {
     expect(agentChatOldPaths().find((rule) => rule.path === "src/agents/isolation")).toEqual({ path: "src/agents/isolation", fate: "delete", task: "TP-646" });
   });
 });
+
+describe("the titan-platform old-path warning", () => {
+  const platform = (owns: string[], extra: object = {}) => ({ n: "s1", title: "t", repo: "titan-platform", owns, points: 1, doneWhen: "d", ...extra });
+
+  it("warns once, and refuses nothing, for a titan-platform slice owning products/factory/src/shepherd with no carve-out", () => {
+    const read = readSlices(planOf(platform(["products/factory/src/shepherd/a.ts", "products/factory/src/shepherd/b.ts"])));
+
+    expect(read.problems).toBeUndefined();
+    expect(read.warnings).toEqual([
+      "slice s1: adds to products/factory/src/shepherd (old path frozen at M1b exit); tag the task superseded-at or survives, or set carveOut",
+    ]);
+  });
+
+  it("stays quiet for a carve-out or a slice outside the frozen roots", () => {
+    const plans = [
+      planOf(platform(["products/factory/src/shepherd/a.ts"], { carveOut: "superseded-at:M3" })),
+      planOf(platform(["products/factory/src/dispatch/a.ts"])),
+      planOf(platform(["products/factory/src/shepherd-other/a.ts"])),
+    ];
+
+    expect(plans.map((plan) => readSlices(plan).warnings)).toEqual([[], [], []]);
+  });
+});
