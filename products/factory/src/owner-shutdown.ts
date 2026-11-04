@@ -1,6 +1,6 @@
 import { stopEvals } from "./autoresearch/run-command.js";
 
-export interface ProcessOwner {
+interface ProcessOwner {
   /** Stops new work from starting here: serve halts its sweeps, the CLI quiesces its runtime so no drive re-claims a run. */
   stopAdmission(): void;
   runtime: { shutdown(): void };
