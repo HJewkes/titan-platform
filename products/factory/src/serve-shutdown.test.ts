@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import { execSafeAsync, type AnswersPage } from "@titan-design/agent-dispatch";
 import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FORKS_SLEEPER, PROCESS_TEST_MS, dead, recordedPids, scratch } from "./autoresearch/eval-driver.test-helpers.js";
+import { baselineRun, evalRows } from "./autoresearch/baseline-run.test-helpers.js";
+import { FORKS_SLEEPER, PROCESS_TEST_MS, dead, readPids, recordedPids, scratch } from "./autoresearch/eval-driver.test-helpers.js";
 import { runCommand } from "./autoresearch/run-command.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
@@ -124,6 +125,21 @@ describe("serve's bounded shutdown", () => {
 
     expect((await running).ok).toBe(false);
     expect(await dead([child!])).toBe(true);
+  }, PROCESS_TEST_MS);
+
+  it("close leaves a run whose evals it killed resumable, with no eval row, though one eval ignores TERM", async () => {
+    const dir = scratch();
+    const { host, runId } = baselineRun(dir);
+    const driven = host.runtime.wait(runId);
+    await recordedPids(dir, 2);
+    const parts = { sweeps: [], watches: [], mainWatch: undefined, ingress: undefined, daemon: { close: async () => undefined }, unbindCarry: () => undefined };
+
+    await closeServer({ ...parts, host: { runtime: host.runtime, close: () => undefined } }, silentLogger, GRACE_MS);
+    const run = await driven;
+
+    expect(run.status).toBe("running");
+    expect(evalRows(run)).toEqual([]);
+    expect(await dead(readPids(dir))).toBe(true);
   }, PROCESS_TEST_MS);
 
   it("a hung tick's child process is killed at the end of the grace", async () => {
