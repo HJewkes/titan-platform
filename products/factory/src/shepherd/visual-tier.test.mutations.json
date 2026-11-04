@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing pixel read defaults to tier 1",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (pixel === undefined) return tier2(\"no pr-visual artifact read at the head\");",
+      "replace": "if (pixel === undefined) return { tier: 1, basis: \"no-pixel-diff\" };",
+      "kills": ["a rendered path with no pixel read is tier 2 (missing artifact)"]
+    },
+    {
+      "name": "the rendering class is checked after logic",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (config.renderingPaths.length > 0 && is.rendering(path)) return \"rendering\";",
+      "replace": "if (CODE_FILE.test(path) && is.logic(path)) return \"logic\";\n    if (config.renderingPaths.length > 0 && is.rendering(path)) return \"rendering\";",
+      "kills": ["a token .ts under renderingPaths is tier 2 though it is .ts"]
+    },
+    {
+      "name": "the harness check is dropped",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (config.harnessPaths.length > 0 && is.harness(path)) return \"harness\";",
+      "replace": "",
+      "kills": ["a changed capture script is tier 2 whatever the artifact says"]
+    },
+    {
+      "name": "the story diff paths are ignored",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (snapshots.length > 0) return",
+      "replace": "if (snapshots.length > 0 && false) return",
+      "kills": ["logic head that changes a snapshot is tier 2"]
+    },
+    {
+      "name": "the story class is dropped",
+      "file": "products/factory/src/shepherd/visual-tier.ts",
+      "find": "if (is.story(path)) return \"story\";",
+      "replace": "",
+      "kills": ["story and test only head is tier 1 non-rendering"]
+    }
+  ]
+}
