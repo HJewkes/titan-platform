@@ -36,7 +36,7 @@ export function deadEndSeatOn(on = true): void {
 const exited: WakeOutcome = { kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: { agent: "impl-a", mode: "resume" } };
 
 /** The fixer woken at H1 exits with no push: after a red CI there, or after the fix-proof of a NO_REPRO. */
-export function exitedAt(kind: "ci-red" | "fix-proof"): ShepherdPhases {
+function exitedAt(kind: "ci-red" | "fix-proof"): ShepherdPhases {
   const merge = (headSha: string): Verdict => ({ kind: "MERGE", headSha, evidence: {} });
   const noRepro: Verdict = { kind: "NO_REPRO", headSha: H1, result: { verdict: "vacuous" } };
   return { wake: async () => exited, review: async (_ctx, request) => (kind === "fix-proof" && request.headSha === H1 ? noRepro : merge(request.headSha)) };
@@ -49,7 +49,7 @@ interface ExitOptions {
   dbPath?: string;
 }
 
-export interface ExitWorld {
+interface ExitWorld {
   host: FactoryHost;
   store: ShepherdStore;
   fake: FakeGitHub;
@@ -80,7 +80,7 @@ export function startExit({ host, store, fake }: ExitWorld): string {
   return runId;
 }
 
-export const ESCALATIONS = {
+const ESCALATIONS = {
   "fix-first-runaway": fixFirstEscalation(3, 0, H1)!,
   "failed-rounds": { escalation: "failed-rounds", detail: `the last at ${H1} ended with an external hold` },
 } satisfies Record<string, Escalated>;

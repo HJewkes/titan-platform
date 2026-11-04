@@ -39,12 +39,12 @@ export async function escalateToDeadEnd(run: EscalatedRun, headSha: string, esca
   run.escalations.set(headSha, escalated);
   const kind = ROUTE_DEAD_ENDS[escalated.escalation];
   if (kind === undefined || !asksSeat(run.ctx, "approve-merge")) return true;
-  let toOwner = false;
+  const asked = { owner: false };
   const situation = escalationReason(escalated.escalation, escalated.detail, escalated.words);
   const outcome: LandOutcome | undefined = await deadEndGate(run, { kind, headSha, situation }, async () => {
-    toOwner = true;
+    asked.owner = true;
     return undefined;
   });
-  if (toOwner || !run.escalations.has(headSha)) return true;
+  if (asked.owner || !run.escalations.has(headSha)) return true;
   throw new LeaveLand(outcome);
 }
