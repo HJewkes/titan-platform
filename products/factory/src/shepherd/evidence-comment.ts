@@ -7,6 +7,7 @@ import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import { percent, wouldDecide } from "./visual-threshold-gate.js";
 import { readPath } from "../narrow.js";
+import { oldPathLine } from "../old-path/freeze-gate.js";
 
 export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
 export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
@@ -66,6 +67,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "ci-policy-malformed": "the reviewer's CI-policy line could not be read",
   "attest-unmet": "no independent reviewer attested a claimed attestation row",
   "attest-deploy-skew": "the attestation read waits for main's registry commits to deploy",
+  "old-path-untagged": "the pull request changes old-path code and its task carries no carve-out tag",
 };
 
 const LONG_PATH_LIST = 5;
@@ -178,7 +180,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
   const gated = gatedPaths(decision);
   const reason = gated ? ruleInWords(decision.rule) : decision.reason;
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
-  const proof = record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`];
+  const notes = [...(record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`]), ...oldPathLine(record.oldPath)];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [
     evidenceMarker(record.head),
@@ -190,7 +192,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     ...checksTable(record),
     ...visualDiffSection(record.visualDelta),
     ...rule,
-    ...proof,
+    ...notes,
     ...pathsSection(decision),
     "",
     "<details><summary>Machine evidence</summary>",
