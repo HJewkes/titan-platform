@@ -12,6 +12,8 @@ const CLI_CHANNEL = "factory-cli";
 const DEVICE_RULE = "HW-CO";
 const PUBLISH_TABLES: ReadonlySet<string> = new Set(["shepherd-release"]);
 const PUBLISH_ROWS = /^authority\/REL-/;
+/** The land policy tables whose gates are judgement calls; any other table, a new one included, stays with the owner. */
+const JUDGEMENT_TABLES: ReadonlySet<string> = new Set(["shepherd-merge-guard", "shepherd-seat", "shepherd-route", "factory-default"]);
 
 export const ownerAskResolver = (seat: string): GateResolver => ({ class: OWNER_ASK, id: seat, channel: CLI_CHANNEL });
 
@@ -19,7 +21,7 @@ export const ownerAskEvidence = (gateId: string, seat: string) => ({ kind: OWNER
 
 /**
  * Why `owner-ask` may not answer this gate, naming the rule that keeps it with the owner; undefined for an approve-merge
- * land gate whose policy rule is not publish, device or owner-presence.
+ * land gate whose policy table is a judgement table and whose rule is not publish, device or owner-presence.
  */
 function ownerAskRefusal(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
   const step = stepOf(gate.id);
@@ -29,6 +31,7 @@ function ownerAskRefusal(gate: Pick<GateRecord, "id" | "prompt" | "schema">): st
   if (land === undefined) return `approve-merge gate ${gate.id} names no policy rule owner-ask can check`;
   const [table = ""] = land.rule.split("/");
   if (PUBLISH_TABLES.has(table) || PUBLISH_ROWS.test(land.rule)) return `publish rule ${land.rule} keeps ${gate.id} with the owner`;
+  if (!JUDGEMENT_TABLES.has(table)) return `rule ${land.rule} is not a judgement table owner-ask may answer; ${gate.id} stays with the owner`;
   const presence = ownerAtHeadRow(gate);
   if (presence !== undefined) return `owner-presence rule ${presence} keeps ${gate.id} with the owner at the head`;
   return undefined;

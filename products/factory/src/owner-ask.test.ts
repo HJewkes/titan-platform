@@ -85,6 +85,8 @@ describe("gate resolve --owner-ask", () => {
     ["a publish rule", { rule: "shepherd-release/version-packages" }, "approve-merge", "publish rule shepherd-release/version-packages"],
     ["an owner-presence rule", { rule: "shepherd-merge-guard/ci-policy-weakened" }, "approve-merge", "owner-presence rule ci-policy-weakened"],
     ["a device gate", { gate: "device" }, "device-flash", "rule HW-CO"],
+    ["a table it does not list", { rule: "shepherd-publish-next/new-row" }, "approve-merge", "rule shepherd-publish-next/new-row is not a judgement table"],
+    ["an unstamped authority gate", { rule: "authority/MRG-CO" }, "approve-merge", "rule authority/MRG-CO is not a judgement table"],
   ])("refuses %s, names the rule, and leaves the gate pending", async (_name, params, stepId, named) => {
     const { host, runId } = await paused(params);
 

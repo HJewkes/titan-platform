@@ -118,7 +118,7 @@ gates have no row and open rule-less too, as do gates opened before the migratio
 approved at a Claude Code permissions.ask prompt. The factory cannot verify that approval, because the
 seat and the owner are the same OS user, so the gate records `resolvedBy` as
 `{ class: "owner-ask", id: <seat>, channel: "factory-cli" }`, the seat named by `AGENT_CHAT_NAME`, and
-never `owner-terminal`. The store admits it only on an approve-merge land gate whose policy rule is not
+never `owner-terminal`. The store admits it only on an approve-merge land gate whose policy table is a judgement table (`shepherd-merge-guard`, `shepherd-seat`, `shepherd-route` or `factory-default`; any other table, `authority` included, stays with the owner) and whose rule is not
 publish (`shepherd-release`, or an `authority/REL-*` row), device (`HW-CO`, any `device-*` step) or
 owner-presence (a D21 owner-at-head row: `skill-path`, `ci-policy-weakened`, `ci-policy-malformed`,
 `files-unread`, or a pre-marker prompt). It refuses every other gate with the rule named, and an
