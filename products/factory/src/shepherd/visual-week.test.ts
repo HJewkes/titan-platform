@@ -1,39 +1,9 @@
 import { createHash } from "node:crypto";
-import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import type { PendingGate } from "../host.js";
 import { roundShips, type HeldAt, type StoredRound } from "./round-ship-sweep.js";
 import { isoWeek, visualWeekBatch } from "./visual-week.js";
+import { NOW, REPO, headOf, notHeld, parked, world } from "./visual-week.test-helpers.js";
 
-const REPO = "example-org/example-design";
-const NOW = new Date("2026-11-04T09:00:00.000Z");
-const headOf = (pr: number): string => String(pr % 10).repeat(40);
-const notHeld: HeldAt = () => undefined;
-
-/** A parked shepherd-pr run whose last merge decision gated `decidedHead` under merge-guard row `rowId`. */
-function parked(pr: number, rowId = "visual-path", decidedHead = headOf(pr)): { gate: PendingGate; run: WorkflowRun } {
-  const runId = `run-${pr}`;
-  const prompt = `Merge PR #${pr} in ${REPO} at head ${headOf(pr)}? CI is green. Policy shepherd-merge-guard/${rowId}: the owner decides visual changes`;
-  const output = JSON.stringify({ result: { outcome: "gate", headSha: decidedHead, rule: { table: "shepherd-merge-guard", rowId } } });
-  const gate: PendingGate = JSON.parse(JSON.stringify({ runId, stepId: "approve-merge", gate: { id: `${runId}/approve-merge`, prompt, status: "pending", payload: null, createdAt: "2026-11-02T10:00:00.000Z" } }));
-  const run: WorkflowRun = JSON.parse(JSON.stringify({
-    id: runId,
-    workflowName: "shepherd-pr",
-    params: { repo: REPO, pr: String(pr) },
-    status: "waiting",
-    currentStep: "approve-merge",
-    stepResults: { "merge-policy:0": { stepId: "merge-policy:0", iteration: 0, agentId: null, signal: null, completedAt: "2026-11-02T10:00:00.000Z", output } },
-    activeSteps: {},
-    revision: 3,
-    ownerGeneration: 1,
-    startedAt: "2026-11-02T09:00:00.000Z",
-    completedAt: null,
-    error: null,
-  }));
-  return { gate, run };
-}
-
-const world = (...parts: ReturnType<typeof parked>[]) => ({ gates: parts.map((part) => part.gate), runs: parts.map((part) => part.run) });
 const batchOf = (parts: ReturnType<typeof parked>[], heldAt: HeldAt = notHeld) => visualWeekBatch({ repo: REPO, ...world(...parts), heldAt, now: NOW });
 
 describe("visualWeekBatch", () => {
@@ -52,6 +22,10 @@ describe("visualWeekBatch", () => {
     const batch = batchOf([parked(1)]);
     expect(batch.unit).toBe("td-ship-week-2026-W45");
     expect(batch.questions[0]!.merge).toEqual({ repo: REPO, pr: 1, headSha: headOf(1), ship: ["Ship"] });
+  });
+
+  it("a batch built without pr-visual reads carries no sections", () => {
+    expect(batchOf([parked(1)])).not.toHaveProperty("sections");
   });
 
   it("another repo's gates are left out of the batch", () => {

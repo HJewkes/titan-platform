@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pairing is skipped: only the before image is written",
+      "file": "products/factory/src/shepherd/pr-visual-round.ts",
+      "find": "for (const side of [\"before\", \"after\"] as const) {",
+      "replace": "for (const side of [\"before\"] as const) {",
+      "kills": [
+        "the weekly batch with pr-visual pairs (TP-4761 C3) a visual-week batch carries before and after pairs for each PR with an artifact"
+      ]
+    },
+    {
+      "name": "a shot missing a side is shown anyway, an after-only set",
+      "file": "products/factory/src/shepherd/pr-visual-round.ts",
+      "find": "if (lacking > 0) return",
+      "replace": "if (lacking < 0) return",
+      "kills": [
+        "the weekly batch with pr-visual pairs (TP-4761 C3) a shot with only an after image shows no pairs at all"
+      ]
+    },
+    {
+      "name": "a PR with no artifact gets no reason",
+      "file": "products/factory/src/shepherd/pr-visual-round.ts",
+      "find": "if (typeof zip === \"string\") return nothing(zip);",
+      "replace": "if (typeof zip === \"string\") return { line: \"\", variantKeys: [] };",
+      "kills": [
+        "the weekly batch with pr-visual pairs (TP-4761 C3) a PR with no artifact says why, never an after-only set"
+      ]
+    },
+    {
+      "name": "the artifact's head and PR are not checked",
+      "file": "products/factory/src/shepherd/pr-visual-round.ts",
+      "find": "if (manifest.pr !== pr || manifest.headSha !== head) return",
+      "replace": "if (manifest.pr !== pr && manifest.headSha !== head) return",
+      "kills": [
+        "the weekly batch with pr-visual pairs (TP-4761 C3) an artifact captured at another head shows no pairs"
+      ]
+    }
+  ]
+}

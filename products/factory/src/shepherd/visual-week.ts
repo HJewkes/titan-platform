@@ -5,6 +5,7 @@ import type { PendingGate } from "../host.js";
 import { visualPathHead } from "./head-moved.js";
 import { repoKey } from "./round-merge.js";
 import type { HeldAt } from "./round-ship-sweep.js";
+import type { RoundVisuals } from "./pr-visual-round.js";
 import { gateHead } from "./stale-gates.js";
 
 const GATE_TARGET = /^Merge PR #(\d+) in (\S+) at head /;
@@ -17,6 +18,17 @@ interface WeekQuestion {
   merge: { repo: string; pr: number; headSha: string; ship: string[] };
 }
 
+/** The owner's context for one PR: the pr-visual packet line, with the pair images it counts. */
+interface WeekSection {
+  id: string;
+  title: string;
+  deciding: string;
+  context: string;
+  questionIds: string[];
+  variantKeys: string[];
+  seeAlso: string[];
+}
+
 interface WeekSkip {
   pr: number;
   reason: string;
@@ -26,6 +38,8 @@ export interface VisualWeekBatch {
   unit: string;
   round: number;
   questions: WeekQuestion[];
+  /** One section per question when pr-visual reads were supplied; absent otherwise. */
+  sections?: WeekSection[];
   /** Visual-path gates of the repo left out of this week, each with why; they stay pending and roll into the next. */
   skipped: WeekSkip[];
 }
@@ -36,6 +50,8 @@ interface VisualWeekInput {
   runs: readonly WorkflowRun[];
   heldAt: HeldAt;
   now: Date;
+  /** The pr-visual read per PR number; a batch built without it carries no sections. */
+  visuals?: ReadonlyMap<number, RoundVisuals>;
 }
 
 /** ISO 8601 week of the date's UTC day, as `YYYY-Www`. */
@@ -73,8 +89,14 @@ const questionOf = (repo: string, { pr, head }: Candidate): WeekQuestion => ({
   merge: { repo, pr, headSha: head, ship: ["Ship"] },
 });
 
+const NO_READ = "pr-visual: no before and after shown, the artifact was not read (unattested producer output; not used for the tier)";
+
+function sectionOf({ id, prompt, merge }: WeekQuestion, visual: RoundVisuals | undefined): WeekSection {
+  return { id: `s-${id}`, title: `${merge.repo}#${merge.pr}`, deciding: prompt, context: visual?.line ?? NO_READ, questionIds: [id], variantKeys: visual?.variantKeys ?? [], seeAlso: [] };
+}
+
 /** One merge-bound question per pending visual-path gate at a current, unheld head, oldest PR first; the gate's own head binds, never the round's. */
-export function visualWeekBatch({ repo, gates, runs, heldAt, now }: VisualWeekInput): VisualWeekBatch {
+export function visualWeekBatch({ repo, gates, runs, heldAt, now, visuals }: VisualWeekInput): VisualWeekBatch {
   const questions: WeekQuestion[] = [];
   const skipped: WeekSkip[] = [];
   for (const candidate of candidates(repo, gates, runs).sort((a, b) => a.pr - b.pr)) {
@@ -82,5 +104,6 @@ export function visualWeekBatch({ repo, gates, runs, heldAt, now }: VisualWeekIn
     if (reason !== undefined) skipped.push({ pr: candidate.pr, reason });
     else questions.push(questionOf(repo, candidate));
   }
-  return { unit: `td-ship-week-${isoWeek(now)}`, round: 1, questions, skipped };
+  const sections = visuals && questions.map((question) => sectionOf(question, visuals.get(question.merge.pr)));
+  return { unit: `td-ship-week-${isoWeek(now)}`, round: 1, questions, ...(sections && { sections }), skipped };
 }
